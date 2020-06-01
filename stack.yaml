@@ -11,3 +11,8 @@ extra-deps:
 
   - git: https://github.com/hstreamdb/haskell-rocksdb-bindings
     commit: 688c424312819288ce26b08e1b3f9442f97e6b35
+
+  # TODO: If a newer co-log package is released, we can safely remove this.
+  - git: https://github.com/kowainik/co-log
+    commit: 45d5dd6c33f722628a0f9c10e4297f5e11ede20f
+    subdirs: [co-log-core, co-log]

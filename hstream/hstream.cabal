@@ -22,7 +22,16 @@ source-repository head
 
 executable hstream
   main-is:          Main.hs
-  build-depends:    base >= 4.11 && < 5
+  build-depends:    base         >= 4.11 && < 5
+                  , co-log
+                  , directory
+                  , hesp
+                  , hstream-core
+                  , mtl
+                  , network      >= 3.1.2
+                  , text
+                  , vector
+                  , yaml         >= 0.11
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
