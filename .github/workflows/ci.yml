@@ -56,7 +56,7 @@ jobs:
       - name: Install dependencies
         run: |
           docker exec build-${{ matrix.ghc }} cabal update
-          docker exec build-${{ matrix.ghc }} cabal build --only-dependencies --enable-tests --enable-benchmarks
+          docker exec build-${{ matrix.ghc }} cabal build --only-dependencies --enable-tests --enable-benchmarks all
 
       - name: Build
         run: docker exec build-${{ matrix.ghc }} cabal build --enable-tests --enable-benchmarks all
