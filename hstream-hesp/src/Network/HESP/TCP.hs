@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -62,14 +63,9 @@ runTCPServer
   -> NS.ServiceName
   -> ((Socket, SockAddr) -> IO a)
   -> IO b
-runTCPServer host port = runTCPServer' host port setDefaultServerSO clean
-  where
-    clean (Left e, lsock)  = err e >> gracefulClose lsock
-    clean (Right _, lsock) = gracefulClose lsock
-    err :: SomeException -> IO ()
-    err e = IO.hPutStrLn IO.stderr (x ++ show e)
-    x :: String
-    x = "Network.HESP.TCP.runTCPServer: Synchronous exception happened: "
+runTCPServer host port =
+  let x = "Network.HESP.TCP.runTCPServer: Synchronous exception happened: "
+   in runTCPServer' host port setDefaultServerSO (uncurry . flip $ clean x)
 
 runTCPServer'
   :: NS.HostName
@@ -90,14 +86,9 @@ runTCPServerG
   -> ((Socket, SockAddr) -> m ())
   -> m a
 runTCPServerG host port =
-  runTCPServerG' host port setDefaultServerSO (liftIO . clean)
-  where
-    clean (Left e, lsock)  = err e >> gracefulClose lsock
-    clean (Right _, lsock) = gracefulClose lsock
-    err :: SomeException -> IO ()
-    err e = IO.hPutStrLn IO.stderr (x ++ show e)
-    x :: String
-    x = "Network.HESP.TCP.runTCPServerG: Synchronous exception happened: "
+  let x = "Network.HESP.TCP.runTCPServerG: Synchronous exception happened: "
+      clean' = liftIO . uncurry (flip $ clean x)
+   in runTCPServerG' host port setDefaultServerSO clean'
 
 runTCPServerG'
   :: (MonadBaseControl IO m, MonadIO m)
@@ -237,9 +228,9 @@ recv sock nbytes = liftIO $ do
   if BS.null bs then return Nothing else return (Just bs)
 {-# INLINABLE recv #-}
 
--- | Shuts down and closes the 'NS.Socket', silently ignoring any synchronous
+-- | Shuts down and closes the 'Socket', silently ignoring any synchronous
 -- exception that might happen.
-close :: MonadIO m => NS.Socket -> m ()
+close :: MonadIO m => Socket -> m ()
 close s = liftIO $
   Ex.catch (Ex.finally (NS.shutdown s NS.ShutdownBoth)
                        (NS.close s))
@@ -247,6 +238,16 @@ close s = liftIO $
 
 gracefulClose :: MonadIO m => Socket -> m ()
 gracefulClose conn = liftIO $ NS.gracefulClose conn 5000
+
+-- | Graceful close the 'Socket' with printing errors if 'SomeException'
+-- happened.
+clean :: String -> Socket -> Either SomeException a -> IO ()
+clean label lsock = \case
+  Left e -> err e >> gracefulClose lsock
+  Right _ -> gracefulClose lsock
+  where
+    err :: SomeException -> IO ()
+    err e = IO.hPutStrLn IO.stderr (label ++ show e)
 
 setDefaultServerSO :: Socket -> IO ()
 setDefaultServerSO sock = do

@@ -12,7 +12,7 @@ import qualified Network.HESP       as P
 spec :: Spec
 spec = do
   runClientException
-  parallel $ smoke
+  parallel smoke
 
 smoke :: Spec
 smoke = describe "SmokeTest" $ do
@@ -37,6 +37,6 @@ smoke = describe "SmokeTest" $ do
     takeMVar response `shouldReturn` Right source
 
 runClientException :: Spec
-runClientException = describe "RunClientException" $ do
-  it "connect to a not exist port should throw exception" $ do
+runClientException = describe "RunClientException" $
+  it "connect to a not exist port should throw exception" $
     P.connect "localhost" "0" undefined `shouldThrow` anyIOException
