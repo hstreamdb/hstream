@@ -19,17 +19,17 @@ spec = parallel $ do
   mapType
 
 boolean :: Spec
-boolean = describe "Boolean" $ do
+boolean = describe "Boolean" $
   context "Serialization" $ do
     let tr = "#t\r\n"
     let fr = "#f\r\n"
-    it "serialize: True" $ do
+    it "serialize: True" $
       P.serialize (P.Boolean True) `shouldBe` tr
-    it "serialize: False" $ do
+    it "serialize: False" $
       P.serialize (P.Boolean False) `shouldBe` fr
-    it "deserialize: True" $ do
+    it "deserialize: True" $
       P.deserialize tr `shouldBe` Right (P.Boolean True)
-    it "deserialize: False" $ do
+    it "deserialize: False" $
       P.deserialize fr `shouldBe` Right (P.Boolean False)
 
 integer :: Spec
@@ -113,25 +113,25 @@ simpleError = describe "Simple Error" $ do
       srcStr `shouldBe` eptStr
 
 arrayType :: Spec
-arrayType = describe "Array Type" $ do
+arrayType = describe "Array Type" $
   context "Serialization" $ do
     let source = P.mkArrayFromList []
         result = "*0\r\n"
-    it "serialize empty array" $ do
+    it "serialize empty array" $
       P.serialize source `shouldBe` result
-    it "deserialize empty array" $ do
+    it "deserialize empty array" $
       P.deserialize result `shouldBe` Right source
 
 mapType :: Spec
-mapType = describe "Map Type" $ do
+mapType = describe "Map Type" $
   context "Serialization" $ do
     let source = P.mkMapFromList [ (P.mkBulkString "first",  P.Integer 1)
                                  , (P.mkBulkString "second", P.Integer 2)
                                  ]
     let result = "%2\r\n$5\r\nfirst\r\n:1\r\n$6\r\nsecond\r\n:2\r\n"
-    it "serialize" $ do
+    it "serialize" $
       P.serialize source `shouldBe` result
-    it "deserialize" $ do
+    it "deserialize" $
       P.deserialize result `shouldBe` Right source
 
 -------------------------------------------------------------------------------

@@ -35,7 +35,7 @@ encodeArray x y = HESP.serialize $! mkArray x y
 
 decodeArray :: BS.ByteString -> HESP.Message
 decodeArray bs = head $ do
-  e_m <- (V.! 0) <$> HESP.deserializeWith ([bs]) ""
+  e_m <- (V.! 0) <$> HESP.deserializeWith [bs] ""
   case e_m of
     Left errmsg -> error errmsg
     Right msg   -> return msg
