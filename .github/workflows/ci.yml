@@ -21,7 +21,7 @@ jobs:
       - id: parser
         run: >
           echo "::set-output name=ghc::$(
-          cat hstream.cabal | grep tested-with |
+          cat hstream/hstream.cabal | grep tested-with |
           sed -e 's/[^0-9|\.]/ /g' -e 's/^ *//g' -e 's/ *$//g' |
           python3 -c 'import sys, json; print(json.dumps([x.strip() for x in sys.stdin.read().split()]))'
           )"
