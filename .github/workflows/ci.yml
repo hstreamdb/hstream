@@ -45,7 +45,7 @@ jobs:
             ~/.cabal/store
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.ghc }}
+            ${{ runner.os }}-${{ matrix.ghc }}-
 
       - name: Pull ghc-${{ matrix.ghc }} image and start build-${{ matrix.ghc }} container.
         run: |
@@ -67,7 +67,12 @@ jobs:
         run: docker exec build-${{ matrix.ghc }} cabal test all
 
       - name: Run cabal check
-        run: docker exec build-${{ matrix.ghc }} cabal -vnormal check
+        run: |
+          # from: https://unix.stackexchange.com/questions/184340/how-to-grep-a-line-with-unknown-number-of-its-indented-lines
+          regex="^packages:$"
+          packages=$(cat cabal.project | awk '/'"$regex"'/ && !f{f=1;x=$0;sub(/[^ ].*/,"",x);x=x" ";print;next} f {if (substr($0,1,length(x))==x)print; else f=0}' | grep -v "$regex")
+          # unfortunately, there is no `cabal check all`
+          for pkg in $packages; do docker exec build-${{ matrix.ghc }} bash -c "echo check $pkg... && cd $pkg && cabal -vnormal check"; done
 
       - name: Haddock
         run: docker exec build-${{ matrix.ghc }} cabal haddock --enable-tests --enable-benchmarks all
