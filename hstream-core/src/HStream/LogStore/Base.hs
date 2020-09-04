@@ -205,6 +205,7 @@ data OpenOptions = OpenOptions
 
 instance Hashable OpenOptions
 
+defaultOpenOptions :: OpenOptions
 defaultOpenOptions =
   OpenOptions
     { readMode = True,
@@ -276,20 +277,20 @@ open name opts@OpenOptions {..} = do
     mkLogHandle res =
       case res of
         Nothing -> do
-          id <- create name
+          logid <- create name
           maxEntryIdRef <- liftIO $ newTVarIO dumbMinEntryId
           return $
             LogHandle
               { logName = name,
-                logID = id,
+                logID = logid,
                 openOptions = opts,
                 maxEntryIdRef = maxEntryIdRef
               }
         Just bId ->
           do
             let logId = decodeLogId bId
-            res <- getMaxEntryId logId
-            maxEntryIdRef <- liftIO $ newTVarIO $ fromMaybe dumbMinEntryId res
+            res' <- getMaxEntryId logId
+            maxEntryIdRef <- liftIO $ newTVarIO $ fromMaybe dumbMinEntryId res'
             return $
               LogHandle
                 { logName = name,
@@ -366,7 +367,7 @@ withDbHandleForRead
                   def
                   (dbPath </> dbName)
                   False
-              insertDbHandleToCache dbHandle
+              _ <- insertDbHandleToCache dbHandle
               return dbHandle
             Just handle ->
               return handle
