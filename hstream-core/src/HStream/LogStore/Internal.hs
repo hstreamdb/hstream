@@ -82,8 +82,8 @@ data EntryKey = EntryKey LogID EntryID
   deriving (Eq, Show)
 
 handleDecodeError :: (Either String a, B.ByteString) -> a
-handleDecodeError (res, rem) =
-  if rem /= B.empty
+handleDecodeError (res, rem') =
+  if rem' /= B.empty
     then throw $ LogStoreDecodeException "input error"
     else case res of
       Left s  -> throw $ LogStoreDecodeException s

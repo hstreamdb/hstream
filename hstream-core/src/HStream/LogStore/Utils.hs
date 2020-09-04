@@ -18,14 +18,13 @@ encodeWord64 = builderBytes . word64BE
 
 decodeWord64 :: B.ByteString -> Word64
 decodeWord64 bs =
-  if rem /= B.empty
+  if rem' /= B.empty
     then throw $ LogStoreDecodeException "input error"
     else case res of
       Left s  -> throw $ LogStoreDecodeException s
       Right v -> v
   where
-    (res, rem) = decode' bs
-    decode' = runGet getWord64be
+    (res, rem') = runGet getWord64be $ bs
 
 decodeText :: B.ByteString -> T.Text
 decodeText = decodeUtf8
@@ -42,7 +41,7 @@ getCurrentTimestamp :: IO Word64
 getCurrentTimestamp = posixTimeToMilliSeconds <$> getPOSIXTime
 
 lastElemInSeq :: Seq.Seq a -> a
-lastElemInSeq seq =
-  case seq of
+lastElemInSeq xs =
+  case xs of
     Seq.Empty   -> error "empty sequence"
     _ Seq.:|> x -> x
