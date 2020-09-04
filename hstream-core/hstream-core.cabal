@@ -46,7 +46,7 @@ library
                   , rocksdb-haskell-bindings  >= 0.1 && < 1
                   , stm                       ^>= 2.5
                   , text                      ^>= 1.2
-                  , time                      >= 1.8 && < 2
+                  , time                      >= 1.9.1 && < 2
                   , unordered-containers      ^>= 0.2
                   , vector                    ^>= 0.12
   default-language: Haskell2010
