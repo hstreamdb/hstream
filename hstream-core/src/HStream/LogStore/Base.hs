@@ -576,7 +576,7 @@ readEntries LogHandle {..} firstKey lastKey = do
     foldM
       (f dbHandlesForReadCache dbHandlesForReadEvcited dbHandlesForReadRcMap logID dbPath)
       Seq.empty
-      (filterReadOnlyDb readOnlyDataDbNames)
+      (filterReadOnlyDb firstKey readOnlyDataDbNames)
   if goOn prevRes
     then
       liftIO $
@@ -589,16 +589,6 @@ readEntries LogHandle {..} firstKey lastKey = do
           )
     else return prevRes
   where
-    filterReadOnlyDb :: [String] -> [String]
-    filterReadOnlyDb dbNames =
-      case firstKey of
-        Nothing -> dbNames
-        Just entryId ->
-          let dbTimestamps = fmap (read . drop (length dataDbNamePrefix)) dbNames
-              (l, r) = span (<= timestamp entryId) dbTimestamps
-              c = last l : r
-           in fmap ((dataDbNamePrefix ++) . show) c
-
     f cache gcMap rcMap logId dbPath prevRes dataDbName =
       if goOn prevRes
         then liftIO $ do
@@ -655,7 +645,7 @@ readEntriesByCount LogHandle {..} firstKey num = do
     foldM
       (f dbHandlesForReadCache dbHandlesForReadEvcited dbHandlesForReadRcMap logID dbPath)
       Seq.empty
-      (filterReadOnlyDb readOnlyDataDbNames)
+      (filterReadOnlyDb firstKey readOnlyDataDbNames)
   if goOn prevRes
     then liftIO $ do
       yieldWhenSeeWriteFlag writeFlagForCurDb
@@ -668,16 +658,6 @@ readEntriesByCount LogHandle {..} firstKey num = do
         )
     else return prevRes
   where
-    filterReadOnlyDb :: [String] -> [String]
-    filterReadOnlyDb dbNames =
-      case firstKey of
-        Nothing -> dbNames
-        Just entryId ->
-          let dbTimestamps = fmap (read . drop (length dataDbNamePrefix)) dbNames
-              (l, r) = span (<= timestamp entryId) dbTimestamps
-              c = if null l then r else last l : r
-           in fmap ((dataDbNamePrefix ++) . show) c
-
     f cache gcMap rcMap logId dbPath prevRes dataDbName =
       if goOn prevRes
         then liftIO $ do
@@ -722,6 +702,16 @@ readEntriesByCount LogHandle {..} firstKey num = do
         else return acc
 
     startEntryId = fromMaybe dumbMinEntryId firstKey
+
+filterReadOnlyDb :: Maybe EntryID -> [String] -> [String]
+filterReadOnlyDb firstKey dbNames =
+  case firstKey of
+    Nothing -> dbNames
+    Just entryId ->
+      let dbTimestamps = fmap (read . drop (length dataDbNamePrefix)) dbNames
+          (l, r) = span (<= timestamp entryId) dbTimestamps
+          c = if null l then r else last l : r
+       in fmap ((dataDbNamePrefix ++) . show) c
 
 -- todo:
 -- what should do when call close?
