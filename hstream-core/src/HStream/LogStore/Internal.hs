@@ -12,10 +12,12 @@ import           ByteString.StrictBuilder         (Builder, builderBytes,
 -- import Control.Monad.Trans.Control (MonadBaseControl)
 -- import Control.Monad.Trans.Resource (MonadUnliftIO, allocate, runResourceT)
 
-import qualified Control.Concurrent.ReadWriteLock as RWL
+import           Control.Concurrent               (MVar, readMVar, yield)
+import qualified Control.Concurrent.Classy.RWLock as RWL
 import           Control.Concurrent.STM           (TVar, atomically, readTVar,
                                                    writeTVar)
 import           Control.Exception                (bracket, throw, throwIO)
+import           Control.Monad                    (when)
 import           Control.Monad.IO.Class           (MonadIO, liftIO)
 import           Data.Atomics                     (atomicModifyIORefCAS)
 import           Data.Binary.Strict.Get           (Get, getWord64be, runGet)
@@ -27,11 +29,10 @@ import           Data.List                        (isPrefixOf, sort)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word64)
 import qualified Database.RocksDB                 as R
-import           System.Directory                 (listDirectory)
-import           System.FilePath.Posix            ((</>))
-
 import           HStream.LogStore.Exception
 import           HStream.LogStore.Utils
+import           System.Directory                 (listDirectory)
+import           System.FilePath.Posix            ((</>))
 
 type LogName = T.Text
 
@@ -82,8 +83,8 @@ data EntryKey = EntryKey LogID EntryID
   deriving (Eq, Show)
 
 handleDecodeError :: (Either String a, B.ByteString) -> a
-handleDecodeError (res, rem') =
-  if rem' /= B.empty
+handleDecodeError (res, rmn) =
+  if rmn /= B.empty
     then throw $ LogStoreDecodeException "input error"
     else case res of
       Left s  -> throw $ LogStoreDecodeException s
@@ -187,12 +188,20 @@ withDbReadOnly dbPath =
     )
     R.close
 
-getReadOnlyDataDbNames :: MonadIO m => FilePath -> RWL.RWLock -> m [FilePath]
-getReadOnlyDataDbNames dbPath rwLock =
-  liftIO $
-    RWL.withRead
-      rwLock
-      ( do
-          res <- listDirectory dbPath
-          return $ init $ sort $ filter (isPrefixOf dataDbNamePrefix) res
-      )
+getReadOnlyDataDbNames :: MonadIO m => FilePath -> MVar Bool -> RWL.RWLock IO -> m [FilePath]
+getReadOnlyDataDbNames dbPath writeFlag rwLock = liftIO $ do
+  yieldWhenSeeWriteFlag writeFlag
+  RWL.withRead
+    rwLock
+    ( do
+        res <- liftIO $ listDirectory dbPath
+        return $ init $ sort $ filter (isPrefixOf dataDbNamePrefix) res
+    )
+
+yieldWhenSeeWriteFlag :: MVar Bool -> IO ()
+yieldWhenSeeWriteFlag flag = do
+  needWait <- readMVar flag
+  when needWait $
+    do
+      yield
+      yieldWhenSeeWriteFlag flag
