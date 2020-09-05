@@ -123,6 +123,10 @@ processXAdd _ _ _ = return Nothing
 
 processXRange :: Socket -> Context -> RequestType -> App (Maybe ())
 processXRange sock ctx (XRange topic sid eid maxn) = do
+  Colog.logDebug $ "Processing XRANGE request."
+                <> " Start: " <> (U.textShow sid)
+                <> " End: "   <> (U.textShow eid)
+                <> " COUNT: " <> (U.textShow maxn)
   let cut = case maxn of
         Nothing -> id
         Just n  -> Seq.take (fromInteger n)
