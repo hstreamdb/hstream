@@ -1,0 +1,26 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  IMAGE_NAME: "hstreamdb/hstream"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Push image to dockerhub
+        run: |
+          echo "Login dockerhub..."
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+          TAG=${GITHUB_REF#refs/*/}
+          echo "Build & Push ${IMAGE_NAME}:${TAG}..."
+
+          docker build . -t ${IMAGE_NAME}:${TAG}
+          docker push ${IMAGE_NAME}:${TAG}
