@@ -64,7 +64,6 @@ import           HStream.LogStore.Utils
 import           System.Directory                 (createDirectoryIfMissing)
 import           System.FilePath                  ((</>))
 
--- | Config info
 data Config = Config
   { rootDbPath             :: FilePath,
     dataCfWriteBufferSize  :: Word64,
@@ -149,7 +148,7 @@ openMetaDb Config {..} = do
       }
     (rootDbPath </> metaDbName)
 
--- | init Context using Config
+-- init Context using Config
 -- 1. open (or create) db, metaCF, create a new dataCF
 -- 2. init context variables: logHandleCache, maxLogIdRef
 -- 3. start background task: shardingTask
@@ -208,7 +207,6 @@ initialize cfg@Config {..} =
           return initLogId
         Just v -> return (decodeWord64 v)
 
--- | open options
 data OpenOptions = OpenOptions
   { readMode        :: Bool,
     writeMode       :: Bool,
@@ -228,7 +226,6 @@ defaultOpenOptions =
 
 type Entry = B.ByteString
 
--- | LogHandle
 data LogHandle = LogHandle
   { logName       :: LogName,
     logID         :: LogID,
@@ -243,8 +240,6 @@ data LogHandleKey
 
 instance Hashable LogHandleKey
 
--- | open a log, will return a LogHandle for later operation
--- | (such as append and read)
 open :: MonadIO m => LogName -> OpenOptions -> ReaderT Context m LogHandle
 open name opts@OpenOptions {..} = do
   Context {..} <- ask
@@ -490,7 +485,6 @@ create name = do
       R.put metaDb def (encodeLogName name) (encodeLogId logId)
       return logId
 
--- | append an entry to log
 appendEntry :: MonadIO m => LogHandle -> Entry -> ReaderT Context m EntryID
 appendEntry LogHandle {..} entry = do
   Context {..} <- ask
@@ -729,16 +723,13 @@ readEntriesByCount LogHandle {..} firstKey num = do
 
     startEntryId = fromMaybe dumbMinEntryId firstKey
 
--- | close log
--- |
--- | todo:
--- | what should do when call close?
--- | 1. free resource
--- | 2. once close, should forbid operation on this LogHandle
+-- todo:
+-- what should do when call close?
+-- 1. free resource
+-- 2. once close, should forbid operation on this LogHandle
 close :: MonadIO m => LogHandle -> ReaderT Context m ()
 close LogHandle {..} = return ()
 
--- | shutDown and free resources
 shutDown :: MonadIO m => ReaderT Context m ()
 shutDown = do
   Context {..} <- ask
@@ -756,7 +747,6 @@ shutDown = do
       g <- readTVar gcMap
       return $ fmap snd $ L.toList c ++ H.toList g
 
--- | function that wrap initialize and resource release.
 withLogStore :: MonadUnliftIO m => Config -> ReaderT Context m a -> m a
 withLogStore cfg r =
   runResourceT

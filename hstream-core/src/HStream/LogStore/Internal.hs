@@ -42,7 +42,6 @@ encodeLogName = encodeText
 decodeLogName :: B.ByteString -> LogName
 decodeLogName = decodeText
 
--- | Log Id
 type LogID = Word64
 
 maxLogIdKey :: B.ByteString
@@ -54,7 +53,6 @@ encodeLogId = encodeWord64
 decodeLogId :: B.ByteString -> LogID
 decodeLogId = decodeWord64
 
--- | entry Id
 data EntryID = EntryID
   { timestamp :: Word64,
     offset    :: Word64
@@ -78,7 +76,7 @@ dumbMinEntryId = EntryID 0 0
 dumbMaxEntryId :: EntryID
 dumbMaxEntryId = EntryID 0xffffffffffffffff 0xffffffffffffffff
 
--- | key used when save entry to rocksdb
+-- key used when save entry to rocksdb
 data EntryKey = EntryKey LogID EntryID
   deriving (Eq, Show)
 
@@ -107,8 +105,7 @@ encodeEntryKey (EntryKey logId entryId) =
 decodeEntryKey :: B.ByteString -> EntryKey
 decodeEntryKey = handleDecodeError . runGet (EntryKey <$> getWord64be <*> getEntryId)
 
--- | it is used to generate a new logId while
--- | creating a new log.
+-- it is used to generate a new logId while creating a new log.
 generateLogId :: MonadIO m => R.DB -> IORef LogID -> m LogID
 generateLogId db logIdRef =
   liftIO $ do
@@ -116,12 +113,6 @@ generateLogId db logIdRef =
     R.put db def maxLogIdKey (encodeWord64 newId)
     return newId
 
--- | generate entry Id
--- |
--- generateEntryId :: MonadIO m => IORef EntryID -> m EntryID
--- generateEntryId entryIdRef =
---   liftIO $
---     atomicModifyIORefCAS entryIdRef (\curId -> (curId + 1, curId + 1))
 generateEntryIds :: MonadIO m => TVar EntryID -> Int -> m [EntryID]
 generateEntryIds maxEntryIdRef num = liftIO $ do
   ts <- getCurrentTimestamp
