@@ -42,7 +42,7 @@ library
                   , bytestring-strict-builder ^>= 0.4
                   , case-insensitive          ^>= 1.2
                   , co-log
-                  , concurrent-extra          ^>= 0.7
+                  , concurrency               ^>= 1.11
                   , containers                ^>= 0.6
                   , data-default              ^>= 0.7
                   , deepseq                   ^>= 1.4
