@@ -7,13 +7,13 @@ module HStream.Server.Command
   ) where
 
 import qualified Colog
-import           Control.Exception               (SomeException, throw, try)
+import           Control.Exception               (SomeException, throw)
 import           Control.Monad.Reader            (liftIO)
 import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Char8           as BSC
 import           Data.CaseInsensitive            (CI)
 import qualified Data.CaseInsensitive            as CI
-import qualified Data.Sequence                   as Seq
+import           Data.Maybe                      (maybe)
 import qualified Data.Text                       as Text
 import           Data.Text.Encoding              (decodeUtf8)
 import           Data.Vector                     (Vector)
@@ -116,7 +116,7 @@ parseCommand _paras = Right Command
 
 processXAdd :: Socket -> RequestType -> Context -> App (Maybe ())
 processXAdd sock (XAdd topic payload) ctx = do
-  r <- liftIO $ Store.sput ctx topic payload
+  r <- Store.appendEntry ctx topic payload
   case r of
     Right entryID -> do
       liftIO $ HESP.sendMsg sock $ (HESP.mkBulkString . U.encodeUtf8) entryID
@@ -133,10 +133,9 @@ processXRange sock (XRange topic sid eid maxn) ctx = do
                 <> " Start: " <> (U.textShow sid)
                 <> " End: "   <> (U.textShow eid)
                 <> " COUNT: " <> (U.textShow maxn)
-  let cut = case maxn of
-        Nothing -> id
-        Just n  -> Seq.take (fromInteger n)
-  e_s <- liftIO . try $ cut <$> Store.readEntries ctx topic sid eid
+  -- FIXME: maxn should not exceed maxBound of Int
+  let realMaxn = maybe (maxBound :: Int) fromInteger maxn
+  e_s <- liftIO $ Store.readEntries ctx topic sid eid 0 realMaxn
   case e_s of
     Left (LogStoreLogNotFoundException _) -> do
       HESP.sendMsg sock $ HESP.mkArrayFromList []
