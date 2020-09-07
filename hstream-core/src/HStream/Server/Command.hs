@@ -37,7 +37,8 @@ import qualified Network.HESP.Commands           as HESP
 
 -- | Client request types
 data RequestType
-  = XAdd ByteString ByteString
+  = Command
+  | XAdd ByteString ByteString
   | XRange ByteString (Maybe EntryID) (Maybe EntryID) (Maybe Integer)
   deriving (Show, Eq)
 
@@ -64,13 +65,15 @@ parseRequest :: HESP.Message
 parseRequest msg = do
   (n, paras) <- HESP.commandParser msg
   case CI.mk n of
-    ("xadd"   :: CI ByteString) -> parseXAdd paras
-    ("xrange" :: CI ByteString) -> parseXRange paras
+    ("command":: CI ByteString) -> parseCommand paras
+    ("xadd"   :: CI ByteString) -> parseXAdd    paras
+    ("xrange" :: CI ByteString) -> parseXRange  paras
     _                           -> Left $ "Unrecognized request " <> n <> "."
 
 processRequest :: Socket -> Context -> RequestType -> App (Maybe ())
-processRequest sock ctx rt = processXAdd   sock ctx rt
-                         .|. processXRange sock ctx rt
+processRequest sock ctx rt = processXAdd    sock rt ctx
+                         .|. processXRange  sock rt ctx
+                         .|. processCommand sock rt
 
 -------------------------------------------------------------------------------
 -- Parse client requests
@@ -105,11 +108,14 @@ parseXRange paras = do
         _      -> Left "value is not an integer or out of range"
     _ -> Left "syntax error"
 
+parseCommand :: Vector HESP.Message -> Either ByteString RequestType
+parseCommand _paras = Right Command
+
 -------------------------------------------------------------------------------
 -- Process client requests
 
-processXAdd :: Socket -> Context -> RequestType -> App (Maybe ())
-processXAdd sock ctx (XAdd topic payload) = do
+processXAdd :: Socket -> RequestType -> Context -> App (Maybe ())
+processXAdd sock (XAdd topic payload) ctx = do
   r <- liftIO $ Store.sput ctx topic payload
   case r of
     Right entryID -> do
@@ -121,8 +127,8 @@ processXAdd sock ctx (XAdd topic payload) = do
   return $ Just ()
 processXAdd _ _ _ = return Nothing
 
-processXRange :: Socket -> Context -> RequestType -> App (Maybe ())
-processXRange sock ctx (XRange topic sid eid maxn) = do
+processXRange :: Socket -> RequestType -> Context -> App (Maybe ())
+processXRange sock (XRange topic sid eid maxn) ctx = do
   Colog.logDebug $ "Processing XRANGE request."
                 <> " Start: " <> (U.textShow sid)
                 <> " End: "   <> (U.textShow eid)
@@ -140,6 +146,12 @@ processXRange sock ctx (XRange topic sid eid maxn) = do
       HESP.sendMsg sock respMsg
   return $ Just ()
 processXRange _ _ _ = return Nothing
+
+-- TODO: Return a Array reply of details about all commands.
+processCommand :: Socket -> RequestType -> App (Maybe ())
+processCommand sock Command =
+  HESP.sendMsg sock (HESP.mkArray V.empty) >> return (Just ())
+processCommand _ _ = return Nothing
 
 -------------------------------------------------------------------------------
 -- Helpers
