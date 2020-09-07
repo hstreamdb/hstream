@@ -3,10 +3,13 @@ module HStream.Utils
   , str2bs
   , textShow
   , encodeUtf8
+  , fromLeft'
+  , fromRight'
   , (.|.)
   ) where
 
 import           Data.ByteString    (ByteString)
+import           Data.Either        (fromLeft, fromRight)
 import           Data.Text          (Text)
 import qualified Data.Text          as Text
 import qualified Data.Text.Encoding as Text
@@ -27,3 +30,9 @@ encodeUtf8 = Text.encodeUtf8 . textShow
 -- perform all @m (Maybe a)@ and then return the first "Just value".
 (.|.) :: Monad m => m (Maybe a) -> m (Maybe a) -> m (Maybe a)
 ma .|. mb = maybe mb (return . Just) =<< ma
+
+fromLeft' :: Either a b -> a
+fromLeft' = fromLeft (error "this should never happen")
+
+fromRight' :: Either a b -> b
+fromRight' = fromRight (error "this should never happen")
