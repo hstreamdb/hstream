@@ -21,7 +21,7 @@ smoke = describe "SmokeTest" $ do
     response <- newEmptyMVar
     -- FIXME: choose an unused port automatically
     let host = "localhost"
-        port = "6560"
+        port = "6561"  -- NOTE: do NOT use 6560, since it may already have a server running on default 6560 port.
     _ <- forkIO $ P.runTCPServer host port $ \(sock, _) -> do
       msgs <- P.recvMsgs sock 1024
       case V.head msgs of
