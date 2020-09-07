@@ -107,5 +107,21 @@ executable hstream-store-bench
                   , unordered-containers
                   , vector
   default-language: Haskell2010
-  ghc-options:      -Wall -O2
+  ghc-options:      -W -Wunused-do-bind -O2
                     -threaded -rtsopts -with-rtsopts=-N
+
+benchmark hstream-store-benchmark
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   benchmark
+  main-is:          store-benchmark.hs
+  build-depends:    base                  >= 4.11 && < 5
+                  , bytestring
+                  , criterion
+                  , hstream-core
+                  , mtl
+                  , resourcet
+                  , temporary-resourcet
+                  , transformers
+                  , vector
+  default-language: Haskell2010
+  ghc-options:      -W -Wunused-do-bind -O2
