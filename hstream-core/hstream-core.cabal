@@ -19,7 +19,7 @@ extra-source-files: ChangeLog.md
 
 source-repository head
   type:     git
-  location: https://github.com/hstream-io/hstream
+  location: https://github.com/hstreamdb/hstream
 
 library
   exposed-modules:  HStream.LogStore.Base
@@ -90,3 +90,22 @@ test-suite hstream-core-test
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
                       -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
                       -threaded -rtsopts -with-rtsopts=-N
+
+executable store-bench
+  main-is:          store-bench.hs
+  hs-source-dirs:   tools
+  build-depends:    atomic-primops
+                  , base                  >= 4.11 && < 5
+                  , bytestring
+                  , clock
+                  , cmdargs
+                  , containers
+                  , hstream-core
+                  , lifted-async
+                  , text
+                  , transformers 
+                  , unordered-containers
+                  , vector
+  default-language: Haskell2010
+  ghc-options:      -Wall -O2 
+                    -threaded -rtsopts -with-rtsopts=-N
