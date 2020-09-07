@@ -6,7 +6,7 @@ port: 6560
 
 database:
   # Path to the database on the disk
-  path: /tmp/db-test
+  path: /data
   # Size of column family write buffer, in bytes.
   # Recommended value is 1/3 of max memory
   write-buffer-size: 314572800    # 300 * 1024 * 1024
