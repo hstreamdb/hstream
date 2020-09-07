@@ -71,14 +71,17 @@ test-suite hstream-core-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:      Test.LogStoreSpec
+                      Test.ServerSpec
   hs-source-dirs:     test
   build-depends:      base                >= 4.11 && < 5
                     , bytestring
                     , containers
+                    , hesp
                     , hspec
                     , hstream-core
                     , lifted-async
                     , mtl
+                    , network             >= 3.1.2
                     , resourcet
                     , temporary-resourcet
                     , text
