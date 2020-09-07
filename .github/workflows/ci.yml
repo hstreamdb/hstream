@@ -16,36 +16,15 @@ jobs:
     name: Prepare pre-build environment for tests
     outputs:
       ghc: ${{ steps.parser.outputs.ghc }}
-      packages: ${{ steps.parser.outputs.packages }}
     steps:
       - uses: actions/checkout@v2
+
       - id: parser
         run: |
           pkgcabal="hstream/hstream.cabal"
           GHCS=$(cat ${pkgcabal} | grep tested-with | sed -e 's/[^0-9|\.]/ /g' -e 's/^ *//g' -e 's/ *$//g' | python3 -c 'import sys, json; print(json.dumps([x.strip() for x in sys.stdin.read().split()]))')
           echo "Set ghc versions: $GHCS..."
           echo "::set-output name=ghc::$GHCS"
-
-  build:
-    needs: pre-build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
-
-    name: GHC-${{ matrix.ghc }}
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cabal/packages
-            ~/.cabal/store
-          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.ghc }}-
 
       - name: Run stylish-haskell
         run: |
@@ -61,36 +40,26 @@ jobs:
           # check all sources
           find . -type f -not -path "./dist-newstyle/*" -not -path "*/.stack-work/*" | grep "\.l\?hs$" | xargs $TEMP/$PACKAGE-$VERSION/$PACKAGE -c .stylish-haskell.yaml -i && git diff-index --exit-code HEAD
 
-      - name: Packaging & Unpacking
+  build-and-test:
+    needs: pre-build
+    runs-on: ubuntu-latest
+    name: GHC-${{ matrix.ghc }}
+    strategy:
+      matrix:
+        ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.ghc }}-
+
+      - name: Build and Test
         run: |
-          WORKDIR=$(mktemp -d)
-          docker run --rm -v $(pwd):/srv -w /srv $IMAGE:${{ matrix.ghc }} cabal sdist all
-          rm -rf $WORKDIR/* && cp dist-newstyle/sdist/*.tar.gz $WORKDIR/ && cd $WORKDIR/
-          find . -maxdepth 1 -type f -name '*.tar.gz' -exec tar -xvf '{}' \;
-          find . -maxdepth 1 -type f -name '*.tar.gz' -exec rm       '{}' \;
-          echo "packages: */*.cabal" >> cabal.project
-
-          docker run -td --rm --name build-${{ matrix.ghc }} -e LC_ALL=en_US.UTF-8 -v $HOME/.cabal:/root/.cabal -v $WORKDIR:/srv -w /srv $IMAGE:${{ matrix.ghc }} bash
-          docker exec build-${{ matrix.ghc }} apt-get update
-          docker exec build-${{ matrix.ghc }} apt-get install -y locales
-          docker exec build-${{ matrix.ghc }} localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
-
-      - name: Install dependencies
-        run: |
-          docker exec build-${{ matrix.ghc }} cabal update
-          docker exec build-${{ matrix.ghc }} cat cabal.project || true
-          docker exec build-${{ matrix.ghc }} cabal build --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
-
-      - name: Build
-        run: docker exec build-${{ matrix.ghc }} cabal build --enable-tests --enable-benchmarks all
-
-      - name: Run tests
-        run: docker exec build-${{ matrix.ghc }} cabal test all
-
-      - name: Run cabal check
-        run: |
-          # unfortunately, there is no `cabal check all`
-          docker exec build-${{ matrix.ghc }} bash -c "find . -maxdepth 1 -type d -not -path './dist*' -not -path '.' | xargs -I % bash -c 'cd % && echo checking %... && cabal check'"
-
-      - name: Haddock
-        run: docker exec build-${{ matrix.ghc }} cabal haddock --enable-tests --enable-benchmarks all
+          WORKDIR=$(mktemp -d) GHC_VERSION=${{ matrix.ghc }} script/docker-test.sh
