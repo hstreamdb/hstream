@@ -67,18 +67,39 @@ library
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
 
+executable hstream-store-bench
+  main-is:          store-bench.hs
+  hs-source-dirs:   tools
+  build-depends:    base                 >= 4.11 && < 5
+                  , atomic-primops
+                  , bytestring
+                  , clock
+                  , cmdargs
+                  , containers
+                  , hstream-core
+                  , lifted-async
+                  , text
+                  , transformers
+                  , unordered-containers
+                  , vector
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wunused-do-bind -O2 -threaded -rtsopts -with-rtsopts=-N
+
 test-suite hstream-core-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:      Test.LogStoreSpec
+                      Test.ServerSpec
   hs-source-dirs:     test
   build-depends:      base                >= 4.11 && < 5
                     , bytestring
                     , containers
+                    , hesp
                     , hspec
                     , hstream-core
                     , lifted-async
                     , mtl
+                    , network             >= 3.1.2
                     , resourcet
                     , temporary-resourcet
                     , text
@@ -91,30 +112,11 @@ test-suite hstream-core-test
                       -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
                       -threaded -rtsopts -with-rtsopts=-N
 
-executable hstream-store-bench
-  main-is:          store-bench.hs
-  hs-source-dirs:   tools
-  build-depends:    atomic-primops
-                  , base                  >= 4.11 && < 5
-                  , bytestring
-                  , clock
-                  , cmdargs
-                  , containers
-                  , hstream-core
-                  , lifted-async
-                  , text
-                  , transformers
-                  , unordered-containers
-                  , vector
-  default-language: Haskell2010
-  ghc-options:      -W -Wunused-do-bind -O2
-                    -threaded -rtsopts -with-rtsopts=-N
-
 benchmark hstream-store-benchmark
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   benchmark
   main-is:          store-benchmark.hs
-  build-depends:    base                  >= 4.11 && < 5
+  hs-source-dirs:   benchmark
+  build-depends:    base                >= 4.11 && < 5
                   , bytestring
                   , criterion
                   , hstream-core
