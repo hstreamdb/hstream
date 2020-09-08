@@ -1,10 +1,12 @@
-# HStream
+# HStreamDB
 
 [![GitHub top language](https://img.shields.io/github/languages/top/hstreamdb/hstream)](https://www.haskell.org/)
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/hstreamdb/hstream/CI)](https://github.com/hstreamdb/hstream/actions?query=workflow%3ACI)
 [![Docker Pulls](https://img.shields.io/docker/pulls/hstreamdb/hstream)](https://hub.docker.com/r/hstreamdb/hstream)
 
-HStreamDB is a streaming database built for streaming data storage and real-time streaming processing.
+HStreamDB is a streaming database built for IoT streaming data storage and real-time stream processing.
+
+![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
 - __High Throughput__
 
