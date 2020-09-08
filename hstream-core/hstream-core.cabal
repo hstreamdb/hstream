@@ -1,6 +1,6 @@
 cabal-version:      2.2
 name:               hstream-core
-version:            0.0.0.0
+version:            0.1.0.0
 synopsis:           High performance stream processing platform for IoT data written in Haskell.
 description:        Please see the README on Github at
                     <https://github.com/hstream-io/hstream#readme>
