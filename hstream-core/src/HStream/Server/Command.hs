@@ -13,7 +13,6 @@ import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Char8           as BSC
 import           Data.CaseInsensitive            (CI)
 import qualified Data.CaseInsensitive            as CI
-import           Data.Maybe                      (maybe)
 import qualified Data.Text                       as Text
 import           Data.Text.Encoding              (decodeUtf8)
 import           Data.Vector                     (Vector)
