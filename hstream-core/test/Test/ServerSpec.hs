@@ -2,6 +2,8 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
+
 module Test.ServerSpec (spec) where
 
 import           Control.Exception     (SomeException, try)
