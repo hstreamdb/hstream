@@ -8,9 +8,6 @@ IMAGE_NAME=${IMAGE_NAME:-hstreamdb/haskell-rocksdb}
 IMAGE="$IMAGE_NAME:$GHC_VERSION"
 CABAL_HOME=${CABAL_HOME:-$HOME/.cabal}
 
-DEB_MIRROR=${DEB_MIRROR:-""}
-DEB_SECURITY_MIRROR=${DEB_SECURITY_MIRROR:-""}
-
 log_info() {
     echo -e "\033[96m$@\033[0m"
 }
@@ -23,20 +20,6 @@ pack_and_unpack() {
     find . -maxdepth 1 -type f -name '*.tar.gz' -exec rm       '{}' \;
     echo "packages: */*.cabal" >> cabal.project
     cp ${SRC_DIR}/hstream/config.example.yaml ${WORKDIR}/config.example.yaml
-}
-
-set_utf8() {
-    log_info "Set UTF-8"
-    local container_name=$1
-
-    test "$DEB_MIRROR" &&
-        docker exec $container_name sed -i "s#deb.debian.org#$DEB_MIRROR#g" /etc/apt/sources.list
-    test "$DEB_SECURITY_MIRROR" &&
-        docker exec $container_name sed -i "s#security.debian.org#$DEB_SECURITY_MIRROR#g" /etc/apt/sources.list
-
-    docker exec $container_name apt-get update
-    docker exec $container_name apt-get install -y locales
-    docker exec $container_name localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 }
 
 start_builder_container() {
@@ -80,7 +63,7 @@ start_tester_container() {
     log_info "Start tester container..."
     docker run -td --rm \
         --name $container_name \
-        -e LC_ALL=en_US.UTF-8 \
+        -e LC_ALL=C.UTF-8 \
         --network container:${linked_server_name} \
         -v $CABAL_HOME:/root/.cabal \
         -v $WORKDIR:/srv \
@@ -125,7 +108,6 @@ test_all() {
     docker kill $test_container_name || true
     start_server_container $server_container_name
     start_tester_container $test_container_name $server_container_name
-    set_utf8 $test_container_name
     run_cabal_test_all $test_container_name
     run_check_all $test_container_name
 }
