@@ -55,8 +55,8 @@ run_cabal_build_all() {
     log_info "Install dependencies & Build"
     docker exec $container_name cabal update
     docker exec $container_name cat cabal.project || true
-    docker exec $container_name cabal build --ghc-options=-DSERVER_TESTS --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
-    docker exec $container_name cabal build --ghc-options=-DSERVER_TESTS --enable-tests --enable-benchmarks all
+    docker exec $container_name cabal build --flag server-tests --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
+    docker exec $container_name cabal build --flag server-tests --enable-tests --enable-benchmarks all
 }
 
 start_server_container() {
@@ -90,7 +90,7 @@ start_tester_container() {
 run_cabal_test_all() {
     container_name=$1
     log_info "Run all tests..."
-    docker exec $container_name cabal test --ghc-options=-DSERVER_TESTS all
+    docker exec $container_name cabal test --flag server-tests --test-show-details=always all
 }
 
 run_check_all() {
@@ -101,7 +101,7 @@ run_check_all() {
     docker exec $container_name bash -c "find . -maxdepth 1 -type d -not -path './dist*' -not -path '.' | xargs -I % bash -c 'cd % && echo checking %... && cabal check'"
 
     log_info "Run cabal haddock"
-    docker exec $container_name cabal haddock --ghc-options=-DSERVER_TESTS --enable-tests --enable-benchmarks all
+    docker exec $container_name cabal haddock --flag server-tests --enable-tests --enable-benchmarks all
 }
 
 # --------------------------------------
