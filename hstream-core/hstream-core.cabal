@@ -21,6 +21,10 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+flag server-tests
+  default:     False
+  description: Turn on \"real\" tests for db server
+
 library
   exposed-modules:  HStream.LogStore.Base
                     HStream.LogStore.Exception
@@ -111,6 +115,9 @@ test-suite hstream-core-test
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
                       -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
                       -threaded -rtsopts -with-rtsopts=-N
+
+  if flag(server-tests)
+    cpp-options: -DSERVER_TESTS
 
 benchmark hstream-store-benchmark
   type:             exitcode-stdio-1.0
