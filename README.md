@@ -4,25 +4,25 @@
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/hstreamdb/hstream/CI)](https://github.com/hstreamdb/hstream/actions?query=workflow%3ACI)
 [![Docker Pulls](https://img.shields.io/docker/pulls/hstreamdb/hstream)](https://hub.docker.com/r/hstreamdb/hstream)
 
-HStreamDB is a streaming database built for IoT streaming data storage and real-time stream processing.
+The database built for IoT streaming data storage and real-time stream processing.
 
 ![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
 - __High Throughput__
 
-    By maximizing the use of network and disk, message delivery of HStream achieves extremely high throughput.
+    By maximizing the use of network and disk, message delivery of HStreamDB achieves extremely high throughput.
 
 - __Compatible with Redis Stream APIs__
 
-    The client API of HStream is fully compatible with Redis stream data type, and you can interact with it by any of Redis clients with standard Redis stream commands.
+    The client API of HStreamDB is fully compatible with Redis stream data type, and you can interact with it by any of Redis clients with standard Redis stream commands.
 
 - __Persistent Storage with Low Lentency__
 
-    The message storage of HStream is based on optimized RocksDB and provides extremely low write latency.
+    The message storage of HStreamDB is based on optimized RocksDB and provides extremely low write latency.
 
 - __Millions of MQTT Topics on a Single Node__
 
-    The storage design of HStream is not sensitive to the number of topics, and it is able to support millions of MQTT topics on a single server.
+    The storage design of HStreamDB is not sensitive to the number of topics, and it is able to support millions of MQTT topics on a single server.
 
 For more information, please visit [HStreamDB homepage](https://hstream.io).
 
