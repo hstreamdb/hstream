@@ -1,0 +1,25 @@
+cradle:
+  cabal:
+    - path: "hstream/./Main.hs"
+      component: "hstream:exe:hstream"
+
+    - path: "hstream-core/src"
+      component: "lib:hstream-core"
+
+    - path: "hstream-core/tools/store-bench.hs"
+      component: "hstream-core:exe:hstream-store-bench"
+
+    - path: "hstream-core/test"
+      component: "hstream-core:test:hstream-core-test"
+
+    - path: "hstream-core/benchmark/store-benchmark.hs"
+      component: "hstream-core:bench:hstream-store-benchmark"
+
+    - path: "hstream-hesp/src"
+      component: "lib:hesp"
+
+    - path: "hstream-hesp/test"
+      component: "hesp:test:hesp-test"
+
+    - path: "hstream-hesp/./benchmark/Benchmark.hs"
+      component: "hesp:bench:hesp-benchmark"
