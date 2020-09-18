@@ -18,7 +18,7 @@ import           System.IO.Temp                       (createTempDirectory)
 import           Test.Hspec
 
 import           HStream.LogStore.Base
-import           HStream.LogStore.Utils               (lastElemInSeq)
+import           HStream.Utils                        (lastElemInSeq)
 
 spec :: Spec
 spec =

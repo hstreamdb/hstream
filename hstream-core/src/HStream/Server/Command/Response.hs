@@ -44,7 +44,7 @@ mkSPutRespSucc cid topic entryID =
   HESP.mkPushFromList "sput" [ HESP.mkBulkString $ T.packClientIdBS cid
                              , HESP.mkBulkString topic
                              , HESP.mkBulkString "OK"
-                             , HESP.mkBulkString $ U.encodeUtf8 entryID
+                             , HESP.mkBulkString $ U.encodeTextShow entryID
                              ]
 
 {-# INLINE mkSPutRespFail #-}
@@ -69,7 +69,7 @@ mkElementResp cid lcmd topic (i, p) =
   HESP.mkPushFromList lcmd [ HESP.mkBulkString $ T.packClientIdBS cid
                            , HESP.mkBulkString topic
                            , HESP.mkBulkString "OK"
-                           , HESP.mkBulkString (U.encodeUtf8 i)
+                           , HESP.mkBulkString (U.encodeTextShow i)
                            , HESP.mkBulkString p
                            ]
 
@@ -82,7 +82,7 @@ mkSimpleElementResp (i, p) =
         Left s -> mkGeneralError $ "Entry deserialization failed: "
                                  <> U.str2bs s <> "."
         Right kvs ->
-          HESP.mkArrayFromList [ HESP.mkBulkString (U.encodeUtf8 i)
+          HESP.mkArrayFromList [ HESP.mkBulkString (U.encodeTextShow i)
                                , kvs
                                ]
 

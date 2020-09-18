@@ -28,7 +28,6 @@ flag server-tests
 library
   exposed-modules:  HStream.LogStore.Base
                     HStream.LogStore.Exception
-                    HStream.LogStore.Utils
                     HStream.Server
                     HStream.Utils
   other-modules:    HStream.LogStore.Internal

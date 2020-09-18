@@ -60,7 +60,7 @@ import qualified Database.RocksDB                 as R
 import           GHC.Generics                     (Generic)
 import           HStream.LogStore.Exception
 import           HStream.LogStore.Internal
-import           HStream.LogStore.Utils
+import qualified HStream.Utils                    as U
 import           System.Directory                 (createDirectoryIfMissing)
 import           System.FilePath                  ((</>))
 
@@ -203,9 +203,9 @@ initialize cfg@Config {..} =
       case maxLogId of
         Nothing -> do
           let initLogId = 0
-          R.put db def maxLogIdKey $ encodeWord64 initLogId
+          R.put db def maxLogIdKey $ encodeLogId initLogId
           return initLogId
-        Just v -> return (decodeWord64 v)
+        Just v -> return (decodeLogId v)
 
 data OpenOptions = OpenOptions
   { readMode        :: Bool,
@@ -243,7 +243,7 @@ instance Hashable LogHandleKey
 open :: MonadIO m => LogName -> OpenOptions -> ReaderT Context m LogHandle
 open name opts@OpenOptions {..} = do
   Context {..} <- ask
-  res <- R.get metaDbHandle def (encodeText name)
+  res <- R.get metaDbHandle def (encodeLogName name)
   let valid = checkOpts res
   if valid
     then do
@@ -603,7 +603,7 @@ readEntries LogHandle {..} firstKey lastKey = do
           return $ prevRes >< res
         else return prevRes
 
-    goOn prevRes = Seq.null prevRes || fst (lastElemInSeq prevRes) < limitEntryId
+    goOn prevRes = Seq.null prevRes || fst (U.lastElemInSeq prevRes) < limitEntryId
 
     readEntriesInDb :: MonadIO m => LogID -> R.Iterator -> m (Seq (EntryID, Entry))
     readEntriesInDb logId iterator = do
