@@ -30,17 +30,17 @@ import qualified Data.Text                        as T
 import           Data.Word                        (Word64)
 import qualified Database.RocksDB                 as R
 import           HStream.LogStore.Exception
-import           HStream.LogStore.Utils
+import qualified HStream.Utils                    as U
 import           System.Directory                 (listDirectory)
 import           System.FilePath.Posix            ((</>))
 
 type LogName = T.Text
 
 encodeLogName :: LogName -> B.ByteString
-encodeLogName = encodeText
+encodeLogName = U.encodeText
 
 decodeLogName :: B.ByteString -> LogName
-decodeLogName = decodeText
+decodeLogName = U.decodeText
 
 type LogID = Word64
 
@@ -48,10 +48,13 @@ maxLogIdKey :: B.ByteString
 maxLogIdKey = "maxLogId"
 
 encodeLogId :: LogID -> B.ByteString
-encodeLogId = encodeWord64
+encodeLogId = U.encodeWord64BE
 
 decodeLogId :: B.ByteString -> LogID
-decodeLogId = decodeWord64
+decodeLogId bs =
+  case U.decodeWord64EitherBE bs of
+    Right val -> val
+    Left emsg -> throw $ LogStoreDecodeException emsg
 
 data EntryID = EntryID
   { timestamp :: Word64,
@@ -110,12 +113,12 @@ generateLogId :: MonadIO m => R.DB -> IORef LogID -> m LogID
 generateLogId db logIdRef =
   liftIO $ do
     newId <- atomicModifyIORefCAS logIdRef (\curId -> (curId + 1, curId + 1))
-    R.put db def maxLogIdKey (encodeWord64 newId)
+    R.put db def maxLogIdKey (U.encodeWord64BE newId)
     return newId
 
 generateEntryIds :: MonadIO m => TVar EntryID -> Int -> m [EntryID]
 generateEntryIds maxEntryIdRef num = liftIO $ do
-  ts <- getCurrentTimestamp
+  ts <- U.getCurrentTimestamp
   gen ts
   where
     gen ts = atomically $ do
@@ -137,7 +140,7 @@ dataDbNamePrefix = "data-"
 
 generateDataDbName :: MonadIO m => m String
 generateDataDbName = liftIO $ do
-  timestamp <- getCurrentTimestamp
+  timestamp <- U.getCurrentTimestamp
   return $ dataDbNamePrefix ++ show timestamp
 
 createDataDb :: MonadIO m => FilePath -> String -> Word64 -> m R.DB

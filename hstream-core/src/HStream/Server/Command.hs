@@ -118,7 +118,7 @@ processXAdd sock (XAdd topic payload) ctx = do
   r <- Store.appendEntry ctx topic payload
   case r of
     Right entryID -> do
-      liftIO $ HESP.sendMsg sock $ (HESP.mkBulkString . U.encodeUtf8) entryID
+      liftIO $ HESP.sendMsg sock $ (HESP.mkBulkString . U.encodeTextShow) entryID
     Left (e :: SomeException) -> do
       let errmsg = "Message storing failed: " <> (U.str2bs . show) e
       Colog.logWarning $ decodeUtf8 errmsg
