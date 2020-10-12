@@ -3,6 +3,9 @@ cradle:
     - path: "hstream/./Main.hs"
       component: "hstream:exe:hstream"
 
+    - path: "hstream-processing/src"
+      component: "lib:hstream-processing"
+
     - path: "hstream-core/src"
       component: "lib:hstream-core"
 

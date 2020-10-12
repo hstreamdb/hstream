@@ -1,5 +1,6 @@
 packages:
   hstream
+  hstream-processing
   hstream-core
   hstream-hesp
 
