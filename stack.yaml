@@ -2,6 +2,7 @@ resolver: lts-16.6
 
 packages:
   - hstream
+  - hstream-processing
   - hstream-core
   - hstream-hesp
 
