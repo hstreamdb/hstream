@@ -157,5 +157,5 @@ validateCommand ms =
 
 validateReply :: Message -> Either ByteString (ByteString, Vector Message)
 validateReply (MatchPush n args) = Right (n, args)
-validateReply _ = Left "Reply must be sent through push type."
+validateReply _                  = Left "Reply must be sent through push type."
 {-# INLINE validateReply #-}

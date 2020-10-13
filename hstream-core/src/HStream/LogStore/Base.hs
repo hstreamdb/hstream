@@ -46,8 +46,8 @@ import           Control.Monad.Trans.Resource     (MonadUnliftIO, allocate,
 import qualified Data.ByteString                  as B
 import qualified Data.Cache.LRU                   as L
 import           Data.Default                     (def)
-import           Data.Hashable                    (Hashable)
 import qualified Data.HashMap.Strict              as H
+import           Data.Hashable                    (Hashable)
 import           Data.IORef                       (IORef, newIORef, readIORef,
                                                    writeIORef)
 import           Data.Maybe                       (fromMaybe, isJust)

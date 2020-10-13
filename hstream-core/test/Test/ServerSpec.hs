@@ -96,7 +96,7 @@ commandsTest = describe "Test supported commands" $ do
         Right elements -> do
           let expected = HESP.mkArrayFromList (mkFields ["key1", "key2"] ["value1", "value2"])
           case L.all (== expected) (snd <$> elements) of
-            True -> return "Passed"
+            True  -> return "Passed"
             False -> return "Data is incorrect or DB environment is not clean"
     `shouldReturn` "Passed"
 
@@ -113,7 +113,7 @@ commandsTest = describe "Test supported commands" $ do
         Right elements -> do
           let expected = HESP.mkArrayFromList (mkFields ["key1", "key2"] ["value1", "value2"])
           case L.all (== expected) (snd <$> elements) of
-            True -> return "Passed"
+            True  -> return "Passed"
             False -> return "Data is incorrect or DB environment is not clean"
     `shouldReturn` "Passed"
 

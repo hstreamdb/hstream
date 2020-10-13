@@ -243,7 +243,7 @@ gracefulClose conn = liftIO $ NS.gracefulClose conn 5000
 -- happened.
 clean :: String -> Socket -> Either SomeException a -> IO ()
 clean label lsock = \case
-  Left e -> err e >> gracefulClose lsock
+  Left e  -> err e >> gracefulClose lsock
   Right _ -> gracefulClose lsock
   where
     err :: SomeException -> IO ()

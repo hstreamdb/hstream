@@ -59,9 +59,9 @@ import           Data.Aeson                  (FromJSON (..), (.:))
 import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Types            as Aeson
 import           Data.ByteString             (ByteString)
-import           Data.Hashable               (Hashable)
 import           Data.HashMap.Strict         (HashMap)
 import qualified Data.HashMap.Strict         as HMap
+import           Data.Hashable               (Hashable)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict             as Map
 import           Data.Sequence               (Seq)
