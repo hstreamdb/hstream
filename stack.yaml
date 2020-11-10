@@ -5,6 +5,7 @@ packages:
   - hstream-processing
   - hstream-core
   - hstream-hesp
+  - hstream-sql
 
 extra-include-dirs:
   - /usr/local/include

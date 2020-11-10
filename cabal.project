@@ -4,6 +4,7 @@ packages:
   hstream-core
   hstream-hesp
   hstream-store
+  hstream-sql
 
 extra-include-dirs:
   /usr/local/include
