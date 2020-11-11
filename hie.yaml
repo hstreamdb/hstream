@@ -26,3 +26,6 @@ cradle:
 
     - path: "hstream-hesp/./benchmark/Benchmark.hs"
       component: "hesp:bench:hesp-benchmark"
+
+    - path: "hstream-store/HStream"
+      component: "lib:hstream-store"

@@ -1,0 +1,36 @@
+cabal-version:      2.2
+name:               hstream-store
+version:            0.1.0.0
+synopsis:           High performance stream processing platform for IoT data written in Haskell.
+description:        Please see the README on Github at
+                    <https://github.com/hstream-io/hstream#readme>
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Feng Lee <feng@emqx.io>
+maintainer:         wangbin@emqx.io, lambda@emqx.io
+tested-with:        GHC == 8.10.2, GHC == 8.8.4
+category:           Database
+homepage:           https://github.com/hstream-io/hstream
+bug-reports:        https://github.com/hstream-io/hstream/issues
+build-type:         Simple
+extra-source-files: ChangeLog.md
+                    README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+library
+  exposed-modules:    HStream.Store
+  other-modules:      HStream.Internal.FFI
+  build-depends:      base >= 4.11 && < 5
+  default-language:   Haskell2010
+  extra-libraries:    logdevice, stdc++
+  cxx-options:        -std=c++17
+  cxx-sources:        cbits/hs_logdevice.cpp
+  includes:           hs_logdevice.h
+  include-dirs:       include
+  build-tool-depends: hsc2hs:hsc2hs
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints

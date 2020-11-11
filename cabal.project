@@ -3,6 +3,7 @@ packages:
   hstream-processing
   hstream-core
   hstream-hesp
+  hstream-store
 
 extra-include-dirs:
   /usr/local/include
