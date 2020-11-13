@@ -4,6 +4,12 @@ packages:
   hstream-core
   hstream-hesp
 
+extra-include-dirs:
+  /usr/local/include
+
+extra-lib-dirs:
+  /usr/local/lib
+
 source-repository-package
   type: git
   location: https://github.com/hstreamdb/haskell-rocksdb-bindings
