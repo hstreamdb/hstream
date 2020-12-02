@@ -3,6 +3,13 @@ packages:
   hstream-processing
   hstream-core
   hstream-hesp
+  hstream-store
+
+extra-include-dirs:
+  /usr/local/include
+
+extra-lib-dirs:
+  /usr/local/lib
 
 source-repository-package
   type: git
