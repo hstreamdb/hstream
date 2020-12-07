@@ -3,32 +3,36 @@
 module Language.SQL.Extra where
 
 import Language.SQL.Abs
-import Data.Text (Text, pack)
+import Language.SQL.Lex
+import Data.Text (Text)
 import qualified Data.List as L
 
 --------------------------------------------------------------------------------
-anyJoin :: [TableRef] -> Bool
-anyJoin [] = False
-anyJoin ((TableRefSimple _) : xs) = anyJoin xs
-anyJoin ((TableRefAs ref _) : xs) = anyJoin (ref : xs)
-anyJoin ((TableRefJoin _ _ _ _ _) : _) = True
+type LineCol = Maybe (Int, Int)
 
-extractRefNames :: [TableRef] -> [Text]
+--------------------------------------------------------------------------------
+anyJoin :: [TableRef a] -> Bool
+anyJoin [] = False
+anyJoin ((TableRefSimple _ _) : xs) = anyJoin xs
+anyJoin ((TableRefAs _ ref _) : xs) = anyJoin (ref : xs)
+anyJoin ((TableRefJoin _ _ _ _ _ _) : _) = True
+
+extractRefNames :: [TableRef a] -> [Text]
 extractRefNames [] = []
-extractRefNames ((TableRefSimple (Ident name)) : xs)  = (pack name) : extractRefNames xs
-extractRefNames ((TableRefAs ref (Ident name)) : xs)  = (pack name) : extractRefNames (ref : xs)
-extractRefNames ((TableRefJoin ref1 _ ref2 _ _) : xs) = extractRefNames (ref1 : ref2 : xs)
+extractRefNames ((TableRefSimple _ (Ident name)) : xs)  = name : extractRefNames xs
+extractRefNames ((TableRefAs _ ref (Ident name)) : xs)  = name : extractRefNames (ref : xs)
+extractRefNames ((TableRefJoin _ ref1 _ ref2 _ _) : xs) = extractRefNames (ref1 : ref2 : xs)
 
 -- SELECT match FROM
 -- | Extract stream names mentioned in DerivedCols (part of SELECT clause).
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "SELECT s1.col1, col2" -> (True, ["s1"])
-extractSelRefNames :: [DerivedCol] -> (Bool, [Text])
+extractSelRefNames :: [DerivedCol a] -> (Bool, [Text])
 extractSelRefNames [] = (False, [])
-extractSelRefNames ((DerivedColSimpl expr) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
+extractSelRefNames ((DerivedColSimpl _ expr) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
   where (b1, refs1) = extractRefNameFromExpr expr
         (b2, refs2) = extractSelRefNames xs
-extractSelRefNames ((DerivedColAs expr _) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
+extractSelRefNames ((DerivedColAs _ expr _) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
   where (b1, refs1) = extractRefNameFromExpr expr
         (b2, refs2) = extractSelRefNames xs
 
@@ -36,35 +40,40 @@ extractSelRefNames ((DerivedColAs expr _) : xs) = (b1 || b2, L.nub (refs1 ++ ref
 -- | Extract stream names mentioned in a SearchCond.
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "s1.col1 > col2" -> (True, ["s1"])
-extractCondRefNames :: SearchCond -> (Bool, [Text])
-extractCondRefNames (CondOp e1 _ e2)     = extractRefNameFromExpr (ExprArr [e1, e2])
-extractCondRefNames (CondBetween e1 e e2) = extractRefNameFromExpr (ExprArr [e1, e, e2])
-extractCondRefNames (CondOr c1 c2)        = (b1 || b2, L.nub (refs1 ++ refs2))
+extractCondRefNames :: SearchCond a -> (Bool, [Text])
+extractCondRefNames (CondOp pos e1 _ e2)      = extractRefNameFromExpr (ExprArr pos [e1, e2])
+extractCondRefNames (CondBetween pos e1 e e2) = extractRefNameFromExpr (ExprArr pos [e1, e, e2])
+extractCondRefNames (CondOr _ c1 c2)        = (b1 || b2, L.nub (refs1 ++ refs2))
   where (b1, refs1) = extractCondRefNames c1
         (b2, refs2) = extractCondRefNames c2
-extractCondRefNames (CondAnd c1 c2)       = extractCondRefNames (CondOr c1 c2)
-extractCondRefNames (CondNot c)           = extractCondRefNames c
+extractCondRefNames (CondAnd pos c1 c2)       = extractCondRefNames (CondOr pos c1 c2)
+extractCondRefNames (CondNot _ c)           = extractCondRefNames c
 
 -- | Extract stream names mentioned in an expression.
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "s1.col1 + col2" -> (True, ["s1"])
-extractRefNameFromExpr :: ValueExpr -> (Bool, [Text])
-extractRefNameFromExpr (ExprColName (ColNameSimple _)) = (True, [])
-extractRefNameFromExpr (ExprColName (ColNameStream (Ident s) _)) = (False, [pack s])
-extractRefNameFromExpr (ExprColName (ColNameInner col _)) = extractRefNameFromExpr (ExprColName col)
-extractRefNameFromExpr (ExprColName (ColNameIndex col _)) = extractRefNameFromExpr (ExprColName col)
-extractRefNameFromExpr (ExprSetFunc SetFuncCountAll) = (False, [])
-extractRefNameFromExpr (ExprSetFunc (SetFuncCount e)) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprSetFunc (SetFuncAvg e)) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprSetFunc (SetFuncSum e)) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprSetFunc (SetFuncMax e)) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprSetFunc (SetFuncMin e)) = extractRefNameFromExpr e
-extractRefNameFromExpr (ExprArr es) = (any (== True) (fst <$> tups), L.nub . L.concat $ snd <$> tups)
+extractRefNameFromExpr :: ValueExpr a -> (Bool, [Text])
+extractRefNameFromExpr (ExprColName _ (ColNameSimple _ _)) = (True, [])
+extractRefNameFromExpr (ExprColName _ (ColNameStream _ (Ident s) _)) = (False, [s])
+extractRefNameFromExpr (ExprColName _ (ColNameInner pos col _)) = extractRefNameFromExpr (ExprColName pos col)
+extractRefNameFromExpr (ExprColName _ (ColNameIndex pos col _)) = extractRefNameFromExpr (ExprColName pos col)
+extractRefNameFromExpr (ExprSetFunc _ (SetFuncCountAll _)) = (False, [])
+extractRefNameFromExpr (ExprSetFunc _ (SetFuncCount _ e)) = extractRefNameFromExpr e
+extractRefNameFromExpr (ExprSetFunc _ (SetFuncAvg _ e)) = extractRefNameFromExpr e
+extractRefNameFromExpr (ExprSetFunc _ (SetFuncSum _ e)) = extractRefNameFromExpr e
+extractRefNameFromExpr (ExprSetFunc _ (SetFuncMax _ e)) = extractRefNameFromExpr e
+extractRefNameFromExpr (ExprSetFunc _ (SetFuncMin _ e)) = extractRefNameFromExpr e
+extractRefNameFromExpr (ExprArr _ es) = (any (== True) (fst <$> tups), L.nub . L.concat $ snd <$> tups)
   where tups = extractRefNameFromExpr <$> es
-extractRefNameFromExpr (ExprMap es) = extractRefNameFromExpr (ExprArr $ extractExpr <$> es)
-  where extractExpr (DLabelledValueExpr _ e) = e
-extractRefNameFromExpr (ExprAdd e1 e2) = extractRefNameFromExpr (ExprArr [e1, e2])
-extractRefNameFromExpr (ExprSub e1 e2) = extractRefNameFromExpr (ExprArr [e1, e2])
-extractRefNameFromExpr (ExprMul e1 e2) = extractRefNameFromExpr (ExprArr [e1, e2])
-extractRefNameFromExpr (ExprDiv e1 e2) = extractRefNameFromExpr (ExprArr [e1, e2])
+extractRefNameFromExpr (ExprMap pos es) = extractRefNameFromExpr (ExprArr pos $ extractExpr <$> es)
+  where extractExpr (DLabelledValueExpr _ _ e) = e
+extractRefNameFromExpr (ExprAdd pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
+extractRefNameFromExpr (ExprSub pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
+extractRefNameFromExpr (ExprMul pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
+extractRefNameFromExpr (ExprDiv pos e1 e2) = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractRefNameFromExpr _ = (False, [])
+
+--------------------------------------------------------------------------------
+errWithPos :: LineCol -> String -> String
+errWithPos Nothing msg = "SQL Error: " <> msg
+errWithPos (Just (l,c)) msg = "SQL Error at line " <> show l <> ", col" <> show c <> ": " <> msg

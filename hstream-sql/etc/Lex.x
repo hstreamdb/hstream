@@ -5,8 +5,7 @@
 {-# OPTIONS_GHC -w #-}
 module Language.SQL.Lex where
 
-
-
+import qualified Data.Text
 import qualified Data.Bits
 import Data.Word (Word8)
 import Data.Char (ord)
@@ -24,38 +23,39 @@ $u = [. \n]          -- universal: any character
    \; | \( | \) | \, | \= | \* | \+ | \- | \/ | \: | \[ | \] | \{ | \} | \. | "COUNT" \( \* \) | \< \> | \< | \> | \< \= | \> \=
 
 :-
-"//" [.]* ; -- Toss single line comments
-"/*" ([$u # \*] | \*+ [$u # [\* \/]])* ("*")+ "/" ;
+
+-- Line comments
+"//" [.]* ;
+
+-- Block comments
+\/ \* [$u # \*]* \* ([$u # [\* \/]] [$u # \*]* \* | \*)* \/ ;
 
 $white+ ;
 @rsyms
-    { tok (\p s -> PT p (eitherResIdent (TV . share) s)) }
+    { tok (\p s -> PT p (eitherResIdent TV s)) }
 
 $l $i*
-    { tok (\p s -> PT p (eitherResIdent (TV . share) s)) }
+    { tok (\p s -> PT p (eitherResIdent TV s)) }
 \" ([$u # [\" \\ \n]] | (\\ (\" | \\ | \' | n | t | r | f)))* \"
-    { tok (\p s -> PT p (TL $ share $ unescapeInitTail s)) }
+    { tok (\p s -> PT p (TL $ unescapeInitTail s)) }
 
 $d+
-    { tok (\p s -> PT p (TI $ share s))    }
+    { tok (\p s -> PT p (TI s))    }
 $d+ \. $d+ (e (\-)? $d+)?
-    { tok (\p s -> PT p (TD $ share s)) }
+    { tok (\p s -> PT p (TD s)) }
 
 {
 
-tok :: (Posn -> String -> Token) -> (Posn -> String -> Token)
+tok :: (Posn -> Data.Text.Text -> Token) -> (Posn -> Data.Text.Text -> Token)
 tok f p s = f p s
 
-share :: String -> String
-share = id
-
 data Tok =
-   TS !String !Int    -- reserved words and symbols
- | TL !String         -- string literals
- | TI !String         -- integer literals
- | TV !String         -- identifiers
- | TD !String         -- double precision float literals
- | TC !String         -- character literals
+   TS !Data.Text.Text !Int    -- reserved words and symbols
+ | TL !Data.Text.Text         -- string literals
+ | TI !Data.Text.Text         -- integer literals
+ | TV !Data.Text.Text         -- identifiers
+ | TD !Data.Text.Text         -- double precision float literals
+ | TC !Data.Text.Text         -- character literals
 
  deriving (Eq,Show,Ord)
 
@@ -81,23 +81,25 @@ tokenLineCol = posLineCol . tokenPosn
 posLineCol :: Posn -> (Int, Int)
 posLineCol (Pn _ l c) = (l,c)
 
-mkPosToken :: Token -> ((Int, Int), String)
-mkPosToken t@(PT p _) = (posLineCol p, prToken t)
+mkPosToken :: Token -> ((Int, Int), Data.Text.Text)
+mkPosToken t@(PT p _) = (posLineCol p, tokenText t)
 
-prToken :: Token -> String
-prToken t = case t of
+tokenText :: Token -> Data.Text.Text
+tokenText t = case t of
   PT _ (TS s _) -> s
-  PT _ (TL s)   -> show s
+  PT _ (TL s)   -> Data.Text.pack (show s)
   PT _ (TI s)   -> s
   PT _ (TV s)   -> s
   PT _ (TD s)   -> s
   PT _ (TC s)   -> s
-  Err _         -> "#error"
+  Err _         -> Data.Text.pack "#error"
 
+prToken :: Token -> String
+prToken t = Data.Text.unpack (tokenText t)
 
-data BTree = N | B String Tok BTree BTree deriving (Show)
+data BTree = N | B Data.Text.Text Tok BTree BTree deriving (Show)
 
-eitherResIdent :: (String -> Tok) -> String -> Tok
+eitherResIdent :: (Data.Text.Text -> Tok) -> Data.Text.Text -> Tok
 eitherResIdent tv s = treeFind resWords
   where
   treeFind N = tv s
@@ -107,11 +109,12 @@ eitherResIdent tv s = treeFind resWords
 
 resWords :: BTree
 resWords = b "INSERT" 36 (b "ARRAY" 18 (b ":" 9 (b "," 5 (b "*" 3 (b ")" 2 (b "(" 1 N N) N) (b "+" 4 N N)) (b "." 7 (b "-" 6 N N) (b "/" 8 N N))) (b "=" 14 (b "<=" 12 (b "<" 11 (b ";" 10 N N) N) (b "<>" 13 N N)) (b ">=" 16 (b ">" 15 N N) (b "AND" 17 N N)))) (b "DATE" 27 (b "COUNT" 23 (b "BETWEEN" 21 (b "AVG" 20 (b "AS" 19 N N) N) (b "BY" 22 N N)) (b "CREATE" 25 (b "COUNT(*)" 24 N N) (b "CROSS" 26 N N))) (b "FULL" 32 (b "FORMAT" 30 (b "DAY" 29 (b "DATETIME" 28 N N) N) (b "FROM" 31 N N)) (b "HAVING" 34 (b "GROUP" 33 N N) (b "HOP" 35 N N))))) (b "SESSION" 54 (b "MINUTE" 45 (b "LEFT" 41 (b "INTO" 39 (b "INTERVAL" 38 (b "INT" 37 N N) N) (b "JOIN" 40 N N)) (b "MAX" 43 (b "MAP" 42 N N) (b "MIN" 44 N N))) (b "OR" 50 (b "NUMBER" 48 (b "NOT" 47 (b "MONTH" 46 N N) N) (b "ON" 49 N N)) (b "SECOND" 52 (b "RIGHT" 51 N N) (b "SELECT" 53 N N)))) (b "WEEK" 63 (b "SUM" 59 (b "STREAM" 57 (b "SOURCE" 56 (b "SINK" 55 N N) N) (b "STRING" 58 N N)) (b "TUMBLE" 61 (b "TIME" 60 N N) (b "VALUES" 62 N N))) (b "[" 68 (b "WITHIN" 66 (b "WITH" 65 (b "WHERE" 64 N N) N) (b "YEAR" 67 N N)) (b "{" 70 (b "]" 69 N N) (b "}" 71 N N)))))
-   where b s n = let bs = id s
-                  in B bs (TS bs n)
+   where b s n = let bs = Data.Text.pack s
+                 in  B bs (TS bs n)
 
-unescapeInitTail :: String -> String
-unescapeInitTail = id . unesc . tail . id where
+unescapeInitTail :: Data.Text.Text -> Data.Text.Text
+unescapeInitTail = Data.Text.pack . unesc . tail . Data.Text.unpack
+  where
   unesc s = case s of
     '\\':c:cs | elem c ['\"', '\\', '\''] -> c : unesc cs
     '\\':'n':cs  -> '\n' : unesc cs
@@ -143,9 +146,9 @@ type Byte = Word8
 type AlexInput = (Posn,     -- current position,
                   Char,     -- previous char
                   [Byte],   -- pending bytes on the current char
-                  String)   -- current input string
+                  Data.Text.Text)   -- current input string
 
-tokens :: String -> [Token]
+tokens :: Data.Text.Text -> [Token]
 tokens str = go (alexStartPos, '\n', [], str)
     where
       go :: AlexInput -> [Token]
@@ -154,14 +157,14 @@ tokens str = go (alexStartPos, '\n', [], str)
                 AlexEOF                   -> []
                 AlexError (pos, _, _, _)  -> [Err pos]
                 AlexSkip  inp' len        -> go inp'
-                AlexToken inp' len act    -> act pos (take len str) : (go inp')
+                AlexToken inp' len act    -> act pos (Data.Text.take len str) : (go inp')
 
 alexGetByte :: AlexInput -> Maybe (Byte,AlexInput)
 alexGetByte (p, c, (b:bs), s) = Just (b, (p, c, bs, s))
 alexGetByte (p, _, [], s) =
-  case  s of
-    []  -> Nothing
-    (c:s) ->
+  case Data.Text.uncons s of
+    Nothing  -> Nothing
+    Just (c,s) ->
              let p'     = alexMove p c
                  (b:bs) = utf8Encode c
               in p' `seq` Just (b, (p', c, bs, s))

@@ -2,58 +2,57 @@
 {
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns #-}
 module Language.SQL.Par where
-import Language.SQL.Abs
+import qualified Language.SQL.Abs
 import Language.SQL.Lex
-import Language.SQL.ErrM
-
+import qualified Data.Text
 }
 
-%name pSQL SQL
-%name pCreate Create
-%name pListSchemaElem ListSchemaElem
-%name pListStreamOption ListStreamOption
-%name pSchemaElem SchemaElem
-%name pDataType DataType
-%name pStreamOption StreamOption
-%name pInsert Insert
-%name pListValueExpr ListValueExpr
-%name pListIdent ListIdent
-%name pSelect Select
-%name pSel Sel
-%name pSelList SelList
-%name pListDerivedCol ListDerivedCol
-%name pDerivedCol DerivedCol
-%name pFrom From
-%name pListTableRef ListTableRef
-%name pTableRef TableRef
-%name pJoinType JoinType
-%name pJoinWindow JoinWindow
-%name pJoinCond JoinCond
-%name pWhere Where
-%name pGroupBy GroupBy
-%name pListGrpItem ListGrpItem
-%name pGrpItem GrpItem
-%name pWindow Window
-%name pHaving Having
-%name pValueExpr ValueExpr
-%name pValueExpr1 ValueExpr1
-%name pValueExpr2 ValueExpr2
-%name pDate Date
-%name pTime Time
-%name pTimeUnit TimeUnit
-%name pInterval Interval
-%name pListLabelledValueExpr ListLabelledValueExpr
-%name pLabelledValueExpr LabelledValueExpr
-%name pColName ColName
-%name pSetFunc SetFunc
-%name pSearchCond SearchCond
-%name pSearchCond1 SearchCond1
-%name pSearchCond2 SearchCond2
-%name pSearchCond3 SearchCond3
-%name pCompOp CompOp
 -- no lexer declaration
-%monad { Err } { thenM } { returnM }
+%monad { Either String } { (>>=) } { return }
 %tokentype {Token}
+%name pSQL_internal SQL
+%name pCreate_internal Create
+%name pListSchemaElem_internal ListSchemaElem
+%name pListStreamOption_internal ListStreamOption
+%name pSchemaElem_internal SchemaElem
+%name pDataType_internal DataType
+%name pStreamOption_internal StreamOption
+%name pInsert_internal Insert
+%name pListValueExpr_internal ListValueExpr
+%name pListIdent_internal ListIdent
+%name pSelect_internal Select
+%name pSel_internal Sel
+%name pSelList_internal SelList
+%name pListDerivedCol_internal ListDerivedCol
+%name pDerivedCol_internal DerivedCol
+%name pFrom_internal From
+%name pListTableRef_internal ListTableRef
+%name pTableRef_internal TableRef
+%name pJoinType_internal JoinType
+%name pJoinWindow_internal JoinWindow
+%name pJoinCond_internal JoinCond
+%name pWhere_internal Where
+%name pGroupBy_internal GroupBy
+%name pListGrpItem_internal ListGrpItem
+%name pGrpItem_internal GrpItem
+%name pWindow_internal Window
+%name pHaving_internal Having
+%name pValueExpr_internal ValueExpr
+%name pValueExpr1_internal ValueExpr1
+%name pValueExpr2_internal ValueExpr2
+%name pDate_internal Date
+%name pTime_internal Time
+%name pTimeUnit_internal TimeUnit
+%name pInterval_internal Interval
+%name pListLabelledValueExpr_internal ListLabelledValueExpr
+%name pLabelledValueExpr_internal LabelledValueExpr
+%name pColName_internal ColName
+%name pSetFunc_internal SetFunc
+%name pSearchCond_internal SearchCond
+%name pSearchCond1_internal SearchCond1
+%name pSearchCond2_internal SearchCond2
+%name pSearchCond3_internal SearchCond3
+%name pCompOp_internal CompOp
 %token
   '(' { PT _ (TS _ 1) }
   ')' { PT _ (TS _ 2) }
@@ -126,205 +125,631 @@ import Language.SQL.ErrM
   ']' { PT _ (TS _ 69) }
   '{' { PT _ (TS _ 70) }
   '}' { PT _ (TS _ 71) }
-  L_ident  { PT _ (TV $$) }
-  L_quoted { PT _ (TL $$) }
-  L_integ  { PT _ (TI $$) }
-  L_doubl  { PT _ (TD $$) }
+
+  L_ident {PT _ (TV _)}
+  L_doubl {PT _ (TD _)}
+  L_integ {PT _ (TI _)}
+  L_quoted {PT _ (TL _)}
 
 %%
 
-Ident   :: { Ident }
-Ident    : L_ident  { Ident $1 }
+Ident :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Ident)
+}
+: L_ident {
+  (Just (tokenLineCol $1), Language.SQL.Abs.Ident (Data.Text.pack (prToken $1)))
+}
 
-String  :: { String }
-String   : L_quoted {  $1 }
+Double :: {
+  (Maybe (Int, Int), Double)
+}
+: L_doubl {
+  (Just (tokenLineCol $1), read (prToken $1))
+}
 
-Integer :: { Integer }
-Integer  : L_integ  { (read ( $1)) :: Integer }
+Integer :: {
+  (Maybe (Int, Int), Integer)
+}
+: L_integ {
+  (Just (tokenLineCol $1), read (prToken $1))
+}
 
-Double  :: { Double }
-Double   : L_doubl  { (read ( $1)) :: Double }
+String :: {
+  (Maybe (Int, Int), String)
+}
+: L_quoted {
+  (Just (tokenLineCol $1), prToken $1)
+}
 
-SQL :: { SQL }
-SQL : Select ';' { Sql.Abs.QSelect $1 }
-    | Create ';' { Sql.Abs.QCreate $1 }
-    | Insert ';' { Sql.Abs.QInsert $1 }
-Create :: { Create }
-Create : 'CREATE' 'STREAM' Ident '(' ListSchemaElem ')' 'WITH' '(' ListStreamOption ')' { Sql.Abs.DCreate $3 $5 $9 }
-       | 'CREATE' 'STREAM' Ident 'AS' Select { Sql.Abs.CreateAs $3 $5 }
-ListSchemaElem :: { [SchemaElem] }
-ListSchemaElem : {- empty -} { [] }
-               | SchemaElem { (:[]) $1 }
-               | SchemaElem ',' ListSchemaElem { (:) $1 $3 }
-ListStreamOption :: { [StreamOption] }
-ListStreamOption : {- empty -} { [] }
-                 | StreamOption { (:[]) $1 }
-                 | StreamOption ',' ListStreamOption { (:) $1 $3 }
-SchemaElem :: { SchemaElem }
-SchemaElem : Ident DataType { Sql.Abs.DSchemaElem $1 $2 }
-DataType :: { DataType }
-DataType : 'INT' { Sql.Abs.TypeInt }
-         | 'NUMBER' { Sql.Abs.TypeNum }
-         | 'STRING' { Sql.Abs.TypeString }
-         | 'DATETIME' { Sql.Abs.TypeDateTime }
-         | 'INTERVAL' { Sql.Abs.TypeInterval }
-         | 'ARRAY' { Sql.Abs.TypeArr }
-         | 'MAP' { Sql.Abs.TypeMap }
-StreamOption :: { StreamOption }
-StreamOption : 'SOURCE' '=' String { Sql.Abs.OptionSource $3 }
-             | 'FORMAT' '=' String { Sql.Abs.OptionFormat $3 }
-             | 'SINK' '=' String { Sql.Abs.OptionSink $3 }
-Insert :: { Insert }
-Insert : 'INSERT' 'INTO' Ident 'VALUES' '(' ListValueExpr ')' { Sql.Abs.DInsert $3 $6 }
-       | 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { Sql.Abs.IndertWithSchema $3 $5 $9 }
-ListValueExpr :: { [ValueExpr] }
-ListValueExpr : {- empty -} { [] }
-              | ValueExpr { (:[]) $1 }
-              | ValueExpr ',' ListValueExpr { (:) $1 $3 }
-ListIdent :: { [Ident] }
-ListIdent : {- empty -} { [] }
-          | Ident { (:[]) $1 }
-          | Ident ',' ListIdent { (:) $1 $3 }
-Select :: { Select }
-Select : Sel From Where GroupBy Having { Sql.Abs.DSelect $1 $2 $3 $4 $5 }
-Sel :: { Sel }
-Sel : 'SELECT' SelList { Sql.Abs.DSel $2 }
-SelList :: { SelList }
-SelList : '*' { Sql.Abs.SelListAsterisk }
-        | ListDerivedCol { Sql.Abs.SelListSublist $1 }
-ListDerivedCol :: { [DerivedCol] }
-ListDerivedCol : {- empty -} { [] }
-               | DerivedCol { (:[]) $1 }
-               | DerivedCol ',' ListDerivedCol { (:) $1 $3 }
-DerivedCol :: { DerivedCol }
-DerivedCol : ValueExpr { Sql.Abs.DerivedColSimpl $1 }
-           | ValueExpr 'AS' Ident { Sql.Abs.DerivedColAs $1 $3 }
-From :: { From }
-From : 'FROM' ListTableRef { Sql.Abs.DFrom $2 }
-ListTableRef :: { [TableRef] }
-ListTableRef : {- empty -} { [] }
-             | TableRef { (:[]) $1 }
-             | TableRef ',' ListTableRef { (:) $1 $3 }
-TableRef :: { TableRef }
-TableRef : Ident { Sql.Abs.TableRefSimple $1 }
-         | TableRef 'AS' Ident { Sql.Abs.TableRefAs $1 $3 }
-         | TableRef JoinType 'JOIN' TableRef JoinWindow JoinCond { Sql.Abs.TableRefJoin $1 $2 $4 $5 $6 }
-JoinType :: { JoinType }
-JoinType : 'LEFT' { Sql.Abs.JoinLeft }
-         | 'RIGHT' { Sql.Abs.JoinRight }
-         | 'FULL' { Sql.Abs.JoinFull }
-         | 'CROSS' { Sql.Abs.JoinCross }
-JoinWindow :: { JoinWindow }
-JoinWindow : 'WITHIN' '(' Interval ')' { Sql.Abs.DJoinWindow $3 }
-JoinCond :: { JoinCond }
-JoinCond : 'ON' SearchCond { Sql.Abs.DJoinCond $2 }
-Where :: { Where }
-Where : {- empty -} { Sql.Abs.DWhereEmpty }
-      | 'WHERE' SearchCond { Sql.Abs.DWhere $2 }
-GroupBy :: { GroupBy }
-GroupBy : {- empty -} { Sql.Abs.DGroupByEmpty }
-        | 'GROUP' 'BY' ListGrpItem { Sql.Abs.DGroupBy $3 }
-ListGrpItem :: { [GrpItem] }
-ListGrpItem : {- empty -} { [] }
-            | GrpItem { (:[]) $1 }
-            | GrpItem ',' ListGrpItem { (:) $1 $3 }
-GrpItem :: { GrpItem }
-GrpItem : ColName { Sql.Abs.GrpItemCol $1 }
-        | Window { Sql.Abs.GrpItemWin $1 }
-Window :: { Window }
-Window : 'TUMBLE' '(' Interval ')' { Sql.Abs.TumblingWindow $3 }
-       | 'HOP' '(' Interval ',' Interval ')' { Sql.Abs.HoppingWindow $3 $5 }
-       | 'SESSION' '(' Interval ',' Interval ')' { Sql.Abs.SessionWindow $3 $5 }
-Having :: { Having }
-Having : {- empty -} { Sql.Abs.DHavingEmpty }
-       | 'HAVING' SearchCond { Sql.Abs.DHaving $2 }
-ValueExpr :: { ValueExpr }
-ValueExpr : ValueExpr '+' ValueExpr1 { Sql.Abs.ExprAdd $1 $3 }
-          | ValueExpr '-' ValueExpr1 { Sql.Abs.ExprSub $1 $3 }
-          | '[' ListValueExpr ']' { Sql.Abs.ExprArr $2 }
-          | '{' ListLabelledValueExpr '}' { Sql.Abs.ExprMap $2 }
-          | ValueExpr1 { $1 }
-ValueExpr1 :: { ValueExpr }
-ValueExpr1 : ValueExpr1 '*' ValueExpr2 { Sql.Abs.ExprMul $1 $3 }
-           | ValueExpr1 '/' ValueExpr2 { Sql.Abs.ExprDiv $1 $3 }
-           | ValueExpr2 { $1 }
-ValueExpr2 :: { ValueExpr }
-ValueExpr2 : Integer { Sql.Abs.ExprInt $1 }
-           | Double { Sql.Abs.ExprNum $1 }
-           | String { Sql.Abs.ExprString $1 }
-           | Date { Sql.Abs.ExprDate $1 }
-           | Time { Sql.Abs.ExprTime $1 }
-           | Interval { Sql.Abs.ExprInterval $1 }
-           | ColName { Sql.Abs.ExprColName $1 }
-           | SetFunc { Sql.Abs.ExprSetFunc $1 }
-           | '(' ValueExpr ')' { $2 }
-Date :: { Date }
-Date : 'DATE' Integer '-' Integer '-' Integer { Sql.Abs.DDate $2 $4 $6 }
-Time :: { Time }
-Time : 'TIME' Integer ':' Integer ':' Integer { Sql.Abs.DTime $2 $4 $6 }
-TimeUnit :: { TimeUnit }
-TimeUnit : 'YEAR' { Sql.Abs.TimeUnitYear }
-         | 'MONTH' { Sql.Abs.TimeUnitMonth }
-         | 'WEEK' { Sql.Abs.TimeUnitWeek }
-         | 'DAY' { Sql.Abs.TimeUnitDay }
-         | 'MINUTE' { Sql.Abs.TimeUnitMin }
-         | 'SECOND' { Sql.Abs.TimeUnitSec }
-Interval :: { Interval }
-Interval : 'INTERVAL' Integer TimeUnit { Sql.Abs.DInterval $2 $3 }
-ListLabelledValueExpr :: { [LabelledValueExpr] }
-ListLabelledValueExpr : {- empty -} { [] }
-                      | LabelledValueExpr { (:[]) $1 }
-                      | LabelledValueExpr ',' ListLabelledValueExpr { (:) $1 $3 }
-LabelledValueExpr :: { LabelledValueExpr }
-LabelledValueExpr : Ident ':' ValueExpr { Sql.Abs.DLabelledValueExpr $1 $3 }
-ColName :: { ColName }
-ColName : Ident { Sql.Abs.ColNameSimple $1 }
-        | Ident '.' Ident { Sql.Abs.ColNameStream $1 $3 }
-        | ColName '[' Ident ']' { Sql.Abs.ColNameInner $1 $3 }
-        | ColName '[' Integer ']' { Sql.Abs.ColNameIndex $1 $3 }
-SetFunc :: { SetFunc }
-SetFunc : 'COUNT(*)' { Sql.Abs.SetFuncCountAll }
-        | 'COUNT' '(' ValueExpr ')' { Sql.Abs.SetFuncCount $3 }
-        | 'AVG' '(' ValueExpr ')' { Sql.Abs.SetFuncAvg $3 }
-        | 'SUM' '(' ValueExpr ')' { Sql.Abs.SetFuncSum $3 }
-        | 'MAX' '(' ValueExpr ')' { Sql.Abs.SetFuncMax $3 }
-        | 'MIN' '(' ValueExpr ')' { Sql.Abs.SetFuncMin $3 }
-SearchCond :: { SearchCond }
-SearchCond : SearchCond 'OR' SearchCond1 { Sql.Abs.CondOr $1 $3 }
-           | SearchCond1 { $1 }
-SearchCond1 :: { SearchCond }
-SearchCond1 : SearchCond1 'AND' SearchCond2 { Sql.Abs.CondAnd $1 $3 }
-            | SearchCond2 { $1 }
-SearchCond2 :: { SearchCond }
-SearchCond2 : 'NOT' SearchCond3 { Sql.Abs.CondNot $2 }
-            | SearchCond3 { $1 }
-SearchCond3 :: { SearchCond }
-SearchCond3 : ValueExpr CompOp ValueExpr { Sql.Abs.CondOp $1 $2 $3 }
-            | ValueExpr 'BETWEEN' ValueExpr 'AND' ValueExpr { Sql.Abs.CondBetween $1 $3 $5 }
-            | '(' SearchCond ')' { $2 }
-CompOp :: { CompOp }
-CompOp : '=' { Sql.Abs.CompOpEQ }
-       | '<>' { Sql.Abs.CompOpNE }
-       | '<' { Sql.Abs.CompOpLT }
-       | '>' { Sql.Abs.CompOpGT }
-       | '<=' { Sql.Abs.CompOpLEQ }
-       | '>=' { Sql.Abs.CompOpGEQ }
+SQL :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SQL (Maybe (Int, Int)))
+}
+: Select ';' {
+  (fst $1, Language.SQL.Abs.QSelect (fst $1) (snd $1))
+}
+| Create ';' {
+  (fst $1, Language.SQL.Abs.QCreate (fst $1) (snd $1))
+}
+| Insert ';' {
+  (fst $1, Language.SQL.Abs.QInsert (fst $1) (snd $1))
+}
+
+Create :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Create (Maybe (Int, Int)))
+}
+: 'CREATE' 'STREAM' Ident '(' ListSchemaElem ')' 'WITH' '(' ListStreamOption ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DCreate (Just (tokenLineCol $1)) (snd $3) (snd $5) (snd $9))
+}
+| 'CREATE' 'STREAM' Ident 'AS' Select {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CreateAs (Just (tokenLineCol $1)) (snd $3) (snd $5))
+}
+
+ListSchemaElem :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.SchemaElem (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| SchemaElem {
+  (fst $1, (:[]) (snd $1))
+}
+| SchemaElem ',' ListSchemaElem {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+ListStreamOption :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.StreamOption (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| StreamOption {
+  (fst $1, (:[]) (snd $1))
+}
+| StreamOption ',' ListStreamOption {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+SchemaElem :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SchemaElem (Maybe (Int, Int)))
+}
+: Ident DataType {
+  (fst $1, Language.SQL.Abs.DSchemaElem (fst $1) (snd $1) (snd $2))
+}
+
+DataType :: {
+  (Maybe (Int, Int), Language.SQL.Abs.DataType (Maybe (Int, Int)))
+}
+: 'INT' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeInt (Just (tokenLineCol $1)))
+}
+| 'NUMBER' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeNum (Just (tokenLineCol $1)))
+}
+| 'STRING' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeString (Just (tokenLineCol $1)))
+}
+| 'DATETIME' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeDateTime (Just (tokenLineCol $1)))
+}
+| 'INTERVAL' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeInterval (Just (tokenLineCol $1)))
+}
+| 'ARRAY' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeArr (Just (tokenLineCol $1)))
+}
+| 'MAP' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TypeMap (Just (tokenLineCol $1)))
+}
+
+StreamOption :: {
+  (Maybe (Int, Int), Language.SQL.Abs.StreamOption (Maybe (Int, Int)))
+}
+: 'SOURCE' '=' String {
+  (Just (tokenLineCol $1), Language.SQL.Abs.OptionSource (Just (tokenLineCol $1)) (snd $3))
+}
+| 'FORMAT' '=' String {
+  (Just (tokenLineCol $1), Language.SQL.Abs.OptionFormat (Just (tokenLineCol $1)) (snd $3))
+}
+| 'SINK' '=' String {
+  (Just (tokenLineCol $1), Language.SQL.Abs.OptionSink (Just (tokenLineCol $1)) (snd $3))
+}
+
+Insert :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Insert (Maybe (Int, Int)))
+}
+: 'INSERT' 'INTO' Ident 'VALUES' '(' ListValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DInsert (Just (tokenLineCol $1)) (snd $3) (snd $6))
+}
+| 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.IndertWithSchema (Just (tokenLineCol $1)) (snd $3) (snd $5) (snd $9))
+}
+
+ListValueExpr :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.ValueExpr (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| ValueExpr {
+  (fst $1, (:[]) (snd $1))
+}
+| ValueExpr ',' ListValueExpr {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+ListIdent :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.Ident])
+}
+: {
+  (Nothing, [])
+}
+| Ident {
+  (fst $1, (:[]) (snd $1))
+}
+| Ident ',' ListIdent {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+Select :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Select (Maybe (Int, Int)))
+}
+: Sel From Where GroupBy Having {
+  (fst $1, Language.SQL.Abs.DSelect (fst $1) (snd $1) (snd $2) (snd $3) (snd $4) (snd $5))
+}
+
+Sel :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Sel (Maybe (Int, Int)))
+}
+: 'SELECT' SelList {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DSel (Just (tokenLineCol $1)) (snd $2))
+}
+
+SelList :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SelList (Maybe (Int, Int)))
+}
+: '*' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SelListAsterisk (Just (tokenLineCol $1)))
+}
+| ListDerivedCol {
+  (fst $1, Language.SQL.Abs.SelListSublist (fst $1) (snd $1))
+}
+
+ListDerivedCol :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.DerivedCol (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| DerivedCol {
+  (fst $1, (:[]) (snd $1))
+}
+| DerivedCol ',' ListDerivedCol {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+DerivedCol :: {
+  (Maybe (Int, Int), Language.SQL.Abs.DerivedCol (Maybe (Int, Int)))
+}
+: ValueExpr {
+  (fst $1, Language.SQL.Abs.DerivedColSimpl (fst $1) (snd $1))
+}
+| ValueExpr 'AS' Ident {
+  (fst $1, Language.SQL.Abs.DerivedColAs (fst $1) (snd $1) (snd $3))
+}
+
+From :: {
+  (Maybe (Int, Int), Language.SQL.Abs.From (Maybe (Int, Int)))
+}
+: 'FROM' ListTableRef {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DFrom (Just (tokenLineCol $1)) (snd $2))
+}
+
+ListTableRef :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.TableRef (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| TableRef {
+  (fst $1, (:[]) (snd $1))
+}
+| TableRef ',' ListTableRef {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+TableRef :: {
+  (Maybe (Int, Int), Language.SQL.Abs.TableRef (Maybe (Int, Int)))
+}
+: Ident {
+  (fst $1, Language.SQL.Abs.TableRefSimple (fst $1) (snd $1))
+}
+| TableRef 'AS' Ident {
+  (fst $1, Language.SQL.Abs.TableRefAs (fst $1) (snd $1) (snd $3))
+}
+| TableRef JoinType 'JOIN' TableRef JoinWindow JoinCond {
+  (fst $1, Language.SQL.Abs.TableRefJoin (fst $1) (snd $1) (snd $2) (snd $4) (snd $5) (snd $6))
+}
+
+JoinType :: {
+  (Maybe (Int, Int), Language.SQL.Abs.JoinType (Maybe (Int, Int)))
+}
+: 'LEFT' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.JoinLeft (Just (tokenLineCol $1)))
+}
+| 'RIGHT' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.JoinRight (Just (tokenLineCol $1)))
+}
+| 'FULL' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.JoinFull (Just (tokenLineCol $1)))
+}
+| 'CROSS' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.JoinCross (Just (tokenLineCol $1)))
+}
+
+JoinWindow :: {
+  (Maybe (Int, Int), Language.SQL.Abs.JoinWindow (Maybe (Int, Int)))
+}
+: 'WITHIN' '(' Interval ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DJoinWindow (Just (tokenLineCol $1)) (snd $3))
+}
+
+JoinCond :: {
+  (Maybe (Int, Int), Language.SQL.Abs.JoinCond (Maybe (Int, Int)))
+}
+: 'ON' SearchCond {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DJoinCond (Just (tokenLineCol $1)) (snd $2))
+}
+
+Where :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Where (Maybe (Int, Int)))
+}
+: {
+  (Nothing, Language.SQL.Abs.DWhereEmpty Nothing)
+}
+| 'WHERE' SearchCond {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DWhere (Just (tokenLineCol $1)) (snd $2))
+}
+
+GroupBy :: {
+  (Maybe (Int, Int), Language.SQL.Abs.GroupBy (Maybe (Int, Int)))
+}
+: {
+  (Nothing, Language.SQL.Abs.DGroupByEmpty Nothing)
+}
+| 'GROUP' 'BY' ListGrpItem {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DGroupBy (Just (tokenLineCol $1)) (snd $3))
+}
+
+ListGrpItem :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.GrpItem (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| GrpItem {
+  (fst $1, (:[]) (snd $1))
+}
+| GrpItem ',' ListGrpItem {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+GrpItem :: {
+  (Maybe (Int, Int), Language.SQL.Abs.GrpItem (Maybe (Int, Int)))
+}
+: ColName {
+  (fst $1, Language.SQL.Abs.GrpItemCol (fst $1) (snd $1))
+}
+| Window {
+  (fst $1, Language.SQL.Abs.GrpItemWin (fst $1) (snd $1))
+}
+
+Window :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Window (Maybe (Int, Int)))
+}
+: 'TUMBLE' '(' Interval ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TumblingWindow (Just (tokenLineCol $1)) (snd $3))
+}
+| 'HOP' '(' Interval ',' Interval ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.HoppingWindow (Just (tokenLineCol $1)) (snd $3) (snd $5))
+}
+| 'SESSION' '(' Interval ',' Interval ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SessionWindow (Just (tokenLineCol $1)) (snd $3) (snd $5))
+}
+
+Having :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Having (Maybe (Int, Int)))
+}
+: {
+  (Nothing, Language.SQL.Abs.DHavingEmpty Nothing)
+}
+| 'HAVING' SearchCond {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DHaving (Just (tokenLineCol $1)) (snd $2))
+}
+
+ValueExpr :: {
+  (Maybe (Int, Int), Language.SQL.Abs.ValueExpr (Maybe (Int, Int)))
+}
+: ValueExpr '+' ValueExpr1 {
+  (fst $1, Language.SQL.Abs.ExprAdd (fst $1) (snd $1) (snd $3))
+}
+| ValueExpr '-' ValueExpr1 {
+  (fst $1, Language.SQL.Abs.ExprSub (fst $1) (snd $1) (snd $3))
+}
+| '[' ListValueExpr ']' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.ExprArr (Just (tokenLineCol $1)) (snd $2))
+}
+| '{' ListLabelledValueExpr '}' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.ExprMap (Just (tokenLineCol $1)) (snd $2))
+}
+| ValueExpr1 {
+  (fst $1, snd $1)
+}
+
+ValueExpr1 :: {
+  (Maybe (Int, Int), Language.SQL.Abs.ValueExpr (Maybe (Int, Int)))
+}
+: ValueExpr1 '*' ValueExpr2 {
+  (fst $1, Language.SQL.Abs.ExprMul (fst $1) (snd $1) (snd $3))
+}
+| ValueExpr1 '/' ValueExpr2 {
+  (fst $1, Language.SQL.Abs.ExprDiv (fst $1) (snd $1) (snd $3))
+}
+| ValueExpr2 {
+  (fst $1, snd $1)
+}
+
+ValueExpr2 :: {
+  (Maybe (Int, Int), Language.SQL.Abs.ValueExpr (Maybe (Int, Int)))
+}
+: Integer {
+  (fst $1, Language.SQL.Abs.ExprInt (fst $1) (snd $1))
+}
+| Double {
+  (fst $1, Language.SQL.Abs.ExprNum (fst $1) (snd $1))
+}
+| String {
+  (fst $1, Language.SQL.Abs.ExprString (fst $1) (snd $1))
+}
+| Date {
+  (fst $1, Language.SQL.Abs.ExprDate (fst $1) (snd $1))
+}
+| Time {
+  (fst $1, Language.SQL.Abs.ExprTime (fst $1) (snd $1))
+}
+| Interval {
+  (fst $1, Language.SQL.Abs.ExprInterval (fst $1) (snd $1))
+}
+| ColName {
+  (fst $1, Language.SQL.Abs.ExprColName (fst $1) (snd $1))
+}
+| SetFunc {
+  (fst $1, Language.SQL.Abs.ExprSetFunc (fst $1) (snd $1))
+}
+| '(' ValueExpr ')' {
+  (Just (tokenLineCol $1), snd $2)
+}
+
+Date :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Date (Maybe (Int, Int)))
+}
+: 'DATE' Integer '-' Integer '-' Integer {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DDate (Just (tokenLineCol $1)) (snd $2) (snd $4) (snd $6))
+}
+
+Time :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Time (Maybe (Int, Int)))
+}
+: 'TIME' Integer ':' Integer ':' Integer {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DTime (Just (tokenLineCol $1)) (snd $2) (snd $4) (snd $6))
+}
+
+TimeUnit :: {
+  (Maybe (Int, Int), Language.SQL.Abs.TimeUnit (Maybe (Int, Int)))
+}
+: 'YEAR' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TimeUnitYear (Just (tokenLineCol $1)))
+}
+| 'MONTH' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TimeUnitMonth (Just (tokenLineCol $1)))
+}
+| 'WEEK' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TimeUnitWeek (Just (tokenLineCol $1)))
+}
+| 'DAY' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TimeUnitDay (Just (tokenLineCol $1)))
+}
+| 'MINUTE' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TimeUnitMin (Just (tokenLineCol $1)))
+}
+| 'SECOND' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.TimeUnitSec (Just (tokenLineCol $1)))
+}
+
+Interval :: {
+  (Maybe (Int, Int), Language.SQL.Abs.Interval (Maybe (Int, Int)))
+}
+: 'INTERVAL' Integer TimeUnit {
+  (Just (tokenLineCol $1), Language.SQL.Abs.DInterval (Just (tokenLineCol $1)) (snd $2) (snd $3))
+}
+
+ListLabelledValueExpr :: {
+  (Maybe (Int, Int), [Language.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))])
+}
+: {
+  (Nothing, [])
+}
+| LabelledValueExpr {
+  (fst $1, (:[]) (snd $1))
+}
+| LabelledValueExpr ',' ListLabelledValueExpr {
+  (fst $1, (:) (snd $1) (snd $3))
+}
+
+LabelledValueExpr :: {
+  (Maybe (Int, Int), Language.SQL.Abs.LabelledValueExpr (Maybe (Int, Int)))
+}
+: Ident ':' ValueExpr {
+  (fst $1, Language.SQL.Abs.DLabelledValueExpr (fst $1) (snd $1) (snd $3))
+}
+
+ColName :: {
+  (Maybe (Int, Int), Language.SQL.Abs.ColName (Maybe (Int, Int)))
+}
+: Ident {
+  (fst $1, Language.SQL.Abs.ColNameSimple (fst $1) (snd $1))
+}
+| Ident '.' Ident {
+  (fst $1, Language.SQL.Abs.ColNameStream (fst $1) (snd $1) (snd $3))
+}
+| ColName '[' Ident ']' {
+  (fst $1, Language.SQL.Abs.ColNameInner (fst $1) (snd $1) (snd $3))
+}
+| ColName '[' Integer ']' {
+  (fst $1, Language.SQL.Abs.ColNameIndex (fst $1) (snd $1) (snd $3))
+}
+
+SetFunc :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SetFunc (Maybe (Int, Int)))
+}
+: 'COUNT(*)' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SetFuncCountAll (Just (tokenLineCol $1)))
+}
+| 'COUNT' '(' ValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SetFuncCount (Just (tokenLineCol $1)) (snd $3))
+}
+| 'AVG' '(' ValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SetFuncAvg (Just (tokenLineCol $1)) (snd $3))
+}
+| 'SUM' '(' ValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SetFuncSum (Just (tokenLineCol $1)) (snd $3))
+}
+| 'MAX' '(' ValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SetFuncMax (Just (tokenLineCol $1)) (snd $3))
+}
+| 'MIN' '(' ValueExpr ')' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.SetFuncMin (Just (tokenLineCol $1)) (snd $3))
+}
+
+SearchCond :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SearchCond (Maybe (Int, Int)))
+}
+: SearchCond 'OR' SearchCond1 {
+  (fst $1, Language.SQL.Abs.CondOr (fst $1) (snd $1) (snd $3))
+}
+| SearchCond1 {
+  (fst $1, snd $1)
+}
+
+SearchCond1 :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SearchCond (Maybe (Int, Int)))
+}
+: SearchCond1 'AND' SearchCond2 {
+  (fst $1, Language.SQL.Abs.CondAnd (fst $1) (snd $1) (snd $3))
+}
+| SearchCond2 {
+  (fst $1, snd $1)
+}
+
+SearchCond2 :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SearchCond (Maybe (Int, Int)))
+}
+: 'NOT' SearchCond3 {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CondNot (Just (tokenLineCol $1)) (snd $2))
+}
+| SearchCond3 {
+  (fst $1, snd $1)
+}
+
+SearchCond3 :: {
+  (Maybe (Int, Int), Language.SQL.Abs.SearchCond (Maybe (Int, Int)))
+}
+: ValueExpr CompOp ValueExpr {
+  (fst $1, Language.SQL.Abs.CondOp (fst $1) (snd $1) (snd $2) (snd $3))
+}
+| ValueExpr 'BETWEEN' ValueExpr 'AND' ValueExpr {
+  (fst $1, Language.SQL.Abs.CondBetween (fst $1) (snd $1) (snd $3) (snd $5))
+}
+| '(' SearchCond ')' {
+  (Just (tokenLineCol $1), snd $2)
+}
+
+CompOp :: {
+  (Maybe (Int, Int), Language.SQL.Abs.CompOp (Maybe (Int, Int)))
+}
+: '=' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CompOpEQ (Just (tokenLineCol $1)))
+}
+| '<>' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CompOpNE (Just (tokenLineCol $1)))
+}
+| '<' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CompOpLT (Just (tokenLineCol $1)))
+}
+| '>' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CompOpGT (Just (tokenLineCol $1)))
+}
+| '<=' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CompOpLEQ (Just (tokenLineCol $1)))
+}
+| '>=' {
+  (Just (tokenLineCol $1), Language.SQL.Abs.CompOpGEQ (Just (tokenLineCol $1)))
+}
+
 {
 
-returnM :: a -> Err a
-returnM = return
-
-thenM :: Err a -> (a -> Err b) -> Err b
-thenM = (>>=)
-
-happyError :: [Token] -> Err a
-happyError ts =
-  Bad $ "syntax error at " ++ tokenPos ts ++
+happyError :: [Token] -> Either String a
+happyError ts = Left $
+  "syntax error at " ++ tokenPos ts ++
   case ts of
-    []      -> []
+    [] -> []
     [Err _] -> " due to lexer error"
-    t:_     -> " before `" ++ id(prToken t) ++ "'"
+    t:_ -> " before `" ++ (prToken t) ++ "'"
 
 myLexer = tokens
+
+pSQL = (>>= return . snd) . pSQL_internal
+pCreate = (>>= return . snd) . pCreate_internal
+pListSchemaElem = (>>= return . snd) . pListSchemaElem_internal
+pListStreamOption = (>>= return . snd) . pListStreamOption_internal
+pSchemaElem = (>>= return . snd) . pSchemaElem_internal
+pDataType = (>>= return . snd) . pDataType_internal
+pStreamOption = (>>= return . snd) . pStreamOption_internal
+pInsert = (>>= return . snd) . pInsert_internal
+pListValueExpr = (>>= return . snd) . pListValueExpr_internal
+pListIdent = (>>= return . snd) . pListIdent_internal
+pSelect = (>>= return . snd) . pSelect_internal
+pSel = (>>= return . snd) . pSel_internal
+pSelList = (>>= return . snd) . pSelList_internal
+pListDerivedCol = (>>= return . snd) . pListDerivedCol_internal
+pDerivedCol = (>>= return . snd) . pDerivedCol_internal
+pFrom = (>>= return . snd) . pFrom_internal
+pListTableRef = (>>= return . snd) . pListTableRef_internal
+pTableRef = (>>= return . snd) . pTableRef_internal
+pJoinType = (>>= return . snd) . pJoinType_internal
+pJoinWindow = (>>= return . snd) . pJoinWindow_internal
+pJoinCond = (>>= return . snd) . pJoinCond_internal
+pWhere = (>>= return . snd) . pWhere_internal
+pGroupBy = (>>= return . snd) . pGroupBy_internal
+pListGrpItem = (>>= return . snd) . pListGrpItem_internal
+pGrpItem = (>>= return . snd) . pGrpItem_internal
+pWindow = (>>= return . snd) . pWindow_internal
+pHaving = (>>= return . snd) . pHaving_internal
+pValueExpr = (>>= return . snd) . pValueExpr_internal
+pValueExpr1 = (>>= return . snd) . pValueExpr1_internal
+pValueExpr2 = (>>= return . snd) . pValueExpr2_internal
+pDate = (>>= return . snd) . pDate_internal
+pTime = (>>= return . snd) . pTime_internal
+pTimeUnit = (>>= return . snd) . pTimeUnit_internal
+pInterval = (>>= return . snd) . pInterval_internal
+pListLabelledValueExpr = (>>= return . snd) . pListLabelledValueExpr_internal
+pLabelledValueExpr = (>>= return . snd) . pLabelledValueExpr_internal
+pColName = (>>= return . snd) . pColName_internal
+pSetFunc = (>>= return . snd) . pSetFunc_internal
+pSearchCond = (>>= return . snd) . pSearchCond_internal
+pSearchCond1 = (>>= return . snd) . pSearchCond1_internal
+pSearchCond2 = (>>= return . snd) . pSearchCond2_internal
+pSearchCond3 = (>>= return . snd) . pSearchCond3_internal
+pCompOp = (>>= return . snd) . pCompOp_internal
 }
 
