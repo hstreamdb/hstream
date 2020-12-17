@@ -4,7 +4,7 @@ set -e
 SRC_DIR=${SRC_DIR:-$(pwd)}
 WORKDIR=${WORKDIR:-$(mktemp --directory)}
 GHC_VERSION=${GHC_VERSION:-8.10}
-IMAGE_NAME=${IMAGE_NAME:-hstreamdb/haskell-rocksdb}
+IMAGE_NAME=${IMAGE_NAME:-hstreamdb/haskell}
 IMAGE="$IMAGE_NAME:$GHC_VERSION"
 CABAL_HOME=${CABAL_HOME:-$HOME/.cabal}
 
