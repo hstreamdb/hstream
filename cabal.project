@@ -1,30 +1,24 @@
 packages:
-  hstream
-  hstream-processing
-  hstream-core
+  -- hstream
+  -- hstream-processing
+  -- hstream-core
   hstream-hesp
   hstream-store
 
-extra-include-dirs:
-  /usr/local/include
-
-extra-lib-dirs:
-  /usr/local/lib
-
-source-repository-package
-  type: git
-  location: https://github.com/hstreamdb/haskell-rocksdb-bindings
-  tag: 688c424312819288ce26b08e1b3f9442f97e6b35
+--source-repository-package
+--  type: git
+--  location: https://github.com/hstreamdb/haskell-rocksdb-bindings
+--  tag: 688c424312819288ce26b08e1b3f9442f97e6b35
 
 
 -- TODO: If a newer co-log package is released, we can safely remove this.
-source-repository-package
-  type: git
-  location: https://github.com/kowainik/co-log
-  tag: 45d5dd6c33f722628a0f9c10e4297f5e11ede20f
-  subdir: co-log-core
-source-repository-package
-  type: git
-  location: https://github.com/kowainik/co-log
-  tag: 45d5dd6c33f722628a0f9c10e4297f5e11ede20f
-  subdir: co-log
+--source-repository-package
+--  type: git
+--  location: https://github.com/kowainik/co-log
+--  tag: 45d5dd6c33f722628a0f9c10e4297f5e11ede20f
+--  subdir: co-log-core
+--source-repository-package
+--  type: git
+--  location: https://github.com/kowainik/co-log
+--  tag: 45d5dd6c33f722628a0f9c10e4297f5e11ede20f
+--  subdir: co-log
