@@ -17,7 +17,7 @@ build-type:         Custom
 extra-source-files: ChangeLog.md
                     README.md
                     include/hs_logdevice.h
-                    cbits/hs_logdevice.cpp
+                    include/utils.h
 
 custom-setup
   setup-depends: base >= 4.5 && < 5, Cabal >= 2.4 && < 4
@@ -27,14 +27,16 @@ source-repository head
   location: https://github.com/hstreamdb/hstream
 
 library
-  exposed-modules:    HStream.Store
+  exposed-modules:    HStream.Exception
+                      HStream.Store
                       HStream.Store.Stream
   other-modules:      HStream.Internal.FFI
-  build-depends:      base >= 4.11 && < 5, Z-Data == 0.1.9.1
+  build-depends:      base >= 4.11 && < 5, Z-Data == 0.2.0.0
   default-language:   Haskell2010
   extra-libraries:    logdevice, stdc++
   cxx-options:        -std=c++17
-  cxx-sources:        cbits/hs_logdevice.cpp
+  cpp-options:        -std=c++17
+  cxx-sources:        cbits/hs_logdevice.cpp, cbits/hs_logattribute.cpp, cbits/utils.cpp
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h
   include-dirs:       include, /usr/local/include
