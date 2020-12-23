@@ -1,12 +1,27 @@
 #include <HsFFI.h>
+#include <iostream>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+
+#include <folly/Optional.h>
+#include <folly/Singleton.h>
+#include <logdevice/include/Client.h>
+#include <logdevice/include/ClientSettings.h>
+#include <logdevice/include/Err.h>
+#include <logdevice/include/LogAttributes.h>
+#include <logdevice/include/LogsConfigTypes.h>
+#include <logdevice/include/Reader.h>
+#include <logdevice/include/Record.h>
+#include <logdevice/include/RecordOffset.h>
+#include <logdevice/include/debug.h>
 #include <logdevice/include/types.h>
 
 #ifndef HS_LOGDEVICE
 #define HS_LOGDEVICE
+
+using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,21 +29,24 @@ extern "C" {
 
 typedef struct logdevice_client_t logdevice_client_t;
 typedef struct logdevice_reader_t logdevice_reader_t;
-
-typedef struct logdevice_data_record_t {
-  uint64_t logid;
-  uint64_t lsn;
-  char *payload;
-  size_t payload_len;
-} logdevice_data_record_t;
+typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
 
 // LogID
 typedef uint64_t c_logid_t;
-extern const c_logid_t C_LOGID_INVALID;
-extern const c_logid_t C_LOGID_INVALID2;
-extern const c_logid_t C_LOGID_MAX;
-extern const c_logid_t C_USER_LOGID_MAX;
-extern const size_t C_LOGID_MAX_BITS;
+const c_logid_t C_LOGID_INVALID = facebook::logdevice::LOGID_INVALID.val();
+const c_logid_t C_LOGID_INVALID2 = facebook::logdevice::LOGID_INVALID2.val();
+// max valid data logid value. This accounts for internal logs.
+// Not to be confused with numeric_limits<>::max().
+const c_logid_t C_LOGID_MAX = facebook::logdevice::LOGID_MAX.val();
+// max valid user data logid value.
+const c_logid_t C_USER_LOGID_MAX = facebook::logdevice::USER_LOGID_MAX.val();
+// maximum number of bits in a log id
+const size_t C_LOGID_MAX_BITS = facebook::logdevice::LOGID_BITS;
+
+// LogAttributes
+LogAttributes* new_log_attributes();
+void free_log_attributes(LogAttributes* attrs);
+void with_replicationFactor(LogAttributes* attrs, int value);
 
 // LogSequenceNumber
 typedef uint64_t c_lsn_t;
@@ -36,31 +54,81 @@ const c_lsn_t C_LSN_INVALID = facebook::logdevice::LSN_INVALID;
 const c_lsn_t C_LSN_OLDEST = facebook::logdevice::LSN_OLDEST;
 const c_lsn_t C_LSN_MAX = facebook::logdevice::LSN_MAX;
 
-/* ---------------------------------- */
+// DataRecord
+typedef struct logdevice_data_record_t {
+  uint64_t logid;
+  uint64_t lsn;
+  char* payload;
+  size_t payload_len;
+} logdevice_data_record_t;
+
+// LogAttributes
+LogAttributes* default_log_attributes();
+
+// LogGroup
+typedef struct logdevice_loggroup_t logdevice_loggroup_t;
+
+void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
+                           c_logid_t* end);
+
+const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
+
+// Err
+const char* show_error_name(facebook::logdevice::E err);
+const char* show_error_description(facebook::logdevice::E err);
+
+// ----------------------------------------------------------------------------
+
+// Create & Free Client
+logdevice_client_t* new_logdevice_client(char* config_path);
+void free_logdevice_client(logdevice_client_t* client);
+
+// Create & Free Reader
+logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
+                                         size_t max_logs, ssize_t buffer_size);
+void free_logdevice_reader(logdevice_reader_t* reader);
+
+// ----------------------------------------------------------------------------
+// Client
+
+size_t ld_client_get_max_payload_size(logdevice_client_t* client);
+c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client, uint64_t logid);
+facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
+                                                   const char* name,
+                                                   const char* value);
+logdevice_logdirectory_t*
+ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
+                              bool mk_intermediate_dirs, char* failure_reason);
+
+facebook::logdevice::Status ld_client_make_loggroup_sync(
+    logdevice_client_t* client, const char* path, const c_logid_t start_logid,
+    const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
+    logdevice_loggroup_t** loggroup_result);
+
+facebook::logdevice::Status
+ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
+                            logdevice_loggroup_t** loggroup_result);
+
+void* free_lodevice_loggroup(logdevice_loggroup_t* group);
+
+// ----------------------------------------------------------------------------
+
+c_lsn_t logdevice_append_sync(logdevice_client_t* client, uint64_t logid,
+                              const char* payload, HsInt offset, HsInt length,
+                              int64_t* ts);
+
+int logdevice_reader_start_reading(logdevice_reader_t* reader, c_logid_t logid,
+                                   c_lsn_t start, c_lsn_t until);
+bool logdevice_reader_is_reading(logdevice_reader_t* reader, c_logid_t logid);
+bool logdevice_reader_is_reading_any(logdevice_reader_t* reader);
+int logdevice_reader_read_sync(logdevice_reader_t* reader, size_t maxlen,
+                               logdevice_data_record_t* data_out,
+                               ssize_t* len_out);
+
+// ----------------------------------------------------------------------------
+// Misc
 
 void set_dbg_level_error(void);
-void init_logdevice(void);
-
-logdevice_client_t *new_logdevice_client(char *config_path);
-void free_logdevice_client(logdevice_client_t *client);
-
-logdevice_reader_t *new_logdevice_reader(logdevice_client_t *client,
-                                         size_t max_logs, ssize_t buffer_size);
-void free_logdevice_reader(logdevice_reader_t *reader);
-
-c_lsn_t logdevice_get_tail_lsn_sync(logdevice_client_t *client, uint64_t logid);
-
-c_lsn_t logdevice_append_sync(logdevice_client_t *client, uint64_t logid,
-                              const char *payload, HsInt offset, HsInt length,
-                              int64_t *ts);
-
-int logdevice_reader_start_reading(logdevice_reader_t *reader, c_logid_t logid,
-                                   c_lsn_t start, c_lsn_t until);
-bool logdevice_reader_is_reading(logdevice_reader_t *reader, c_logid_t logid);
-bool logdevice_reader_is_reading_any(logdevice_reader_t *reader);
-int logdevice_reader_read_sync(logdevice_reader_t *reader, size_t maxlen,
-                               logdevice_data_record_t *data_out,
-                               ssize_t *len_out);
 
 #ifdef __cplusplus
 } /* end extern "C" */

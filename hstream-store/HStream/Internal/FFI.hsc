@@ -1,6 +1,7 @@
-{-# LANGUAGE CPP              #-}
-{-# LANGUAGE MagicHash        #-}
-{-# LANGUAGE UnliftedFFITypes #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE UnliftedFFITypes           #-}
 
 module HStream.Internal.FFI where
 
@@ -8,6 +9,7 @@ import           Control.Exception     (bracket_)
 import           Control.Monad         (forM)
 import           Data.Int
 import           Data.Word
+import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (free)
 import           Foreign.Ptr
@@ -20,6 +22,9 @@ import qualified Z.Foreign             as Z
 
 data LogDeviceClient
 data LogDeviceReader
+data LogDeviceLogGroup
+data LogDeviceLogDirectory
+data LogDeviceLogAttributes
 
 -- | LogID
 type C_LogID = Word64
@@ -27,16 +32,20 @@ type C_LogID = Word64
 c_logid_min :: C_LogID
 c_logid_min = 1
 
-foreign import ccall unsafe "hs_logdevice.h C_LOGID_INVALID"
-  c_logid_invalid :: C_LogID
-foreign import ccall unsafe "hs_logdevice.h C_LOGID_INVALID2"
-  c_logid_invalid2 :: C_LogID
-foreign import ccall unsafe "hs_logdevice.h C_LOGID_MAX"
-  c_logid_max :: C_LogID
-foreign import ccall unsafe "hs_logdevice.h C_USER_LOGID_MAX"
-  c_user_logid_max :: C_LogID
-foreign import ccall unsafe "hs_logdevice.h C_LOGID_MAX_BITS"
-  c_logid_max_bits :: C_LogID
+c_logid_invalid :: C_LogID
+c_logid_invalid = (#const C_LOGID_INVALID)
+
+c_logid_invalid2 :: C_LogID
+c_logid_invalid2 = (#const C_LOGID_INVALID2)
+
+c_logid_max :: C_LogID
+c_logid_max = (#const C_LOGID_MAX)
+
+c_user_logid_max :: C_LogID
+c_user_logid_max = (#const C_USER_LOGID_MAX)
+
+c_logid_max_bits :: CSize
+c_logid_max_bits = (#const C_LOGID_MAX_BITS)
 
 -- | Log Sequence Number
 type C_LSN = Word64
@@ -78,6 +87,33 @@ peekDataRecord ptr offset = bracket_ (return ()) release peekData
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr
 
+foreign import ccall unsafe "hs_logdevice.h new_log_attributes"
+  c_new_log_attributes :: IO (Ptr LogDeviceLogAttributes)
+
+foreign import ccall unsafe "hs_logdevice.h free_log_attributes"
+  c_free_log_attributes :: Ptr LogDeviceLogAttributes -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
+  c_free_log_attributes_fun :: FunPtr (Ptr LogDeviceLogAttributes -> IO ())
+
+foreign import ccall unsafe "hs_logdevice.h with_replicationFactor"
+  c_log_attrs_set_replication_factor
+    :: Ptr LogDeviceLogAttributes
+    -> CInt
+    -> IO ()
+
+-- | Error
+type ErrorCode = Word16
+
+foreign import ccall unsafe "hs_logdevice.h show_error_name"
+  c_show_error_name :: ErrorCode -> CString
+
+foreign import ccall unsafe "hs_logdevice.h show_error_description"
+  c_show_error_description :: ErrorCode -> CString
+
+-------------------------------------------------------------------------------
+-- Client
+
 -- | Create a new logdeive client
 foreign import ccall unsafe "hs_logdevice.h new_logdevice_client"
   c_new_logdevice_client :: BA## Word8 -> IO (Ptr LogDeviceClient)
@@ -86,20 +122,66 @@ foreign import ccall unsafe "hs_logdevice.h free_logdevice_client"
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_client"
   c_free_logdevice_client_fun :: FunPtr (Ptr LogDeviceClient -> IO ())
 
-foreign import ccall unsafe "hs_logdevice.h new_logdevice_reader"
-  c_new_logdevice_reader :: Ptr LogDeviceClient
-                         -> CSize
-                         -> Int64
-                         -> IO (Ptr LogDeviceReader)
-foreign import ccall unsafe "hs_logdevice.h free_logdevice_reader"
-  c_free_logdevice_reader :: Ptr LogDeviceReader -> IO ()
-foreign import ccall unsafe "hs_logdevice.h &free_logdevice_reader"
-  c_free_logdevice_reader_fun :: FunPtr (Ptr LogDeviceReader -> IO ())
+-- | returns the maximum permitted payload size for this client.
+--
+-- The default is 1MB, but this can be increased via changing the
+-- max-payload-size setting.
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_max_payload_size"
+  c_ld_client_get_max_payload_size :: Ptr LogDeviceClient -> IO Word
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_get_tail_lsn_sync"
-  c_logdevice_get_tail_lsn_sync :: Ptr LogDeviceClient
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_lsn_sync"
+  c_ld_client_get_tail_lsn_sync :: Ptr LogDeviceClient
                                 -> C_LogID
                                 -> IO C_LSN
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_set_settings"
+  c_ld_client_set_settings :: Ptr LogDeviceClient
+                           -> BA## Word8
+                           -> BA## Word8
+                           -> IO ErrorCode
+
+--foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
+--  c_ld_client_make_directory_sync :: Ptr LogDeviceClient
+--                                  -> BA## Word8   -- ^ path
+--                                  -> Bool
+--                                  -> Ptr a
+--                                  -> IO (Ptr LogDeviceLogDirectory)
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
+  c_ld_client_make_loggroup_sync
+    :: Ptr LogDeviceClient
+    -> BA## Word8
+    -> C_LogID
+    -> C_LogID
+    -> Ptr LogDeviceLogAttributes
+    -> Bool
+    -> MBA## (Ptr LogDeviceLogGroup) -- ^ result, can be nullptr
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
+  c_ld_client_get_loggroup_sync :: Ptr LogDeviceClient
+                                -> BA## Word8
+                                -> MBA## (Ptr LogDeviceLogGroup)
+                                -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
+  c_ld_loggroup_get_range :: Ptr LogDeviceLogGroup
+                          -> MBA## C_LogID    -- ^ returned value, start logid
+                          -> MBA## C_LogID    -- ^ returned value, end logid
+                          -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_name"
+  c_ld_loggroup_get_name :: Ptr LogDeviceLogGroup
+                          -> IO CString
+
+foreign import ccall safe "hs_logdevice.h free_lodevice_loggroup"
+  c_free_lodevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_lodevice_loggroup"
+  c_free_lodevice_loggroup_fun :: FunPtr (Ptr LogDeviceLogGroup -> IO ())
+
+-------------------------------------------------------------------------------
+-- Client Writer API
 
 foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
   c_logdevice_append_sync :: Ptr LogDeviceClient
@@ -118,6 +200,19 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
                              -> Int            -- ^ payload length
                              -> MBA## Int64    -- ^ returned value, timestamp
                              -> IO C_LSN       -- ^ returned value, log sequence number
+
+-------------------------------------------------------------------------------
+-- Client Reader API
+
+foreign import ccall unsafe "hs_logdevice.h new_logdevice_reader"
+  c_new_logdevice_reader :: Ptr LogDeviceClient
+                         -> CSize
+                         -> Int64
+                         -> IO (Ptr LogDeviceReader)
+foreign import ccall unsafe "hs_logdevice.h free_logdevice_reader"
+  c_free_logdevice_reader :: Ptr LogDeviceReader -> IO ()
+foreign import ccall unsafe "hs_logdevice.h &free_logdevice_reader"
+  c_free_logdevice_reader_fun :: FunPtr (Ptr LogDeviceReader -> IO ())
 
 foreign import ccall unsafe "hs_logdevice.h logdevice_reader_start_reading"
   c_logdevice_reader_start_reading :: Ptr LogDeviceReader
@@ -146,11 +241,11 @@ foreign import ccall safe "hs_logdevice.h logdevice_reader_read_sync"
                                     -> Ptr Int
                                     -> IO CInt
 
-foreign import ccall unsafe "hs_logdevice.h set_dbg_level_error"
-  c_set_dbg_level_error :: IO ()
-
 -------------------------------------------------------------------------------
 -- Misc
+
+foreign import ccall unsafe "hs_logdevice.h set_dbg_level_error"
+  c_set_dbg_level_error :: IO ()
 
 cbool2bool :: CBool -> Bool
 cbool2bool = (/= 0)
