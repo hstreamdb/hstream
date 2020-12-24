@@ -18,6 +18,8 @@ module HStream.Store.Stream
   , setTopicReplicationFactor'
   , makeTopicGroupSync
   , getTopicGroupSync
+  , removeTopicGroupSync
+  , removeTopicGroupSync'
   , topicGroupGetRange
   , topicGroupGetName
     -- ** Reader
@@ -101,14 +103,14 @@ newTopicAttributes = do
   i <- FFI.c_new_log_attributes
   TopicAttributes <$> newForeignPtr FFI.c_free_log_attributes_fun i
 
-setTopicReplicationFactor :: TopicAttributes -> Int -> IO TopicAttributes
+setTopicReplicationFactor :: TopicAttributes -> Int -> IO ()
 setTopicReplicationFactor attrs val =
-  setTopicReplicationFactor' attrs val >> return attrs
-
-setTopicReplicationFactor' :: TopicAttributes -> Int -> IO ()
-setTopicReplicationFactor' attrs val =
   withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
     FFI.c_log_attrs_set_replication_factor attrs' (fromIntegral val)
+
+setTopicReplicationFactor' :: TopicAttributes -> Int -> IO TopicAttributes
+setTopicReplicationFactor' attrs val =
+  setTopicReplicationFactor attrs val >> return attrs
 
 newtype SequenceNum = SequenceNum FFI.C_LSN
   deriving (Show, Eq, Ord, Num, Storable)
@@ -151,6 +153,22 @@ getTopicGroupSync client path =
     (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_loggroup_sync client' path' group''
     StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
+
+removeTopicGroupSync :: StreamClient -> Z.CBytes -> IO ()
+removeTopicGroupSync client path =
+  withForeignPtr (unStreamClient client) $ \client' ->
+  Z.withCBytesUnsafe path $ \path' -> do
+    void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync client' path' nullPtr
+
+-- | The same as 'removeTopicGroupSync', but return the version of the
+-- logsconfig at which the topic group got removed.
+removeTopicGroupSync' :: StreamClient -> Z.CBytes -> IO Word64
+removeTopicGroupSync' client path =
+  withForeignPtr (unStreamClient client) $ \client' ->
+  Z.withCBytesUnsafe path $ \path' -> do
+    (version, _) <- Z.withPrimUnsafe 0 $ \version' ->
+      E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync' client' path' version'
+    return version
 
 topicGroupGetRange :: StreamTopicGroup -> IO (TopicID, TopicID)
 topicGroupGetRange group =

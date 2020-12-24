@@ -164,6 +164,17 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
                                 -> MBA## (Ptr LogDeviceLogGroup)
                                 -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup_sync"
+  c_ld_client_remove_loggroup_sync :: Ptr LogDeviceClient
+                                    -> BA## Word8
+                                    -> Ptr Word64
+                                    -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup_sync"
+  c_ld_client_remove_loggroup_sync' :: Ptr LogDeviceClient
+                                    -> BA## Word8
+                                    -> MBA## Word64
+                                    -> IO ErrorCode
+
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
   c_ld_loggroup_get_range :: Ptr LogDeviceLogGroup
                           -> MBA## C_LogID    -- ^ returned value, start logid
