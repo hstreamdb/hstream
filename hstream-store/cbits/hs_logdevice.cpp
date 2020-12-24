@@ -156,6 +156,16 @@ ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+facebook::logdevice::Status
+ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
+                               uint64_t* version) {
+  std::string path_ = path;
+  bool ret = client->rep->removeLogGroupSync(path_, version);
+  if (ret)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
                            c_logid_t* end) {
   const facebook::logdevice::logid_range_t& range = group->rep->range();
