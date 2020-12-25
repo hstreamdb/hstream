@@ -59,4 +59,4 @@ jobs:
 
       - name: Build and Test
         run: |
-          WORKDIR=$(mktemp -d) GHC_VERSION=${{ matrix.ghc }} script/docker-test.sh
+          GHC_VERSION=${{ matrix.ghc }} USE_STABLE_IMAGE=true script/docker-test.sh

@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module HStream.Exception
+module HStream.Store.Exception
   ( -- * Stream Exception
     SomeStreamException
   , someStreamExceptionToException

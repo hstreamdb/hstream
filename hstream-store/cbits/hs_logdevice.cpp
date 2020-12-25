@@ -24,19 +24,18 @@ const char* show_error_description(facebook::logdevice::E err) {
 // ----------------------------------------------------------------------------
 
 // new client
-logdevice_client_t* new_logdevice_client(char* config_path) {
+facebook::logdevice::Status
+new_logdevice_client(char* config_path, logdevice_client_t** client_ret) {
   std::shared_ptr<Client> client = ClientFactory().create(config_path);
-  if (!client) {
-    fprintf(stderr,
-            "logdevice::ClientFactory().create() failed. Check the config "
-            "path.\n");
-    exit(1);
+  if (client) {
+    logdevice_client_t* result = new logdevice_client_t;
+    result->rep = client;
+    *client_ret = result;
+    return facebook::logdevice::E::OK;
   }
-  logdevice_client_t* result = new logdevice_client_t;
-  result->rep = client;
-
-  return result;
+  return facebook::logdevice::err;
 }
+
 void free_logdevice_client(logdevice_client_t* client) { delete client; }
 
 // new reader
