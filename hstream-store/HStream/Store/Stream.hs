@@ -274,9 +274,11 @@ topicGroupGetName group =
 
 append :: StreamClient -> TopicID -> Bytes -> IO SequenceNum
 append client (TopicID topicid) payload =
-  withForeignPtr (unStreamClient client) $ \clientPtr ->
-    Z.withPrimVectorUnsafe payload $ \ba_data offset len -> SequenceNum <$>
-      FFI.c_logdevice_append_sync clientPtr topicid ba_data offset len nullPtr
+  withForeignPtr (unStreamClient client) $ \client' ->
+  Z.withPrimVectorUnsafe payload $ \ba_data offset len -> do
+    (sn_ret, _) <- Z.withPrimUnsafe FFI.c_lsn_invalid $ \lsn' ->
+      E.throwStreamErrorIfNotOK $ FFI.c_logdevice_append_sync client' topicid ba_data offset len nullPtr lsn'
+    return $ SequenceNum sn_ret
 
 appendAndRetTimestamp
   :: StreamClient
@@ -284,10 +286,11 @@ appendAndRetTimestamp
   -> Bytes
   -> IO (Int64, SequenceNum)
 appendAndRetTimestamp client (TopicID topicid) payload =
-  withForeignPtr (unStreamClient client) $ \clientPtr ->
-    Z.withPrimVectorUnsafe payload $ \ba_data offset len -> do
-      (ts, num) <- Z.allocPrimUnsafe $ FFI.c_logdevice_append_sync_ts clientPtr topicid ba_data offset len
-      return (ts, SequenceNum num)
+  withForeignPtr (unStreamClient client) $ \client' ->
+  Z.withPrimVectorUnsafe payload $ \ba_data offset len -> do
+    (sn_ret, (ts, _)) <- Z.withPrimUnsafe FFI.c_lsn_invalid $ \lsn' ->
+      Z.allocPrimUnsafe $ \ts' -> FFI.c_logdevice_append_sync_ts client' topicid ba_data offset len ts' lsn'
+    return (ts, SequenceNum sn_ret)
 
 -------------------------------------------------------------------------------
 

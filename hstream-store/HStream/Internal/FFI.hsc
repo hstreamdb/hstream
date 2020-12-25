@@ -229,7 +229,8 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
                           -> Int            -- ^ payload offset
                           -> Int            -- ^ payload length
                           -> Ptr Int64      -- ^ returned value, timestamp, can be NULL
-                          -> IO C_LSN       -- ^ returned value, log sequence number
+                          -> MBA## C_LSN    -- ^ returned value, log sequence number
+                          -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
   c_logdevice_append_sync_ts :: Ptr LogDeviceClient
@@ -238,7 +239,8 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
                              -> Int            -- ^ payload offset
                              -> Int            -- ^ payload length
                              -> MBA## Int64    -- ^ returned value, timestamp
-                             -> IO C_LSN       -- ^ returned value, log sequence number
+                             -> MBA## C_LSN    -- ^ returned value, log sequence number
+                             -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Client Reader API
