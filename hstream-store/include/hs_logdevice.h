@@ -148,9 +148,10 @@ void* free_lodevice_loggroup(logdevice_loggroup_t* group);
 
 // ----------------------------------------------------------------------------
 
-c_lsn_t logdevice_append_sync(logdevice_client_t* client, uint64_t logid,
-                              const char* payload, HsInt offset, HsInt length,
-                              int64_t* ts);
+facebook::logdevice::Status
+logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
+                      const char* payload, HsInt offset, HsInt length,
+                      int64_t* ts, c_lsn_t* lsn_ret);
 
 int logdevice_reader_start_reading(logdevice_reader_t* reader, c_logid_t logid,
                                    c_lsn_t start, c_lsn_t until);
