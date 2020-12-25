@@ -4,32 +4,46 @@ module HStream.Store.Stream
   ( -- * Stream Client
     StreamClient
   , newStreamClient
-    -- ** Sequence Number
-  , SequenceNum
-    -- ** Topic
+  , setClientSettings
+  , getClientSettings
+  , getMaxPayloadSize
+
+    -- * Types
+    -- ** Topic ID
   , TopicID
   , topicIDInvalid
   , topicIDInvalid'
   , mkTopicID
-  , StreamTopicGroup
+    -- ** Sequence Number
+  , SequenceNum
+    -- ** Data Record
+  , DataRecord (..)
+
+    -- * Topic Config
+    -- ** Topic attributes
   , TopicAttributes
   , newTopicAttributes
   , setTopicReplicationFactor
   , setTopicReplicationFactor'
+    -- ** Topic Group
+  , StreamTopicGroup
   , makeTopicGroupSync
   , getTopicGroupSync
   , removeTopicGroupSync
   , removeTopicGroupSync'
   , topicGroupGetRange
   , topicGroupGetName
-    -- ** Reader
-  , StreamReader
+    -- ** Topic Directory
+  , StreamTopicDirectory
+  , makeTopicDirectory
+  , topicDirectoryGetName
 
     -- * Writer
   , append
   , appendAndRetTimestamp
 
     -- * Reader
+  , StreamReader
   , newStreamReader
   , startReading
   , read
@@ -49,13 +63,15 @@ import           Foreign.ForeignPtr   (ForeignPtr, newForeignPtr,
                                        withForeignPtr)
 import           Foreign.Marshal      (allocaBytes)
 import           Foreign.Ptr          (nullPtr)
-import           Foreign.Storable     (Storable)
 import           Prelude              hiding (read)
-import qualified Z.Data.CBytes        as Z
-import qualified Z.Data.Vector        as Z
+import           Z.Data.CBytes        (CBytes)
+import qualified Z.Data.CBytes        as ZC
+import           Z.Data.Vector        (Bytes)
 import qualified Z.Foreign            as Z
 
 import qualified HStream.Exception    as E
+import           HStream.Internal.FFI (DataRecord (..), SequenceNum (..),
+                                       TopicID (..))
 import qualified HStream.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
@@ -64,25 +80,81 @@ newtype StreamClient = StreamClient
   { unStreamClient :: ForeignPtr FFI.LogDeviceClient }
 
 -- | Create a new stream client from config file path.
-newStreamClient :: Z.CBytes -> IO StreamClient
-newStreamClient configPath = Z.withCBytesUnsafe configPath $ \ba -> do
+newStreamClient :: CBytes -> IO StreamClient
+newStreamClient configPath = ZC.withCBytesUnsafe configPath $ \ba -> do
   i <- FFI.c_new_logdevice_client ba
   StreamClient <$> newForeignPtr FFI.c_free_logdevice_client_fun i
 
-newtype StreamReader = StreamReader
-  { unStreamReader :: ForeignPtr FFI.LogDeviceReader }
+-- | Returns the maximum permitted payload size for this client.
+--
+-- The default is 1MB, but this can be increased via changing the
+-- max-payload-size setting.
+getMaxPayloadSize :: StreamClient -> IO Word
+getMaxPayloadSize (StreamClient client) =
+  withForeignPtr client $ FFI.c_ld_client_get_max_payload_size
 
-newtype StreamTopicGroup = StreamTopicGroup
-  { unStreamTopicGroup :: ForeignPtr FFI.LogDeviceLogGroup }
+-- | Change settings for the Client.
+--
+-- Settings that are commonly used on the client:
+--
+-- connect-timeout
+--    Connection timeout
+--
+-- handshake-timeout
+--    Timeout for LogDevice protocol handshake sequence
+--
+-- num-workers
+--    Number of worker threads on the client
+--
+-- client-read-buffer-size
+--    Number of records to buffer while reading
+--
+-- max-payload-size
+--    The maximum payload size that could be appended by the client
+--
+-- ssl-boundary
+--    Enable SSL in cross-X traffic, where X is the setting. Example: if set
+--    to "rack", all cross-rack traffic will be sent over SSL. Can be one of
+--    "none", "node", "rack", "row", "cluster", "dc" or "region". If a value
+--    other than "none" or "node" is specified, --my-location has to be
+--    specified as well.
+--
+-- my-location
+--    Specifies the location of the machine running the client. Used for
+--    determining whether to use SSL based on --ssl-boundary. Format:
+--    "{region}.{dc}.{cluster}.{row}.{rack}"
+--
+-- client-initial-redelivery-delay
+--    Initial delay to use when downstream rejects a record or gap
+--
+-- client-max-redelivery-delay
+--    Maximum delay to use when downstream rejects a record or gap
+--
+-- on-demand-logs-config
+--    Set this to true if you want the client to get log configuration on
+--    demand from the server when log configuration is not included in the
+--    main config file.
+--
+-- enable-logsconfig-manager
+--    Set this to true if you want to use the internal replicated storage for
+--    logs configuration, this will ignore loading the logs section from the
+--    config file.
+setClientSettings :: StreamClient -> CBytes -> CBytes -> IO ()
+setClientSettings (StreamClient client) key val =
+  withForeignPtr client $ \client' ->
+  ZC.withCBytesUnsafe key $ \key' ->
+  ZC.withCBytesUnsafe val $ \val' -> void $
+    E.throwStreamErrorIfNotOK $ FFI.c_ld_client_set_settings client' key' val'
+
+getClientSettings :: StreamClient -> CBytes -> IO Bytes
+getClientSettings (StreamClient client) key =
+  withForeignPtr client $ \client' ->
+  ZC.withCBytesUnsafe key $ \key' ->
+    Z.fromStdString $ FFI.c_ld_client_get_settings client' key'
+
+-------------------------------------------------------------------------------
 
 -- TODO: assert all functions that recv TopicID as a param is a valid TopicID
-
-newtype TopicID = TopicID FFI.C_LogID
-  deriving (Show, Eq, Ord, Num, Storable)
-
-instance Bounded TopicID where
-  minBound = TopicID FFI.c_logid_min
-  maxBound = TopicID FFI.c_logid_max
 
 -- TODO: validation
 -- 1. invalid_min < topicID < invalid_max
@@ -112,18 +184,33 @@ setTopicReplicationFactor' :: TopicAttributes -> Int -> IO TopicAttributes
 setTopicReplicationFactor' attrs val =
   setTopicReplicationFactor attrs val >> return attrs
 
-newtype SequenceNum = SequenceNum FFI.C_LSN
-  deriving (Show, Eq, Ord, Num, Storable)
-
-instance Bounded SequenceNum where
-  minBound = SequenceNum FFI.c_lsn_oldest
-  maxBound = SequenceNum FFI.c_lsn_max
-
-type DataRecord = FFI.DataRecord
-
 -------------------------------------------------------------------------------
 
--- Creates a log group under a specific directory path.
+newtype StreamTopicGroup = StreamTopicGroup
+  { unStreamTopicGroup :: ForeignPtr FFI.LogDeviceLogGroup }
+
+newtype StreamTopicDirectory = StreamTopicDirectory
+  { unStreamTopicDirectory :: ForeignPtr FFI.LogDeviceLogDirectory }
+
+makeTopicDirectory :: StreamClient
+                   -> CBytes
+                   -> TopicAttributes
+                   -> Bool
+                   -> IO StreamTopicDirectory
+makeTopicDirectory client path attrs mkParent =
+  withForeignPtr (unStreamClient client) $ \client' ->
+  withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
+  ZC.withCBytesUnsafe path $ \path' -> do
+    (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
+      void $ E.throwStreamErrorIfNotOK $
+        FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
+    StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
+
+topicDirectoryGetName :: StreamTopicDirectory -> IO CBytes
+topicDirectoryGetName dir = withForeignPtr (unStreamTopicDirectory dir) $
+  ZC.fromCString . FFI.c_ld_logdirectory_get_name
+
+-- | Creates a log group under a specific directory path.
 --
 -- Note that, even after this method returns success, it may take some time
 -- for the update to propagate to all servers, so the new log group may not
@@ -131,7 +218,7 @@ type DataRecord = FFI.DataRecord
 -- NOTINSERVERCONFIG). Same applies to all other logs config update methods,
 -- e.g. setAttributes().
 makeTopicGroupSync :: StreamClient
-                   -> Z.CBytes
+                   -> CBytes
                    -> TopicID
                    -> TopicID
                    -> TopicAttributes
@@ -140,32 +227,32 @@ makeTopicGroupSync :: StreamClient
 makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent =
   withForeignPtr (unStreamClient client) $ \client' ->
   withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
-  Z.withCBytesUnsafe path $ \path' -> do
+  ZC.withCBytesUnsafe path $ \path' -> do
     (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' -> do
       void $ E.throwStreamErrorIfNotOK $
         FFI.c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
     StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
 
-getTopicGroupSync :: StreamClient -> Z.CBytes -> IO StreamTopicGroup
+getTopicGroupSync :: StreamClient -> CBytes -> IO StreamTopicGroup
 getTopicGroupSync client path =
   withForeignPtr (unStreamClient client) $ \client' ->
-  Z.withCBytesUnsafe path $ \path' -> do
+  ZC.withCBytesUnsafe path $ \path' -> do
     (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_loggroup_sync client' path' group''
     StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
 
-removeTopicGroupSync :: StreamClient -> Z.CBytes -> IO ()
+removeTopicGroupSync :: StreamClient -> CBytes -> IO ()
 removeTopicGroupSync client path =
   withForeignPtr (unStreamClient client) $ \client' ->
-  Z.withCBytesUnsafe path $ \path' -> do
+  ZC.withCBytesUnsafe path $ \path' -> do
     void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync client' path' nullPtr
 
 -- | The same as 'removeTopicGroupSync', but return the version of the
 -- logsconfig at which the topic group got removed.
-removeTopicGroupSync' :: StreamClient -> Z.CBytes -> IO Word64
+removeTopicGroupSync' :: StreamClient -> CBytes -> IO Word64
 removeTopicGroupSync' client path =
   withForeignPtr (unStreamClient client) $ \client' ->
-  Z.withCBytesUnsafe path $ \path' -> do
+  ZC.withCBytesUnsafe path $ \path' -> do
     (version, _) <- Z.withPrimUnsafe 0 $ \version' ->
       E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync' client' path' version'
     return version
@@ -178,12 +265,14 @@ topicGroupGetRange group =
         FFI.c_ld_loggroup_get_range group' start' end'
     return (mkTopicID start_ret, mkTopicID end_ret)
 
-topicGroupGetName :: StreamTopicGroup -> IO Z.CBytes
+topicGroupGetName :: StreamTopicGroup -> IO CBytes
 topicGroupGetName group =
   withForeignPtr (unStreamTopicGroup group) $ \group' ->
-    Z.fromCString =<< FFI.c_ld_loggroup_get_name group'
+    ZC.fromCString =<< FFI.c_ld_loggroup_get_name group'
 
-append :: StreamClient -> TopicID -> Z.Bytes -> IO SequenceNum
+-------------------------------------------------------------------------------
+
+append :: StreamClient -> TopicID -> Bytes -> IO SequenceNum
 append client (TopicID topicid) payload =
   withForeignPtr (unStreamClient client) $ \clientPtr ->
     Z.withPrimVectorUnsafe payload $ \ba_data offset len -> SequenceNum <$>
@@ -192,7 +281,7 @@ append client (TopicID topicid) payload =
 appendAndRetTimestamp
   :: StreamClient
   -> TopicID
-  -> Z.Bytes
+  -> Bytes
   -> IO (Int64, SequenceNum)
 appendAndRetTimestamp client (TopicID topicid) payload =
   withForeignPtr (unStreamClient client) $ \clientPtr ->
@@ -201,6 +290,9 @@ appendAndRetTimestamp client (TopicID topicid) payload =
       return (ts, SequenceNum num)
 
 -------------------------------------------------------------------------------
+
+newtype StreamReader = StreamReader
+  { unStreamReader :: ForeignPtr FFI.LogDeviceReader }
 
 newStreamReader :: StreamClient
                 -> CSize
