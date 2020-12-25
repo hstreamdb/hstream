@@ -99,7 +99,9 @@ const char* show_error_description(facebook::logdevice::E err);
 // ----------------------------------------------------------------------------
 
 // Create & Free Client
-logdevice_client_t* new_logdevice_client(char* config_path);
+facebook::logdevice::Status
+new_logdevice_client(char* config_path, logdevice_client_t** client_ret);
+
 void free_logdevice_client(logdevice_client_t* client);
 
 // Create & Free Reader

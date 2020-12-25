@@ -16,6 +16,7 @@ module HStream.Store.Stream
   , mkTopicID
     -- ** Sequence Number
   , SequenceNum
+  , FFI.sequenceNumInvalid
     -- ** Data Record
   , DataRecord (..)
 
@@ -55,35 +56,36 @@ module HStream.Store.Stream
   , setLoggerlevelError
   ) where
 
-import           Control.Monad        (void)
-import           Data.Int             (Int64)
-import           Data.Word            (Word64)
-import           Foreign.C.Types      (CSize)
-import           Foreign.ForeignPtr   (ForeignPtr, newForeignPtr,
-                                       withForeignPtr)
-import           Foreign.Marshal      (allocaBytes)
-import           Foreign.Ptr          (nullPtr)
-import           Prelude              hiding (read)
-import           Z.Data.CBytes        (CBytes)
-import qualified Z.Data.CBytes        as ZC
-import           Z.Data.Vector        (Bytes)
-import qualified Z.Foreign            as Z
+import           Control.Monad           (void)
+import           Data.Int                (Int64)
+import           Data.Word               (Word64)
+import           Foreign.C.Types         (CSize)
+import           Foreign.ForeignPtr      (ForeignPtr, newForeignPtr,
+                                          withForeignPtr)
+import           Foreign.Marshal         (allocaBytes)
+import           Foreign.Ptr             (nullPtr)
+import           Prelude                 hiding (read)
+import           Z.Data.CBytes           (CBytes)
+import qualified Z.Data.CBytes           as ZC
+import           Z.Data.Vector           (Bytes)
+import qualified Z.Foreign               as Z
 
-import qualified HStream.Exception    as E
-import           HStream.Internal.FFI (DataRecord (..), SequenceNum (..),
-                                       TopicID (..))
-import qualified HStream.Internal.FFI as FFI
+import           HStream.Internal.FFI    (DataRecord (..), SequenceNum (..),
+                                          TopicID (..))
+import qualified HStream.Internal.FFI    as FFI
+import qualified HStream.Store.Exception as E
 
 -------------------------------------------------------------------------------
 
 newtype StreamClient = StreamClient
   { unStreamClient :: ForeignPtr FFI.LogDeviceClient }
 
--- | Create a new stream client from config file path.
+-- | Create a new stream client from config url.
 newStreamClient :: CBytes -> IO StreamClient
-newStreamClient configPath = ZC.withCBytesUnsafe configPath $ \ba -> do
-  i <- FFI.c_new_logdevice_client ba
-  StreamClient <$> newForeignPtr FFI.c_free_logdevice_client_fun i
+newStreamClient config = ZC.withCBytesUnsafe config $ \config' -> do
+  (client', _) <- Z.withPrimUnsafe nullPtr $ \client'' ->
+    E.throwStreamErrorIfNotOK $ FFI.c_new_logdevice_client config' client''
+  StreamClient <$> newForeignPtr FFI.c_free_logdevice_client_fun client'
 
 -- | Returns the maximum permitted payload size for this client.
 --

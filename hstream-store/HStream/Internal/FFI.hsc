@@ -36,6 +36,9 @@ instance Bounded SequenceNum where
   minBound = SequenceNum c_lsn_oldest
   maxBound = SequenceNum c_lsn_max
 
+sequenceNumInvalid :: SequenceNum
+sequenceNumInvalid = SequenceNum c_lsn_invalid
+
 data DataRecord = DataRecord
   { recordLogID   :: TopicID
   , recordLSN     :: SequenceNum
@@ -134,9 +137,13 @@ foreign import ccall unsafe "hs_logdevice.h show_error_description"
 
 -- | Create a new logdeive client
 foreign import ccall unsafe "hs_logdevice.h new_logdevice_client"
-  c_new_logdevice_client :: BA## Word8 -> IO (Ptr LogDeviceClient)
+  c_new_logdevice_client :: BA## Word8
+                         -> MBA## (Ptr LogDeviceClient)
+                         -> IO ErrorCode
+
 foreign import ccall unsafe "hs_logdevice.h free_logdevice_client"
   c_free_logdevice_client :: Ptr LogDeviceClient -> IO ()
+
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_client"
   c_free_logdevice_client_fun :: FunPtr (Ptr LogDeviceClient -> IO ())
 

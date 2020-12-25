@@ -1,20 +1,38 @@
 #!/bin/bash
+#
+# You can customize options through environments, e.g.
+#
+# $ USE_STABLE_IMAGE=true CONTAINER_BIN=podman CONTAINER_HOME=$HOME WORKDIR=/tmp/hstream-test script/docker-test.sh
+
 set -e
 
 SRC_DIR=${SRC_DIR:-$(pwd)}
 WORKDIR=${WORKDIR:-$(mktemp --directory)}
+STORAGE_DIR=${STORAGE_DIR:-$(mktemp --directory)}
+
 GHC_VERSION=${GHC_VERSION:-8.10}
-IMAGE_NAME=${IMAGE_NAME:-hstreamdb/haskell}
-IMAGE="$IMAGE_NAME:$GHC_VERSION"
+USE_STABLE_IMAGE=${USE_STABLE_IMAGE:-""}
+if [ -n "$USE_STABLE_IMAGE" ]; then
+    HS_IMAGE="hstreamdb/haskell:$GHC_VERSION-stable"
+    STORE_SERVER_IMAGE="hstreamdb/logdevice:2.46.5"
+else
+    HS_IMAGE="hstreamdb/haskell:$GHC_VERSION"
+    STORE_SERVER_IMAGE="hstreamdb/logdevice"
+fi
 CABAL_HOME=${CABAL_HOME:-$HOME/.cabal}
+CONTAINER_HOME=${CONTAINER_HOME:-/root}
 CONTAINER_BIN="${CONTAINER_BIN:-docker}"
+
+SERVER_CONTAINER_NAME="ci-server-$GHC_VERSION"
+STORAGE_SERVER_CONTAINER_NAME="ci-store-$GHC_VERSION"
+TEST_CONTAINER_NAME="ci-test-$GHC_VERSION"
 
 log_info() {
     echo -e "\033[96m$@\033[0m"
 }
 
 pack_and_unpack() {
-    $CONTAINER_BIN run --rm -v $SRC_DIR:/srv -w /srv $IMAGE cabal sdist all
+    $CONTAINER_BIN run --rm -v $SRC_DIR:/srv -w /srv $HS_IMAGE cabal sdist all
     mkdir -p $WORKDIR && rm -rf $WORKDIR/*
     cp dist-newstyle/sdist/*.tar.gz $WORKDIR/ && cd $WORKDIR/
     find . -maxdepth 1 -type f -name '*.tar.gz' -exec tar -xvf '{}' \;
@@ -23,63 +41,58 @@ pack_and_unpack() {
     cp ${SRC_DIR}/hstream/config.example.yaml ${WORKDIR}/config.example.yaml
 }
 
-start_builder_container() {
-    local container_name=$1
-    log_info "Start builder container..."
+start_tester_container() {
     $CONTAINER_BIN run -td --rm \
-        --name $container_name \
-        -e LC_ALL=en_US.UTF-8 \
-        -v $CABAL_HOME:/root/.cabal \
+        --name $TEST_CONTAINER_NAME \
+        -e LC_ALL=C.UTF-8 \
+        -e HOME=$CONTAINER_HOME \
+        -v $CABAL_HOME:$CONTAINER_HOME/.cabal \
         -v $WORKDIR:/srv \
-        -w /srv $IMAGE bash
+        -v $STORAGE_DIR:/data/store \
+        -w /srv $HS_IMAGE bash
 }
 
-run_cabal_build_all() {
-    local container_name=$1
-    log_info "Install dependencies & Build"
-    $CONTAINER_BIN exec $container_name cabal update
-    $CONTAINER_BIN exec $container_name cat cabal.project || true
-    $CONTAINER_BIN exec $container_name cabal build --flag server-tests --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
-    $CONTAINER_BIN exec $container_name cabal build --flag server-tests --enable-tests --enable-benchmarks all
-}
-
-start_server_container() {
-    local container_name=$1
-
-    log_info "Start server..."
+start_storage_server_container() {
     $CONTAINER_BIN run -td --rm \
-        --name $container_name \
-        -v $CABAL_HOME:/root/.cabal \
-        -v $WORKDIR:/srv \
-        -w /srv $IMAGE \
-        cabal exec hstream config.example.yaml
+        --name $STORAGE_SERVER_CONTAINER_NAME \
+        --network container:$TEST_CONTAINER_NAME \
+        -v $STORAGE_DIR:/data/store \
+        $STORE_SERVER_IMAGE /usr/local/bin/ld-dev-cluster --root /data/store --use-tcp
 
-    # FIXME: Here we sleep 2 seconds to wait the server start.
+    # NOTE: Here we sleep 2 seconds to wait the server start.
     sleep 2
 }
 
-start_tester_container() {
-    local container_name=$1
-    local linked_server_name=$2
-    log_info "Start tester container..."
+# TODO
+start_server_container() {
     $CONTAINER_BIN run -td --rm \
-        --name $container_name \
-        -e LC_ALL=C.UTF-8 \
-        --network container:${linked_server_name} \
-        -v $CABAL_HOME:/root/.cabal \
+        --name $SERVER_CONTAINER_NAME \
+        -e HOME=$CONTAINER_HOME \
+        --network container:$TEST_CONTAINER_NAME \
+        -v $CABAL_HOME:$CONTAINER_HOME/.cabal \
         -v $WORKDIR:/srv \
-        -w /srv $IMAGE bash
+        -w /srv $HS_IMAGE \
+        cabal exec hstream config.example.yaml
+    # NOTE: Here we sleep 2 seconds to wait the server start.
+    sleep 2
+}
+
+run_cabal_build_all() {
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal update
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cat cabal.project || true
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --flag server-tests --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --flag server-tests --enable-tests --enable-benchmarks all
 }
 
 run_cabal_test_all() {
-    container_name=$1
-    log_info "Run all tests..."
-    $CONTAINER_BIN exec $container_name cabal test --flag server-tests --test-show-details=always all
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --flag server-tests --test-show-details=always all
+}
+
+run_cabal_test_store() {
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --test-show-details=always hstream-store
 }
 
 run_check_all() {
-    container_name=$1
-
     # unfortunately, there is no `cabal check all`
     log_info "Run all cabal check..."
     # Note that we ignore hstream-store package to run cabal check, because there
@@ -87,43 +100,42 @@ run_check_all() {
     #   ...
     #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
     #   Warning: Hackage would reject this package.
-    $CONTAINER_BIN exec $container_name bash -c \
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME bash -c \
         "find . -maxdepth 1 -type d -not -path './dist*' -not -path '.' -not -path './hstream-store*' | xargs -I % bash -c 'cd % && echo checking %... && cabal check'"
 
     log_info "Run cabal haddock"
-    $CONTAINER_BIN exec $container_name cabal haddock --flag server-tests --enable-tests --enable-benchmarks all
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal haddock --flag server-tests --enable-tests --enable-benchmarks all
+}
+
+try_release_container() {
+    $CONTAINER_BIN rm -f $STORAGE_SERVER_CONTAINER_NAME || true
+    $CONTAINER_BIN rm -f $SERVER_CONTAINER_NAME || true
+    $CONTAINER_BIN rm -f $TEST_CONTAINER_NAME || true
 }
 
 # --------------------------------------
 
-build_container_name="build-$GHC_VERSION"
-server_container_name="server-$GHC_VERSION"
-test_container_name="test-$GHC_VERSION"
+try_release_container &> /dev/null
 
-build_all() {
-    $CONTAINER_BIN kill $build_container_name || true
-    log_info "Cabal build from $WORKDIR, src_dir: $SRC_DIR, ghc_version: $GHC_VERSION"
-    pack_and_unpack
-    start_builder_container $build_container_name
-    run_cabal_build_all $build_container_name
-}
+log_info "Start tester container from $HS_IMAGE..."
+start_tester_container
 
-# NOTE: you must first run "build_all", and then you can run this "test_all"
-test_all() {
-    log_info "Cabal test from $WORKDIR, src_dir: $SRC_DIR, ghc_version: $GHC_VERSION"
-    $CONTAINER_BIN kill $server_container_name || true
-    $CONTAINER_BIN kill $test_container_name || true
-    start_server_container $server_container_name
-    start_tester_container $test_container_name $server_container_name
-    run_cabal_test_all $test_container_name
-    run_check_all $test_container_name
-}
+log_info "Start store server from $STORE_SERVER_IMAGE..."
+start_storage_server_container
 
-if [ "$1" == "build" ]; then
-    build_all
-elif [ "$1" == "test" ]; then
-    test_all
-else
-    build_all
-    test_all
-fi
+# TODO
+#log_info "Start main server..."
+#start_server_container
+
+log_info "Pack & Unpack packages from $SRC_DIR to $WORKDIR..."
+pack_and_unpack
+
+log_info "Build from $WORKDIR..."
+run_cabal_build_all
+
+log_info "Test all..."
+run_cabal_test_all
+
+run_check_all
+
+try_release_container &> /dev/null
