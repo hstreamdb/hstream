@@ -1,30 +1,8 @@
 #include "hs_logdevice.h"
 #include "utils.h"
 
-using facebook::logdevice::AppendAttributes;
-using facebook::logdevice::Client;
-using facebook::logdevice::ClientFactory;
-using facebook::logdevice::Reader;
-using LogDirectory = facebook::logdevice::client::Directory;
-using facebook::logdevice::ClientSettings;
-using facebook::logdevice::client::LogAttributes;
-using facebook::logdevice::client::LogGroup;
-
 extern "C" {
 // ----------------------------------------------------------------------------
-
-struct logdevice_client_t {
-  std::shared_ptr<Client> rep;
-};
-struct logdevice_reader_t {
-  std::unique_ptr<Reader> rep;
-};
-struct logdevice_logdirectory_t {
-  std::unique_ptr<LogDirectory> rep;
-};
-struct logdevice_loggroup_t {
-  std::unique_ptr<LogGroup> rep;
-};
 
 void set_dbg_level_error(void) {
   facebook::logdevice::dbg::currentLevel =
@@ -79,6 +57,15 @@ size_t ld_client_get_max_payload_size(logdevice_client_t* client) {
   return client->rep->getMaxPayloadSize();
 }
 
+const std::string* ld_client_get_settings(logdevice_client_t* client,
+                                          const char* name) {
+  auto value = new std::string;
+  ClientSettings& settings = client->rep->settings();
+  folly::Optional<std::string> maybe_value = settings.get(name);
+  *value = maybe_value.value_or(nullptr);
+  return value;
+}
+
 facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
                                                    const char* name,
                                                    const char* value) {
@@ -102,94 +89,6 @@ c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client,
                                     uint64_t logid) {
   return client->rep->getTailLSNSync(facebook::logdevice::logid_t(logid));
 }
-
-// TODO
-// logdevice_logdirectory_t*
-// ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
-//                              bool mk_intermediate_dirs, char* failure_reason)
-//                              {
-//  std::unique_ptr<LogDirectory> directory;
-//  std::string reason = failure_reason;
-//  directory = client->rep->makeDirectorySync(path, mk_intermediate_dirs,
-//                                             LogAttributes(), &reason);
-//  logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
-//  result->rep = std::move(directory);
-//  return result;
-//}
-
-// ----------------------------------------------------------------------------
-// LogGroup
-
-facebook::logdevice::Status ld_client_make_loggroup_sync(
-    logdevice_client_t* client, const char* path, const c_logid_t start_logid,
-    const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
-    logdevice_loggroup_t** loggroup_result) {
-  std::unique_ptr<LogGroup> loggroup = nullptr;
-  auto start = facebook::logdevice::logid_t(start_logid);
-  auto end = facebook::logdevice::logid_t(end_logid);
-  std::string reason;
-
-  loggroup = client->rep->makeLogGroupSync(
-      path, std::make_pair(start, end), *attrs, mk_intermediate_dirs, &reason);
-  if (loggroup) {
-    logdevice_loggroup_t* result = new logdevice_loggroup_t;
-    result->rep = std::move(loggroup);
-    *loggroup_result = result;
-    return facebook::logdevice::E::OK;
-  }
-  std::cerr << "-> ld_client_make_loggroup_sync error: " << reason << "\n";
-  return facebook::logdevice::err;
-}
-
-facebook::logdevice::Status
-ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
-                            logdevice_loggroup_t** loggroup_result) {
-  std::unique_ptr<LogGroup> loggroup = nullptr;
-  std::string path_ = path;
-  loggroup = client->rep->getLogGroupSync(path_);
-  if (loggroup) {
-    logdevice_loggroup_t* result = new logdevice_loggroup_t;
-    result->rep = std::move(loggroup);
-    *loggroup_result = result;
-    return facebook::logdevice::E::OK;
-  }
-  return facebook::logdevice::err;
-}
-
-facebook::logdevice::Status
-ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
-                               uint64_t* version) {
-  std::string path_ = path;
-  bool ret = client->rep->removeLogGroupSync(path_, version);
-  if (ret)
-    return facebook::logdevice::E::OK;
-  return facebook::logdevice::err;
-}
-
-void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
-                           c_logid_t* end) {
-  const facebook::logdevice::logid_range_t& range = group->rep->range();
-  *start = range.first.val();
-  *end = range.second.val();
-}
-
-// NOTE: returned null-terminated string should be copied from ffi function.
-const char* ld_loggroup_get_name(logdevice_loggroup_t* group) {
-  return group->rep->name().c_str();
-}
-
-const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group) {
-  return group->rep->getFullyQualifiedName().c_str();
-}
-
-uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group) {
-  return group->rep->version();
-}
-
-void* free_lodevice_loggroup(logdevice_loggroup_t* group) { delete group; }
-
-// LogGroup END
-// ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
 // Writer

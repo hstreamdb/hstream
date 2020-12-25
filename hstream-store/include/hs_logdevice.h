@@ -21,15 +21,36 @@
 #ifndef HS_LOGDEVICE
 #define HS_LOGDEVICE
 
+using facebook::logdevice::AppendAttributes;
+using facebook::logdevice::Client;
+using facebook::logdevice::ClientFactory;
+using facebook::logdevice::ClientSettings;
+using facebook::logdevice::Reader;
+using facebook::logdevice::client::LogAttributes;
 using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
+using facebook::logdevice::client::LogGroup;
+using LogDirectory = facebook::logdevice::client::Directory;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+struct logdevice_loggroup_t {
+  std::unique_ptr<LogGroup> rep;
+};
+struct logdevice_logdirectory_t {
+  std::unique_ptr<LogDirectory> rep;
+};
+struct logdevice_client_t {
+  std::shared_ptr<Client> rep;
+};
+struct logdevice_reader_t {
+  std::unique_ptr<Reader> rep;
+};
 typedef struct logdevice_client_t logdevice_client_t;
 typedef struct logdevice_reader_t logdevice_reader_t;
 typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
+typedef struct logdevice_loggroup_t logdevice_loggroup_t;
 
 // LogID
 typedef uint64_t c_logid_t;
@@ -66,8 +87,6 @@ typedef struct logdevice_data_record_t {
 LogAttributes* default_log_attributes();
 
 // LogGroup
-typedef struct logdevice_loggroup_t logdevice_loggroup_t;
-
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
                            c_logid_t* end);
 
@@ -92,13 +111,29 @@ void free_logdevice_reader(logdevice_reader_t* reader);
 // Client
 
 size_t ld_client_get_max_payload_size(logdevice_client_t* client);
+
 c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client, uint64_t logid);
+
+const std::string* ld_client_get_settings(logdevice_client_t* client,
+                                          const char* name);
+
 facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
                                                    const char* name,
                                                    const char* value);
-logdevice_logdirectory_t*
+
+// ----------------------------------------------------------------------------
+// LogConfigType: LogDirectory
+
+facebook::logdevice::Status
 ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
-                              bool mk_intermediate_dirs, char* failure_reason);
+                              bool mk_intermediate_dirs, LogAttributes* attrs,
+                              logdevice_logdirectory_t** logdir_ret);
+
+void* free_lodevice_logdirectory(logdevice_logdirectory_t* dir);
+
+const char* lg_logdirectory_get_name(logdevice_logdirectory_t* dir);
+
+// ----------------------------------------------------------------------------
 
 facebook::logdevice::Status ld_client_make_loggroup_sync(
     logdevice_client_t* client, const char* path, const c_logid_t start_logid,
