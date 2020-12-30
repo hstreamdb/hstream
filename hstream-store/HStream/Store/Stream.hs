@@ -19,6 +19,10 @@ module HStream.Store.Stream
   , FFI.sequenceNumInvalid
     -- ** Data Record
   , DataRecord (..)
+    -- ** KeyType
+  , FFI.KeyType
+  , FFI.keyTypeFindKey
+  , FFI.keyTypeFilterable
 
     -- * Topic Config
     -- ** Topic attributes
@@ -40,8 +44,8 @@ module HStream.Store.Stream
   , topicDirectoryGetName
 
     -- * Writer
-  , append
-  , appendAndRetTimestamp
+  , appendSync
+  , appendSyncTS
 
     -- * Reader
   , StreamReader
@@ -274,24 +278,42 @@ topicGroupGetName group =
 
 -------------------------------------------------------------------------------
 
-append :: StreamClient -> TopicID -> Bytes -> IO SequenceNum
-append client (TopicID topicid) payload =
-  withForeignPtr (unStreamClient client) $ \client' ->
-  Z.withPrimVectorUnsafe payload $ \ba_data offset len -> do
-    (sn_ret, _) <- Z.withPrimUnsafe FFI.c_lsn_invalid $ \lsn' ->
-      E.throwStreamErrorIfNotOK $ FFI.c_logdevice_append_sync client' topicid ba_data offset len nullPtr lsn'
+-- | Appends a new record to the log. Blocks until operation completes.
+appendSync :: StreamClient
+           -> TopicID
+           -> Bytes
+           -> Maybe (FFI.KeyType, CBytes)
+           -> IO SequenceNum
+appendSync (StreamClient client) (TopicID topicid) payload m_key_attr =
+  withForeignPtr client $ \client' ->
+  Z.withPrimVectorSafe payload $ \payload' len -> do
+    (sn_ret, _) <- Z.withPrimSafe FFI.c_lsn_invalid $ \lsn' ->
+      E.throwStreamErrorIfNotOK $
+        case m_key_attr of
+          Just (keytype, keyval) -> do
+            ZC.withCBytes keyval $ \keyval' ->
+              FFI.c_logdevice_append_with_attrs_sync_safe client' topicid payload' 0 len keytype keyval' nullPtr lsn'
+          Nothing -> FFI.c_logdevice_append_sync_safe client' topicid payload' 0 len nullPtr lsn'
     return $ SequenceNum sn_ret
 
-appendAndRetTimestamp
-  :: StreamClient
-  -> TopicID
-  -> Bytes
-  -> IO (Int64, SequenceNum)
-appendAndRetTimestamp client (TopicID topicid) payload =
-  withForeignPtr (unStreamClient client) $ \client' ->
-  Z.withPrimVectorUnsafe payload $ \ba_data offset len -> do
-    (sn_ret, (ts, _)) <- Z.withPrimUnsafe FFI.c_lsn_invalid $ \lsn' ->
-      Z.allocPrimUnsafe $ \ts' -> FFI.c_logdevice_append_sync_ts client' topicid ba_data offset len ts' lsn'
+-- | The same as 'appendSync', but also return the timestamp that stored with
+-- the record.
+appendSyncTS :: StreamClient
+             -> TopicID
+             -> Bytes
+             -> Maybe (FFI.KeyType, CBytes)
+             -> IO (Int64, SequenceNum)
+appendSyncTS (StreamClient client) (TopicID topicid) payload m_key_attr =
+  withForeignPtr client $ \client' ->
+  Z.withPrimVectorSafe payload $ \payload' len -> do
+    (sn_ret, (ts, _)) <- Z.withPrimSafe FFI.c_lsn_invalid $ \lsn' ->
+      Z.allocPrimSafe $ \ts' ->
+        E.throwStreamErrorIfNotOK $
+          case m_key_attr of
+            Just (keytype, keyval) -> do
+              ZC.withCBytes keyval $ \keyval' ->
+                FFI.c_logdevice_append_with_attrs_sync_safe client' topicid payload' 0 len keytype keyval' ts' lsn'
+            Nothing -> FFI.c_logdevice_append_sync_safe client' topicid payload' 0 len ts' lsn'
     return (ts, SequenceNum sn_ret)
 
 -------------------------------------------------------------------------------

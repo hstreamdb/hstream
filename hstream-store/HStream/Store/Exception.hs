@@ -123,7 +123,7 @@ import qualified Control.Exception    as E
 import           Data.Typeable        (cast)
 import           GHC.Stack            (CallStack, callStack, prettyCallStack)
 import qualified Z.Data.Text          as T
-import qualified Z.Data.Text.ShowT    as T
+import qualified Z.Data.Text.Print    as T
 import qualified Z.Foreign            as Z
 
 import qualified HStream.Internal.FFI as FFI
@@ -154,7 +154,7 @@ data SSEInfo = SSEInfo
   , sseCallStack   :: CallStack   -- ^ lightweight partial call-stack
   }
 
-instance T.ShowT SSEInfo where
+instance T.Print SSEInfo where
   toUTF8BuilderP _ (SSEInfo errno desc cstack) = do
     "{name:"
     T.text errno

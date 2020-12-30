@@ -67,6 +67,21 @@ peekDataRecord ptr offset = bracket_ (return ()) release peekData
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr
 
+newtype KeyType = KeyType C_KeyType
+  deriving (Eq, Ord, Storable)
+
+instance Show KeyType where
+  show t
+    | t == keyTypeFindKey = "FINDKEY"
+    | t == keyTypeFilterable = "FILTERABLE"
+    | otherwise = "UNDEFINED"
+
+keyTypeFindKey :: KeyType
+keyTypeFindKey = KeyType c_keytype_findkey
+
+keyTypeFilterable :: KeyType
+keyTypeFilterable = KeyType c_keytype_filterable
+
 -------------------------------------------------------------------------------
 
 data LogDeviceClient
@@ -107,6 +122,14 @@ c_lsn_oldest = (#const C_LSN_OLDEST)
 
 c_lsn_max :: C_LSN
 c_lsn_max = (#const C_LSN_MAX)
+
+type C_KeyType = Word8
+
+c_keytype_findkey :: C_KeyType
+c_keytype_findkey = (#const C_KeyType_FINDKEY)
+
+c_keytype_filterable :: C_KeyType
+c_keytype_filterable = (#const C_KeyType_FILTERABLE)
 
 foreign import ccall unsafe "hs_logdevice.h new_log_attributes"
   c_new_log_attributes :: IO (Ptr LogDeviceLogAttributes)
@@ -229,25 +252,24 @@ foreign import ccall unsafe "hs_logdevice.h &free_lodevice_loggroup"
 -------------------------------------------------------------------------------
 -- Client Writer API
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
-  c_logdevice_append_sync :: Ptr LogDeviceClient
-                          -> C_LogID        -- ^ logid
-                          -> BA## Word8     -- ^ payload pointer
-                          -> Int            -- ^ payload offset
-                          -> Int            -- ^ payload length
-                          -> Ptr Int64      -- ^ returned value, timestamp, can be NULL
-                          -> MBA## C_LSN    -- ^ returned value, log sequence number
-                          -> IO ErrorCode
+foreign import ccall safe "hs_logdevice.h logdevice_append_sync"
+  c_logdevice_append_sync_safe
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Ptr Word8 -> Int -> Int -- ^ Payload pointer,offset,length
+    -> Ptr Int64      -- ^ returned timestamp, should be NULL
+    -> Ptr C_LSN      -- ^ returned value, log sequence number
+    -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_append_sync"
-  c_logdevice_append_sync_ts :: Ptr LogDeviceClient
-                             -> C_LogID        -- ^ logid
-                             -> BA## Word8     -- ^ payload pointer
-                             -> Int            -- ^ payload offset
-                             -> Int            -- ^ payload length
-                             -> MBA## Int64    -- ^ returned value, timestamp
-                             -> MBA## C_LSN    -- ^ returned value, log sequence number
-                             -> IO ErrorCode
+foreign import ccall safe "hs_logdevice.h logdevice_append_with_attrs_sync"
+  c_logdevice_append_with_attrs_sync_safe
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Ptr Word8 -> Int -> Int    -- ^ Payload pointer,offset,length
+    -> KeyType -> (Ptr Word8)     -- ^ attrs: optional_key
+    -> Ptr Int64      -- ^ returned timestamp, should be NULL
+    -> Ptr C_LSN      -- ^ returned value, log sequence number
+    -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Client Reader API
