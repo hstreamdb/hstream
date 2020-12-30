@@ -90,33 +90,6 @@ c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client,
 }
 
 // ----------------------------------------------------------------------------
-// Writer
-
-facebook::logdevice::Status
-logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
-                      const char* payload, HsInt offset, HsInt length,
-                      int64_t* ts, c_lsn_t* lsn_ret) {
-  c_lsn_t result;
-  std::string user_payload(payload + offset, length);
-  if (ts) {
-    std::chrono::milliseconds timestamp;
-    result =
-        client->rep->appendSync(facebook::logdevice::logid_t(logid),
-                                user_payload, AppendAttributes(), &timestamp);
-    *ts = timestamp.count();
-  } else {
-    result = client->rep->appendSync(facebook::logdevice::logid_t(logid),
-                                     user_payload, AppendAttributes(), nullptr);
-  }
-
-  if (result == facebook::logdevice::LSN_INVALID) {
-    return facebook::logdevice::err;
-  }
-  *lsn_ret = result;
-  return facebook::logdevice::E::OK;
-}
-
-// ----------------------------------------------------------------------------
 // Reader
 
 int logdevice_reader_start_reading(logdevice_reader_t* reader, c_logid_t logid,

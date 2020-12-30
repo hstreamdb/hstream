@@ -1,3 +1,4 @@
+#include "hs_logdevice.h"
 #include "utils.h"
 
 char *copyString(const std::string &str) {

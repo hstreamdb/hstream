@@ -25,6 +25,7 @@ using facebook::logdevice::AppendAttributes;
 using facebook::logdevice::Client;
 using facebook::logdevice::ClientFactory;
 using facebook::logdevice::ClientSettings;
+using facebook::logdevice::KeyType;
 using facebook::logdevice::Reader;
 using facebook::logdevice::client::LogAttributes;
 using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
@@ -83,14 +84,18 @@ typedef struct logdevice_data_record_t {
   size_t payload_len;
 } logdevice_data_record_t;
 
-// LogAttributes
-LogAttributes* default_log_attributes();
-
 // LogGroup
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
                            c_logid_t* end);
 
 const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
+
+// KeyType
+typedef uint8_t c_keytype_t;
+const c_keytype_t C_KeyType_FINDKEY = static_cast<c_keytype_t>(KeyType::FINDKEY);
+const c_keytype_t C_KeyType_FILTERABLE = static_cast<c_keytype_t>(KeyType::FILTERABLE);
+const c_keytype_t C_KeyType_MAX = static_cast<c_keytype_t>(KeyType::MAX);
+const c_keytype_t C_KeyType_UNDEFINED = static_cast<c_keytype_t>(KeyType::UNDEFINED);
 
 // Err
 const char* show_error_name(facebook::logdevice::E err);
@@ -152,8 +157,17 @@ void* free_lodevice_loggroup(logdevice_loggroup_t* group);
 
 facebook::logdevice::Status
 logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
-                      const char* payload, HsInt offset, HsInt length,
+                      const char* payload, HsInt offset,
+                      HsInt length, // payload
                       int64_t* ts, c_lsn_t* lsn_ret);
+
+facebook::logdevice::Status
+logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
+                                 const char* payload, HsInt offset,
+                                 HsInt length, // payload
+                                 KeyType keytype,
+                                 const char* keyval, // optional_key
+                                 int64_t* ts, c_lsn_t* lsn_ret);
 
 int logdevice_reader_start_reading(logdevice_reader_t* reader, c_logid_t logid,
                                    c_lsn_t start, c_lsn_t until);
