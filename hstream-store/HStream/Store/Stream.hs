@@ -44,6 +44,8 @@ module HStream.Store.Stream
   , topicDirectoryGetName
 
     -- * Writer
+  , FFI.AppendCallBackData (appendCbLogID, appendCbLSN, appendCbTimestamp)
+  , append
   , appendSync
   , appendSyncTS
 
@@ -60,14 +62,19 @@ module HStream.Store.Stream
   , setLoggerlevelError
   ) where
 
+import           Control.Concurrent      (forkIO, myThreadId, newEmptyMVar,
+                                          takeMVar, threadCapability)
+import           Control.Exception       (mask_, onException)
 import           Control.Monad           (void)
 import           Data.Int                (Int64)
 import           Data.Word               (Word64)
 import           Foreign.C.Types         (CSize)
-import           Foreign.ForeignPtr      (ForeignPtr, newForeignPtr,
+import           Foreign.ForeignPtr      (ForeignPtr, mallocForeignPtrBytes,
+                                          newForeignPtr, touchForeignPtr,
                                           withForeignPtr)
 import           Foreign.Marshal         (allocaBytes)
 import           Foreign.Ptr             (nullPtr)
+import           GHC.Conc                (newStablePtrPrimMVar)
 import           Prelude                 hiding (read)
 import           Z.Data.CBytes           (CBytes)
 import qualified Z.Data.CBytes           as ZC
@@ -277,6 +284,31 @@ topicGroupGetName group =
     ZC.fromCString =<< FFI.c_ld_loggroup_get_name group'
 
 -------------------------------------------------------------------------------
+
+append :: StreamClient
+       -> TopicID
+       -> Bytes
+       -> Maybe (FFI.KeyType, CBytes)
+       -> (FFI.AppendCallBackData -> IO a)
+       -> IO a
+append (StreamClient client) (TopicID topicid) payload m_key_attr f =
+  withForeignPtr client $ \client' ->
+  Z.withPrimVectorUnsafe payload $ \payload' offset len -> mask_ $ do
+    mvar <- newEmptyMVar
+    sp <- newStablePtrPrimMVar mvar  -- freed by hs_try_takemvar()
+    fp <- mallocForeignPtrBytes FFI.appendCallBackDataSize
+    result <- withForeignPtr fp $ \data' -> do
+      (cap, _) <- threadCapability =<< myThreadId
+      void $ E.throwStreamErrorIfNotOK $
+        case m_key_attr of
+          Just (keytype, keyval) -> ZC.withCBytesUnsafe keyval $ \keyval' ->
+            FFI.c_logdevice_append_with_attrs_async sp cap data' client' topicid payload' offset len keytype keyval'
+          Nothing ->
+            FFI.c_logdevice_append_async sp cap data' client' topicid payload' offset len
+      takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+      FFI.peekAppendCallBackData data'
+    void $ E.throwStreamErrorIfNotOK' $ FFI.appendCbRetCode result
+    f result
 
 -- | Appends a new record to the log. Blocks until operation completes.
 appendSync :: StreamClient

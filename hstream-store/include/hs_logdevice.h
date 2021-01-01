@@ -25,6 +25,7 @@ using facebook::logdevice::AppendAttributes;
 using facebook::logdevice::Client;
 using facebook::logdevice::ClientFactory;
 using facebook::logdevice::ClientSettings;
+using facebook::logdevice::DataRecord;
 using facebook::logdevice::KeyType;
 using facebook::logdevice::Reader;
 using facebook::logdevice::client::LogAttributes;
@@ -35,6 +36,10 @@ using LogDirectory = facebook::logdevice::client::Directory;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef int64_t c_timestamp_t;
+typedef uint16_t c_error_code_t;
+typedef uint8_t c_keytype_t;
 
 struct logdevice_loggroup_t {
   std::unique_ptr<LogGroup> rep;
@@ -78,8 +83,8 @@ const c_lsn_t C_LSN_MAX = facebook::logdevice::LSN_MAX;
 
 // DataRecord
 typedef struct logdevice_data_record_t {
-  uint64_t logid;
-  uint64_t lsn;
+  c_logid_t logid;
+  c_lsn_t lsn;
   char* payload;
   size_t payload_len;
 } logdevice_data_record_t;
@@ -91,15 +96,25 @@ void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
 const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
 
 // KeyType
-typedef uint8_t c_keytype_t;
-const c_keytype_t C_KeyType_FINDKEY = static_cast<c_keytype_t>(KeyType::FINDKEY);
-const c_keytype_t C_KeyType_FILTERABLE = static_cast<c_keytype_t>(KeyType::FILTERABLE);
+const c_keytype_t C_KeyType_FINDKEY =
+    static_cast<c_keytype_t>(KeyType::FINDKEY);
+const c_keytype_t C_KeyType_FILTERABLE =
+    static_cast<c_keytype_t>(KeyType::FILTERABLE);
 const c_keytype_t C_KeyType_MAX = static_cast<c_keytype_t>(KeyType::MAX);
-const c_keytype_t C_KeyType_UNDEFINED = static_cast<c_keytype_t>(KeyType::UNDEFINED);
+const c_keytype_t C_KeyType_UNDEFINED =
+    static_cast<c_keytype_t>(KeyType::UNDEFINED);
 
 // Err
 const char* show_error_name(facebook::logdevice::E err);
 const char* show_error_description(facebook::logdevice::E err);
+
+// AppendCallbackData
+typedef struct logdevice_append_cb_data_t {
+  c_error_code_t st;
+  c_logid_t logid;
+  c_lsn_t lsn;
+  c_timestamp_t timestamp;
+} logdevice_append_cb_data_t;
 
 // ----------------------------------------------------------------------------
 
@@ -154,6 +169,18 @@ ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
 void* free_lodevice_loggroup(logdevice_loggroup_t* group);
 
 // ----------------------------------------------------------------------------
+// Appender
+
+facebook::logdevice::Status
+logdevice_append_async(HsStablePtr mvar, HsInt cap,
+                       logdevice_append_cb_data_t* cb_data,
+                       logdevice_client_t* client, c_logid_t logid,
+                       const char* payload, HsInt offset, HsInt length);
+
+facebook::logdevice::Status logdevice_append_with_attrs_async(
+    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data,
+    logdevice_client_t* client, c_logid_t logid, const char* payload,
+    HsInt offset, HsInt length, KeyType keytype, const char* keyval);
 
 facebook::logdevice::Status
 logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
@@ -168,6 +195,9 @@ logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
                                  KeyType keytype,
                                  const char* keyval, // optional_key
                                  int64_t* ts, c_lsn_t* lsn_ret);
+
+// ----------------------------------------------------------------------------
+// Reader
 
 int logdevice_reader_start_reading(logdevice_reader_t* reader, c_logid_t logid,
                                    c_lsn_t start, c_lsn_t until);

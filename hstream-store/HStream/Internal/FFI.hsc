@@ -9,11 +9,9 @@ import           Control.Exception     (bracket_)
 import           Control.Monad         (forM)
 import           Data.Int
 import           Data.Word
-import           Foreign.C.String
-import           Foreign.C.Types
-import           Foreign.Marshal.Alloc (free)
-import           Foreign.Ptr
-import           Foreign.Storable
+import           Foreign
+import           Foreign.C
+import           GHC.Conc              (PrimMVar)
 import           Z.Data.Vector         (Bytes)
 import           Z.Foreign             (BA##, MBA##)
 import qualified Z.Foreign             as Z
@@ -38,6 +36,21 @@ instance Bounded SequenceNum where
 
 sequenceNumInvalid :: SequenceNum
 sequenceNumInvalid = SequenceNum c_lsn_invalid
+
+newtype KeyType = KeyType C_KeyType
+  deriving (Eq, Ord, Storable)
+
+instance Show KeyType where
+  show t
+    | t == keyTypeFindKey = "FINDKEY"
+    | t == keyTypeFilterable = "FILTERABLE"
+    | otherwise = "UNDEFINED"
+
+keyTypeFindKey :: KeyType
+keyTypeFindKey = KeyType c_keytype_findkey
+
+keyTypeFilterable :: KeyType
+keyTypeFilterable = KeyType c_keytype_filterable
 
 data DataRecord = DataRecord
   { recordLogID   :: TopicID
@@ -67,20 +80,23 @@ peekDataRecord ptr offset = bracket_ (return ()) release peekData
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr
 
-newtype KeyType = KeyType C_KeyType
-  deriving (Eq, Ord, Storable)
+data AppendCallBackData = AppendCallBackData
+  { appendCbRetCode   :: !ErrorCode
+  , appendCbLogID     :: !C_LogID
+  , appendCbLSN       :: !C_LSN
+  , appendCbTimestamp :: !C_Timestamp
+  }
 
-instance Show KeyType where
-  show t
-    | t == keyTypeFindKey = "FINDKEY"
-    | t == keyTypeFilterable = "FILTERABLE"
-    | otherwise = "UNDEFINED"
+appendCallBackDataSize :: Int
+appendCallBackDataSize = (#size logdevice_append_cb_data_t)
 
-keyTypeFindKey :: KeyType
-keyTypeFindKey = KeyType c_keytype_findkey
-
-keyTypeFilterable :: KeyType
-keyTypeFilterable = KeyType c_keytype_filterable
+peekAppendCallBackData :: Ptr AppendCallBackData -> IO AppendCallBackData
+peekAppendCallBackData ptr = do
+  retcode <- (#peek logdevice_append_cb_data_t, st) ptr
+  logid <- (#peek logdevice_append_cb_data_t, logid) ptr
+  lsn <- (#peek logdevice_append_cb_data_t, lsn) ptr
+  ts <- (#peek logdevice_append_cb_data_t, timestamp) ptr
+  return $ AppendCallBackData retcode logid lsn ts
 
 -------------------------------------------------------------------------------
 
@@ -89,6 +105,8 @@ data LogDeviceReader
 data LogDeviceLogGroup
 data LogDeviceLogDirectory
 data LogDeviceLogAttributes
+
+type C_Timestamp = Int64
 
 -- | LogID
 type C_LogID = Word64
@@ -251,6 +269,28 @@ foreign import ccall unsafe "hs_logdevice.h &free_lodevice_loggroup"
 
 -------------------------------------------------------------------------------
 -- Client Writer API
+
+foreign import ccall unsafe "hs_logdevice.h logdevice_append_async"
+  c_logdevice_append_async
+    :: StablePtr PrimMVar
+    -> Int
+    -> Ptr AppendCallBackData
+    -> Ptr LogDeviceClient
+    -> C_LogID
+    -> BA## Word8 -> Int -> Int
+    -- ^ Payload pointer,offset,length
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h logdevice_append_with_attrs_async"
+  c_logdevice_append_with_attrs_async
+    :: StablePtr PrimMVar
+    -> Int
+    -> Ptr AppendCallBackData
+    -> Ptr LogDeviceClient
+    -> C_LogID
+    -> BA## Word8 -> Int -> Int    -- ^ Payload pointer,offset,length
+    -> KeyType -> BA## Word8       -- ^ attrs: optional_key
+    -> IO ErrorCode
 
 foreign import ccall safe "hs_logdevice.h logdevice_append_sync"
   c_logdevice_append_sync_safe
