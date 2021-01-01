@@ -106,7 +106,7 @@ bool logdevice_reader_is_reading_any(logdevice_reader_t* reader) {
 int logdevice_reader_read_sync(logdevice_reader_t* reader, size_t maxlen,
                                logdevice_data_record_t* data_out,
                                ssize_t* len_out) {
-  std::vector<std::unique_ptr<facebook::logdevice::DataRecord>> data;
+  std::vector<std::unique_ptr<DataRecord>> data;
   facebook::logdevice::GapRecord gap;
 
   ssize_t nread = reader->rep->read(maxlen, &data, &gap);

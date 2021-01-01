@@ -10,6 +10,7 @@ module HStream.Store.Exception
   , SSEInfo (..)
   , throwStreamError
   , throwStreamErrorIfNotOK
+  , throwStreamErrorIfNotOK'
     -- ** Specific Stream Exception
   , NOTFOUND
   , TIMEDOUT
@@ -121,7 +122,8 @@ module HStream.Store.Exception
 import           Control.Exception    (Exception (..))
 import qualified Control.Exception    as E
 import           Data.Typeable        (cast)
-import           GHC.Stack            (CallStack, callStack, prettyCallStack)
+import           GHC.Stack            (CallStack, HasCallStack, callStack,
+                                       prettyCallStack)
 import qualified Z.Data.Text          as T
 import qualified Z.Data.Text.Print    as T
 import qualified Z.Foreign            as Z
@@ -316,9 +318,12 @@ MAKE_SSE(WRITE_STREAM_IGNORED)
 MAKE_SSE(UNKNOWN_CODE)
 
 throwStreamErrorIfNotOK :: IO FFI.ErrorCode -> IO FFI.ErrorCode
-throwStreamErrorIfNotOK f = do
-  code <- f
-  if code == 0 then return 0 else throwStreamError code callStack
+throwStreamErrorIfNotOK = (throwStreamErrorIfNotOK' =<<)
+
+throwStreamErrorIfNotOK' :: HasCallStack => FFI.ErrorCode -> IO FFI.ErrorCode
+throwStreamErrorIfNotOK' code
+  | code == 0 = return 0
+  | otherwise = throwStreamError code callStack
 
 throwStreamError :: FFI.ErrorCode -> CallStack -> IO a
 MAKE_THROW_SSE(  1, NOTFOUND              )
@@ -426,5 +431,6 @@ MAKE_THROW_SSE(600, MAINTENANCE_CLASH     )
 MAKE_THROW_SSE(700, WRITE_STREAM_UNKNOWN  )
 MAKE_THROW_SSE(701, WRITE_STREAM_BROKEN   )
 MAKE_THROW_SSE(702, WRITE_STREAM_IGNORED  )
-throwStreamError _ stack =
-  E.throwIO $ UNKNOWN_CODE (SSEInfo "UNKNOWN_CODE" "" stack)
+throwStreamError code stack =
+  let codeBS = "UNKNOWN_CODE:" <> T.validate (T.toUTF8Bytes code)
+   in E.throwIO $ UNKNOWN_CODE (SSEInfo codeBS "" stack)
