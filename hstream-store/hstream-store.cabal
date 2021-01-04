@@ -17,7 +17,6 @@ build-type:         Custom
 extra-source-files: ChangeLog.md
                     README.md
                     include/hs_logdevice.h
-                    include/utils.h
 
 custom-setup
   setup-depends: base >= 4.5 && < 5, Cabal >= 2.4 && < 4
@@ -40,8 +39,9 @@ library
   extra-libraries:    logdevice, stdc++, folly
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
-  cxx-sources:        cbits/hs_logdevice.cpp, cbits/hs_logattribute.cpp, cbits/utils.cpp,
-                      cbits/hs_logdevice_appender.cpp, cbits/hs_logconfigtypes.cpp
+  cxx-sources:        cbits/hs_logdevice.cpp, cbits/hs_logattribute.cpp,
+                      cbits/hs_logdevice_appender.cpp, cbits/hs_logconfigtypes.cpp,
+                      cbits/hs_logdevice_reader.cpp
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h
   include-dirs:       include, /usr/local/include
@@ -52,7 +52,7 @@ library
 test-suite hstream-store-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
-  other-modules:      Test.SmokeSpec
+  other-modules:      HStream.Store.AppenderSpec
   hs-source-dirs:     test
   build-depends:      base >= 4.11 && < 5, hspec, hstream-store
   default-language:   Haskell2010

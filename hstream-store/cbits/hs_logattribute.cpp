@@ -1,5 +1,4 @@
 #include "hs_logdevice.h"
-#include "utils.h"
 
 template <typename T>
 using LogAttributeVal = facebook::logdevice::logsconfig::Attribute<T>;

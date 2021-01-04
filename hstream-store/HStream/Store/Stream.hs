@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module HStream.Store.Stream
@@ -52,14 +53,19 @@ module HStream.Store.Stream
     -- * Reader
   , StreamReader
   , newStreamReader
-  , startReading
-  , read
-  , isReading
-  , isReadingAny
+  , readerStartReading
+  , readerStopReading
+  , readerRead
+  , tryReaderRead
+  , readerIsReading
+  , readerIsReadingAny
 
     -- * Misc
   , getTailSequenceNum
   , setLoggerlevelError
+
+    -- * Re-export
+  , Bytes
   ) where
 
 import           Control.Concurrent      (forkIO, myThreadId, newEmptyMVar,
@@ -73,9 +79,8 @@ import           Foreign.ForeignPtr      (ForeignPtr, mallocForeignPtrBytes,
                                           newForeignPtr, touchForeignPtr,
                                           withForeignPtr)
 import           Foreign.Marshal         (allocaBytes)
-import           Foreign.Ptr             (nullPtr)
+import           Foreign.Ptr             (Ptr, nullPtr)
 import           GHC.Conc                (newStablePtrPrimMVar)
-import           Prelude                 hiding (read)
 import           Z.Data.CBytes           (CBytes)
 import qualified Z.Data.CBytes           as ZC
 import           Z.Data.Vector           (Bytes)
@@ -371,35 +376,59 @@ newStreamReader client max_logs buffer_size =
 -- Any one topic can only be read once by a single Reader.  If this method is
 -- called for the same topic multiple times, it restarts reading, optionally
 -- at a different point.
-startReading :: StreamReader -> TopicID -> SequenceNum -> SequenceNum -> IO Int
-startReading reader (TopicID topicid) (SequenceNum startSeq) (SequenceNum untilSeq) =
-  withForeignPtr (unStreamReader reader) $ \ptr ->
-    fromIntegral <$> FFI.c_logdevice_reader_start_reading ptr topicid startSeq untilSeq
+readerStartReading :: StreamReader -> TopicID -> SequenceNum -> SequenceNum -> IO ()
+readerStartReading reader (TopicID topicid) (SequenceNum startSeq) (SequenceNum untilSeq) =
+  withForeignPtr (unStreamReader reader) $ \ptr -> void $
+    E.throwStreamErrorIfNotOK $ FFI.c_ld_reader_start_reading ptr topicid startSeq untilSeq
+
+readerStopReading :: StreamReader -> TopicID -> IO ()
+readerStopReading reader (TopicID topicid) =
+  withForeignPtr (unStreamReader reader) $ \ptr -> void $
+    E.throwStreamErrorIfNotOK $ FFI.c_ld_reader_stop_reading ptr topicid
+
+readerRead :: StreamReader -> Int -> IO ([DataRecord])
+readerRead reader maxlen =
+  withForeignPtr (unStreamReader reader) $ \reader' ->
+  allocaBytes (maxlen * FFI.dataRecordSize) $ \payload' -> go reader' payload'
+  where
+    go !rp !pp = do
+      m_records <- tryReaderRead' rp pp maxlen
+      case m_records of
+        Just rs -> return rs
+        Nothing -> go rp pp
 
 -- | Attempts to read a batch of records synchronously.
-read :: StreamReader -> Int -> IO (Maybe [DataRecord])
-read reader maxlen =
+tryReaderRead :: StreamReader -> Int -> IO (Maybe [DataRecord])
+tryReaderRead reader maxlen =
   withForeignPtr (unStreamReader reader) $ \reader' ->
-  allocaBytes (maxlen * FFI.dataRecordSize) $ \payload' -> do
-    (nread, ret) <- Z.withPrimSafe 0 $ \len' ->
-      FFI.c_logdevice_reader_read_sync_safe reader' (fromIntegral maxlen) payload' len'
-    hdResult ret payload' (nread :: Int)
+  allocaBytes (maxlen * FFI.dataRecordSize) $ \payload' ->
+    tryReaderRead' reader' payload' maxlen
+
+tryReaderRead'
+  :: Ptr FFI.LogDeviceReader
+  -> Ptr DataRecord
+  -> Int
+  -> IO (Maybe [DataRecord])
+tryReaderRead' readerp recordp maxlen = do
+  (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
+    FFI.c_logdevice_reader_read_safe readerp (fromIntegral maxlen) recordp len'
+  hdResult recordp nread
   where
-    hdResult 0 p nread
+    hdResult p nread
       | nread >  0 = Just <$> FFI.peekDataRecords nread p
       | nread == 0 = return $ Just []
       | nread <  0 = return Nothing
-    hdResult _ _ _ = error "DATALOSS!"  -- TODO: custom exception
+    hdResult _ _   = error "Unexpected Error!"
 
-isReading :: StreamReader -> TopicID -> IO Bool
-isReading reader (TopicID topicid) =
+readerIsReading :: StreamReader -> TopicID -> IO Bool
+readerIsReading reader (TopicID topicid) =
   withForeignPtr (unStreamReader reader) $ \ptr ->
-    FFI.cbool2bool <$> FFI.c_logdevice_reader_is_reading ptr topicid
+    FFI.cbool2bool <$> FFI.c_ld_reader_is_reading ptr topicid
 
-isReadingAny :: StreamReader -> IO Bool
-isReadingAny reader =
+readerIsReadingAny :: StreamReader -> IO Bool
+readerIsReadingAny reader =
   withForeignPtr (unStreamReader reader) $
-    fmap FFI.cbool2bool . FFI.c_logdevice_reader_is_reading_any
+    fmap FFI.cbool2bool . FFI.c_ld_reader_is_reading_any
 
 -------------------------------------------------------------------------------
 
