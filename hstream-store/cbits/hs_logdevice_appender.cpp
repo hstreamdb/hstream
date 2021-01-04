@@ -1,5 +1,4 @@
 #include "hs_logdevice.h"
-#include "utils.h"
 
 facebook::logdevice::Status _append_sync(logdevice_client_t* client,
                                          facebook::logdevice::logid_t logid,

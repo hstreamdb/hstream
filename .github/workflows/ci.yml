@@ -35,7 +35,8 @@ jobs:
           tar -xzf $TEMP/$PACKAGE.tar.gz -C$TEMP
           chmod +x $TEMP/$PACKAGE-$VERSION/$PACKAGE
           # check all sources
-          find . -type f -not -path "./dist-newstyle/*" -not -path "*/.stack-work/*" | grep "\.l\?hs$" | xargs $TEMP/$PACKAGE-$VERSION/$PACKAGE -c .stylish-haskell.yaml -i && git diff-index --exit-code HEAD || echo "::error::Run stylish-haskell failed! Considering run: bash script/format.sh with latest stylish-haskell first."
+          echo "Run script/format.sh with latest stylish-haskell..."
+          FORMATER_BIN=$TEMP/$PACKAGE-$VERSION/$PACKAGE bash script/format.sh && git diff-index --exit-code HEAD
 
   build-and-test:
     needs: pre-build

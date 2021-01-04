@@ -124,11 +124,6 @@ new_logdevice_client(char* config_path, logdevice_client_t** client_ret);
 
 void free_logdevice_client(logdevice_client_t* client);
 
-// Create & Free Reader
-logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
-                                         size_t max_logs, ssize_t buffer_size);
-void free_logdevice_reader(logdevice_reader_t* reader);
-
 // ----------------------------------------------------------------------------
 // Client
 
@@ -199,13 +194,28 @@ logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
 // ----------------------------------------------------------------------------
 // Reader
 
-int logdevice_reader_start_reading(logdevice_reader_t* reader, c_logid_t logid,
-                                   c_lsn_t start, c_lsn_t until);
-bool logdevice_reader_is_reading(logdevice_reader_t* reader, c_logid_t logid);
-bool logdevice_reader_is_reading_any(logdevice_reader_t* reader);
-int logdevice_reader_read_sync(logdevice_reader_t* reader, size_t maxlen,
-                               logdevice_data_record_t* data_out,
-                               ssize_t* len_out);
+logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
+                                         size_t max_logs, ssize_t buffer_size);
+
+void free_logdevice_reader(logdevice_reader_t* reader);
+
+facebook::logdevice::Status ld_reader_start_reading(logdevice_reader_t* reader,
+                                                    c_logid_t logid,
+                                                    c_lsn_t start,
+                                                    c_lsn_t until);
+
+facebook::logdevice::Status ld_reader_stop_reading(logdevice_reader_t* reader,
+                                                   c_logid_t logid);
+
+bool ld_reader_is_reading(logdevice_reader_t* reader, c_logid_t logid);
+
+bool ld_reader_is_reading_any(logdevice_reader_t* reader);
+
+int ld_reader_set_timeout(logdevice_reader_t* reader, int32_t timeout);
+
+facebook::logdevice::Status
+logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
+                      logdevice_data_record_t* data_out, ssize_t* len_out);
 
 // ----------------------------------------------------------------------------
 // Misc

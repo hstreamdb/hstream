@@ -5,16 +5,16 @@
 
 module HStream.Internal.FFI where
 
-import           Control.Exception     (bracket_)
-import           Control.Monad         (forM)
+import           Control.Exception (bracket_)
+import           Control.Monad     (forM)
 import           Data.Int
 import           Data.Word
 import           Foreign
 import           Foreign.C
-import           GHC.Conc              (PrimMVar)
-import           Z.Data.Vector         (Bytes)
-import           Z.Foreign             (BA##, MBA##)
-import qualified Z.Foreign             as Z
+import           GHC.Conc          (PrimMVar)
+import           Z.Data.Vector     (Bytes)
+import           Z.Foreign         (BA##, MBA##)
+import qualified Z.Foreign         as Z
 
 #include "hs_logdevice.h"
 
@@ -221,6 +221,7 @@ foreign import ccall unsafe "hs_logdevice.h lg_logdirectory_get_name"
 
 foreign import ccall unsafe "hs_logdevice.h free_lodevice_logdirectory"
   c_free_lodevice_logdirectory :: Ptr LogDeviceLogDirectory -> IO ()
+
 foreign import ccall unsafe "hs_logdevice.h &free_lodevice_logdirectory"
   c_free_lodevice_logdirectory_fun :: FunPtr (Ptr LogDeviceLogDirectory -> IO ())
 
@@ -319,37 +320,40 @@ foreign import ccall unsafe "hs_logdevice.h new_logdevice_reader"
                          -> CSize
                          -> Int64
                          -> IO (Ptr LogDeviceReader)
+
 foreign import ccall unsafe "hs_logdevice.h free_logdevice_reader"
   c_free_logdevice_reader :: Ptr LogDeviceReader -> IO ()
+
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_reader"
   c_free_logdevice_reader_fun :: FunPtr (Ptr LogDeviceReader -> IO ())
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_reader_start_reading"
-  c_logdevice_reader_start_reading :: Ptr LogDeviceReader
-                                   -> C_LogID
-                                   -> C_LSN   -- ^ start
-                                   -> C_LSN   -- ^ until
-                                   -> IO CInt
+foreign import ccall unsafe "hs_logdevice.h ld_reader_start_reading"
+  c_ld_reader_start_reading :: Ptr LogDeviceReader
+                            -> C_LogID
+                            -> C_LSN   -- ^ start
+                            -> C_LSN   -- ^ until
+                            -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_reader_is_reading"
-  c_logdevice_reader_is_reading :: Ptr LogDeviceReader -> C_LogID -> IO CBool
+foreign import ccall unsafe "hs_logdevice.h ld_reader_stop_reading"
+  c_ld_reader_stop_reading :: Ptr LogDeviceReader
+                           -> C_LogID
+                           -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_reader_is_reading_any"
-  c_logdevice_reader_is_reading_any :: Ptr LogDeviceReader -> IO CBool
+foreign import ccall unsafe "hs_logdevice.h ld_reader_is_reading"
+  c_ld_reader_is_reading :: Ptr LogDeviceReader -> C_LogID -> IO CBool
 
-foreign import ccall unsafe "hs_logdevice.h logdevice_reader_read_sync"
-  c_logdevice_reader_read_sync :: Ptr LogDeviceReader
+foreign import ccall unsafe "hs_logdevice.h ld_reader_is_reading_any"
+  c_ld_reader_is_reading_any :: Ptr LogDeviceReader -> IO CBool
+
+foreign import ccall unsafe "hs_logdevice.h ld_reader_set_timeout"
+  c_ld_reader_set_timeout :: Ptr LogDeviceReader -> Int32 -> IO CInt
+
+foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
+  c_logdevice_reader_read_safe :: Ptr LogDeviceReader
                                -> CSize
                                -> Ptr DataRecord
-                               -> MBA## Int
-                               -> IO CInt
-
-foreign import ccall safe "hs_logdevice.h logdevice_reader_read_sync"
-  c_logdevice_reader_read_sync_safe :: Ptr LogDeviceReader
-                                    -> CSize
-                                    -> Ptr DataRecord
-                                    -> Ptr Int
-                                    -> IO CInt
+                               -> Ptr Int
+                               -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Misc
