@@ -89,8 +89,9 @@ subEnd client tp = do
       (a, _) <- S.topicGroupGetRange gs
       end <- S.getTailSequenceNum client a
       i <- S.startReading sreader a (end + 1) maxBound
-      print i
-      return $ Right sreader
+      case i of
+        0 -> return $ Right sreader
+        _ -> return $ Left $ "sub error " ++ show i
 
 poll :: S.StreamReader -> Int -> IO (Maybe [S.DataRecord])
 poll sreader m = S.read sreader m
