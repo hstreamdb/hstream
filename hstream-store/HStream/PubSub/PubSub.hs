@@ -3,14 +3,17 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module HStream.PubSub.PubSub (Topic (..), pubMessage, sub, subEnd, poll) where
+module HStream.PubSub.PubSub where --(Topic (..), pubMessage, sub, subEnd, poll) where
 
 import Control.Concurrent
 import Control.Exception
+import Control.Monad
 import Data.Word (Word64)
 import qualified HStream.Store as S
 import System.Random
+import Z.Data.Builder
 import Z.Data.CBytes as CB
+import Z.Data.Parser as P
 import Z.Data.Text
 import Z.Data.Vector
 import Z.IO.Time
@@ -36,6 +39,60 @@ getRandomLogID = do
   let i = fromIntegral $ systemSeconds t
   r <- randomRIO @Word64 (1, 100000)
   return (i * 100000 + r)
+
+type ClientID = Text
+
+-- | commit a topic ClientID's SequenceNum
+-- v0 <- commit client tp "aaa" (S.SequenceNum rv) 3 1000000
+commit ::
+  S.StreamClient -> -- logdevice client
+  Topic -> -- Topic
+  ClientID -> -- client id
+  S.SequenceNum -> -- sequence number
+  Int -> -- Replication Factor
+  Int -> -- sleep time after commit logGroup created
+  IO (S.SequenceNum)
+commit client (Topic topic) cid (S.SequenceNum seqN) rf slt =
+  pubMessage
+    client
+    (Topic $ topic <> "_clientID_" <> cid)
+    (build $ encodePrim seqN)
+    rf
+    slt
+
+-- | read last commit SequenceNum
+-- main1 :: IO ()
+-- main1 = do
+--   print "start"
+--   _ <- S.setLoggerlevelError
+--   client <- S.newStreamClient "/data/logdevice/logdevice.conf"
+--   v0 <- commit client tp "aaa" (S.SequenceNum rv) 3 1000000
+--   v1 <- readLastCommit client tp "aaa"
+--   print v1
+--   print v0
+readLastCommit ::
+  S.StreamClient ->
+  Topic ->
+  ClientID ->
+  IO (Either String S.SequenceNum)
+readLastCommit client (Topic tp) cid = do
+  sreader <- S.newStreamReader client 1 1024
+  try (S.getTopicGroupSync client ((topicToCbytes $ Topic $ tp <> "_clientID_" <> cid) <> topicTail)) >>= \case
+    Left (e :: SomeException) -> return $ Left (show e)
+    Right gs -> do
+      (a, _) <- S.topicGroupGetRange gs
+      end <- S.getTailSequenceNum client a
+      i <- S.startReading sreader a end maxBound
+      case i of
+        0 -> do
+          v <- S.read sreader 1
+          case v of
+            Just [S.DataRecord _ _ bs] ->
+              case P.parse' @Word64 P.decodePrim bs of
+                Left e -> return $ Left (show e)
+                Right s -> return $ Right (S.SequenceNum s)
+            _ -> return $ Left "can't find commit"
+        _ -> return $ Left $ "read last commit error " ++ show i
 
 -- | create topic and record message
 -- when topic first arrive, we create a topic logGroup. this logGroup include two logId: a , a+1
@@ -66,7 +123,7 @@ pubMessage client topic message rf slt = do
       S.setTopicReplicationFactor at rf
       logID <- getRandomLogID
       let li = S.mkTopicID logID
-      v <- try $ S.makeTopicGroupSync client (topicToCbytes topic <> topicTail) li (li + 1) at True
+      v <- try $ S.makeTopicGroupSync client (topicToCbytes topic <> topicTail) li li at True
       case v of
         Left (_ :: SomeException) -> do
           pubMessage client topic message rf slt
