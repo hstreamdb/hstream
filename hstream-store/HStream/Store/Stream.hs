@@ -55,6 +55,7 @@ module HStream.Store.Stream
   , newStreamReader
   , readerStartReading
   , readerStopReading
+  , readerSetTimeout
   , readerRead
   , tryReaderRead
   , readerIsReading
@@ -72,9 +73,9 @@ import           Control.Concurrent      (forkIO, myThreadId, newEmptyMVar,
                                           takeMVar, threadCapability)
 import           Control.Exception       (mask_, onException)
 import           Control.Monad           (void)
-import           Data.Int                (Int64)
+import           Data.Int                (Int32, Int64)
 import           Data.Word               (Word64)
-import           Foreign.C.Types         (CSize)
+import           Foreign.C.Types         (CInt, CSize)
 import           Foreign.ForeignPtr      (ForeignPtr, mallocForeignPtrBytes,
                                           newForeignPtr, touchForeignPtr,
                                           withForeignPtr)
@@ -386,6 +387,9 @@ readerStopReading reader (TopicID topicid) =
   withForeignPtr (unStreamReader reader) $ \ptr -> void $
     E.throwStreamErrorIfNotOK $ FFI.c_ld_reader_stop_reading ptr topicid
 
+-- | Read a batch of records synchronously until there is some data received.
+--
+-- NOTE that if read timeouts, you will get an empty list.
 readerRead :: StreamReader -> Int -> IO ([DataRecord])
 readerRead reader maxlen =
   withForeignPtr (unStreamReader reader) $ \reader' ->
@@ -429,6 +433,10 @@ readerIsReadingAny :: StreamReader -> IO Bool
 readerIsReadingAny reader =
   withForeignPtr (unStreamReader reader) $
     fmap FFI.cbool2bool . FFI.c_ld_reader_is_reading_any
+
+readerSetTimeout :: StreamReader -> Int32 -> IO CInt
+readerSetTimeout (StreamReader reader) ms =
+  withForeignPtr reader $ \reader' -> FFI.c_ld_reader_set_timeout reader' ms
 
 -------------------------------------------------------------------------------
 
