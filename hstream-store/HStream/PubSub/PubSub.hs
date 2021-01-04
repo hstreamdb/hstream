@@ -21,12 +21,15 @@ topicToCbytes (Topic t) = fromBytes (getUTF8Bytes t)
 topicTail :: CBytes
 topicTail = "_emqx$tail"
 
+-- | mqtt Topic
+-- e: "a/a/a/a", "a/b"
 data Topic = Topic Text deriving (Show, Eq, Ord)
 
 type Message = Bytes
 
 data Filter = Filter Text deriving (Show, Eq, Ord)
 
+-- | create logID random
 getRandomLogID :: IO Word64
 getRandomLogID = do
   t <- getSystemTime'
@@ -38,6 +41,17 @@ getRandomLogID = do
 -- when topic first arrive, we create a topic logGroup. this logGroup include two logId: a , a+1
 -- a: record log message
 -- a+1: record log metadata (e: commite message)
+--
+-- e:
+-- fun :: IO ()
+-- fun = do
+--   _ <- S.setLoggerlevelError
+--   client <- S.newStreamClient "/data/logdevice/logdevice.conf"
+--   forever $ do
+--     t : m : _ <- Prelude.words <$> getLine
+--     let tp = Topic (Z.Data.Text.pack t)
+--     v <- pubMessage client tp (packASCII m) 2 1000000
+--     print v
 pubMessage ::
   S.StreamClient -> -- client
   Topic -> --- Topic
@@ -63,6 +77,7 @@ pubMessage client topic message rf slt = do
       (a, _) <- S.topicGroupGetRange gs
       S.appendSync client a message Nothing
 
+-- | sub a Topic, return the StreamReader. You need to specify a valid start SequenceNum
 sub ::
   S.StreamClient ->
   Topic ->
@@ -77,6 +92,7 @@ sub client tp start = do
       _ <- S.startReading sreader a start maxBound
       return $ Right sreader
 
+-- | sub a topic, return the StreamReader. You follow the tail value
 subEnd ::
   S.StreamClient ->
   Topic ->
@@ -93,18 +109,14 @@ subEnd client tp = do
         0 -> return $ Right sreader
         _ -> return $ Left $ "sub error " ++ show i
 
-poll :: S.StreamReader -> Int -> IO (Maybe [S.DataRecord])
-poll sreader m = S.read sreader m
-
--- testFun :: IO ()
--- testFun = do
+-- | poll value, You can specify the batch size
+-- e:
+-- fun :: IO ()
+-- fun = do
 --   _ <- S.setLoggerlevelError
 --   client <- S.newStreamClient "/data/logdevice/logdevice.conf"
 --   Right sreader <- subEnd client (Topic "a/a")
---   forever $ do
---     t : m : _ <- Prelude.words <$> getLine
---     let tp = Topic (Z.Data.Text.pack t)
---     v <- pubMessage client tp (packASCII m) 2 1000000
---     print v
---     record <- poll sreader 1
---     print record
+--   record <- poll sreader 1  -- poll a value,
+--   print record
+poll :: S.StreamReader -> Int -> IO (Maybe [S.DataRecord])
+poll sreader m = S.read sreader m
