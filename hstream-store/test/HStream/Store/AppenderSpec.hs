@@ -8,6 +8,7 @@ import           Control.Exception
 import           Control.Monad.IO.Class
 import qualified HStream.Store.Exception as E
 import qualified HStream.Store.Stream    as S
+import           System.Timeout
 import           Test.Hspec
 import           Z.Data.Vector           (packASCII)
 
@@ -119,5 +120,5 @@ readerTimeout client topicid = do
   reader <- S.newStreamReader client 1 (-1)
   S.readerStartReading reader topicid (sn+1) maxBound
   S.readerSetTimeout reader 100
-  [] <- S.readerRead reader 1
+  Just [] <- timeout 1000000 (S.readerRead reader 1)
   return $ True
