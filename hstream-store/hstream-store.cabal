@@ -27,8 +27,11 @@ source-repository head
 
 library
   exposed-modules:    HStream.Store
+                      HStream.Store.Checkpoint
                       HStream.Store.Exception
                       HStream.Store.Stream
+                      HStream.Store.Stream.Reader
+                      HStream.Store.Topic
   other-modules:      HStream.Internal.FFI
   build-depends:      base       >= 4.11 && < 5
                     , Z-Data     == 0.3.0.0
@@ -41,7 +44,7 @@ library
   cpp-options:        -std=c++17
   cxx-sources:        cbits/hs_logdevice.cpp, cbits/hs_logattribute.cpp,
                       cbits/hs_logdevice_appender.cpp, cbits/hs_logconfigtypes.cpp,
-                      cbits/hs_logdevice_reader.cpp
+                      cbits/hs_logdevice_reader.cpp, cbits/hs_checkpoint_store.cpp
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h
   include-dirs:       include, /usr/local/include
