@@ -8,6 +8,7 @@ char* copyString(const std::string& str) {
 
 extern "C" {
 // ----------------------------------------------------------------------------
+// Reader
 
 logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
                                          size_t max_logs, ssize_t buffer_size) {
@@ -28,8 +29,7 @@ facebook::logdevice::Status ld_reader_start_reading(logdevice_reader_t* reader,
                                                     c_logid_t logid,
                                                     c_lsn_t start,
                                                     c_lsn_t until) {
-  int ret = reader->rep->startReading(facebook::logdevice::logid_t(logid),
-                                      start, until);
+  int ret = reader->rep->startReading(logid_t(logid), start, until);
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
@@ -37,14 +37,14 @@ facebook::logdevice::Status ld_reader_start_reading(logdevice_reader_t* reader,
 
 facebook::logdevice::Status ld_reader_stop_reading(logdevice_reader_t* reader,
                                                    c_logid_t logid) {
-  int ret = reader->rep->stopReading(facebook::logdevice::logid_t(logid));
+  int ret = reader->rep->stopReading(logid_t(logid));
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
 }
 
 bool ld_reader_is_reading(logdevice_reader_t* reader, c_logid_t logid) {
-  return reader->rep->isReading(facebook::logdevice::logid_t(logid));
+  return reader->rep->isReading(logid_t(logid));
 }
 
 bool ld_reader_is_reading_any(logdevice_reader_t* reader) {
@@ -72,7 +72,7 @@ logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
       const facebook::logdevice::Payload& payload = record_ptr->payload;
       const facebook::logdevice::DataRecordAttributes& attrs =
           record_ptr->attrs;
-      facebook::logdevice::logid_t& logid = record_ptr->logid;
+      logid_t& logid = record_ptr->logid;
       data_out[i].logid = logid.val_;
       data_out[i].lsn = attrs.lsn;
       data_out[i].payload = copyString(payload.toString());
@@ -92,6 +92,39 @@ logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
   }
 
   return facebook::logdevice::E::OK;
+}
+
+// ----------------------------------------------------------------------------
+// Checkpointed Reader
+
+logdevice_sync_checkpointed_reader_t*
+new_checkpointed_reader(const char* reader_name, logdevice_reader_t* reader,
+                        logdevice_checkpoint_store_t* store,
+                        uint32_t num_retries) {
+  CheckpointedReaderBase::CheckpointingOptions opts;
+  opts.num_retries = num_retries;
+  const std::string reader_name_ = std::string(reader_name);
+
+  std::unique_ptr<SyncCheckpointedReader> scr =
+      CheckpointedReaderFactory().createSyncCheckpointedReader(
+          reader_name_, std::move(reader->rep), std::move(store->rep), opts);
+  logdevice_sync_checkpointed_reader_t* result =
+      new logdevice_sync_checkpointed_reader_t;
+  result->rep = std::move(scr);
+  return result;
+}
+
+void free_checkpointed_reader(logdevice_sync_checkpointed_reader_t* p) {
+  delete p;
+}
+
+facebook::logdevice::Status
+sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                       c_logid_t* logids, c_lsn_t* lsns, size_t len) {
+  std::map<logid_t, lsn_t> checkpoints;
+  for (int i = 0; i < len; ++i)
+    checkpoints[logid_t(logids[i])] = lsns[i];
+  return reader->rep->syncWriteCheckpoints(checkpoints);
 }
 
 // ----------------------------------------------------------------------------

@@ -7,6 +7,10 @@
 
 #include <folly/Optional.h>
 #include <folly/Singleton.h>
+#include <logdevice/include/CheckpointStore.h>
+#include <logdevice/include/CheckpointStoreFactory.h>
+#include <logdevice/include/CheckpointedReaderBase.h>
+#include <logdevice/include/CheckpointedReaderFactory.h>
 #include <logdevice/include/Client.h>
 #include <logdevice/include/ClientSettings.h>
 #include <logdevice/include/Err.h>
@@ -15,6 +19,7 @@
 #include <logdevice/include/Reader.h>
 #include <logdevice/include/Record.h>
 #include <logdevice/include/RecordOffset.h>
+#include <logdevice/include/SyncCheckpointedReader.h>
 #include <logdevice/include/debug.h>
 #include <logdevice/include/types.h>
 
@@ -22,12 +27,19 @@
 #define HS_LOGDEVICE
 
 using facebook::logdevice::AppendAttributes;
+using facebook::logdevice::CheckpointedReaderBase;
+using facebook::logdevice::CheckpointedReaderFactory;
+using facebook::logdevice::CheckpointStore;
+using facebook::logdevice::CheckpointStoreFactory;
 using facebook::logdevice::Client;
 using facebook::logdevice::ClientFactory;
 using facebook::logdevice::ClientSettings;
 using facebook::logdevice::DataRecord;
 using facebook::logdevice::KeyType;
+using facebook::logdevice::logid_t;
+using facebook::logdevice::lsn_t;
 using facebook::logdevice::Reader;
+using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::client::LogAttributes;
 using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
 using facebook::logdevice::client::LogGroup;
@@ -53,10 +65,20 @@ struct logdevice_client_t {
 struct logdevice_reader_t {
   std::unique_ptr<Reader> rep;
 };
-typedef struct logdevice_client_t logdevice_client_t;
-typedef struct logdevice_reader_t logdevice_reader_t;
-typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
+struct logdevice_sync_checkpointed_reader_t {
+  std::unique_ptr<SyncCheckpointedReader> rep;
+};
+struct logdevice_checkpoint_store_t {
+  std::unique_ptr<CheckpointStore> rep;
+};
+
 typedef struct logdevice_loggroup_t logdevice_loggroup_t;
+typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
+typedef struct logdevice_client_t logdevice_client_t;
+typedef struct logdevice_checkpoint_store_t logdevice_checkpoint_store_t;
+typedef struct logdevice_reader_t logdevice_reader_t;
+typedef struct logdevice_sync_checkpointed_reader_t
+    logdevice_sync_checkpointed_reader_t;
 
 // LogID
 typedef uint64_t c_logid_t;
@@ -104,6 +126,9 @@ const c_keytype_t C_KeyType_MAX = static_cast<c_keytype_t>(KeyType::MAX);
 const c_keytype_t C_KeyType_UNDEFINED =
     static_cast<c_keytype_t>(KeyType::UNDEFINED);
 
+// Used by VersionedConfigStore
+typedef uint64_t c_vcs_config_version_t;
+
 // Err
 const char* show_error_name(facebook::logdevice::E err);
 const char* show_error_description(facebook::logdevice::E err);
@@ -117,15 +142,12 @@ typedef struct logdevice_append_cb_data_t {
 } logdevice_append_cb_data_t;
 
 // ----------------------------------------------------------------------------
+// Client
 
-// Create & Free Client
 facebook::logdevice::Status
 new_logdevice_client(char* config_path, logdevice_client_t** client_ret);
 
 void free_logdevice_client(logdevice_client_t* client);
-
-// ----------------------------------------------------------------------------
-// Client
 
 size_t ld_client_get_max_payload_size(logdevice_client_t* client);
 
@@ -139,7 +161,7 @@ facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
                                                    const char* value);
 
 // ----------------------------------------------------------------------------
-// LogConfigType: LogDirectory
+// LogConfigType: LogDirectory & LogGroup
 
 facebook::logdevice::Status
 ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
@@ -149,8 +171,6 @@ ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
 void* free_lodevice_logdirectory(logdevice_logdirectory_t* dir);
 
 const char* lg_logdirectory_get_name(logdevice_logdirectory_t* dir);
-
-// ----------------------------------------------------------------------------
 
 facebook::logdevice::Status ld_client_make_loggroup_sync(
     logdevice_client_t* client, const char* path, const c_logid_t start_logid,
@@ -192,12 +212,41 @@ logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
                                  int64_t* ts, c_lsn_t* lsn_ret);
 
 // ----------------------------------------------------------------------------
+// Checkpoint Store
+
+logdevice_checkpoint_store_t*
+new_file_based_checkpoint_store(const char* root_path);
+
+void free_checkpoint_store(logdevice_checkpoint_store_t* p);
+
+facebook::logdevice::Status
+checkpoint_store_get_lsn_sync(logdevice_checkpoint_store_t* store,
+                              const char* customer_id, c_logid_t logid,
+                              c_lsn_t* value_out);
+
+facebook::logdevice::Status
+checkpoint_store_update_lsn_sync(logdevice_checkpoint_store_t* store,
+                                 const char* customer_id, c_logid_t logid,
+                                 c_lsn_t lsn);
+
+facebook::logdevice::Status checkpoint_store_update_multi_lsn_sync(
+    logdevice_checkpoint_store_t* store, const char* customer_id,
+    c_logid_t* logids, c_lsn_t* lsns, size_t len);
+
+// ----------------------------------------------------------------------------
 // Reader
 
 logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
                                          size_t max_logs, ssize_t buffer_size);
 
 void free_logdevice_reader(logdevice_reader_t* reader);
+
+logdevice_sync_checkpointed_reader_t*
+new_checkpointed_reader(const char* reader_name, logdevice_reader_t* reader,
+                        logdevice_checkpoint_store_t* store,
+                        uint32_t num_retries);
+
+void free_checkpointed_reader(logdevice_sync_checkpointed_reader_t* p);
 
 facebook::logdevice::Status ld_reader_start_reading(logdevice_reader_t* reader,
                                                     c_logid_t logid,
@@ -216,6 +265,10 @@ int ld_reader_set_timeout(logdevice_reader_t* reader, int32_t timeout);
 facebook::logdevice::Status
 logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
                       logdevice_data_record_t* data_out, ssize_t* len_out);
+
+facebook::logdevice::Status
+sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                       c_logid_t* logids, c_lsn_t* lsns, size_t len);
 
 // ----------------------------------------------------------------------------
 // Misc
