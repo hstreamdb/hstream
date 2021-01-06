@@ -260,9 +260,6 @@ getTopicGroupSync client path =
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_loggroup_sync client' path' group''
     StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
 
--- | Removes a logGroup defined at path
--- 
--- The log group cannot be deleted immediately, it takes a while to take effect
 removeTopicGroupSync :: StreamClient -> CBytes -> IO ()
 removeTopicGroupSync client path =
   withForeignPtr (unStreamClient client) $ \client' ->
