@@ -142,7 +142,7 @@ instance Show SomeStreamException where
 instance E.Exception SomeStreamException
 
 someStreamExceptionToException :: E.Exception e => e -> E.SomeException
-someStreamExceptionToException = E.toException . E.SomeException
+someStreamExceptionToException = E.toException . SomeStreamException
 
 someStreamExceptionFromException :: E.Exception e => E.SomeException -> Maybe e
 someStreamExceptionFromException x = do
