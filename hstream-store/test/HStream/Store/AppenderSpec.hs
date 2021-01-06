@@ -68,6 +68,7 @@ spec = describe "HStream.Store.Stream" $ do
         gs <- S.makeTopicGroupSync client "a/a/topic" st end at True
         (a,b) <- S.topicGroupGetRange gs
         name <- S.topicGroupGetName gs
+        S.removeTopicGroupSync client "a/a/topic"
         return (a,b,name)
     ) `shouldReturn` (S.mkTopicID 1000, S.mkTopicID 1000, "topic")
 
@@ -87,6 +88,23 @@ spec = describe "HStream.Store.Stream" $ do
         return (a,b,name)
     ) `shouldReturn` (S.mkTopicID 1001, S.mkTopicID 1001, "topic1")
 
+  it "get tail sequenceNum" $
+    (do _ <- S.setLoggerlevelError
+        let topicid = S.mkTopicID 1
+        client <- S.newStreamClient "/data/store/logdevice.conf"
+        seqNum0 <- S.appendSync client topicid "hello" Nothing
+        seqNum1 <- S.getTailSequenceNum client topicid
+        return $ seqNum0 == seqNum1
+    ) `shouldReturn` True
+
+  it "reader timeout" $
+    (do _ <- S.setLoggerlevelError
+        let topicid = S.mkTopicID 1
+        client <- S.newStreamClient "/data/store/logdevice.conf"
+        readerTimeout client topicid
+    ) `shouldReturn` True
+
+
 readLastPayload :: S.StreamClient -> S.TopicID -> IO S.Bytes
 readLastPayload client topicid = do
   sn <- S.getTailSequenceNum client topicid
@@ -94,3 +112,12 @@ readLastPayload client topicid = do
   S.readerStartReading reader topicid sn sn
   xs <- S.readerRead reader 10
   return $ S.recordPayload $ head xs
+
+readerTimeout :: S.StreamClient -> S.TopicID -> IO Bool
+readerTimeout client topicid = do
+  sn <- S.getTailSequenceNum client topicid
+  reader <- S.newStreamReader client 1 (-1)
+  S.readerStartReading reader topicid (sn+1) maxBound
+  S.readerSetTimeout reader 100
+  [] <- S.readerRead reader 1
+  return $ True
