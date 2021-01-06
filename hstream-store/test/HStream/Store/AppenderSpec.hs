@@ -70,6 +70,20 @@ spec = describe "HStream.Store.Stream" $ do
         return (a,b,name)
     ) `shouldReturn` (S.mkTopicID 1000, S.mkTopicID 1000, "topic")
 
+  it "remove topic group sync" $
+    (do _ <- S.setLoggerlevelError
+        client <- S.newStreamClient "/data/store/logdevice.conf"
+        at <- S.newTopicAttributes
+        S.setTopicReplicationFactor at 3
+        let st = S.mkTopicID 1001
+            end = S.mkTopicID 1001
+        gs <- S.makeTopicGroupSync client "a/a/topic1" st end at True
+        (a,b) <- S.topicGroupGetRange gs
+        name <- S.topicGroupGetName gs
+        S.removeTopicGroupSync client "a/a/topic1"
+        Left (e :: SomeException) <- try $ S.getTopicGroupSync client "a/a/topic1"
+        return (a,b,name)
+    ) `shouldReturn` (S.mkTopicID 1001, S.mkTopicID 1001, "topic1")
 
 readLastPayload :: S.StreamClient -> S.TopicID -> IO S.Bytes
 readLastPayload client topicid = do
