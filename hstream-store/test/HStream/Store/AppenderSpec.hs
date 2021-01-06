@@ -3,6 +3,7 @@
 
 module HStream.Store.AppenderSpec (spec) where
 
+import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad.IO.Class
 import qualified HStream.Store.Exception as E
@@ -81,6 +82,7 @@ spec = describe "HStream.Store.Stream" $ do
         (a,b) <- S.topicGroupGetRange gs
         name <- S.topicGroupGetName gs
         S.removeTopicGroupSync client "a/a/topic1"
+        threadDelay 1000000
         Left (e :: SomeException) <- try $ S.getTopicGroupSync client "a/a/topic1"
         return (a,b,name)
     ) `shouldReturn` (S.mkTopicID 1001, S.mkTopicID 1001, "topic1")
