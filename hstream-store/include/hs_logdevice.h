@@ -111,12 +111,6 @@ typedef struct logdevice_data_record_t {
   size_t payload_len;
 } logdevice_data_record_t;
 
-// LogGroup
-void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
-                           c_logid_t* end);
-
-const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
-
 // KeyType
 const c_keytype_t C_KeyType_FINDKEY =
     static_cast<c_keytype_t>(KeyType::FINDKEY);
@@ -161,8 +155,12 @@ facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
                                                    const char* value);
 
 // ----------------------------------------------------------------------------
-// LogConfigType: LogDirectory & LogGroup
+// LogConfigType
 
+facebook::logdevice::Status
+ld_client_sync_logsconfig_version(logdevice_client_t* client, uint64_t version);
+
+// LogDirectory
 facebook::logdevice::Status
 ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
                               bool mk_intermediate_dirs, LogAttributes* attrs,
@@ -170,18 +168,26 @@ ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
 
 void* free_lodevice_logdirectory(logdevice_logdirectory_t* dir);
 
-const char* lg_logdirectory_get_name(logdevice_logdirectory_t* dir);
+const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir);
+uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir);
 
+// LogGroup
 facebook::logdevice::Status ld_client_make_loggroup_sync(
     logdevice_client_t* client, const char* path, const c_logid_t start_logid,
     const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
     logdevice_loggroup_t** loggroup_result);
 
+void* free_lodevice_loggroup(logdevice_loggroup_t* group);
+
 facebook::logdevice::Status
 ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
                             logdevice_loggroup_t** loggroup_result);
 
-void* free_lodevice_loggroup(logdevice_loggroup_t* group);
+void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
+                           c_logid_t* end);
+const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
+const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group);
+uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group);
 
 // ----------------------------------------------------------------------------
 // Appender
