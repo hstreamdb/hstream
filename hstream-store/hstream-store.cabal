@@ -56,8 +56,10 @@ test-suite hstream-store-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:      HStream.Store.AppenderSpec
+                      HStream.Store.ReaderSpec
+                      HStream.Store.TopicSpec
   hs-source-dirs:     test
-  build-depends:      base >= 4.11 && < 5, hspec, hstream-store, Z-Data== 0.3.0.0
+  build-depends:      base >= 4.11 && < 5, Z-Data == 0.3.0.0, hspec, hstream-store
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover == 2.*
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates

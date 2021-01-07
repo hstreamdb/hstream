@@ -3,14 +3,11 @@
 
 module HStream.Store.AppenderSpec (spec) where
 
-import           Control.Concurrent
 import           Control.Exception
-import           Control.Monad.IO.Class
-import qualified HStream.Store.Exception as E
-import qualified HStream.Store.Stream    as S
-import           System.Timeout
 import           Test.Hspec
-import           Z.Data.Vector           (packASCII)
+import           Z.Data.Vector     (packASCII)
+
+import qualified HStream.Store     as S
 
 spec :: Spec
 spec = describe "HStream.Store.Stream" $ do
@@ -18,7 +15,7 @@ spec = describe "HStream.Store.Stream" $ do
     (do _ <- S.setLoggerlevelError
         let topicid = S.mkTopicID 1
         client <- S.newStreamClient "/data/store/logdevice.conf"
-        S.appendSync client topicid "hello" Nothing
+        _ <- S.appendSync client topicid "hello" Nothing
         readLastPayload client topicid
     ) `shouldReturn` "hello"
 
@@ -26,7 +23,7 @@ spec = describe "HStream.Store.Stream" $ do
     (do _ <- S.setLoggerlevelError
         client <- S.newStreamClient "/data/store/logdevice.conf"
         S.getMaxPayloadSize client
-    ) `shouldReturn` (1024 ^ 2)
+    ) `shouldReturn` (1024 * 1024)    -- 1MB
 
   it "modify default payload size for this client" $
     (do _ <- S.setLoggerlevelError
@@ -51,44 +48,6 @@ spec = describe "HStream.Store.Stream" $ do
         return (r1, r2)
     ) `shouldReturn` (True, False)
 
-  it "create topic directory" $
-    (do _ <- S.setLoggerlevelError
-        client <- S.newStreamClient "/data/store/logdevice.conf"
-        at <- S.newTopicAttributes
-        sg <- S.makeTopicDirectory client "a/a" at True
-        S.topicDirectoryGetName sg
-    ) `shouldReturn` "a"
-
-  it "create topic group sync" $
-    (do _ <- S.setLoggerlevelError
-        client <- S.newStreamClient "/data/store/logdevice.conf"
-        at <- S.newTopicAttributes
-        S.setTopicReplicationFactor at 3
-        let st = S.mkTopicID 1000
-            end = S.mkTopicID 1000
-        gs <- S.makeTopicGroupSync client "a/a/topic" st end at True
-        (a,b) <- S.topicGroupGetRange gs
-        name <- S.topicGroupGetName gs
-        S.removeTopicGroupSync client "a/a/topic"
-        return (a,b,name)
-    ) `shouldReturn` (S.mkTopicID 1000, S.mkTopicID 1000, "topic")
-
-  it "remove topic group sync" $
-    (do _ <- S.setLoggerlevelError
-        client <- S.newStreamClient "/data/store/logdevice.conf"
-        at <- S.newTopicAttributes
-        S.setTopicReplicationFactor at 3
-        let st = S.mkTopicID 1001
-            end = S.mkTopicID 1001
-        gs <- S.makeTopicGroupSync client "a/a/topic1" st end at True
-        (a,b) <- S.topicGroupGetRange gs
-        name <- S.topicGroupGetName gs
-        S.removeTopicGroupSync client "a/a/topic1"
-        threadDelay 1000000
-        Left (e :: SomeException) <- try $ S.getTopicGroupSync client "a/a/topic1"
-        return (a,b,name)
-    ) `shouldReturn` (S.mkTopicID 1001, S.mkTopicID 1001, "topic1")
-
   it "get tail sequenceNum" $
     (do _ <- S.setLoggerlevelError
         let topicid = S.mkTopicID 1
@@ -98,14 +57,6 @@ spec = describe "HStream.Store.Stream" $ do
         return $ seqNum0 == seqNum1
     ) `shouldReturn` True
 
-  it "reader timeout" $
-    (do _ <- S.setLoggerlevelError
-        let topicid = S.mkTopicID 1
-        client <- S.newStreamClient "/data/store/logdevice.conf"
-        readerTimeout client topicid
-    ) `shouldReturn` True
-
-
 readLastPayload :: S.StreamClient -> S.TopicID -> IO S.Bytes
 readLastPayload client topicid = do
   sn <- S.getTailSequenceNum client topicid
@@ -113,12 +64,3 @@ readLastPayload client topicid = do
   S.readerStartReading reader topicid sn sn
   xs <- S.readerRead reader 10
   return $ S.recordPayload $ head xs
-
-readerTimeout :: S.StreamClient -> S.TopicID -> IO Bool
-readerTimeout client topicid = do
-  sn <- S.getTailSequenceNum client topicid
-  reader <- S.newStreamReader client 1 (-1)
-  S.readerStartReading reader topicid (sn+1) maxBound
-  S.readerSetTimeout reader 100
-  Just [] <- timeout 1000000 (S.readerRead reader 1)
-  return $ True
