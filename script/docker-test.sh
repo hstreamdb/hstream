@@ -20,6 +20,7 @@ else
     STORE_SERVER_IMAGE="hstreamdb/logdevice"
 fi
 CABAL_HOME=${CABAL_HOME:-$HOME/.cabal}
+IGNORE_CABAL_UPDATE=${IGNORE_CABAL_UPDATE:-""}
 CONTAINER_HOME=${CONTAINER_HOME:-/root}
 CONTAINER_BIN="${CONTAINER_BIN:-docker}"
 
@@ -78,7 +79,7 @@ start_server_container() {
 }
 
 run_cabal_build_all() {
-    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal update
+    test "$IGNORE_CABAL_UPDATE" || $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal update
     $CONTAINER_BIN exec $TEST_CONTAINER_NAME cat cabal.project || true
     $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --flag server-tests --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
     $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --flag server-tests --enable-tests --enable-benchmarks all
