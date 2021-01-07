@@ -35,7 +35,7 @@ _append_async(HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data,
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
-  int ret = client->rep->append(logid, payload, cb, attrs);
+  int ret = client->rep->append(logid, payload, std::move(cb), attrs);
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;

@@ -228,6 +228,24 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_lsn_sync"
                                 -> C_LogID
                                 -> IO C_LSN
 
+-------------------------------------------------------------------------------
+
+-- | This waits (blocks) until this Client's local view of LogsConfig catches up
+-- to the given version or higher, or until the timeout has passed.
+-- Doesn't wait for config propagation to servers.
+--
+-- This guarantees that subsequent get*() calls (getDirectory(), getLogGroup()
+-- etc) will get an up-to-date view.
+-- Does *not* guarantee that subsequent append(), makeDirectory(),
+-- makeLogGroup(), etc, will have an up-to-date view.
+foreign import ccall safe "hs_logdevice.h ld_client_sync_logsconfig_version"
+  c_ld_client_sync_logsconfig_version_safe
+    :: Ptr LogDeviceClient
+    -> Word64
+    -- ^ The minimum version you need to sync LogsConfig to
+    -> IO ErrorCode
+    -- ^ Return TIMEDOUT on timeout or OK on successful.
+
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
   c_ld_client_make_directory_sync
     :: Ptr LogDeviceClient
@@ -237,14 +255,31 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
     -> MBA## (Ptr LogDeviceLogDirectory)
     -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h lg_logdirectory_get_name"
-  c_ld_logdirectory_get_name :: Ptr LogDeviceLogDirectory -> CString
-
 foreign import ccall unsafe "hs_logdevice.h free_lodevice_logdirectory"
   c_free_lodevice_logdirectory :: Ptr LogDeviceLogDirectory -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h &free_lodevice_logdirectory"
   c_free_lodevice_logdirectory_fun :: FunPtr (Ptr LogDeviceLogDirectory -> IO ())
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_directory_sync"
+  c_ld_client_get_directory_sync :: Ptr LogDeviceClient
+                                 -> BA## Word8
+                                 -> MBA## (Ptr LogDeviceLogDirectory)
+                                 -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h ld_client_remove_directory_sync"
+  c_ld_client_remove_directory_sync_safe
+    :: Ptr LogDeviceClient
+    -> Ptr Word8   -- ^ path
+    -> Bool
+    -> Ptr Word64
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_name"
+  c_ld_logdirectory_get_name :: Ptr LogDeviceLogDirectory -> IO CString
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
+  c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
   c_ld_client_make_loggroup_sync
@@ -283,6 +318,10 @@ foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_name"
   c_ld_loggroup_get_name :: Ptr LogDeviceLogGroup
                           -> IO CString
+
+foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_version"
+  c_ld_loggroup_get_version :: Ptr LogDeviceLogGroup
+                            -> IO Word64
 
 foreign import ccall safe "hs_logdevice.h free_lodevice_loggroup"
   c_free_lodevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()

@@ -21,8 +21,8 @@ const char* show_error_description(facebook::logdevice::E err) {
 //}
 
 // ----------------------------------------------------------------------------
+// Client
 
-// new client
 facebook::logdevice::Status
 new_logdevice_client(char* config_path, logdevice_client_t** client_ret) {
   std::shared_ptr<Client> client = ClientFactory().create(config_path);
@@ -36,9 +36,6 @@ new_logdevice_client(char* config_path, logdevice_client_t** client_ret) {
 }
 
 void free_logdevice_client(logdevice_client_t* client) { delete client; }
-
-// ----------------------------------------------------------------------------
-// Client
 
 size_t ld_client_get_max_payload_size(logdevice_client_t* client) {
   return client->rep->getMaxPayloadSize();

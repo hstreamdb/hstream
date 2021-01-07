@@ -94,10 +94,49 @@ ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+facebook::logdevice::Status
+ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
+                             logdevice_logdirectory_t** logdir_result) {
+  std::unique_ptr<LogDirectory> logdir = client->rep->getDirectorySync(path);
+  if (logdir) {
+    logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
+    result->rep = std::move(logdir);
+    *logdir_result = result;
+    return facebook::logdevice::E::OK;
+  }
+  return facebook::logdevice::err;
+}
+
+facebook::logdevice::Status
+ld_client_remove_directory_sync(logdevice_client_t* client, const char* path,
+                                bool recursive, uint64_t* version) {
+  bool ret = client->rep->removeDirectorySync(path, recursive, version);
+  if (ret)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
 void* free_lodevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
 
-const char* lg_logdirectory_get_name(logdevice_logdirectory_t* dir) {
+const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir) {
   return dir->rep->name().c_str();
+}
+
+uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
+  return dir->rep->version();
+}
+
+// ----------------------------------------------------------------------------
+
+facebook::logdevice::Status
+ld_client_sync_logsconfig_version(logdevice_client_t* client,
+                                  uint64_t version) {
+  bool ret = client->rep->syncLogsConfigVersion(version);
+  // FIXME: should we ignore LOGS_SECTION_MISSING err?
+  if (ret ||
+      facebook::logdevice::err == facebook::logdevice::E::LOGS_SECTION_MISSING)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
 }
 
 // ----------------------------------------------------------------------------

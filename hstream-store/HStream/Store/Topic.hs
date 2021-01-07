@@ -5,6 +5,7 @@ module HStream.Store.Topic
   , mkTopicID
 
     -- * Topic Config
+  , syncTopicConfigVersion
     -- ** Topic attributes
   , TopicAttributes
   , newTopicAttributes
@@ -18,10 +19,15 @@ module HStream.Store.Topic
   , removeTopicGroupSync'
   , topicGroupGetRange
   , topicGroupGetName
+  , topicGroupGetVersion
     -- ** Topic Directory
   , StreamTopicDirectory
-  , makeTopicDirectory
+  , makeTopicDirectorySync
+  , getTopicDirectorySync
+  , removeTopicDirectorySync
+  , removeTopicDirectorySync'
   , topicDirectoryGetName
+  , topicDirectoryGetVersion
   ) where
 
 import           Control.Monad           (void)
@@ -69,29 +75,16 @@ setTopicReplicationFactor' attrs val =
 
 -------------------------------------------------------------------------------
 
+syncTopicConfigVersion :: StreamClient -> Word64 -> IO ()
+syncTopicConfigVersion (StreamClient client) version =
+  withForeignPtr client $ \client' -> void $ E.throwStreamErrorIfNotOK $
+    FFI.c_ld_client_sync_logsconfig_version_safe client' version
+
+-------------------------------------------------------------------------------
+-- TopicGroup
+
 newtype StreamTopicGroup = StreamTopicGroup
   { unStreamTopicGroup :: ForeignPtr FFI.LogDeviceLogGroup }
-
-newtype StreamTopicDirectory = StreamTopicDirectory
-  { unStreamTopicDirectory :: ForeignPtr FFI.LogDeviceLogDirectory }
-
-makeTopicDirectory :: StreamClient
-                   -> CBytes
-                   -> TopicAttributes
-                   -> Bool
-                   -> IO StreamTopicDirectory
-makeTopicDirectory client path attrs mkParent =
-  withForeignPtr (unStreamClient client) $ \client' ->
-  withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
-    (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
-      void $ E.throwStreamErrorIfNotOK $
-        FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
-    StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
-
-topicDirectoryGetName :: StreamTopicDirectory -> IO CBytes
-topicDirectoryGetName dir = withForeignPtr (unStreamTopicDirectory dir) $
-  ZC.fromCString . FFI.c_ld_logdirectory_get_name
 
 -- | Creates a log group under a specific directory path.
 --
@@ -152,3 +145,57 @@ topicGroupGetName :: StreamTopicGroup -> IO CBytes
 topicGroupGetName group =
   withForeignPtr (unStreamTopicGroup group) $ \group' ->
     ZC.fromCString =<< FFI.c_ld_loggroup_get_name group'
+
+topicGroupGetVersion :: StreamTopicGroup -> IO Word64
+topicGroupGetVersion (StreamTopicGroup group) =
+  withForeignPtr group $ FFI.c_ld_loggroup_get_version
+
+-------------------------------------------------------------------------------
+-- TopicDirectory
+
+newtype StreamTopicDirectory = StreamTopicDirectory
+  { unStreamTopicDirectory :: ForeignPtr FFI.LogDeviceLogDirectory }
+
+makeTopicDirectorySync :: StreamClient
+                       -> CBytes
+                       -> TopicAttributes
+                       -> Bool
+                       -> IO StreamTopicDirectory
+makeTopicDirectorySync client path attrs mkParent =
+  withForeignPtr (unStreamClient client) $ \client' ->
+  withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
+  ZC.withCBytesUnsafe path $ \path' -> do
+    (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
+      void $ E.throwStreamErrorIfNotOK $
+        FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
+    StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
+
+getTopicDirectorySync :: StreamClient -> CBytes -> IO StreamTopicDirectory
+getTopicDirectorySync (StreamClient client) path =
+  withForeignPtr client $ \client' ->
+  ZC.withCBytesUnsafe path $ \path' -> do
+    (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' ->
+      void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_directory_sync client' path' dir''
+    StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
+
+removeTopicDirectorySync :: StreamClient -> CBytes -> Bool -> IO ()
+removeTopicDirectorySync (StreamClient client) path recursive =
+  withForeignPtr client $ \client' ->
+  ZC.withCBytes path $ \path' -> void $ E.throwStreamErrorIfNotOK $
+    FFI.c_ld_client_remove_directory_sync_safe client' path' recursive nullPtr
+
+removeTopicDirectorySync' :: StreamClient -> CBytes -> Bool -> IO Word64
+removeTopicDirectorySync' (StreamClient client) path recursive =
+  withForeignPtr client $ \client' ->
+  ZC.withCBytes path $ \path' -> do
+    (version, _)<- Z.withPrimSafe 0 $ \version' -> void $ E.throwStreamErrorIfNotOK $
+      FFI.c_ld_client_remove_directory_sync_safe client' path' recursive version'
+    return version
+
+topicDirectoryGetName :: StreamTopicDirectory -> IO CBytes
+topicDirectoryGetName dir = withForeignPtr (unStreamTopicDirectory dir) $
+  \dir' -> ZC.fromCString =<< FFI.c_ld_logdirectory_get_name dir'
+
+topicDirectoryGetVersion :: StreamTopicDirectory -> IO Word64
+topicDirectoryGetVersion (StreamTopicDirectory dir) =
+  withForeignPtr dir $ FFI.c_ld_logdirectory_get_version
