@@ -3,190 +3,97 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-module HStream.PubSub where --(Topic (..), pubMessage, sub, subEnd, poll) where
+module HStream.PubSub where
 
-import           Control.Concurrent
-import           Control.Exception
-import           Control.Monad
-import           Data.Int                 (Int32)
-import qualified Data.Map.Strict          as Map
-import           Data.Word                (Word64)
-import qualified HStream.Store            as S
-import           HStream.Store.Checkpoint
-import           System.Random
-import           Z.Data.Builder
-import           Z.Data.CBytes            as CB
-import           Z.Data.Parser            as P
+import           Control.Monad.Except
+import           Data.IORef
+import           Data.Int                       (Int32)
+import qualified HStream.PubSub.ClientUtils     as C
+import qualified HStream.PubSub.Internal.PubSub as I
+import           HStream.PubSub.TopicMap
+import qualified HStream.PubSub.TopicUtils      as T
+import           HStream.PubSub.Types
+import           HStream.Store
+import           HStream.Store.Exception
+import           Z.Data.CBytes
 import           Z.Data.Text
-import           Z.Data.Vector
-import           Z.IO.Time
 
-topicToCbytes :: Topic -> CBytes
-topicToCbytes (Topic t) = fromBytes (getUTF8Bytes t)
-
-topicTail :: CBytes
-topicTail = "_topic$tail"
-
--- | mqtt Topic
--- e: "a/a/a/a", "a/b"
-data Topic = Topic Text deriving (Show, Eq, Ord)
-
-type Message = Bytes
-
-data Filter = Filter Text deriving (Show, Eq, Ord)
-
--- | create logID random
-getRandomLogID :: IO Word64
-getRandomLogID = do
-  t <- getSystemTime'
-  let i = fromIntegral $ systemSeconds t
-  r <- randomRIO @Word64 (1, 100000)
-  return (i * 100000 + r)
-
-type ClientID = Text
+initGlobalTM :: IO GlobalTM
+initGlobalTM = newIORef emptyTM
 
 createTopic ::
-  S.StreamClient ->
+  GlobalTM ->
+  StreamClient ->
   Topic ->
-  Int -> -- Replication Factor
-  IO (Either String S.StreamTopicGroup)
-createTopic client topic rf = do
-  at <- S.newTopicAttributes
-  S.setTopicReplicationFactor at rf
-  logID <- getRandomLogID
-  let li = S.mkTopicID logID
-  v <- try $ S.makeTopicGroupSync client (topicToCbytes topic <> topicTail) li li at True
-  case v of
-    Left (e :: SomeException) -> do
-      return $ Left $ show e
-    Right v0 -> do
-      return $ Right v0
+  Int ->
+  IO (Either SomeStreamException TopicID)
+createTopic gtm client topic rf = runExceptT $ T.createTopic gtm client topic rf
 
 -- | create topic and record message
 pub ::
-  S.StreamClient -> -- client
+  GlobalTM ->
+  StreamClient -> -- client
   Topic -> --- Topic
   Message -> -- Message
-  IO (Either String S.SequenceNum)
-pub client topic message = do
-  try (S.getTopicGroupSync client (topicToCbytes topic <> topicTail)) >>= \case
-    Left (e :: SomeException) -> return $ Left (show e)
-    Right gs -> do
-      (a, _) <- S.topicGroupGetRange gs
-      Right <$> S.appendSync client a message Nothing
+  IO (Either SomeStreamException SequenceNum)
+pub gtm client topic message = runExceptT $ T.pub gtm client topic message
 
--- | sub a topic, return the StreamReader. You follow the tail value
+-- -- | sub a topic, return the StreamReader. You follow the tail value
 sub ::
-  S.StreamClient ->
-  Topic ->
-  IO (Either String S.StreamReader)
-sub client tp = do
-  sreader <- S.newStreamReader client 1 4096
-  try (S.getTopicGroupSync client (topicToCbytes tp <> topicTail)) >>= \case
-    Left (e :: SomeException) -> return $ Left (show e)
-    Right gs -> do
-      (a, _) <- S.topicGroupGetRange gs
-      end <- S.getTailSequenceNum client a
-      S.readerStartReading sreader a (end + 1) maxBound
-      return $ Right sreader
-
-subs ::
-  S.StreamClient ->
-  Int -> -- max sub number
+  GlobalTM ->
+  StreamClient ->
+  Int ->
   [Topic] ->
-  IO ([Either String S.StreamReader])
-subs client ms tps = do
-  sreader <- S.newStreamReader client (fromIntegral ms) 4096
-  forM tps $ \tp -> do
-    try (S.getTopicGroupSync client (topicToCbytes tp <> topicTail)) >>= \case
-      Left (e :: SomeException) -> return $ Left (show e)
-      Right gs -> do
-        (a, _) <- S.topicGroupGetRange gs
-        end <- S.getTailSequenceNum client a
-        S.readerStartReading sreader a (end + 1) maxBound
-        return $ Right sreader
+  IO (Either SomeStreamException StreamReader)
+sub gtm client ms tps = runExceptT $ T.sub gtm client ms tps
 
 -- | poll value, You can specify the batch size
-poll :: S.StreamReader -> Int -> IO [S.DataRecord]
-poll sreader m = S.readerRead sreader m
+poll :: StreamReader -> Int -> IO [DataRecord]
+poll = I.poll
 
-pollWithTimeout :: S.StreamReader -> Int -> Int32 -> IO [S.DataRecord]
-pollWithTimeout sreader m timeout = S.readerSetTimeout sreader timeout >> S.readerRead sreader m
+pollWithTimeout :: StreamReader -> Int -> Int32 -> IO [DataRecord]
+pollWithTimeout = I.pollWithTimeout
 
 createClientID ::
-  S.StreamClient ->
+  GlobalTM ->
+  StreamClient ->
   Topic ->
   ClientID ->
   Int ->
-  IO (Either String S.StreamTopicGroup)
-createClientID client (Topic tp) cid rf =
-  createTopic client (Topic $ tp <> "_clientID_" <> cid) rf
+  IO (Either SomeStreamException TopicID)
+createClientID gtm client tp cid rf = runExceptT $ C.createClientID gtm client tp cid rf
 
 -- | commit a topic ClientID's SequenceNum
 commit ::
-  S.StreamClient ->
+  GlobalTM ->
+  StreamClient ->
   Topic ->
   ClientID ->
-  S.SequenceNum ->
-  IO (Either String S.SequenceNum)
-commit client (Topic topic) cid (S.SequenceNum seqN) =
-  pub
-    client
-    (Topic $ topic <> "_clientID_" <> cid)
-    (build $ encodePrim seqN)
+  SequenceNum ->
+  IO (Either SomeStreamException SequenceNum)
+commit gtm client topic cid seqN = runExceptT $ C.commit gtm client topic cid seqN
 
 -- | read last commit SequenceNum
 readLastCommit ::
-  S.StreamClient ->
+  GlobalTM ->
+  StreamClient ->
   Topic ->
   ClientID ->
-  IO (Either String S.SequenceNum)
-readLastCommit client (Topic tp) cid = do
-  sreader <- S.newStreamReader client 1 1024
-  try (S.getTopicGroupSync client ((topicToCbytes $ Topic $ tp <> "_clientID_" <> cid) <> topicTail)) >>= \case
-    Left (e :: SomeException) -> return $ Left (show e)
-    Right gs -> do
-      (a, _) <- S.topicGroupGetRange gs
-      end <- S.getTailSequenceNum client a
-      S.readerStartReading sreader a end maxBound
-      v <- S.readerRead sreader 1
-      case v of
-        [S.DataRecord _ _ bs] ->
-          case P.parse' @Word64 P.decodePrim bs of
-            Left e  -> return $ Left (show e)
-            Right s -> return $ Right (S.SequenceNum s)
-        _ -> return $ Left "can't find commit"
+  IO (Either String SequenceNum)
+readLastCommit gtm client tp cid = do
+  v <- runExceptT $ C.readLastCommit gtm client tp cid
+  case v of
+    Left e  -> return $ Left $ show e
+    Right a -> return a
 
--- local checkpoint
--- create checkpoint
 createCheckpoint :: ClientID -> IO CheckpointStore
 createCheckpoint cid = newFileBasedCheckpointStore $ fromBytes $ getUTF8Bytes cid
 
-getTopicID :: S.StreamClient -> Topic -> IO (Either SomeException S.TopicID)
-getTopicID client topic = do
-  try (S.getTopicGroupSync client (topicToCbytes topic <> topicTail)) >>= \case
-    Left (e :: SomeException) -> return $ Left e
-    Right gs                  -> Right . fst <$> S.topicGroupGetRange gs
+updateCheckpoint :: GlobalTM -> StreamClient -> CheckpointStore -> ClientID -> Topic -> SequenceNum -> IO (Either SomeStreamException ())
+updateCheckpoint gtm client cp cid topic seqN = runExceptT $ C.updateCheckpoint gtm client cp cid topic seqN
 
-updateCheckpoint :: S.StreamClient -> CheckpointStore -> ClientID -> Topic -> S.SequenceNum -> IO ()
-updateCheckpoint client cp cid topic seqN =
-  getTopicID client topic >>= \case
-    Left s -> throwIO s
-    Right tid -> updateSequenceNumSync cp (fromBytes $ getUTF8Bytes cid) tid seqN
+updateCheckpoints :: GlobalTM -> StreamClient -> CheckpointStore -> ClientID -> [(Topic, SequenceNum)] -> IO (Either SomeStreamException ())
+updateCheckpoints a b c d e = runExceptT $ C.updateCheckpoints a b c d e
 
-updateCheckpoints :: S.StreamClient -> CheckpointStore -> ClientID -> [(Topic, S.SequenceNum)] -> IO ()
-updateCheckpoints client cp cid ls = do
-  tpids <- forM ls $ \(t, s) ->
-    getTopicID client t >>= \case
-      Left (e :: SomeException) -> throwIO e
-      Right tid                 -> return (tid, s)
-  updateMultiSequenceNumSync cp (fromBytes $ getUTF8Bytes cid) (Map.fromList tpids)
-
-readCheckpoint :: S.StreamClient -> CheckpointStore -> ClientID -> Topic -> IO (Either SomeException S.SequenceNum)
-readCheckpoint client cp cid topic =
-  getTopicID client topic >>= \case
-    Left s -> return $ Left s
-    Right tid ->
-      (try $ getSequenceNumSync cp (fromBytes $ getUTF8Bytes cid) tid) >>= \case
-        Left (e :: SomeException) -> return $ Left e
-        Right seqN                -> return $ Right seqN
+readCheckpoint :: GlobalTM -> StreamClient -> CheckpointStore -> ClientID -> Topic -> IO (Either SomeStreamException SequenceNum)
+readCheckpoint gtm client cp cid topic = runExceptT $ C.readCheckpoint gtm client cp cid topic
