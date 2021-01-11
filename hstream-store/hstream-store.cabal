@@ -28,6 +28,11 @@ source-repository head
 library
   exposed-modules:    HStream.Store
                       HStream.PubSub
+                      HStream.PubSub.Internal.PubSub
+                      HStream.PubSub.Types
+                      HStream.PubSub.TopicUtils
+                      HStream.PubSub.ClientUtils
+                      HStream.PubSub.TopicMap
                       HStream.Store.Checkpoint
                       HStream.Store.Exception
                       HStream.Store.Stream
@@ -38,6 +43,9 @@ library
                     , Z-Data     == 0.3.0.0
                     , Z-IO       == 0.3.0.0
                     , random
+                    , unordered-containers
+                    , hashable
+                    , mtl
                     , containers ^>= 0.6
                     , ghc-prim   >= 0.5 && < 0.7
                     , primitive  ^>= 0.7
