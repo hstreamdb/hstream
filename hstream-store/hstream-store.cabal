@@ -29,10 +29,12 @@ library
   exposed-modules:    HStream.Store
                       HStream.Store.Checkpoint
                       HStream.Store.Exception
+                      HStream.Store.Logger
                       HStream.Store.Stream
-                      HStream.Store.Stream.Reader
                       HStream.Store.Topic
   other-modules:      HStream.Internal.FFI
+                      HStream.Store.Stream.Appender
+                      HStream.Store.Stream.Reader
   build-depends:      base       >= 4.11 && < 5
                     , Z-Data     == 0.3.0.0
                     , containers ^>= 0.6

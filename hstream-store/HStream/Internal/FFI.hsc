@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE UnliftedFFITypes           #-}
 
 module HStream.Internal.FFI where
@@ -185,6 +186,8 @@ foreign import ccall unsafe "hs_logdevice.h with_replicationFactor"
     -> CInt
     -> IO ()
 
+-------------------------------------------------------------------------------
+
 -- | Error
 type ErrorCode = Word16
 
@@ -193,6 +196,36 @@ foreign import ccall unsafe "hs_logdevice.h show_error_name"
 
 foreign import ccall unsafe "hs_logdevice.h show_error_description"
   c_show_error_description :: ErrorCode -> CString
+
+-- | DebugLevel
+type C_DBG_LEVEL = Word8
+
+pattern C_DBG_CRITICAL :: C_DBG_LEVEL
+pattern C_DBG_CRITICAL = (#const C_DBG_CRITICAL)
+
+pattern C_DBG_ERROR :: C_DBG_LEVEL
+pattern C_DBG_ERROR = (#const C_DBG_ERROR)
+
+pattern C_DBG_WARNING :: C_DBG_LEVEL
+pattern C_DBG_WARNING = (#const C_DBG_WARNING)
+
+pattern C_DBG_NOTIFY :: C_DBG_LEVEL
+pattern C_DBG_NOTIFY = (#const C_DBG_NOTIFY)
+
+pattern C_DBG_INFO :: C_DBG_LEVEL
+pattern C_DBG_INFO = (#const C_DBG_INFO)
+
+pattern C_DBG_DEBUG :: C_DBG_LEVEL
+pattern C_DBG_DEBUG = (#const C_DBG_DEBUG)
+
+pattern C_DBG_SPEW :: C_DBG_LEVEL
+pattern C_DBG_SPEW = (#const C_DBG_SPEW)
+
+foreign import ccall unsafe "hs_logdevice.h set_dbg_level"
+  c_set_dbg_level :: C_DBG_LEVEL -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h dbg_use_fd"
+  c_dbg_use_fd :: CInt -> IO CInt
 
 -------------------------------------------------------------------------------
 -- Client
@@ -484,9 +517,6 @@ foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
 
 -------------------------------------------------------------------------------
 -- Misc
-
-foreign import ccall unsafe "hs_logdevice.h set_dbg_level_error"
-  c_set_dbg_level_error :: IO ()
 
 cbool2bool :: CBool -> Bool
 cbool2bool = (/= 0)

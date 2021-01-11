@@ -12,8 +12,7 @@ import qualified HStream.Store  as S
 spec :: Spec
 spec = describe "HStream.Store.Stream.Reader" $ do
   it "reader timeout" $
-    (do _ <- S.setLoggerlevelError
-        let topicid = S.mkTopicID 1
+    (do let topicid = S.mkTopicID 1
         client <- S.newStreamClient "/data/store/logdevice.conf"
         readerTimeout client topicid
     ) `shouldReturn` True
