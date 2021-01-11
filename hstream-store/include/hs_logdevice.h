@@ -127,6 +127,26 @@ typedef uint64_t c_vcs_config_version_t;
 const char* show_error_name(facebook::logdevice::E err);
 const char* show_error_description(facebook::logdevice::E err);
 
+// Debug
+typedef unsigned c_logdevice_dbg_level;
+const c_logdevice_dbg_level C_DBG_CRITICAL = static_cast<c_logdevice_dbg_level>(
+    facebook::logdevice::dbg::Level::CRITICAL);
+const c_logdevice_dbg_level C_DBG_ERROR =
+    static_cast<c_logdevice_dbg_level>(facebook::logdevice::dbg::Level::ERROR);
+const c_logdevice_dbg_level C_DBG_WARNING = static_cast<c_logdevice_dbg_level>(
+    facebook::logdevice::dbg::Level::WARNING);
+const c_logdevice_dbg_level C_DBG_NOTIFY =
+    static_cast<c_logdevice_dbg_level>(facebook::logdevice::dbg::Level::NOTIFY);
+const c_logdevice_dbg_level C_DBG_INFO =
+    static_cast<c_logdevice_dbg_level>(facebook::logdevice::dbg::Level::INFO);
+const c_logdevice_dbg_level C_DBG_DEBUG =
+    static_cast<c_logdevice_dbg_level>(facebook::logdevice::dbg::Level::DEBUG);
+const c_logdevice_dbg_level C_DBG_SPEW =
+    static_cast<c_logdevice_dbg_level>(facebook::logdevice::dbg::Level::SPEW);
+
+void set_dbg_level(c_logdevice_dbg_level level);
+int dbg_use_fd(int fd);
+
 // AppendCallbackData
 typedef struct logdevice_append_cb_data_t {
   c_error_code_t st;
@@ -275,11 +295,6 @@ logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
 facebook::logdevice::Status
 sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
                        c_logid_t* logids, c_lsn_t* lsns, size_t len);
-
-// ----------------------------------------------------------------------------
-// Misc
-
-void set_dbg_level_error(void);
 
 #ifdef __cplusplus
 } /* end extern "C" */

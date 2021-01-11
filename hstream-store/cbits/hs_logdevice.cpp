@@ -3,10 +3,12 @@
 extern "C" {
 // ----------------------------------------------------------------------------
 
-void set_dbg_level_error(void) {
+void set_dbg_level(c_logdevice_dbg_level level) {
   facebook::logdevice::dbg::currentLevel =
-      facebook::logdevice::dbg::Level::ERROR;
+      facebook::logdevice::dbg::Level(level);
 }
+
+int dbg_use_fd(int fd) { return facebook::logdevice::dbg::useFD(fd); }
 
 const char* show_error_name(facebook::logdevice::E err) {
   return facebook::logdevice::error_name(err);

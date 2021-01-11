@@ -5,14 +5,15 @@ module HStream.Store.AppenderSpec (spec) where
 
 import           Control.Exception
 import           Test.Hspec
-import           Z.Data.Vector     (packASCII)
+import           Z.Data.Vector        (packASCII)
 
-import qualified HStream.Store     as S
+import qualified HStream.Store        as S
+import qualified HStream.Store.Logger as S
 
 spec :: Spec
 spec = describe "HStream.Store.Stream" $ do
   it "append and read" $
-    (do _ <- S.setLoggerlevelError
+    (do _ <- S.setLogDeviceDbgLevel S.C_DBG_ERROR
         let topicid = S.mkTopicID 1
         client <- S.newStreamClient "/data/store/logdevice.conf"
         _ <- S.appendSync client topicid "hello" Nothing
@@ -20,21 +21,18 @@ spec = describe "HStream.Store.Stream" $ do
     ) `shouldReturn` "hello"
 
   it "get default payload size for this client" $
-    (do _ <- S.setLoggerlevelError
-        client <- S.newStreamClient "/data/store/logdevice.conf"
+    (do client <- S.newStreamClient "/data/store/logdevice.conf"
         S.getMaxPayloadSize client
     ) `shouldReturn` (1024 * 1024)    -- 1MB
 
   it "modify default payload size for this client" $
-    (do _ <- S.setLoggerlevelError
-        client <- S.newStreamClient "/data/store/logdevice.conf"
+    (do client <- S.newStreamClient "/data/store/logdevice.conf"
         S.setClientSettings client "max-payload-size" "1024" -- minimum value: 16
         S.getMaxPayloadSize client
     ) `shouldReturn` 1024
 
   it "cannot write exceed 1024 bytes "  $
-    (do _ <- S.setLoggerlevelError
-        client <- S.newStreamClient "/data/store/logdevice.conf"
+    (do client <- S.newStreamClient "/data/store/logdevice.conf"
         S.setClientSettings client "max-payload-size" "1024" -- minimum value: 16
         let topicid = S.mkTopicID 1
         v <- try $ S.appendSync client topicid (packASCII $ replicate 1024 'a') Nothing
@@ -49,8 +47,7 @@ spec = describe "HStream.Store.Stream" $ do
     ) `shouldReturn` (True, False)
 
   it "get tail sequenceNum" $
-    (do _ <- S.setLoggerlevelError
-        let topicid = S.mkTopicID 1
+    (do let topicid = S.mkTopicID 1
         client <- S.newStreamClient "/data/store/logdevice.conf"
         seqNum0 <- S.appendSync client topicid "hello" Nothing
         seqNum1 <- S.getTailSequenceNum client topicid
