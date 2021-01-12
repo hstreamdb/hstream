@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:    HStream.Store
                       HStream.PubSub
+                      HStream.TopicApi
                       HStream.PubSub.Internal.PubSub
                       HStream.PubSub.Types
                       HStream.PubSub.TopicUtils
@@ -49,6 +50,7 @@ library
                     , containers ^>= 0.6
                     , ghc-prim   >= 0.5 && < 0.7
                     , primitive  ^>= 0.7
+                    , time
   default-language:   Haskell2010
   extra-libraries:    logdevice, stdc++, folly
   cxx-options:        -std=c++17

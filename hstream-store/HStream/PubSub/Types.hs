@@ -20,6 +20,9 @@ import           Z.Data.Text
 -- e: "a/a/a/a", "a/b"
 newtype Topic = Topic Text deriving (Show, Eq, Ord, Generic)
 
+getTopic :: Topic -> Text
+getTopic (Topic t) = t
+
 instance Hashable Topic
 
 -- | topic filter
