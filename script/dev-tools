@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+#
+# For auto completion, see: https://click.palletsprojects.com/en/7.x/bashcomplete/
+
+import click
+import os
+from pathlib import Path
+import subprocess
+
+
+HOME = os.getenv("HOME")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(os.path.abspath(__file__))))
+CUID, CGID = os.getuid(), os.getgid()
+LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
+DEFAULT_LOGDEVICE_DIR = os.path.join(PROJECT_ROOT, "local-data/logdevice")
+
+Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
+
+logerr = lambda s: print(f"\033[91m{s}\033[0m")
+logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
+loginfo = lambda s: print(f"\033[96m{s}\033[0m")
+
+
+def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
+    assert isinstance(sh, str)
+    args = ["bash", "-c", sh]
+    return subprocess.run(args, stderr=stderr, stdout=stdout, check=check)
+
+
+@click.group()
+def cli_cluster():
+    pass
+
+
+@click.group()
+def cli_haskell():
+    pass
+
+
+def is_cluster_started(container_bin):
+    result = run_sh(
+        str(container_bin) + " ps --format {{.Names}}",
+        stdout=subprocess.PIPE
+    )
+    if result and result.stdout:
+        rs = result.stdout.decode().strip().split('\n')
+        if LOGDEVICE_CONTAINER_NAME in rs:
+            return True
+    return False
+
+
+@cli_cluster.command()
+@click.option('--image', '-i', default="docker.io/hstreamdb/logdevice")
+@click.option('--data-dir', '-d', type=click.Path(exists=True), default=DEFAULT_LOGDEVICE_DIR)
+@click.option('--container-bin', default='docker')
+def cluster_start(image, data_dir, container_bin):
+    if is_cluster_started(container_bin):
+        return logerr("Already started!")
+
+    cmd = ' '.join([
+        f'{container_bin} run -td --name {LOGDEVICE_CONTAINER_NAME} --rm',
+        '--network host',
+        '-u' + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else '',
+        f'-v {data_dir}:/data/store {image}',
+        '/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp'
+    ])
+    logdebug(f"Run command: {cmd}")
+    run_sh(cmd)
+
+
+@cli_cluster.command()
+@click.option('--container-bin', default='docker')
+def cluster_stop(container_bin):
+    run_sh(f"{container_bin} kill {LOGDEVICE_CONTAINER_NAME}", check=False)
+
+
+def haskell_env(container_bin, image, command, cmd_args, data_dir,
+                tty, interactive, rm, extra_container_options):
+
+    if not is_cluster_started(container_bin):
+        return logerr("Please start the dev-cluster first.")
+
+    stack_home = f"{HOME}/.stack"
+    cabal_home = f"{HOME}/.cabal"
+    hoogle_home = f'{HOME}/.hoogle'
+
+    Path(f"{HOME}/.local/bin").mkdir(parents=True, exist_ok=True)
+    Path(f"{HOME}/.ghc").mkdir(parents=True, exist_ok=True)
+    Path(f"{cabal_home}").mkdir(parents=True, exist_ok=True)
+    Path(f"{stack_home}").mkdir(parents=True, exist_ok=True)
+    Path(f"{hoogle_home}").mkdir(parents=True, exist_ok=True)
+
+    user_cmd = f"{command} {' '.join(cmd_args)}"
+    container_opts = " ".join([
+        "-t" if tty else "",
+        "-i" if interactive else "",
+        "--rm" if rm else "",
+        "-u " + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else ""
+    ])
+    cmd = f'''{container_bin} run {container_opts} \
+                -e HOME={HOME} \
+                -e PATH=$PATH:{HOME}/.local/bin:{HOME}/.cabal/bin \
+                -e LC_ALL=C.UTF-8 \
+                -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
+                -v {HOME}/.ghc:{HOME}/.ghc:rw \
+                -v {stack_home}:{HOME}/.stack:rw \
+                -v {cabal_home}:{HOME}/.cabal:rw \
+                -v {hoogle_home}:{HOME}/.hoogle:rw \
+                -v "{PROJECT_ROOT}:{PROJECT_ROOT}" \
+                -v "{data_dir}:/data/store" \
+                -v "/tmp:/tmp" \
+                -w "{PROJECT_ROOT}" \
+                --network host \
+                {extra_container_options} \
+                {image} {user_cmd}'''
+    loginfo(f"Run <{user_cmd}> from <{image}> image...")
+    run_sh(cmd, check=False)
+
+
+@cli_haskell.command()
+@click.option('--image', '-i', default="docker.io/hstreamdb/haskell")
+@click.option('--container-bin', default='docker')
+@click.option('--command', '-c', default="cabal")
+@click.option('--tty/--no-tty', default=True)
+@click.option('--interactive/--no-interactive', default=True)
+@click.option('--rm/--no-rm', default=True)
+@click.option('--data-dir', '-d', required=True, type=click.Path(exists=True), default=DEFAULT_LOGDEVICE_DIR)
+@click.option('--extra-container-options', default='')
+@click.argument('cmd_args', nargs=-1)
+def cabal(container_bin, image, command, cmd_args, data_dir,
+          tty, interactive, rm, extra_container_options):
+    haskell_env(
+        container_bin, image, command, cmd_args, data_dir,
+        tty, interactive, rm, extra_container_options)
+
+
+@cli_haskell.command()
+@click.option('--image', '-i', default="docker.io/hstreamdb/haskell")
+@click.option('--container-bin', default='docker')
+@click.option('--command', '-c', default="bash")
+@click.option('--tty/--no-tty', default=True)
+@click.option('--interactive/--no-interactive', default=True)
+@click.option('--rm/--no-rm', default=True)
+@click.option('--data-dir', '-d', required=True, type=click.Path(exists=True), default=DEFAULT_LOGDEVICE_DIR)
+@click.option('--extra-container-options', default='')
+@click.argument('cmd_args', nargs=-1)
+def shell(container_bin, image, command, cmd_args, data_dir,
+          tty, interactive, rm, extra_container_options):
+    haskell_env(
+        container_bin, image, command, cmd_args, data_dir,
+        tty, interactive, rm, extra_container_options)
+
+
+if __name__ == '__main__':
+    cli = click.CommandCollection(sources=[cli_cluster, cli_haskell])
+    cli()
