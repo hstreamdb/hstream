@@ -1,3 +1,0 @@
-module HStream.Processing
-  (
-  ) where

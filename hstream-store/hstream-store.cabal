@@ -8,7 +8,7 @@ license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Feng Lee <feng@emqx.io>
-maintainer:         wangbin@emqx.io, lambda@emqx.io
+maintainer:         lambda@emqx.io
 tested-with:        GHC == 8.10.3, GHC == 8.8.4
 category:           Database
 homepage:           https://github.com/hstream-io/hstream
