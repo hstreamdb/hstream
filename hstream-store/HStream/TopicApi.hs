@@ -102,6 +102,12 @@ commitOffsets Consumer {..} = do
     Left e  -> throwIO e
     Right _ -> return ()
 
+readCommit :: Consumer -> Topic -> IO SequenceNum
+readCommit Consumer{..} tp = do
+  readCheckpoint cglobalTM cstreamclient checkpoint cname tp >>= \case
+    Left e  -> throwIO e
+    Right a -> return a
+
 closeConsumer :: Consumer -> IO ()
 closeConsumer _ = return ()
 
@@ -209,3 +215,4 @@ parseCRecord = do
 check :: Either SomeStreamException a -> IO ()
 check (Right _) = return ()
 check (Left e)  = throwIO e
+
