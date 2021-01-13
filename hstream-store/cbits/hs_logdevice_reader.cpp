@@ -104,9 +104,8 @@ new_checkpointed_reader(const char* reader_name, logdevice_reader_t* reader,
   CheckpointedReaderBase::CheckpointingOptions opts;
   opts.num_retries = num_retries;
   const std::string reader_name_ = std::string(reader_name);
-
   std::unique_ptr<SyncCheckpointedReader> scr =
-      CheckpointedReaderFactory().createSyncCheckpointedReader(
+      CheckpointedReaderFactory().createCheckpointedReader(
           reader_name_, std::move(reader->rep), std::move(store->rep), opts);
   logdevice_sync_checkpointed_reader_t* result =
       new logdevice_sync_checkpointed_reader_t;
