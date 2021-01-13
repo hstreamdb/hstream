@@ -18,7 +18,9 @@ import           HStream.PubSub
 import           HStream.PubSub.Types
 import           HStream.Store
 import           HStream.Store.Exception
+import           System.IO.Unsafe
 import           Z.Data.Builder
+import           Z.Data.CBytes
 import qualified Z.Data.Parser           as P
 import           Z.Data.Text
 import           Z.Data.Vector           as V
@@ -43,23 +45,17 @@ data ProducerRecord = ProducerRecord
 ------------------------------------------------------------------------------------------------
 
 data ProducerConfig = ProducerConfig
-  { pcstreamclient :: StreamClient,
-    pcglobalTM     :: GlobalTM
+  { pcpath :: CBytes
   }
-
-type Producer = (GlobalTM, StreamClient)
-
-initProducerConfig :: StreamClient -> GlobalTM -> IO ProducerConfig
-initProducerConfig client gtm =
-  return $ ProducerConfig client gtm
 
 mkProducer :: ProducerConfig -> IO Producer
 mkProducer ProducerConfig {..} = do
-  return (pcglobalTM, pcstreamclient)
+  client <- newStreamClient pcpath
+  return (gtm, client)
 
 sendMessage :: Producer -> ProducerRecord -> IO ()
-sendMessage (gtm, client) pr@ProducerRecord {..} =
-  pub gtm client prTopic (build $ buildPRecord pr) >>= check
+sendMessage (gtm', client) pr@ProducerRecord {..} =
+  pub gtm' client prTopic (build $ buildPRecord pr) >>= check
 
 sendMessageBatch :: Producer -> [ProducerRecord] -> IO ()
 sendMessageBatch p prs = forM_ prs $ sendMessage p
@@ -70,34 +66,21 @@ closeProducer _ = return ()
 ------------------------------------------------------------------------------------------------
 
 data ConsumerConfig = ConsumerConfig
-  { ccstreamclient :: StreamClient,
-    ccname         :: ClientID,
-    ccglobalTM     :: GlobalTM
+  { ccpath :: CBytes,
+    ccname :: ClientID
   }
 
-data Consumer = Consumer
-  { cname         :: ClientID,
-    csreader      :: StreamReader,
-    cstreamclient :: StreamClient,
-    cglobalTM     :: GlobalTM,
-    coffsetMap    :: IORef (Map Topic SequenceNum),
-    checkpoint    :: CheckpointStore
-  }
-
-initConsumerConfig :: StreamClient -> ClientID -> GlobalTM -> IO ConsumerConfig
-initConsumerConfig client name gtm =
-  return $ ConsumerConfig client name gtm
+type Timeout = Int32
 
 mkConsumer :: ConsumerConfig -> [Topic] -> IO Consumer
 mkConsumer ConsumerConfig {..} tps = do
+  client <- newStreamClient ccpath
   let ms = Prelude.length tps
   ref <- newIORef M.empty
   cp <- createCheckpoint ccname
-  sub ccglobalTM ccstreamclient ms tps >>= \case
-    Right r -> return (Consumer ccname r ccstreamclient ccglobalTM ref cp)
+  sub gtm client ms tps >>= \case
+    Right r -> return (Consumer ccname r client gtm ref cp)
     Left e  -> throwIO e
-
-type Timeout = Int32
 
 pollMessages :: Consumer -> Int -> Timeout -> IO [ConsumerRecord]
 pollMessages Consumer {..} maxn timout = do
@@ -124,21 +107,13 @@ closeConsumer _ = return ()
 
 ------------------------------------------------------------------------------------------------
 data AdminClientConfig = AdminClientConfig
-  { accstreamClient :: StreamClient,
-    accglobalTM     :: GlobalTM
+  { accpath :: CBytes
   }
-
-data AdminClient = AdminClient
-  { acglobalTM     :: GlobalTM,
-    acstreamclient :: StreamClient
-  }
-
-initAdminClient :: StreamClient -> GlobalTM -> AdminClientConfig
-initAdminClient a b = AdminClientConfig a b
 
 mkAdminClient :: AdminClientConfig -> IO AdminClient
 mkAdminClient AdminClientConfig {..} = do
-  return $ AdminClient accglobalTM accstreamClient
+  client <- newStreamClient accpath
+  return $ AdminClient gtm client
 
 createTopics :: AdminClient -> [Topic] -> Int -> IO ()
 createTopics AdminClient {..} tps rf = do
@@ -151,6 +126,26 @@ closeAdminClient :: AdminClient -> IO ()
 closeAdminClient _ = return ()
 
 ------------------------------------------------------------------------------------------------
+
+data AdminClient = AdminClient
+  { acglobalTM     :: GlobalTM,
+    acstreamclient :: StreamClient
+  }
+
+type Producer = (GlobalTM, StreamClient)
+
+data Consumer = Consumer
+  { cname         :: ClientID,
+    csreader      :: StreamReader,
+    cstreamclient :: StreamClient,
+    cglobalTM     :: GlobalTM,
+    coffsetMap    :: IORef (Map Topic SequenceNum),
+    checkpoint    :: CheckpointStore
+  }
+
+gtm :: GlobalTM
+gtm = unsafePerformIO $ initGlobalTM
+{-# NOINLINE gtm #-}
 
 buildLengthAndBs :: Bytes -> Builder ()
 buildLengthAndBs bs = int (V.length bs) >> bytes bs
