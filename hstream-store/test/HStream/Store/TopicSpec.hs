@@ -4,7 +4,9 @@
 module HStream.Store.TopicSpec (spec) where
 
 import           System.IO.Unsafe        (unsafePerformIO)
+import           System.Random           (newStdGen, randomRs)
 import           Test.Hspec
+import           Z.Data.CBytes           (CBytes, pack)
 
 import qualified HStream.Store           as S
 import qualified HStream.Store.Exception as E
@@ -21,8 +23,8 @@ simpleSpec :: Spec
 simpleSpec = context "Simple Create & Delete" $ do
   it "create & delete topic directory" $ do
     attrs <- S.newTopicAttributes
-    let topicDirName = "stream"
-    let topicDir = "org/" <> topicDirName
+    topicDirName <- newRandomName 5
+    let topicDir = "ci/" <> topicDirName
     dir <- S.makeTopicDirectorySync client topicDir attrs True
     S.syncTopicConfigVersion client =<< (S.topicDirectoryGetVersion dir)
 
@@ -36,8 +38,8 @@ simpleSpec = context "Simple Create & Delete" $ do
   it "create & delete topic group sync" $ do
     attrs <- S.newTopicAttributes
     S.setTopicReplicationFactor attrs 3
-    let topicGroupName = "some-topic"
-    let topicGroup = "org/stream/" <> topicGroupName
+    topicGroupName <- newRandomName 5
+    let topicGroup = "ci/stream/" <> topicGroupName
     let start = S.mkTopicID 1000
         end   = S.mkTopicID 1000
     group <- S.makeTopicGroupSync client topicGroup start end attrs True
@@ -53,3 +55,6 @@ simpleSpec = context "Simple Create & Delete" $ do
 
 notFoundException :: Selector E.NOTFOUND
 notFoundException = const True
+
+newRandomName :: Int -> IO CBytes
+newRandomName n = (pack . take n . randomRs ('a', 'z')) <$> newStdGen
