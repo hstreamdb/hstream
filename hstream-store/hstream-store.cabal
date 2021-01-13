@@ -72,7 +72,7 @@ test-suite hstream-store-test
                       HStream.Store.ReaderSpec
                       HStream.Store.TopicSpec
   hs-source-dirs:     test
-  build-depends:      base >= 4.11 && < 5, Z-Data == 0.3.0.0, hspec, hstream-store
+  build-depends:      base >= 4.11 && < 5, time, Z-Data == 0.3.0.0, hspec, hstream-store
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover == 2.*
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
