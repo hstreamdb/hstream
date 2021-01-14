@@ -91,6 +91,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
     Path(f"{hoogle_home}").mkdir(parents=True, exist_ok=True)
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
+    user_path = f"{HOME}/.local/bin:{HOME}/.cabal/bin:/opt/ghc/bin:/opt/cabal/bin:$PATH"
     container_opts = " ".join([
         "-t" if tty else "",
         "-i" if interactive else "",
@@ -99,8 +100,8 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
     ])
     cmd = f'''{container_bin} run {container_opts} \
                 -e HOME={HOME} \
-                -e PATH=$PATH:{HOME}/.local/bin:{HOME}/.cabal/bin \
                 -e LC_ALL=C.UTF-8 \
+                -e PATH={user_path} \
                 -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
                 -v {HOME}/.ghc:{HOME}/.ghc:rw \
                 -v {stack_home}:{HOME}/.stack:rw \
