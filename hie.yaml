@@ -29,3 +29,9 @@ cradle:
 
     - path: "hstream-store/HStream"
       component: "lib:hstream-store"
+
+    - path: "hstream-sql/src"
+      component: "lib:hstream-sql"
+
+    - path: "hstream-sql/example/Example.hs"
+      component: "hstream-sql:exe:example"
