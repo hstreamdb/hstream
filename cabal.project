@@ -7,6 +7,12 @@ packages:
   z-data
   z-io
   z-yaml
+  hstream-sql
+
+source-repository-package
+  type: git
+  location: https://github.com/daleiz/hstream-lib.git
+  tag: c6409c80d41d173229f077c2996bdd911658a14e
 
 --source-repository-package
 --  type: git

@@ -1,0 +1,73 @@
+cabal-version:      2.2
+name:               hstream-sql
+version:            0.1.0.0
+synopsis:           High performance stream processing platform for IoT data written in Haskell.
+description:        Please see the README on Github at
+                    <https://github.com/hstream-io/hstream#readme>
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Feng Lee <feng@emqx.io>
+maintainer:         maosics@gmail.com
+tested-with:        GHC == 8.10.2, GHC == 8.8.4
+category:           Language
+homepage:           https://github.com/hstream-io/hstream
+bug-reports:        https://github.com/hstream-io/hstream/issues
+build-type:         Simple
+extra-source-files: ChangeLog.md
+                    README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+library
+  exposed-modules:  Language.SQL
+                    Language.SQL.AST
+                    Language.SQL.Codegen
+                    Language.SQL.Parse
+                    Language.SQL.Validate
+  other-modules:    Language.SQL.Abs
+                    Language.SQL.Codegen.Boilerplate
+                    Language.SQL.Codegen.Utils
+                    Language.SQL.ErrM
+                    Language.SQL.Extra
+                    Language.SQL.Lex
+                    Language.SQL.Par
+                    Language.SQL.Preprocess
+                    Language.SQL.Print
+  hs-source-dirs:   src
+  build-depends:    base                 >= 4.11 && < 5
+                  , aeson
+                  , array
+                  , binary
+                  , bytestring           ^>= 0.10
+                  , containers           ^>= 0.6
+                  , extra
+                  , hstream-lib
+                  , mtl                  ^>= 2.2
+                  , random
+                  , rio
+                  , scientific
+                  , string-random
+                  , text                 ^>= 1.2
+                  , time                 >= 1.9.1 && < 2
+                  , unordered-containers
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+executable example
+  main-is:          Example.hs
+  hs-source-dirs:   example
+  build-depends:    base
+                  , aeson
+                  , hstream-lib
+                  , hstream-sql
+                  , random
+                  , rio
+                  , scientific
+                  , text
+                  , unordered-containers
+  default-language: Haskell2010
+  ghc-options:      -Wall
