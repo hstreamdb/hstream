@@ -1,8 +1,12 @@
+{-# LANGUAGE OverloadedStrings #-}
 
 module HStream.TopicApiSpec (spec) where
 
 import           HStream.Store
 import           HStream.TopicApi
+import           Test.Hspec
+import           HStream.PubSub.Types
+import           Data.Time
 
 
 spec :: Spec
@@ -17,9 +21,9 @@ spec = describe "HStream.TopicApi" $ do
         return True
     ) `shouldReturn` True
 
-   it "consum" $
-    (do consu
-    ) `shouldReturn` True
+  it "consum" $
+    consu
+    `shouldReturn` True
 
 path = "/data/store/logdevice.conf"
 
@@ -40,7 +44,7 @@ pubs = do
 
 consu = do
   cs <- mkConsumer (ConsumerConfig path "start") [Topic "a/a/a"]
-  pub1
+  pubs
   v <- pollMessages cs 1 1000
   commitOffsets cs
   c <- readCommit cs (Topic "a/a/a")

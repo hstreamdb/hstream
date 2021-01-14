@@ -78,6 +78,7 @@ test-suite hstream-store-test
                       HStream.Store.TopicSpec
   hs-source-dirs:     test
   build-depends:      base >= 4.11 && < 5, Z-Data, hspec, hstream-store, random ^>= 1.2
+                    , time
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover == 2.*
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
