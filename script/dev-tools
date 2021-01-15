@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-#
-# For auto completion, see: https://click.palletsprojects.com/en/7.x/bashcomplete/
 
-import click
+import argparse
 import os
 from pathlib import Path
 import subprocess
+import re
 
 
 HOME = os.getenv("HOME")
@@ -27,16 +26,6 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
     return subprocess.run(args, stderr=stderr, stdout=stdout, check=check)
 
 
-@click.group()
-def cli_cluster():
-    pass
-
-
-@click.group()
-def cli_haskell():
-    pass
-
-
 def is_cluster_started(container_bin):
     result = run_sh(
         str(container_bin) + " ps --format {{.Names}}",
@@ -49,10 +38,6 @@ def is_cluster_started(container_bin):
     return False
 
 
-@cli_cluster.command()
-@click.option('--image', '-i', default="docker.io/hstreamdb/logdevice")
-@click.option('--data-dir', '-d', type=click.Path(exists=True), default=DEFAULT_LOGDEVICE_DIR)
-@click.option('--container-bin', default='docker')
 def cluster_start(image, data_dir, container_bin):
     if is_cluster_started(container_bin):
         return logerr("Already started!")
@@ -64,21 +49,36 @@ def cluster_start(image, data_dir, container_bin):
         f'-v {data_dir}:/data/store {image}',
         '/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp'
     ])
-    logdebug(f"Run command: {cmd}")
     run_sh(cmd)
 
 
-@cli_cluster.command()
-@click.option('--container-bin', default='docker')
 def cluster_stop(container_bin):
     run_sh(f"{container_bin} kill {LOGDEVICE_CONTAINER_NAME}", check=False)
+
+
+def run_ldshell(image, data_dir, container_bin):
+    if not is_cluster_started(container_bin):
+        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+
+    result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
+    if result and result.stdout:
+        rs = set(re.findall(r'--admin-server-port=(\d*)', result.stdout.decode()))
+        if len(rs) != 1:
+            return logerr("Get admin-server-port error!")
+        host = '127.0.0.1'
+        port = rs.pop()
+        cmd = ' '.join([
+            f'{container_bin} run -it --rm --network host {image}',
+            f'/usr/local/bin/ldshell --admin-server-host={host} --admin-server-port={port}'
+        ])
+        run_sh(cmd, check=False)
 
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 tty, interactive, rm, extra_container_options):
 
     if not is_cluster_started(container_bin):
-        return logerr("Please start the dev-cluster first.")
+        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
     stack_home = f"{HOME}/.stack"
     cabal_home = f"{HOME}/.cabal"
@@ -118,40 +118,62 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
     run_sh(cmd, check=False)
 
 
-@cli_haskell.command()
-@click.option('--image', '-i', default="docker.io/hstreamdb/haskell")
-@click.option('--container-bin', default='docker')
-@click.option('--command', '-c', default="cabal")
-@click.option('--tty/--no-tty', default=True)
-@click.option('--interactive/--no-interactive', default=True)
-@click.option('--rm/--no-rm', default=True)
-@click.option('--data-dir', '-d', required=True, type=click.Path(exists=True), default=DEFAULT_LOGDEVICE_DIR)
-@click.option('--extra-container-options', default='')
-@click.argument('cmd_args', nargs=-1)
-def cabal(container_bin, image, command, cmd_args, data_dir,
-          tty, interactive, rm, extra_container_options):
-    haskell_env(
-        container_bin, image, command, cmd_args, data_dir,
-        tty, interactive, rm, extra_container_options)
-
-
-@cli_haskell.command()
-@click.option('--image', '-i', default="docker.io/hstreamdb/haskell")
-@click.option('--container-bin', default='docker')
-@click.option('--command', '-c', default="bash")
-@click.option('--tty/--no-tty', default=True)
-@click.option('--interactive/--no-interactive', default=True)
-@click.option('--rm/--no-rm', default=True)
-@click.option('--data-dir', '-d', required=True, type=click.Path(exists=True), default=DEFAULT_LOGDEVICE_DIR)
-@click.option('--extra-container-options', default='')
-@click.argument('cmd_args', nargs=-1)
-def shell(container_bin, image, command, cmd_args, data_dir,
-          tty, interactive, rm, extra_container_options):
-    haskell_env(
-        container_bin, image, command, cmd_args, data_dir,
-        tty, interactive, rm, extra_container_options)
-
-
 if __name__ == '__main__':
-    cli = click.CommandCollection(sources=[cli_cluster, cli_haskell])
-    cli()
+    parser = argparse.ArgumentParser(description='HStream dev tools.')
+    subparsers = parser.add_subparsers(title='subcommands', dest='sub_command')
+
+    parser_cluster_start = subparsers.add_parser(
+        'cluster-start', help='Start logdevice dev cluster')
+    parser_cluster_start.add_argument(
+        '--image', '-i', help='logdevice docker images',
+        default='docker.io/hstreamdb/logdevice')
+    parser_cluster_start.add_argument(
+        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_cluster_start.add_argument('--container-bin', default='docker')
+
+    parser_cluster_stop = subparsers.add_parser(
+        'cluster-stop', help='Stop logdevice dev cluster')
+    parser_cluster_stop.add_argument('--container-bin', default='docker')
+
+    parser_cluster_ldshell = subparsers.add_parser(
+        'ldshell', help='')
+    parser_cluster_ldshell.add_argument(
+        '--image', '-i', help='logdevice docker images',
+        default='docker.io/hstreamdb/logdevice')
+    parser_cluster_ldshell.add_argument('--container-bin', default='docker')
+    parser_cluster_ldshell.add_argument(
+        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+
+    parser_haskell = subparsers.add_parser(
+        'shell', help='Enter in a shell with all haskell dev dependencies')
+    parser_haskell.add_argument(
+        '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
+    parser_haskell.add_argument('--container-bin', default='docker')
+    parser_haskell.add_argument(
+        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_haskell.add_argument('--extra-container-options', default='')
+
+    parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
+    parser_haskell_cabal.add_argument(
+        '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
+    parser_haskell_cabal.add_argument('--container-bin', default='docker')
+    parser_haskell_cabal.add_argument(
+        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_haskell_cabal.add_argument('--extra-container-options', default='')
+    parser_haskell_cabal.add_argument('cmd_args', nargs='*')
+
+    args = vars(parser.parse_args())
+    sub_command = args.pop('sub_command')
+
+    if sub_command == 'cluster-start':
+        cluster_start(**args)
+    elif sub_command == 'ldshell':
+        run_ldshell(**args)
+    elif sub_command == 'cluster-stop':
+        cluster_stop(**args)
+    elif sub_command == 'shell':
+        haskell_env(command='bash', cmd_args="", tty=True, interactive=True, rm=True, **args)
+    elif sub_command == 'cabal':
+        haskell_env(command='cabal', tty=True, interactive=True, rm=True, **args)
+    else:
+        parser.print_help()
