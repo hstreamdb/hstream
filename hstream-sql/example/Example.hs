@@ -94,6 +94,7 @@ mkMockData = do
   return
     MockMessage
       { mmTimestamp = ts,
-        mmKey = Just $ TLE.encodeUtf8 $ TL.pack $ show k,
+        -- WARNING: A Nothing key in a task with JOIN can raise an exception
+        mmKey = Just $ encode $ HM.fromList [ ("key" :: Text, Number (scientific (toInteger k) 0))],     -- TLE.encodeUtf8 $ TL.pack $ show k,
         mmValue = encode r
       }
