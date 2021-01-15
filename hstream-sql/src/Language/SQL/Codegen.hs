@@ -35,10 +35,10 @@ import           HStream.Stream.TimeWindows           (TimeWindowKey,
                                                        timeWindowKeySerde)
 import qualified HStream.Table                        as HT
 import           Language.SQL.AST
-import           Language.SQL.Codegen.Boilerplate     (joiner, objectSerde)
+import           Language.SQL.Codegen.Boilerplate     (objectSerde)
 import           Language.SQL.Codegen.Utils           (compareValue,
                                                        composeColName,
-                                                       diffTimeToMs,
+                                                       diffTimeToMs, genJoiner,
                                                        genMockSinkTopic,
                                                        getFieldByName,
                                                        opOnValue)
@@ -112,10 +112,10 @@ genStreamJoinedConfig = do
 genJoinWindows :: RJoinWindow -> JoinWindows
 genJoinWindows diffTime =
   let defaultGraceMs = 3600 * 1000
-      windowWidth = diffTimeToPicoseconds diffTime `div` 10^9
+      windowWidth = diffTimeToMs  diffTime
    in JoinWindows
-      { jwBeforeMs = fromInteger windowWidth
-      , jwAfterMs  = fromInteger windowWidth
+      { jwBeforeMs = windowWidth
+      , jwAfterMs  = windowWidth
       , jwGraceMs  = defaultGraceMs
       }
 
@@ -136,7 +136,7 @@ genStream taskName frm = do
         Just srcConfig2 -> do
           anotherStream <- HS.mkStreamBuilder "" >>= HS.stream srcConfig2
           streamJoined  <- genStreamJoinedConfig
-          HS.joinStream anotherStream joiner
+          HS.joinStream anotherStream (genJoiner s1 s2)
                         (genKeySelector f1) (genKeySelector f2)
                         (genJoinWindows win) streamJoined
                         baseStream

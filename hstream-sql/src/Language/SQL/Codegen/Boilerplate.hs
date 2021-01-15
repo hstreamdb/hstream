@@ -6,7 +6,6 @@ module Language.SQL.Codegen.Boilerplate where
 
 import           Data.Aeson
 import qualified Data.Binary             as B
-import qualified Data.HashMap.Strict     as HM
 import           Data.Maybe              (fromJust)
 import qualified Data.Text.Lazy          as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -41,7 +40,3 @@ voidSerde =
   { serializer = Serializer B.encode
   , deserializer = Deserializer B.decode
   }
-
---------------------------------------------------------------------------------
-joiner :: Object -> Object -> Object
-joiner = HM.union

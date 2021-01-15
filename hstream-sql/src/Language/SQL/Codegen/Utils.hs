@@ -14,6 +14,7 @@ module Language.SQL.Codegen.Utils
   , opOnValue
   , diffTimeToMs
   , composeColName
+  , genJoiner
   ) where
 
 import           Data.Aeson
@@ -36,6 +37,14 @@ genRandomSinkTopic = stringRandomIO "[a-zA-Z]{20}"
 
 genMockSinkTopic :: IO Text
 genMockSinkTopic = return "demoSink"
+
+--------------------------------------------------------------------------------
+genJoiner :: StreamName -> StreamName -> Object -> Object -> Object
+genJoiner s1 s2 o1 o2 = HM.union (HM.fromList l1') (HM.fromList l2')
+  where l1 = HM.toList o1
+        l2 = HM.toList o2
+        l1' = (\(k,v) -> (s1 <> "." <> k, v)) <$> l1
+        l2' = (\(k,v) -> (s2 <> "." <> k, v)) <$> l2
 
 --------------------------------------------------------------------------------
 compareValue :: Value -> Value -> Ordering
