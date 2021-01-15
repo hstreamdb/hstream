@@ -38,6 +38,7 @@ using facebook::logdevice::DataRecord;
 using facebook::logdevice::KeyType;
 using facebook::logdevice::logid_t;
 using facebook::logdevice::lsn_t;
+using facebook::logdevice::Payload;
 using facebook::logdevice::Reader;
 using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::client::LogAttributes;
@@ -225,17 +226,21 @@ facebook::logdevice::Status logdevice_append_with_attrs_async(
 
 facebook::logdevice::Status
 logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
-                      const char* payload, HsInt offset,
-                      HsInt length, // payload
-                      int64_t* ts, c_lsn_t* lsn_ret);
+                      // Payload
+                      const char* payload, HsInt offset, HsInt length,
+                      // Payload End
+                      c_timestamp_t* ts, c_lsn_t* lsn_ret);
 
 facebook::logdevice::Status
 logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
+                                 // Payload
                                  const char* payload, HsInt offset,
-                                 HsInt length, // payload
-                                 KeyType keytype,
-                                 const char* keyval, // optional_key
-                                 int64_t* ts, c_lsn_t* lsn_ret);
+                                 HsInt length,
+                                 // Payload End
+                                 // optional_key
+                                 KeyType keytype, const char* keyval,
+                                 // OptionalKey End
+                                 c_timestamp_t* ts, c_lsn_t* lsn_ret);
 
 // ----------------------------------------------------------------------------
 // Checkpoint Store
