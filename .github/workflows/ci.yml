@@ -47,6 +47,8 @@ jobs:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
 
       - name: Cache
         uses: actions/cache@v2
@@ -54,6 +56,7 @@ jobs:
           path: |
             ~/.cabal/packages
             ~/.cabal/store
+            dist-newstyle
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-
