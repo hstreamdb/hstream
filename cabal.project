@@ -3,6 +3,9 @@ packages:
   -- hstream-core
   hstream-hesp
   hstream-store
+  z-data
+  z-io
+  z-yaml
 
 --source-repository-package
 --  type: git
