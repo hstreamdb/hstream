@@ -36,7 +36,7 @@ library
                       HStream.Store.Stream.Appender
                       HStream.Store.Stream.Reader
   build-depends:      base       >= 4.11 && < 5
-                    , Z-Data     == 0.3.0.0
+                    , Z-Data     == 0.4.*
                     , containers ^>= 0.6
                     , ghc-prim   >= 0.5 && < 0.7
                     , primitive  ^>= 0.7
