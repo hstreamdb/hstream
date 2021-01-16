@@ -2,7 +2,7 @@
 #
 # You can customize options through environments, e.g.
 #
-# $ USE_STABLE_IMAGE=true CONTAINER_BIN=podman CONTAINER_HOME=$HOME WORKDIR=/tmp/hstream-test script/docker-test.sh
+# $ CONTAINER_BIN=podman WORKDIR=/tmp/hstream-test script/docker-test.sh
 
 set -e
 
@@ -19,9 +19,7 @@ else
     HS_IMAGE="hstreamdb/haskell:$GHC_VERSION"
     STORE_SERVER_IMAGE="hstreamdb/logdevice"
 fi
-CABAL_HOME=${CABAL_HOME:-$HOME/.cabal}
 IGNORE_CABAL_UPDATE=${IGNORE_CABAL_UPDATE:-""}
-CONTAINER_HOME=${CONTAINER_HOME:-/root}
 CONTAINER_BIN="${CONTAINER_BIN:-docker}"
 
 SERVER_CONTAINER_NAME="ci-server-$GHC_VERSION"
@@ -32,22 +30,37 @@ log_info() {
     echo -e "\033[96m$@\033[0m"
 }
 
+container_run() {
+    $CONTAINER_BIN run --rm \
+        -v $SRC_DIR:$SRC_DIR \
+        -v $HOME/.cabal:$HOME/.cabal \
+        -v $WORKDIR:$WORKDIR \
+        -w $SRC_DIR $HS_IMAGE $@
+}
+
 pack_and_unpack() {
-    $CONTAINER_BIN run --rm -v $SRC_DIR:/srv -w /srv $HS_IMAGE cabal sdist all
-    mkdir -p $WORKDIR && rm -rf $WORKDIR/*
-    cp dist-newstyle/sdist/*.tar.gz $WORKDIR/ && cd $WORKDIR/
-    find . -maxdepth 1 -type f -name '*.tar.gz' -exec tar -xvf '{}' \;
-    find . -maxdepth 1 -type f -name '*.tar.gz' -exec rm       '{}' \;
+    container_run cabal sdist all
+    container_run chown -R $(id -u):$(id -g) $SRC_DIR
+    mkdir -p $WORKDIR && container_run chown -R $(id -u):$(id -g) $WORKDIR && rm -rf $WORKDIR/*
+
+    cd $WORKDIR/
+    find $SRC_DIR/dist-newstyle/sdist -maxdepth 1 -type f -name '*.tar.gz' -exec tar -xvf '{}' \;
+    find $SRC_DIR/dist-newstyle/sdist -maxdepth 1 -type f -name '*.tar.gz' -exec rm       '{}' \;
     echo "packages: */*.cabal" >> cabal.project
     cp ${SRC_DIR}/hstream/config.example.yaml ${WORKDIR}/config.example.yaml
+
+    mkdir -p $WORKDIR/dist-newstyle/build
+    cp -r $SRC_DIR/dist-newstyle/* $WORKDIR/dist-newstyle/
+    # FIXME: Sometimes we need rebuild hstream-store
+    #find $WORKDIR/dist-newstyle/build/ -maxdepth 1 -type d | grep hstream-store | xargs rm -rf
 }
 
 start_tester_container() {
     $CONTAINER_BIN run -td --rm \
         --name $TEST_CONTAINER_NAME \
         -e LC_ALL=C.UTF-8 \
-        -e HOME=$CONTAINER_HOME \
-        -v $CABAL_HOME:$CONTAINER_HOME/.cabal \
+        -e HOME=$HOME \
+        -v $HOME/.cabal:$HOME/.cabal \
         -v $WORKDIR:/srv \
         -v $STORAGE_DIR:/data/store \
         -w /srv $HS_IMAGE bash
@@ -64,33 +77,25 @@ start_storage_server_container() {
     sleep 2
 }
 
-# TODO
-start_server_container() {
-    $CONTAINER_BIN run -td --rm \
-        --name $SERVER_CONTAINER_NAME \
-        -e HOME=$CONTAINER_HOME \
-        --network container:$TEST_CONTAINER_NAME \
-        -v $CABAL_HOME:$CONTAINER_HOME/.cabal \
-        -v $WORKDIR:/srv \
-        -w /srv $HS_IMAGE \
-        cabal exec hstream config.example.yaml
-    # NOTE: Here we sleep 2 seconds to wait the server start.
-    sleep 2
-}
-
 run_cabal_build_all() {
     test "$IGNORE_CABAL_UPDATE" || $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal update
     $CONTAINER_BIN exec $TEST_CONTAINER_NAME cat cabal.project || true
-    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --flag server-tests --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
-    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --flag server-tests --enable-tests --enable-benchmarks all
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --upgrade-dependencies --only-dependencies --enable-tests --enable-benchmarks all
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal build --enable-tests --enable-benchmarks all
 }
 
 run_cabal_test_all() {
-    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --flag server-tests --test-show-details=always all
-}
-
-run_cabal_test_store() {
+    log_info "======== hstream-store ========"
     $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --test-show-details=always hstream-store
+
+    log_info "======== hstream-sql ========"
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --test-show-details=always hstream-sql
+
+    log_info "======== hstream-processing ========"
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --test-show-details=always hstream-processing
+
+    log_info "======== hstream ========"
+    $CONTAINER_BIN exec $TEST_CONTAINER_NAME cabal test --test-show-details=always hstream
 }
 
 run_check_all() {
@@ -118,6 +123,9 @@ try_release_container() {
 
 try_release_container &> /dev/null
 
+log_info "Pack & Unpack packages from $SRC_DIR to $WORKDIR..."
+pack_and_unpack
+
 log_info "Start tester container from $HS_IMAGE..."
 start_tester_container
 
@@ -128,9 +136,6 @@ start_storage_server_container
 #log_info "Start main server..."
 #start_server_container
 
-log_info "Pack & Unpack packages from $SRC_DIR to $WORKDIR..."
-pack_and_unpack
-
 log_info "Build from $WORKDIR..."
 run_cabal_build_all
 
@@ -138,5 +143,11 @@ log_info "Test all..."
 run_cabal_test_all
 
 run_check_all
+
+container_run chown -R $(id -u):$(id -g) $WORKDIR
+container_run chown -R $(id -u):$(id -g) $HOME/.cabal
+
+log_info "Save dist-newstyle..."
+cp -r $WORKDIR/dist-newstyle/* $SRC_DIR/dist-newstyle
 
 try_release_container &> /dev/null
