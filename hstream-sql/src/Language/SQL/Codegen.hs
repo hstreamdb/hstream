@@ -34,20 +34,28 @@ import           HStream.Stream.TimeWindows           (TimeWindowKey,
                                                        mkTumblingWindow,
                                                        timeWindowKeySerde)
 import qualified HStream.Table                        as HT
+import           HStream.Topic                        (TopicName)
 import           Language.SQL.AST
 import           Language.SQL.Codegen.Boilerplate     (objectSerde)
 import           Language.SQL.Codegen.Utils           (compareValue,
                                                        composeColName,
                                                        diffTimeToMs, genJoiner,
-                                                       genMockSinkTopic,
+                                                       genRandomSinkTopic,
                                                        getFieldByName,
                                                        opOnValue)
 import           Language.SQL.Parse                   (pSQL, preprocess, tokens)
 import           Language.SQL.Validate                (Validate (..))
 import           RIO
+import qualified RIO.ByteString.Lazy                  as BL
 
 --------------------------------------------------------------------------------
-streamCodegen :: Text -> IO Task
+data ExecutionPlan = SelectPlan         Task
+                   | CreatePlan         TopicName
+                   | CreateBySelectPlan TopicName Task
+                   | InsertPlan         TopicName BL.ByteString
+
+--------------------------------------------------------------------------------
+streamCodegen :: Text -> IO ExecutionPlan
 streamCodegen input = do
   let sql' = pSQL (tokens (preprocess input)) >>= validate
   case sql' of
@@ -55,11 +63,16 @@ streamCodegen input = do
     Right sql -> do
       let rsql = refine sql
       case rsql of
-        RQSelect select -> do
-          builder <- genStreamBuilder "demo" select
-          return $ HS.build builder
-        RQCreate _ -> error "Task can only be generated from SELECT query"
-        RQInsert _ -> error "Task can only be generated from SELECT query"
+        RQSelect select                     -> do
+          builder <- genStreamBuilder "demo" Nothing select
+          return $ SelectPlan $ HS.build builder
+        RQCreate (RCreate topic _)          -> return . CreatePlan $ topic
+        RQCreate (RCreateAs topic select _) -> do
+          builder <- genStreamBuilder "demo" (Just topic) select
+          return $ CreateBySelectPlan topic (HS.build builder)
+        RQInsert (RInsert topic tuples)     -> do
+          let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
+          return $ InsertPlan topic (encode object)
 
 --------------------------------------------------------------------------------
 type SourceConfigType = HS.StreamSourceConfig Object Object
@@ -79,9 +92,11 @@ defaultTimeWindowSize = 3000
 data SinkConfigType = SinkConfigType (HS.StreamSinkConfig Object Object)
                     | SinkConfigTypeWithWindow (HS.StreamSinkConfig (TimeWindowKey Object) Object)
 
-genStreamSinkConfig :: RGroupBy -> IO SinkConfigType
-genStreamSinkConfig grp = do
-  topic <- genMockSinkTopic
+genStreamSinkConfig :: Maybe TopicName -> RGroupBy -> IO SinkConfigType
+genStreamSinkConfig sinkTopic' grp = do
+  topic <- case sinkTopic' of
+    Nothing        -> genRandomSinkTopic
+    Just sinkTopic -> return sinkTopic
   case grp of
     RGroupByEmpty ->
       return . SinkConfigType $ HS.StreamSinkConfig
@@ -328,9 +343,9 @@ genFilteRNodeFromHaving :: RHaving -> Stream Object Object -> IO (Stream Object 
 genFilteRNodeFromHaving = HS.filter . genFilterRFromHaving
 
 ----
-genStreamBuilder :: TaskName -> RSelect -> IO StreamBuilder
-genStreamBuilder taskName select@(RSelect sel frm whr grp hav) = do
-  streamSinkConfig <- genStreamSinkConfig grp
+genStreamBuilder :: TaskName -> Maybe TopicName -> RSelect -> IO StreamBuilder
+genStreamBuilder taskName sinkTopic' select@(RSelect sel frm whr grp hav) = do
+  streamSinkConfig <- genStreamSinkConfig sinkTopic' grp
   s1 <- genStream taskName frm
           >>= genFilterNode whr
           >>= genMapNode sel

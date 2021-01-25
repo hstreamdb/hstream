@@ -5,37 +5,42 @@
 module Main where
 
 import           Data.Aeson
-import qualified Data.HashMap.Strict     as HM
+import qualified Data.HashMap.Strict as HM
 import           Data.Scientific
-import           Data.Text.IO            (getLine)
-import qualified Data.Text.Lazy          as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import           HStream.Processor       (MessageStoreType (Mock),
-                                          MockMessage (..), TaskConfig (..),
-                                          mkMockTopicConsumer,
-                                          mkMockTopicProducer, mkMockTopicStore,
-                                          runTask)
-import           HStream.Topic           (RawConsumerRecord (..),
-                                          RawProducerRecord (..),
-                                          TopicConsumer (..),
-                                          TopicProducer (..))
-import           HStream.Util            (getCurrentTimestamp)
-import           Language.SQL            (streamCodegen)
-import qualified Prelude                 as P
+import           Data.Text.IO        (getLine)
+import           HStream.Processor   (MessageStoreType (Mock), MockMessage (..),
+                                      TaskConfig (..), mkMockTopicConsumer,
+                                      mkMockTopicProducer, mkMockTopicStore,
+                                      runTask)
+import           HStream.Topic       (RawConsumerRecord (..),
+                                      RawProducerRecord (..),
+                                      TopicConsumer (..), TopicProducer (..))
+import           HStream.Util        (getCurrentTimestamp)
+import           Language.SQL        (ExecutionPlan (..), streamCodegen)
+import qualified Prelude             as P
 import           RIO
-import qualified RIO.ByteString.Lazy     as BL
-import           System.Random           (Random (randomR), getStdRandom)
+import qualified RIO.ByteString.Lazy as BL
+import           System.Random       (Random (randomR), getStdRandom)
+
+---------------------------------- Example -------------------------------------
+-- CREATE STREAM demoSink AS SELECT * FROM temperatureSource WITH (FORMAT = JSON);
+
+-- CREATE STREAM demoSink AS SELECT SUM(humiditySource.humidity) AS aaa FROM humiditySource LEFT JOIN temperatureSource WITHIN (INTERVAL 5 SECOND) ON (humiditySource.temperature = temperatureSource.temperature) WHERE humiditySource.humidity > 20 GROUP BY humiditySource.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
+--------------------------------------------------------------------------------
 
 main :: IO ()
 main = getLine >>= run
 
 run :: Text -> IO ()
 run input = do
-  task <- streamCodegen input
+  plan <- streamCodegen input
+  (sTopicName,task) <- case plan of
+    SelectPlan task               -> return ("demoSink",task)
+    CreateBySelectPlan topic task -> return (topic,task)
+    _                             -> error "Not supported"
 
   let tTopicName = "temperatureSource"
   let hTopicName = "humiditySource"
-  let sTopicName = "demoSink"
 
   mockStore <- mkMockTopicStore
   mp  <- mkMockTopicProducer mockStore
