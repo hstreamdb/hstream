@@ -12,6 +12,7 @@ import qualified Data.Text
 %name pListStreamOption_internal ListStreamOption
 %name pStreamOption_internal StreamOption
 %name pInsert_internal Insert
+%name pListIdent_internal ListIdent
 %name pListValueExpr_internal ListValueExpr
 %name pSelect_internal Select
 %name pSel_internal Sel
@@ -101,18 +102,17 @@ import qualified Data.Text
   'STREAM' { PT _ (TS _ 49) }
   'SUM' { PT _ (TS _ 50) }
   'TIME' { PT _ (TS _ 51) }
-  'TOPIC' { PT _ (TS _ 52) }
-  'TUMBLING' { PT _ (TS _ 53) }
-  'VALUES' { PT _ (TS _ 54) }
-  'WEEK' { PT _ (TS _ 55) }
-  'WHERE' { PT _ (TS _ 56) }
-  'WITH' { PT _ (TS _ 57) }
-  'WITHIN' { PT _ (TS _ 58) }
-  'YEAR' { PT _ (TS _ 59) }
-  '[' { PT _ (TS _ 60) }
-  ']' { PT _ (TS _ 61) }
-  '{' { PT _ (TS _ 62) }
-  '}' { PT _ (TS _ 63) }
+  'TUMBLING' { PT _ (TS _ 52) }
+  'VALUES' { PT _ (TS _ 53) }
+  'WEEK' { PT _ (TS _ 54) }
+  'WHERE' { PT _ (TS _ 55) }
+  'WITH' { PT _ (TS _ 56) }
+  'WITHIN' { PT _ (TS _ 57) }
+  'YEAR' { PT _ (TS _ 58) }
+  '[' { PT _ (TS _ 59) }
+  ']' { PT _ (TS _ 60) }
+  '{' { PT _ (TS _ 61) }
+  '}' { PT _ (TS _ 62) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -147,11 +147,15 @@ ListStreamOption : {- empty -} { (Nothing, []) }
                  | StreamOption ',' ListStreamOption { (fst $1, (:) (snd $1) (snd $3)) }
 
 StreamOption :: { (Maybe (Int, Int),  (Language.SQL.Abs.StreamOption (Maybe (Int, Int))) ) }
-StreamOption : 'TOPIC' '=' String { (Just (tokenLineCol $1), Language.SQL.Abs.OptionTopic (Just (tokenLineCol $1)) (snd $3)) }
-             | 'FORMAT' '=' String { (Just (tokenLineCol $1), Language.SQL.Abs.OptionFormat (Just (tokenLineCol $1)) (snd $3)) }
+StreamOption : 'FORMAT' '=' String { (Just (tokenLineCol $1), Language.SQL.Abs.OptionFormat (Just (tokenLineCol $1)) (snd $3)) }
 
 Insert :: { (Maybe (Int, Int),  (Language.SQL.Abs.Insert (Maybe (Int, Int))) ) }
-Insert : 'INSERT' 'INTO' Ident 'VALUES' '(' ListValueExpr ')' { (Just (tokenLineCol $1), Language.SQL.Abs.DInsert (Just (tokenLineCol $1)) (snd $3) (snd $6)) }
+Insert : 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { (Just (tokenLineCol $1), Language.SQL.Abs.DInsert (Just (tokenLineCol $1)) (snd $3) (snd $5) (snd $9)) }
+
+ListIdent :: { (Maybe (Int, Int),  [Language.SQL.Abs.Ident] ) }
+ListIdent : {- empty -} { (Nothing, []) }
+          | Ident { (fst $1, (:[]) (snd $1)) }
+          | Ident ',' ListIdent { (fst $1, (:) (snd $1) (snd $3)) }
 
 ListValueExpr :: { (Maybe (Int, Int),  [Language.SQL.Abs.ValueExpr (Maybe (Int, Int))] ) }
 ListValueExpr : {- empty -} { (Nothing, []) }
@@ -329,6 +333,7 @@ pCreate = (>>= return . snd) . pCreate_internal
 pListStreamOption = (>>= return . snd) . pListStreamOption_internal
 pStreamOption = (>>= return . snd) . pStreamOption_internal
 pInsert = (>>= return . snd) . pInsert_internal
+pListIdent = (>>= return . snd) . pListIdent_internal
 pListValueExpr = (>>= return . snd) . pListValueExpr_internal
 pSelect = (>>= return . snd) . pSelect_internal
 pSel = (>>= return . snd) . pSel_internal

@@ -392,9 +392,8 @@ instance Validate Create where
     validate (SOs options) >> return create
 
 instance Validate StreamOption where
-  validate op@(OptionTopic _ s)   = Right op
   validate op@(OptionFormat pos s) = do
-    unless (s `L.elem` ["JSON", "json"]) (Left $ errWithPos pos "Stream format can only support JSON yet")
+    unless (s `L.elem` ["\"JSON\"", "\"json\""]) (Left $ errWithPos pos "Stream format can only support JSON yet")
     return op
 
 newtype SOs a = SOs [StreamOption a] deriving (Functor)
@@ -402,18 +401,15 @@ newtype SOs a = SOs [StreamOption a] deriving (Functor)
 instance Validate SOs where
   validate (SOs options) = do
     mapM_ validate options
-    unless (fmt   == 1) (Left "There should be one and only one FORMAT option")
-    unless (topic == 1) (Left "There should be one and only one TOPIC option")
-    return $ SOs options
-    where
-      (topic, fmt) = foldr (\option (topic', fmt') ->
-                                 case option of
-                                   OptionTopic  _ _ -> (topic'+1, fmt')
-                                   OptionFormat _ _ -> (topic', fmt'+1)) (0,0) options
+    case options of
+      [(OptionFormat _ _)] -> return $ SOs options
+      _                    ->
+        (Left "There should be one and only one FORMAT option")
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
-  validate insert@(DInsert _ _ exprs) = do
+  validate insert@(DInsert pos _ fields exprs) = do
+    unless (L.length fields == L.length exprs) (Left $ errWithPos pos "Number of fields should match expressions")
     mapM_ validate exprs
     mapM_ isConstExpr exprs
     return insert

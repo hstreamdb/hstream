@@ -39,19 +39,12 @@ DCreate.  Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
 separator StreamOption "," ;
 CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOption] ")" ;
 
--- TypeInt.      DataType ::= "INT"      ;
--- TypeNum.      DataType ::= "NUMBER"   ;
--- TypeString.   DataType ::= "STRING"   ;
--- TypeDateTime. DataType ::= "DATETIME" ;
--- TypeInterval. DataType ::= "INTERVAL" ;
--- TypeArr.      DataType ::= "ARRAY"    ;
--- TypeMap.      DataType ::= "MAP"      ;
-
-OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
+-- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
 OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 
 ---- Insert Query
-DInsert.          Insert ::= "INSERT" "INTO" Ident "VALUES" "(" [ValueExpr] ")" ;
+DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
+separator Ident "," ;
 separator ValueExpr "," ;
 
 ---- Select Query

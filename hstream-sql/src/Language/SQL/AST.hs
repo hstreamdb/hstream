@@ -260,8 +260,7 @@ instance Refine (Select Position) where
 ---- CREATE
 data StreamFormat = FormatJSON deriving (Eq, Show)
 data RStreamOptions = RStreamOptions
-  { rStreamTopic  :: Text
-  , rStreamFormat :: StreamFormat
+  { rStreamFormat :: StreamFormat
   } deriving (Eq, Show)
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
@@ -269,13 +268,10 @@ data RCreate = RCreate   Text RStreamOptions
 
 type instance RefinedType [StreamOption a] = RStreamOptions
 instance Refine [StreamOption a] where
-  refine [OptionTopic _ topic, OptionFormat _ format] =
-    RStreamOptions (pack topic) (refineFormat format)
+  refine [OptionFormat _ format] = RStreamOptions (refineFormat format)
     where refineFormat "json" = FormatJSON
           refineFormat "JSON" = FormatJSON
           refineFormat _      = error "Impossible happened"
-  refine options@[OptionFormat _ _, OptionTopic _ _] =
-    refine $ L.reverse options
   refine _ = error "Impossible happened"
 
 type instance RefinedType (Create a) = RCreate
@@ -284,10 +280,11 @@ instance Refine (Create Position) where
   refine (CreateAs _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
 
 ---- INSERT
-data RInsert = RInsert Text [Constant] deriving (Eq, Show)
+data RInsert = RInsert Text [(FieldName,Constant)] deriving (Eq, Show)
 type instance RefinedType (Insert a) = RInsert
 instance Refine (Insert Position) where
-  refine (DInsert _ (Ident s) exprs) = RInsert s (refineConst <$> exprs)
+  refine (DInsert _ (Ident s) fields exprs) = RInsert s $
+    zip ((\(Ident f) -> f) <$> fields) (refineConst <$> exprs)
     where
       refineConst expr =
         let (RExprConst _ constant) = refine expr -- Ensured by Validate
