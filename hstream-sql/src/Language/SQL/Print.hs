@@ -100,6 +100,9 @@ instance Print Double where
 
 instance Print Language.SQL.Abs.Ident where
   prt _ (Language.SQL.Abs.Ident i) = doc $ showString $ Data.Text.unpack i
+  prtList _ [] = concatD []
+  prtList _ [x] = concatD [prt 0 x]
+  prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
 instance Print (Language.SQL.Abs.SQL a) where
   prt i e = case e of
@@ -117,7 +120,6 @@ instance Print [Language.SQL.Abs.StreamOption a] where
 
 instance Print (Language.SQL.Abs.StreamOption a) where
   prt i e = case e of
-    Language.SQL.Abs.OptionTopic _ str -> prPrec i 0 (concatD [doc (showString "TOPIC"), doc (showString "="), prt 0 str])
     Language.SQL.Abs.OptionFormat _ str -> prPrec i 0 (concatD [doc (showString "FORMAT"), doc (showString "="), prt 0 str])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
@@ -125,7 +127,10 @@ instance Print (Language.SQL.Abs.StreamOption a) where
 
 instance Print (Language.SQL.Abs.Insert a) where
   prt i e = case e of
-    Language.SQL.Abs.DInsert _ id valueexprs -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id, doc (showString "VALUES"), doc (showString "("), prt 0 valueexprs, doc (showString ")")])
+    Language.SQL.Abs.DInsert _ id ids valueexprs -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id, doc (showString "("), prt 0 ids, doc (showString ")"), doc (showString "VALUES"), doc (showString "("), prt 0 valueexprs, doc (showString ")")])
+
+instance Print [Language.SQL.Abs.Ident] where
+  prt = prtList
 
 instance Print [Language.SQL.Abs.ValueExpr a] where
   prt = prtList

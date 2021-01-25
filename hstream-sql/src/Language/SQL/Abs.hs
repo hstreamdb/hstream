@@ -26,11 +26,10 @@ data Create a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor)
 
 data StreamOption a
-    = OptionTopic  a String
-    | OptionFormat a String
+    = OptionFormat a String
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor)
 
-data Insert a = DInsert a Ident [ValueExpr a]
+data Insert a = DInsert a Ident [Ident] [ValueExpr a]
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor)
 
 data Select a
