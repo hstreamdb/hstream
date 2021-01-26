@@ -22,7 +22,7 @@ spec = describe "HStream.Store.Topic" $ do
 simpleSpec :: Spec
 simpleSpec = context "Simple Create & Delete" $ do
   it "create & delete topic directory" $ do
-    attrs <- S.newTopicAttributes
+    let attrs = S.TopicAttrs { S.replicationFactor = 0 }
     topicDirName <- newRandomName 5
     let topicDir = "ci/" <> topicDirName
     dir <- S.makeTopicDirectorySync client topicDir attrs True
@@ -36,8 +36,7 @@ simpleSpec = context "Simple Create & Delete" $ do
     S.getTopicDirectorySync client topicDir `shouldThrow` notFoundException
 
   it "create & delete topic group sync" $ do
-    attrs <- S.newTopicAttributes
-    S.setTopicReplicationFactor attrs 3
+    let attrs = S.TopicAttrs { S.replicationFactor = 2 }
     topicGroupName <- newRandomName 5
     let topicGroup = "ci/stream/" <> topicGroupName
     let start = S.mkTopicID 1000

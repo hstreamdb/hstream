@@ -1,6 +1,5 @@
-{-# LANGUAGE CPP               #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP   #-}
+{-# LANGUAGE GADTs #-}
 
 module HStream.Store.Exception
   ( -- * Stream Exception
@@ -11,112 +10,114 @@ module HStream.Store.Exception
   , throwStreamError
   , throwStreamErrorIfNotOK
   , throwStreamErrorIfNotOK'
+  , throwUserStreamError
     -- ** Specific Stream Exception
-  , NOTFOUND
-  , TIMEDOUT
-  , NOSEQUENCER
-  , CONNFAILED
-  , NOTCONN
-  , TOOBIG
-  , TOOMANY
-  , PREEMPTED
-  , NOBUFS
-  , NOMEM
-  , INTERNAL
-  , SYSLIMIT
-  , TEMPLIMIT
-  , PERMLIMIT
-  , ACCESS
-  , ALREADY
-  , ISCONN
-  , UNREACHABLE
-  , UNROUTABLE
-  , BADMSG
-  , DISABLED
-  , EXISTS
-  , SHUTDOWN
-  , NOTINCONFIG
-  , PROTONOSUPPORT
-  , PROTO
-  , PEER_CLOSED
-  , SEQNOBUFS
-  , WOULDBLOCK
-  , ABORTED
-  , INPROGRESS
-  , CANCELLED
-  , NOTSTORAGE
-  , AGAIN
-  , PARTIAL
-  , GAP
-  , TRUNCATED
-  , STALE
-  , NOSPC
-  , OVERLOADED
-  , PENDING
-  , PENDING_FULL
-  , FAILED
-  , SEQSYSLIMIT
-  , REBUILDING
-  , REDIRECTED
-  , RETRY
-  , BADPAYLOAD
-  , NOSSLCONFIG
-  , NOTREADY
-  , DROPPED
-  , FORWARD
-  , NOTSUPPORTED
-  , NOTINSERVERCONFIG
-  , ISOLATED
-  , SSLREQUIRED
-  , CBREGISTERED
-  , LOW_ON_SPC
-  , PEER_UNAVAILABLE
-  , NOTSUPPORTEDLOG
-  , DATALOSS
-  , NEVER_CONNECTED
-  , NOTANODE
-  , IDLE
-  , INVALID_PARAM
-  , INVALID_CLUSTER
-  , INVALID_CONFIG
-  , INVALID_THREAD
-  , INVALID_IP
-  , INVALID_OPERATION
-  , UNKNOWN_SETTING
-  , INVALID_SETTING_VALUE
-  , UPTODATE
-  , EMPTY
-  , DESTINATION_MISMATCH
-  , INVALID_ATTRIBUTES
-  , NOTEMPTY
-  , NOTDIR
-  , ID_CLASH
-  , LOGS_SECTION_MISSING
-  , CHECKSUM_MISMATCH
-  , COND_WRITE_NOT_READY
-  , COND_WRITE_FAILED
-  , FILE_OPEN
-  , FILE_READ
-  , LOCAL_LOG_STORE_WRITE
-  , CAUGHT_UP
-  , UNTIL_LSN_REACHED
-  , WINDOW_END_REACHED
-  , BYTE_LIMIT_REACHED
-  , MALFORMED_RECORD
-  , LOCAL_LOG_STORE_READ
-  , SHADOW_DISABLED
-  , SHADOW_UNCONFIGURED
-  , SHADOW_FAILED
-  , SHADOW_BUSY
-  , SHADOW_LOADING
-  , SHADOW_SKIP
-  , VERSION_MISMATCH
-  , SOURCE_STATE_MISMATCH
-  , CONDITION_MISMATCH
-  , MAINTENANCE_CLASH
-  , WRITE_STREAM_UNKNOWN
-  , WRITE_STREAM_BROKEN
-  , WRITE_STREAM_IGNORED
+  , NOTFOUND                 (..)
+  , TIMEDOUT                 (..)
+  , NOSEQUENCER              (..)
+  , CONNFAILED               (..)
+  , NOTCONN                  (..)
+  , TOOBIG                   (..)
+  , TOOMANY                  (..)
+  , PREEMPTED                (..)
+  , NOBUFS                   (..)
+  , NOMEM                    (..)
+  , INTERNAL                 (..)
+  , SYSLIMIT                 (..)
+  , TEMPLIMIT                (..)
+  , PERMLIMIT                (..)
+  , ACCESS                   (..)
+  , ALREADY                  (..)
+  , ISCONN                   (..)
+  , UNREACHABLE              (..)
+  , UNROUTABLE               (..)
+  , BADMSG                   (..)
+  , DISABLED                 (..)
+  , EXISTS                   (..)
+  , SHUTDOWN                 (..)
+  , NOTINCONFIG              (..)
+  , PROTONOSUPPORT           (..)
+  , PROTO                    (..)
+  , PEER_CLOSED              (..)
+  , SEQNOBUFS                (..)
+  , WOULDBLOCK               (..)
+  , ABORTED                  (..)
+  , INPROGRESS               (..)
+  , CANCELLED                (..)
+  , NOTSTORAGE               (..)
+  , AGAIN                    (..)
+  , PARTIAL                  (..)
+  , GAP                      (..)
+  , TRUNCATED                (..)
+  , STALE                    (..)
+  , NOSPC                    (..)
+  , OVERLOADED               (..)
+  , PENDING                  (..)
+  , PENDING_FULL             (..)
+  , FAILED                   (..)
+  , SEQSYSLIMIT              (..)
+  , REBUILDING               (..)
+  , REDIRECTED               (..)
+  , RETRY                    (..)
+  , BADPAYLOAD               (..)
+  , NOSSLCONFIG              (..)
+  , NOTREADY                 (..)
+  , DROPPED                  (..)
+  , FORWARD                  (..)
+  , NOTSUPPORTED             (..)
+  , NOTINSERVERCONFIG        (..)
+  , ISOLATED                 (..)
+  , SSLREQUIRED              (..)
+  , CBREGISTERED             (..)
+  , LOW_ON_SPC               (..)
+  , PEER_UNAVAILABLE         (..)
+  , NOTSUPPORTEDLOG          (..)
+  , DATALOSS                 (..)
+  , NEVER_CONNECTED          (..)
+  , NOTANODE                 (..)
+  , IDLE                     (..)
+  , INVALID_PARAM            (..)
+  , INVALID_CLUSTER          (..)
+  , INVALID_CONFIG           (..)
+  , INVALID_THREAD           (..)
+  , INVALID_IP               (..)
+  , INVALID_OPERATION        (..)
+  , UNKNOWN_SETTING          (..)
+  , INVALID_SETTING_VALUE    (..)
+  , UPTODATE                 (..)
+  , EMPTY                    (..)
+  , DESTINATION_MISMATCH     (..)
+  , INVALID_ATTRIBUTES       (..)
+  , NOTEMPTY                 (..)
+  , NOTDIR                   (..)
+  , ID_CLASH                 (..)
+  , LOGS_SECTION_MISSING     (..)
+  , CHECKSUM_MISMATCH        (..)
+  , COND_WRITE_NOT_READY     (..)
+  , COND_WRITE_FAILED        (..)
+  , FILE_OPEN                (..)
+  , FILE_READ                (..)
+  , LOCAL_LOG_STORE_WRITE    (..)
+  , CAUGHT_UP                (..)
+  , UNTIL_LSN_REACHED        (..)
+  , WINDOW_END_REACHED       (..)
+  , BYTE_LIMIT_REACHED       (..)
+  , MALFORMED_RECORD         (..)
+  , LOCAL_LOG_STORE_READ     (..)
+  , SHADOW_DISABLED          (..)
+  , SHADOW_UNCONFIGURED      (..)
+  , SHADOW_FAILED            (..)
+  , SHADOW_BUSY              (..)
+  , SHADOW_LOADING           (..)
+  , SHADOW_SKIP              (..)
+  , VERSION_MISMATCH         (..)
+  , SOURCE_STATE_MISMATCH    (..)
+  , CONDITION_MISMATCH       (..)
+  , MAINTENANCE_CLASH        (..)
+  , WRITE_STREAM_UNKNOWN     (..)
+  , WRITE_STREAM_BROKEN      (..)
+  , WRITE_STREAM_IGNORED     (..)
+  , USER_STREAM_ERROR        (..)
   ) where
 
 import           Control.Exception    (Exception (..))
@@ -314,6 +315,8 @@ MAKE_SSE(WRITE_STREAM_UNKNOWN)
 MAKE_SSE(WRITE_STREAM_BROKEN)
 MAKE_SSE(WRITE_STREAM_IGNORED)
 
+MAKE_SSE(USER_STREAM_ERROR)
+
 -- Unknown error code
 MAKE_SSE(UNKNOWN_CODE)
 
@@ -434,3 +437,7 @@ MAKE_THROW_SSE(702, WRITE_STREAM_IGNORED  )
 throwStreamError code stack =
   let codeBS = "UNKNOWN_CODE:" <> T.validate (T.toUTF8Bytes code)
    in E.throwIO $ UNKNOWN_CODE (SSEInfo codeBS "" stack)
+
+throwUserStreamError :: T.Text -> CallStack -> IO a
+throwUserStreamError desc stack =
+  E.throwIO $ USER_STREAM_ERROR (SSEInfo "1000" desc stack)
