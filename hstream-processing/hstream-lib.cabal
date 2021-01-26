@@ -1,0 +1,174 @@
+cabal-version:      2.2
+name:               hstream-lib
+version:            0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on Github at
+  <https://github.com/daleiz/hstream-lib#readme>
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Bin Wang
+maintainer:         wangbin@emqx.io
+category:           Streaming
+bug-reports:        https://github.com/daleiz/hstream-lib/issues
+build-type:         Simple
+extra-source-files: README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/daleiz/hstream-lib
+
+library
+  exposed-modules:
+    HStream.Processing.Encoding
+    HStream.Processing.Error
+    HStream.Processing.Processor
+    HStream.Processing.Processor.Internal
+    HStream.Processing.Store
+    HStream.Processing.Stream
+    HStream.Processing.Stream.GroupedStream
+    HStream.Processing.Stream.Internal
+    HStream.Processing.Stream.JoinWindows
+    HStream.Processing.Stream.SessionWindowedStream
+    HStream.Processing.Stream.SessionWindows
+    HStream.Processing.Stream.TimeWindowedStream
+    HStream.Processing.Stream.TimeWindows
+    HStream.Processing.Table
+    HStream.Processing.Topic
+    HStream.Processing.Type
+    HStream.Processing.Util
+
+  hs-source-dirs:   src
+  build-depends:
+    , base              >=4.11 && <5
+    , binary
+    , bytestring
+    , data-default
+    , rio
+    , template-haskell
+    , time
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable processor-example0
+  main-is:          ProcessorExample0.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable processor-example1
+  main-is:          ProcessorExample1.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , binary
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable stream-example0
+  main-is:          StreamExample0.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable stream-example1
+  main-is:          StreamExample1.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , binary
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable stream-example2
+  main-is:          StreamExample2.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , binary
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable stream-example3
+  main-is:          StreamExample3.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , binary
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable stream-example4
+  main-is:          StreamExample4.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , binary
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable stream-example5
+  main-is:          StreamExample5.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base         >=4.11 && <5
+    , binary
+    , hstream-lib
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
