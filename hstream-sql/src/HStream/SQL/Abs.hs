@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Language.SQL.Abs where
+module HStream.SQL.Abs where
 
 import qualified Data.String
 import qualified Data.Text

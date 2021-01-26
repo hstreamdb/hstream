@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Language.SQL.Preprocess
+module HStream.SQL.Preprocess
   ( preprocess
   ) where
 

@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-missing-signatures #-}
 {-# LANGUAGE CPP,MagicHash #-}
-{-# LINE 3 "Language/SQL/Lex.x" #-}
+{-# LINE 3 "HStream.SQL.Lex.x" #-}
 
 {-# OPTIONS -fno-warn-incomplete-patterns #-}
 {-# OPTIONS_GHC -w #-}
-module Language.SQL.Lex where
+module HStream.SQL.Lex where
 
 import qualified Data.Text
 import qualified Data.Bits
@@ -119,7 +119,7 @@ alex_actions = array (0 :: Int, 13)
   , (0,alex_action_7)
   ]
 
-{-# LINE 47 "Language/SQL/Lex.x" #-}
+{-# LINE 47 "HStream.SQL.Lex.x" #-}
 
 
 tok :: (Posn -> Data.Text.Text -> Token) -> (Posn -> Data.Text.Text -> Token)

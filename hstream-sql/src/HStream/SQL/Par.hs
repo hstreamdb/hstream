@@ -4,9 +4,9 @@
 {-# OPTIONS_GHC -XPartialTypeSignatures #-}
 #endif
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns #-}
-module Language.SQL.Par where
-import qualified Language.SQL.Abs
-import Language.SQL.Lex
+module HStream.SQL.Par where
+import qualified HStream.SQL.Abs
+import HStream.SQL.Lex
 import qualified Data.Text
 import qualified Data.Array as Happy_Data_Array
 import qualified Data.Bits as Bits
@@ -22,8 +22,8 @@ type HappyAny = Happy_GHC_Exts.Any
 #else
 type HappyAny = forall a . a
 #endif
-newtype HappyWrap43 = HappyWrap43 ((Maybe (Int, Int), Language.SQL.Abs.Ident))
-happyIn43 :: ((Maybe (Int, Int), Language.SQL.Abs.Ident)) -> (HappyAbsSyn )
+newtype HappyWrap43 = HappyWrap43 ((Maybe (Int, Int), HStream.SQL.Abs.Ident))
+happyIn43 :: ((Maybe (Int, Int), HStream.SQL.Abs.Ident)) -> (HappyAbsSyn )
 happyIn43 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap43 x)
 {-# INLINE happyIn43 #-}
 happyOut43 :: (HappyAbsSyn ) -> HappyWrap43
@@ -50,281 +50,281 @@ happyIn46 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap46 x)
 happyOut46 :: (HappyAbsSyn ) -> HappyWrap46
 happyOut46 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut46 #-}
-newtype HappyWrap47 = HappyWrap47 ((Maybe (Int, Int),  (Language.SQL.Abs.SQL (Maybe (Int, Int))) ))
-happyIn47 :: ((Maybe (Int, Int),  (Language.SQL.Abs.SQL (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap47 = HappyWrap47 ((Maybe (Int, Int),  (HStream.SQL.Abs.SQL (Maybe (Int, Int))) ))
+happyIn47 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SQL (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn47 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap47 x)
 {-# INLINE happyIn47 #-}
 happyOut47 :: (HappyAbsSyn ) -> HappyWrap47
 happyOut47 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut47 #-}
-newtype HappyWrap48 = HappyWrap48 ((Maybe (Int, Int),  (Language.SQL.Abs.Create (Maybe (Int, Int))) ))
-happyIn48 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Create (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap48 = HappyWrap48 ((Maybe (Int, Int),  (HStream.SQL.Abs.Create (Maybe (Int, Int))) ))
+happyIn48 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Create (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn48 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap48 x)
 {-# INLINE happyIn48 #-}
 happyOut48 :: (HappyAbsSyn ) -> HappyWrap48
 happyOut48 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut48 #-}
-newtype HappyWrap49 = HappyWrap49 ((Maybe (Int, Int),  [Language.SQL.Abs.StreamOption (Maybe (Int, Int))] ))
-happyIn49 :: ((Maybe (Int, Int),  [Language.SQL.Abs.StreamOption (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap49 = HappyWrap49 ((Maybe (Int, Int),  [HStream.SQL.Abs.StreamOption (Maybe (Int, Int))] ))
+happyIn49 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.StreamOption (Maybe (Int, Int))] )) -> (HappyAbsSyn )
 happyIn49 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap49 x)
 {-# INLINE happyIn49 #-}
 happyOut49 :: (HappyAbsSyn ) -> HappyWrap49
 happyOut49 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut49 #-}
-newtype HappyWrap50 = HappyWrap50 ((Maybe (Int, Int),  (Language.SQL.Abs.StreamOption (Maybe (Int, Int))) ))
-happyIn50 :: ((Maybe (Int, Int),  (Language.SQL.Abs.StreamOption (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap50 = HappyWrap50 ((Maybe (Int, Int),  (HStream.SQL.Abs.StreamOption (Maybe (Int, Int))) ))
+happyIn50 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.StreamOption (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn50 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap50 x)
 {-# INLINE happyIn50 #-}
 happyOut50 :: (HappyAbsSyn ) -> HappyWrap50
 happyOut50 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut50 #-}
-newtype HappyWrap51 = HappyWrap51 ((Maybe (Int, Int),  (Language.SQL.Abs.Insert (Maybe (Int, Int))) ))
-happyIn51 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Insert (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap51 = HappyWrap51 ((Maybe (Int, Int),  (HStream.SQL.Abs.Insert (Maybe (Int, Int))) ))
+happyIn51 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Insert (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn51 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap51 x)
 {-# INLINE happyIn51 #-}
 happyOut51 :: (HappyAbsSyn ) -> HappyWrap51
 happyOut51 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut51 #-}
-newtype HappyWrap52 = HappyWrap52 ((Maybe (Int, Int),  [Language.SQL.Abs.Ident] ))
-happyIn52 :: ((Maybe (Int, Int),  [Language.SQL.Abs.Ident] )) -> (HappyAbsSyn )
+newtype HappyWrap52 = HappyWrap52 ((Maybe (Int, Int),  [HStream.SQL.Abs.Ident] ))
+happyIn52 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.Ident] )) -> (HappyAbsSyn )
 happyIn52 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap52 x)
 {-# INLINE happyIn52 #-}
 happyOut52 :: (HappyAbsSyn ) -> HappyWrap52
 happyOut52 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut52 #-}
-newtype HappyWrap53 = HappyWrap53 ((Maybe (Int, Int),  [Language.SQL.Abs.ValueExpr (Maybe (Int, Int))] ))
-happyIn53 :: ((Maybe (Int, Int),  [Language.SQL.Abs.ValueExpr (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap53 = HappyWrap53 ((Maybe (Int, Int),  [HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))] ))
+happyIn53 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))] )) -> (HappyAbsSyn )
 happyIn53 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap53 x)
 {-# INLINE happyIn53 #-}
 happyOut53 :: (HappyAbsSyn ) -> HappyWrap53
 happyOut53 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut53 #-}
-newtype HappyWrap54 = HappyWrap54 ((Maybe (Int, Int),  (Language.SQL.Abs.Select (Maybe (Int, Int))) ))
-happyIn54 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Select (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap54 = HappyWrap54 ((Maybe (Int, Int),  (HStream.SQL.Abs.Select (Maybe (Int, Int))) ))
+happyIn54 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Select (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn54 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap54 x)
 {-# INLINE happyIn54 #-}
 happyOut54 :: (HappyAbsSyn ) -> HappyWrap54
 happyOut54 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut54 #-}
-newtype HappyWrap55 = HappyWrap55 ((Maybe (Int, Int),  (Language.SQL.Abs.Sel (Maybe (Int, Int))) ))
-happyIn55 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Sel (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap55 = HappyWrap55 ((Maybe (Int, Int),  (HStream.SQL.Abs.Sel (Maybe (Int, Int))) ))
+happyIn55 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Sel (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn55 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap55 x)
 {-# INLINE happyIn55 #-}
 happyOut55 :: (HappyAbsSyn ) -> HappyWrap55
 happyOut55 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut55 #-}
-newtype HappyWrap56 = HappyWrap56 ((Maybe (Int, Int),  (Language.SQL.Abs.SelList (Maybe (Int, Int))) ))
-happyIn56 :: ((Maybe (Int, Int),  (Language.SQL.Abs.SelList (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap56 = HappyWrap56 ((Maybe (Int, Int),  (HStream.SQL.Abs.SelList (Maybe (Int, Int))) ))
+happyIn56 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SelList (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn56 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap56 x)
 {-# INLINE happyIn56 #-}
 happyOut56 :: (HappyAbsSyn ) -> HappyWrap56
 happyOut56 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut56 #-}
-newtype HappyWrap57 = HappyWrap57 ((Maybe (Int, Int),  [Language.SQL.Abs.DerivedCol (Maybe (Int, Int))] ))
-happyIn57 :: ((Maybe (Int, Int),  [Language.SQL.Abs.DerivedCol (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap57 = HappyWrap57 ((Maybe (Int, Int),  [HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))] ))
+happyIn57 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))] )) -> (HappyAbsSyn )
 happyIn57 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap57 x)
 {-# INLINE happyIn57 #-}
 happyOut57 :: (HappyAbsSyn ) -> HappyWrap57
 happyOut57 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut57 #-}
-newtype HappyWrap58 = HappyWrap58 ((Maybe (Int, Int),  (Language.SQL.Abs.DerivedCol (Maybe (Int, Int))) ))
-happyIn58 :: ((Maybe (Int, Int),  (Language.SQL.Abs.DerivedCol (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap58 = HappyWrap58 ((Maybe (Int, Int),  (HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))) ))
+happyIn58 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn58 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap58 x)
 {-# INLINE happyIn58 #-}
 happyOut58 :: (HappyAbsSyn ) -> HappyWrap58
 happyOut58 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut58 #-}
-newtype HappyWrap59 = HappyWrap59 ((Maybe (Int, Int),  (Language.SQL.Abs.From (Maybe (Int, Int))) ))
-happyIn59 :: ((Maybe (Int, Int),  (Language.SQL.Abs.From (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap59 = HappyWrap59 ((Maybe (Int, Int),  (HStream.SQL.Abs.From (Maybe (Int, Int))) ))
+happyIn59 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.From (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn59 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap59 x)
 {-# INLINE happyIn59 #-}
 happyOut59 :: (HappyAbsSyn ) -> HappyWrap59
 happyOut59 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut59 #-}
-newtype HappyWrap60 = HappyWrap60 ((Maybe (Int, Int),  [Language.SQL.Abs.TableRef (Maybe (Int, Int))] ))
-happyIn60 :: ((Maybe (Int, Int),  [Language.SQL.Abs.TableRef (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap60 = HappyWrap60 ((Maybe (Int, Int),  [HStream.SQL.Abs.TableRef (Maybe (Int, Int))] ))
+happyIn60 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.TableRef (Maybe (Int, Int))] )) -> (HappyAbsSyn )
 happyIn60 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap60 x)
 {-# INLINE happyIn60 #-}
 happyOut60 :: (HappyAbsSyn ) -> HappyWrap60
 happyOut60 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut60 #-}
-newtype HappyWrap61 = HappyWrap61 ((Maybe (Int, Int),  (Language.SQL.Abs.TableRef (Maybe (Int, Int))) ))
-happyIn61 :: ((Maybe (Int, Int),  (Language.SQL.Abs.TableRef (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap61 = HappyWrap61 ((Maybe (Int, Int),  (HStream.SQL.Abs.TableRef (Maybe (Int, Int))) ))
+happyIn61 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.TableRef (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn61 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap61 x)
 {-# INLINE happyIn61 #-}
 happyOut61 :: (HappyAbsSyn ) -> HappyWrap61
 happyOut61 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut61 #-}
-newtype HappyWrap62 = HappyWrap62 ((Maybe (Int, Int),  (Language.SQL.Abs.JoinType (Maybe (Int, Int))) ))
-happyIn62 :: ((Maybe (Int, Int),  (Language.SQL.Abs.JoinType (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap62 = HappyWrap62 ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinType (Maybe (Int, Int))) ))
+happyIn62 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinType (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn62 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap62 x)
 {-# INLINE happyIn62 #-}
 happyOut62 :: (HappyAbsSyn ) -> HappyWrap62
 happyOut62 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut62 #-}
-newtype HappyWrap63 = HappyWrap63 ((Maybe (Int, Int),  (Language.SQL.Abs.JoinWindow (Maybe (Int, Int))) ))
-happyIn63 :: ((Maybe (Int, Int),  (Language.SQL.Abs.JoinWindow (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap63 = HappyWrap63 ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinWindow (Maybe (Int, Int))) ))
+happyIn63 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinWindow (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn63 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap63 x)
 {-# INLINE happyIn63 #-}
 happyOut63 :: (HappyAbsSyn ) -> HappyWrap63
 happyOut63 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut63 #-}
-newtype HappyWrap64 = HappyWrap64 ((Maybe (Int, Int),  (Language.SQL.Abs.JoinCond (Maybe (Int, Int))) ))
-happyIn64 :: ((Maybe (Int, Int),  (Language.SQL.Abs.JoinCond (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap64 = HappyWrap64 ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinCond (Maybe (Int, Int))) ))
+happyIn64 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinCond (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn64 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap64 x)
 {-# INLINE happyIn64 #-}
 happyOut64 :: (HappyAbsSyn ) -> HappyWrap64
 happyOut64 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut64 #-}
-newtype HappyWrap65 = HappyWrap65 ((Maybe (Int, Int),  (Language.SQL.Abs.Where (Maybe (Int, Int))) ))
-happyIn65 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Where (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap65 = HappyWrap65 ((Maybe (Int, Int),  (HStream.SQL.Abs.Where (Maybe (Int, Int))) ))
+happyIn65 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Where (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn65 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap65 x)
 {-# INLINE happyIn65 #-}
 happyOut65 :: (HappyAbsSyn ) -> HappyWrap65
 happyOut65 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut65 #-}
-newtype HappyWrap66 = HappyWrap66 ((Maybe (Int, Int),  (Language.SQL.Abs.GroupBy (Maybe (Int, Int))) ))
-happyIn66 :: ((Maybe (Int, Int),  (Language.SQL.Abs.GroupBy (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap66 = HappyWrap66 ((Maybe (Int, Int),  (HStream.SQL.Abs.GroupBy (Maybe (Int, Int))) ))
+happyIn66 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.GroupBy (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn66 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap66 x)
 {-# INLINE happyIn66 #-}
 happyOut66 :: (HappyAbsSyn ) -> HappyWrap66
 happyOut66 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut66 #-}
-newtype HappyWrap67 = HappyWrap67 ((Maybe (Int, Int),  [Language.SQL.Abs.GrpItem (Maybe (Int, Int))] ))
-happyIn67 :: ((Maybe (Int, Int),  [Language.SQL.Abs.GrpItem (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap67 = HappyWrap67 ((Maybe (Int, Int),  [HStream.SQL.Abs.GrpItem (Maybe (Int, Int))] ))
+happyIn67 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.GrpItem (Maybe (Int, Int))] )) -> (HappyAbsSyn )
 happyIn67 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap67 x)
 {-# INLINE happyIn67 #-}
 happyOut67 :: (HappyAbsSyn ) -> HappyWrap67
 happyOut67 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut67 #-}
-newtype HappyWrap68 = HappyWrap68 ((Maybe (Int, Int),  (Language.SQL.Abs.GrpItem (Maybe (Int, Int))) ))
-happyIn68 :: ((Maybe (Int, Int),  (Language.SQL.Abs.GrpItem (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap68 = HappyWrap68 ((Maybe (Int, Int),  (HStream.SQL.Abs.GrpItem (Maybe (Int, Int))) ))
+happyIn68 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.GrpItem (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn68 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap68 x)
 {-# INLINE happyIn68 #-}
 happyOut68 :: (HappyAbsSyn ) -> HappyWrap68
 happyOut68 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut68 #-}
-newtype HappyWrap69 = HappyWrap69 ((Maybe (Int, Int),  (Language.SQL.Abs.Window (Maybe (Int, Int))) ))
-happyIn69 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Window (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap69 = HappyWrap69 ((Maybe (Int, Int),  (HStream.SQL.Abs.Window (Maybe (Int, Int))) ))
+happyIn69 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Window (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn69 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap69 x)
 {-# INLINE happyIn69 #-}
 happyOut69 :: (HappyAbsSyn ) -> HappyWrap69
 happyOut69 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut69 #-}
-newtype HappyWrap70 = HappyWrap70 ((Maybe (Int, Int),  (Language.SQL.Abs.Having (Maybe (Int, Int))) ))
-happyIn70 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Having (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap70 = HappyWrap70 ((Maybe (Int, Int),  (HStream.SQL.Abs.Having (Maybe (Int, Int))) ))
+happyIn70 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Having (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn70 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap70 x)
 {-# INLINE happyIn70 #-}
 happyOut70 :: (HappyAbsSyn ) -> HappyWrap70
 happyOut70 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut70 #-}
-newtype HappyWrap71 = HappyWrap71 ((Maybe (Int, Int),  (Language.SQL.Abs.ValueExpr (Maybe (Int, Int))) ))
-happyIn71 :: ((Maybe (Int, Int),  (Language.SQL.Abs.ValueExpr (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap71 = HappyWrap71 ((Maybe (Int, Int),  (HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))) ))
+happyIn71 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn71 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap71 x)
 {-# INLINE happyIn71 #-}
 happyOut71 :: (HappyAbsSyn ) -> HappyWrap71
 happyOut71 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut71 #-}
-newtype HappyWrap72 = HappyWrap72 ((Maybe (Int, Int),  Language.SQL.Abs.ValueExpr (Maybe (Int, Int)) ))
-happyIn72 :: ((Maybe (Int, Int),  Language.SQL.Abs.ValueExpr (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap72 = HappyWrap72 ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) ))
+happyIn72 :: ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) )) -> (HappyAbsSyn )
 happyIn72 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap72 x)
 {-# INLINE happyIn72 #-}
 happyOut72 :: (HappyAbsSyn ) -> HappyWrap72
 happyOut72 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut72 #-}
-newtype HappyWrap73 = HappyWrap73 ((Maybe (Int, Int),  Language.SQL.Abs.ValueExpr (Maybe (Int, Int)) ))
-happyIn73 :: ((Maybe (Int, Int),  Language.SQL.Abs.ValueExpr (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap73 = HappyWrap73 ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) ))
+happyIn73 :: ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) )) -> (HappyAbsSyn )
 happyIn73 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap73 x)
 {-# INLINE happyIn73 #-}
 happyOut73 :: (HappyAbsSyn ) -> HappyWrap73
 happyOut73 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut73 #-}
-newtype HappyWrap74 = HappyWrap74 ((Maybe (Int, Int),  (Language.SQL.Abs.Date (Maybe (Int, Int))) ))
-happyIn74 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Date (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap74 = HappyWrap74 ((Maybe (Int, Int),  (HStream.SQL.Abs.Date (Maybe (Int, Int))) ))
+happyIn74 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Date (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn74 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap74 x)
 {-# INLINE happyIn74 #-}
 happyOut74 :: (HappyAbsSyn ) -> HappyWrap74
 happyOut74 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut74 #-}
-newtype HappyWrap75 = HappyWrap75 ((Maybe (Int, Int),  (Language.SQL.Abs.Time (Maybe (Int, Int))) ))
-happyIn75 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Time (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap75 = HappyWrap75 ((Maybe (Int, Int),  (HStream.SQL.Abs.Time (Maybe (Int, Int))) ))
+happyIn75 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Time (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn75 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap75 x)
 {-# INLINE happyIn75 #-}
 happyOut75 :: (HappyAbsSyn ) -> HappyWrap75
 happyOut75 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut75 #-}
-newtype HappyWrap76 = HappyWrap76 ((Maybe (Int, Int),  (Language.SQL.Abs.TimeUnit (Maybe (Int, Int))) ))
-happyIn76 :: ((Maybe (Int, Int),  (Language.SQL.Abs.TimeUnit (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap76 = HappyWrap76 ((Maybe (Int, Int),  (HStream.SQL.Abs.TimeUnit (Maybe (Int, Int))) ))
+happyIn76 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.TimeUnit (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn76 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap76 x)
 {-# INLINE happyIn76 #-}
 happyOut76 :: (HappyAbsSyn ) -> HappyWrap76
 happyOut76 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut76 #-}
-newtype HappyWrap77 = HappyWrap77 ((Maybe (Int, Int),  (Language.SQL.Abs.Interval (Maybe (Int, Int))) ))
-happyIn77 :: ((Maybe (Int, Int),  (Language.SQL.Abs.Interval (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap77 = HappyWrap77 ((Maybe (Int, Int),  (HStream.SQL.Abs.Interval (Maybe (Int, Int))) ))
+happyIn77 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Interval (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn77 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap77 x)
 {-# INLINE happyIn77 #-}
 happyOut77 :: (HappyAbsSyn ) -> HappyWrap77
 happyOut77 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut77 #-}
-newtype HappyWrap78 = HappyWrap78 ((Maybe (Int, Int),  [Language.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))] ))
-happyIn78 :: ((Maybe (Int, Int),  [Language.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap78 = HappyWrap78 ((Maybe (Int, Int),  [HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))] ))
+happyIn78 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))] )) -> (HappyAbsSyn )
 happyIn78 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap78 x)
 {-# INLINE happyIn78 #-}
 happyOut78 :: (HappyAbsSyn ) -> HappyWrap78
 happyOut78 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut78 #-}
-newtype HappyWrap79 = HappyWrap79 ((Maybe (Int, Int),  (Language.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))) ))
-happyIn79 :: ((Maybe (Int, Int),  (Language.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap79 = HappyWrap79 ((Maybe (Int, Int),  (HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))) ))
+happyIn79 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn79 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap79 x)
 {-# INLINE happyIn79 #-}
 happyOut79 :: (HappyAbsSyn ) -> HappyWrap79
 happyOut79 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut79 #-}
-newtype HappyWrap80 = HappyWrap80 ((Maybe (Int, Int),  (Language.SQL.Abs.ColName (Maybe (Int, Int))) ))
-happyIn80 :: ((Maybe (Int, Int),  (Language.SQL.Abs.ColName (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap80 = HappyWrap80 ((Maybe (Int, Int),  (HStream.SQL.Abs.ColName (Maybe (Int, Int))) ))
+happyIn80 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.ColName (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn80 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap80 x)
 {-# INLINE happyIn80 #-}
 happyOut80 :: (HappyAbsSyn ) -> HappyWrap80
 happyOut80 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut80 #-}
-newtype HappyWrap81 = HappyWrap81 ((Maybe (Int, Int),  (Language.SQL.Abs.SetFunc (Maybe (Int, Int))) ))
-happyIn81 :: ((Maybe (Int, Int),  (Language.SQL.Abs.SetFunc (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap81 = HappyWrap81 ((Maybe (Int, Int),  (HStream.SQL.Abs.SetFunc (Maybe (Int, Int))) ))
+happyIn81 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SetFunc (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn81 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap81 x)
 {-# INLINE happyIn81 #-}
 happyOut81 :: (HappyAbsSyn ) -> HappyWrap81
 happyOut81 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut81 #-}
-newtype HappyWrap82 = HappyWrap82 ((Maybe (Int, Int),  (Language.SQL.Abs.SearchCond (Maybe (Int, Int))) ))
-happyIn82 :: ((Maybe (Int, Int),  (Language.SQL.Abs.SearchCond (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap82 = HappyWrap82 ((Maybe (Int, Int),  (HStream.SQL.Abs.SearchCond (Maybe (Int, Int))) ))
+happyIn82 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SearchCond (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn82 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap82 x)
 {-# INLINE happyIn82 #-}
 happyOut82 :: (HappyAbsSyn ) -> HappyWrap82
 happyOut82 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut82 #-}
-newtype HappyWrap83 = HappyWrap83 ((Maybe (Int, Int),  Language.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
-happyIn83 :: ((Maybe (Int, Int),  Language.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap83 = HappyWrap83 ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
+happyIn83 :: ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
 happyIn83 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap83 x)
 {-# INLINE happyIn83 #-}
 happyOut83 :: (HappyAbsSyn ) -> HappyWrap83
 happyOut83 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut83 #-}
-newtype HappyWrap84 = HappyWrap84 ((Maybe (Int, Int),  Language.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
-happyIn84 :: ((Maybe (Int, Int),  Language.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap84 = HappyWrap84 ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
+happyIn84 :: ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
 happyIn84 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap84 x)
 {-# INLINE happyIn84 #-}
 happyOut84 :: (HappyAbsSyn ) -> HappyWrap84
 happyOut84 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut84 #-}
-newtype HappyWrap85 = HappyWrap85 ((Maybe (Int, Int),  Language.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
-happyIn85 :: ((Maybe (Int, Int),  Language.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap85 = HappyWrap85 ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
+happyIn85 :: ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
 happyIn85 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap85 x)
 {-# INLINE happyIn85 #-}
 happyOut85 :: (HappyAbsSyn ) -> HappyWrap85
 happyOut85 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut85 #-}
-newtype HappyWrap86 = HappyWrap86 ((Maybe (Int, Int),  (Language.SQL.Abs.CompOp (Maybe (Int, Int))) ))
-happyIn86 :: ((Maybe (Int, Int),  (Language.SQL.Abs.CompOp (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap86 = HappyWrap86 ((Maybe (Int, Int),  (HStream.SQL.Abs.CompOp (Maybe (Int, Int))) ))
+happyIn86 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.CompOp (Maybe (Int, Int))) )) -> (HappyAbsSyn )
 happyIn86 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap86 x)
 {-# INLINE happyIn86 #-}
 happyOut86 :: (HappyAbsSyn ) -> HappyWrap86
@@ -492,7 +492,7 @@ happyReduce_40 = happySpecReduce_1  0# happyReduction_40
 happyReduction_40 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn43
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.Ident (tokenText happy_var_1))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.Ident (tokenText happy_var_1))
 	)}
 
 happyReduce_41 = happySpecReduce_1  1# happyReduction_41
@@ -521,7 +521,7 @@ happyReduction_44 happy_x_2
 	happy_x_1
 	 =  case happyOut54 happy_x_1 of { (HappyWrap54 happy_var_1) -> 
 	happyIn47
-		 ((fst happy_var_1, Language.SQL.Abs.QSelect (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.QSelect (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_45 = happySpecReduce_2  4# happyReduction_45
@@ -529,7 +529,7 @@ happyReduction_45 happy_x_2
 	happy_x_1
 	 =  case happyOut48 happy_x_1 of { (HappyWrap48 happy_var_1) -> 
 	happyIn47
-		 ((fst happy_var_1, Language.SQL.Abs.QCreate (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.QCreate (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_46 = happySpecReduce_2  4# happyReduction_46
@@ -537,7 +537,7 @@ happyReduction_46 happy_x_2
 	happy_x_1
 	 =  case happyOut51 happy_x_1 of { (HappyWrap51 happy_var_1) -> 
 	happyIn47
-		 ((fst happy_var_1, Language.SQL.Abs.QInsert (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.QInsert (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_47 = happyReduce 7# 5# happyReduction_47
@@ -553,7 +553,7 @@ happyReduction_47 (happy_x_7 `HappyStk`
 	case happyOut43 happy_x_3 of { (HappyWrap43 happy_var_3) -> 
 	case happyOut49 happy_x_6 of { (HappyWrap49 happy_var_6) -> 
 	happyIn48
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DCreate (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_6))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DCreate (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_6))
 	) `HappyStk` happyRest}}}
 
 happyReduce_48 = happyReduce 9# 5# happyReduction_48
@@ -572,7 +572,7 @@ happyReduction_48 (happy_x_9 `HappyStk`
 	case happyOut54 happy_x_5 of { (HappyWrap54 happy_var_5) -> 
 	case happyOut49 happy_x_8 of { (HappyWrap49 happy_var_8) -> 
 	happyIn48
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CreateAs (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_8))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CreateAs (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_8))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_49 = happySpecReduce_0  6# happyReduction_49
@@ -604,7 +604,7 @@ happyReduction_52 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut46 happy_x_3 of { (HappyWrap46 happy_var_3) -> 
 	happyIn50
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.OptionFormat (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.OptionFormat (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	)}}
 
 happyReduce_53 = happyReduce 10# 8# happyReduction_53
@@ -624,7 +624,7 @@ happyReduction_53 (happy_x_10 `HappyStk`
 	case happyOut52 happy_x_5 of { (HappyWrap52 happy_var_5) -> 
 	case happyOut53 happy_x_9 of { (HappyWrap53 happy_var_9) -> 
 	happyIn51
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DInsert (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_9))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DInsert (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_9))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_54 = happySpecReduce_0  9# happyReduction_54
@@ -684,7 +684,7 @@ happyReduction_60 (happy_x_5 `HappyStk`
 	case happyOut66 happy_x_4 of { (HappyWrap66 happy_var_4) -> 
 	case happyOut70 happy_x_5 of { (HappyWrap70 happy_var_5) -> 
 	happyIn54
-		 ((fst happy_var_1, Language.SQL.Abs.DSelect (fst happy_var_1) (snd happy_var_1) (snd happy_var_2) (snd happy_var_3) (snd happy_var_4) (snd happy_var_5))
+		 ((fst happy_var_1, HStream.SQL.Abs.DSelect (fst happy_var_1) (snd happy_var_1) (snd happy_var_2) (snd happy_var_3) (snd happy_var_4) (snd happy_var_5))
 	) `HappyStk` happyRest}}}}}
 
 happyReduce_61 = happySpecReduce_2  12# happyReduction_61
@@ -693,21 +693,21 @@ happyReduction_61 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut56 happy_x_2 of { (HappyWrap56 happy_var_2) -> 
 	happyIn55
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DSel (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DSel (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_62 = happySpecReduce_1  13# happyReduction_62
 happyReduction_62 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn56
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SelListAsterisk (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SelListAsterisk (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_63 = happySpecReduce_1  13# happyReduction_63
 happyReduction_63 happy_x_1
 	 =  case happyOut57 happy_x_1 of { (HappyWrap57 happy_var_1) -> 
 	happyIn56
-		 ((fst happy_var_1, Language.SQL.Abs.SelListSublist (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.SelListSublist (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_64 = happySpecReduce_0  14# happyReduction_64
@@ -736,7 +736,7 @@ happyReduce_67 = happySpecReduce_1  15# happyReduction_67
 happyReduction_67 happy_x_1
 	 =  case happyOut71 happy_x_1 of { (HappyWrap71 happy_var_1) -> 
 	happyIn58
-		 ((fst happy_var_1, Language.SQL.Abs.DerivedColSimpl (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.DerivedColSimpl (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_68 = happySpecReduce_3  15# happyReduction_68
@@ -746,7 +746,7 @@ happyReduction_68 happy_x_3
 	 =  case happyOut71 happy_x_1 of { (HappyWrap71 happy_var_1) -> 
 	case happyOut43 happy_x_3 of { (HappyWrap43 happy_var_3) -> 
 	happyIn58
-		 ((fst happy_var_1, Language.SQL.Abs.DerivedColAs (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.DerivedColAs (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_69 = happySpecReduce_2  16# happyReduction_69
@@ -755,7 +755,7 @@ happyReduction_69 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut60 happy_x_2 of { (HappyWrap60 happy_var_2) -> 
 	happyIn59
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DFrom (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DFrom (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_70 = happySpecReduce_0  17# happyReduction_70
@@ -784,7 +784,7 @@ happyReduce_73 = happySpecReduce_1  18# happyReduction_73
 happyReduction_73 happy_x_1
 	 =  case happyOut43 happy_x_1 of { (HappyWrap43 happy_var_1) -> 
 	happyIn61
-		 ((fst happy_var_1, Language.SQL.Abs.TableRefSimple (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.TableRefSimple (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_74 = happySpecReduce_3  18# happyReduction_74
@@ -794,7 +794,7 @@ happyReduction_74 happy_x_3
 	 =  case happyOut61 happy_x_1 of { (HappyWrap61 happy_var_1) -> 
 	case happyOut43 happy_x_3 of { (HappyWrap43 happy_var_3) -> 
 	happyIn61
-		 ((fst happy_var_1, Language.SQL.Abs.TableRefAs (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.TableRefAs (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_75 = happyReduce 6# 18# happyReduction_75
@@ -811,35 +811,35 @@ happyReduction_75 (happy_x_6 `HappyStk`
 	case happyOut63 happy_x_5 of { (HappyWrap63 happy_var_5) -> 
 	case happyOut64 happy_x_6 of { (HappyWrap64 happy_var_6) -> 
 	happyIn61
-		 ((fst happy_var_1, Language.SQL.Abs.TableRefJoin (fst happy_var_1) (snd happy_var_1) (snd happy_var_2) (snd happy_var_4) (snd happy_var_5) (snd happy_var_6))
+		 ((fst happy_var_1, HStream.SQL.Abs.TableRefJoin (fst happy_var_1) (snd happy_var_1) (snd happy_var_2) (snd happy_var_4) (snd happy_var_5) (snd happy_var_6))
 	) `HappyStk` happyRest}}}}}
 
 happyReduce_76 = happySpecReduce_1  19# happyReduction_76
 happyReduction_76 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.JoinLeft (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinLeft (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_77 = happySpecReduce_1  19# happyReduction_77
 happyReduction_77 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.JoinRight (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinRight (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_78 = happySpecReduce_1  19# happyReduction_78
 happyReduction_78 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.JoinFull (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinFull (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_79 = happySpecReduce_1  19# happyReduction_79
 happyReduction_79 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.JoinCross (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinCross (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_80 = happyReduce 4# 20# happyReduction_80
@@ -851,7 +851,7 @@ happyReduction_80 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	happyIn63
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DJoinWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DJoinWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_81 = happySpecReduce_2  21# happyReduction_81
@@ -860,12 +860,12 @@ happyReduction_81 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn64
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DJoinCond (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DJoinCond (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_82 = happySpecReduce_0  22# happyReduction_82
 happyReduction_82  =  happyIn65
-		 ((Nothing, Language.SQL.Abs.DWhereEmpty (Nothing))
+		 ((Nothing, HStream.SQL.Abs.DWhereEmpty (Nothing))
 	)
 
 happyReduce_83 = happySpecReduce_2  22# happyReduction_83
@@ -874,12 +874,12 @@ happyReduction_83 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn65
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DWhere (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DWhere (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_84 = happySpecReduce_0  23# happyReduction_84
 happyReduction_84  =  happyIn66
-		 ((Nothing, Language.SQL.Abs.DGroupByEmpty (Nothing))
+		 ((Nothing, HStream.SQL.Abs.DGroupByEmpty (Nothing))
 	)
 
 happyReduce_85 = happySpecReduce_3  23# happyReduction_85
@@ -889,7 +889,7 @@ happyReduction_85 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut67 happy_x_3 of { (HappyWrap67 happy_var_3) -> 
 	happyIn66
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DGroupBy (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DGroupBy (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	)}}
 
 happyReduce_86 = happySpecReduce_0  24# happyReduction_86
@@ -918,14 +918,14 @@ happyReduce_89 = happySpecReduce_1  25# happyReduction_89
 happyReduction_89 happy_x_1
 	 =  case happyOut80 happy_x_1 of { (HappyWrap80 happy_var_1) -> 
 	happyIn68
-		 ((fst happy_var_1, Language.SQL.Abs.GrpItemCol (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.GrpItemCol (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_90 = happySpecReduce_1  25# happyReduction_90
 happyReduction_90 happy_x_1
 	 =  case happyOut69 happy_x_1 of { (HappyWrap69 happy_var_1) -> 
 	happyIn68
-		 ((fst happy_var_1, Language.SQL.Abs.GrpItemWin (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.GrpItemWin (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_91 = happyReduce 4# 26# happyReduction_91
@@ -937,7 +937,7 @@ happyReduction_91 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	happyIn69
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TumblingWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TumblingWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_92 = happyReduce 6# 26# happyReduction_92
@@ -952,7 +952,7 @@ happyReduction_92 (happy_x_6 `HappyStk`
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	case happyOut77 happy_x_5 of { (HappyWrap77 happy_var_5) -> 
 	happyIn69
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.HoppingWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.HoppingWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5))
 	) `HappyStk` happyRest}}}
 
 happyReduce_93 = happyReduce 4# 26# happyReduction_93
@@ -964,12 +964,12 @@ happyReduction_93 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	happyIn69
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SessionWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SessionWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_94 = happySpecReduce_0  27# happyReduction_94
 happyReduction_94  =  happyIn70
-		 ((Nothing, Language.SQL.Abs.DHavingEmpty (Nothing))
+		 ((Nothing, HStream.SQL.Abs.DHavingEmpty (Nothing))
 	)
 
 happyReduce_95 = happySpecReduce_2  27# happyReduction_95
@@ -978,7 +978,7 @@ happyReduction_95 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn70
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DHaving (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DHaving (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_96 = happySpecReduce_3  28# happyReduction_96
@@ -988,7 +988,7 @@ happyReduction_96 happy_x_3
 	 =  case happyOut71 happy_x_1 of { (HappyWrap71 happy_var_1) -> 
 	case happyOut72 happy_x_3 of { (HappyWrap72 happy_var_3) -> 
 	happyIn71
-		 ((fst happy_var_1, Language.SQL.Abs.ExprAdd (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprAdd (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_97 = happySpecReduce_3  28# happyReduction_97
@@ -998,7 +998,7 @@ happyReduction_97 happy_x_3
 	 =  case happyOut71 happy_x_1 of { (HappyWrap71 happy_var_1) -> 
 	case happyOut72 happy_x_3 of { (HappyWrap72 happy_var_3) -> 
 	happyIn71
-		 ((fst happy_var_1, Language.SQL.Abs.ExprSub (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprSub (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_98 = happySpecReduce_3  28# happyReduction_98
@@ -1008,7 +1008,7 @@ happyReduction_98 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut53 happy_x_2 of { (HappyWrap53 happy_var_2) -> 
 	happyIn71
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.ExprArr (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.ExprArr (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_99 = happySpecReduce_3  28# happyReduction_99
@@ -1018,7 +1018,7 @@ happyReduction_99 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut78 happy_x_2 of { (HappyWrap78 happy_var_2) -> 
 	happyIn71
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.ExprMap (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.ExprMap (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_100 = happySpecReduce_1  28# happyReduction_100
@@ -1035,7 +1035,7 @@ happyReduction_101 happy_x_3
 	 =  case happyOut72 happy_x_1 of { (HappyWrap72 happy_var_1) -> 
 	case happyOut73 happy_x_3 of { (HappyWrap73 happy_var_3) -> 
 	happyIn72
-		 ((fst happy_var_1, Language.SQL.Abs.ExprMul (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprMul (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_102 = happySpecReduce_1  29# happyReduction_102
@@ -1049,56 +1049,56 @@ happyReduce_103 = happySpecReduce_1  30# happyReduction_103
 happyReduction_103 happy_x_1
 	 =  case happyOut45 happy_x_1 of { (HappyWrap45 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprInt (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprInt (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_104 = happySpecReduce_1  30# happyReduction_104
 happyReduction_104 happy_x_1
 	 =  case happyOut44 happy_x_1 of { (HappyWrap44 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprNum (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprNum (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_105 = happySpecReduce_1  30# happyReduction_105
 happyReduction_105 happy_x_1
 	 =  case happyOut46 happy_x_1 of { (HappyWrap46 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprString (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprString (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_106 = happySpecReduce_1  30# happyReduction_106
 happyReduction_106 happy_x_1
 	 =  case happyOut74 happy_x_1 of { (HappyWrap74 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprDate (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprDate (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_107 = happySpecReduce_1  30# happyReduction_107
 happyReduction_107 happy_x_1
 	 =  case happyOut75 happy_x_1 of { (HappyWrap75 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprTime (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprTime (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_108 = happySpecReduce_1  30# happyReduction_108
 happyReduction_108 happy_x_1
 	 =  case happyOut77 happy_x_1 of { (HappyWrap77 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprInterval (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprInterval (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_109 = happySpecReduce_1  30# happyReduction_109
 happyReduction_109 happy_x_1
 	 =  case happyOut80 happy_x_1 of { (HappyWrap80 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprColName (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprColName (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_110 = happySpecReduce_1  30# happyReduction_110
 happyReduction_110 happy_x_1
 	 =  case happyOut81 happy_x_1 of { (HappyWrap81 happy_var_1) -> 
 	happyIn73
-		 ((fst happy_var_1, Language.SQL.Abs.ExprSetFunc (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ExprSetFunc (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_111 = happySpecReduce_3  30# happyReduction_111
@@ -1124,7 +1124,7 @@ happyReduction_112 (happy_x_6 `HappyStk`
 	case happyOut45 happy_x_4 of { (HappyWrap45 happy_var_4) -> 
 	case happyOut45 happy_x_6 of { (HappyWrap45 happy_var_6) -> 
 	happyIn74
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DDate (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DDate (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_113 = happyReduce 6# 32# happyReduction_113
@@ -1140,49 +1140,49 @@ happyReduction_113 (happy_x_6 `HappyStk`
 	case happyOut45 happy_x_4 of { (HappyWrap45 happy_var_4) -> 
 	case happyOut45 happy_x_6 of { (HappyWrap45 happy_var_6) -> 
 	happyIn75
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DTime (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DTime (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_114 = happySpecReduce_1  33# happyReduction_114
 happyReduction_114 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TimeUnitYear (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitYear (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_115 = happySpecReduce_1  33# happyReduction_115
 happyReduction_115 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TimeUnitMonth (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitMonth (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_116 = happySpecReduce_1  33# happyReduction_116
 happyReduction_116 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TimeUnitWeek (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitWeek (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_117 = happySpecReduce_1  33# happyReduction_117
 happyReduction_117 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TimeUnitDay (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitDay (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_118 = happySpecReduce_1  33# happyReduction_118
 happyReduction_118 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TimeUnitMin (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitMin (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_119 = happySpecReduce_1  33# happyReduction_119
 happyReduction_119 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.TimeUnitSec (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitSec (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_120 = happySpecReduce_3  34# happyReduction_120
@@ -1193,7 +1193,7 @@ happyReduction_120 happy_x_3
 	case happyOut45 happy_x_2 of { (HappyWrap45 happy_var_2) -> 
 	case happyOut76 happy_x_3 of { (HappyWrap76 happy_var_3) -> 
 	happyIn77
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.DInterval (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DInterval (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_3))
 	)}}}
 
 happyReduce_121 = happySpecReduce_0  35# happyReduction_121
@@ -1225,14 +1225,14 @@ happyReduction_124 happy_x_3
 	 =  case happyOut43 happy_x_1 of { (HappyWrap43 happy_var_1) -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn79
-		 ((fst happy_var_1, Language.SQL.Abs.DLabelledValueExpr (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.DLabelledValueExpr (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_125 = happySpecReduce_1  37# happyReduction_125
 happyReduction_125 happy_x_1
 	 =  case happyOut43 happy_x_1 of { (HappyWrap43 happy_var_1) -> 
 	happyIn80
-		 ((fst happy_var_1, Language.SQL.Abs.ColNameSimple (fst happy_var_1) (snd happy_var_1))
+		 ((fst happy_var_1, HStream.SQL.Abs.ColNameSimple (fst happy_var_1) (snd happy_var_1))
 	)}
 
 happyReduce_126 = happySpecReduce_3  37# happyReduction_126
@@ -1242,7 +1242,7 @@ happyReduction_126 happy_x_3
 	 =  case happyOut43 happy_x_1 of { (HappyWrap43 happy_var_1) -> 
 	case happyOut43 happy_x_3 of { (HappyWrap43 happy_var_3) -> 
 	happyIn80
-		 ((fst happy_var_1, Language.SQL.Abs.ColNameStream (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.ColNameStream (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_127 = happyReduce 4# 37# happyReduction_127
@@ -1254,7 +1254,7 @@ happyReduction_127 (happy_x_4 `HappyStk`
 	 = case happyOut80 happy_x_1 of { (HappyWrap80 happy_var_1) -> 
 	case happyOut43 happy_x_3 of { (HappyWrap43 happy_var_3) -> 
 	happyIn80
-		 ((fst happy_var_1, Language.SQL.Abs.ColNameInner (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.ColNameInner (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_128 = happyReduce 4# 37# happyReduction_128
@@ -1266,14 +1266,14 @@ happyReduction_128 (happy_x_4 `HappyStk`
 	 = case happyOut80 happy_x_1 of { (HappyWrap80 happy_var_1) -> 
 	case happyOut45 happy_x_3 of { (HappyWrap45 happy_var_3) -> 
 	happyIn80
-		 ((fst happy_var_1, Language.SQL.Abs.ColNameIndex (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.ColNameIndex (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_129 = happySpecReduce_1  38# happyReduction_129
 happyReduction_129 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SetFuncCountAll (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncCountAll (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_130 = happyReduce 4# 38# happyReduction_130
@@ -1285,7 +1285,7 @@ happyReduction_130 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SetFuncCount (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncCount (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_131 = happyReduce 4# 38# happyReduction_131
@@ -1297,7 +1297,7 @@ happyReduction_131 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SetFuncAvg (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncAvg (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_132 = happyReduce 4# 38# happyReduction_132
@@ -1309,7 +1309,7 @@ happyReduction_132 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SetFuncSum (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncSum (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_133 = happyReduce 4# 38# happyReduction_133
@@ -1321,7 +1321,7 @@ happyReduction_133 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SetFuncMax (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncMax (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_134 = happyReduce 4# 38# happyReduction_134
@@ -1333,7 +1333,7 @@ happyReduction_134 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.SetFuncMin (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncMin (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_135 = happySpecReduce_3  39# happyReduction_135
@@ -1343,7 +1343,7 @@ happyReduction_135 happy_x_3
 	 =  case happyOut82 happy_x_1 of { (HappyWrap82 happy_var_1) -> 
 	case happyOut83 happy_x_3 of { (HappyWrap83 happy_var_3) -> 
 	happyIn82
-		 ((fst happy_var_1, Language.SQL.Abs.CondOr (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.CondOr (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_136 = happySpecReduce_1  39# happyReduction_136
@@ -1360,7 +1360,7 @@ happyReduction_137 happy_x_3
 	 =  case happyOut83 happy_x_1 of { (HappyWrap83 happy_var_1) -> 
 	case happyOut84 happy_x_3 of { (HappyWrap84 happy_var_3) -> 
 	happyIn83
-		 ((fst happy_var_1, Language.SQL.Abs.CondAnd (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.CondAnd (fst happy_var_1) (snd happy_var_1) (snd happy_var_3))
 	)}}
 
 happyReduce_138 = happySpecReduce_1  40# happyReduction_138
@@ -1376,7 +1376,7 @@ happyReduction_139 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut85 happy_x_2 of { (HappyWrap85 happy_var_2) -> 
 	happyIn84
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CondNot (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CondNot (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_140 = happySpecReduce_1  41# happyReduction_140
@@ -1394,7 +1394,7 @@ happyReduction_141 happy_x_3
 	case happyOut86 happy_x_2 of { (HappyWrap86 happy_var_2) -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn85
-		 ((fst happy_var_1, Language.SQL.Abs.CondOp (fst happy_var_1) (snd happy_var_1) (snd happy_var_2) (snd happy_var_3))
+		 ((fst happy_var_1, HStream.SQL.Abs.CondOp (fst happy_var_1) (snd happy_var_1) (snd happy_var_2) (snd happy_var_3))
 	)}}}
 
 happyReduce_142 = happyReduce 5# 42# happyReduction_142
@@ -1408,7 +1408,7 @@ happyReduction_142 (happy_x_5 `HappyStk`
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	case happyOut71 happy_x_5 of { (HappyWrap71 happy_var_5) -> 
 	happyIn85
-		 ((fst happy_var_1, Language.SQL.Abs.CondBetween (fst happy_var_1) (snd happy_var_1) (snd happy_var_3) (snd happy_var_5))
+		 ((fst happy_var_1, HStream.SQL.Abs.CondBetween (fst happy_var_1) (snd happy_var_1) (snd happy_var_3) (snd happy_var_5))
 	) `HappyStk` happyRest}}}
 
 happyReduce_143 = happySpecReduce_3  42# happyReduction_143
@@ -1425,42 +1425,42 @@ happyReduce_144 = happySpecReduce_1  43# happyReduction_144
 happyReduction_144 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CompOpEQ (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpEQ (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_145 = happySpecReduce_1  43# happyReduction_145
 happyReduction_145 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CompOpNE (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpNE (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_146 = happySpecReduce_1  43# happyReduction_146
 happyReduction_146 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CompOpLT (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpLT (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_147 = happySpecReduce_1  43# happyReduction_147
 happyReduction_147 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CompOpGT (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpGT (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_148 = happySpecReduce_1  43# happyReduction_148
 happyReduction_148 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CompOpLEQ (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpLEQ (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_149 = happySpecReduce_1  43# happyReduction_149
 happyReduction_149 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), Language.SQL.Abs.CompOpGEQ (Just (tokenLineCol happy_var_1)))
+		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpGEQ (Just (tokenLineCol happy_var_1)))
 	)}
 
 happyNewToken action sts stk [] =

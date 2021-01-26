@@ -16,7 +16,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Language.SQL.ErrM where
+module HStream.SQL.ErrM where
 
 import Control.Monad       (MonadPlus(..))
 import Control.Applicative (Alternative(..))
@@ -50,7 +50,7 @@ instance MonadPlus Err where
 -- Copyright (C) 2004  Author:  Aarne Ranta
 -- This file comes with NO WARRANTY and may be used FOR ANY PURPOSE.
 
-module Language.SQL.ErrM where
+module HStream.SQL.ErrM where
 
 -- the Error monad: like Maybe type with error msgs
 

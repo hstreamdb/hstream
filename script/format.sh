@@ -10,11 +10,11 @@ if [ "$1" == "ci" ] || [ -z "$1" ]; then
         -not -path "*/.stack-work/*" \
         -not -path "*/hstream-processing/*" \
         -not -path "*/z-*" \
-        -not -path */hstream-sql/src/Language/SQL/Abs.hs \
-        -not -path */hstream-sql/src/Language/SQL/Lex.hs \
-        -not -path */hstream-sql/src/Language/SQL/Par.hs \
-        -not -path */hstream-sql/src/Language/SQL/Print.hs \
-        -not -path */hstream-sql/src/Language/SQL/ErrM.hs \
+        -not -path */hstream-sql/src/HStream/SQL/Abs.hs \
+        -not -path */hstream-sql/src/HStream/SQL/Lex.hs \
+        -not -path */hstream-sql/src/HStream/SQL/Par.hs \
+        -not -path */hstream-sql/src/HStream/SQL/Print.hs \
+        -not -path */hstream-sql/src/HStream/SQL/ErrM.hs \
         | grep "\.l\?hs$" | xargs $FORMATER_BIN -c .stylish-haskell.yaml -i
     find ./hstream-processing -type f | grep "\.l\?hs$" | xargs $FORMATER_BIN -c ./hstream-processing/.stylish-haskell.yaml -i
 elif [ "$1" == "processing" ]; then

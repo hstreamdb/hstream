@@ -1,11 +1,10 @@
 {-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE KindSignatures    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE RankNTypes        #-}
 
-module Language.SQL.Validate
+module HStream.SQL.Validate
   ( Validate (..)
   ) where
 
@@ -14,8 +13,8 @@ import qualified Data.List          as L
 import           Data.List.Extra    (anySame)
 import           Data.Text          (Text)
 import           Data.Time.Calendar (isLeapYear)
-import           Language.SQL.AST   (Position, errGenWithPos, errWithPos)
-import           Language.SQL.Abs   (ColName (..), CompOp (CompOpEQ, CompOpNE),
+import           HStream.SQL.AST    (Position, errGenWithPos, errWithPos)
+import           HStream.SQL.Abs    (ColName (..), CompOp (CompOpEQ, CompOpNE),
                                      Create (..), Date (..),
                                      DerivedCol (DerivedColAs, DerivedColSimpl),
                                      From (..), GroupBy (..),
@@ -29,7 +28,7 @@ import           Language.SQL.Abs   (ColName (..), CompOp (CompOpEQ, CompOpNE),
                                      StreamOption (..), TableRef (..),
                                      Time (..), ValueExpr (..), Where (..),
                                      Window (..))
-import           Language.SQL.Extra (anyJoin, extractCondRefNames,
+import           HStream.SQL.Extra  (anyJoin, extractCondRefNames,
                                      extractRefNames, extractSelRefNames)
 
 ------------------------------ TypeClass Definition ----------------------------
@@ -96,12 +95,12 @@ instance Validate SetFunc where
 --    And Map requires that all keys are unique
 -- 4. Cols and Aggs should be legal
 instance Validate ValueExpr where
-  validate expr@(ExprAdd _ _ _)   = isNumExpr expr
-  validate expr@(ExprSub _ _ _)   = isNumExpr expr
-  validate expr@(ExprMul _ _ _)   = isNumExpr expr
-  validate expr@(ExprInt _ _)     = Right expr
-  validate expr@(ExprNum _ _)     = Right expr
-  validate expr@(ExprString _ _)  = Right expr
+  validate expr@ExprAdd{}    = isNumExpr expr
+  validate expr@ExprSub{}    = isNumExpr expr
+  validate expr@ExprMul{}    = isNumExpr expr
+  validate expr@ExprInt{}    = Right expr
+  validate expr@ExprNum{}    = Right expr
+  validate expr@ExprString{} = Right expr
   validate expr@(ExprDate _ date) = validate date >> return expr
   validate expr@(ExprTime _ time) = validate time >> return expr
   validate expr@(ExprInterval _ interval) = validate interval >> return expr
@@ -136,12 +135,12 @@ isNumExpr expr@(ExprSetFunc _ (SetFuncMax _ e))   = isOrdExpr e >> return expr
 isNumExpr expr@(ExprSetFunc _ (SetFuncMin _ e))   = isOrdExpr e >> return expr
 
 isOrdExpr :: ValueExpr Position -> Either String (ValueExpr Position)
-isOrdExpr expr@(ExprAdd _ _ _)   = isNumExpr expr
-isOrdExpr expr@(ExprSub _ _ _)   = isNumExpr expr
-isOrdExpr expr@(ExprMul _ _ _)   = isNumExpr expr
-isOrdExpr expr@(ExprInt _ _)     = Right expr
-isOrdExpr expr@(ExprNum _ _)     = Right expr
-isOrdExpr expr@(ExprString _ _)  = Right expr
+isOrdExpr expr@ExprAdd{}    = isNumExpr expr
+isOrdExpr expr@ExprSub{}    = isNumExpr expr
+isOrdExpr expr@ExprMul{}    = isNumExpr expr
+isOrdExpr expr@ExprInt{}    = Right expr
+isOrdExpr expr@ExprNum{}    = Right expr
+isOrdExpr expr@ExprString{} = Right expr
 isOrdExpr expr@(ExprDate _ date) = validate date >> return expr
 isOrdExpr expr@(ExprTime _ time) = validate time >> return expr
 isOrdExpr expr@(ExprInterval _ interval) = validate interval >> return expr
@@ -168,12 +167,12 @@ isAggregateExpr expr = return expr
 
 -- For validating Insert
 isConstExpr :: ValueExpr Position -> Either String (ValueExpr Position)
-isConstExpr expr@(ExprInt _ _)      = Right expr
-isConstExpr expr@(ExprNum _ _)      = Right expr
-isConstExpr expr@(ExprString _ _)   = Right expr
-isConstExpr expr@(ExprDate _ _)     = Right expr
-isConstExpr expr@(ExprTime _ _)     = Right expr
-isConstExpr expr@(ExprInterval _ _) = Right expr
+isConstExpr expr@ExprInt{}      = Right expr
+isConstExpr expr@ExprNum{}      = Right expr
+isConstExpr expr@ExprString{}   = Right expr
+isConstExpr expr@ExprDate{}     = Right expr
+isConstExpr expr@ExprTime{}     = Right expr
+isConstExpr expr@ExprInterval{} = Right expr
 isConstExpr _ = Left $ errGenWithPos Nothing "INSERT only supports constant values"
 
 ------------------------------------- SELECT -----------------------------------
@@ -238,8 +237,8 @@ instance Validate From where
 instance Validate TableRef where
   validate r@(TableRefSimple _ _) = Right r
   validate r@(TableRefAs _ ref _) = validate ref >> return r
-  validate r@(TableRefJoin pos (TableRefJoin _ _ _ _ _ _) _ _ _ _) = Left $ errWithPos pos "Joining more than 2 streams is not supported"
-  validate r@(TableRefJoin pos _ _ (TableRefJoin _ _ _ _ _ _) _ _) = Left $ errWithPos pos "Joining more than 2 streams is not supported"
+  validate r@(TableRefJoin pos TableRefJoin{} _ _ _ _) = Left $ errWithPos pos "Joining more than 2 streams is not supported"
+  validate r@(TableRefJoin pos _ _ TableRefJoin{} _ _) = Left $ errWithPos pos "Joining more than 2 streams is not supported"
   validate r@(TableRefJoin pos ref1 joinType ref2 win joinCond) = do
     let stream1 = streamName ref1
         stream2 = streamName ref2
@@ -287,11 +286,11 @@ instance Validate JoinCond where
     case op of
       CompOpEQ _ -> validate cond >> return joinCond
       _          -> Left $ errWithPos pos "JOIN ON clause does not support operator other than ="
-  validate joinCond@(DJoinCond pos (CondOp _ _ _ _))      = Left $ errWithPos pos "JOIN ON clause only supports forms such as 's1.x = s2.y'"
-  validate joinCond@(DJoinCond pos (CondBetween _ _ _ _)) = Left $ errWithPos pos "JOIN ON clause does not support BETWEEN condition"
-  validate joinCond@(DJoinCond pos (CondOr _ _ _))        = Left $ errWithPos pos "JOIN ON clause does not support OR condition"
-  validate joinCond@(DJoinCond pos (CondAnd _ _ _))       = Left $ errWithPos pos "JOIN ON clause does not support OR condition"
-  validate joinCond@(DJoinCond pos (CondNot _ _))         = Left $ errWithPos pos "JOIN ON clause does not support NOT condition"
+  validate joinCond@(DJoinCond pos CondOp{})      = Left $ errWithPos pos "JOIN ON clause only supports forms such as 's1.x = s2.y'"
+  validate joinCond@(DJoinCond pos CondBetween{}) = Left $ errWithPos pos "JOIN ON clause does not support BETWEEN condition"
+  validate joinCond@(DJoinCond pos CondOr{})        = Left $ errWithPos pos "JOIN ON clause does not support OR condition"
+  validate joinCond@(DJoinCond pos CondAnd{})       = Left $ errWithPos pos "JOIN ON clause does not support OR condition"
+  validate joinCond@(DJoinCond pos CondNot{})         = Left $ errWithPos pos "JOIN ON clause does not support NOT condition"
 
 -- 1. Exprs should be legal
 -- 2. No aggregate Expr
@@ -402,9 +401,9 @@ instance Validate SOs where
   validate (SOs options) = do
     mapM_ validate options
     case options of
-      [(OptionFormat _ _)] -> return $ SOs options
-      _                    ->
-        (Left "There should be one and only one FORMAT option")
+      [OptionFormat{}] -> return $ SOs options
+      _                ->
+        Left "There should be one and only one FORMAT option"
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
