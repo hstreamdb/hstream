@@ -1,6 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
-
-module Language.SQL.Extra
+module HStream.SQL.Extra
   ( anyJoin
   , extractRefNames
   , extractSelRefNames
@@ -8,16 +6,16 @@ module Language.SQL.Extra
   , extractRefNameFromExpr
   ) where
 
-import qualified Data.List        as L
-import           Data.Text        (Text)
-import           Language.SQL.Abs
+import qualified Data.List       as L
+import           Data.Text       (Text)
+import           HStream.SQL.Abs
 
 --------------------------------------------------------------------------------
 anyJoin :: [TableRef a] -> Bool
-anyJoin []                               = False
-anyJoin ((TableRefSimple _ _) : xs)      = anyJoin xs
-anyJoin ((TableRefAs _ ref _) : xs)      = anyJoin (ref : xs)
-anyJoin ((TableRefJoin _ _ _ _ _ _) : _) = True
+anyJoin []                          = False
+anyJoin ((TableRefSimple _ _) : xs) = anyJoin xs
+anyJoin ((TableRefAs _ ref _) : xs) = anyJoin (ref : xs)
+anyJoin (TableRefJoin{} : _)        = True
 
 extractRefNames :: [TableRef a] -> [Text]
 extractRefNames [] = []

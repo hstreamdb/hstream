@@ -3,7 +3,7 @@
 {
 {-# OPTIONS -fno-warn-incomplete-patterns #-}
 {-# OPTIONS_GHC -w #-}
-module Language.SQL.Lex where
+module HStream.SQL.Lex where
 
 import qualified Data.Text
 import qualified Data.Bits

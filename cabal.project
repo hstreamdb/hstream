@@ -4,15 +4,10 @@ packages:
   hstream-hesp
   hstream-store
   hstream-processing
+  hstream-sql
   z-data
   z-io
   z-yaml
-  hstream-sql
-
-source-repository-package
-  type: git
-  location: https://github.com/daleiz/hstream-lib.git
-  tag: 161b86655744018452ee307a8c2d8a189058de1a
 
 --source-repository-package
 --  type: git

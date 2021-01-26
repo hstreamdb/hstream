@@ -2,15 +2,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
-module Language.SQL.AST where
+module HStream.SQL.AST where
 
-import           Data.Either        (isRight, lefts)
-import           Data.Kind          (Type)
-import qualified Data.List          as L
-import           Data.Text          as Text (Text, pack, unpack)
-import qualified Data.Time          as Time
-import           Language.SQL.Abs
-import           Language.SQL.Print (printTree)
+import           Data.Either       (isRight, lefts)
+import           Data.Kind         (Type)
+import qualified Data.List         as L
+import           Data.Text         as Text (Text, pack, unpack)
+import qualified Data.Time         as Time
+import           HStream.SQL.Abs
+import           HStream.SQL.Print (printTree)
 
 --------------------------------------------------------------------------------
 type Position = Maybe (Int, Int)
@@ -39,7 +39,7 @@ instance Refine (Time a) where
 type RInterval = Time.DiffTime
 type instance RefinedType (Interval a) = RInterval
 instance Refine (Interval a) where
-  refine (DInterval _ n (TimeUnitSec _  )) = Time.secondsToDiffTime $ n
+  refine (DInterval _ n (TimeUnitSec _  )) = Time.secondsToDiffTime   n
   refine (DInterval _ n (TimeUnitMin _  )) = Time.secondsToDiffTime $ n * 60
   refine (DInterval _ n (TimeUnitDay _  )) = Time.secondsToDiffTime $ n * 60 * 24
   refine (DInterval _ n (TimeUnitWeek _ )) = Time.secondsToDiffTime $ n * 60 * 24 * 7
@@ -91,8 +91,8 @@ instance Refine (ValueExpr Position) where -- FIXME: Inconsistent form (Position
   refine expr@(ExprInterval _ interval) = RExprConst (printTree expr) (ConstantInterval $ refine interval)
   refine expr@(ExprColName _ (ColNameSimple _ (Ident t))) = RExprCol (printTree expr) Nothing t
   refine expr@(ExprColName _ (ColNameStream _ (Ident s) (Ident f))) = RExprCol (printTree expr) (Just s) f
-  refine      (ExprColName pos (ColNameIndex _ _ _)) = error $ errGenWithPos pos "Nested column name is not supported yet"
-  refine      (ExprColName pos (ColNameInner _ _ _)) = error $ errGenWithPos pos "Nested column name is not supported yet"
+  refine      (ExprColName pos ColNameIndex{}) = error $ errGenWithPos pos "Nested column name is not supported yet"
+  refine      (ExprColName pos ColNameInner{}) = error $ errGenWithPos pos "Nested column name is not supported yet"
   refine expr@(ExprSetFunc _ (SetFuncCountAll _)) = RExprAggregate (printTree expr) (Nullary AggCountAll)
   refine expr@(ExprSetFunc _ (SetFuncCount _ e )) = RExprAggregate (printTree expr) (Unary AggCount $ refine e)
   refine expr@(ExprSetFunc _ (SetFuncAvg _ e )) = RExprAggregate (printTree expr) (Unary AggAvg $ refine e)
