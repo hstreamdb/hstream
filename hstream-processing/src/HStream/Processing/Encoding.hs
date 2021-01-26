@@ -11,9 +11,6 @@ module HStream.Processing.Encoding
   )
 where
 
--- import Control.Exception (throw)
--- import Data.Typeable
--- import HStream.Error
 import           RIO
 import qualified RIO.ByteString.Lazy as BL
 
@@ -32,22 +29,3 @@ voidDeserializer = Nothing
 
 voidSerializer :: Maybe (Serializer Void)
 voidSerializer = Nothing
--- data EV = forall a. Typeable a => EV a
---
--- mkEV :: Typeable a => a -> EV
--- mkEV = EV
---
--- newtype ESerializer = ESerializer
---   { runESer :: EV -> BL.ByteString
---   }
---
--- mkESerializer :: Typeable a => Serializer a -> ESerializer
--- mkESerializer ser = ESerializer $ \ev ->
---   case cast ev of
---     Just v -> runSer ser v
---     Nothing -> throw $ TypeCastError "mkESerializer: type cast error"
---
--- newtype EDeserializer = EDeserializer {runEDeser :: BL.ByteString -> EV}
---
--- mkEDeserializer :: Typeable a => Deserializer a -> EDeserializer
--- mkEDeserializer deser = EDeserializer $ \s -> EV $ runDeser deser s

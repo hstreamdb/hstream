@@ -76,9 +76,6 @@ timeWindowKeySerializer kSerializer = Serializer $ \TimeWindowKey {..} ->
       bytesBuilder = BB.int64BE (tWindowStart twkWindow) <> BB.lazyByteString keyBytes
    in BB.toLazyByteString bytesBuilder
 
--- 为了反序列化出 TimeWindow,
--- 还需要传入 WindowSize,
--- 因为序列化的时候仅仅传入了 windowStartTimestamp.
 timeWindowKeyDeserializer :: Deserializer k -> Int64 -> Deserializer (TimeWindowKey k)
 timeWindowKeyDeserializer kDeserializer windowSize = Deserializer $ runGet decodeWindowKey
   where
