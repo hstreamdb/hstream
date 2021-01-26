@@ -18,6 +18,9 @@ module HStream.Store.Stream
   , FFI.keyTypeFindKey
   , FFI.keyTypeFilterable
 
+    -- * Topic
+  , module HStream.Store.Stream.Topic
+
     -- * Writer
   , module HStream.Store.Stream.Appender
 
@@ -43,6 +46,7 @@ import qualified HStream.Internal.FFI          as FFI
 import qualified HStream.Store.Exception       as E
 import           HStream.Store.Stream.Appender
 import           HStream.Store.Stream.Reader
+import           HStream.Store.Stream.Topic
 
 -------------------------------------------------------------------------------
 

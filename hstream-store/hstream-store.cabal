@@ -31,10 +31,10 @@ library
                       HStream.Store.Exception
                       HStream.Store.Logger
                       HStream.Store.Stream
-                      HStream.Store.Topic
   other-modules:      HStream.Internal.FFI
                       HStream.Store.Stream.Appender
                       HStream.Store.Stream.Reader
+                      HStream.Store.Stream.Topic
   build-depends:      base       >= 4.11 && < 5
                     , Z-Data     == 0.4.*
                     , cache      ^>= 0.1
