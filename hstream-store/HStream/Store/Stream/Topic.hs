@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Store.Topic
+module HStream.Store.Stream.Topic
   ( -- * Topic
     Topic
   , getTopicIDByName
