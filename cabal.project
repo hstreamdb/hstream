@@ -3,6 +3,7 @@ packages:
   -- hstream-core
   hstream-hesp
   hstream-store
+  hstream-processing
   z-data
   z-io
   z-yaml

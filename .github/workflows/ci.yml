@@ -36,7 +36,7 @@ jobs:
           chmod +x $TEMP/$PACKAGE-$VERSION/$PACKAGE
           # check all sources
           echo "Run script/format.sh with latest stylish-haskell..."
-          FORMATER_BIN=$TEMP/$PACKAGE-$VERSION/$PACKAGE bash script/format.sh && git diff-index --exit-code HEAD
+          FORMATER_BIN=$TEMP/$PACKAGE-$VERSION/$PACKAGE bash script/format.sh ci && git diff-index --exit-code HEAD
 
   build-and-test:
     needs: pre-build
