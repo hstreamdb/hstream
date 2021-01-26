@@ -1,5 +1,5 @@
 packages:
-  -- hstream
+  hstream
   -- hstream-core
   hstream-hesp
   hstream-store
