@@ -1,16 +1,24 @@
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module HStream.Store.Topic
-  ( TopicID
+  ( -- * Topic
+    Topic
+  , getTopicIDByName
+  , doesTopicExists
+  , createTopicSync
+    -- ** TopicID
+  , TopicID
   , topicIDInvalid
   , topicIDInvalid'
   , mkTopicID
+    -- ** TopicAttributes
+  , TopicAttrs (..)
+  , newLogAttrs
 
     -- * Topic Config
+  , TopicRange
   , syncTopicConfigVersion
-    -- ** Topic attributes
-  , TopicAttributes
-  , newTopicAttributes
-  , setTopicReplicationFactor
-  , setTopicReplicationFactor'
     -- ** Topic Group
   , StreamTopicGroup
   , makeTopicGroupSync
@@ -30,11 +38,18 @@ module HStream.Store.Topic
   , topicDirectoryGetVersion
   ) where
 
-import           Control.Monad           (void)
-import           Data.Word               (Word64)
+import           Control.Exception       (try)
+import           Control.Monad           (void, when)
+import           Data.Bits               (shiftL, xor)
+import qualified Data.Cache              as Cache
+import           Data.Time.Clock.System  (SystemTime (..), getSystemTime)
+import           Data.Word               (Word16, Word32, Word64)
 import           Foreign.ForeignPtr      (ForeignPtr, newForeignPtr,
                                           withForeignPtr)
 import           Foreign.Ptr             (nullPtr)
+import           GHC.Stack               (HasCallStack, callStack)
+import           System.IO.Unsafe        (unsafePerformIO)
+import           System.Random           (randomRIO)
 import           Z.Data.CBytes           (CBytes)
 import qualified Z.Data.CBytes           as ZC
 import qualified Z.Foreign               as Z
@@ -42,6 +57,12 @@ import qualified Z.Foreign               as Z
 import           HStream.Internal.FFI    (StreamClient (..), TopicID (..))
 import qualified HStream.Internal.FFI    as FFI
 import qualified HStream.Store.Exception as E
+
+-------------------------------------------------------------------------------
+
+topicCache :: Cache.Cache Topic TopicID
+topicCache = unsafePerformIO $ Cache.newCache Nothing
+{-# NOINLINE topicCache #-}
 
 -- TODO: assert all functions that recv TopicID as a param is a valid TopicID
 
@@ -56,24 +77,66 @@ topicIDInvalid = TopicID FFI.c_logid_invalid
 topicIDInvalid' :: TopicID
 topicIDInvalid' = TopicID FFI.c_logid_invalid2
 
-newtype TopicAttributes = TopicAttributes
-  { unTopicAttributes :: ForeignPtr FFI.LogDeviceLogAttributes }
+type Topic = CBytes
 
-newTopicAttributes :: IO TopicAttributes
-newTopicAttributes = do
+-- TODO: Default instance
+data TopicAttrs = TopicAttrs
+  { replicationFactor :: Int
+  } deriving (Show)
+
+type LogAttrs = ForeignPtr FFI.LogDeviceLogAttributes
+
+newLogAttrs :: TopicAttrs -> IO LogAttrs
+newLogAttrs TopicAttrs{..} = do
   i <- FFI.c_new_log_attributes
-  TopicAttributes <$> newForeignPtr FFI.c_free_log_attributes_fun i
+  when (replicationFactor > 0) $
+    FFI.c_log_attrs_set_replication_factor i (fromIntegral replicationFactor)
+  ptr <- newForeignPtr FFI.c_free_log_attributes_fun i
+  return ptr
 
-setTopicReplicationFactor :: TopicAttributes -> Int -> IO ()
-setTopicReplicationFactor attrs val =
-  withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
-    FFI.c_log_attrs_set_replication_factor attrs' (fromIntegral val)
+type TopicRange = (TopicID, TopicID)
 
-setTopicReplicationFactor' :: TopicAttributes -> Int -> IO TopicAttributes
-setTopicReplicationFactor' attrs val =
-  setTopicReplicationFactor attrs val >> return attrs
+createTopicSync :: HasCallStack
+                => StreamClient
+                -> Topic
+                -> TopicAttrs
+                -> IO ()
+createTopicSync client topic attrs = go (10 :: Int)
+  where
+    go maxTries =
+      if maxTries <= 0
+         then E.throwUserStreamError "Ran out all retries, but still failed :(" callStack
+         else do
+           topicID <- genRandomTopicID
+           result <- try $ makeTopicGroupSync client topic topicID topicID attrs True
+           case result of
+             Right group            -> do
+               syncTopicConfigVersion client =<< (topicGroupGetVersion group)
+               Cache.insert topicCache topic topicID
+             Left (_ :: E.ID_CLASH) -> go (maxTries - 1)
 
--------------------------------------------------------------------------------
+doesTopicExists :: StreamClient -> Topic -> IO Bool
+doesTopicExists client topic = do
+  m_v <- Cache.lookup topicCache topic
+  case m_v of
+    Just _  -> return True
+    Nothing -> do r <- try $ getTopicGroupSync client topic
+                  case r of
+                    Left (_ :: E.NOTFOUND) -> return False
+                    Right _                -> return True
+
+getTopicIDByName :: StreamClient -> Topic -> IO TopicID
+getTopicIDByName client topic = do
+  m_v <- Cache.lookup topicCache topic
+  maybe (fmap fst $ topicGroupGetRange =<< getTopicGroupSync client topic) return m_v
+
+-- XXX
+genRandomTopicID :: IO TopicID
+genRandomTopicID = do
+  ts <- systemSeconds <$> getSystemTime
+  r <- randomRIO (0, maxBound :: Word16)
+  let tsBit = shiftL (fromIntegral ts :: Word32) 16
+  return $ TopicID $ fromIntegral tsBit `xor` (fromIntegral r :: Word64)
 
 syncTopicConfigVersion :: StreamClient -> Word64 -> IO ()
 syncTopicConfigVersion (StreamClient client) version =
@@ -97,17 +160,18 @@ makeTopicGroupSync :: StreamClient
                    -> CBytes
                    -> TopicID
                    -> TopicID
-                   -> TopicAttributes
+                   -> TopicAttrs
                    -> Bool
                    -> IO StreamTopicGroup
-makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent =
+makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent = do
+  logAttrs <- newLogAttrs attrs
   withForeignPtr (unStreamClient client) $ \client' ->
-  withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
-    (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' -> do
-      void $ E.throwStreamErrorIfNotOK $
-        FFI.c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
-    StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
+    withForeignPtr logAttrs $ \attrs' ->
+      ZC.withCBytesUnsafe path $ \path' -> do
+        (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' -> do
+          void $ E.throwStreamErrorIfNotOK $
+            FFI.c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
+        StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
 
 getTopicGroupSync :: StreamClient -> CBytes -> IO StreamTopicGroup
 getTopicGroupSync client path =
@@ -133,7 +197,7 @@ removeTopicGroupSync' client path =
       E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync' client' path' version'
     return version
 
-topicGroupGetRange :: StreamTopicGroup -> IO (TopicID, TopicID)
+topicGroupGetRange :: StreamTopicGroup -> IO TopicRange
 topicGroupGetRange group =
   withForeignPtr (unStreamTopicGroup group) $ \group' -> do
     (start_ret, (end_ret, _)) <- Z.withPrimUnsafe (FFI.c_logid_invalid) $ \start' -> do
@@ -158,17 +222,18 @@ newtype StreamTopicDirectory = StreamTopicDirectory
 
 makeTopicDirectorySync :: StreamClient
                        -> CBytes
-                       -> TopicAttributes
+                       -> TopicAttrs
                        -> Bool
                        -> IO StreamTopicDirectory
-makeTopicDirectorySync client path attrs mkParent =
+makeTopicDirectorySync client path attrs mkParent = do
+  logAttrs <- newLogAttrs attrs
   withForeignPtr (unStreamClient client) $ \client' ->
-  withForeignPtr (unTopicAttributes attrs) $ \attrs' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
-    (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
-      void $ E.throwStreamErrorIfNotOK $
-        FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
-    StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
+    withForeignPtr logAttrs $ \attrs' ->
+    ZC.withCBytesUnsafe path $ \path' -> do
+      (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
+        void $ E.throwStreamErrorIfNotOK $
+          FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
+      StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
 
 getTopicDirectorySync :: StreamClient -> CBytes -> IO StreamTopicDirectory
 getTopicDirectorySync (StreamClient client) path =

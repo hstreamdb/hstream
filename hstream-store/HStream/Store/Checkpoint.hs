@@ -21,7 +21,7 @@ import qualified HStream.Store.Exception as E
 
 -------------------------------------------------------------------------------
 
--- | Create a file based checkpint store.
+-- | Create a file based checkpoint store.
 --
 -- Note: it's not safe to have multiple FileBasedVersionedConfigStore
 -- objects created from the `root_path' accessing configs with the same
