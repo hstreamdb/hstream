@@ -52,7 +52,7 @@ pack_and_unpack() {
     mkdir -p $WORKDIR/dist-newstyle/build
     cp -r $SRC_DIR/dist-newstyle/* $WORKDIR/dist-newstyle/
     # FIXME: Sometimes we need rebuild hstream-store
-    #find $WORKDIR/dist-newstyle/build/ -maxdepth 1 -type d | grep hstream-store | xargs rm -rf
+    find $WORKDIR/dist-newstyle/build/ -type d | grep hstream-store | xargs rm -rf
 }
 
 start_tester_container() {
