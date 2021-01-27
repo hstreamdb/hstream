@@ -42,7 +42,7 @@ spec = describe "HStream.TopicApi" $ do
        ]
 
   consu = do
-    cs <- mkConsumer (ConsumerConfig path "start") [ "a/a/a"]
+    cs <- mkConsumer (ConsumerConfig path "/tmp/start") [ "a/a/a"]
     pubs
     _ <- pollMessages cs 1 1000
     commitOffsets cs

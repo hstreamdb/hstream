@@ -213,32 +213,6 @@ parsePRecord = do
 
 type Offset = SequenceNum
 
-buildCRecord :: ConsumerRecord -> Builder ()
-buildCRecord ConsumerRecord {..} = do
-  buildLengthAndBs $ toBytes crTopic
-  let SequenceNum seqN = crOffset
-  encodePrim @Word64 seqN
-  encodePrim @Int64 crTimestamp
-  case crKey of
-    Nothing -> word8 0
-    Just bs -> do
-      word8 1
-      buildLengthAndBs bs
-  buildLengthAndBs crValue
-
-parseCRecord :: P.Parser ConsumerRecord
-parseCRecord = do
-  tp <- parserLengthAndBs
-  offset <- P.decodePrim @Word64
-  time <- P.decodePrim @Int64
-  w <- P.decodePrim @Word8
-  key <- case w of
-    0 -> return Nothing
-    1 -> Just <$> parserLengthAndBs
-    _ -> error "strange error"
-  val <- parserLengthAndBs
-  return $ ConsumerRecord (fromBytes tp) (SequenceNum offset) time key val
-
 check :: Either SomeStreamException a -> IO ()
 check (Right _) = return ()
 check (Left e)  = throwIO e
