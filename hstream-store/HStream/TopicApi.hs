@@ -42,10 +42,9 @@ module HStream.TopicApi
 import           Control.Exception
 import           Control.Monad
 import           Data.IORef
-import           Data.Int                (Int32)
+import           Data.Int                (Int32, Int64)
 import           Data.Map                (Map)
 import qualified Data.Map                as M
-import           Data.Time
 import           Data.Word
 import           HStream.PubSub.PubSub
 import           HStream.PubSub.Types
@@ -59,7 +58,7 @@ import           Z.Data.Vector           as V
 data ConsumerRecord = ConsumerRecord
   { crTopic     :: Topic,
     crOffset    :: Offset,
-    crTimestamp :: UTCTime,
+    crTimestamp :: Int64,
     crKey       :: Maybe Bytes,
     crValue     :: Bytes
   }
@@ -69,7 +68,7 @@ data ProducerRecord = ProducerRecord
   { prTopic     :: Topic,
     prKey       :: Maybe Bytes,
     prValue     :: Bytes,
-    prTimestamp :: UTCTime
+    prTimestamp :: Int64
   }
   deriving (Show)
 
@@ -155,9 +154,12 @@ mkAdminClient AdminClientConfig {..} = do
 createTopics :: AdminClient -> [Topic] -> Int -> IO ()
 createTopics AdminClient {..} tps rf = do
   forM_ tps $ \tp -> do
-    createTopic acstreamclient tp rf >>= \case
-      Left e  -> throwIO e
-      Right _ -> return ()
+    doesTopicExists acstreamclient tp >>= \case
+      True -> return ()
+      False -> do
+        createTopic acstreamclient tp rf >>= \case
+          Left e  -> throwIO e
+          Right _ -> return ()
 
 closeAdminClient :: AdminClient -> IO ()
 closeAdminClient _ = return ()
@@ -179,12 +181,12 @@ data Consumer = Consumer
   }
 
 buildLengthAndBs :: Bytes -> Builder ()
-buildLengthAndBs bs = int (V.length bs) >> bytes bs
+buildLengthAndBs bs = encodePrim @Int32 (fromIntegral $ V.length bs) >> bytes bs
 
 parserLengthAndBs :: P.Parser Bytes
 parserLengthAndBs = do
-  i <- P.int @Int
-  P.take i
+  i <- P.decodePrim  @Int32
+  P.take (fromIntegral i)
 
 buildPRecord :: ProducerRecord -> Builder ()
 buildPRecord ProducerRecord {..} = do
@@ -195,7 +197,7 @@ buildPRecord ProducerRecord {..} = do
       word8 1
       buildLengthAndBs bs
   buildLengthAndBs prValue
-  utcTime prTimestamp
+  encodePrim @Int64 prTimestamp
 
 parsePRecord :: P.Parser ProducerRecord
 parsePRecord = do
@@ -206,7 +208,7 @@ parsePRecord = do
     1 -> Just <$> parserLengthAndBs
     _ -> error "strange error"
   val <- parserLengthAndBs
-  time <- P.utcTime
+  time <- P.decodePrim @Int64
   return $ ProducerRecord (fromBytes tp) key val time
 
 type Offset = SequenceNum
@@ -216,7 +218,7 @@ buildCRecord ConsumerRecord {..} = do
   buildLengthAndBs $ toBytes crTopic
   let SequenceNum seqN = crOffset
   encodePrim @Word64 seqN
-  utcTime crTimestamp
+  encodePrim @Int64 crTimestamp
   case crKey of
     Nothing -> word8 0
     Just bs -> do
@@ -228,7 +230,7 @@ parseCRecord :: P.Parser ConsumerRecord
 parseCRecord = do
   tp <- parserLengthAndBs
   offset <- P.decodePrim @Word64
-  time <- P.utcTime
+  time <- P.decodePrim @Int64
   w <- P.decodePrim @Word8
   key <- case w of
     0 -> return Nothing
