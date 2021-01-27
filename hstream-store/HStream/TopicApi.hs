@@ -18,11 +18,13 @@ module HStream.TopicApi
   , Producer
   , Consumer
 
+   -- porducer
   , mkProducer
   , sendMessage
   , sendMessageBatch
   , closeProducer
 
+   -- consumer
   , mkConsumer
   , pollMessages
   , seek
@@ -30,6 +32,7 @@ module HStream.TopicApi
   , readCommit
   , closeConsumer
 
+   -- admin
   , mkAdminClient
   , createTopics
   , closeAdminClient
@@ -48,11 +51,9 @@ import           HStream.PubSub.PubSub
 import           HStream.PubSub.Types
 import           HStream.Store
 import           HStream.Store.Exception
-import           System.IO.Unsafe
 import           Z.Data.Builder
 import           Z.Data.CBytes
 import qualified Z.Data.Parser           as P
-import           Z.Data.Text
 import           Z.Data.Vector           as V
 
 data ConsumerRecord = ConsumerRecord

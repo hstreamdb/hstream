@@ -37,6 +37,7 @@ library
                       HStream.Store.Stream.Reader
                       HStream.Store.Stream.Topic
                       HStream.PubSub.PubSub
+                      HStream.PubSub.Types
                       HStream.PubSub.Internal.PubSub
                       HStream.PubSub.TopicUtils
                       HStream.PubSub.ClientUtils
@@ -76,6 +77,7 @@ test-suite hstream-store-test
   other-modules:      HStream.Store.AppenderSpec
                       HStream.Store.ReaderSpec
                       HStream.Store.TopicSpec
+                      HStream.TopicApiSpec
   hs-source-dirs:     test
   build-depends:      base >= 4.11 && < 5, Z-Data, hspec, hstream-store, random ^>= 1.2
                     , time
