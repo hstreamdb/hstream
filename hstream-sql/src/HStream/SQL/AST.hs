@@ -132,13 +132,12 @@ instance Refine (Sel Position) where
           anyAgg = L.any isRight rcols
 
 ---- Frm
-data RJoinType = RJoinLeft | RJoinRight | RJoinFull | RJoinCross deriving (Eq, Show)
+data RJoinType = RJoinInner | RJoinLeft | RJoinOuter deriving (Eq, Show)
 type instance RefinedType (JoinType a) = RJoinType
-instance Refine (JoinType a) where
-  refine (JoinLeft  _) = RJoinLeft
-  refine (JoinRight _) = RJoinRight
-  refine (JoinFull  _) = RJoinFull
-  refine (JoinCross _) = RJoinCross
+instance Refine (JoinType Position) where
+  refine (JoinInner  _)   = RJoinInner
+  refine (JoinLeft  pos)  = error $ errGenWithPos pos "LEFT JOIN is not supported yet" -- TODO: RJoinLeft
+  refine (JoinOuter pos)  = error $ errGenWithPos pos "LEFT JOIN is not supported yet" -- TODO: RJoinOuter
 
 -- TODO: Defined a RJoinWindow type to describe different windows (symmetry, left, right, ...) ?
 type RJoinWindow = RInterval

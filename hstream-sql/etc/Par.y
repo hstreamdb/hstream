@@ -74,45 +74,44 @@ import qualified Data.Text
   'COUNT' { PT _ (TS _ 21) }
   'COUNT(*)' { PT _ (TS _ 22) }
   'CREATE' { PT _ (TS _ 23) }
-  'CROSS' { PT _ (TS _ 24) }
-  'DATE' { PT _ (TS _ 25) }
-  'DAY' { PT _ (TS _ 26) }
-  'FORMAT' { PT _ (TS _ 27) }
-  'FROM' { PT _ (TS _ 28) }
-  'FULL' { PT _ (TS _ 29) }
-  'GROUP' { PT _ (TS _ 30) }
-  'HAVING' { PT _ (TS _ 31) }
-  'HOPPING' { PT _ (TS _ 32) }
-  'INSERT' { PT _ (TS _ 33) }
-  'INTERVAL' { PT _ (TS _ 34) }
-  'INTO' { PT _ (TS _ 35) }
-  'JOIN' { PT _ (TS _ 36) }
-  'LEFT' { PT _ (TS _ 37) }
-  'MAX' { PT _ (TS _ 38) }
-  'MIN' { PT _ (TS _ 39) }
-  'MINUTE' { PT _ (TS _ 40) }
-  'MONTH' { PT _ (TS _ 41) }
-  'NOT' { PT _ (TS _ 42) }
-  'ON' { PT _ (TS _ 43) }
-  'OR' { PT _ (TS _ 44) }
-  'RIGHT' { PT _ (TS _ 45) }
-  'SECOND' { PT _ (TS _ 46) }
-  'SELECT' { PT _ (TS _ 47) }
-  'SESSION' { PT _ (TS _ 48) }
-  'STREAM' { PT _ (TS _ 49) }
-  'SUM' { PT _ (TS _ 50) }
-  'TIME' { PT _ (TS _ 51) }
-  'TUMBLING' { PT _ (TS _ 52) }
-  'VALUES' { PT _ (TS _ 53) }
-  'WEEK' { PT _ (TS _ 54) }
-  'WHERE' { PT _ (TS _ 55) }
-  'WITH' { PT _ (TS _ 56) }
-  'WITHIN' { PT _ (TS _ 57) }
-  'YEAR' { PT _ (TS _ 58) }
-  '[' { PT _ (TS _ 59) }
-  ']' { PT _ (TS _ 60) }
-  '{' { PT _ (TS _ 61) }
-  '}' { PT _ (TS _ 62) }
+  'DATE' { PT _ (TS _ 24) }
+  'DAY' { PT _ (TS _ 25) }
+  'FORMAT' { PT _ (TS _ 26) }
+  'FROM' { PT _ (TS _ 27) }
+  'GROUP' { PT _ (TS _ 28) }
+  'HAVING' { PT _ (TS _ 29) }
+  'HOPPING' { PT _ (TS _ 30) }
+  'INNER' { PT _ (TS _ 31) }
+  'INSERT' { PT _ (TS _ 32) }
+  'INTERVAL' { PT _ (TS _ 33) }
+  'INTO' { PT _ (TS _ 34) }
+  'JOIN' { PT _ (TS _ 35) }
+  'LEFT' { PT _ (TS _ 36) }
+  'MAX' { PT _ (TS _ 37) }
+  'MIN' { PT _ (TS _ 38) }
+  'MINUTE' { PT _ (TS _ 39) }
+  'MONTH' { PT _ (TS _ 40) }
+  'NOT' { PT _ (TS _ 41) }
+  'ON' { PT _ (TS _ 42) }
+  'OR' { PT _ (TS _ 43) }
+  'OUTER' { PT _ (TS _ 44) }
+  'SECOND' { PT _ (TS _ 45) }
+  'SELECT' { PT _ (TS _ 46) }
+  'SESSION' { PT _ (TS _ 47) }
+  'STREAM' { PT _ (TS _ 48) }
+  'SUM' { PT _ (TS _ 49) }
+  'TIME' { PT _ (TS _ 50) }
+  'TUMBLING' { PT _ (TS _ 51) }
+  'VALUES' { PT _ (TS _ 52) }
+  'WEEK' { PT _ (TS _ 53) }
+  'WHERE' { PT _ (TS _ 54) }
+  'WITH' { PT _ (TS _ 55) }
+  'WITHIN' { PT _ (TS _ 56) }
+  'YEAR' { PT _ (TS _ 57) }
+  '[' { PT _ (TS _ 58) }
+  ']' { PT _ (TS _ 59) }
+  '{' { PT _ (TS _ 60) }
+  '}' { PT _ (TS _ 61) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -195,10 +194,9 @@ TableRef : Ident { (fst $1, HStream.SQL.Abs.TableRefSimple (fst $1) (snd $1)) }
          | TableRef JoinType 'JOIN' TableRef JoinWindow JoinCond { (fst $1, HStream.SQL.Abs.TableRefJoin (fst $1) (snd $1) (snd $2) (snd $4) (snd $5) (snd $6)) }
 
 JoinType :: { (Maybe (Int, Int),  (HStream.SQL.Abs.JoinType (Maybe (Int, Int))) ) }
-JoinType : 'LEFT' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinLeft (Just (tokenLineCol $1))) }
-         | 'RIGHT' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinRight (Just (tokenLineCol $1))) }
-         | 'FULL' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinFull (Just (tokenLineCol $1))) }
-         | 'CROSS' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinCross (Just (tokenLineCol $1))) }
+JoinType : 'INNER' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinInner (Just (tokenLineCol $1))) }
+         | 'LEFT' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinLeft (Just (tokenLineCol $1))) }
+         | 'OUTER' { (Just (tokenLineCol $1), HStream.SQL.Abs.JoinOuter (Just (tokenLineCol $1))) }
 
 JoinWindow :: { (Maybe (Int, Int),  (HStream.SQL.Abs.JoinWindow (Maybe (Int, Int))) ) }
 JoinWindow : 'WITHIN' '(' Interval ')' { (Just (tokenLineCol $1), HStream.SQL.Abs.DJoinWindow (Just (tokenLineCol $1)) (snd $3)) }

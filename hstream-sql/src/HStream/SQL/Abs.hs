@@ -58,7 +58,7 @@ data TableRef a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor)
 
 data JoinType a
-    = JoinLeft a | JoinRight a | JoinFull a | JoinCross a
+    = JoinInner a | JoinLeft a | JoinOuter a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor)
 
 data JoinWindow a = DJoinWindow a (Interval a)

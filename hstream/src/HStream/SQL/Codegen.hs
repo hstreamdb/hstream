@@ -148,16 +148,19 @@ genStream taskName frm = do
   baseStream <- HS.mkStreamBuilder taskName >>= HS.stream srcConfig1
   case frm of
     RFromSingle s                   -> return baseStream
-    RFromJoin (s1,f1) (s2,f2) _ win ->
+    RFromJoin (s1,f1) (s2,f2) typ win ->
       case srcConfig2' of
         Nothing         -> error "Impossible happened"
-        Just srcConfig2 -> do
-          anotherStream <- HS.mkStreamBuilder "" >>= HS.stream srcConfig2
-          streamJoined  <- genStreamJoinedConfig
-          HS.joinStream anotherStream (genJoiner s1 s2)
-                        (genKeySelector f1) (genKeySelector f2)
-                        (genJoinWindows win) streamJoined
-                        baseStream
+        Just srcConfig2 ->
+          case typ of
+            RJoinInner -> do
+              anotherStream <- HS.mkStreamBuilder "" >>= HS.stream srcConfig2
+              streamJoined  <- genStreamJoinedConfig
+              HS.joinStream anotherStream (genJoiner s1 s2)
+                            (genKeySelector f1) (genKeySelector f2)
+                            (genJoinWindows win) streamJoined
+                            baseStream
+            _          -> error "Impossible happened"
 
 ----
 constantToValue :: Constant -> Value
