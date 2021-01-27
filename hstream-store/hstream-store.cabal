@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:    HStream.Store
+                      HStream.PubSub
                       HStream.Store.Checkpoint
                       HStream.Store.Exception
                       HStream.Store.Logger
@@ -38,6 +39,8 @@ library
   build-depends:      base       >= 4.11 && < 5
                     , Z-Data     == 0.4.*
                     , cache      ^>= 0.1
+                    , Z-IO       == 0.4.*
+                    , random
                     , containers ^>= 0.6
                     , ghc-prim   >= 0.5 && < 0.7
                     , primitive  ^>= 0.7
