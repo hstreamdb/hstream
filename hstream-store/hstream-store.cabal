@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:    HStream.Store
                       HStream.PubSub
+                      HStream.TopicApi
                       HStream.PubSub.Internal.PubSub
                       HStream.PubSub.Types
                       HStream.PubSub.TopicUtils

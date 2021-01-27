@@ -5,6 +5,7 @@
 
 module HStream.PubSub where
 
+import           Control.Exception
 import           Control.Monad.Except
 import           Data.IORef
 import           Data.Int                       (Int32)
@@ -46,6 +47,32 @@ sub ::
   [Topic] ->
   IO (Either SomeStreamException StreamReader)
 sub gtm client ms tps = runExceptT $ T.sub gtm client ms tps
+
+-- | sub topic
+seek' ::
+  GlobalTM -> -- global topic map
+  StreamClient ->
+  StreamReader ->
+  Topic -> -- topic list
+  SequenceNum ->
+  EIO ()
+seek' gtm client sreader tp offset = do
+  tid <- T.getTopicID gtm client tp
+  liftIO $ readerStartReading sreader tid offset maxBound
+  return ()
+
+seek1 ::
+  GlobalTM -> -- global topic map
+  StreamClient ->
+  StreamReader ->
+  Topic -> -- topic list
+  SequenceNum ->
+  IO ()
+seek1 gtm client sreader tp offset = do
+  v <- runExceptT $ seek' gtm client sreader tp offset
+  case v of
+    Left e  -> throwIO e
+    Right _ -> return ()
 
 -- | poll value, You can specify the batch size
 poll :: StreamReader -> Int -> IO [DataRecord]
