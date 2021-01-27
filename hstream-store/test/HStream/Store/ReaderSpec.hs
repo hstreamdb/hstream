@@ -2,11 +2,11 @@
 
 module HStream.Store.ReaderSpec (spec) where
 
-import           Control.Monad  (void)
-import           System.Timeout (timeout)
+import           Control.Monad        (void)
+import           System.Timeout       (timeout)
 import           Test.Hspec
 
-import qualified HStream.Store  as S
+import qualified HStream.Store.Stream as S
 
 -- TODO
 spec :: Spec

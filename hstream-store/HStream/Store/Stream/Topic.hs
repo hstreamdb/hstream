@@ -7,6 +7,7 @@ module HStream.Store.Stream.Topic
   , getTopicIDByName
   , doesTopicExists
   , createTopicSync
+  , createTopicsSync
     -- ** TopicID
   , TopicID
   , topicIDInvalid
@@ -42,6 +43,8 @@ import           Control.Exception       (try)
 import           Control.Monad           (void, when)
 import           Data.Bits               (shiftL, xor)
 import qualified Data.Cache              as Cache
+import           Data.Map.Strict         (Map)
+import qualified Data.Map.Strict         as Map
 import           Data.Time.Clock.System  (SystemTime (..), getSystemTime)
 import           Data.Word               (Word16, Word32, Word64)
 import           Foreign.ForeignPtr      (ForeignPtr, newForeignPtr,
@@ -94,6 +97,10 @@ newLogAttrs TopicAttrs{..} = do
   newForeignPtr FFI.c_free_log_attributes_fun i
 
 type TopicRange = (TopicID, TopicID)
+
+createTopicsSync :: StreamClient -> Map Topic TopicAttrs -> IO ()
+createTopicsSync client ts =
+  mapM_ (\(k, v) -> createTopicSync client k v) (Map.toList ts)
 
 createTopicSync :: HasCallStack
                 => StreamClient

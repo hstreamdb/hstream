@@ -8,8 +8,8 @@ import           System.Random           (newStdGen, randomRs)
 import           Test.Hspec
 import           Z.Data.CBytes           (CBytes, pack)
 
-import qualified HStream.Store           as S
 import qualified HStream.Store.Exception as E
+import qualified HStream.Store.Stream    as S
 
 client :: S.StreamClient
 client = unsafePerformIO $ S.newStreamClient "/data/store/logdevice.conf"
