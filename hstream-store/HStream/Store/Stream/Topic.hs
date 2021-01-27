@@ -91,8 +91,7 @@ newLogAttrs TopicAttrs{..} = do
   i <- FFI.c_new_log_attributes
   when (replicationFactor > 0) $
     FFI.c_log_attrs_set_replication_factor i (fromIntegral replicationFactor)
-  ptr <- newForeignPtr FFI.c_free_log_attributes_fun i
-  return ptr
+  newForeignPtr FFI.c_free_log_attributes_fun i
 
 type TopicRange = (TopicID, TopicID)
 
