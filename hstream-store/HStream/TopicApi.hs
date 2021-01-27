@@ -4,7 +4,37 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeApplications  #-}
 
-module HStream.TopicApi where
+module HStream.TopicApi
+  ( module HStream.PubSub.Types
+
+  , ConsumerRecord (..)
+  , ProducerRecord (..)
+
+  , ProducerConfig (..)
+  , ConsumerConfig (..)
+  , AdminClientConfig (..)
+
+  , AdminClient
+  , Producer
+  , Consumer
+
+  , mkProducer
+  , sendMessage
+  , sendMessageBatch
+  , closeProducer
+
+  , mkConsumer
+  , pollMessages
+  , seek
+  , commitOffsets
+  , readCommit
+  , closeConsumer
+
+  , mkAdminClient
+  , createTopics
+  , closeAdminClient
+
+  ) where
 
 import           Control.Exception
 import           Control.Monad
@@ -14,7 +44,7 @@ import           Data.Map                (Map)
 import qualified Data.Map                as M
 import           Data.Time
 import           Data.Word
-import           HStream.PubSub
+import           HStream.PubSub.PubSub
 import           HStream.PubSub.Types
 import           HStream.Store
 import           HStream.Store.Exception

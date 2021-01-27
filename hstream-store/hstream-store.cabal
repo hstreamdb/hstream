@@ -27,12 +27,7 @@ source-repository head
 
 library
   exposed-modules:    HStream.Store
-                      HStream.PubSub
                       HStream.TopicApi
-                      HStream.PubSub.Internal.PubSub
-                      HStream.PubSub.Types
-                      HStream.PubSub.TopicUtils
-                      HStream.PubSub.ClientUtils
                       HStream.Store.Checkpoint
                       HStream.Store.Exception
                       HStream.Store.Logger
@@ -41,6 +36,10 @@ library
                       HStream.Store.Stream.Appender
                       HStream.Store.Stream.Reader
                       HStream.Store.Stream.Topic
+                      HStream.PubSub.PubSub
+                      HStream.PubSub.Internal.PubSub
+                      HStream.PubSub.TopicUtils
+                      HStream.PubSub.ClientUtils
   build-depends:      base       >= 4.11 && < 5
                     , Z-Data     == 0.4.*
                     , cache      ^>= 0.1
@@ -54,6 +53,8 @@ library
                     , primitive  ^>= 0.7
                     , random     ^>= 1.2
                     , time       >= 1.9 && < 2.0
+                    , text
+                    , bytestring
   default-language:   Haskell2010
   default-extensions: OverloadedStrings
   extra-libraries:    logdevice, stdc++, folly

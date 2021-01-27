@@ -3,7 +3,6 @@
 module HStream.TopicApiSpec (spec) where
 
 import           Data.Time
-import           HStream.PubSub.Types
 import           HStream.Store
 import           HStream.TopicApi
 import           Test.Hspec

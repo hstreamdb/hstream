@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-module HStream.PubSub where
+module HStream.PubSub.PubSub where
 
 import           Control.Exception
 import           Control.Monad.Except

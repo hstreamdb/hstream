@@ -25,4 +25,5 @@ local*
 Local*
 *~
 *.swp
+hstream-store/start
 .idea/
