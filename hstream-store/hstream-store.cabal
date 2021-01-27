@@ -27,12 +27,12 @@ source-repository head
 
 library
   exposed-modules:    HStream.Store
-                      HStream.Store.Checkpoint
                       HStream.Store.Exception
                       HStream.Store.Logger
                       HStream.Store.Stream
   other-modules:      HStream.Internal.FFI
                       HStream.Store.Stream.Appender
+                      HStream.Store.Stream.Checkpoint
                       HStream.Store.Stream.Reader
                       HStream.Store.Stream.Topic
   build-depends:      base       >= 4.11 && < 5

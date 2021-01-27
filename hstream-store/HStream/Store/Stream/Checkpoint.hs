@@ -1,4 +1,4 @@
-module HStream.Store.Checkpoint
+module HStream.Store.Stream.Checkpoint
   ( CheckpointStore
   , newFileBasedCheckpointStore
   , getSequenceNumSync

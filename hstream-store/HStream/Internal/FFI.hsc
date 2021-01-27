@@ -1,5 +1,7 @@
 {-# LANGUAGE CPP                        #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE UnliftedFFITypes           #-}
@@ -13,6 +15,8 @@ import           Data.Word
 import           Foreign
 import           Foreign.C
 import           GHC.Conc          (PrimMVar)
+import           GHC.Generics      (Generic)
+import qualified Z.Data.JSON       as JSON
 import           Z.Data.Vector     (Bytes)
 import           Z.Foreign         (BA##, MBA##)
 import qualified Z.Foreign         as Z
@@ -48,7 +52,7 @@ instance Bounded TopicID where
   maxBound = TopicID c_logid_max
 
 newtype SequenceNum = SequenceNum { unSequenceNum :: C_LSN }
-  deriving (Show, Eq, Ord, Num, Storable)
+  deriving (Show, Eq, Ord, Num, Storable, JSON.JSON, Generic)
 
 instance Bounded SequenceNum where
   minBound = SequenceNum c_lsn_oldest
