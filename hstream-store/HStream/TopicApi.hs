@@ -51,11 +51,11 @@ data ProducerConfig = ProducerConfig
 mkProducer :: ProducerConfig -> IO Producer
 mkProducer ProducerConfig {..} = do
   client <- newStreamClient pcpath
-  return (gtm, client)
+  return $ Producer client
 
 sendMessage :: Producer -> ProducerRecord -> IO ()
-sendMessage (gtm', client) pr@ProducerRecord {..} =
-  pub gtm' client prTopic (build $ buildPRecord pr) >>= check
+sendMessage (Producer client) pr@ProducerRecord {..} =
+  pub client prTopic (build $ buildPRecord pr) >>= check
 
 sendMessageBatch :: Producer -> [ProducerRecord] -> IO ()
 sendMessageBatch p prs = forM_ prs $ sendMessage p
@@ -78,8 +78,8 @@ mkConsumer ConsumerConfig {..} tps = do
   let ms = Prelude.length tps
   ref <- newIORef M.empty
   cp <- createCheckpoint ccname
-  sub gtm client ms tps >>= \case
-    Right r -> return (Consumer ccname r client gtm ref cp)
+  sub client ms tps >>= \case
+    Right r -> return (Consumer ccname r client ref cp)
     Left e  -> throwIO e
 
 pollMessages :: Consumer -> Int -> Timeout -> IO [ConsumerRecord]
@@ -93,18 +93,18 @@ pollMessages Consumer {..} maxn timout = do
         return $ ConsumerRecord prTopic seqN prTimestamp prKey prValue
 
 seek :: Consumer -> Topic -> Offset -> IO ()
-seek Consumer {..} tp offset = seek1 cglobalTM cstreamclient csreader tp offset
+seek Consumer {..} tp offset = seek1 cstreamclient csreader tp offset
 
 commitOffsets :: Consumer -> IO ()
 commitOffsets Consumer {..} = do
   ls <- readIORef coffsetMap
-  updateCheckpoints cglobalTM cstreamclient checkpoint cname (M.toList ls) >>= \case
+  updateCheckpoints cstreamclient checkpoint cname (M.toList ls) >>= \case
     Left e  -> throwIO e
     Right _ -> return ()
 
 readCommit :: Consumer -> Topic -> IO SequenceNum
 readCommit Consumer{..} tp = do
-  readCheckpoint cglobalTM cstreamclient checkpoint cname tp >>= \case
+  readCheckpoint cstreamclient checkpoint cname tp >>= \case
     Left e  -> throwIO e
     Right a -> return a
 
@@ -119,12 +119,12 @@ data AdminClientConfig = AdminClientConfig
 mkAdminClient :: AdminClientConfig -> IO AdminClient
 mkAdminClient AdminClientConfig {..} = do
   client <- newStreamClient accpath
-  return $ AdminClient gtm client
+  return $ AdminClient client
 
 createTopics :: AdminClient -> [Topic] -> Int -> IO ()
 createTopics AdminClient {..} tps rf = do
   forM_ tps $ \tp -> do
-    createTopic acglobalTM acstreamclient tp rf >>= \case
+    createTopic acstreamclient tp rf >>= \case
       Left e  -> throwIO e
       Right _ -> return ()
 
@@ -134,24 +134,18 @@ closeAdminClient _ = return ()
 ------------------------------------------------------------------------------------------------
 
 data AdminClient = AdminClient
-  { acglobalTM     :: GlobalTM,
-    acstreamclient :: StreamClient
+  { acstreamclient :: StreamClient
   }
 
-type Producer = (GlobalTM, StreamClient)
+data Producer =  Producer StreamClient
 
 data Consumer = Consumer
   { cname         :: ClientID,
     csreader      :: StreamReader,
     cstreamclient :: StreamClient,
-    cglobalTM     :: GlobalTM,
     coffsetMap    :: IORef (Map Topic SequenceNum),
     checkpoint    :: CheckpointStore
   }
-
-gtm :: GlobalTM
-gtm = unsafePerformIO $ initGlobalTM
-{-# NOINLINE gtm #-}
 
 buildLengthAndBs :: Bytes -> Builder ()
 buildLengthAndBs bs = int (V.length bs) >> bytes bs
@@ -163,7 +157,7 @@ parserLengthAndBs = do
 
 buildPRecord :: ProducerRecord -> Builder ()
 buildPRecord ProducerRecord {..} = do
-  buildLengthAndBs $ getUTF8Bytes $ getTopic $ prTopic
+  buildLengthAndBs $ toBytes prTopic
   case prKey of
     Nothing -> word8 0
     Just bs -> do
@@ -182,13 +176,13 @@ parsePRecord = do
     _ -> error "strange error"
   val <- parserLengthAndBs
   time <- P.utcTime
-  return $ ProducerRecord (Topic $ validate tp) key val time
+  return $ ProducerRecord (fromBytes tp) key val time
 
 type Offset = SequenceNum
 
 buildCRecord :: ConsumerRecord -> Builder ()
 buildCRecord ConsumerRecord {..} = do
-  buildLengthAndBs $ getUTF8Bytes $ getTopic $ crTopic
+  buildLengthAndBs $ toBytes crTopic
   let SequenceNum seqN = crOffset
   encodePrim @Word64 seqN
   utcTime crTimestamp
@@ -210,7 +204,7 @@ parseCRecord = do
     1 -> Just <$> parserLengthAndBs
     _ -> error "strange error"
   val <- parserLengthAndBs
-  return $ ConsumerRecord (Topic $ validate tp) (SequenceNum offset) time key val
+  return $ ConsumerRecord (fromBytes tp) (SequenceNum offset) time key val
 
 check :: Either SomeStreamException a -> IO ()
 check (Right _) = return ()

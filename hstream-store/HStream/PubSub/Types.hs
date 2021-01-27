@@ -16,25 +16,6 @@ import           HStream.Store
 import           HStream.Store.Exception
 import           Z.Data.Text
 
--- | mqtt Topic
--- e: "a/a/a/a", "a/b"
-newtype Topic = Topic Text deriving (Show, Eq, Ord, Generic)
-
-getTopic :: Topic -> Text
-getTopic (Topic t) = t
-
-instance Hashable Topic
-
--- | topic filter
--- a/a/a, a/+/a, a/a/#
-newtype Filter = Filter Text deriving (Show, Eq, Ord)
-
--- Topic -> TopicID
-type TopicMap = HashMap Topic TopicID
-
--- | global topic map
-type GlobalTM = IORef TopicMap
-
 type Message = Bytes
 
 type EIO a = ExceptT SomeStreamException IO a

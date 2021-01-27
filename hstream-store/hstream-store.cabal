@@ -33,7 +33,6 @@ library
                       HStream.PubSub.Types
                       HStream.PubSub.TopicUtils
                       HStream.PubSub.ClientUtils
-                      HStream.PubSub.TopicMap
                       HStream.Store.Checkpoint
                       HStream.Store.Exception
                       HStream.Store.Logger

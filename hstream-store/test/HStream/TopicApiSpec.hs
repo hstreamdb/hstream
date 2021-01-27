@@ -29,24 +29,24 @@ path = "/data/store/logdevice.conf"
 
 ctopic = do
   client <- mkAdminClient $ AdminClientConfig path
-  createTopics client [Topic "a/a/a", Topic "a/a/b"] 3
+  createTopics client [ "a/a/a",  "a/a/b"] 3
 
 pubs = do
   pd <- mkProducer $ ProducerConfig path
   t <- getCurrentTime
   sendMessageBatch pd $
     [ProducerRecord
-       (Topic "a/a/a")
+       ("a/a/a")
        (Just "aa")
        "aaaaaa"
        t
      ]
 
 consu = do
-  cs <- mkConsumer (ConsumerConfig path "start") [Topic "a/a/a"]
+  cs <- mkConsumer (ConsumerConfig path "start") [ "a/a/a"]
   pubs
   v <- pollMessages cs 1 1000
   commitOffsets cs
-  c <- readCommit cs (Topic "a/a/a")
+  c <- readCommit cs ("a/a/a")
   return True
 
