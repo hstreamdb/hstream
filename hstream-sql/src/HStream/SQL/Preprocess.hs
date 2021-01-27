@@ -9,10 +9,15 @@ import qualified Data.Text as Text
 
 keywords :: [Text]
 keywords =
-  [ "SELECT", "AS", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "FULL", "CROSS"
-  , "GROUP", "BY", "ORDER", "HAVING"
-  , "CREATE", "STREAM", "WITH"
-  , "INT", "STRING", "NUMBER"]
+  [ "SELECT", "AS", "FROM", "WHERE", "OR", "AND", "NOT", "BETWEEN"
+  , "JOIN", "INNER", "LEFT", "OUTER"
+  , "GROUP", "BY", "WITHIN", "ON", "ORDER", "HAVING"
+  , "TUMBLING", "HOPPING", "SESSION"
+  , "CREATE", "STREAM", "WITH", "FORMAT"
+  , "DATE", "TIME", "YEAR", "MONTH", "WEEK", "DAY", "MINUTE", "SECOND", "INTERVAL"
+  , "COUNT(*)", "COUNT", "AVG", "SUM", "MAX", "MIN"
+  , "INSERT", "INTO", "VALUES"
+  ]
 
 commentStart :: Text
 commentStart = "/*"

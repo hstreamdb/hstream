@@ -29,7 +29,7 @@ import           System.Random                (Random (randomR), getStdRandom)
 ---------------------------------- Example -------------------------------------
 -- CREATE STREAM demoSink AS SELECT * FROM temperatureSource WITH (FORMAT = JSON);
 
--- CREATE STREAM demoSink AS SELECT SUM(humiditySource.humidity) AS aaa FROM humiditySource LEFT JOIN temperatureSource WITHIN (INTERVAL 5 SECOND) ON (humiditySource.temperature = temperatureSource.temperature) WHERE humiditySource.humidity > 20 GROUP BY humiditySource.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
+-- CREATE STREAM demoSink AS SELECT SUM(humiditySource.humidity) AS aaa FROM humiditySource INNER JOIN temperatureSource WITHIN (INTERVAL 5 SECOND) ON (humiditySource.temperature = temperatureSource.temperature) WHERE humiditySource.humidity > 20 GROUP BY humiditySource.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
 --------------------------------------------------------------------------------
 
 main :: IO ()
