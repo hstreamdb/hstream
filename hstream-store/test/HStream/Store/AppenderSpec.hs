@@ -5,10 +5,10 @@ module HStream.Store.AppenderSpec (spec) where
 
 import           Control.Exception
 import           Test.Hspec
-import           Z.Data.Vector        (packASCII)
+import           Z.Data.Vector        (Bytes, packASCII)
 
-import qualified HStream.Store        as S
 import qualified HStream.Store.Logger as S
+import qualified HStream.Store.Stream as S
 
 spec :: Spec
 spec = describe "HStream.Store.Stream" $ do
@@ -54,7 +54,7 @@ spec = describe "HStream.Store.Stream" $ do
         return $ seqNum0 == seqNum1
     ) `shouldReturn` True
 
-readLastPayload :: S.StreamClient -> S.TopicID -> IO S.Bytes
+readLastPayload :: S.StreamClient -> S.TopicID -> IO Bytes
 readLastPayload client topicid = do
   sn <- S.getTailSequenceNum client topicid
   reader <- S.newStreamReader client 1 (-1)

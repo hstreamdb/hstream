@@ -446,21 +446,6 @@ foreign import ccall safe "hs_logdevice.h checkpoint_store_update_multi_lsn_sync
     -> Word
     -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h new_sync_checkpointed_reader"
-  c_new_logdevice_sync_checkpointed_reader
-    :: BA## Word8           -- ^ Reader name
-    -> Ptr LogDeviceReader
-    -> Ptr LogDeviceCheckpointStore
-    -> Word32               -- ^ num of retries
-    -> IO (Ptr LogDeviceSyncCheckpointedReader)
-
-foreign import ccall unsafe "hs_logdevice.h free_sync_checkpointed_reader"
-  c_free_sync_checkpointed_reader :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
-
-foreign import ccall unsafe "hs_logdevice.h &free_sync_checkpointed_reader"
-  c_free_sync_checkpointed_reader_fun
-    :: FunPtr (Ptr LogDeviceSyncCheckpointedReader -> IO ())
-
 foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
   c_sync_write_checkpoints_safe
     :: Ptr LogDeviceSyncCheckpointedReader
@@ -491,34 +476,50 @@ foreign import ccall unsafe "hs_logdevice.h free_logdevice_reader"
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_reader"
   c_free_logdevice_reader_fun :: FunPtr (Ptr LogDeviceReader -> IO ())
 
-foreign import ccall unsafe "hs_logdevice.h ld_reader_start_reading"
-  c_ld_reader_start_reading
-    :: Ptr LogDeviceReader
-    -> C_LogID
-    -> C_LSN   -- ^ start
-    -> C_LSN   -- ^ until
-    -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h new_sync_checkpointed_reader"
+  c_new_logdevice_sync_checkpointed_reader
+    :: BA## Word8           -- ^ Reader name
+    -> Ptr LogDeviceReader
+    -> Ptr LogDeviceCheckpointStore
+    -> Word32               -- ^ num of retries
+    -> IO (Ptr LogDeviceSyncCheckpointedReader)
+
+foreign import ccall unsafe "hs_logdevice.h free_sync_checkpointed_reader"
+  c_free_sync_checkpointed_reader :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_sync_checkpointed_reader"
+  c_free_sync_checkpointed_reader_fun
+    :: FunPtr (Ptr LogDeviceSyncCheckpointedReader -> IO ())
+
+foreign import ccall unsafe "hs_logdevice.h ld_reader_start_reading" \
+  c_ld_reader_start_reading :: Ptr LogDeviceReader -> C_LogID -> C_LSN -> C_LSN -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_start_reading"
+  c_ld_checkpointed_reader_start_reading :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> C_LSN -> C_LSN -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_stop_reading"
-  c_ld_reader_stop_reading :: Ptr LogDeviceReader
-                           -> C_LogID
-                           -> IO ErrorCode
+  c_ld_reader_stop_reading :: Ptr LogDeviceReader -> C_LogID -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_stop_reading"
+  c_ld_checkpointed_reader_stop_reading :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_is_reading"
   c_ld_reader_is_reading :: Ptr LogDeviceReader -> C_LogID -> IO CBool
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_is_reading"
+  c_ld_checkpointed_reader_is_reading :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> IO CBool
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_is_reading_any"
   c_ld_reader_is_reading_any :: Ptr LogDeviceReader -> IO CBool
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_is_reading_any"
+  c_ld_checkpointed_reader_is_reading_any :: Ptr LogDeviceSyncCheckpointedReader -> IO CBool
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_set_timeout"
   c_ld_reader_set_timeout :: Ptr LogDeviceReader -> Int32 -> IO CInt
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_set_timeout"
+  c_ld_checkpointed_reader_set_timeout :: Ptr LogDeviceSyncCheckpointedReader -> Int32 -> IO CInt
 
 foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
-  c_logdevice_reader_read_safe :: Ptr LogDeviceReader
-                               -> CSize
-                               -> Ptr DataRecord
-                               -> Ptr Int
-                               -> IO ErrorCode
+  c_logdevice_reader_read_safe :: Ptr LogDeviceReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
+foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
+  c_logdevice_checkpointed_reader_read_safe :: Ptr LogDeviceSyncCheckpointedReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Misc

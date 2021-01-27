@@ -27,24 +27,26 @@ module HStream.Store.Stream
     -- * Reader
   , module HStream.Store.Stream.Reader
 
-    -- * Re-export
-  , Bytes
+    -- * Checkpoint
+  , module HStream.Store.Stream.Checkpoint
   ) where
 
-import           Control.Monad                 (void)
-import           Foreign.ForeignPtr            (newForeignPtr, withForeignPtr)
-import           Foreign.Ptr                   (nullPtr)
-import           Z.Data.CBytes                 (CBytes)
-import qualified Z.Data.CBytes                 as ZC
-import           Z.Data.Vector                 (Bytes)
-import qualified Z.Foreign                     as Z
+import           Control.Monad                   (void)
+import           Foreign.ForeignPtr              (newForeignPtr, withForeignPtr)
+import           Foreign.Ptr                     (nullPtr)
+import           Z.Data.CBytes                   (CBytes)
+import qualified Z.Data.CBytes                   as ZC
+import           Z.Data.Vector                   (Bytes)
+import qualified Z.Foreign                       as Z
 
-import           HStream.Internal.FFI          (DataRecord (..),
-                                                SequenceNum (..),
-                                                StreamClient (..), TopicID (..))
-import qualified HStream.Internal.FFI          as FFI
-import qualified HStream.Store.Exception       as E
+import           HStream.Internal.FFI            (DataRecord (..),
+                                                  SequenceNum (..),
+                                                  StreamClient (..),
+                                                  TopicID (..))
+import qualified HStream.Internal.FFI            as FFI
+import qualified HStream.Store.Exception         as E
 import           HStream.Store.Stream.Appender
+import           HStream.Store.Stream.Checkpoint
 import           HStream.Store.Stream.Reader
 import           HStream.Store.Stream.Topic
 

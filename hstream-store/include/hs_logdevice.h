@@ -264,20 +264,6 @@ facebook::logdevice::Status checkpoint_store_update_multi_lsn_sync(
     logdevice_checkpoint_store_t* store, const char* customer_id,
     c_logid_t* logids, c_lsn_t* lsns, size_t len);
 
-logdevice_sync_checkpointed_reader_t* new_sync_checkpointed_reader(
-    const char* reader_name, logdevice_reader_t* reader,
-    logdevice_checkpoint_store_t* store, uint32_t num_retries);
-
-void free_sync_checkpointed_reader(logdevice_sync_checkpointed_reader_t* p);
-
-facebook::logdevice::Status
-sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
-                       c_logid_t* logids, c_lsn_t* lsns, size_t len);
-
-facebook::logdevice::Status
-sync_write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
-                                 const c_logid_t* logids, size_t len);
-
 // ----------------------------------------------------------------------------
 // Reader
 
@@ -286,23 +272,51 @@ logdevice_reader_t* new_logdevice_reader(logdevice_client_t* client,
 
 void free_logdevice_reader(logdevice_reader_t* reader);
 
+logdevice_sync_checkpointed_reader_t* new_sync_checkpointed_reader(
+    const char* reader_name, logdevice_reader_t* reader,
+    logdevice_checkpoint_store_t* store, uint32_t num_retries);
+
+void free_sync_checkpointed_reader(logdevice_sync_checkpointed_reader_t* p);
+
 facebook::logdevice::Status ld_reader_start_reading(logdevice_reader_t* reader,
                                                     c_logid_t logid,
                                                     c_lsn_t start,
                                                     c_lsn_t until);
+facebook::logdevice::Status ld_checkpointed_reader_start_reading(
+    logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid,
+    c_lsn_t start, c_lsn_t until);
 
 facebook::logdevice::Status ld_reader_stop_reading(logdevice_reader_t* reader,
                                                    c_logid_t logid);
+facebook::logdevice::Status ld_checkpointed_reader_stop_reading(
+    logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid);
 
 bool ld_reader_is_reading(logdevice_reader_t* reader, c_logid_t logid);
+bool ld_checkpointed_reader_is_reading(
+    logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid);
 
 bool ld_reader_is_reading_any(logdevice_reader_t* reader);
+bool ld_checkpointed_reader_is_reading_any(
+    logdevice_sync_checkpointed_reader_t* reader);
 
 int ld_reader_set_timeout(logdevice_reader_t* reader, int32_t timeout);
+int ld_checkpointed_reader_set_timeout(
+    logdevice_sync_checkpointed_reader_t* reader, int32_t timeout);
 
 facebook::logdevice::Status
 logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
                       logdevice_data_record_t* data_out, ssize_t* len_out);
+facebook::logdevice::Status logdevice_checkpointed_reader_read(
+    logdevice_sync_checkpointed_reader_t* reader, size_t maxlen,
+    logdevice_data_record_t* data_out, ssize_t* len_out);
+
+facebook::logdevice::Status
+sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                       c_logid_t* logids, c_lsn_t* lsns, size_t len);
+
+facebook::logdevice::Status
+sync_write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                                 const c_logid_t* logids, size_t len);
 
 #ifdef __cplusplus
 } /* end extern "C" */
