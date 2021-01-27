@@ -2,10 +2,7 @@
 
 module HStream.Store.Stream.Reader
   ( StreamReader
-  , StreamCheckpointedReader
   , newStreamReader
-  , newStreamCheckpointReader
-  , FFI.castCheckpointedReaderToReader
   , readerStartReading
   , readerStopReading
   , readerSetTimeout
@@ -13,25 +10,17 @@ module HStream.Store.Stream.Reader
   , tryReaderRead
   , readerIsReading
   , readerIsReadingAny
-  , writeCheckpointsSync
   ) where
 
 import           Control.Monad           (void)
 import           Data.Int                (Int32, Int64)
-import           Data.Map.Strict         (Map)
-import qualified Data.Map.Strict         as Map
-import           Data.Word               (Word32)
 import           Foreign.C.Types         (CInt, CSize)
 import           Foreign.ForeignPtr      (newForeignPtr, withForeignPtr)
 import           Foreign.Marshal         (allocaBytes)
 import           Foreign.Ptr             (Ptr)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.CBytes           as ZC
 import qualified Z.Foreign               as Z
 
-import           HStream.Internal.FFI    (CheckpointStore (..), DataRecord (..),
-                                          SequenceNum (..),
-                                          StreamCheckpointedReader (..),
+import           HStream.Internal.FFI    (DataRecord (..), SequenceNum (..),
                                           StreamClient (..), StreamReader (..),
                                           TopicID (..))
 import qualified HStream.Internal.FFI    as FFI
@@ -49,30 +38,6 @@ newStreamReader client max_logs buffer_size =
   withForeignPtr (unStreamClient client) $ \clientPtr -> do
     i <- FFI.c_new_logdevice_reader clientPtr max_logs buffer_size
     StreamReader <$> newForeignPtr FFI.c_free_logdevice_reader_fun i
-
-newStreamCheckpointReader :: CBytes
-                          -> StreamReader
-                          -> CheckpointStore
-                          -> Word32
-                          -> IO StreamCheckpointedReader
-newStreamCheckpointReader name reader store retries =
-  ZC.withCBytesUnsafe name $ \name' ->
-  withForeignPtr (unStreamReader reader) $ \reader' ->
-  withForeignPtr (unCheckpointStore store) $ \store' -> do
-    i <- FFI.c_new_logdevice_checkpointed_reader name' reader' store' retries
-    StreamCheckpointedReader <$> newForeignPtr FFI.c_free_checkpointed_reader_fun i
-
-writeCheckpointsSync :: StreamCheckpointedReader
-                     -> Map TopicID SequenceNum
-                     -> IO ()
-writeCheckpointsSync (StreamCheckpointedReader reader) sns =
-  withForeignPtr reader $ \reader' -> do
-    let xs = Map.toList sns
-    let ka = Z.primArrayFromList $ map (unTopicID . fst) xs
-        va = Z.primArrayFromList $ map (unSequenceNum . snd) xs
-    Z.withPrimArraySafe ka $ \ks' len ->
-      Z.withPrimArraySafe va $ \vs' _len -> void $ E.throwStreamErrorIfNotOK $
-        FFI.c_sync_write_checkpoints_safe reader' ks' vs' (fromIntegral len)
 
 -- | Start reading a log.
 --
@@ -92,7 +57,7 @@ readerStopReading reader (TopicID topicid) =
 -- | Read a batch of records synchronously until there is some data received.
 --
 -- NOTE that if read timeouts, you will get an empty list.
-readerRead :: StreamReader -> Int -> IO ([DataRecord])
+readerRead :: StreamReader -> Int -> IO [DataRecord]
 readerRead reader maxlen =
   withForeignPtr (unStreamReader reader) $ \reader' ->
   allocaBytes (maxlen * FFI.dataRecordSize) $ \payload' -> go reader' payload'

@@ -95,36 +95,4 @@ logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
 }
 
 // ----------------------------------------------------------------------------
-// Checkpointed Reader
-
-logdevice_sync_checkpointed_reader_t*
-new_checkpointed_reader(const char* reader_name, logdevice_reader_t* reader,
-                        logdevice_checkpoint_store_t* store,
-                        uint32_t num_retries) {
-  CheckpointedReaderBase::CheckpointingOptions opts;
-  opts.num_retries = num_retries;
-  const std::string reader_name_ = std::string(reader_name);
-  std::unique_ptr<SyncCheckpointedReader> scr =
-      CheckpointedReaderFactory().createCheckpointedReader(
-          reader_name_, std::move(reader->rep), std::move(store->rep), opts);
-  logdevice_sync_checkpointed_reader_t* result =
-      new logdevice_sync_checkpointed_reader_t;
-  result->rep = std::move(scr);
-  return result;
-}
-
-void free_checkpointed_reader(logdevice_sync_checkpointed_reader_t* p) {
-  delete p;
-}
-
-facebook::logdevice::Status
-sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
-                       c_logid_t* logids, c_lsn_t* lsns, size_t len) {
-  std::map<logid_t, lsn_t> checkpoints;
-  for (int i = 0; i < len; ++i)
-    checkpoints[logid_t(logids[i])] = lsns[i];
-  return reader->rep->syncWriteCheckpoints(checkpoints);
-}
-
-// ----------------------------------------------------------------------------
 } // end extern "C"
