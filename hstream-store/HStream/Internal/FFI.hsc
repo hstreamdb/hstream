@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP                        #-}
-{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE UnliftedFFITypes           #-}
@@ -28,12 +28,12 @@ import qualified Z.Foreign         as Z
 newtype StreamClient = StreamClient
   { unStreamClient :: ForeignPtr LogDeviceClient }
 
-newtype StreamCheckpointedReader = StreamCheckpointedReader
-  { unStreamCheckpointedReader :: ForeignPtr LogDeviceCheckpointedReader }
+newtype StreamSyncCheckpointedReader = StreamSyncCheckpointedReader
+  { unStreamSyncCheckpointedReader :: ForeignPtr LogDeviceSyncCheckpointedReader }
   deriving (Show, Eq)
 
-castCheckpointedReaderToReader :: StreamCheckpointedReader -> StreamReader
-castCheckpointedReaderToReader (StreamCheckpointedReader reader) =
+castCheckpointedReaderToReader :: StreamSyncCheckpointedReader -> StreamReader
+castCheckpointedReaderToReader (StreamSyncCheckpointedReader reader) =
   StreamReader $ castForeignPtr reader
 
 newtype StreamReader = StreamReader
@@ -45,14 +45,14 @@ newtype CheckpointStore = CheckpointStore
   deriving (Show, Eq)
 
 newtype TopicID = TopicID { unTopicID :: C_LogID }
-  deriving (Show, Eq, Ord, Num, Storable)
+  deriving (Show, Eq, Ord)
 
 instance Bounded TopicID where
   minBound = TopicID c_logid_min
   maxBound = TopicID c_logid_max
 
 newtype SequenceNum = SequenceNum { unSequenceNum :: C_LSN }
-  deriving (Show, Eq, Ord, Num, Storable, JSON.JSON, Generic)
+  deriving (Show, Eq, Ord, Num, JSON.JSON, Generic)
 
 instance Bounded SequenceNum where
   minBound = SequenceNum c_lsn_oldest
@@ -62,7 +62,7 @@ sequenceNumInvalid :: SequenceNum
 sequenceNumInvalid = SequenceNum c_lsn_invalid
 
 newtype KeyType = KeyType C_KeyType
-  deriving (Eq, Ord, Storable)
+  deriving (Eq, Ord)
 
 instance Show KeyType where
   show t
@@ -99,7 +99,7 @@ peekDataRecord ptr offset = bracket_ (return ()) release peekData
       lsn <- (#peek logdevice_data_record_t, lsn) ptr'
       len <- (#peek logdevice_data_record_t, payload_len) ptr'
       payload <- flip Z.fromPtr len =<< (#peek logdevice_data_record_t, payload) ptr'
-      return $ DataRecord logid lsn payload
+      return $ DataRecord (TopicID logid) (SequenceNum lsn) payload
     release = do
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr
@@ -126,7 +126,7 @@ peekAppendCallBackData ptr = do
 
 data LogDeviceClient
 data LogDeviceReader
-data LogDeviceCheckpointedReader
+data LogDeviceSyncCheckpointedReader
 data LogDeviceLogGroup
 data LogDeviceLogDirectory
 data LogDeviceLogAttributes
@@ -410,7 +410,7 @@ foreign import ccall safe "hs_logdevice.h logdevice_append_with_attrs_sync"
     -> IO ErrorCode
 
 -------------------------------------------------------------------------------
--- Checkpoint Store
+-- Checkpoint
 
 foreign import ccall unsafe "hs_logdevice.h new_file_based_checkpoint_store"
   c_new_file_based_checkpoint_store :: BA## Word8 -> IO (Ptr LogDeviceCheckpointStore)
@@ -420,12 +420,6 @@ foreign import ccall unsafe "hs_logdevice.h free_checkpoint_store"
 
 foreign import ccall unsafe "hs_logdevice.h &free_checkpoint_store"
   c_free_checkpoint_store_fun :: FunPtr (Ptr LogDeviceCheckpointStore -> IO ())
-
-type CheckpointStoreGetLsnSync_
-  = Ptr Word8    -- ^ customer_id
- -> C_LogID
- -> Ptr C_LSN    -- ^ value out
- -> IO ErrorCode
 
 foreign import ccall safe "hs_logdevice.h checkpoint_store_get_lsn_sync"
   c_checkpoint_store_get_lsn_sync_safe
@@ -452,6 +446,36 @@ foreign import ccall safe "hs_logdevice.h checkpoint_store_update_multi_lsn_sync
     -> Word
     -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h new_sync_checkpointed_reader"
+  c_new_logdevice_sync_checkpointed_reader
+    :: BA## Word8           -- ^ Reader name
+    -> Ptr LogDeviceReader
+    -> Ptr LogDeviceCheckpointStore
+    -> Word32               -- ^ num of retries
+    -> IO (Ptr LogDeviceSyncCheckpointedReader)
+
+foreign import ccall unsafe "hs_logdevice.h free_sync_checkpointed_reader"
+  c_free_sync_checkpointed_reader :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_sync_checkpointed_reader"
+  c_free_sync_checkpointed_reader_fun
+    :: FunPtr (Ptr LogDeviceSyncCheckpointedReader -> IO ())
+
+foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
+  c_sync_write_checkpoints_safe
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> Ptr C_LogID
+    -> Ptr C_LSN
+    -> Word
+    -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h sync_write_last_read_checkpoints"
+  c_sync_write_last_read_checkpoints_safe
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> Ptr C_LogID
+    -> Word
+    -> IO ErrorCode
+
 -------------------------------------------------------------------------------
 -- Reader API
 
@@ -466,21 +490,6 @@ foreign import ccall unsafe "hs_logdevice.h free_logdevice_reader"
 
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_reader"
   c_free_logdevice_reader_fun :: FunPtr (Ptr LogDeviceReader -> IO ())
-
-foreign import ccall unsafe "hs_logdevice.h new_checkpointed_reader"
-  c_new_logdevice_checkpointed_reader
-    :: BA## Word8           -- ^ Reader name
-    -> Ptr LogDeviceReader
-    -> Ptr LogDeviceCheckpointStore
-    -> Word32               -- ^ num of retries
-    -> IO (Ptr LogDeviceCheckpointedReader)
-
-foreign import ccall unsafe "hs_logdevice.h free_checkpointed_reader"
-  c_free_checkpointed_reader :: Ptr LogDeviceCheckpointedReader -> IO ()
-
-foreign import ccall unsafe "hs_logdevice.h &free_checkpointed_reader"
-  c_free_checkpointed_reader_fun
-    :: FunPtr (Ptr LogDeviceCheckpointedReader -> IO ())
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_start_reading"
   c_ld_reader_start_reading
@@ -510,14 +519,6 @@ foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
                                -> Ptr DataRecord
                                -> Ptr Int
                                -> IO ErrorCode
-
-foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
-  c_sync_write_checkpoints_safe
-    :: Ptr LogDeviceCheckpointedReader
-    -> Ptr C_LogID
-    -> Ptr C_LSN
-    -> Word
-    -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Misc

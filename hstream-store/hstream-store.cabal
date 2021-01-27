@@ -50,7 +50,7 @@ library
   cpp-options:        -std=c++17
   cxx-sources:        cbits/hs_logdevice.cpp, cbits/hs_logattribute.cpp,
                       cbits/hs_logdevice_appender.cpp, cbits/hs_logconfigtypes.cpp,
-                      cbits/hs_logdevice_reader.cpp, cbits/hs_checkpoint_store.cpp
+                      cbits/hs_logdevice_reader.cpp, cbits/hs_checkpoint.cpp
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h
   include-dirs:       include, /usr/local/include
