@@ -39,9 +39,9 @@ run :: Text -> IO ()
 run input = do
   plan <- streamCodegen input
   (sTopicName,task) <- case plan of
-    SelectPlan task               -> return ("demoSink",task)
-    CreateBySelectPlan topic task -> return (topic,task)
-    _                             -> error "Not supported"
+    SelectPlan source sink task         -> return (sink,task)
+    CreateBySelectPlan source sink task -> return (sink,task)
+    _                                   -> error "Not supported"
 
   let tTopicName = "temperatureSource"
   let hTopicName = "humiditySource"

@@ -52,9 +52,12 @@ import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 
 --------------------------------------------------------------------------------
-data ExecutionPlan = SelectPlan         Task
+type SourceTopic = [TopicName]
+type SinkTopic   = TopicName
+
+data ExecutionPlan = SelectPlan         SourceTopic SinkTopic Task
                    | CreatePlan         TopicName
-                   | CreateBySelectPlan TopicName Task
+                   | CreateBySelectPlan SourceTopic SinkTopic Task
                    | InsertPlan         TopicName BL.ByteString
 
 --------------------------------------------------------------------------------
@@ -67,12 +70,12 @@ streamCodegen input = do
       let rsql = refine sql
       case rsql of
         RQSelect select                     -> do
-          builder <- genStreamBuilder "demo" Nothing select
-          return $ SelectPlan $ HS.build builder
+          (builder, source, sink) <- genStreamBuilderWithTopic "demo" Nothing select
+          return $ SelectPlan source sink (HS.build builder)
         RQCreate (RCreate topic _)          -> return . CreatePlan $ topic
         RQCreate (RCreateAs topic select _) -> do
-          builder <- genStreamBuilder "demo" (Just topic) select
-          return $ CreateBySelectPlan topic (HS.build builder)
+          (builder, source, sink) <- genStreamBuilderWithTopic "demo" (Just topic) select
+          return $ CreateBySelectPlan source sink (HS.build builder)
         RQInsert (RInsert topic tuples)     -> do
           let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
           return $ InsertPlan topic (encode object)
@@ -92,8 +95,8 @@ genStreamSourceConfig frm =
 defaultTimeWindowSize :: Int64
 defaultTimeWindowSize = 3000
 
-data SinkConfigType = SinkConfigType (HS.StreamSinkConfig Object Object)
-                    | SinkConfigTypeWithWindow (HS.StreamSinkConfig (TimeWindowKey Object) Object)
+data SinkConfigType = SinkConfigType SinkTopic (HS.StreamSinkConfig Object Object)
+                    | SinkConfigTypeWithWindow SinkTopic (HS.StreamSinkConfig (TimeWindowKey Object) Object)
 
 genStreamSinkConfig :: Maybe TopicName -> RGroupBy -> IO SinkConfigType
 genStreamSinkConfig sinkTopic' grp = do
@@ -102,13 +105,13 @@ genStreamSinkConfig sinkTopic' grp = do
     Just sinkTopic -> return sinkTopic
   case grp of
     RGroupByEmpty ->
-      return . SinkConfigType $ HS.StreamSinkConfig
+      return $ SinkConfigType topic HS.StreamSinkConfig
       { sicTopicName  = topic
       , sicKeySerde   = objectSerde
       , sicValueSerde = objectSerde
       }
     _ ->
-      return .SinkConfigTypeWithWindow $ HS.StreamSinkConfig
+      return $ SinkConfigTypeWithWindow topic HS.StreamSinkConfig
       { sicTopicName = topic
       , sicKeySerde = timeWindowKeySerde objectSerde defaultTimeWindowSize
       , sicValueSerde = objectSerde
@@ -142,12 +145,12 @@ genKeySelector field Record{..} =
   HM.singleton "SelectedKey" $ (HM.!) recordValue field
 
 type TaskName = Text
-genStream :: TaskName -> RFrom -> IO (Stream Object Object)
-genStream taskName frm = do
+genStreamWithSourceTopic :: TaskName -> RFrom -> IO (Stream Object Object, SourceTopic)
+genStreamWithSourceTopic taskName frm = do
   let (srcConfig1, srcConfig2') = genStreamSourceConfig frm
   baseStream <- HS.mkStreamBuilder taskName >>= HS.stream srcConfig1
   case frm of
-    RFromSingle s                   -> return baseStream
+    RFromSingle s                     -> return (baseStream, [sscTopicName srcConfig1])
     RFromJoin (s1,f1) (s2,f2) typ win ->
       case srcConfig2' of
         Nothing         -> error "Impossible happened"
@@ -156,10 +159,11 @@ genStream taskName frm = do
             RJoinInner -> do
               anotherStream <- HS.mkStreamBuilder "" >>= HS.stream srcConfig2
               streamJoined  <- genStreamJoinedConfig
-              HS.joinStream anotherStream (genJoiner s1 s2)
-                            (genKeySelector f1) (genKeySelector f2)
-                            (genJoinWindows win) streamJoined
-                            baseStream
+              joinedStream  <- HS.joinStream anotherStream (genJoiner s1 s2)
+                                 (genKeySelector f1) (genKeySelector f2)
+                                 (genJoinWindows win) streamJoined
+                                 baseStream
+              return (joinedStream, [sscTopicName srcConfig1, sscTopicName srcConfig2])
             _          -> error "Impossible happened"
 
 ----
@@ -349,22 +353,26 @@ genFilteRNodeFromHaving :: RHaving -> Stream Object Object -> IO (Stream Object 
 genFilteRNodeFromHaving = HS.filter . genFilterRFromHaving
 
 ----
-genStreamBuilder :: TaskName -> Maybe TopicName -> RSelect -> IO StreamBuilder
-genStreamBuilder taskName sinkTopic' select@(RSelect sel frm whr grp hav) = do
+genStreamBuilderWithTopic :: TaskName -> Maybe TopicName -> RSelect -> IO (StreamBuilder, SourceTopic, SinkTopic)
+genStreamBuilderWithTopic taskName sinkTopic' select@(RSelect sel frm whr grp hav) = do
   streamSinkConfig <- genStreamSinkConfig sinkTopic' grp
-  s1 <- genStream taskName frm
-          >>= genFilterNode whr
-          >>= genMapNode sel
+  (s0, source)     <- genStreamWithSourceTopic taskName frm
+  s1               <- genFilterNode whr s0
+                      >>= genMapNode sel
   case grp of
     RGroupByEmpty -> do
       s2 <- genFilteRNodeFromHaving hav s1
       case streamSinkConfig of
-        SinkConfigType sinkConfig -> HS.to sinkConfig s2
+        SinkConfigType sink sinkConfig -> do
+          builder <- HS.to sinkConfig s2
+          return (builder, source, sink)
         _                         -> error "Impossible happened"
     _ -> do
       s2 <- genGroupByNode select s1
 --              >>= genFilteRNodeFromHaving hav
 -- WARNING: Having does not work with TimeWindow
       case streamSinkConfig of
-        SinkConfigTypeWithWindow sinkConfig -> HS.to sinkConfig s2
+        SinkConfigTypeWithWindow sink sinkConfig -> do
+          builder <- HS.to sinkConfig s2
+          return (builder, source, sink)
         _                                   -> error "Impossible happened"
