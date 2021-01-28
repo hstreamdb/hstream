@@ -35,7 +35,7 @@ import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey,
                                                                   timeWindowKeySerde)
 import qualified HStream.Processing.Table                        as HT
 import           HStream.Processing.Topic                        (TopicName)
-import           HStream.SQL.AST
+import           HStream.SQL
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
 import           HStream.SQL.Codegen.Utils                       (compareValue,
                                                                   composeColName,
@@ -44,10 +44,6 @@ import           HStream.SQL.Codegen.Utils                       (compareValue,
                                                                   genRandomSinkTopic,
                                                                   getFieldByName,
                                                                   opOnValue)
-import           HStream.SQL.Parse                               (pSQL,
-                                                                  preprocess,
-                                                                  tokens)
-import           HStream.SQL.Validate                            (Validate (..))
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 
@@ -63,11 +59,9 @@ data ExecutionPlan = SelectPlan         SourceTopic SinkTopic Task
 --------------------------------------------------------------------------------
 streamCodegen :: Text -> IO ExecutionPlan
 streamCodegen input = do
-  let sql' = pSQL (tokens (preprocess input)) >>= validate
-  case sql' of
-    Left err  -> error err
-    Right sql -> do
-      let rsql = refine sql
+  case parseAndRefine input of
+    Left err   -> error err
+    Right rsql ->
       case rsql of
         RQSelect select                     -> do
           (builder, source, sink) <- genStreamBuilderWithTopic "demo" Nothing select

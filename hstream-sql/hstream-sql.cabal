@@ -24,15 +24,15 @@ source-repository head
 library
   exposed-modules:  HStream.SQL
                     HStream.SQL.AST
+                    HStream.SQL.Abs
                     HStream.SQL.Parse
-                    HStream.SQL.Validate
-  other-modules:    HStream.SQL.Abs
-                    HStream.SQL.ErrM
+  other-modules:    HStream.SQL.ErrM
                     HStream.SQL.Extra
                     HStream.SQL.Lex
                     HStream.SQL.Par
                     HStream.SQL.Preprocess
                     HStream.SQL.Print
+                    HStream.SQL.Validate
   hs-source-dirs:   src
   build-depends:    base       >= 4.11 && < 5
                   , array
