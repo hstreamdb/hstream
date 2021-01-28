@@ -4,25 +4,19 @@ Simple parser for a SQL-like language
 Implemented queries:
 - SELECT
 - CREATE STREAM
+- CREATE STREAM AS
 - INSERT
 
 It can parse the following file content:
 
 ```
-SELECT AVG(s1.aaa) AS agg, b.bb[2].bbb, c, stream2.ddd[1]
-FROM stream1 AS s1 LEFT JOIN stream2
-                   WITHIN (INTERVAL 10 SECOND)
-                   ON s1.id = stream2.id
-WHERE stream1.f1 > stream2.f2 AND s1.f2 <= 10 OR stream2.f3 <> "xxx"
-GROUP BY name, SESSION(INTERVAL 2 MINUTE, INTERVAL 30 SECOND)
-HAVING agg >= 10;
+SELECT * FROM temperatureSource;
 
-CREATE STREAM stream_1 WITH (SOURCE = "topic_source", FORMAT = "json");
+CREATE STREAM demoStream WITH (FORMAT = "JSON");
 
-CREATE STREAM stream_2 AS SELECT * FROM stream_1 WITH (SOURCE = "topic_sink", FORMAT = "json");
+CREATE STREAM demoSink AS SELECT SUM(humiditySource.humidity) AS result FROM humiditySource INNER JOIN temperatureSource WITHIN (INTERVAL 5 SECOND) ON (humiditySource.temperature = temperatureSource.temperature) WHERE humiditySource.humidity > 20 GROUP BY humiditySource.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
 
-INSERT INTO stream_1 VALUES (1, 2020-01-01, [1, 2, 3], {xxx1: "aaa", xxx2: 114.514});
-```
+INSERT INTO demoStream (temperature, humidity) VALUES (30, 75);
 -}
 
 --------------------------------------------------------------------------------
