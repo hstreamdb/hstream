@@ -1,11 +1,19 @@
 module HStream.SQL.Parse
-  ( module HStream.SQL.ErrM
-  , module HStream.SQL.Preprocess
-  , tokens
-  , pSQL
+  ( parse
+  , parseAndRefine
   ) where
 
-import           HStream.SQL.ErrM
+import           Data.Functor           ((<&>))
+import           Data.Text              (Text)
+import           HStream.SQL.AST
+import           HStream.SQL.Abs
 import           HStream.SQL.Lex        (tokens)
 import           HStream.SQL.Par        (pSQL)
 import           HStream.SQL.Preprocess
+import           HStream.SQL.Validate
+
+parse :: Text -> Either String (SQL Position)
+parse input = (pSQL . tokens . preprocess $ input) >>= validate
+
+parseAndRefine :: Text -> Either String RSQL
+parseAndRefine input = parse input <&> refine
