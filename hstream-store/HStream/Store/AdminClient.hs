@@ -1,4 +1,4 @@
-module HStream.Store.Stream.AdminClient
+module HStream.Store.AdminClient
   ( newStreamAdminClient
   , newRpcOptions
   , adminSyncGetVersion
