@@ -28,13 +28,15 @@ import qualified Z.Foreign         as Z
 newtype StreamClient = StreamClient
   { unStreamClient :: ForeignPtr LogDeviceClient }
 
+newtype StreamAdminClient = StreamAdminClient
+  { unStreamAdminClient :: ForeignPtr LogDeviceAdminAsyncClient }
+
+newtype RpcOptions = RpcOptions
+  { unRpcOptions :: ForeignPtr ThriftRpcOptions }
+
 newtype StreamSyncCheckpointedReader = StreamSyncCheckpointedReader
   { unStreamSyncCheckpointedReader :: ForeignPtr LogDeviceSyncCheckpointedReader }
   deriving (Show, Eq)
-
-castCheckpointedReaderToReader :: StreamSyncCheckpointedReader -> StreamReader
-castCheckpointedReaderToReader (StreamSyncCheckpointedReader reader) =
-  StreamReader $ castForeignPtr reader
 
 newtype StreamReader = StreamReader
   { unStreamReader :: ForeignPtr LogDeviceReader }
@@ -131,6 +133,8 @@ data LogDeviceLogGroup
 data LogDeviceLogDirectory
 data LogDeviceLogAttributes
 data LogDeviceCheckpointStore
+data LogDeviceAdminAsyncClient
+data ThriftRpcOptions
 
 type C_Timestamp = Int64
 
@@ -520,6 +524,35 @@ foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
   c_logdevice_reader_read_safe :: Ptr LogDeviceReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
 foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
   c_logdevice_checkpointed_reader_read_safe :: Ptr LogDeviceSyncCheckpointedReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
+
+-------------------------------------------------------------------------------
+
+foreign import ccall unsafe "hs_logdevice.h new_logdevice_admin_async_client"
+  c_new_logdevice_admin_async_client
+    :: BA## Word8 -> Word16 -> Bool
+    -> Word32
+    -> MBA## (Ptr LogDeviceAdminAsyncClient)
+    -> IO CInt
+
+foreign import ccall unsafe "hs_logdevice.h free_logdevice_admin_async_client"
+  c_free_logdevice_admin_async_client :: Ptr LogDeviceAdminAsyncClient
+                                      -> IO ()
+foreign import ccall unsafe "hs_logdevice.h &free_logdevice_admin_async_client"
+  c_free_logdevice_admin_async_client_fun
+    :: FunPtr (Ptr LogDeviceAdminAsyncClient -> IO ())
+
+foreign import ccall unsafe "hs_logdevice.h new_thrift_rpc_options"
+  c_new_thrift_rpc_options :: Int64 -> IO (Ptr ThriftRpcOptions)
+
+foreign import ccall unsafe "hs_logdevice.h free_thrift_rpc_options"
+  c_free_thrift_rpc_options :: Ptr ThriftRpcOptions -> IO ()
+foreign import ccall unsafe "hs_logdevice.h &free_thrift_rpc_options"
+  c_free_thrift_rpc_options_fun :: FunPtr (Ptr ThriftRpcOptions -> IO ())
+
+foreign import ccall safe "hs_logdevice.h ld_admin_sync_getVersion"
+  ld_admin_sync_getVersion :: Ptr LogDeviceAdminAsyncClient
+                           -> Ptr ThriftRpcOptions
+                           -> IO (Ptr Z.StdString)
 
 -------------------------------------------------------------------------------
 -- Misc
