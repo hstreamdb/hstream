@@ -27,11 +27,11 @@ source-repository head
 
 library
   exposed-modules:    HStream.Store
+                      HStream.Store.AdminClient
                       HStream.Store.Exception
                       HStream.Store.Logger
                       HStream.Store.Stream
   other-modules:      HStream.Internal.FFI
-                      HStream.Store.Stream.AdminClient
                       HStream.Store.Stream.Appender
                       HStream.Store.Stream.Checkpoint
                       HStream.Store.Stream.Reader
