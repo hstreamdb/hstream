@@ -5,8 +5,12 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <folly/Conv.h>
 #include <folly/Optional.h>
 #include <folly/Singleton.h>
+#include <folly/String.h>
+#include <folly/io/async/AsyncSocket.h>
+#include <logdevice/admin/if/gen-cpp2/AdminAPI.h>
 #include <logdevice/include/CheckpointStore.h>
 #include <logdevice/include/CheckpointStoreFactory.h>
 #include <logdevice/include/CheckpointedReaderBase.h>
@@ -22,6 +26,8 @@
 #include <logdevice/include/SyncCheckpointedReader.h>
 #include <logdevice/include/debug.h>
 #include <logdevice/include/types.h>
+#include <thrift/lib/cpp/async/TAsyncSSLSocket.h>
+#include <thrift/lib/cpp2/async/HeaderClientChannel.h>
 
 #ifndef HS_LOGDEVICE
 #define HS_LOGDEVICE
@@ -45,6 +51,7 @@ using facebook::logdevice::client::LogAttributes;
 using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
+using facebook::logdevice::thrift::AdminAPIAsyncClient;
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,6 +79,12 @@ struct logdevice_sync_checkpointed_reader_t {
 struct logdevice_checkpoint_store_t {
   std::unique_ptr<CheckpointStore> rep;
 };
+typedef struct logdevice_admin_async_client_t {
+  std::unique_ptr<AdminAPIAsyncClient> rep;
+} logdevice_admin_async_client_t;
+typedef struct thrift_rpc_options_t {
+  std::unique_ptr<apache::thrift::RpcOptions> rep;
+} thrift_rpc_options_t;
 
 typedef struct logdevice_loggroup_t logdevice_loggroup_t;
 typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
@@ -317,6 +330,24 @@ sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
 facebook::logdevice::Status
 sync_write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
                                  const c_logid_t* logids, size_t len);
+
+// ----------------------------------------------------------------------------
+// Admin Client
+
+int new_logdevice_admin_async_client(
+    const char* host, uint16_t port, bool allow_name_lookup,
+    uint32_t channel_timeout, logdevice_admin_async_client_t** client_ret);
+
+void free_logdevice_admin_async_client(logdevice_admin_async_client_t* p);
+
+thrift_rpc_options_t* new_thrift_rpc_options(int64_t timeout);
+
+void free_thrift_rpc_options(thrift_rpc_options_t* p);
+
+std::string* ld_admin_sync_getVersion(logdevice_admin_async_client_t* client,
+                                      thrift_rpc_options_t* rpc_options);
+
+// ----------------------------------------------------------------------------
 
 #ifdef __cplusplus
 } /* end extern "C" */
