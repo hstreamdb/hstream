@@ -15,17 +15,12 @@ module HStream.Processing.Processor
     getKVStateStore,
     getSessionStateStore,
     getTimestampedKVStateStore,
-    mkMockTopicStore,
-    mkMockTopicConsumer,
-    mkMockTopicProducer,
     Record (..),
     Processor (..),
     SourceConfig (..),
     SinkConfig (..),
     TaskConfig (..),
     MessageStoreType (..),
-    MockTopicStore (..),
-    MockMessage (..),
   )
 where
 
@@ -283,14 +278,6 @@ data MessageStoreType
   | LogDevice
   | Kafka
 
-mkMockTopicStore :: IO MockTopicStore
-mkMockTopicStore = do
-  s <- newTVarIO (HM.empty :: HM.HashMap T.Text [MockMessage])
-  return $
-    MockTopicStore
-      { mtsData = s
-      }
-
 forward ::
   (Typeable k, Typeable v) =>
   Record k v ->
@@ -355,103 +342,3 @@ getTimestampedKVStateStore storeName = do
         then return $ fromEStateStoreToTimestampedKVStore stateStore
         else error "no state store found"
     Nothing -> error "no state store found"
-
-data MockMessage
-  = MockMessage
-      { mmTimestamp :: Timestamp,
-        mmKey :: Maybe BL.ByteString,
-        mmValue :: BL.ByteString
-      }
-
-data MockTopicStore
-  = MockTopicStore
-      { mtsData :: TVar (HM.HashMap T.Text [MockMessage])
-      }
-
-data MockTopicConsumer
-  = MockTopicConsumer
-      { mtcSubscribedTopics :: HS.HashSet TopicName,
-        mtcTopicOffsets :: HM.HashMap T.Text Offset,
-        mtcStore :: MockTopicStore
-      }
-
-instance TopicConsumer MockTopicConsumer where
-  subscribe tc topicNames = return $ tc {mtcSubscribedTopics = HS.fromList topicNames}
-
-  pollRecords MockTopicConsumer {..} pollDuration = do
-    threadDelay pollDuration
-    atomically $ do
-      dataStore <- readTVar $ mtsData mtcStore
-      let r =
-            HM.foldlWithKey'
-              ( \a k v ->
-                  if HS.member k mtcSubscribedTopics
-                    then
-                      a
-                        ++ map
-                          ( \MockMessage {..} ->
-                              RawConsumerRecord
-                                { rcrTopic = k,
-                                  rcrOffset = 0,
-                                  rcrTimestamp = mmTimestamp,
-                                  rcrKey = mmKey,
-                                  rcrValue = mmValue
-                                }
-                          )
-                          v
-                    else a
-              )
-              []
-              dataStore
-      let newDataStore =
-            HM.mapWithKey
-              ( \k v ->
-                  if HS.member k mtcSubscribedTopics
-                    then []
-                    else v
-              )
-              dataStore
-      writeTVar (mtsData mtcStore) newDataStore
-      return r
-
-mkMockTopicConsumer :: MockTopicStore -> IO MockTopicConsumer
-mkMockTopicConsumer topicStore =
-  return
-    MockTopicConsumer
-      { mtcSubscribedTopics = HS.empty,
-        mtcTopicOffsets = HM.empty,
-        mtcStore = topicStore
-      }
-
-data MockTopicProducer
-  = MockTopicProducer
-      { mtpStore :: MockTopicStore
-      }
-
-mkMockTopicProducer ::
-  MockTopicStore ->
-  IO MockTopicProducer
-mkMockTopicProducer store =
-  return
-    MockTopicProducer
-      { mtpStore = store
-      }
-
-instance TopicProducer MockTopicProducer where
-  send MockTopicProducer {..} RawProducerRecord {..} =
-    atomically $ do
-      let record =
-            MockMessage
-              { mmTimestamp = rprTimestamp,
-                mmKey = rprKey,
-                mmValue = rprValue
-              }
-      dataStore <- readTVar $ mtsData mtpStore
-      if HM.member rprTopic dataStore
-        then do
-          let td = dataStore HM'.! rprTopic
-          let newDataStore = HM.insert rprTopic (td ++ [record]) dataStore
-          writeTVar (mtsData mtpStore) newDataStore
-        else do
-          let newDataStore = HM.insert rprTopic [record] dataStore
-          writeTVar (mtsData mtpStore) newDataStore

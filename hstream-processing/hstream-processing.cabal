@@ -40,6 +40,8 @@ library
     HStream.Processing.Stream.TimeWindows
     HStream.Processing.Table
     HStream.Processing.Topic
+    HStream.Processing.Topic.MockStore
+    HStream.Processing.Topic.Type
     HStream.Processing.Type
     HStream.Processing.Util
 
