@@ -108,7 +108,7 @@ main = do
       >>= HS.to streamSinkConfig
   mockStore <- mkMockTopicStore
   mp <- mkMockTopicProducer mockStore
-  mc' <- mkMockTopicConsumer mockStore
+  mc <- mkMockTopicConsumer mockStore [sinkTopicName]
   forM_
     ([1 .. 3] :: [Int])
     ( \i ->
@@ -134,11 +134,10 @@ main = do
             rprValue = mmValue,
             rprTimestamp = mmTimestamp
           }
-  mc <- subscribe mc' [sinkTopicName]
   _ <- async
     $ forever
     $ do
-      records <- pollRecords mc 1000000
+      records <- pollRecords mc 100 1000000
       forM_ records $ \RawConsumerRecord {..} ->
         P.putStr "joined data: " >> BL.putStrLn rcrValue
   logOptions <- logOptionsHandle stderr True

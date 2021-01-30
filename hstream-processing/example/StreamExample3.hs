@@ -84,7 +84,7 @@ main = do
       >>= HS.to streamSinkConfig
   mockStore <- mkMockTopicStore
   mp <- mkMockTopicProducer mockStore
-  mc' <- mkMockTopicConsumer mockStore
+  mc <- mkMockTopicConsumer mockStore ["demo-sink"]
   _ <- async
     $ forever
     $ do
@@ -98,11 +98,10 @@ main = do
             rprValue = mmValue,
             rprTimestamp = mmTimestamp
           }
-  mc <- subscribe mc' ["demo-sink"]
   _ <- async
     $ forever
     $ do
-      records <- pollRecords mc 1000000
+      records <- pollRecords mc 100 1000000
       forM_ records $ \RawConsumerRecord {..} -> do
         let k = runDeser (sessionWindowKeyDeserializer (deserializer textSerde)) (fromJust rcrKey)
         P.putStrLn $

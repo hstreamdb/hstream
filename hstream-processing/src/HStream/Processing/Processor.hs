@@ -226,9 +226,10 @@ runTask ::
   Task ->
   IO ()
 runTask TaskConfig {..} task@Task {..} = do
+  let sourceTopicNames = HM.keys taskSourceConfig
   topicConsumer <-
     case tcMessageStoreType of
-      Mock mockStore -> mkMockTopicConsumer mockStore
+      Mock mockStore -> mkMockTopicConsumer mockStore sourceTopicNames
       LogDevice -> throwIO $ UnSupportedMessageStoreError "LogDevice is not supported!"
       Kafka -> throwIO $ UnSupportedMessageStoreError "Kafka is not supported!"
   topicProducer <-
@@ -250,13 +251,11 @@ runTask TaskConfig {..} task@Task {..} = do
           taskTopologyForward
           taskSinkConfig
   ctx <- buildTaskContext task {taskTopologyForward = newTaskTopologyForward} tcLogFunc
-  let sourceTopicNames = HM.keys taskSourceConfig
-  topicConsumer' <- subscribe topicConsumer sourceTopicNames
   forever
     $ runRIO ctx
     $ do
       logDebug "start iteration..."
-      rawRecords <- liftIO $ pollRecords topicConsumer' 2000000
+      rawRecords <- liftIO $ pollRecords topicConsumer 100 2000000
       logDebug $ "polled " <> display (length rawRecords) <> " records"
       forM_
         rawRecords

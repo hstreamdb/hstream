@@ -22,8 +22,9 @@ type TopicName = T.Text
 type Offset = Word64
 
 class TopicConsumer a where
-  subscribe :: a -> [TopicName] -> IO a
-  pollRecords :: a -> Int -> IO [RawConsumerRecord]
+  -- subscribe :: a -> [TopicName] -> IO a
+  -- pollRecords :: a -> Int -> IO [RawConsumerRecord]
+  pollRecords :: a -> Int -> Int -> IO [RawConsumerRecord]
 
 -- closeConsumer :: a -> IO ()
 
