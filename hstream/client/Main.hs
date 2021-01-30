@@ -34,15 +34,9 @@ import           System.Console.Haskeline (Completion, CompletionFunc, InputT,
                                            withInterrupt)
 import           Text.Pretty.Simple       (pPrint)
 
-data Config = Config
-  { cHttpUrl    :: String,
-    cServerPort :: Int
-  }
-  deriving (Show)
-
-parseConfig :: Parser Config
+parseConfig :: Parser ClientConfig
 parseConfig =
-  Config
+  ClientConfig
     <$> strOption (long "url" <> metavar "string" <> showDefault <> value "http://localhost" <> short 'b' <> help "base url valur")
     <*> option auto (long "port" <> showDefault <> value 8081 <> short 'p' <> help "port value" <> metavar "INT")
 
@@ -91,8 +85,8 @@ main = do
   putStrLn helpInfo
   runInputT def $ loop cf
   where
-    loop :: Config -> InputT IO ()
-    loop c@Config {..} = handleInterrupt ((liftIO $ putStrLn "Interrupt") >> loop c) $
+    loop :: ClientConfig -> InputT IO ()
+    loop c@ClientConfig {..} = handleInterrupt ((liftIO $ putStrLn "Interrupt") >> loop c) $
       withInterrupt $ do
         minput <- getInputLine "> "
         let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)

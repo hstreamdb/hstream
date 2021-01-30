@@ -77,6 +77,12 @@ data ServerConfig = ServerConfig
   }
   deriving (Show)
 
+data ClientConfig = ClientConfig
+  { cHttpUrl    :: String,
+    cServerPort :: Int
+  }
+  deriving (Show)
+
 data State = State
   { taskMap             :: IORef (Map TaskID TaskInfo),
     thidMap             :: IORef (Map (Async TaskState) TaskID),
