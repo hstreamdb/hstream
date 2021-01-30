@@ -50,9 +50,10 @@ data MockTopicConsumer
       }
 
 instance TopicConsumer MockTopicConsumer where
-  subscribe tc topicNames = return $ tc {mtcSubscribedTopics = HS.fromList topicNames}
+  -- subscribe tc topicNames = return $ tc {mtcSubscribedTopics = HS.fromList topicNames}
 
-  pollRecords MockTopicConsumer {..} pollDuration = do
+  -- just ignore records num limit
+  pollRecords MockTopicConsumer {..} _ pollDuration = do
     threadDelay pollDuration
     atomically $ do
       dataStore <- readTVar $ mtsData mtcStore
@@ -88,11 +89,11 @@ instance TopicConsumer MockTopicConsumer where
       writeTVar (mtsData mtcStore) newDataStore
       return r
 
-mkMockTopicConsumer :: MockTopicStore -> IO MockTopicConsumer
-mkMockTopicConsumer topicStore =
+mkMockTopicConsumer :: MockTopicStore -> [TopicName] -> IO MockTopicConsumer
+mkMockTopicConsumer topicStore topics =
   return
     MockTopicConsumer
-      { mtcSubscribedTopics = HS.empty,
+      { mtcSubscribedTopics = HS.fromList topics,
         mtcTopicOffsets = HM.empty,
         mtcStore = topicStore
       }

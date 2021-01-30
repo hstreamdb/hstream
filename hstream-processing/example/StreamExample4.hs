@@ -126,7 +126,7 @@ main = do
       >>= HS.to streamSinkConfig
   mockStore <- mkMockTopicStore
   mp <- mkMockTopicProducer mockStore
-  mc' <- mkMockTopicConsumer mockStore
+  mc <- mkMockTopicConsumer mockStore [sTopicName]
   _ <- async
     $ forever
     $ do
@@ -148,11 +148,10 @@ main = do
             rprValue = encode $ R1 {r1Temperature = temperature ((fromJust . decode) mmValue :: R)},
             rprTimestamp = mmTimestamp
           }
-  mc <- subscribe mc' [sTopicName]
   _ <- async
     $ forever
     $ do
-      records <- pollRecords mc 1000000
+      records <- pollRecords mc 100 1000000
       forM_ records $ \RawConsumerRecord {..} ->
         P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
   logOptions <- logOptionsHandle stderr True
