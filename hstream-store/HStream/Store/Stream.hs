@@ -9,7 +9,7 @@ module HStream.Store.Stream
   , getMaxPayloadSize
 
     -- ** Sequence Number
-  , SequenceNum
+  , SequenceNum (unSequenceNum)
   , FFI.sequenceNumInvalid
     -- ** Data Record
   , DataRecord (..)
