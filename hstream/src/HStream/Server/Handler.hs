@@ -86,7 +86,7 @@ handleQueryTask t = do
 handleDeleteTaskAll :: HandlerM Resp
 handleDeleteTaskAll = do
   State {..} <- ask
-  ls <- (liftIO $ readIORef waitMap)
+  ls <- (liftIO $ readIORef waitList)
   forM_ ls $ \w -> liftIO (cancel w)
   return $ OK "delete all querys"
 
@@ -130,8 +130,8 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                 -----------------------------------
                 async $ runTask taskConfig query >> return Finished
             -----------------------------------
-            atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
-            atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
+            atomicModifyIORef' waitList (\ls -> (res : ls, ()))
+            atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
             atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
 
             -----------------------------------
@@ -186,8 +186,8 @@ handleCreateTask (ReqSQL seqValue) = do
               -----------------------------------
               async $ runTask taskConfig query >> return Finished
           -----------------------------------
-          atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
-          atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
+          atomicModifyIORef' waitList (\ls -> (res : ls, ()))
+          atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
           atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
 
           return $ Right ti {taskState = Running}
@@ -224,28 +224,28 @@ handleCreateTask (ReqSQL seqValue) = do
 waitThread :: State -> IO ()
 waitThread State {..} = do
   forever $ do
-    li <- readIORef waitMap
+    li <- readIORef waitList
     case li of
       [] -> threadDelay 1000000
       ls -> do
         (a, r) <- waitAnyCatch ls
         case r of
           Left e -> do
-            ths <- readIORef thidMap
+            ths <- readIORef asyncMap
             tks <- readIORef taskMap
             case M.lookup a ths >>= flip M.lookup tks of
               Nothing -> error "error happened"
               Just (_, ts) -> do
                 atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) (Nothing, ts {taskState = ErrorHappened $ show e}) t, ()))
           Right v -> do
-            ths <- readIORef thidMap
+            ths <- readIORef asyncMap
             tks <- readIORef taskMap
             case M.lookup a ths >>= flip M.lookup tks of
               Nothing -> error "error happened"
               Just (_, ts) -> do
                 atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) (Nothing, ts {taskState = v}) t, ()))
-        atomicModifyIORef' waitMap (\t -> (L.delete a t, ()))
-        atomicModifyIORef' thidMap (\t -> (M.delete a t, ()))
+        atomicModifyIORef' waitList (\t -> (L.delete a t, ()))
+        atomicModifyIORef' asyncMap (\t -> (M.delete a t, ()))
 
 type HandlerM = ReaderT State Handler
 

@@ -85,8 +85,8 @@ data ClientConfig = ClientConfig
 
 data State = State
   { taskMap             :: IORef (Map TaskID (Maybe (Async TaskState), TaskInfo)),
-    thidMap             :: IORef (Map (Async TaskState) TaskID),
-    waitMap             :: IORef [Async TaskState],
+    asyncMap            :: IORef (Map (Async TaskState) TaskID),
+    waitList            :: IORef [Async TaskState],
     taskIndex           :: IORef Int,
     logDeviceConfigPath :: CBytes,
     adminClient         :: AdminClient,
