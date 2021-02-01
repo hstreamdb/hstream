@@ -37,8 +37,8 @@ library
                       HStream.Store.Stream.Reader
                       HStream.Store.Stream.Topic
   build-depends:      base       >= 4.11 && < 5
-                    , Z-Data     == 0.4.*
-                    , Z-IO       == 0.4.*
+                    , Z-Data     == 0.5.*
+                    , Z-IO       == 0.5.*
                     , cache      ^>= 0.1
                     , containers ^>= 0.6
                     , ghc-prim   >= 0.5 && < 0.7
