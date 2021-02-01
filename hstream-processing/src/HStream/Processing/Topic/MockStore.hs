@@ -54,7 +54,7 @@ instance TopicConsumer MockTopicConsumer where
 
   -- just ignore records num limit
   pollRecords MockTopicConsumer {..} _ pollDuration = do
-    threadDelay pollDuration
+    threadDelay (pollDuration * 1000)
     atomically $ do
       dataStore <- readTVar $ mtsData mtcStore
       let r =

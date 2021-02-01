@@ -227,55 +227,57 @@ runTask ::
   IO ()
 runTask TaskConfig {..} task@Task {..} = do
   let sourceTopicNames = HM.keys taskSourceConfig
-  topicConsumer <-
-    case tcMessageStoreType of
-      Mock mockStore -> mkMockTopicConsumer mockStore sourceTopicNames
-      LogDevice -> throwIO $ UnSupportedMessageStoreError "LogDevice is not supported!"
-      Kafka -> throwIO $ UnSupportedMessageStoreError "Kafka is not supported!"
-  topicProducer <-
-    case tcMessageStoreType of
-      Mock mockStore -> mkMockTopicProducer mockStore
-      LogDevice -> throwIO $ UnSupportedMessageStoreError "LogDevice is not supported!"
-      Kafka -> throwIO $ UnSupportedMessageStoreError "Kafka is not supported!"
-  -- add InternalSink Node
-  let newTaskTopologyForward =
-        HM.foldlWithKey'
-          ( \a k v@InternalSinkConfig {..} ->
-              let internalSinkProcessor = buildInternalSinkProcessor topicProducer v
-                  ep = mkEProcessor internalSinkProcessor
-                  (sinkProcessor, children) = taskTopologyForward HM'.! k
-                  name = T.append iSinkTopicName "-INTERNAL-SINK"
-                  tp = HM.insert k (sinkProcessor, children ++ [name]) a
-               in HM.insert name (ep, []) tp
-          )
-          taskTopologyForward
-          taskSinkConfig
-  ctx <- buildTaskContext task {taskTopologyForward = newTaskTopologyForward} tcLogFunc
-  forever
-    $ runRIO ctx
-    $ do
-      logDebug "start iteration..."
-      rawRecords <- liftIO $ pollRecords topicConsumer 100 2000000
-      logDebug $ "polled " <> display (length rawRecords) <> " records"
-      forM_
-        rawRecords
-        ( \RawConsumerRecord {..} -> do
-            let acSourceName = iSourceName (taskSourceConfig HM'.! rcrTopic)
-            let (sourceEProcessor, _) = newTaskTopologyForward HM'.! acSourceName
-            liftIO $ updateTimestampInTaskContext ctx rcrTimestamp
-            runEP sourceEProcessor (mkERecord Record {recordKey = rcrKey, recordValue = rcrValue, recordTimestamp = rcrTimestamp})
-        )
+  case tcMessageStoreType of
+    Mock mockStore -> do
+      topicConsumer <- mkMockTopicConsumer mockStore sourceTopicNames
+      topicProducer <- mkMockTopicProducer mockStore
+      runTaskInternal topicProducer topicConsumer
+    LogDevice producerConfig consumerConfig -> do
+      topicConsumer <- mkConsumer consumerConfig sourceTopicNames
+      topicProducer <- mkProducer producerConfig
+      runTaskInternal topicProducer topicConsumer
+    Kafka -> throwIO $ UnSupportedMessageStoreError "Kafka is not supported!"
+  where
+    runTaskInternal ::
+      (TopicProducer p, TopicConsumer c) =>
+      p ->
+      c ->
+      IO ()
+    runTaskInternal topicProducer topicConsumer = do
+      -- add InternalSink Node
+      let newTaskTopologyForward =
+            HM.foldlWithKey'
+              ( \a k v@InternalSinkConfig {..} ->
+                  let internalSinkProcessor = buildInternalSinkProcessor topicProducer v
+                      ep = mkEProcessor internalSinkProcessor
+                      (sinkProcessor, children) = taskTopologyForward HM'.! k
+                      name = T.append iSinkTopicName "-INTERNAL-SINK"
+                      tp = HM.insert k (sinkProcessor, children ++ [name]) a
+                   in HM.insert name (ep, []) tp
+              )
+              taskTopologyForward
+              taskSinkConfig
+      ctx <- buildTaskContext task {taskTopologyForward = newTaskTopologyForward} tcLogFunc
+      forever
+        $ runRIO ctx
+        $ do
+          logDebug "start iteration..."
+          rawRecords <- liftIO $ pollRecords topicConsumer 100 2000
+          logDebug $ "polled " <> display (length rawRecords) <> " records"
+          forM_
+            rawRecords
+            ( \RawConsumerRecord {..} -> do
+                let acSourceName = iSourceName (taskSourceConfig HM'.! rcrTopic)
+                let (sourceEProcessor, _) = newTaskTopologyForward HM'.! acSourceName
+                liftIO $ updateTimestampInTaskContext ctx rcrTimestamp
+                runEP sourceEProcessor (mkERecord Record {recordKey = rcrKey, recordValue = rcrValue, recordTimestamp = rcrTimestamp})
+            )
 
 data TaskConfig
   = TaskConfig
       { tcMessageStoreType :: MessageStoreType,
         tcLogFunc :: LogFunc
       }
-
-data MessageStoreType
-  = Mock MockTopicStore
-  | LogDevice
-  | Kafka
 
 forward ::
   (Typeable k, Typeable v) =>

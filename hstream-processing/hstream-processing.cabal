@@ -40,6 +40,7 @@ library
     HStream.Processing.Stream.TimeWindows
     HStream.Processing.Table
     HStream.Processing.Topic
+    HStream.Processing.Topic.LogDevice
     HStream.Processing.Topic.MockStore
     HStream.Processing.Topic.Type
     HStream.Processing.Type
@@ -51,9 +52,12 @@ library
     , binary
     , bytestring
     , data-default
+    , hstream-store
     , rio
     , template-haskell
     , time
+    , Z-Data
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -169,6 +173,22 @@ executable stream-example5
     , base                >=4.11 && <5
     , binary
     , hstream-processing
+    , random
+    , rio
+    , text
+
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+executable logdevice-example0
+  main-is:          LogDeviceExample0.hs
+  hs-source-dirs:   example
+  build-depends:
+    , aeson
+    , base                >=4.11 && <5
+    , binary
+    , hstream-processing
+    , hstream-store
     , random
     , rio
     , text
