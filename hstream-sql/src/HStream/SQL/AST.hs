@@ -4,22 +4,22 @@
 
 module HStream.SQL.AST where
 
-import           Data.Either       (isRight, lefts)
-import           Data.Kind         (Type)
-import qualified Data.List         as L
-import           Data.Text         as Text (Text, pack, unpack)
-import qualified Data.Time         as Time
+import           Data.Either           (isRight, lefts)
+import           Data.Kind             (Type)
+import qualified Data.List             as L
+import           Data.Text             as Text (Text, unpack)
+import qualified Data.Time             as Time
+import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
-import           HStream.SQL.Print (printTree)
-
---------------------------------------------------------------------------------
-type Position = Maybe (Int, Int)
+import           HStream.SQL.Exception (Position, SomeSQLException (..),
+                                        throwSQLException)
+import           HStream.SQL.Print     (printTree)
 
 --------------------------------------------------------------------------------
 type family RefinedType a :: Type
 
 class Refine a where
-  refine :: a -> RefinedType a
+  refine :: HasCallStack => a -> RefinedType a
 
 --------------------------------------------------------------------------------
 type StreamName = Text
@@ -91,16 +91,16 @@ instance Refine (ValueExpr Position) where -- FIXME: Inconsistent form (Position
   refine expr@(ExprInterval _ interval) = RExprConst (printTree expr) (ConstantInterval $ refine interval)
   refine expr@(ExprColName _ (ColNameSimple _ (Ident t))) = RExprCol (printTree expr) Nothing t
   refine expr@(ExprColName _ (ColNameStream _ (Ident s) (Ident f))) = RExprCol (printTree expr) (Just s) f
-  refine      (ExprColName pos ColNameIndex{}) = error $ errGenWithPos pos "Nested column name is not supported yet"
-  refine      (ExprColName pos ColNameInner{}) = error $ errGenWithPos pos "Nested column name is not supported yet"
+  refine      (ExprColName pos ColNameIndex{}) = throwSQLException RefineException pos "Nested column name is not supported yet"
+  refine      (ExprColName pos ColNameInner{}) = throwSQLException RefineException pos "Nested column name is not supported yet"
   refine expr@(ExprSetFunc _ (SetFuncCountAll _)) = RExprAggregate (printTree expr) (Nullary AggCountAll)
   refine expr@(ExprSetFunc _ (SetFuncCount _ e )) = RExprAggregate (printTree expr) (Unary AggCount $ refine e)
   refine expr@(ExprSetFunc _ (SetFuncAvg _ e )) = RExprAggregate (printTree expr) (Unary AggAvg $ refine e)
   refine expr@(ExprSetFunc _ (SetFuncSum _ e )) = RExprAggregate (printTree expr) (Unary AggSum $ refine e)
   refine expr@(ExprSetFunc _ (SetFuncMax _ e )) = RExprAggregate (printTree expr) (Unary AggMax $ refine e)
   refine expr@(ExprSetFunc _ (SetFuncMin _ e )) = RExprAggregate (printTree expr) (Unary AggMin $ refine e)
-  refine      (ExprArr pos _) = error $ errGenWithPos pos "Array constant is not supported yet"
-  refine      (ExprMap pos _) = error $ errGenWithPos pos "Map constant is not supported yet"
+  refine      (ExprArr pos _) = throwSQLException RefineException pos "Array constant is not supported yet"
+  refine      (ExprMap pos _) = throwSQLException RefineException pos "Map constant is not supported yet"
 
 ---- Sel
 type FieldAlias = String
@@ -126,7 +126,7 @@ instance Refine (Sel Position) where
   refine (DSel _ (SelListSublist pos cols))
     | anyAgg = case L.head rcols of -- NOTE: Ensured by Validate: if there is agg, there is only one
                  Right (agg, alias) -> RSelAggregate agg alias
-                 Left _             -> error $ errGenWithPos pos "Impossible happened"
+                 Left _             -> throwSQLException RefineException pos "Impossible happened"
     | otherwise  = RSelList (lefts rcols)
     where rcols  = refine <$> cols
           anyAgg = L.any isRight rcols
@@ -136,8 +136,8 @@ data RJoinType = RJoinInner | RJoinLeft | RJoinOuter deriving (Eq, Show)
 type instance RefinedType (JoinType a) = RJoinType
 instance Refine (JoinType Position) where
   refine (JoinInner  _)   = RJoinInner
-  refine (JoinLeft  pos)  = error $ errGenWithPos pos "LEFT JOIN is not supported yet" -- TODO: RJoinLeft
-  refine (JoinOuter pos)  = error $ errGenWithPos pos "LEFT JOIN is not supported yet" -- TODO: RJoinOuter
+  refine (JoinLeft  pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinLeft
+  refine (JoinOuter pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinOuter
 
 -- TODO: Defined a RJoinWindow type to describe different windows (symmetry, left, right, ...) ?
 type RJoinWindow = RInterval
@@ -174,9 +174,9 @@ instance Refine (From Position) where
         case t1 == s1 of
           True  -> RFromJoin (t1,f1) (t2,f2) (refine joinType) (refine win)
           False -> RFromJoin (t1,f2) (t2,f1) (refine joinType) (refine win)
-      _ -> error $ errGenWithPos pos "Impossible happened"
-  refine (DFrom _ [TableRefAs pos _ _]) = error $ errGenWithPos pos "Stream alias is not supported yet"
-  refine (DFrom pos _) = error $ errGenWithPos pos "Impossible happened"
+      _ -> throwSQLException RefineException pos "Impossible happened"
+  refine (DFrom _ [TableRefAs pos _ _]) = throwSQLException RefineException pos "Stream alias is not supported yet"
+  refine (DFrom pos _) = throwSQLException RefineException pos "Impossible happened"
 
 ---- Whr
 data RCompOp = RCompOpEQ | RCompOpNE | RCompOpLT | RCompOpGT | RCompOpLEQ | RCompOpGEQ deriving (Eq, Show)
@@ -233,12 +233,12 @@ instance Refine (GroupBy Position) where
     case col of
       ColNameSimple _ (Ident f)           -> RGroupBy Nothing f Nothing
       ColNameStream _ (Ident s) (Ident f) -> RGroupBy (Just s) f Nothing
-      _                                   -> error "Impossible happened" -- Index and Inner is not supportede
+      _                                   -> throwSQLException RefineException Nothing "Impossible happened" -- Index and Inner is not supportede
   refine (DGroupBy _ [GrpItemCol _ col, GrpItemWin _ win]) =
     case col of
       ColNameSimple _ (Ident f)           -> RGroupBy Nothing f (Just $ refine win)
       ColNameStream _ (Ident s) (Ident f) -> RGroupBy (Just s) f (Just $ refine win)
-      _                                   -> error "Impossible happened" -- Index and Inner is not supportede
+      _                                   -> throwSQLException RefineException Nothing "Impossible happened" -- Index and Inner is not supportede
 
 ---- Hav
 data RHaving = RHavingEmpty
@@ -270,8 +270,8 @@ instance Refine [StreamOption a] where
   refine [OptionFormat _ format] = RStreamOptions (refineFormat format)
     where refineFormat "json" = FormatJSON
           refineFormat "JSON" = FormatJSON
-          refineFormat _      = error "Impossible happened"
-  refine _ = error "Impossible happened"
+          refineFormat _      = throwSQLException RefineException Nothing "Impossible happened"
+  refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
 type instance RefinedType (Create a) = RCreate
 instance Refine (Create Position) where
@@ -299,12 +299,3 @@ instance Refine (SQL Position) where
   refine (QSelect _ select) = RQSelect (refine select)
   refine (QCreate _ create) = RQCreate (refine create)
   refine (QInsert _ insert) = RQInsert (refine insert)
-
---------------------------------------------------------------------------------
-errWithPos :: Position -> String -> String
-errWithPos Nothing msg = "SQL Error: " <> msg
-errWithPos (Just (l,c)) msg = "SQL Error at line " <> show l <> ", col" <> show c <> ": " <> msg
-
-errGenWithPos :: Position -> String -> String
-errGenWithPos Nothing msg = "SQL Error when generating Task: " <> msg
-errGenWithPos (Just (l,c)) msg = "SQL Error when generating Task at line " <> show l <> ", col" <> show c <> ": " <> msg

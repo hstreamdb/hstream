@@ -44,6 +44,8 @@ import           HStream.SQL.Codegen.Utils                       (compareValue,
                                                                   genRandomSinkTopic,
                                                                   getFieldByName,
                                                                   opOnValue)
+import           HStream.SQL.Exception                           (SomeSQLException (..),
+                                                                  throwSQLException)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 
@@ -57,22 +59,20 @@ data ExecutionPlan = SelectPlan         SourceTopic SinkTopic Task
                    | InsertPlan         TopicName BL.ByteString
 
 --------------------------------------------------------------------------------
-streamCodegen :: Text -> IO ExecutionPlan
+streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
 streamCodegen input = do
-  case parseAndRefine input of
-    Left err   -> error err
-    Right rsql ->
-      case rsql of
-        RQSelect select                     -> do
-          (builder, source, sink) <- genStreamBuilderWithTopic "demo" Nothing select
-          return $ SelectPlan source sink (HS.build builder)
-        RQCreate (RCreate topic _)          -> return . CreatePlan $ topic
-        RQCreate (RCreateAs topic select _) -> do
-          (builder, source, sink) <- genStreamBuilderWithTopic "demo" (Just topic) select
-          return $ CreateBySelectPlan source sink (HS.build builder)
-        RQInsert (RInsert topic tuples)     -> do
-          let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
-          return $ InsertPlan topic (encode object)
+  rsql <- parseAndRefine input
+  case rsql of
+    RQSelect select                     -> do
+      (builder, source, sink) <- genStreamBuilderWithTopic "demo" Nothing select
+      return $ SelectPlan source sink (HS.build builder)
+    RQCreate (RCreate topic _)          -> return . CreatePlan $ topic
+    RQCreate (RCreateAs topic select _) -> do
+      (builder, source, sink) <- genStreamBuilderWithTopic "demo" (Just topic) select
+      return $ CreateBySelectPlan source sink (HS.build builder)
+    RQInsert (RInsert topic tuples)     -> do
+      let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
+      return $ InsertPlan topic (encode object)
 
 --------------------------------------------------------------------------------
 type SourceConfigType = HS.StreamSourceConfig Object Object
@@ -139,7 +139,7 @@ genKeySelector field Record{..} =
   HM.singleton "SelectedKey" $ (HM.!) recordValue field
 
 type TaskName = Text
-genStreamWithSourceTopic :: TaskName -> RFrom -> IO (Stream Object Object, SourceTopic)
+genStreamWithSourceTopic :: HasCallStack => TaskName -> RFrom -> IO (Stream Object Object, SourceTopic)
 genStreamWithSourceTopic taskName frm = do
   let (srcConfig1, srcConfig2') = genStreamSourceConfig frm
   baseStream <- HS.mkStreamBuilder taskName >>= HS.stream srcConfig1
@@ -147,7 +147,8 @@ genStreamWithSourceTopic taskName frm = do
     RFromSingle s                     -> return (baseStream, [sscTopicName srcConfig1])
     RFromJoin (s1,f1) (s2,f2) typ win ->
       case srcConfig2' of
-        Nothing         -> error "Impossible happened"
+        Nothing         ->
+          throwSQLException CodegenException Nothing "Impossible happened"
         Just srcConfig2 ->
           case typ of
             RJoinInner -> do
@@ -158,7 +159,8 @@ genStreamWithSourceTopic taskName frm = do
                                  (genJoinWindows win) streamJoined
                                  baseStream
               return (joinedStream, [sscTopicName srcConfig1, sscTopicName srcConfig2])
-            _          -> error "Impossible happened"
+            _          ->
+              throwSQLException CodegenException Nothing "Impossible happened"
 
 ----
 constantToValue :: Constant -> Value
@@ -170,14 +172,15 @@ constantToValue (ConstantTime diff)     = Number (scientific (diffTimeToPicoseco
 constantToValue (ConstantInterval diff) = Number (scientific (diffTimeToPicoseconds diff) (-12)) -- FIXME: No suitable type in `Value`
 
 -- May raise exceptions
-genRExprValue :: RValueExpr -> Object -> (Text, Value)
+genRExprValue :: HasCallStack => RValueExpr -> Object -> (Text, Value)
 genRExprValue (RExprCol name stream' field) o = (pack name, getFieldByName o (composeColName stream' field))
 genRExprValue (RExprConst name constant)          _ = (pack name, constantToValue constant)
 genRExprValue (RExprBinOp name op expr1 expr2)    o =
   let (_,v1) = genRExprValue expr1 o
       (_,v2) = genRExprValue expr2 o
    in (pack name, opOnValue op v1 v2)
-genRExprValue (RExprAggregate _ _) _ = error "Impossible happened"
+genRExprValue (RExprAggregate _ _) _ =
+  throwSQLException CodegenException Nothing "Impossible happened"
 
 genFilterR :: RWhere -> Record Object Object -> Bool
 genFilterR RWhereEmpty _ = True
@@ -235,10 +238,11 @@ genMapNode :: RSel -> Stream Object Object -> IO (Stream Object Object)
 genMapNode = HS.map . genMapR
 
 ----
-genMaterialized :: RGroupBy -> IO (HS.Materialized Object Object)
+genMaterialized :: HasCallStack => RGroupBy -> IO (HS.Materialized Object Object)
 genMaterialized grp = do
   aggStore <- case grp of
-    RGroupByEmpty     -> error "Impossible happened"
+    RGroupByEmpty     ->
+      throwSQLException CodegenException Nothing "Impossible happened"
     RGroupBy _ _ win' ->
       case win' of
         Just (RSessionWindow _) -> mkInMemoryStateSessionStore
@@ -255,7 +259,7 @@ data AggregateComponents = AggregateCompontnts
   , aggregateMergeF :: Object -> Object -> Object -> Object
   }
 
-genAggregateComponents :: RSel -> AggregateComponents
+genAggregateComponents :: HasCallStack => RSel -> AggregateComponents
 genAggregateComponents (RSelAggregate agg alias) =
   case agg of
     Nullary AggCountAll ->
@@ -277,46 +281,51 @@ genAggregateComponents (RSelAggregate agg alias) =
                                           (Number n2) = (HM.!) o2 (pack alias)
                                        in HM.singleton (pack alias) (Number $ n1+n2)
       }
-    Unary AggSum (RExprCol _ stream' field) ->
+    Unary AggSum (RExprCol _ stream' field)   ->
       AggregateCompontnts
       { aggregateInit = HM.singleton (pack alias) (Number 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
-            Nothing -> o
+            Nothing         -> o
             Just (Number x) -> HM.update (\(Number n) -> Just (Number $ n+x)) (pack alias) o
-            _ -> error "Only columns with Int or Number type can use SUM function"
+            _               ->
+              throwSQLException CodegenException Nothing "Only columns with Int or Number type can use SUM function"
       , aggregateMergeF = \_ o1 o2 -> let (Number n1) = (HM.!) o1 (pack alias)
                                           (Number n2) = (HM.!) o2 (pack alias)
                                        in HM.singleton (pack alias) (Number $ n1+n2)
       }
-    Unary AggMax (RExprCol _ stream' field) ->
+    Unary AggMax (RExprCol _ stream' field)   ->
       AggregateCompontnts
       { aggregateInit = HM.singleton (pack alias) (Number $ scientific (toInteger (minBound :: Int)) 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
-            Nothing -> o
+            Nothing         -> o
             Just (Number x) -> HM.update (\(Number n) -> Just (Number $ max n x)) (pack alias) o
-            _ -> error "Only columns with Int or Number type can use MAX function"
+            _               ->
+              throwSQLException CodegenException Nothing "Only columns with Int or Number type can use MAX function"
       , aggregateMergeF = \_ o1 o2 -> let (Number n1) = (HM.!) o1 (pack alias)
                                           (Number n2) = (HM.!) o2 (pack alias)
                                        in HM.singleton (pack alias) (Number $ max n1 n2)
       }
-    Unary AggMin (RExprCol _ stream' field) ->
+    Unary AggMin (RExprCol _ stream' field)   ->
       AggregateCompontnts
       { aggregateInit = HM.singleton (pack alias) (Number $ scientific (toInteger (maxBound :: Int)) 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
-            Nothing -> o
+            Nothing         -> o
             Just (Number x) -> HM.update (\(Number n) -> Just (Number $ min n x)) (pack alias) o
-            _ -> error "Only columns with Int or Number type can use MIN function"
+            _               ->
+              throwSQLException CodegenException Nothing "Only columns with Int or Number type can use MIN function"
       , aggregateMergeF = \_ o1 o2 -> let (Number n1) = (HM.!) o1 (pack alias)
                                           (Number n2) = (HM.!) o2 (pack alias)
                                        in HM.singleton (pack alias) (Number $ min n1 n2)
       }
-    _ -> error $ "Unsupported aggreaget function: " <> show agg
+    _                                         ->
+      throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
 
 genGroupByNode :: RSelect -> Stream Object Object -> IO (Stream (TimeWindowKey Object) Object)
-genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) s = error "Impossible happened"
+genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) s =
+  throwSQLException CodegenException Nothing "Impossible happened"
 genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
   grped <- HS.groupBy
     (\record -> let col = composeColName stream' field
@@ -347,7 +356,7 @@ genFilteRNodeFromHaving :: RHaving -> Stream Object Object -> IO (Stream Object 
 genFilteRNodeFromHaving = HS.filter . genFilterRFromHaving
 
 ----
-genStreamBuilderWithTopic :: TaskName -> Maybe TopicName -> RSelect -> IO (StreamBuilder, SourceTopic, SinkTopic)
+genStreamBuilderWithTopic :: HasCallStack => TaskName -> Maybe TopicName -> RSelect -> IO (StreamBuilder, SourceTopic, SinkTopic)
 genStreamBuilderWithTopic taskName sinkTopic' select@(RSelect sel frm whr grp hav) = do
   streamSinkConfig <- genStreamSinkConfig sinkTopic' grp
   (s0, source)     <- genStreamWithSourceTopic taskName frm
@@ -360,7 +369,8 @@ genStreamBuilderWithTopic taskName sinkTopic' select@(RSelect sel frm whr grp ha
         SinkConfigType sink sinkConfig -> do
           builder <- HS.to sinkConfig s2
           return (builder, source, sink)
-        _                         -> error "Impossible happened"
+        _                              ->
+          throwSQLException CodegenException Nothing "Impossible happened"
     _ -> do
       s2 <- genGroupByNode select s1
 --              >>= genFilteRNodeFromHaving hav
@@ -369,4 +379,5 @@ genStreamBuilderWithTopic taskName sinkTopic' select@(RSelect sel frm whr grp ha
         SinkConfigTypeWithWindow sink sinkConfig -> do
           builder <- HS.to sinkConfig s2
           return (builder, source, sink)
-        _                                   -> error "Impossible happened"
+        _                                        ->
+          throwSQLException CodegenException Nothing "Impossible happened"
