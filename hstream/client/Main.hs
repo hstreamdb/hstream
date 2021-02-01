@@ -11,7 +11,6 @@ module Main where
 import           Conduit
 import           Control.Exception        (SomeException, try)
 import           Data.Aeson               (FromJSON, eitherDecode')
-import           Data.ByteString          (ByteString)
 import qualified Data.ByteString.Char8    as BC
 import qualified Data.ByteString.Lazy     as BL
 import qualified Data.List                as L
@@ -19,8 +18,8 @@ import           Data.Proxy               (Proxy (..))
 import           Data.Text                (pack)
 import           HStream.SQL
 import           HStream.Server.Type
-import           Network.HTTP.Simple      (Request, Response, getResponseBody,
-                                           httpBS, httpSink, parseRequest,
+import           Network.HTTP.Simple      (Request, getResponseBody, httpBS,
+                                           httpSink, parseRequest,
                                            setRequestBodyJSON, setRequestMethod)
 import           Options.Applicative      (Parser, auto, execParser, fullDesc,
                                            help, helper, info, long, metavar,
@@ -49,10 +48,9 @@ compE = completeWord Nothing [] compword
 -- should make sure there is no empty command
 wordTable :: [[String]]
 wordTable =
-  [ ["show", "tasks"],
-    ["query", "task"],
-    ["delete", "task"],
-    ["delete", "task", "all"],
+  [ ["show", "querys"],
+    ["delete", "query"],
+    ["delete", "query", "all"],
     [":h"],
     [":q"]
   ]
@@ -96,23 +94,22 @@ main = do
           Just xs -> do
             case words xs of
               ":h" : _ -> liftIO $ putStrLn helpInfo
-              "show" : "tasks" : _ -> createRequest "/show/tasks" >>= handleReq @[TaskInfo] Proxy
-              "query" : "task" : tbid -> createRequest ("/query/task/" ++ unwords tbid) >>= handleReq @(Maybe TaskInfo) Proxy
-              "delete" : "task" : "all" : _ -> createRequest ("/delete/task/all") >>= handleReq @Resp Proxy
-              "delete" : "task" : dbid -> createRequest ("/delete/task/" ++ unwords dbid) >>= handleReq @Resp Proxy
+              "show" : "querys" : _ -> createRequest "/show/querys" >>= handleReq @[TaskInfo] Proxy
+              "delete" : "query" : "all" : _ -> createRequest ("/delete/query/all") >>= handleReq @Resp Proxy
+              "delete" : "query" : dbid -> createRequest ("/delete/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
               a : sql -> do
                 let val = a : sql
                 case parseAndRefine $ pack $ unwords val of
                   Left err -> liftIO $ putStrLn $ show err
                   Right s -> case s of
                     RQSelect _ -> do
-                      re <- createRequest ("/create/stream/task")
+                      re <- createRequest ("/create/stream/query")
                       liftIO $
                         handleStreamReq $
                           setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
                             setRequestMethod "POST" re
                     _ -> do
-                      re <- createRequest "/create/task"
+                      re <- createRequest "/create/query"
                       handleReq @(Either String TaskInfo) Proxy $
                         setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
                           setRequestMethod "POST" re
@@ -126,9 +123,8 @@ helpInfo =
       "  :h                     help command",
       "  :q                     quit cli",
       "  show tasks             list all tasks",
-      "  query task  taskid     query task by id",
-      "  delete task taskid     delete task by id",
-      "  deletet task all       delete all task",
+      "  delete query taskid    delete query by id",
+      "  deletet query all      delete all query",
       "  sql                    run sql"
     ]
 

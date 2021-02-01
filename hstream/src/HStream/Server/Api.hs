@@ -9,9 +9,8 @@ import           Servant
 type ServerApi = StreamApi
 
 type StreamApi =
-    "show" :> "tasks" :> Get '[JSON] [TaskInfo]
-    :<|> "create" :> "task" :> ReqBody '[JSON] ReqSQL :> Post '[JSON] (Either String TaskInfo)
-    :<|> "query" :> "task" :> Capture "task id" TaskID :> Get '[JSON] (Maybe TaskInfo)
-    :<|> "delete" :> "task" :> Capture "task id" TaskID :> Get '[JSON] Resp
-    :<|> "create" :> "stream" :> "task" :> ReqBody '[JSON] ReqSQL :> StreamPost NoFraming OctetStream (SourceIO RecordStream)
-    :<|> "delete" :> "task" :> "all" :> Get '[JSON] Resp
+    "show" :> "querys" :> Get '[JSON] [TaskInfo]
+    :<|> "create" :> "query" :> ReqBody '[JSON] ReqSQL :> Post '[JSON] (Either String TaskInfo)
+    :<|> "delete" :> "query" :> Capture "query id" TaskID :> Get '[JSON] Resp
+    :<|> "create" :> "stream" :> "query" :> ReqBody '[JSON] ReqSQL :> StreamPost NoFraming OctetStream (SourceIO RecordStream)
+    :<|> "delete" :> "query" :> "all" :> Get '[JSON] Resp

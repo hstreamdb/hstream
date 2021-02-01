@@ -61,14 +61,12 @@ server1 = handleTask
 handleTask ::
   HandlerM [TaskInfo]
     :<|> (ReqSQL -> HandlerM (Either String TaskInfo))
-    :<|> (TaskID -> HandlerM (Maybe TaskInfo))
     :<|> (TaskID -> HandlerM Resp)
     :<|> (ReqSQL -> HandlerM (SourceIO RecordStream))
     :<|> (HandlerM Resp)
 handleTask =
   handleShowTasks
     :<|> handleCreateTask
-    :<|> handleQueryTask
     :<|> handleDeleteTask
     :<|> handleCreateStreamTask
     :<|> handleDeleteTaskAll
@@ -90,16 +88,16 @@ handleDeleteTaskAll = do
   State {..} <- ask
   ls <- (liftIO $ readIORef waitMap)
   forM_ ls $ \w -> liftIO (cancel w)
-  return $ OK "delete all task"
+  return $ OK "delete all querys"
 
 handleDeleteTask :: TaskID -> HandlerM Resp
 handleDeleteTask tid = do
   State {..} <- ask
   tm <- readIORef taskMap
   case M.lookup tid tm of
-    Nothing           -> return $ OK "not found the task"
-    Just (Nothing, _) -> return $ OK "task deleted"
-    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete task")
+    Nothing           -> return $ OK "not found the query"
+    Just (Nothing, _) -> return $ OK "query deleted"
+    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete query")
 
 handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO RecordStream)
 handleCreateStreamTask (ReqSQL seqValue) = do
@@ -110,7 +108,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
       return $ source [B.pack $ "streamCodegen error: " <> show e]
     Right plan -> do
       case plan of
-        SelectPlan sou sink task ->
+        SelectPlan sou sink query ->
           do
             -----------------------------------
             tid <- getTaskid
@@ -130,7 +128,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                           tcLogFunc = lf
                         }
                 -----------------------------------
-                async $ runTask taskConfig task >> return Finished
+                async $ runTask taskConfig query >> return Finished
             -----------------------------------
             atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
             atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
@@ -167,7 +165,7 @@ handleCreateTask (ReqSQL seqValue) = do
       return $ Left $ "streamCodegen error: " <> show e
     Right plan -> do
       case plan of
-        CreateBySelectPlan sou sink task -> do
+        CreateBySelectPlan sou sink query -> do
           -----------------------------------
           tid <- getTaskid
           time <- liftIO $ getCurrentTime
@@ -186,7 +184,7 @@ handleCreateTask (ReqSQL seqValue) = do
                         tcLogFunc = lf
                       }
               -----------------------------------
-              async $ runTask taskConfig task >> return Finished
+              async $ runTask taskConfig query >> return Finished
           -----------------------------------
           atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
           atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
