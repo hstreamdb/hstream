@@ -25,6 +25,7 @@ library
   exposed-modules:  HStream.SQL
                     HStream.SQL.AST
                     HStream.SQL.Abs
+                    HStream.SQL.Exception
                     HStream.SQL.Parse
   other-modules:    HStream.SQL.ErrM
                     HStream.SQL.Extra

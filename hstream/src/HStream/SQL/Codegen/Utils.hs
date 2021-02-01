@@ -16,11 +16,13 @@ module HStream.SQL.Codegen.Utils
   ) where
 
 import           Data.Aeson
-import qualified Data.HashMap.Strict as HM
-import           Data.Time           (DiffTime, diffTimeToPicoseconds)
+import qualified Data.HashMap.Strict   as HM
+import           Data.Time             (DiffTime, diffTimeToPicoseconds)
 import           HStream.SQL.AST
+import           HStream.SQL.Exception (SomeSQLException (..),
+                                        throwSQLException)
 import           RIO
-import           Text.StringRandom   (stringRandomIO)
+import           Text.StringRandom     (stringRandomIO)
 
 --------------------------------------------------------------------------------
 getFieldByName :: Object -> Text -> Value
@@ -45,16 +47,18 @@ genJoiner s1 s2 o1 o2 = HM.union (HM.fromList l1') (HM.fromList l2')
         l2' = (\(k,v) -> (s2 <> "." <> k, v)) <$> l2
 
 --------------------------------------------------------------------------------
-compareValue :: Value -> Value -> Ordering
+compareValue :: HasCallStack => Value -> Value -> Ordering
 compareValue (Number x1) (Number x2) = x1 `compare` x2
 compareValue (String x1) (String x2) = x1 `compare` x2
-compareValue _ _                     = error "Value does not support comparison"
+compareValue _ _                     =
+  throwSQLException CodegenException Nothing "Value does not support comparison"
 
-opOnValue :: BinaryOp -> Value -> Value -> Value
+opOnValue :: HasCallStack => BinaryOp -> Value -> Value -> Value
 opOnValue OpAdd (Number n) (Number m) = Number (n+m)
 opOnValue OpSub (Number n) (Number m) = Number (n-m)
 opOnValue OpMul (Number n) (Number m) = Number (n*m)
-opOnValue op v1 v2 = error $ "Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported"
+opOnValue op v1 v2 =
+  throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported")
 
 --------------------------------------------------------------------------------
 diffTimeToMs :: DiffTime -> Int64
