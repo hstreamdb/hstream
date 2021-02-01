@@ -19,7 +19,7 @@ import           Z.Data.CBytes            (CBytes)
 newtype Resp = OK Text
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
 
-data ReqSQL = ReqSQL Text
+data ReqSQL = ReqSQL {sqlValue :: Text}
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
 
 type RecordStream = BL.ByteString
@@ -84,7 +84,7 @@ data ClientConfig = ClientConfig
   deriving (Show)
 
 data State = State
-  { taskMap             :: IORef (Map TaskID TaskInfo),
+  { taskMap             :: IORef (Map TaskID (Maybe (Async TaskState), TaskInfo)),
     thidMap             :: IORef (Map (Async TaskState) TaskID),
     waitMap             :: IORef [Async TaskState],
     taskIndex           :: IORef Int,

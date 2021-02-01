@@ -77,13 +77,13 @@ handleShowTasks :: HandlerM [TaskInfo]
 handleShowTasks = do
   State {..} <- ask
   v <- liftIO $ readIORef taskMap
-  return $ M.elems v
+  return $ fmap snd $ M.elems v
 
 handleQueryTask :: TaskID -> HandlerM (Maybe TaskInfo)
 handleQueryTask t = do
   State {..} <- ask
   v <- liftIO $ readIORef taskMap
-  return $ M.lookup t v
+  return $ fmap snd $ M.lookup t v
 
 handleDeleteTaskAll :: HandlerM Resp
 handleDeleteTaskAll = do
@@ -95,11 +95,11 @@ handleDeleteTaskAll = do
 handleDeleteTask :: TaskID -> HandlerM Resp
 handleDeleteTask tid = do
   State {..} <- ask
-  ls <- M.toList <$> readIORef thidMap
-  case filter ((== tid) . snd) ls of
-    []       -> return $ OK "not found the task"
-    [(w, _)] -> liftIO (cancel w) >> (return $ OK "delete the task")
-    _        -> return $ OK "strange happened"
+  tm <- readIORef taskMap
+  case M.lookup tid tm of
+    Nothing           -> return $ OK "not found the task"
+    Just (Nothing, _) -> return $ OK "task deleted"
+    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete task")
 
 handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO RecordStream)
 handleCreateStreamTask (ReqSQL seqValue) = do
@@ -117,7 +117,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
             time <- liftIO $ getCurrentTime
 
             let ti = CreateTmpStream tid seqValue sou sink Starting time
-            atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
+            atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
             -----------------------------------
             mockStore <- liftIO $ mkMockTopicStore
 
@@ -134,7 +134,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
             -----------------------------------
             atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
             atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
-            atomicModifyIORef' taskMap (\t -> (M.insert tid ti {taskState = Running} t, ()))
+            atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
 
             -----------------------------------
             liftIO $ do
@@ -173,7 +173,7 @@ handleCreateTask (ReqSQL seqValue) = do
           time <- liftIO $ getCurrentTime
           let ti = CreateStream tid seqValue sou sink Starting time
 
-          atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
+          atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
           -----------------------------------
           mockStore <- liftIO $ mkMockTopicStore
 
@@ -190,7 +190,7 @@ handleCreateTask (ReqSQL seqValue) = do
           -----------------------------------
           atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
           atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
-          atomicModifyIORef' taskMap (\t -> (M.insert tid ti {taskState = Running} t, ()))
+          atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
 
           return $ Right ti {taskState = Running}
         CreatePlan topic -> do
@@ -202,7 +202,6 @@ handleCreateTask (ReqSQL seqValue) = do
                 tid <- getTaskid
                 time <- liftIO $ getCurrentTime
                 let ti = CreateTopic tid seqValue topic Finished time
-                atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
                 return $ Right $ ti
         InsertPlan topic bs -> do
           liftIO
@@ -221,7 +220,6 @@ handleCreateTask (ReqSQL seqValue) = do
                 tid <- getTaskid
                 time <- liftIO $ getCurrentTime
                 let ti = InsertTopic tid seqValue topic Finished time
-                atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
                 return $ Right $ ti
         _ -> error "Not supported"
 
@@ -233,22 +231,23 @@ waitThread State {..} = do
       [] -> threadDelay 1000000
       ls -> do
         (a, r) <- waitAnyCatch ls
-        atomicModifyIORef' waitMap (\t -> (L.delete a t, ()))
         case r of
           Left e -> do
             ths <- readIORef thidMap
             tks <- readIORef taskMap
             case M.lookup a ths >>= flip M.lookup tks of
               Nothing -> error "error happened"
-              Just ts -> do
-                atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) ts {taskState = ErrorHappened $ show e} t, ()))
+              Just (_, ts) -> do
+                atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) (Nothing, ts {taskState = ErrorHappened $ show e}) t, ()))
           Right v -> do
             ths <- readIORef thidMap
             tks <- readIORef taskMap
             case M.lookup a ths >>= flip M.lookup tks of
               Nothing -> error "error happened"
-              Just ts -> do
-                atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) ts {taskState = v} t, ()))
+              Just (_, ts) -> do
+                atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) (Nothing, ts {taskState = v}) t, ()))
+        atomicModifyIORef' waitMap (\t -> (L.delete a t, ()))
+        atomicModifyIORef' thidMap (\t -> (M.delete a t, ()))
 
 type HandlerM = ReaderT State Handler
 
