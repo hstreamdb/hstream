@@ -8,17 +8,9 @@ import           Data.Aeson
 import qualified Data.HashMap.Strict          as HM
 import           Data.Scientific
 import           Data.Text.IO                 (getLine)
-import           HStream.Processing.Processor (MessageStoreType (Mock),
-                                               MockMessage (..),
-                                               TaskConfig (..),
-                                               mkMockTopicConsumer,
-                                               mkMockTopicProducer,
-                                               mkMockTopicStore, runTask)
-import           HStream.Processing.Topic     (RawConsumerRecord (..),
-                                               RawProducerRecord (..),
-                                               TopicConsumer (..),
-                                               TopicProducer (..))
-import           HStream.Processing.Util      (getCurrentTimestamp)
+import           HStream.Processing.Processor
+import           HStream.Processing.Topic
+import           HStream.Processing.Util
 import           HStream.SQL.Codegen          (ExecutionPlan (..),
                                                streamCodegen)
 import qualified Prelude                      as P
@@ -27,9 +19,9 @@ import qualified RIO.ByteString.Lazy          as BL
 import           System.Random                (Random (randomR), getStdRandom)
 
 ---------------------------------- Example -------------------------------------
--- CREATE STREAM demoSink AS SELECT * FROM temperatureSource WITH (FORMAT = JSON);
+-- CREATE STREAM demoSink AS SELECT * FROM source1 WITH (FORMAT = "JSON");
 
--- CREATE STREAM demoSink AS SELECT SUM(humiditySource.humidity) AS result FROM humiditySource INNER JOIN temperatureSource WITHIN (INTERVAL 5 SECOND) ON (humiditySource.temperature = temperatureSource.temperature) WHERE humiditySource.humidity > 20 GROUP BY humiditySource.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
+-- CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2 INNER JOIN source1 WITHIN (INTERVAL 5 SECOND) ON (source2.temperature = source1.temperature) WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
 --------------------------------------------------------------------------------
 
 main :: IO ()
@@ -43,12 +35,12 @@ run input = do
     CreateBySelectPlan source sink task -> return (sink,task)
     _                                   -> error "Not supported"
 
-  let tTopicName = "temperatureSource"
-  let hTopicName = "humiditySource"
+  let tTopicName = "source1"
+  let hTopicName = "source2"
 
   mockStore <- mkMockTopicStore
-  mp  <- mkMockTopicProducer mockStore
-  mc' <- mkMockTopicConsumer mockStore
+  mp <- mkMockTopicProducer mockStore
+  mc <- mkMockTopicConsumer mockStore [sTopicName]
 
   async . forever $ do
     threadDelay 1000000
@@ -74,10 +66,9 @@ run input = do
         rprTimestamp = mmTimestamp
       }
 
-  mc <- subscribe mc' [sTopicName]
   _ <- async $
     forever $ do
-      records <- pollRecords mc 1000000
+      records <- pollRecords mc 100 1000
       forM_ records $ \RawConsumerRecord {..} ->
         P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
 
