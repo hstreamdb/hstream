@@ -5,6 +5,7 @@ module HStream.Server.Type where
 
 import           Control.Concurrent.Async
 import           Data.Aeson               (FromJSON, ToJSON)
+import qualified Data.ByteString          as BL
 import           Data.Data                (Typeable)
 import           Data.IORef
 import           Data.Map                 (Map)
@@ -21,14 +22,11 @@ newtype Resp = OK Text
 data ReqSQL = ReqSQL Text
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
 
-data RecordVal = RecordVal Text
-  deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
+type RecordStream = BL.ByteString
 
 type TaskID = Int
 
 instance ToSchema Resp
-
-instance ToSchema RecordVal
 
 instance ToSchema ReqSQL
 
@@ -72,12 +70,20 @@ data TaskState
   | Finished
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
 
+data ServerConfig = ServerConfig
+  { serverPort           :: Int,
+    sLogDeviceConfigPath :: String,
+    sTopicRepFactor      :: Int
+  }
+  deriving (Show)
+
 data State = State
-  { tasks :: IORef (Map TaskID TaskInfo),
-    thids :: IORef (Map (Async TaskState) TaskID),
-    waits :: IORef [Async TaskState],
-    index :: IORef Int,
-    lpath :: CBytes,
-    admin :: AdminClient,
-    produ :: Producer
+  { taskMap             :: IORef (Map TaskID TaskInfo),
+    thidMap             :: IORef (Map (Async TaskState) TaskID),
+    waitMap             :: IORef [Async TaskState],
+    taskIndex           :: IORef Int,
+    logDeviceConfigPath :: CBytes,
+    adminClient         :: AdminClient,
+    producer            :: Producer,
+    topicRepFactor      :: Int
   }

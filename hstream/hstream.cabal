@@ -40,7 +40,6 @@ library
                   , hstream-sql
                   , hstream-store
 
-                  , mtl                  ^>= 2.2
                   , rio
                   , scientific
                   , string-random
@@ -49,10 +48,10 @@ library
                   , unordered-containers
                   , async
 
-                  , haskeline
-                  , http-client
+
                   , http-conduit
-                  , optparse-applicative
+
+
                   , pretty-simple
                   , random ^>= 1.2
                   , servant
@@ -60,7 +59,6 @@ library
                   , servant-swagger
                   , swagger2
                   , text
-                  , time
                   , warp
                   , Z-Data
 
@@ -89,27 +87,10 @@ executable hstream-server
   main-is:          Main.hs
   hs-source-dirs:   server
   build-depends:    base
-                  , aeson
                   , hstream
-                  , hstream-processing
-                  , hstream-sql
-                  , rio
-                  , scientific
-                  , unordered-containers
-
-                  , bytestring
-                  , haskeline
-                  , http-client
-                  , http-conduit
-                  , optparse-applicative
-                  , pretty-simple
-                  , random ^>= 1.2
                   , servant
-                  , servant-server
-                  , servant-swagger
-                  , swagger2
-                  , text
-                  , time
+                  , aeson
+                  , optparse-applicative
                   , warp
 
   default-language: Haskell2010

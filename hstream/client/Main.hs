@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -9,14 +10,13 @@ module Main where
 
 import           Conduit
 import           Control.Exception        (SomeException, try)
-import           Data.Aeson               (FromJSON, ToJSON, eitherDecode')
+import           Data.Aeson               (FromJSON, eitherDecode')
 import           Data.ByteString          (ByteString)
+import qualified Data.ByteString.Char8    as BC
 import qualified Data.ByteString.Lazy     as BL
-import           Data.Data                (Typeable)
 import qualified Data.List                as L
 import           Data.Proxy               (Proxy (..))
 import           Data.Text                (pack)
-import           GHC.Generics             (Generic)
 import           HStream.SQL
 import           HStream.Server.Type
 import           Network.HTTP.Simple      (Request, Response, getResponseBody,
@@ -35,10 +35,10 @@ import           System.Console.Haskeline (Completion, CompletionFunc, InputT,
 import           Text.Pretty.Simple       (pPrint)
 
 data Config = Config
-  { chttp :: String,
-    cport :: Int
+  { cHttpUrl    :: String,
+    cServerPort :: Int
   }
-  deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
+  deriving (Show)
 
 parseConfig :: Parser Config
 parseConfig =
@@ -72,7 +72,6 @@ generalComplete t [x] = case L.nub (filter (L.isPrefixOf x) (map head t)) of
       map (\z -> x ++ " " ++ z) (generalComplete (filter (/= []) (map tail (filter (\z -> head z == x) t))) [])
   ws -> ws
 generalComplete t (x : xs) =
-  --                    remove empty    remove head       filter prefix
   map (\z -> x ++ " " ++ z) (generalComplete (filter (/= []) (map tail (filter (\z -> head z == x) t))) xs)
 
 -- for complete dbid & tbid
@@ -95,38 +94,34 @@ main = do
     loop :: Config -> InputT IO ()
     loop c@Config {..} = handleInterrupt ((liftIO $ putStrLn "Interrupt") >> loop c) $
       withInterrupt $ do
-        minput <- getInputLine ":> "
+        minput <- getInputLine "> "
+        let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
         case minput of
           Nothing -> return ()
           Just ":q" -> return ()
           Just xs -> do
             case words xs of
-              ":h" : _ -> do
-                liftIO $ putStrLn helpInfo
-              "show" : "tasks" : _ ->
-                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/show/tasks") >>= handleReq @[TaskInfo] Proxy
-              "query" : "task" : tbid ->
-                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/query/task/" ++ unwords tbid) >>= handleReq @(Maybe TaskInfo) Proxy
-              "delete" : "task" : "all" : _ -> do
-                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/delete/task/all") >>= handleReq @Resp Proxy
-              "delete" : "task" : dbid ->
-                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/delete/task/" ++ unwords dbid) >>= handleReq @Resp Proxy
+              ":h" : _ -> liftIO $ putStrLn helpInfo
+              "show" : "tasks" : _ -> createRequest "/show/tasks" >>= handleReq @[TaskInfo] Proxy
+              "query" : "task" : tbid -> createRequest ("/query/task/" ++ unwords tbid) >>= handleReq @(Maybe TaskInfo) Proxy
+              "delete" : "task" : "all" : _ -> createRequest ("/delete/task/all") >>= handleReq @Resp Proxy
+              "delete" : "task" : dbid -> createRequest ("/delete/task/" ++ unwords dbid) >>= handleReq @Resp Proxy
               a : sql -> do
-                case parseAndRefine $ pack $ unwords $ a : sql of
+                let val = a : sql
+                case parseAndRefine $ pack $ unwords val of
                   Left err -> liftIO $ putStrLn $ show err
                   Right s -> case s of
                     RQSelect _ -> do
-                      re <- liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/create/stream/task")
+                      re <- createRequest ("/create/stream/task")
                       liftIO $
                         handleStreamReq $
-                          setRequestBodyJSON (ReqSQL (pack $ unwords $ a : sql)) $
+                          setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
                             setRequestMethod "POST" re
                     _ -> do
-                      re <- liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/create/task")
-                      liftIO $
-                        handleReq @(Either String TaskInfo) Proxy $
-                          setRequestBodyJSON (ReqSQL (pack $ unwords $ a : sql)) $
-                            setRequestMethod "POST" re
+                      re <- createRequest "/create/task"
+                      handleReq @(Either String TaskInfo) Proxy $
+                        setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
+                          setRequestMethod "POST" re
               [] -> return ()
             loop c
 
@@ -139,25 +134,23 @@ helpInfo =
       "  show tasks             list all tasks",
       "  query task  taskid     query task by id",
       "  delete task taskid     delete task by id",
-      "  deletet task all        delete all task",
+      "  deletet task all       delete all task",
       "  sql                    run sql"
     ]
 
-handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> IO ()
-handleReq Proxy req = do
-  (v :: Either SomeException ((Response ByteString))) <- try $ httpBS req
-  case v of
-    Left e -> print e
+handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> InputT IO ()
+handleReq _ req = do
+  (liftIO $ try $ httpBS req) >>= \case
+    Left (e :: SomeException) -> liftIO $ print e
     Right a -> do
       case getResponseBody a of
-        "" -> putStrLn "invalid command"
+        "" -> liftIO $ putStrLn "invalid command"
         ot -> case eitherDecode' (BL.fromStrict ot) of
-          Left e           -> print e
-          Right (rsp :: a) -> pPrint rsp
+          Left e           -> liftIO $ print e
+          Right (rsp :: a) -> liftIO $ pPrint rsp
 
 handleStreamReq :: Request -> IO ()
 handleStreamReq req = do
-  (v :: Either SomeException ()) <- try $ httpSink req (\_ -> mapM_C print)
-  case v of
-    Left e  -> print e
-    Right _ -> return ()
+  (try $ httpSink req (\_ -> mapM_C BC.putStrLn)) >>= \case
+    Left (e :: SomeException) -> print e
+    Right _                   -> return ()

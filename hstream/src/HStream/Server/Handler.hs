@@ -13,11 +13,11 @@ module HStream.Server.Handler where
 
 ------------------------------------------------------------------
 
+import qualified Data.ByteString.Char8        as B
 import qualified Data.ByteString.Lazy         as BL
 import qualified Data.List                    as L
 import qualified Data.Map                     as M
 import           Data.Text                    (unpack)
-import qualified Data.Text                    as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           HStream.Processing.Processor
@@ -26,7 +26,6 @@ import           HStream.Server.Api
 import           HStream.Server.Type
 import           HStream.Store
 import qualified HStream.Store.Stream         as S
-import qualified Prelude                      as P
 import           RIO                          hiding (Handler)
 import           Servant
 import           Servant.Types.SourceT
@@ -35,17 +34,18 @@ import           Z.Foreign
 
 -------------------------------------------------------------------------
 
-app :: String -> IO Application
-app cpath = do
+app :: ServerConfig -> IO Application
+app ServerConfig {..} = do
   s <-
     State
       <$> newIORef M.empty
       <*> newIORef M.empty
       <*> newIORef []
       <*> newIORef 0
-      <*> return (pack cpath)
-      <*> mkAdminClient (AdminClientConfig $ pack cpath)
-      <*> (mkProducer $ ProducerConfig $ pack cpath)
+      <*> return (pack sLogDeviceConfigPath)
+      <*> mkAdminClient (AdminClientConfig $ pack sLogDeviceConfigPath)
+      <*> mkProducer (ProducerConfig $ pack sLogDeviceConfigPath)
+      <*> return sTopicRepFactor
   _ <- async $ waitThread s
   return $ app' s
 
@@ -63,7 +63,7 @@ handleTask ::
     :<|> (ReqSQL -> HandlerM (Either String TaskInfo))
     :<|> (TaskID -> HandlerM (Maybe TaskInfo))
     :<|> (TaskID -> HandlerM Resp)
-    :<|> (ReqSQL -> HandlerM (SourceIO [RecordVal]))
+    :<|> (ReqSQL -> HandlerM (SourceIO RecordStream))
     :<|> (HandlerM Resp)
 handleTask =
   handleShowTasks
@@ -76,38 +76,38 @@ handleTask =
 handleShowTasks :: HandlerM [TaskInfo]
 handleShowTasks = do
   State {..} <- ask
-  v <- liftIO $ readIORef tasks
+  v <- liftIO $ readIORef taskMap
   return $ M.elems v
 
 handleQueryTask :: TaskID -> HandlerM (Maybe TaskInfo)
 handleQueryTask t = do
   State {..} <- ask
-  v <- liftIO $ readIORef tasks
+  v <- liftIO $ readIORef taskMap
   return $ M.lookup t v
 
 handleDeleteTaskAll :: HandlerM Resp
 handleDeleteTaskAll = do
   State {..} <- ask
-  ls <- (liftIO $ readIORef waits)
+  ls <- (liftIO $ readIORef waitMap)
   forM_ ls $ \w -> liftIO (cancel w)
   return $ OK "delete all task"
 
 handleDeleteTask :: TaskID -> HandlerM Resp
 handleDeleteTask tid = do
   State {..} <- ask
-  ls <- M.toList <$> readIORef thids
+  ls <- M.toList <$> readIORef thidMap
   case filter ((== tid) . snd) ls of
     []       -> return $ OK "not found the task"
     [(w, _)] -> liftIO (cancel w) >> (return $ OK "delete the task")
     _        -> return $ OK "strange happened"
 
-handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO [RecordVal])
+handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO RecordStream)
 handleCreateStreamTask (ReqSQL seqValue) = do
   State {..} <- ask
   plan' <- liftIO $ try $ streamCodegen seqValue
   case plan' of
     Left (e :: SomeException) -> do
-      return $ error $ show e
+      return $ source [B.pack $ "streamCodegen error: " <> show e]
     Right plan -> do
       case plan of
         SelectPlan sou sink task ->
@@ -117,7 +117,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
             time <- liftIO $ getCurrentTime
 
             let ti = CreateTmpStream tid seqValue sou sink Starting time
-            atomicModifyIORef' tasks (\t -> (M.insert tid ti t, ()))
+            atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
             -----------------------------------
             mockStore <- liftIO $ mkMockTopicStore
 
@@ -132,30 +132,22 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                 -----------------------------------
                 async $ runTask taskConfig task >> return Finished
             -----------------------------------
-            atomicModifyIORef' waits (\ls -> (res : ls, ()))
-            atomicModifyIORef' thids (\t -> (M.insert res tid t, ()))
-            atomicModifyIORef' tasks (\t -> (M.insert tid ti {taskState = Running} t, ()))
+            atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
+            atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
+            atomicModifyIORef' taskMap (\t -> (M.insert tid ti {taskState = Running} t, ()))
 
             -----------------------------------
-
-            cons <-
-              liftIO $ do
-                mkConsumer
-                  ( ConsumerConfig
-                      lpath
-                      "consumer"
-                      4096
-                      "consumer"
-                      10
-                  )
-                  (fmap (pack . unpack) sou)
-
-            return $
-              fromAction
-                (\_ -> False)
-                $ do
-                  ms1 <- pollMessages cons 1 1000000
-                  return $ map (RecordVal . T.pack . show) ms1
+            liftIO $ do
+              cons <- try $ mkConsumer (ConsumerConfig logDeviceConfigPath "consumer" 4096 "consumer" 10) (fmap (pack . unpack) sou)
+              case cons of
+                Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
+                Right cons' ->
+                  return $
+                    fromAction
+                      (\_ -> False)
+                      $ do
+                        ms <- pollMessages cons' 1 1000000
+                        return $ B.concat $ map (B.cons '\n' . toByteString . dataOutValue) ms
         _ -> error "Not supported"
 
 posixTimeToMilliSeconds :: POSIXTime -> Int64
@@ -172,7 +164,7 @@ handleCreateTask (ReqSQL seqValue) = do
   plan' <- liftIO $ try $ streamCodegen seqValue
   case plan' of
     Left (e :: SomeException) -> do
-      return $ Left $ show e
+      return $ Left $ "streamCodegen error: " <> show e
     Right plan -> do
       case plan of
         CreateBySelectPlan sou sink task -> do
@@ -181,7 +173,7 @@ handleCreateTask (ReqSQL seqValue) = do
           time <- liftIO $ getCurrentTime
           let ti = CreateStream tid seqValue sou sink Starting time
 
-          atomicModifyIORef' tasks (\t -> (M.insert tid ti t, ()))
+          atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
           -----------------------------------
           mockStore <- liftIO $ mkMockTopicStore
 
@@ -196,78 +188,75 @@ handleCreateTask (ReqSQL seqValue) = do
               -----------------------------------
               async $ runTask taskConfig task >> return Finished
           -----------------------------------
-          atomicModifyIORef' waits (\ls -> (res : ls, ()))
-          atomicModifyIORef' thids (\t -> (M.insert res tid t, ()))
-          atomicModifyIORef' tasks (\t -> (M.insert tid ti {taskState = Running} t, ()))
+          atomicModifyIORef' waitMap (\ls -> (res : ls, ()))
+          atomicModifyIORef' thidMap (\t -> (M.insert res tid t, ()))
+          atomicModifyIORef' taskMap (\t -> (M.insert tid ti {taskState = Running} t, ()))
 
           return $ Right ti {taskState = Running}
         CreatePlan topic -> do
           liftIO
-            ( try $ do
-                createTopics admin (M.fromList [(pack $ unpack topic, (S.TopicAttrs 3))])
-                return ()
-            )
+            (try $ createTopics adminClient (M.fromList [(pack $ unpack topic, (S.TopicAttrs topicRepFactor))]))
             >>= \case
-              Left (e :: SomeException) -> return $ Left $ show e
+              Left (e :: SomeException) -> return $ Left $ "create topic " <> show topic <> " error: "  <>  show e
               Right () -> do
                 tid <- getTaskid
                 time <- liftIO $ getCurrentTime
                 let ti = CreateTopic tid seqValue topic Finished time
-                atomicModifyIORef' tasks (\t -> (M.insert tid ti t, ()))
+                atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
                 return $ Right $ ti
         InsertPlan topic bs -> do
           liftIO
             ( try $ do
-                t <- getCurrentTimestamp
-                sendMessage produ $
+                time <- getCurrentTimestamp
+                sendMessage producer $
                   ProducerRecord
                     (pack $ unpack topic)
                     Nothing
                     (fromByteString $ BL.toStrict bs)
-                    t
+                    time
             )
             >>= \case
-              Left (e :: SomeException) -> return $ Left $ show e
+              Left (e :: SomeException) -> return $ Left $ "insert topic " <> show topic <> " error: "  <> show e
               Right () -> do
                 tid <- getTaskid
                 time <- liftIO $ getCurrentTime
                 let ti = InsertTopic tid seqValue topic Finished time
-                atomicModifyIORef' tasks (\t -> (M.insert tid ti t, ()))
+                atomicModifyIORef' taskMap (\t -> (M.insert tid ti t, ()))
                 return $ Right $ ti
         _ -> error "Not supported"
 
 waitThread :: State -> IO ()
 waitThread State {..} = do
   forever $ do
-    li <- readIORef waits
+    li <- readIORef waitMap
     case li of
       [] -> threadDelay 1000000
       ls -> do
         (a, r) <- waitAnyCatch ls
-        atomicModifyIORef' waits (\t -> (L.delete a t, ()))
+        atomicModifyIORef' waitMap (\t -> (L.delete a t, ()))
         case r of
           Left e -> do
-            ths <- readIORef thids
-            tks <- readIORef tasks
+            ths <- readIORef thidMap
+            tks <- readIORef taskMap
             case M.lookup a ths >>= flip M.lookup tks of
               Nothing -> error "error happened"
               Just ts -> do
-                atomicModifyIORef' tasks (\t -> (M.insert (taskid ts) ts {taskState = ErrorHappened $ show e} t, ()))
+                atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) ts {taskState = ErrorHappened $ show e} t, ()))
           Right v -> do
-            ths <- readIORef thids
-            tks <- readIORef tasks
+            ths <- readIORef thidMap
+            tks <- readIORef taskMap
             case M.lookup a ths >>= flip M.lookup tks of
               Nothing -> error "error happened"
               Just ts -> do
-                atomicModifyIORef' tasks (\t -> (M.insert (taskid ts) ts {taskState = v} t, ()))
+                atomicModifyIORef' taskMap (\t -> (M.insert (taskid ts) ts {taskState = v} t, ()))
 
 type HandlerM = ReaderT State Handler
 
 getTaskid :: HandlerM Int
 getTaskid = do
   State {..} <- ask
-  v <- liftIO $ readIORef index
-  liftIO $ atomicModifyIORef' index (\i -> (i + 1, ()))
+  v <- liftIO $ readIORef taskIndex
+  liftIO $ atomicModifyIORef' taskIndex (\i -> (i + 1, ()))
   return v
 
 liftH :: State -> HandlerM a -> Handler a
