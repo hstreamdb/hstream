@@ -102,7 +102,7 @@ main = do
   _ <- async
     $ forever
     $ do
-      records <- pollRecords mc 100 1000000
+      records <- pollRecords mc 100 1000
       forM_ records $ \RawConsumerRecord {..} -> do
         let k = runDeser (timeWindowKeyDeserializer (deserializer textSerde) timeWindowSize) (fromJust rcrKey)
         P.putStrLn $

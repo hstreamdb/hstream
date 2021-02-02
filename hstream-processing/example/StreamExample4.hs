@@ -151,7 +151,7 @@ main = do
   _ <- async
     $ forever
     $ do
-      records <- pollRecords mc 100 1000000
+      records <- pollRecords mc 100 1000
       forM_ records $ \RawConsumerRecord {..} ->
         P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
   logOptions <- logOptionsHandle stderr True
