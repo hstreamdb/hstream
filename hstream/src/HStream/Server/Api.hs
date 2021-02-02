@@ -3,13 +3,10 @@
 
 module HStream.Server.Api where
 
-import           Servant
 import           HStream.Server.Type
+import           Servant
 
--- | server api
--- query/select a.c from
--- info
-type ServerAPI1 = StreamApi
+type ServerApi = StreamApi
 
 type StreamApi =
     "show" :> "tasks" :> Get '[JSON] [TaskInfo]

@@ -1,34 +1,20 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Main where
 
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics (Generic)
-import HStream.Server.Handler (app)
-import Network.Wai.Handler.Warp (run)
-import Options.Applicative
-  ( Parser,
-    auto,
-    execParser,
-    fullDesc,
-    help,
-    helper,
-    info,
-    long,
-    metavar,
-    option,
-    progDesc,
-    short,
-    showDefault,
-    strOption,
-    value,
-    (<**>),
-  )
+import           Data.Aeson               (FromJSON, ToJSON)
+import           GHC.Generics             (Generic)
+import           HStream.Server.Handler   (app)
+import           Network.Wai.Handler.Warp (run)
+import           Options.Applicative      (Parser, auto, execParser, fullDesc,
+                                           help, helper, info, long, metavar,
+                                           option, progDesc, short, showDefault,
+                                           strOption, value, (<**>))
 
 data Config = Config
   { cport :: Int,

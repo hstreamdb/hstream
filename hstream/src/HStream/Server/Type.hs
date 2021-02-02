@@ -1,19 +1,19 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric  #-}
 
 module HStream.Server.Type where
 
-import Control.Concurrent.Async
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Data (Typeable)
-import Data.IORef
-import Data.Map (Map)
-import Data.Swagger (ToSchema)
-import Data.Text (Text)
-import Data.Time
-import GHC.Generics (Generic)
-import HStream.Store
-import Z.Data.CBytes (CBytes)
+import           Control.Concurrent.Async
+import           Data.Aeson               (FromJSON, ToJSON)
+import           Data.Data                (Typeable)
+import           Data.IORef
+import           Data.Map                 (Map)
+import           Data.Swagger             (ToSchema)
+import           Data.Text                (Text)
+import           Data.Time
+import           GHC.Generics             (Generic)
+import           HStream.Store
+import           Z.Data.CBytes            (CBytes)
 
 newtype Resp = OK Text
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
@@ -34,33 +34,33 @@ instance ToSchema ReqSQL
 
 data TaskInfo
   = CreateTmpStream
-      { taskid :: Int,
-        tasksql :: Text,
+      { taskid     :: Int,
+        tasksql    :: Text,
         taskSource :: [Text],
-        taskSink :: Text,
-        taskState :: TaskState,
+        taskSink   :: Text,
+        taskState  :: TaskState,
         createTime :: UTCTime
       }
   | CreateStream
-      { taskid :: Int,
-        tasksql :: Text,
+      { taskid     :: Int,
+        tasksql    :: Text,
         taskSource :: [Text],
-        taskSink :: Text,
-        taskState :: TaskState,
+        taskSink   :: Text,
+        taskState  :: TaskState,
         createTime :: UTCTime
       }
   | CreateTopic
-      { taskid :: Int,
-        tasksql :: Text,
-        taskTopic :: Text,
-        taskState :: TaskState,
+      { taskid     :: Int,
+        tasksql    :: Text,
+        taskTopic  :: Text,
+        taskState  :: TaskState,
         createTime :: UTCTime
       }
   | InsertTopic
-      { taskid :: Int,
-        tasksql :: Text,
-        taskTopic :: Text,
-        taskState :: TaskState,
+      { taskid     :: Int,
+        tasksql    :: Text,
+        taskTopic  :: Text,
+        taskState  :: TaskState,
         createTime :: UTCTime
       }
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)

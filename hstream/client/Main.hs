@@ -1,71 +1,41 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Main where
 
-import Conduit
-import Control.Exception (SomeException, try)
-import Control.Monad (void)
-import Data.Aeson (FromJSON, ToJSON, eitherDecode')
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Lazy as BL
-import Data.Data (Typeable)
-import Data.List
-import Data.Proxy (Proxy (..))
-import Data.Text (Text, pack)
-import GHC.Generics (Generic)
-import HStream.SQL
-import HStream.Server.Type
-import Network.HTTP.Simple
-  ( Request,
-    Response,
-    getResponseBody,
-    httpBS,
-    httpSink,
-    parseRequest,
-    setRequestBodyJSON,
-    setRequestMethod,
-  )
-import Options.Applicative
-  ( Parser,
-    auto,
-    execParser,
-    fullDesc,
-    help,
-    helper,
-    info,
-    long,
-    metavar,
-    option,
-    progDesc,
-    short,
-    showDefault,
-    strOption,
-    value,
-    (<**>),
-  )
-import System.Console.Haskeline
-  ( Completion,
-    CompletionFunc,
-    InputT,
-    Settings,
-    completeWord,
-    defaultSettings,
-    getInputLine,
-    handleInterrupt,
-    runInputT,
-    setComplete,
-    simpleCompletion,
-    withInterrupt,
-  )
-import Text.Pretty.Simple (pPrint)
+import           Conduit
+import           Control.Exception        (SomeException, try)
+import           Data.Aeson               (FromJSON, ToJSON, eitherDecode')
+import           Data.ByteString          (ByteString)
+import qualified Data.ByteString.Lazy     as BL
+import           Data.Data                (Typeable)
+import qualified Data.List                as L
+import           Data.Proxy               (Proxy (..))
+import           Data.Text                (pack)
+import           GHC.Generics             (Generic)
+import           HStream.SQL
+import           HStream.Server.Type
+import           Network.HTTP.Simple      (Request, Response, getResponseBody,
+                                           httpBS, httpSink, parseRequest,
+                                           setRequestBodyJSON, setRequestMethod)
+import           Options.Applicative      (Parser, auto, execParser, fullDesc,
+                                           help, helper, info, long, metavar,
+                                           option, progDesc, short, showDefault,
+                                           strOption, value, (<**>))
+import           System.Console.Haskeline (Completion, CompletionFunc, InputT,
+                                           Settings, completeWord,
+                                           defaultSettings, getInputLine,
+                                           handleInterrupt, runInputT,
+                                           setComplete, simpleCompletion,
+                                           withInterrupt)
+import           Text.Pretty.Simple       (pPrint)
 
 data Config = Config
-  { curl :: String,
+  { chttp :: String,
     cport :: Int
   }
   deriving (Show, Eq, Generic, Typeable, FromJSON, ToJSON)
@@ -95,8 +65,8 @@ wordTable =
 
 -- for complete wordTable command
 generalComplete :: [[String]] -> [String] -> [String]
-generalComplete t [] = nub (map head t)
-generalComplete t [x] = case nub (filter (isPrefixOf x) (map head t)) of
+generalComplete t [] = L.nub (map head t)
+generalComplete t [x] = case L.nub (filter (L.isPrefixOf x) (map head t)) of
   [w]
     | x == w ->
       map (\z -> x ++ " " ++ z) (generalComplete (filter (/= []) (map tail (filter (\z -> head z == x) t))) [])
@@ -134,25 +104,25 @@ main = do
               ":h" : _ -> do
                 liftIO $ putStrLn helpInfo
               "show" : "tasks" : _ ->
-                liftIO $ parseRequest (curl ++ ":" ++ show cport ++ "/show/tasks") >>= handleReq @[TaskInfo] Proxy
+                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/show/tasks") >>= handleReq @[TaskInfo] Proxy
               "query" : "task" : tbid ->
-                liftIO $ parseRequest (curl ++ ":" ++ show cport ++ "/query/task/" ++ unwords tbid) >>= handleReq @(Maybe TaskInfo) Proxy
+                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/query/task/" ++ unwords tbid) >>= handleReq @(Maybe TaskInfo) Proxy
               "delete" : "task" : "all" : _ -> do
-                liftIO $ parseRequest (curl ++ ":" ++ show cport ++ "/delete/task/all") >>= handleReq @Resp Proxy
+                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/delete/task/all") >>= handleReq @Resp Proxy
               "delete" : "task" : dbid ->
-                liftIO $ parseRequest (curl ++ ":" ++ show cport ++ "/delete/task/" ++ unwords dbid) >>= handleReq @Resp Proxy
+                liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/delete/task/" ++ unwords dbid) >>= handleReq @Resp Proxy
               a : sql -> do
                 case parseAndRefine $ pack $ unwords $ a : sql of
                   Left err -> liftIO $ putStrLn $ show err
                   Right s -> case s of
                     RQSelect _ -> do
-                      re <- liftIO $ parseRequest (curl ++ ":" ++ show cport ++ "/create/stream/task")
+                      re <- liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/create/stream/task")
                       liftIO $
                         handleStreamReq $
                           setRequestBodyJSON (ReqSQL (pack $ unwords $ a : sql)) $
                             setRequestMethod "POST" re
                     _ -> do
-                      re <- liftIO $ parseRequest (curl ++ ":" ++ show cport ++ "/create/task")
+                      re <- liftIO $ parseRequest (chttp ++ ":" ++ show cport ++ "/create/task")
                       liftIO $
                         handleReq @(Either String TaskInfo) Proxy $
                           setRequestBodyJSON (ReqSQL (pack $ unwords $ a : sql)) $
@@ -182,12 +152,12 @@ handleReq Proxy req = do
       case getResponseBody a of
         "" -> putStrLn "invalid command"
         ot -> case eitherDecode' (BL.fromStrict ot) of
-          Left e -> print e
+          Left e           -> print e
           Right (rsp :: a) -> pPrint rsp
 
 handleStreamReq :: Request -> IO ()
 handleStreamReq req = do
   (v :: Either SomeException ()) <- try $ httpSink req (\_ -> mapM_C print)
   case v of
-    Left e -> print e
+    Left e  -> print e
     Right _ -> return ()

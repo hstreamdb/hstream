@@ -39,8 +39,8 @@ library
                   , hstream-processing
                   , hstream-sql
                   , hstream-store
+
                   , mtl                  ^>= 2.2
-                  , random
                   , rio
                   , scientific
                   , string-random
@@ -48,7 +48,7 @@ library
                   , time                 >= 1.9.1 && < 2
                   , unordered-containers
                   , async
-                  , bytestring
+
                   , haskeline
                   , http-client
                   , http-conduit
@@ -93,10 +93,8 @@ executable hstream-server
                   , hstream
                   , hstream-processing
                   , hstream-sql
-                  , random
                   , rio
                   , scientific
-                  , text
                   , unordered-containers
 
                   , bytestring

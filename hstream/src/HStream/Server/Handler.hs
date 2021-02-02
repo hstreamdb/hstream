@@ -1,37 +1,37 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE NoImplicitPrelude         #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE PackageImports            #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
 
 module HStream.Server.Handler where
 
 ------------------------------------------------------------------
 
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.List as L
-import qualified Data.Map as M
-import Data.Text (unpack)
-import qualified Data.Text as T
-import Data.Time
-import Data.Time.Clock.POSIX
-import HStream.Processing.Processor
-import HStream.SQL.Codegen
-import HStream.Server.Api
-import HStream.Server.Type
-import HStream.Store
-import qualified HStream.Store.Stream as S
-import RIO hiding (Handler)
-import Servant
-import Servant.Types.SourceT
-import Z.Data.CBytes (pack)
-import Z.Foreign
-import qualified Prelude as P
+import qualified Data.ByteString.Lazy         as BL
+import qualified Data.List                    as L
+import qualified Data.Map                     as M
+import           Data.Text                    (unpack)
+import qualified Data.Text                    as T
+import           Data.Time
+import           Data.Time.Clock.POSIX
+import           HStream.Processing.Processor
+import           HStream.SQL.Codegen
+import           HStream.Server.Api
+import           HStream.Server.Type
+import           HStream.Store
+import qualified HStream.Store.Stream         as S
+import qualified Prelude                      as P
+import           RIO                          hiding (Handler)
+import           Servant
+import           Servant.Types.SourceT
+import           Z.Data.CBytes                (pack)
+import           Z.Foreign
 
 -------------------------------------------------------------------------
 
@@ -52,10 +52,10 @@ app cpath = do
 app' :: State -> Application
 app' s = serve server1API $ hoistServer server1API (liftH s) server1
 
-server1API :: Proxy ServerAPI1
+server1API :: Proxy ServerApi
 server1API = Proxy
 
-server1 :: ServerT ServerAPI1 HandlerM
+server1 :: ServerT ServerApi HandlerM
 server1 = handleTask
 
 handleTask ::
@@ -97,9 +97,9 @@ handleDeleteTask tid = do
   State {..} <- ask
   ls <- M.toList <$> readIORef thids
   case filter ((== tid) . snd) ls of
-    [] -> return $ OK "not found the task"
+    []       -> return $ OK "not found the task"
     [(w, _)] -> liftIO (cancel w) >> (return $ OK "delete the task")
-    _ -> return $ OK "strange happened"
+    _        -> return $ OK "strange happened"
 
 handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO [RecordVal])
 handleCreateStreamTask (ReqSQL seqValue) = do
