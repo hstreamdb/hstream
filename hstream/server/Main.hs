@@ -20,7 +20,8 @@ parseConfig =
   ServerConfig
     <$> option auto (long "port" <> metavar "INT" <> showDefault <> value 8081 <> short 'p' <> help "port value")
     <*> strOption (long "logdevice" <> metavar "Path" <> showDefault <> value "/data/store/logdevice.conf" <> short 'l' <> help "logdevice path")
-    <*> option auto (long "replicationFactor" <> metavar "INT" <> showDefault <> value 3 <> short 'r' <> help "topic replication Factor :")
+    <*> option auto (long "replicationFactor" <> metavar "INT" <> showDefault <> value 3 <> short 'r' <> help "topic replication Factor")
+    <*> option auto (long "consumerBufferSize" <> metavar "INT" <> showDefault <> value (-1) <> short 's' <> help "consumer buffer size ")
 
 main :: IO ()
 main = do

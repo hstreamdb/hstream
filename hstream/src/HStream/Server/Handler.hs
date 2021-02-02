@@ -18,6 +18,7 @@ import qualified Data.ByteString.Lazy         as BL
 import qualified Data.List                    as L
 import qualified Data.Map                     as M
 import           Data.Text                    (unpack)
+import qualified Data.Text                    as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           HStream.Processing.Processor
@@ -31,7 +32,6 @@ import           Servant
 import           Servant.Types.SourceT
 import           Z.Data.CBytes                (pack)
 import           Z.Foreign
-
 -------------------------------------------------------------------------
 
 app :: ServerConfig -> IO Application
@@ -46,6 +46,7 @@ app ServerConfig {..} = do
       <*> mkAdminClient (AdminClientConfig $ pack sLogDeviceConfigPath)
       <*> mkProducer (ProducerConfig $ pack sLogDeviceConfigPath)
       <*> return sTopicRepFactor
+      <*> return sConsumBuffSize
   _ <- async $ waitThread s
   return $ app' s
 
@@ -64,12 +65,14 @@ handleTask ::
     :<|> (TaskID -> HandlerM Resp)
     :<|> (ReqSQL -> HandlerM (SourceIO RecordStream))
     :<|> (HandlerM Resp)
+    :<|> (Int -> ReqSQL -> HandlerM Resp)
 handleTask =
   handleShowTasks
     :<|> handleCreateTask
     :<|> handleDeleteTask
     :<|> handleCreateStreamTask
     :<|> handleDeleteTaskAll
+    :<|> handleReplicateTask
 
 handleShowTasks :: HandlerM [TaskInfo]
 handleShowTasks = do
@@ -110,7 +113,6 @@ handleCreateStreamTask (ReqSQL seqValue) = do
       case plan of
         SelectPlan sou sink query ->
           do
-            -----------------------------------
             tid <- getTaskid
             time <- liftIO $ getCurrentTime
 
@@ -129,14 +131,13 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                         }
                 -----------------------------------
                 async $ runTask taskConfig query >> return Finished
-            -----------------------------------
             atomicModifyIORef' waitList (\ls -> (res : ls, ()))
             atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
             atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
 
             -----------------------------------
             liftIO $ do
-              cons <- try $ mkConsumer (ConsumerConfig logDeviceConfigPath "consumer" 4096 "consumer" 10) (fmap (pack . unpack) sou)
+              cons <- try $ mkConsumer (ConsumerConfig logDeviceConfigPath "demo" (fromIntegral consumBufferSize) "/tmp/checkpoint" 10) (fmap (pack . unpack) sou)
               case cons of
                 Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
                 Right cons' ->
@@ -156,6 +157,33 @@ posixTimeToMilliSeconds =
 getCurrentTimestamp :: IO Int64
 getCurrentTimestamp = posixTimeToMilliSeconds <$> getPOSIXTime
 
+handleReplicateTask :: Int -> ReqSQL -> HandlerM Resp
+handleReplicateTask rs (ReqSQL seqValue) = do
+  State {..} <- ask
+  plan' <- liftIO $ try $ streamCodegen seqValue
+  case plan' of
+    Left (e :: SomeException) -> do
+      return $ OK $ T.pack $ "streamCodegen error: " <> show e
+    Right plan -> do
+      case plan of
+        InsertPlan topic bs -> do
+          liftIO
+            ( try $ do
+                time <- getCurrentTimestamp
+                sendMessages producer $
+                  replicate rs $
+                    ProducerRecord
+                      (pack $ unpack topic)
+                      Nothing
+                      (fromByteString $ BL.toStrict bs)
+                      time
+            )
+            >>= \case
+              Left (e :: SomeException) -> return $ OK $ T.pack $ "insert topic " <> show topic <> " error: " <> show e
+              Right () -> do
+                return $ OK "finished"
+        _ -> error "Not supported"
+
 handleCreateTask :: ReqSQL -> HandlerM (Either String TaskInfo)
 handleCreateTask (ReqSQL seqValue) = do
   State {..} <- ask
@@ -166,7 +194,6 @@ handleCreateTask (ReqSQL seqValue) = do
     Right plan -> do
       case plan of
         CreateBySelectPlan sou sink query -> do
-          -----------------------------------
           tid <- getTaskid
           time <- liftIO $ getCurrentTime
           let ti = CreateStream tid seqValue sou sink Starting time
@@ -185,7 +212,7 @@ handleCreateTask (ReqSQL seqValue) = do
                       }
               -----------------------------------
               async $ runTask taskConfig query >> return Finished
-          -----------------------------------
+
           atomicModifyIORef' waitList (\ls -> (res : ls, ()))
           atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
           atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
@@ -195,7 +222,7 @@ handleCreateTask (ReqSQL seqValue) = do
           liftIO
             (try $ createTopics adminClient (M.fromList [(pack $ unpack topic, (S.TopicAttrs topicRepFactor))]))
             >>= \case
-              Left (e :: SomeException) -> return $ Left $ "create topic " <> show topic <> " error: "  <>  show e
+              Left (e :: SomeException) -> return $ Left $ "create topic " <> show topic <> " error: " <> show e
               Right () -> do
                 tid <- getTaskid
                 time <- liftIO $ getCurrentTime
@@ -213,7 +240,7 @@ handleCreateTask (ReqSQL seqValue) = do
                     time
             )
             >>= \case
-              Left (e :: SomeException) -> return $ Left $ "insert topic " <> show topic <> " error: "  <> show e
+              Left (e :: SomeException) -> return $ Left $ "insert topic " <> show topic <> " error: " <> show e
               Right () -> do
                 tid <- getTaskid
                 time <- liftIO $ getCurrentTime

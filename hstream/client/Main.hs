@@ -97,6 +97,11 @@ main = do
               "show" : "querys" : _ -> createRequest "/show/querys" >>= handleReq @[TaskInfo] Proxy
               "delete" : "query" : "all" : _ -> createRequest ("/delete/query/all") >>= handleReq @Resp Proxy
               "delete" : "query" : dbid -> createRequest ("/delete/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
+              "replicate" : times : sql -> do
+                re <- createRequest $ "/replicate/" ++ times
+                handleReq @Resp Proxy $
+                  setRequestBodyJSON (ReqSQL (pack $ unwords sql)) $
+                    setRequestMethod "POST" re
               a : sql -> do
                 let val = a : sql
                 case parseAndRefine $ pack $ unwords val of

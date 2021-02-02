@@ -73,7 +73,8 @@ data TaskState
 data ServerConfig = ServerConfig
   { serverPort           :: Int,
     sLogDeviceConfigPath :: String,
-    sTopicRepFactor      :: Int
+    sTopicRepFactor      :: Int,
+    sConsumBuffSize      :: Int
   }
   deriving (Show)
 
@@ -91,5 +92,6 @@ data State = State
     logDeviceConfigPath :: CBytes,
     adminClient         :: AdminClient,
     producer            :: Producer,
-    topicRepFactor      :: Int
+    topicRepFactor      :: Int,
+    consumBufferSize    :: Int
   }
