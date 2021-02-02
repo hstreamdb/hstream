@@ -3,8 +3,11 @@ cradle:
     - path: "hstream/src"
       component: "lib:hstream"
 
-    - path: "hstream/sql-example/Example.hs"
-      component: "hstream:exe:sql-example"
+    - path: "hstream/sql-example-mock/Example.hs"
+      component: "hstream:exe:sql-example-mock"
+
+    - path: "hstream/sql-example-logdevice/Example.hs"
+      component: "hstream:exe:sql-example-logdevice"
 
     - path: "hstream-hesp/src"
       component: "lib:hesp"
@@ -41,6 +44,9 @@ cradle:
 
     - path: "hstream-processing/example/StreamExample5.hs"
       component: "hstream-processing:exe:stream-example5"
+
+    - path: "hstream-processing/example/LogDeviceExample0.hs"
+      component: "hstream-processing:exe:logdevice-example0"
 
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"

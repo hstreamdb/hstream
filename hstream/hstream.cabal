@@ -46,14 +46,32 @@ library
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
 
-executable sql-example
+executable sql-example-mock
   main-is:          Example.hs
-  hs-source-dirs:   sql-example
+  hs-source-dirs:   sql-example-mock
   build-depends:    base
                   , aeson
                   , hstream
                   , hstream-processing
                   , hstream-sql
+                  , random
+                  , rio
+                  , scientific
+                  , text
+                  , unordered-containers
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+executable sql-example-logdevice
+  main-is:          Example.hs
+  hs-source-dirs:   sql-example-logdevice
+  build-depends:    base
+                  , aeson
+                  , hstream
+                  , hstream-processing
+                  , hstream-sql
+                  , hstream-store
                   , random
                   , rio
                   , scientific
