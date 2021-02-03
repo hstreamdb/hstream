@@ -51,9 +51,7 @@ pack_and_unpack() {
 
     mkdir -p $WORKDIR/dist-newstyle/build
     cp -r $SRC_DIR/dist-newstyle/* $WORKDIR/dist-newstyle/
-    # FIXME: Sometimes we need rebuild hstream-store, hstream-sql
-    find $WORKDIR/dist-newstyle/build/ -type d | grep hstream-store | xargs rm -rf
-    find $WORKDIR/dist-newstyle/build/ -type d | grep hstream-sql | xargs rm -rf
+    # FIXME: Sometimes we need rebuild hstream*
     find $WORKDIR/dist-newstyle/build/ -type d | grep hstream | xargs rm -rf
 }
 
