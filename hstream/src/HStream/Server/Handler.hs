@@ -13,7 +13,6 @@ module HStream.Server.Handler where
 
 ------------------------------------------------------------------
 
-import           Control.Concurrent           hiding (threadDelay)
 import           Data.Aeson                   (Value (..), encode)
 import qualified Data.ByteString.Char8        as B
 import qualified Data.ByteString.Lazy         as BL
@@ -30,7 +29,6 @@ import           HStream.Server.Api
 import           HStream.Server.Type
 import           HStream.Store
 import qualified HStream.Store.Stream         as S
-import qualified Prelude                      as P
 import           RIO                          hiding (Handler)
 import           Servant
 import           Servant.Types.SourceT
