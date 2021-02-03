@@ -104,8 +104,8 @@ main = do
                     setRequestMethod "POST" re
               a : sql -> do
                 let val = a : sql
-                case parseAndRefine $ pack $ unwords val of
-                  Left err -> liftIO $ putStrLn $ show err
+                (liftIO $ try $ parseAndRefine $ pack $ unwords val) >>= \case
+                  Left (err :: SomeException) -> liftIO $ putStrLn $ show err
                   Right s -> case s of
                     RQSelect _ -> do
                       re <- createRequest ("/create/stream/query")

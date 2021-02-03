@@ -27,15 +27,18 @@ import           HStream.Server.Api
 import           HStream.Server.Type
 import           HStream.Store
 import qualified HStream.Store.Stream         as S
+import qualified Prelude                      as P
 import           RIO                          hiding (Handler)
 import           Servant
 import           Servant.Types.SourceT
+import           System.Random
 import           Z.Data.CBytes                (pack)
 import           Z.Foreign
 -------------------------------------------------------------------------
 
 app :: ServerConfig -> IO Application
 app ServerConfig {..} = do
+  setLogDeviceDbgLevel C_DBG_CRITICAL
   s <-
     State
       <$> newIORef M.empty
@@ -111,42 +114,68 @@ handleCreateStreamTask (ReqSQL seqValue) = do
       return $ source [B.pack $ "streamCodegen error: " <> show e]
     Right plan -> do
       case plan of
-        SelectPlan sou sink query ->
-          do
-            tid <- getTaskid
-            time <- liftIO $ getCurrentTime
-
-            let ti = CreateTmpStream tid seqValue sou sink Starting time
-            atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
-            -----------------------------------
-            mockStore <- liftIO $ mkMockTopicStore
-
-            logOptions <- liftIO $ logOptionsHandle stderr True
-            res <- liftIO $
-              withLogFunc logOptions $ \lf -> do
-                let taskConfig =
-                      TaskConfig
-                        { tcMessageStoreType = Mock mockStore,
-                          tcLogFunc = lf
-                        }
-                -----------------------------------
-                async $ runTask taskConfig query >> return Finished
-            atomicModifyIORef' waitList (\ls -> (res : ls, ()))
-            atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
-            atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
-
-            -----------------------------------
-            liftIO $ do
-              cons <- try $ mkConsumer (ConsumerConfig logDeviceConfigPath "demo" (fromIntegral consumBufferSize) "/tmp/checkpoint" 10) (fmap (pack . unpack) sou)
-              case cons of
+        SelectPlan sou sink query -> do
+          eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) sou)
+          case all id eAll of
+            False -> return $ source [B.pack $ "topic not exist: " ++ show sou]
+            True -> do
+              (liftIO $ try $ createTopics adminClient (M.fromList [(pack $ unpack sink, S.TopicAttrs topicRepFactor)])) >>= \case
                 Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
-                Right cons' ->
-                  return $
-                    fromAction
-                      (\_ -> False)
-                      $ do
-                        ms <- pollMessages cons' 1 1000000
-                        return $ B.concat $ map (B.cons '\n' . toByteString . dataOutValue) ms
+                Right _ -> do
+                  tid <- getTaskid
+                  time <- liftIO $ getCurrentTime
+                  let ti = CreateTmpStream tid seqValue sou sink Starting time
+
+                  atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
+                  logOptions <- liftIO $ logOptionsHandle stderr True
+
+                  let producerConfig =
+                        ProducerConfig
+                          { producerConfigUri = logDeviceConfigPath
+                          }
+
+                  name <- liftIO randomName
+                  let consumerConfig =
+                        ConsumerConfig
+                          { consumerConfigUri = logDeviceConfigPath,
+                            consumerName = pack name ,
+                            consumerBufferSize = fromIntegral consumBufferSize,
+                            consumerCheckpointUri = pack $  "/tmp/checkpoint/" ++ name,
+                            consumerCheckpointRetries = 3
+                          }
+                  liftIO $ P.print "======================================================================================"
+                  res <- liftIO $
+                    withLogFunc logOptions $ \lf -> do
+                      let taskConfig =
+                            TaskConfig
+                              { tcMessageStoreType = LogDevice producerConfig consumerConfig,
+                                tcLogFunc = lf
+                              }
+                      async $ P.print "start" >>  return Finished
+                      -- async $ P.print "start" >> runTask taskConfig query >> return Finished
+
+                  atomicModifyIORef' waitList (\ls -> (res : ls, ()))
+                  atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
+                  atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
+
+                  liftIO $ P.print "======================================================================================"
+
+                  liftIO $ do
+                    name <- randomName
+                    cons <-
+                      try $
+                        mkConsumer
+                          (ConsumerConfig logDeviceConfigPath (pack name) (fromIntegral consumBufferSize) (pack $ "/tmp/checkpoint/" ++ name) 3)
+                          (fmap (pack . unpack) [sink])
+                    case cons of
+                      Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
+                      Right cons' ->
+                        return $
+                          fromAction
+                            (\_ -> False)
+                            $ do
+                              ms <- pollMessages cons' 1 100000
+                              return $ B.concat $ map (B.cons '\n' . toByteString . dataOutValue) ms
         _ -> error "Not supported"
 
 posixTimeToMilliSeconds :: POSIXTime -> Int64
@@ -194,30 +223,49 @@ handleCreateTask (ReqSQL seqValue) = do
     Right plan -> do
       case plan of
         CreateBySelectPlan sou sink query -> do
-          tid <- getTaskid
-          time <- liftIO $ getCurrentTime
-          let ti = CreateStream tid seqValue sou sink Starting time
+          eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) (sink : sou))
+          case all id eAll of
+            False -> return $ Left $ "topic not exist: " ++ show sou
+            True -> do
+              tid <- getTaskid
+              time <- liftIO $ getCurrentTime
+              let ti = CreateStream tid seqValue sou sink Starting time
 
-          atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
-          -----------------------------------
-          mockStore <- liftIO $ mkMockTopicStore
-
-          logOptions <- liftIO $ logOptionsHandle stderr True
-          res <- liftIO $
-            withLogFunc logOptions $ \lf -> do
-              let taskConfig =
-                    TaskConfig
-                      { tcMessageStoreType = Mock mockStore,
-                        tcLogFunc = lf
-                      }
+              atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
               -----------------------------------
-              async $ runTask taskConfig query >> return Finished
 
-          atomicModifyIORef' waitList (\ls -> (res : ls, ()))
-          atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
-          atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
+              logOptions <- liftIO $ logOptionsHandle stderr True
 
-          return $ Right ti {taskState = Running}
+              let producerConfig =
+                    ProducerConfig
+                      { producerConfigUri = logDeviceConfigPath
+                      }
+
+              name <- liftIO randomName
+              let consumerConfig =
+                    ConsumerConfig
+                      { consumerConfigUri = logDeviceConfigPath,
+                        consumerName = pack name ,
+                        consumerBufferSize = fromIntegral consumBufferSize,
+                        consumerCheckpointUri = pack $ "/tmp/checkpoint/" ++ name,
+                        consumerCheckpointRetries = 3
+                      }
+
+              res <- liftIO $
+                withLogFunc logOptions $ \lf -> do
+                  let taskConfig =
+                        TaskConfig
+                          { tcMessageStoreType = LogDevice producerConfig consumerConfig,
+                            tcLogFunc = lf
+                          }
+                  -----------------------------------
+                  async $ runTask taskConfig query >> return Finished
+
+              atomicModifyIORef' waitList (\ls -> (res : ls, ()))
+              atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
+              atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
+
+              return $ Right ti {taskState = Running}
         CreatePlan topic -> do
           liftIO
             (try $ createTopics adminClient (M.fromList [(pack $ unpack topic, (S.TopicAttrs topicRepFactor))]))
@@ -285,3 +333,7 @@ getTaskid = do
 
 liftH :: State -> HandlerM a -> Handler a
 liftH s h = runReaderT h s
+
+randomName :: IO String
+randomName = do
+  mapM (\v -> randomRIO ('A', 'z')) [1..10]
