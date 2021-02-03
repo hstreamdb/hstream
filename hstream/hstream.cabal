@@ -55,7 +55,7 @@ library
                   , warp
                   , Z-Data
   default-language: Haskell2010
-  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
+  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
 
 executable sql-example-mock

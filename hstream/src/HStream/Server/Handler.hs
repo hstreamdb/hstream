@@ -13,8 +13,11 @@ module HStream.Server.Handler where
 
 ------------------------------------------------------------------
 
+import           Control.Concurrent           hiding (threadDelay)
+import           Data.Aeson                   (Value (..), encode)
 import qualified Data.ByteString.Char8        as B
 import qualified Data.ByteString.Lazy         as BL
+import qualified Data.HashMap.Strict          as HM
 import qualified Data.List                    as L
 import qualified Data.Map                     as M
 import           Data.Text                    (unpack)
@@ -32,9 +35,9 @@ import           RIO                          hiding (Handler)
 import           Servant
 import           Servant.Types.SourceT
 import           System.Random
-import           Z.Data.CBytes                (pack)
+import           Z.Data.CBytes                (fromBytes, pack)
 import           Z.Foreign
-import Control.Concurrent hiding(threadDelay)
+
 -------------------------------------------------------------------------
 
 app :: ServerConfig -> IO Application
@@ -204,7 +207,7 @@ handleReplicateTask rs (ReqSQL seqValue) = do
                   replicate rs $
                     ProducerRecord
                       (pack $ unpack topic)
-                      Nothing
+                      (Just $ fromBytes $ fromByteString $ BL.toStrict $ encode $ HM.fromList [ ("key" :: Text, String "demoKey")])
                       (fromByteString $ BL.toStrict bs)
                       time
             )
@@ -285,7 +288,7 @@ handleCreateTask (ReqSQL seqValue) = do
                 sendMessage producer $
                   ProducerRecord
                     (pack $ unpack topic)
-                    Nothing
+                    (Just $ fromBytes $ fromByteString $ BL.toStrict $ encode $ HM.fromList [ ("key" :: Text, String "demoKey")])
                     (fromByteString $ BL.toStrict bs)
                     time
             )
