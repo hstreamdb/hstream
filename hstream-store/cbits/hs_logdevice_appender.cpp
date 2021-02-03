@@ -34,11 +34,12 @@ facebook::logdevice::Status _append_payload_async(
     // Payload End
     AppendAttributes&& attrs) {
   auto cb = [&](facebook::logdevice::Status st, const DataRecord& r) {
-    cb_data->st = static_cast<c_error_code_t>(st);
-    cb_data->logid = r.logid.val_;
-    cb_data->lsn = r.attrs.lsn;
-    cb_data->timestamp = r.attrs.timestamp.count();
-
+    if (cb_data) {
+      cb_data->st = static_cast<c_error_code_t>(st);
+      cb_data->logid = r.logid.val_;
+      cb_data->lsn = r.attrs.lsn;
+      cb_data->timestamp = r.attrs.timestamp.count();
+    }
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };

@@ -75,7 +75,7 @@ mkProducer config = do
 sendMessage :: Producer -> ProducerRecord -> IO ()
 sendMessage (Producer client) record@ProducerRecord{..} = do
   topicID <- S.getTopicIDByName client dataInTopic
-  void $ S.appendSync client topicID (JSON.encode record) Nothing
+  void $ S.appendAsync client topicID (JSON.encode record) Nothing return
 
 -- FIXME: performance improvements
 sendMessages :: Producer -> [ProducerRecord] -> IO ()
