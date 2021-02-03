@@ -161,11 +161,11 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                   liftIO $ P.print "======================================================================================"
 
                   liftIO $ do
-                    name <- randomName
+                    cname <- randomName
                     cons <-
                       try $
                         mkConsumer
-                          (ConsumerConfig logDeviceConfigPath (pack name) (fromIntegral consumBufferSize) (pack $ "/tmp/checkpoint/" ++ name) 3)
+                          (ConsumerConfig logDeviceConfigPath (pack cname) (fromIntegral consumBufferSize) (pack $ "/tmp/checkpoint/" ++ cname) 3)
                           (fmap (pack . unpack) [sink])
                     case cons of
                       Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
@@ -336,4 +336,4 @@ liftH s h = runReaderT h s
 
 randomName :: IO String
 randomName = do
-  mapM (\v -> randomRIO ('A', 'z')) [1..10]
+  mapM (\_ -> randomRIO ('A', 'z')) [1..10 :: Int]

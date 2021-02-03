@@ -51,8 +51,6 @@ library
                   , random ^>= 1.2
                   , servant
                   , servant-server
-                  , servant-swagger
-                  , swagger2
                   , text
                   , warp
                   , Z-Data

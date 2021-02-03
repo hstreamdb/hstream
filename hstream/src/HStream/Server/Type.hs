@@ -9,7 +9,6 @@ import qualified Data.ByteString          as BL
 import           Data.Data                (Typeable)
 import           Data.IORef
 import           Data.Map                 (Map)
-import           Data.Swagger             (ToSchema)
 import           Data.Text                (Text)
 import           Data.Time
 import           GHC.Generics             (Generic)
@@ -25,10 +24,6 @@ data ReqSQL = ReqSQL {sqlValue :: Text}
 type RecordStream = BL.ByteString
 
 type TaskID = Int
-
-instance ToSchema Resp
-
-instance ToSchema ReqSQL
 
 data TaskInfo
   = CreateTmpStream
