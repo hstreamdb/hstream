@@ -34,6 +34,7 @@ import           Servant.Types.SourceT
 import           System.Random
 import           Z.Data.CBytes                (pack)
 import           Z.Foreign
+import Control.Concurrent hiding(threadDelay)
 -------------------------------------------------------------------------
 
 app :: ServerConfig -> IO Application
@@ -127,6 +128,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                   let ti = CreateTmpStream tid seqValue sou sink Starting time
 
                   atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
+
                   logOptions <- liftIO $ logOptionsHandle stderr True
 
                   let producerConfig =
@@ -143,22 +145,21 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                             consumerCheckpointUri = pack $  "/tmp/checkpoint/" ++ name,
                             consumerCheckpointRetries = 3
                           }
-                  liftIO $ P.print "======================================================================================"
+
                   res <- liftIO $
-                    withLogFunc logOptions $ \lf -> do
-                      let taskConfig =
-                            TaskConfig
-                              { tcMessageStoreType = LogDevice producerConfig consumerConfig,
-                                tcLogFunc = lf
-                              }
-                      async $ P.print "start" >>  return Finished
-                      -- async $ P.print "start" >> runTask taskConfig query >> return Finished
+                    async $
+                      withLogFunc logOptions $ \lf -> do
+                        let taskConfig =
+                              TaskConfig
+                                { tcMessageStoreType = LogDevice producerConfig consumerConfig,
+                                  tcLogFunc = lf
+                                }
+                        runTask taskConfig query
+                        return Finished
 
                   atomicModifyIORef' waitList (\ls -> (res : ls, ()))
                   atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
                   atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
-
-                  liftIO $ P.print "======================================================================================"
 
                   liftIO $ do
                     cname <- randomName
@@ -252,14 +253,15 @@ handleCreateTask (ReqSQL seqValue) = do
                       }
 
               res <- liftIO $
-                withLogFunc logOptions $ \lf -> do
-                  let taskConfig =
-                        TaskConfig
-                          { tcMessageStoreType = LogDevice producerConfig consumerConfig,
-                            tcLogFunc = lf
-                          }
-                  -----------------------------------
-                  async $ runTask taskConfig query >> return Finished
+                async $
+                  withLogFunc logOptions $ \lf -> do
+                    let taskConfig =
+                          TaskConfig
+                            { tcMessageStoreType = LogDevice producerConfig consumerConfig,
+                              tcLogFunc = lf
+                            }
+                    -----------------------------------
+                    runTask taskConfig query >> return Finished
 
               atomicModifyIORef' waitList (\ls -> (res : ls, ()))
               atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
