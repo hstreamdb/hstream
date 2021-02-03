@@ -77,6 +77,8 @@ executable sql-example-logdevice
                   , scientific
                   , text
                   , unordered-containers
+                  , Z-Data
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                    -threaded
