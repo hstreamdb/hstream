@@ -7,6 +7,7 @@ module Main where
 import           Data.Aeson
 import qualified Data.HashMap.Strict          as HM
 import           Data.Scientific
+import           Data.Text                    (unpack)
 import           Data.Text.IO                 (getLine)
 import           HStream.Processing.Processor
 import           HStream.Processing.Topic
@@ -22,6 +23,7 @@ import           RIO
 import qualified RIO.ByteString.Lazy          as BL
 import qualified RIO.Map                      as Map
 import           System.Random                (Random (randomR), getStdRandom)
+import           Z.Data.CBytes                (pack)
 
 ---------------------------------- Example -------------------------------------
 -- CREATE STREAM demoSink AS SELECT * FROM source1 WITH (FORMAT = "JSON");
@@ -59,8 +61,9 @@ run input = do
   let adminConfig =
         AdminClientConfig {adminConfigUri = "/data/store/logdevice.conf"}
   adminClient <- mkAdminClient adminConfig
-  createTopics adminClient (Map.singleton "demo-source" TopicAttrs {replicationFactor = 3})
-  createTopics adminClient (Map.singleton "demo-sink" TopicAttrs {replicationFactor = 3})
+  createTopics adminClient (Map.singleton "source1" TopicAttrs {replicationFactor = 3})
+  createTopics adminClient (Map.singleton "source2" TopicAttrs {replicationFactor = 3})
+  createTopics adminClient (Map.singleton (pack.unpack $ sTopicName) TopicAttrs {replicationFactor = 3})
 
   mp <- mkProducer producerConfig
   mc <- mkConsumer consumerConfig [sTopicName]
