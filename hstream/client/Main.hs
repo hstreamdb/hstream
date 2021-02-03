@@ -48,7 +48,7 @@ compE = completeWord Nothing [] compword
 -- should make sure there is no empty command
 wordTable :: [[String]]
 wordTable =
-  [ ["show", "querys"],
+  [ ["show", "queries"],
     ["delete", "query"],
     ["delete", "query", "all"],
     [":h"],
@@ -89,24 +89,18 @@ main = do
         minput <- getInputLine "> "
         let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
         case minput of
-          Nothing -> return ()
+          Nothing   -> return ()
           Just ":q" -> return ()
-          Just xs -> do
+          Just xs   -> do
             case words xs of
               ":h" : _ -> liftIO $ putStrLn helpInfo
-              "show" : "querys" : _ -> createRequest "/show/querys" >>= handleReq @[TaskInfo] Proxy
+              "show" : "queries" : _ -> createRequest "/show/querys" >>= handleReq @[TaskInfo] Proxy
               "delete" : "query" : "all" : _ -> createRequest ("/delete/query/all") >>= handleReq @Resp Proxy
               "delete" : "query" : dbid -> createRequest ("/delete/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
-              "replicate" : times : sql -> do
-                re <- createRequest $ "/replicate/" ++ times
-                handleReq @Resp Proxy $
-                  setRequestBodyJSON (ReqSQL (pack $ unwords sql)) $
-                    setRequestMethod "POST" re
-              a : sql -> do
-                let val = a : sql
+              val@(_ : _) -> do
                 (liftIO $ try $ parseAndRefine $ pack $ unwords val) >>= \case
                   Left (err :: SomeException) -> liftIO $ putStrLn $ show err
-                  Right s -> case s of
+                  Right sql -> case sql of
                     RQSelect _ -> do
                       re <- createRequest ("/create/stream/query")
                       liftIO $
@@ -134,15 +128,15 @@ helpInfo =
     ]
 
 handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> InputT IO ()
-handleReq _ req = do
-  (liftIO $ try $ httpBS req) >>= \case
-    Left (e :: SomeException) -> liftIO $ print e
+handleReq _ req = liftIO $ do
+  (try $ httpBS req) >>= \case
+    Left (e :: SomeException) -> print e
     Right a -> do
       case getResponseBody a of
-        "" -> liftIO $ putStrLn "invalid command"
+        "" -> putStrLn "invalid command"
         ot -> case eitherDecode' (BL.fromStrict ot) of
-          Left e           -> liftIO $ print e
-          Right (rsp :: a) -> liftIO $ pPrint rsp
+          Left e           -> print e
+          Right (rsp :: a) -> pPrint rsp
 
 handleStreamReq :: Request -> IO ()
 handleStreamReq req = do

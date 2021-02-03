@@ -14,4 +14,3 @@ type StreamApi =
     :<|> "delete" :> "query" :> Capture "query id" TaskID :> Get '[JSON] Resp
     :<|> "create" :> "stream" :> "query" :> ReqBody '[JSON] ReqSQL :> StreamPost NoFraming OctetStream (SourceIO RecordStream)
     :<|> "delete" :> "query" :> "all" :> Get '[JSON] Resp
-    :<|> "replicate" :> Capture "times" Int :> ReqBody '[JSON] ReqSQL :> Post '[JSON] Resp
