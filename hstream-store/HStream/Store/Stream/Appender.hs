@@ -1,6 +1,6 @@
 module HStream.Store.Stream.Appender
   ( FFI.AppendCallBackData (appendCbLogID, appendCbLSN, appendCbTimestamp)
-  , append
+  , appendAsync
   , appendSync
   , appendSyncTS
   ) where
@@ -26,13 +26,13 @@ import qualified HStream.Store.Exception as E
 
 -------------------------------------------------------------------------------
 
-append :: StreamClient
-       -> TopicID
-       -> Bytes
-       -> Maybe (FFI.KeyType, CBytes)
-       -> (FFI.AppendCallBackData -> IO a)
-       -> IO a
-append (StreamClient client) (TopicID topicid) payload m_key_attr f =
+appendAsync :: StreamClient
+            -> TopicID
+            -> Bytes
+            -> Maybe (FFI.KeyType, CBytes)
+            -> (FFI.AppendCallBackData -> IO a)
+            -> IO a
+appendAsync (StreamClient client) (TopicID topicid) payload m_key_attr f =
   withForeignPtr client $ \client' ->
   Z.withPrimVectorUnsafe payload $ \payload' offset len -> mask_ $ do
     mvar <- newEmptyMVar
