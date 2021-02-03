@@ -36,8 +36,8 @@ import           Text.Pretty.Simple       (pPrint)
 parseConfig :: Parser ClientConfig
 parseConfig =
   ClientConfig
-    <$> strOption (long "url" <> metavar "string" <> showDefault <> value "http://localhost" <> short 'b' <> help "base url valur")
-    <*> option auto (long "port" <> showDefault <> value 8081 <> short 'p' <> help "port value" <> metavar "INT")
+    <$> strOption (long "url" <> metavar "URL" <> showDefault <> value "http://localhost" <> short 'b' <> help "base url value")
+    <*> option auto (long "port" <> showDefault <> value 8081 <> short 'p' <> help "client port value" <> metavar "INT")
 
 def :: Settings IO
 def = setComplete compE defaultSettings
@@ -45,7 +45,6 @@ def = setComplete compE defaultSettings
 compE :: CompletionFunc IO
 compE = completeWord Nothing [] compword
 
--- should make sure there is no empty command
 wordTable :: [[String]]
 wordTable =
   [ ["show", "queries"],
@@ -55,7 +54,6 @@ wordTable =
     [":q"]
   ]
 
--- for complete wordTable command
 generalComplete :: [[String]] -> [String] -> [String]
 generalComplete t [] = L.nub (map head t)
 generalComplete t [x] = case L.nub (filter (L.isPrefixOf x) (map head t)) of
@@ -66,7 +64,6 @@ generalComplete t [x] = case L.nub (filter (L.isPrefixOf x) (map head t)) of
 generalComplete t (x : xs) =
   map (\z -> x ++ " " ++ z) (generalComplete (filter (/= []) (map tail (filter (\z -> head z == x) t))) xs)
 
--- for complete dbid & tbid
 specificComplete :: Monad m => [String] -> m [String]
 specificComplete _ = return []
 
@@ -78,23 +75,23 @@ compword s = do
 
 main :: IO ()
 main = do
-  putStrLn "Start Hstream-CLI!"
+  putStrLn "Start HStream-Cli!"
   cf <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "start hstream-cli")
   putStrLn helpInfo
   runInputT def $ loop cf
   where
     loop :: ClientConfig -> InputT IO ()
-    loop c@ClientConfig {..} = handleInterrupt ((liftIO $ putStrLn "Interrupt") >> loop c) $
+    loop c@ClientConfig {..} = handleInterrupt ((liftIO $ putStrLn "interrupted") >> loop c) $
       withInterrupt $ do
-        minput <- getInputLine "> "
+        input <- getInputLine "> "
         let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
-        case minput of
-          Nothing   -> return ()
+        case input of
+          Nothing -> return ()
           Just ":q" -> return ()
-          Just xs   -> do
+          Just xs -> do
             case words xs of
               ":h" : _ -> liftIO $ putStrLn helpInfo
-              "show" : "queries" : _ -> createRequest "/show/querys" >>= handleReq @[TaskInfo] Proxy
+              "show" : "queries" : _ -> createRequest "/show/queries" >>= handleReq @[TaskInfo] Proxy
               "delete" : "query" : "all" : _ -> createRequest ("/delete/query/all") >>= handleReq @Resp Proxy
               "delete" : "query" : dbid -> createRequest ("/delete/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
               val@(_ : _) -> do
@@ -122,9 +119,9 @@ helpInfo =
       "  :h                     help command",
       "  :q                     quit cli",
       "  show tasks             list all tasks",
-      "  delete query taskid    delete query by id",
-      "  deletet query all      delete all query",
-      "  sql                    run sql"
+      "  delete query <taskid>  delete query by id",
+      "  deletet query all      delete all queries",
+      "  <sql>                  run sql"
     ]
 
 handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> InputT IO ()
@@ -134,7 +131,7 @@ handleReq _ req = liftIO $ do
     Right a -> do
       case getResponseBody a of
         "" -> putStrLn "invalid command"
-        ot -> case eitherDecode' (BL.fromStrict ot) of
+        body -> case eitherDecode' (BL.fromStrict body) of
           Left e           -> print e
           Right (rsp :: a) -> pPrint rsp
 

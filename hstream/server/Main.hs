@@ -18,13 +18,13 @@ import           Options.Applicative      (Parser, auto, execParser, fullDesc,
 parseConfig :: Parser ServerConfig
 parseConfig =
   ServerConfig
-    <$> option auto (long "port" <> metavar "INT" <> showDefault <> value 8081 <> short 'p' <> help "port value")
-    <*> strOption (long "logdevice" <> metavar "Path" <> showDefault <> value "/data/store/logdevice.conf" <> short 'l' <> help "logdevice path")
-    <*> option auto (long "replicationFactor" <> metavar "INT" <> showDefault <> value 3 <> short 'r' <> help "topic replication Factor")
-    <*> option auto (long "consumerBufferSize" <> metavar "INT" <> showDefault <> value (-1) <> short 's' <> help "consumer buffer size ")
+    <$> option auto (long "port" <> metavar "INT" <> showDefault <> value 8081 <> short 'p' <> help "server port value")
+    <*> strOption (long "logdevice" <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> short 'l' <> help "logdevice path")
+    <*> option auto (long "replicationFactor" <> metavar "INT" <> showDefault <> value 3 <> short 'r' <> help "topic replication factor")
+    <*> option auto (long "consumerBufferSize" <> metavar "INT" <> showDefault <> value (-1) <> short 's' <> help "consumer buffer size")
 
 main :: IO ()
 main = do
-  putStrLn "Start Hstream-Server!"
+  putStrLn "Start HStream-Server!"
   c@ServerConfig {..} <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "start hstream-server")
   app c >>= run serverPort

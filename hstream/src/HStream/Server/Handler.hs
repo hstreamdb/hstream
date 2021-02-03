@@ -1,43 +1,40 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE NoImplicitPrelude         #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE PackageImports            #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
 
 module HStream.Server.Handler where
 
-------------------------------------------------------------------
 
-import Data.Aeson (Value (..), encode)
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.HashMap.Strict as HM
-import qualified Data.List as L
-import qualified Data.Map as M
-import Data.Text (unpack)
-import qualified Data.Text as T
-import Data.Time
-import Data.Time.Clock.POSIX
-import HStream.Processing.Processor
-import HStream.Processing.Processor.Internal
-import HStream.SQL.Codegen
-import HStream.Server.Api
-import HStream.Server.Type
-import HStream.Store
-import qualified HStream.Store.Stream as S
-import RIO hiding (Handler)
-import Servant
-import Servant.Types.SourceT
-import System.Random
-import Z.Data.CBytes (fromBytes, pack)
-import Z.Foreign
-
--------------------------------------------------------------------------
+import           Data.Aeson                            (Value (..), encode)
+import qualified Data.ByteString.Char8                 as B
+import qualified Data.ByteString.Lazy                  as BL
+import qualified Data.HashMap.Strict                   as HM
+import qualified Data.List                             as L
+import qualified Data.Map                              as M
+import           Data.Text                             (unpack)
+import qualified Data.Text                             as T
+import           Data.Time
+import           Data.Time.Clock.POSIX
+import           HStream.Processing.Processor
+import           HStream.Processing.Processor.Internal
+import           HStream.SQL.Codegen
+import           HStream.Server.Api
+import           HStream.Server.Type
+import           HStream.Store
+import qualified HStream.Store.Stream                  as S
+import           RIO                                   hiding (Handler)
+import           Servant
+import           Servant.Types.SourceT
+import           System.Random
+import           Z.Data.CBytes                         (fromBytes, pack)
+import           Z.Foreign
 
 app :: ServerConfig -> IO Application
 app ServerConfig {..} = do
@@ -56,11 +53,13 @@ app ServerConfig {..} = do
   _ <- async $ waitThread s
   return $ app' s
 
-liftH :: State -> HandlerM a -> Handler a
-liftH s h = runReaderT h s
+type HandlerM = ReaderT State Handler
+
+liftHandler :: State -> HandlerM a -> Handler a
+liftHandler s h = runReaderT h s
 
 app' :: State -> Application
-app' s = serve serverAPI $ hoistServer serverAPI (liftH s) server
+app' s = serve serverAPI $ hoistServer serverAPI (liftHandler s) server
 
 serverAPI :: Proxy ServerApi
 serverAPI = Proxy
@@ -98,16 +97,16 @@ handleDeleteTaskAll = do
   State {..} <- ask
   ls <- (liftIO $ readIORef waitList)
   forM_ ls $ \w -> liftIO (cancel w)
-  return $ OK "delete all querys"
+  return $ OK "delete all queries"
 
 handleDeleteTask :: TaskID -> HandlerM Resp
 handleDeleteTask tid = do
   State {..} <- ask
   tm <- readIORef taskMap
   case M.lookup tid tm of
-    Nothing -> return $ OK "not found the query"
+    Nothing           -> return $ OK $ "query id not found"
     Just (Nothing, _) -> return $ OK "query deleted"
-    Just (Just w, _) -> liftIO (cancel w) >> (return $ OK "delete query")
+    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete query")
 
 handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO RecordStream)
 handleCreateStreamTask (ReqSQL seqValue) = do
@@ -115,18 +114,18 @@ handleCreateStreamTask (ReqSQL seqValue) = do
   plan' <- liftIO $ try $ streamCodegen seqValue
   case plan' of
     Left (e :: SomeException) -> do
-      return $ source [B.pack $ "streamCodegen error: " <> show e]
+      return $ source [B.pack $ show e]
     Right plan -> do
       case plan of
-        SelectPlan sou sink query -> do
-          eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) sou)
+        SelectPlan sources sink query -> do
+          eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) sources)
           case all id eAll of
-            False -> return $ source [B.pack $ "topic not exist: " ++ show sou]
+            False -> return $ source [B.pack $ "topic not exist: " ++ show sources]
             True -> do
               (liftIO $ try $ createTopics adminClient (M.fromList [(pack $ unpack sink, S.TopicAttrs topicRepFactor)])) >>= \case
                 Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
                 Right _ -> do
-                  _ <- createTask seqValue sou sink query
+                  _ <- createTask seqValue sources sink query
                   liftIO $ do
                     cname <- randomName
                     cons <-
@@ -141,7 +140,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                           fromAction
                             (\_ -> False)
                             $ do
-                              ms <- pollMessages cons' 1 100000
+                              ms <- pollMessages cons' 1 10000
                               return $ B.concat $ map (B.cons '\n' . toByteString . dataOutValue) ms
         _ -> error "Not supported"
 
@@ -162,7 +161,7 @@ handleCreateTask (ReqSQL seqValue) = do
       return $ Left $ "streamCodegen error: " <> show e
     Right plan -> do
       case plan of
-        CreateBySelectPlan sou sink query -> createSelect seqValue sou sink query
+        CreateBySelectPlan sources sink query -> createSelect seqValue sources sink query
         CreatePlan topic -> do
           liftIO
             (try $ createTopics adminClient (M.fromList [(pack $ unpack topic, (S.TopicAttrs topicRepFactor))]))
@@ -219,7 +218,6 @@ waitThread State {..} = do
         atomicModifyIORef' waitList (\t -> (L.delete a t, ()))
         atomicModifyIORef' asyncMap (\t -> (M.delete a t, ()))
 
-type HandlerM = ReaderT State Handler
 
 getTaskid :: HandlerM Int
 getTaskid = do
@@ -238,31 +236,27 @@ createSelect ::
   Text ->
   Task ->
   ReaderT State Handler (Either [Char] TaskInfo)
-createSelect seqValue sou sink query = do
+createSelect seqValue sources sink query = do
   State {..} <- ask
-  eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) (sink : sou))
+  eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) (sink : sources))
   case all id eAll of
-    False -> return $ Left $ "topic not exist: " ++ show sou
+    False -> return $ Left $ "topic doesn't exist: " ++ show sources
     True -> do
-      task <- createTask seqValue sou sink query
+      task <- createTask seqValue sources sink query
       return $ Right task {taskState = Running}
 
 createTask :: Text -> [Text] -> Text -> Task -> ReaderT State Handler TaskInfo
-createTask seqValue sou sink query = do
+createTask seqValue sources sink query = do
   State {..} <- ask
   tid <- getTaskid
   time <- liftIO $ getCurrentTime
-  let ti = CreateStream tid seqValue sou sink Starting time
-
+  let ti = CreateStream tid seqValue sources sink Starting time
   atomicModifyIORef' taskMap (\t -> (M.insert tid (Nothing, ti) t, ()))
-
   logOptions <- liftIO $ logOptionsHandle stderr True
-
   let producerConfig =
         ProducerConfig
           { producerConfigUri = logDeviceConfigPath
           }
-
   name <- liftIO randomName
   let consumerConfig =
         ConsumerConfig
@@ -272,7 +266,6 @@ createTask seqValue sou sink query = do
             consumerCheckpointUri = pack $ "/tmp/checkpoint/" ++ name,
             consumerCheckpointRetries = 3
           }
-
   res <- liftIO $
     async $
       withLogFunc logOptions $ \lf -> do
@@ -281,9 +274,7 @@ createTask seqValue sou sink query = do
                 { tcMessageStoreType = LogDevice producerConfig consumerConfig,
                   tcLogFunc = lf
                 }
-
         runTask taskConfig query >> return Finished
-
   atomicModifyIORef' waitList (\ls -> (res : ls, ()))
   atomicModifyIORef' asyncMap (\t -> (M.insert res tid t, ()))
   atomicModifyIORef' taskMap (\t -> (M.insert tid (Just res, ti {taskState = Running}) t, ()))
