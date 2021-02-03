@@ -22,6 +22,10 @@ source-repository head
 
 library
   exposed-modules:  HStream.SQL.Codegen
+                    HStream.Server.Type
+                    HStream.Server.Handler
+                    HStream.Server.Api
+
   other-modules:    HStream.SQL.Codegen.Boilerplate
                     HStream.SQL.Codegen.Utils
   hs-source-dirs:   src
@@ -34,14 +38,22 @@ library
                   , extra
                   , hstream-processing
                   , hstream-sql
-                  , mtl                  ^>= 2.2
-                  , random
+                  , hstream-store
                   , rio
                   , scientific
                   , string-random
                   , text                 ^>= 1.2
                   , time                 >= 1.9.1 && < 2
                   , unordered-containers
+                  , async
+                  , http-conduit
+                  , pretty-simple
+                  , random ^>= 1.2
+                  , servant
+                  , servant-server
+                  , text
+                  , warp
+                  , Z-Data
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
@@ -61,6 +73,38 @@ executable sql-example-mock
                   , unordered-containers
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints 
+
+executable hstream-server
+  main-is:          Main.hs
+  hs-source-dirs:   server
+  build-depends:    base
+                  , hstream
+                  , servant
+                  , aeson
+                  , optparse-applicative
+                  , warp
+                  , random
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded 
+                    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+executable hstream-client
+  main-is:          Main.hs
+  hs-source-dirs:   client
+  build-depends:    base
+                  , aeson
+                  , hstream
+                  , hstream-sql
+                  , haskeline
+                  , http-conduit
+                  , optparse-applicative
+                  , pretty-simple
+                  , text
+                  , conduit
+                  , bytestring
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
 
 executable sql-example-logdevice

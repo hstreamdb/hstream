@@ -54,6 +54,7 @@ pack_and_unpack() {
     # FIXME: Sometimes we need rebuild hstream-store, hstream-sql
     find $WORKDIR/dist-newstyle/build/ -type d | grep hstream-store | xargs rm -rf
     find $WORKDIR/dist-newstyle/build/ -type d | grep hstream-sql | xargs rm -rf
+    find $WORKDIR/dist-newstyle/build/ -type d | grep hstream | xargs rm -rf
 }
 
 start_tester_container() {
