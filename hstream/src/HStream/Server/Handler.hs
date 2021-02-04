@@ -29,6 +29,9 @@ import           HStream.Server.Api
 import           HStream.Server.Type
 import           HStream.Store
 import qualified HStream.Store.Stream                  as S
+import           Network.Wai
+import           Network.Wai.Handler.Warp
+import qualified Prelude                               as P
 import           RIO                                   hiding (Handler)
 import           Servant
 import           Servant.Types.SourceT
@@ -36,12 +39,13 @@ import           System.Random
 import           Z.Data.CBytes                         (fromBytes, pack)
 import           Z.Foreign
 
-app :: ServerConfig -> IO Application
+app :: ServerConfig -> IO ()
 app ServerConfig {..} = do
   setLogDeviceDbgLevel C_DBG_CRITICAL
   s <-
     State
       <$> newIORef M.empty
+      <*> newIORef M.empty
       <*> newIORef M.empty
       <*> newIORef []
       <*> newIORef 0
@@ -51,7 +55,7 @@ app ServerConfig {..} = do
       <*> return sTopicRepFactor
       <*> return sConsumBuffSize
   _ <- async $ waitThread s
-  return $ app' s
+  runSettings (setOnException (handleException s) $ setPort serverPort defaultSettings) (app' s)
 
 type HandlerM = ReaderT State Handler
 
@@ -67,11 +71,31 @@ serverAPI = Proxy
 server :: ServerT ServerApi HandlerM
 server = handleTask
 
+handleException :: State -> Maybe Request -> SomeException -> IO ()
+handleException _ Nothing _ = return ()
+handleException State{..} (Just req) se
+  | Just ConnectionClosedByPeer <-  fromException se = do
+      case requestMethod req of
+        "POST" -> do
+          case pathInfo req of
+            ["create", "stream", "query", taskName] -> do
+              tns <- readIORef taskNameMap
+              tks <- readIORef taskMap
+              case M.lookup taskName tns >>= flip M.lookup tks of
+                Nothing -> error "error happened"
+                Just (Just a, CreateStream{}) -> do
+                  cancel a
+                  atomicModifyIORef' taskNameMap (\t -> (M.delete taskName t, ()))
+                _ -> return ()
+            _ -> return ()
+        _ -> return ()
+  | otherwise = P.print se
+
 handleTask ::
   HandlerM [TaskInfo]
     :<|> (ReqSQL -> HandlerM (Either String TaskInfo))
     :<|> (TaskID -> HandlerM Resp)
-    :<|> (ReqSQL -> HandlerM (SourceIO RecordStream))
+    :<|> (Text -> ReqSQL -> HandlerM (SourceIO RecordStream))
     :<|> (HandlerM Resp)
 handleTask =
   handleShowTasks
@@ -96,7 +120,7 @@ handleDeleteTaskAll :: HandlerM Resp
 handleDeleteTaskAll = do
   State {..} <- ask
   ls <- (liftIO $ readIORef waitList)
-  forM_ ls $ \w -> liftIO (cancel w)
+  _ <- liftIO $ async $ forM_ ls $ \w -> (cancel w)
   return $ OK "delete all queries"
 
 handleDeleteTask :: TaskID -> HandlerM Resp
@@ -108,8 +132,8 @@ handleDeleteTask tid = do
     Just (Nothing, _) -> return $ OK "query deleted"
     Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete query")
 
-handleCreateStreamTask :: ReqSQL -> HandlerM (SourceIO RecordStream)
-handleCreateStreamTask (ReqSQL seqValue) = do
+handleCreateStreamTask :: Text -> ReqSQL -> HandlerM (SourceIO RecordStream)
+handleCreateStreamTask taskName (ReqSQL seqValue) = do
   State {..} <- ask
   plan' <- liftIO $ try $ streamCodegen seqValue
   case plan' of
@@ -125,7 +149,8 @@ handleCreateStreamTask (ReqSQL seqValue) = do
               (liftIO $ try $ createTopics adminClient (M.fromList [(pack $ unpack sink, S.TopicAttrs topicRepFactor)])) >>= \case
                 Left (e :: SomeException) -> return $ source [B.pack $ "create consumer error: " <> show e]
                 Right _ -> do
-                  _ <- createTask seqValue sources sink query
+                  taskInfo <- createTask seqValue sources sink query
+                  atomicModifyIORef' taskNameMap (\t -> (M.insert taskName (taskid taskInfo)  t, ()))
                   liftIO $ do
                     cname <- randomName
                     cons <-

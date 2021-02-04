@@ -3,6 +3,7 @@
 
 module HStream.Server.Api where
 
+import           Data.Text           (Text)
 import           HStream.Server.Type
 import           Servant
 
@@ -12,5 +13,5 @@ type StreamApi =
     "show" :> "queries" :> Get '[JSON] [TaskInfo]
     :<|> "create" :> "query" :> ReqBody '[JSON] ReqSQL :> Post '[JSON] (Either String TaskInfo)
     :<|> "delete" :> "query" :> Capture "query id" TaskID :> Get '[JSON] Resp
-    :<|> "create" :> "stream" :> "query" :> ReqBody '[JSON] ReqSQL :> StreamPost NoFraming OctetStream (SourceIO RecordStream)
+    :<|> "create" :> "stream" :> "query" :> Capture "query name" Text :> ReqBody '[JSON] ReqSQL :> StreamPost NoFraming OctetStream (SourceIO RecordStream)
     :<|> "delete" :> "query" :> "all" :> Get '[JSON] Resp

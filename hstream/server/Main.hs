@@ -7,13 +7,12 @@
 
 module Main where
 
-import           HStream.Server.Handler   (app)
+import           HStream.Server.Handler (app)
 import           HStream.Server.Type
-import           Network.Wai.Handler.Warp (run)
-import           Options.Applicative      (Parser, auto, execParser, fullDesc,
-                                           help, helper, info, long, metavar,
-                                           option, progDesc, short, showDefault,
-                                           strOption, value, (<**>))
+import           Options.Applicative    (Parser, auto, execParser, fullDesc,
+                                         help, helper, info, long, metavar,
+                                         option, progDesc, short, showDefault,
+                                         strOption, value, (<**>))
 
 parseConfig :: Parser ServerConfig
 parseConfig =
@@ -26,5 +25,4 @@ parseConfig =
 main :: IO ()
 main = do
   putStrLn "Start HStream-Server!"
-  c@ServerConfig {..} <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "start hstream-server")
-  app c >>= run serverPort
+  (execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "start hstream-server")) >>= app

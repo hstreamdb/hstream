@@ -31,6 +31,7 @@ import           System.Console.Haskeline (Completion, CompletionFunc, InputT,
                                            handleInterrupt, runInputT,
                                            setComplete, simpleCompletion,
                                            withInterrupt)
+import           System.Random
 import           Text.Pretty.Simple       (pPrint)
 
 parseConfig :: Parser ClientConfig
@@ -99,7 +100,8 @@ main = do
                   Left (err :: SomeException) -> liftIO $ putStrLn $ show err
                   Right sql -> case sql of
                     RQSelect _ -> do
-                      re <- createRequest ("/create/stream/query")
+                      name <- liftIO randomName
+                      re <- createRequest ("/create/stream/query/" ++ name)
                       liftIO $
                         handleStreamReq $
                           setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
@@ -140,3 +142,7 @@ handleStreamReq req = do
   (try $ httpSink req (\_ -> mapM_C BC.putStrLn)) >>= \case
     Left (e :: SomeException) -> print e
     Right _                   -> return ()
+
+randomName :: IO String
+randomname = do
+  mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]
