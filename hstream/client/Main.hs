@@ -36,7 +36,7 @@ import           Text.Pretty.Simple       (pPrint)
 parseConfig :: Parser ClientConfig
 parseConfig =
   ClientConfig
-    <$> strOption (long "url" <> metavar "URL" <> showDefault <> value "http://localhost" <> short 'b' <> help "base url value")
+    <$> strOption (long "host" <> metavar "HOST" <> showDefault <> value "http://localhost" <> help "host url")
     <*> option auto (long "port" <> showDefault <> value 8081 <> short 'p' <> help "client port value" <> metavar "INT")
 
 def :: Settings IO
@@ -118,9 +118,9 @@ helpInfo =
     [ "Command ",
       "  :h                     help command",
       "  :q                     quit cli",
-      "  show tasks             list all tasks",
+      "  show queries           list all queries",
       "  delete query <taskid>  delete query by id",
-      "  deletet query all      delete all queries",
+      "  delete query all       delete all queries",
       "  <sql>                  run sql"
     ]
 

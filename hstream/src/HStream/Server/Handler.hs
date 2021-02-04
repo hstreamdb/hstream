@@ -141,7 +141,7 @@ handleCreateStreamTask (ReqSQL seqValue) = do
                             (\_ -> False)
                             $ do
                               ms <- pollMessages cons' 1 10000
-                              return $ B.concat $ map (B.cons '\n' . toByteString . dataOutValue) ms
+                              return $ B.concat $ map (toByteString . dataOutValue) ms
         _ -> error "Not supported"
 
 posixTimeToMilliSeconds :: POSIXTime -> Int64
