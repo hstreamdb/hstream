@@ -274,12 +274,13 @@ createSelect ::
   ReaderT State Handler (Either [Char] TaskInfo)
 createSelect seqValue sources sink query = do
   State {..} <- ask
-  eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) (sink : sources))
-  case all id eAll of
-    False -> return $ Left $ "topic doesn't exist: " ++ show sources
-    True -> do
+  let topics = sink : sources
+  eAll <- liftIO $ mapM (doesTopicExists adminClient) (fmap (pack . T.unpack) topics)
+  case filter (not . fst) (zip eAll topics) of
+    [] -> do
       task <- createTask seqValue sources sink query
       return $ Right task {taskState = Running}
+    xs -> return $ Left $ "topic doesn't exist: " ++ show (map snd xs)
 
 createTask :: Text -> [Text] -> Text -> Task -> ReaderT State Handler TaskInfo
 createTask seqValue sources sink query = do
