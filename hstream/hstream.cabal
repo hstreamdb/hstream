@@ -54,6 +54,7 @@ library
                   , text
                   , warp
                   , Z-Data
+                  , wai
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
@@ -103,6 +104,7 @@ executable hstream-client
                   , text
                   , conduit
                   , bytestring
+                  , random
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
                     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints

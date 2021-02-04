@@ -31,12 +31,13 @@ import           System.Console.Haskeline (Completion, CompletionFunc, InputT,
                                            handleInterrupt, runInputT,
                                            setComplete, simpleCompletion,
                                            withInterrupt)
+import           System.Random
 import           Text.Pretty.Simple       (pPrint)
 
 parseConfig :: Parser ClientConfig
 parseConfig =
   ClientConfig
-    <$> strOption (long "url" <> metavar "URL" <> showDefault <> value "http://localhost" <> short 'b' <> help "base url value")
+    <$> strOption (long "host" <> metavar "HOST" <> showDefault <> value "http://localhost" <> help "host url")
     <*> option auto (long "port" <> showDefault <> value 8081 <> short 'p' <> help "client port value" <> metavar "INT")
 
 def :: Settings IO
@@ -99,7 +100,8 @@ main = do
                   Left (err :: SomeException) -> liftIO $ putStrLn $ show err
                   Right sql -> case sql of
                     RQSelect _ -> do
-                      re <- createRequest ("/create/stream/query")
+                      name <- liftIO $ mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]
+                      re <- createRequest ("/create/stream/query/" ++ name)
                       liftIO $
                         handleStreamReq $
                           setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
@@ -118,9 +120,9 @@ helpInfo =
     [ "Command ",
       "  :h                     help command",
       "  :q                     quit cli",
-      "  show tasks             list all tasks",
+      "  show queries           list all queries",
       "  delete query <taskid>  delete query by id",
-      "  deletet query all      delete all queries",
+      "  delete query all       delete all queries",
       "  <sql>                  run sql"
     ]
 
@@ -140,3 +142,4 @@ handleStreamReq req = do
   (try $ httpSink req (\_ -> mapM_C BC.putStrLn)) >>= \case
     Left (e :: SomeException) -> print e
     Right _                   -> return ()
+

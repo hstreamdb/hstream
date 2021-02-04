@@ -81,6 +81,7 @@ data ClientConfig = ClientConfig
 
 data State = State
   { taskMap             :: IORef (Map TaskID (Maybe (Async TaskState), TaskInfo)),
+    taskNameMap         :: IORef (Map Text TaskID),
     asyncMap            :: IORef (Map (Async TaskState) TaskID),
     waitList            :: IORef [Async TaskState],
     taskIndex           :: IORef Int,
