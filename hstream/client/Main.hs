@@ -13,6 +13,7 @@ import           Control.Exception        (SomeException, try)
 import           Data.Aeson               (FromJSON, eitherDecode')
 import qualified Data.ByteString.Char8    as BC
 import qualified Data.ByteString.Lazy     as BL
+import           Data.IORef
 import qualified Data.List                as L
 import           Data.Proxy               (Proxy (..))
 import           Data.Text                (pack)
@@ -49,8 +50,8 @@ compE = completeWord Nothing [] compword
 wordTable :: [[String]]
 wordTable =
   [ ["show", "queries"],
-    ["delete", "query"],
-    ["delete", "query", "all"],
+    ["terminate", "query"],
+    ["terminate", "query", "all"],
     [":h"],
     [":q"]
   ]
@@ -79,51 +80,60 @@ main = do
   putStrLn "Start HStream-Cli!"
   cf <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "start hstream-cli")
   putStrLn helpInfo
-  runInputT def $ loop cf
+  clientState <- newIORef Nothing
+  runInputT def $ loop cf clientState
   where
-    loop :: ClientConfig -> InputT IO ()
-    loop c@ClientConfig {..} = handleInterrupt ((liftIO $ putStrLn "interrupted") >> loop c) $
-      withInterrupt $ do
-        input <- getInputLine "> "
-        let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
-        case input of
-          Nothing -> return ()
-          Just ":q" -> return ()
-          Just xs -> do
-            case words xs of
-              ":h" : _ -> liftIO $ putStrLn helpInfo
-              "show" : "queries" : _ -> createRequest "/show/queries" >>= handleReq @[TaskInfo] Proxy
-              "delete" : "query" : "all" : _ -> createRequest ("/delete/query/all") >>= handleReq @Resp Proxy
-              "delete" : "query" : dbid -> createRequest ("/delete/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
-              val@(_ : _) -> do
-                (liftIO $ try $ parseAndRefine $ pack $ unwords val) >>= \case
-                  Left (err :: SomeException) -> liftIO $ putStrLn $ show err
-                  Right sql -> case sql of
-                    RQSelect _ -> do
-                      name <- liftIO $ mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]
-                      re <- createRequest ("/create/stream/query/" ++ name)
-                      liftIO $
-                        handleStreamReq $
-                          setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
-                            setRequestMethod "POST" re
-                    _ -> do
-                      re <- createRequest "/create/query"
-                      handleReq @(Either String TaskInfo) Proxy $
-                        setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
-                          setRequestMethod "POST" re
-              [] -> return ()
-            loop c
+    loop :: ClientConfig -> ClientState -> InputT IO ()
+    loop c@ClientConfig {..} clientState = handleInterrupt ((liftIO $ putStrLn "interrupted") >> loop c clientState) $
+      (liftIO $ readIORef clientState) >>= \case
+        Just taskName -> do
+          let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
+          createRequest ("/terminate/queryByName/" ++ taskName) >>= handleReq @Resp Proxy
+          liftIO $ writeIORef clientState Nothing
+          loop c clientState
+        Nothing -> do
+          withInterrupt $ do
+            input <- getInputLine "> "
+            let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
+            case input of
+              Nothing -> return ()
+              Just ":q" -> return ()
+              Just xs -> do
+                case words xs of
+                  ":h" : _ -> liftIO $ putStrLn helpInfo
+                  "show" : "queries" : _ -> createRequest "/show/queries" >>= handleReq @[TaskInfo] Proxy
+                  "terminate" : "query" : "all" : _ -> createRequest ("/terminate/query/all") >>= handleReq @Resp Proxy
+                  "terminate" : "query" : dbid -> createRequest ("/terminate/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
+                  val@(_ : _) -> do
+                    (liftIO $ try $ parseAndRefine $ pack $ unwords val) >>= \case
+                      Left (err :: SomeException) -> liftIO $ putStrLn $ show err
+                      Right sql -> case sql of
+                        RQSelect _ -> do
+                          name <- liftIO $ mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]
+                          re <- createRequest ("/create/stream/query/" ++ name)
+                          liftIO $
+                            handleStreamReq $
+                              setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
+                                setRequestMethod "POST" re
+                          liftIO $ writeIORef clientState (Just name)
+                        _ -> do
+                          re <- createRequest "/create/query"
+                          handleReq @(Either String TaskInfo) Proxy $
+                            setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
+                              setRequestMethod "POST" re
+                  [] -> return ()
+                loop c clientState
 
 helpInfo :: String
 helpInfo =
   unlines
     [ "Command ",
-      "  :h                     help command",
-      "  :q                     quit cli",
-      "  show queries           list all queries",
-      "  delete query <taskid>  delete query by id",
-      "  delete query all       delete all queries",
-      "  <sql>                  run sql"
+      "  :h                        help command",
+      "  :q                        quit cli",
+      "  show queries              list all queries",
+      "  terminate query <taskid>  terminate query by id",
+      "  terminate query all       terminate all queries",
+      "  <sql>                     run sql"
     ]
 
 handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> InputT IO ()

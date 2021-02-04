@@ -97,12 +97,14 @@ handleTask ::
     :<|> (TaskID -> HandlerM Resp)
     :<|> (Text -> ReqSQL -> HandlerM (SourceIO RecordStream))
     :<|> (HandlerM Resp)
+    :<|> (Text -> HandlerM Resp)
 handleTask =
   handleShowTasks
     :<|> handleCreateTask
-    :<|> handleDeleteTask
+    :<|> handleTerminateTask
     :<|> handleCreateStreamTask
-    :<|> handleDeleteTaskAll
+    :<|> handleTerminateTaskAll
+    :<|> handleTerminateTaskByName
 
 handleShowTasks :: HandlerM [TaskInfo]
 handleShowTasks = do
@@ -116,21 +118,34 @@ handleQueryTask t = do
   v <- liftIO $ readIORef taskMap
   return $ fmap snd $ M.lookup t v
 
-handleDeleteTaskAll :: HandlerM Resp
-handleDeleteTaskAll = do
+handleTerminateTaskAll :: HandlerM Resp
+handleTerminateTaskAll = do
   State {..} <- ask
   ls <- (liftIO $ readIORef waitList)
   _ <- liftIO $ async $ forM_ ls $ \w -> (cancel w)
-  return $ OK "delete all queries"
+  return $ OK "terminate all queries"
 
-handleDeleteTask :: TaskID -> HandlerM Resp
-handleDeleteTask tid = do
+handleTerminateTask :: TaskID -> HandlerM Resp
+handleTerminateTask tid = do
   State {..} <- ask
   tm <- readIORef taskMap
   case M.lookup tid tm of
     Nothing           -> return $ OK $ "query id not found"
-    Just (Nothing, _) -> return $ OK "query deleted"
-    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete query")
+    Just (Nothing, _) -> return $ OK "terminate query"
+    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "terminate query")
+
+handleTerminateTaskByName :: Text -> HandlerM Resp
+handleTerminateTaskByName taskName = do
+  State {..} <- ask
+  tns <- readIORef taskNameMap
+  tks <- readIORef taskMap
+  case M.lookup taskName tns >>= flip M.lookup tks of
+    Nothing -> error "error happened"
+    Just (Just a, CreateStream{}) -> do
+      cancel a
+      atomicModifyIORef' taskNameMap (\t -> (M.delete taskName t, ()))
+      return $ OK "terminate query"
+    _ -> return $ OK "terminate query"
 
 handleCreateStreamTask :: Text -> ReqSQL -> HandlerM (SourceIO RecordStream)
 handleCreateStreamTask taskName (ReqSQL seqValue) = do
@@ -163,7 +178,7 @@ handleCreateStreamTask taskName (ReqSQL seqValue) = do
                       Right cons' ->
                         return $
                           fromAction
-                            (\_ -> False)
+                            B.null
                             $ do
                               ms <- pollMessages cons' 1 10000
                               return $ B.concat $ map (toByteString . dataOutValue) ms

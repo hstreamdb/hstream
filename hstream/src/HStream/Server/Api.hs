@@ -12,6 +12,7 @@ type ServerApi = StreamApi
 type StreamApi =
     "show" :> "queries" :> Get '[JSON] [TaskInfo]
     :<|> "create" :> "query" :> ReqBody '[JSON] ReqSQL :> Post '[JSON] (Either String TaskInfo)
-    :<|> "delete" :> "query" :> Capture "query id" TaskID :> Get '[JSON] Resp
+    :<|> "terminate" :> "query" :> Capture "query id" TaskID :> Get '[JSON] Resp
     :<|> "create" :> "stream" :> "query" :> Capture "query name" Text :> ReqBody '[JSON] ReqSQL :> StreamPost NoFraming OctetStream (SourceIO RecordStream)
-    :<|> "delete" :> "query" :> "all" :> Get '[JSON] Resp
+    :<|> "terminate" :> "query" :> "all" :> Get '[JSON] Resp
+    :<|> "terminate" :> "queryByName" :> Capture "query name" Text :> Get '[JSON] Resp

@@ -79,6 +79,8 @@ data ClientConfig = ClientConfig
   }
   deriving (Show)
 
+type ClientState = IORef (Maybe String)
+
 data State = State
   { taskMap             :: IORef (Map TaskID (Maybe (Async TaskState), TaskInfo)),
     taskNameMap         :: IORef (Map Text TaskID),
