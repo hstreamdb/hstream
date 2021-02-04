@@ -30,6 +30,7 @@ module HStream.Store
   , AdminClient
   , mkAdminClient
   , createTopics
+  , removeTopic
   , doesTopicExists
 
     -- * Logger
@@ -169,6 +170,9 @@ mkAdminClient AdminClientConfig{..} = do
 
 createTopics :: AdminClient -> Map S.Topic S.TopicAttrs -> IO ()
 createTopics (AdminClient client) = S.createTopicsSync client
+
+removeTopic :: AdminClient -> S.Topic -> IO ()
+removeTopic (AdminClient client) topic = S.removeTopicGroupSync client topic
 
 doesTopicExists :: AdminClient -> S.Topic -> IO Bool
 doesTopicExists (AdminClient client) =
