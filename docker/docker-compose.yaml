@@ -1,6 +1,19 @@
 version: "3.5"
 
 services:
+  hstream:
+    image: hstreamdb/hstream
+    container_name: some-hstream-server
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.5
+    expose:
+      - 6570
+    volumes:
+      - ./logdevice.json:/etc/logdevice/logdevice.json
+    entrypoint:
+      /usr/local/bin/hstream-server -p 6570 -l /etc/logdevice/logdevice.json
+
   ld-admin-server:
     image: hstreamdb/logdevice
     networks:

@@ -25,3 +25,7 @@
 **/Local*
 **/*~
 **/*.swp
+docker/
+**/Dockerfile
+.git/
+.github/
