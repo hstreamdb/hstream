@@ -100,7 +100,7 @@ main = do
                   Left (err :: SomeException) -> liftIO $ putStrLn $ show err
                   Right sql -> case sql of
                     RQSelect _ -> do
-                      name <- liftIO randomName
+                      name <- liftIO $ mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]
                       re <- createRequest ("/create/stream/query/" ++ name)
                       liftIO $
                         handleStreamReq $
@@ -143,6 +143,3 @@ handleStreamReq req = do
     Left (e :: SomeException) -> print e
     Right _                   -> return ()
 
-randomName :: IO String
-randomname = do
-  mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]

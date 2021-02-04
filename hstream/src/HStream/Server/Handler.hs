@@ -152,7 +152,7 @@ handleCreateStreamTask taskName (ReqSQL seqValue) = do
                   taskInfo <- createTask seqValue sources sink query
                   atomicModifyIORef' taskNameMap (\t -> (M.insert taskName (taskid taskInfo)  t, ()))
                   liftIO $ do
-                    cname <- randomName
+                    cname <- mapM (\_ -> randomRIO ('A', 'z')) [1 .. 10 :: Int]
                     cons <-
                       try $
                         mkConsumer
@@ -251,10 +251,6 @@ getTaskid = do
   liftIO $ atomicModifyIORef' taskIndex (\i -> (i + 1, ()))
   return v
 
-randomName :: IO String
-randomName = do
-  mapM (\_ -> randomRIO ('A', 'z')) [1 .. 10 :: Int]
-
 createSelect ::
   Text ->
   [Text] ->
@@ -282,7 +278,7 @@ createTask seqValue sources sink query = do
         ProducerConfig
           { producerConfigUri = logDeviceConfigPath
           }
-  name <- liftIO randomName
+  name <- liftIO $ mapM (\_ -> randomRIO ('A', 'z')) [1 .. 10 :: Int]
   let consumerConfig =
         ConsumerConfig
           { consumerConfigUri = logDeviceConfigPath,
