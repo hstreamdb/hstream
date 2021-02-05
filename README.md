@@ -16,7 +16,7 @@ The database built for IoT streaming data storage and real-time stream processin
 
     You can also replace message brokers with HStreamDB and anything you do with message brokers can be done better with HStreamDB.
 
-- __Stream processing with farmiliar SQL__
+- __Stream processing with familiar SQL__
 
     HStreamDB provides built-in support for event-time based stream processing. You can use your familiar SQL to perform a variety of stream tasks: from basic filtering and transformation operations, to statistics, aggregation based on multiple kinds of time windows and even join between multiple streams.
 
@@ -30,7 +30,7 @@ The database built for IoT streaming data storage and real-time stream processin
 
 - __Reliable persistent storage with low lentency__
 
-    With an optimized storage design, not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data is written to it.
+    With an optimized storage design based on [LogDevide](https://logdevice.io/), not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data is written to it.
 
 - __Seamless scaling and high availability__
 
