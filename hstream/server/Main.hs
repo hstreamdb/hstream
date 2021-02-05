@@ -21,6 +21,7 @@ parseConfig =
     <*> strOption (long "logdevice" <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> short 'l' <> help "logdevice path")
     <*> option auto (long "replicationFactor" <> metavar "INT" <> showDefault <> value 3 <> short 'r' <> help "topic replication factor")
     <*> option auto (long "consumerBufferSize" <> metavar "INT" <> showDefault <> value (-1) <> short 's' <> help "consumer buffer size")
+    <*> strOption (long "host" <> metavar "HOST" <> showDefault <> value "127.0.0.1" <> help "server host value")
 
 main :: IO ()
 main = do

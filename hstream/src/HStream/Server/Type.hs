@@ -69,7 +69,8 @@ data ServerConfig = ServerConfig
   { serverPort           :: Int,
     sLogDeviceConfigPath :: String,
     sTopicRepFactor      :: Int,
-    sConsumBuffSize      :: Int
+    sConsumBuffSize      :: Int,
+    serverHost           :: String
   }
   deriving (Show)
 
