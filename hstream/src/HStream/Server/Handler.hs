@@ -186,7 +186,11 @@ handleCreateTask (ReqSQL seqValue) = do
       return $ Left $ "streamCodegen error: " <> show e
     Right plan -> do
       case plan of
-        CreateBySelectPlan sources sink query -> createSelect seqValue sources sink query
+        CreateBySelectPlan sources sink query ->
+          liftIO (try $ createTopics adminClient $ M.fromList [(pack $ unpack sink, (S.TopicAttrs topicRepFactor))])
+          >>= \case
+            Left (e :: SomeException) -> return $ Left $ "create topic " <> show sink <> " error: " <> show e
+            Right _ -> createSelect seqValue sources sink query
         CreatePlan topic -> do
           liftIO
             (try $ createTopics adminClient (M.fromList [(pack $ unpack topic, (S.TopicAttrs topicRepFactor))]))
