@@ -100,9 +100,9 @@ handleTask ::
 handleTask =
   handleShowTasks
     :<|> handleCreateTask
-    :<|> handleDeleteTask
+    :<|> handleTerminateTask
     :<|> handleCreateStreamTask
-    :<|> handleDeleteTaskAll
+    :<|> handleTermianteTaskAll
 
 handleShowTasks :: HandlerM [TaskInfo]
 handleShowTasks = do
@@ -116,21 +116,21 @@ handleQueryTask t = do
   v <- liftIO $ readIORef taskMap
   return $ fmap snd $ M.lookup t v
 
-handleDeleteTaskAll :: HandlerM Resp
-handleDeleteTaskAll = do
+handleTermianteTaskAll :: HandlerM Resp
+handleTermianteTaskAll = do
   State {..} <- ask
   ls <- (liftIO $ readIORef waitList)
   _ <- liftIO $ async $ forM_ ls $ \w -> (cancel w)
-  return $ OK "delete all queries"
+  return $ OK "terminate all queries"
 
-handleDeleteTask :: TaskID -> HandlerM Resp
-handleDeleteTask tid = do
+handleTerminateTask :: TaskID -> HandlerM Resp
+handleTerminateTask tid = do
   State {..} <- ask
   tm <- readIORef taskMap
   case M.lookup tid tm of
     Nothing           -> return $ OK $ "query id not found"
-    Just (Nothing, _) -> return $ OK "query deleted"
-    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "delete query")
+    Just (Nothing, _) -> return $ OK "query terminate"
+    Just (Just w, _)  -> liftIO (cancel w) >> (return $ OK "terminate query")
 
 handleCreateStreamTask :: Text -> ReqSQL -> HandlerM (SourceIO RecordStream)
 handleCreateStreamTask taskName (ReqSQL seqValue) = do

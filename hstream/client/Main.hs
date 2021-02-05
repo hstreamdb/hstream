@@ -49,8 +49,8 @@ compE = completeWord Nothing [] compword
 wordTable :: [[String]]
 wordTable =
   [ ["show", "queries"],
-    ["delete", "query"],
-    ["delete", "query", "all"],
+    ["terminate", "query"],
+    ["terminate", "query", "all"],
     [":h"],
     [":q"]
   ]
@@ -93,8 +93,8 @@ main = do
             case words xs of
               ":h" : _ -> liftIO $ putStrLn helpInfo
               "show" : "queries" : _ -> createRequest "/show/queries" >>= handleReq @[TaskInfo] Proxy
-              "delete" : "query" : "all" : _ -> createRequest ("/delete/query/all") >>= handleReq @Resp Proxy
-              "delete" : "query" : dbid -> createRequest ("/delete/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
+              "terminate" : "query" : "all" : _ -> createRequest ("/terminate/query/all") >>= handleReq @Resp Proxy
+              "terminate" : "query" : dbid -> createRequest ("/terminate/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
               val@(_ : _) -> do
                 (liftIO $ try $ parseAndRefine $ pack $ unwords val) >>= \case
                   Left (err :: SomeException) -> liftIO $ putStrLn $ show err
@@ -118,12 +118,12 @@ helpInfo :: String
 helpInfo =
   unlines
     [ "Command ",
-      "  :h                     help command",
-      "  :q                     quit cli",
-      "  show queries           list all queries",
-      "  delete query <taskid>  delete query by id",
-      "  delete query all       delete all queries",
-      "  <sql>                  run sql"
+      "  :h                        help command",
+      "  :q                        quit cli",
+      "  show queries              list all queries",
+      "  terminate query <taskid>  terminate query by id",
+      "  terminate query all       terminate all queries",
+      "  <sql>                     run sql"
     ]
 
 handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> InputT IO ()
