@@ -14,27 +14,27 @@ The database built for IoT streaming data storage and real-time stream processin
 
     By subscribing to streams in HStreamDB, any update of the data stream will be pushed to your apps in real time, and this promotes your apps to be more responsive.
 
-    You can also replace message brokers with HStreamDB and anything you do with message brokers can be done better with HStreamDB.
+    You can also replace message brokers with HStreamDB and everything you do with message brokers can be done better with HStreamDB.
 
 - __Stream processing with familiar SQL__
 
-    HStreamDB provides built-in support for event-time based stream processing. You can use your familiar SQL to perform a variety of stream tasks: from basic filtering and transformation operations, to statistics, aggregation based on multiple kinds of time windows and even join between multiple streams.
+    HStreamDB provides built-in support for event-time based stream processing. You can use your familiar SQL to perform basic filtering and transformation operations, statistics and aggregation based on multiple kinds of time windows and even joining between multiple streams.
 
 - __Easy integration with a variety of external systems__
 
-    With connectors provided, you can easily integrate HStreamDB with other external systems, such as MQTT Broker, MySQL, Redis, ElasticSearch... More connectors will be added.
+    With connectors provided, you can easily integrate HStreamDB with other external systems, such as MQTT Broker, MySQL, Redis and ElasticSearch. More connectors will be added.
 
 - __Real-time query based on live materailze views__
 
-    With maintanning materialized views incrementally, the HStreamDB enables you to gain ahead-of-the-curve data insights that response to your business quickly.
+    With maintaining materialized views incrementally, HStreamDB enables you to gain ahead-of-the-curve data insights that response to your business quickly.
 
-- __Reliable persistent storage with low lentency__
+- __Reliable persistent storage with low latency__
 
-    With an optimized storage design based on [LogDevide](https://logdevice.io/), not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data is written to it.
+    With an optimized storage design based on [LogDevide](https://logdevice.io/), not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data written to it.
 
 - __Seamless scaling and high availability__
 
-    With the architecture that separates compute from storage, both compute and storage layers of HStreamDB can be independently scaled seamlessly. And with the consensus algorithm based on the optimized Paxos, data is securely replicated to multiple nodes which ensuring high availability of our system.
+    With the architecture that separates compute from storage, both compute and storage layers of HStreamDB can be independently scaled seamlessly. And with the consensus algorithm based on the optimized Paxos, data is securely replicated to multiple nodes which ensures high availability of our system.
 
 For more information, please visit [HStreamDB homepage](https://hstream.io).
 
@@ -74,3 +74,8 @@ Please submit any bugs, issues, and feature requests to [hstreamdb/hstream](http
 ## License
 
 HStreamDB is under the BSD 3-Clause license. See the [LICENSE](https://github.com/hstreamdb/hstream/blob/master/LICENSE) file for details.
+
+## Acknowledgments
+
+- Thanks [winterland](https://github.com/winterland1989) for providing modern Haskell engineering toolkits [Z.Haskell](https://z.haskell.world/).
+- Thanks [LogDevice](https://logdevice.io/) for the powerful storage engine.
