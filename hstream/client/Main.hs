@@ -88,7 +88,7 @@ main = do
       (liftIO $ readIORef clientState) >>= \case
         Just taskName -> do
           let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
-          createRequest ("/terminate/queryByName/" ++ taskName) >>= handleReq @Resp Proxy
+          _ <- createRequest ("/terminate/queryByName/" ++ taskName) >>= httpBS
           liftIO $ writeIORef clientState Nothing
           loop c clientState
         Nothing -> do

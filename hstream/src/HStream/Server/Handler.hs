@@ -82,7 +82,7 @@ handleException State{..} (Just req) se
               tns <- readIORef taskNameMap
               tks <- readIORef taskMap
               case M.lookup taskName tns >>= flip M.lookup tks of
-                Nothing -> error "error happened"
+                Nothing -> return ()
                 Just (Just a, CreateStream{}) -> do
                   cancel a
                   atomicModifyIORef' taskNameMap (\t -> (M.delete taskName t, ()))
@@ -140,7 +140,7 @@ handleTerminateTaskByName taskName = do
   tns <- readIORef taskNameMap
   tks <- readIORef taskMap
   case M.lookup taskName tns >>= flip M.lookup tks of
-    Nothing -> error "error happened"
+    Nothing -> return $ OK ""
     Just (Just a, CreateStream{}) -> do
       cancel a
       atomicModifyIORef' taskNameMap (\t -> (M.delete taskName t, ()))
