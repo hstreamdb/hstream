@@ -55,7 +55,7 @@ app ServerConfig {..} = do
       <*> return sTopicRepFactor
       <*> return sConsumBuffSize
   _ <- async $ waitThread s
-  runSettings (setOnException (handleException s) $ setPort serverPort defaultSettings) (app' s)
+  runSettings (setHost (fromString serverHost) $ setOnException (handleException s) $ setPort serverPort defaultSettings) (app' s)
 
 type HandlerM = ReaderT State Handler
 
