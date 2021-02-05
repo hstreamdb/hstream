@@ -1,6 +1,9 @@
 [![GitHub top language](https://img.shields.io/github/languages/top/hstreamdb/hstream)](https://www.haskell.org/)
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/hstreamdb/hstream/CI)](https://github.com/hstreamdb/hstream/actions?query=workflow%3ACI)
 [![Docker Pulls](https://img.shields.io/docker/pulls/hstreamdb/hstream)](https://hub.docker.com/r/hstreamdb/hstream)
+[![Slack Invite](<https://slack-invite.hstream.io/badge.svg>)](https://slack-invite.hstream.io)
+[![Twitter](https://img.shields.io/badge/Follow-HStreamDB-1DA1F2?logo=twitter)](https://twitter.com/HStreamDB)
+[![Community](https://img.shields.io/badge/Community-HStreamDB-yellow?logo=github)](https://github.com/hstreamdb/hstream/discussions)
 
 # HStreamDB
 
