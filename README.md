@@ -1,90 +1,65 @@
-# HStreamDB
-
 [![GitHub top language](https://img.shields.io/github/languages/top/hstreamdb/hstream)](https://www.haskell.org/)
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/hstreamdb/hstream/CI)](https://github.com/hstreamdb/hstream/actions?query=workflow%3ACI)
 [![Docker Pulls](https://img.shields.io/docker/pulls/hstreamdb/hstream)](https://hub.docker.com/r/hstreamdb/hstream)
 
-The database built for IoT streaming data storage and real-time stream processing.
+# HStreamDB
 
 ![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
-- __High Throughput__
+The database built for IoT streaming data storage and real-time stream processing.
 
-    By maximizing the use of network and disk, message delivery of HStreamDB achieves extremely high throughput.
+## Main Features
 
-- __Compatible with Redis Stream APIs__
+- __Push real-time data to your apps__
 
-    The client API of HStreamDB is fully compatible with Redis stream data type, and you can interact with it by any of Redis clients with standard Redis stream commands.
+    By subscribing to streams in HStreamDB, any update of the data stream will be pushed to your apps in real time, and this promotes your apps to be more responsive.
 
-- __Persistent Storage with Low Lentency__
+    You can also replace message brokers with HStreamDB and anything you do with message brokers can be done better with HStreamDB.
 
-    The message storage of HStreamDB is based on optimized RocksDB and provides extremely low write latency.
+- __Stream processing with farmiliar SQL__
 
-- __Millions of MQTT Topics on a Single Node__
+    HStreamDB provides built-in support for event-time based stream processing. You can use your familiar SQL to perform a variety of stream tasks: from basic filtering and transformation operations, to statistics, aggregation based on multiple kinds of time windows and even join between multiple streams.
 
-    The storage design of HStreamDB is not sensitive to the number of topics, and it is able to support millions of MQTT topics on a single server.
+- __Easy integration with a variety of external systems__
+
+    With connectors provided, you can easily integrate HStreamDB with other external systems, such as MQTT Broker, MySQL, Redis, ElasticSearch... More connectors will be added.
+
+- __Real-time query based on live materailze views__
+
+    With maintanning materialized views incrementally, the HStreamDB enables you to gain ahead-of-the-curve data insights that response to your business quickly.
+
+- __Reliable persistent storage with low lentency__
+
+    With an optimized storage design, not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data is written to it.
+
+- __Seamless scaling and high availability__
+
+    With the architecture that separates compute from storage, both compute and storage layers of HStreamDB can be independently scaled seamlessly. And with the consensus algorithm based on the optimized Paxos, data is securely replicated to multiple nodes which ensuring high availability of our system.
 
 For more information, please visit [HStreamDB homepage](https://hstream.io).
 
 ## Installation
 
-#### Install via HStreamDB Docker Image
+### Install via HStreamDB Docker Image
 
 ```sh
+docker pull hstreamdb/logdevice
 docker pull hstreamdb/hstream
 ```
 
-#### Build from Source
+## Quickstart
 
-See the [documentation](https://docs.hstream.io/development/build-from-source/).
+**For detailed instructions, follow [HStreamDB quickstart](https://docs.hstream.io/start/quickstart-with-docker/).**
 
-## Getting Started
+1. [Install HStreamDB](https://docs.hstream.io/start/quickstart-with-docker/#installation).
+2. [Start a local standalone HStream server](https://docs.hstream.io/start/quickstart-with-docker/#start-a-local-standalone-hstream-server-in-docker).
+3. [Start HStreamDB's interactive CLI](https://docs.hstream.io/start/quickstart-with-docker/#start-hstreamdbs-interactive-sql-cli) and [create your first stream](https://docs.hstream.io/start/quickstart-with-docker/#create-a-stream).
+4. [Run a continuous query](https://docs.hstream.io/start/quickstart-with-docker/#run-a-continuous-query-over-the-stream).
+5. [Start another interactive CLI](https://docs.hstream.io/start/quickstart-with-docker/#start-another-cli-session), then [insert some data into the stream and get query results](https://docs.hstream.io/start/quickstart-with-docker/#insert-data-into-the-stream).
 
-### Start HStreamDB Server
+## Documentation
 
-#### 1. Create a bridge network
-
-The bridge network will enable the containers to communicate as a single cluster while keeping them isolated from external networks.
-
-```sh
-docker network create -d bridge some-hstreamdb-net
-```
-
-> :warning: If you expose the port outside of your host, it will be open to anyone.
-
-#### 2. Start the server
-
-```sh
-docker run -d --network some-hstreamdb-net --name some-hstreamdb hstreamdb/hstream
-```
-
-> **_NOTE:_**
-> 1. Datas are stored in the `VOLUME /data`, which can be used with `-v /your/host/dir:/data` (see [use volumes](https://docs.docker.com/storage/volumes)).
-> 2. Default lisenling port is `6560`, you can expose the port outside of your host (e.g., via `-p` on `docker run`).
-
-### Connecting via redis-cli
-
-```sh
-docker run -it --rm --network some-hstreamdb-net redis redis-cli -h some-hstreamdb -p 6560
-```
-
-```
-some-hstreamdb:6560> xadd users * name alice age 20
-"1599444243554-0"
-some-hstreamdb:6560> xadd users * name bob age 20
-"1599444249940-0"
-some-hstreamdb:6560> xrange users - +
-1) 1) "1599444243554-0"
-   2) 1) "name"
-      2) "alice"
-      3) "age"
-      4) "20"
-2) 1) "1599444249940-0"
-   2) 1) "name"
-      2) "bob"
-      3) "age"
-      4) "20"
-```
+Check out [the documentation](https://docs.hstream.io/).
 
 ## Community, Discussion, Construction and Support
 
