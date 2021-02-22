@@ -17,6 +17,7 @@ import qualified Prelude                      as P
 import           RIO
 import qualified RIO.ByteString.Lazy          as BL
 import           System.Random
+import qualified Z.IO.Logger as Log
 
 data R
   = R
@@ -99,13 +100,11 @@ main = do
       records <- pollRecords mc 100 1000
       forM_ records $ \RawConsumerRecord {..} ->
         P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
-  logOptions <- logOptionsHandle stderr True
-  withLogFunc logOptions $ \lf -> do
+  -- logOptions <- logOptionsHandle stderr True
+  Log.withDefaultLogger $ do
     let taskConfig =
           TaskConfig
-            { tcMessageStoreType = Mock mockStore,
-              tcLogFunc = lf
-            }
+            { tcMessageStoreType = Mock mockStore }
     runTask taskConfig (HS.build streamBuilder)
 
 filterR :: Record TL.Text R -> Bool

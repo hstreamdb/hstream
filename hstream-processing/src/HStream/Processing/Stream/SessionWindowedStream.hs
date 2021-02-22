@@ -21,7 +21,8 @@ import           HStream.Processing.Stream.TimeWindows
 import           HStream.Processing.Table
 import           RIO
 import qualified RIO.Text                                 as T
-
+import qualified Z.IO.Logger as Log
+import qualified Z.Data.Builder as B
 data SessionWindowedStream k v
   = SessionWindowedStream
       { swsKeySerde :: Maybe (Serde k),
@@ -78,11 +79,11 @@ aggregateProcessor ::
   Processor k v
 aggregateProcessor storeName initialValue aggF sessionMergeF keySerde accSerde SessionWindows {..} = Processor $ \r@Record {..} -> do
   store <- getSessionStateStore storeName
-  logDebug $ "recordTimestamp: " <> displayShow recordTimestamp
+  liftIO $ Log.debug $ "recordTimestamp: " <> (B.stringModifiedUTF8 . show)  recordTimestamp
   let rk = fromJust recordKey
   let rkBytes = runSer (serializer keySerde) rk
   overlappedSessions <- liftIO $ findSessions rkBytes (recordTimestamp - swInactivityGap) (recordTimestamp + swInactivityGap) store
-  logDebug $ "overlappedSessions: " <> displayShow (length overlappedSessions)
+  liftIO $ Log.debug $ "overlappedSessions: " <> B.encodePrim (length overlappedSessions)
   if null overlappedSessions
     then do
       let newSession = mkTimeWindowKey rkBytes (mkTimeWindow recordTimestamp recordTimestamp)
@@ -94,8 +95,8 @@ aggregateProcessor storeName initialValue aggF sessionMergeF keySerde accSerde S
       (mergedWindowKey, mergedAccBytes) <-
         foldM
           ( \(mergedWindowKey, accValueBytes) (curWindowKey, curValueBytes) -> do
-              logDebug $ "mergedSessionWindow: " <> displayShow (twkWindow mergedWindowKey)
-              logDebug $ "curSessionWindow: " <> displayShow (twkWindow curWindowKey)
+              liftIO $ Log.debug $ "mergedSessionWindow: " <> (B.stringModifiedUTF8 . show . twkWindow) mergedWindowKey
+              liftIO $ Log.debug $ "curSessionWindow: " <> (B.stringModifiedUTF8 . show . twkWindow) curWindowKey
               let newStartTime = min (tWindowStart $ twkWindow mergedWindowKey) (tWindowStart $ twkWindow curWindowKey)
               let newEndTime = max (tWindowEnd $ twkWindow mergedWindowKey) (tWindowEnd $ twkWindow curWindowKey)
               let newWindowKey = mergedWindowKey {twkWindow = mkTimeWindow newStartTime newEndTime}
@@ -103,11 +104,11 @@ aggregateProcessor storeName initialValue aggF sessionMergeF keySerde accSerde S
               let curValue = runDeser (deserializer accSerde) curValueBytes
               let newValue = sessionMergeF rk accValue curValue
               liftIO $ ssRemove curWindowKey store
-              logDebug $ "removed session window: " <> displayShow (twkWindow curWindowKey)
+              liftIO $ Log.debug $ "removed session window: " <> (B.stringModifiedUTF8 . show . twkWindow) curWindowKey
               return (newWindowKey, runSer (serializer accSerde) newValue)
           )
           (mkTimeWindowKey rkBytes (mkTimeWindow recordTimestamp recordTimestamp), runSer (serializer accSerde) (aggF initialValue r))
           overlappedSessions
       liftIO $ ssPut mergedWindowKey mergedAccBytes store
-      logDebug $ "last merged session window: " <> displayShow (twkWindow mergedWindowKey)
+      liftIO $ Log.debug $ "last merged session window: " <> (B.stringModifiedUTF8 . show . twkWindow) mergedWindowKey
       forward r {recordKey = Just mergedWindowKey {twkKey = rk}, recordValue = runDeser (deserializer accSerde) mergedAccBytes}

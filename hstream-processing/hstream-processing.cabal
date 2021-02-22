@@ -72,6 +72,8 @@ executable processor-example0
     , random
     , rio
     , text
+    , Z-IO
+
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -87,6 +89,7 @@ executable processor-example1
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -101,6 +104,7 @@ executable stream-example0
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -116,6 +120,7 @@ executable stream-example1
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -131,6 +136,7 @@ executable stream-example2
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -146,6 +152,7 @@ executable stream-example3
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -161,6 +168,7 @@ executable stream-example4
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -176,6 +184,7 @@ executable stream-example5
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall
@@ -192,6 +201,7 @@ executable logdevice-example0
     , random
     , rio
     , text
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:      -Wall

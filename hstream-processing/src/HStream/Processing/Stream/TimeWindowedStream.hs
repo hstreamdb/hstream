@@ -20,7 +20,8 @@ import           HStream.Processing.Stream.TimeWindows
 import           HStream.Processing.Table
 import           RIO
 import qualified RIO.Text                              as T
-
+import qualified Z.IO.Logger as Log
+import qualified Z.Data.Builder as B
 data TimeWindowedStream k v
   = TimeWindowedStream
       { twsKeySerde :: Maybe (Serde k),
@@ -74,9 +75,9 @@ aggregateProcessor ::
 aggregateProcessor storeName initialValue aggF keySerde accSerde windows@TimeWindows {..} = Processor $ \r@Record {..} -> do
   ctx <- ask
   store <- getKVStateStore storeName
-  logDebug $ "recordTimestamp: " <> displayShow recordTimestamp
+  liftIO $ Log.debug $ "recordTimestamp: " <> B.stringModifiedUTF8 (show recordTimestamp)
   let matchedWindows = windowsFor recordTimestamp windows
-  logDebug $ "matchedWindows: " <> displayShow matchedWindows
+  liftIO $ Log.debug $ "matchedWindows: " <> B.stringModifiedUTF8 (show matchedWindows)
   observedStreamTime <- liftIO $ getTimestampInTaskContext ctx
   forM_
     matchedWindows
@@ -91,7 +92,7 @@ aggregateProcessor storeName initialValue aggF keySerde accSerde windows@TimeWin
             let sNewAcc = runSer (serializer accSerde) newAcc
             liftIO $ ksPut key sNewAcc store
             forward r {recordKey = Just windowKey, recordValue = newAcc}
-          else logWarn "Skipping record for expired window."
+          else liftIO $ Log.warning "Skipping record for expired window."
     )
 
 windowsFor :: Int64 -> TimeWindows -> [TimeWindow]

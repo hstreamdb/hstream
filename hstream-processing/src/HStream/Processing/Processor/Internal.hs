@@ -131,25 +131,25 @@ data Task
 data TaskContext
   = TaskContext
       { taskConfig :: Task,
-        tctLogFunc :: LogFunc,
+        -- tctLogFunc :: LogFunc,
         curProcessor :: IORef T.Text,
         tcTimestamp :: IORef Int64
       }
 
-instance HasLogFunc TaskContext where
-  logFuncL = lens tctLogFunc (\x y -> x {tctLogFunc = y})
+-- instance HasLogFunc TaskContext where
+--   logFuncL = lens tctLogFunc (\x y -> x {tctLogFunc = y})
 
 buildTaskContext ::
   Task ->
-  LogFunc ->
+  -- LogFunc ->
   IO TaskContext
-buildTaskContext task lf = do
+buildTaskContext task = do
   pRef <- newIORef ""
   tRef <- newIORef (-1)
   return $
     TaskContext
       { taskConfig = task,
-        tctLogFunc = lf,
+        -- tctLogFunc = lf,
         curProcessor = pRef,
         tcTimestamp = tRef
       }

@@ -40,9 +40,9 @@ import           RIO.HashMap.Partial                   as HM'
 import qualified RIO.HashSet                           as HS
 import qualified RIO.List                              as L
 import qualified RIO.Text                              as T
-
+import qualified Z.IO.Logger                           as Log 
+import qualified Z.Data.Builder                        as B
 -- import qualified Prelude as P
-
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =
   let _ = validateTopology tp
@@ -137,7 +137,7 @@ buildSourceProcessor ::
   Processor BL.ByteString BL.ByteString
 buildSourceProcessor SourceConfig {..} = Processor $ \r@Record {..} -> do
   -- deserialize and forward
-  logDebug "enter source processor"
+  liftIO $ Log.debug "enter source processor"
   ctx <- ask
   writeIORef (curProcessor ctx) sourceName
   let rk = fmap runDeser keyDeserializer <*> recordKey
@@ -165,7 +165,7 @@ buildSinkProcessor ::
   SinkConfig k v ->
   Processor k v
 buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
-  logDebug "enter sink processor"
+  liftIO $ Log.debug "enter sink processor"
   let rk = liftA2 runSer keySerializer recordKey
   let rv = runSer valueSerializer recordValue
   forward r {recordKey = rk, recordValue = rv}
@@ -257,13 +257,13 @@ runTask TaskConfig {..} task@Task {..} = do
               )
               taskTopologyForward
               taskSinkConfig
-      ctx <- buildTaskContext task {taskTopologyForward = newTaskTopologyForward} tcLogFunc
-      forever
+      ctx <- buildTaskContext task {taskTopologyForward = newTaskTopologyForward} 
+      forever 
         $ runRIO ctx
         $ do
-          logDebug "start iteration..."
+          liftIO $ Log.debug "start iteration..."
           rawRecords <- liftIO $ pollRecords topicConsumer 100 2000
-          logDebug $ "polled " <> display (length rawRecords) <> " records"
+          liftIO $ Log.debug $ "polled " <> B.encodePrim (length rawRecords) <> " records"
           forM_
             rawRecords
             ( \RawConsumerRecord {..} -> do
@@ -275,8 +275,8 @@ runTask TaskConfig {..} task@Task {..} = do
 
 data TaskConfig
   = TaskConfig
-      { tcMessageStoreType :: MessageStoreType,
-        tcLogFunc :: LogFunc
+      { tcMessageStoreType :: MessageStoreType --,
+        -- tcLogFunc :: LogFunc
       }
 
 forward ::
@@ -286,12 +286,12 @@ forward ::
 forward record = do
   ctx <- ask
   curProcessorName <- readIORef $ curProcessor ctx
-  logDebug $ "enter forward, curProcessor is " <> display curProcessorName
+  liftIO $ Log.debug $ "enter forward, curProcessor is " <> B.stringModifiedUTF8 (T.unpack curProcessorName)
   let taskInfo = taskConfig ctx
   let tplgy = taskTopologyForward taskInfo
   let (_, children) = tplgy HM'.! curProcessorName
   for_ children $ \cname -> do
-    logDebug $ "forward to child: " <> display cname
+    liftIO $ Log.debug $ "forward to child: " <> B.stringModifiedUTF8 (T.unpack cname)
     writeIORef (curProcessor ctx) cname
     let (eProcessor, _) = tplgy HM'.! cname
     runEP eProcessor (mkERecord record)
@@ -303,7 +303,7 @@ getKVStateStore ::
 getKVStateStore storeName = do
   ctx <- ask
   curProcessorName <- readIORef $ curProcessor ctx
-  logDebug $ display curProcessorName <> " ready to get state store " <> display storeName
+  liftIO $ Log.debug $ B.stringModifiedUTF8 (T.unpack curProcessorName) <> " ready to get state store " <> B.stringModifiedUTF8 (T.unpack storeName)
   let taskInfo = taskConfig ctx
   case HM.lookup storeName (taskStores taskInfo) of
     Just (stateStore, processors) ->
@@ -319,7 +319,7 @@ getSessionStateStore ::
 getSessionStateStore storeName = do
   ctx <- ask
   curProcessorName <- readIORef $ curProcessor ctx
-  logDebug $ display curProcessorName <> " ready to get state store " <> display storeName
+  liftIO $ Log.debug $ B.stringModifiedUTF8 (T.unpack curProcessorName) <> " ready to get state store " <> B.stringModifiedUTF8 (T.unpack storeName)
   let taskInfo = taskConfig ctx
   case HM.lookup storeName (taskStores taskInfo) of
     Just (stateStore, processors) ->
@@ -335,7 +335,7 @@ getTimestampedKVStateStore ::
 getTimestampedKVStateStore storeName = do
   ctx <- ask
   curProcessorName <- readIORef $ curProcessor ctx
-  logDebug $ display curProcessorName <> " ready to get state store " <> display storeName
+  liftIO $ Log.debug $ B.stringModifiedUTF8 (T.unpack curProcessorName) <> " ready to get state store " <> B.stringModifiedUTF8 (T.unpack storeName)
   let taskInfo = taskConfig ctx
   case HM.lookup storeName (taskStores taskInfo) of
     Just (stateStore, processors) ->
