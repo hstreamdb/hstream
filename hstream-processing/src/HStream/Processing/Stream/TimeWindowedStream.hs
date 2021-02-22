@@ -94,6 +94,8 @@ aggregateProcessor storeName initialValue aggF keySerde accSerde windows@TimeWin
             forward r {recordKey = Just windowKey, recordValue = newAcc}
           else liftIO $ Log.warning "Skipping record for expired window."
     )
+  liftIO $ Log.flushDefaultLogger
+
 
 windowsFor :: Int64 -> TimeWindows -> [TimeWindow]
 windowsFor timestamp TimeWindows {..} =

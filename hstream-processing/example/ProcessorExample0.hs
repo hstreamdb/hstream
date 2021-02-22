@@ -16,7 +16,6 @@ import qualified Prelude                      as P
 import           RIO
 import qualified RIO.ByteString.Lazy          as BL
 import           System.Random
-import qualified Z.IO.Logger as Log
 data R
   = R
       { temperature :: Int,
@@ -76,11 +75,10 @@ main = do
       forM_ records $ \RawConsumerRecord {..} ->
         P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
   -- logOptions <- logOptionsHandle stderr True
-  Log.withDefaultLogger $ do
-    let taskConfig =
+  let taskConfig =
           TaskConfig
             { tcMessageStoreType = Mock mockStore}
-    runTask taskConfig task
+  runTask taskConfig task
 
 filterR :: Record Void R -> Bool
 filterR Record {..} =

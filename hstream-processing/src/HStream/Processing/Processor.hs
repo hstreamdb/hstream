@@ -138,6 +138,7 @@ buildSourceProcessor ::
 buildSourceProcessor SourceConfig {..} = Processor $ \r@Record {..} -> do
   -- deserialize and forward
   liftIO $ Log.debug "enter source processor"
+  liftIO $ Log.flushDefaultLogger
   ctx <- ask
   writeIORef (curProcessor ctx) sourceName
   let rk = fmap runDeser keyDeserializer <*> recordKey
@@ -166,6 +167,7 @@ buildSinkProcessor ::
   Processor k v
 buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
   liftIO $ Log.debug "enter sink processor"
+  liftIO $ Log.flushDefaultLogger
   let rk = liftA2 runSer keySerializer recordKey
   let rv = runSer valueSerializer recordValue
   forward r {recordKey = rk, recordValue = rv}
@@ -264,6 +266,7 @@ runTask TaskConfig {..} task@Task {..} = do
           liftIO $ Log.debug "start iteration..."
           rawRecords <- liftIO $ pollRecords topicConsumer 100 2000
           liftIO $ Log.debug $ "polled " <> B.encodePrim (length rawRecords) <> " records"
+          liftIO $ Log.flushDefaultLogger
           forM_
             rawRecords
             ( \RawConsumerRecord {..} -> do
@@ -295,6 +298,8 @@ forward record = do
     writeIORef (curProcessor ctx) cname
     let (eProcessor, _) = tplgy HM'.! cname
     runEP eProcessor (mkERecord record)
+  liftIO $ Log.flushDefaultLogger
+
 
 getKVStateStore ::
   (Typeable k, Typeable v, Ord k) =>
@@ -305,6 +310,7 @@ getKVStateStore storeName = do
   curProcessorName <- readIORef $ curProcessor ctx
   liftIO $ Log.debug $ B.stringModifiedUTF8 (T.unpack curProcessorName) <> " ready to get state store " <> B.stringModifiedUTF8 (T.unpack storeName)
   let taskInfo = taskConfig ctx
+  liftIO $ Log.flushDefaultLogger
   case HM.lookup storeName (taskStores taskInfo) of
     Just (stateStore, processors) ->
       if HS.member curProcessorName processors
@@ -320,6 +326,7 @@ getSessionStateStore storeName = do
   ctx <- ask
   curProcessorName <- readIORef $ curProcessor ctx
   liftIO $ Log.debug $ B.stringModifiedUTF8 (T.unpack curProcessorName) <> " ready to get state store " <> B.stringModifiedUTF8 (T.unpack storeName)
+  liftIO $ Log.flushDefaultLogger
   let taskInfo = taskConfig ctx
   case HM.lookup storeName (taskStores taskInfo) of
     Just (stateStore, processors) ->
@@ -336,6 +343,7 @@ getTimestampedKVStateStore storeName = do
   ctx <- ask
   curProcessorName <- readIORef $ curProcessor ctx
   liftIO $ Log.debug $ B.stringModifiedUTF8 (T.unpack curProcessorName) <> " ready to get state store " <> B.stringModifiedUTF8 (T.unpack storeName)
+  liftIO $ Log.flushDefaultLogger
   let taskInfo = taskConfig ctx
   case HM.lookup storeName (taskStores taskInfo) of
     Just (stateStore, processors) ->

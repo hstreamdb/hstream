@@ -111,4 +111,5 @@ aggregateProcessor storeName initialValue aggF sessionMergeF keySerde accSerde S
           overlappedSessions
       liftIO $ ssPut mergedWindowKey mergedAccBytes store
       liftIO $ Log.debug $ "last merged session window: " <> (B.stringModifiedUTF8 . show . twkWindow) mergedWindowKey
+      liftIO $ Log.flushDefaultLogger
       forward r {recordKey = Just mergedWindowKey {twkKey = rk}, recordValue = runDeser (deserializer accSerde) mergedAccBytes}

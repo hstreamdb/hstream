@@ -22,7 +22,6 @@ import           HStream.Processing.Util
 import qualified Prelude                                         as P
 import           RIO
 import           System.Random
-import qualified Z.IO.Logger as Log
 
 data R
   = R
@@ -111,11 +110,10 @@ main = do
             ++ " , value: "
             ++ show (B.decode rcrValue :: Int)
   -- logOptions <- logOptionsHandle stderr True
-  Log.withDefaultLogger $ do
-    let taskConfig =
+  let taskConfig =
           TaskConfig
             { tcMessageStoreType = Mock mockStore }
-    runTask taskConfig (HS.build streamBuilder)
+  runTask taskConfig (HS.build streamBuilder)
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =

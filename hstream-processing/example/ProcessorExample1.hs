@@ -19,7 +19,6 @@ import qualified Prelude                      as P
 import           RIO
 import qualified RIO.ByteString.Lazy          as BL
 import           System.Random
-import qualified Z.IO.Logger as Log
 
 data R
   = R
@@ -91,11 +90,10 @@ main = do
             ++ " , value: "
             ++ show (B.decode rcrValue :: Int)
   -- logOptions <- logOptionsHandle stderr True
-  Log.withDefaultLogger $ do
-    let taskConfig =
+  let taskConfig =
           TaskConfig
             { tcMessageStoreType = Mock mockStore }
-    runTask taskConfig task
+  runTask taskConfig task
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =
