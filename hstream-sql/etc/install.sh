@@ -1,7 +1,7 @@
 #!/usr/local/bin/bash
 
 make distclean
-bnfc-comm --haskell --functor --text-token -p HStream -m -d SQL.cf
+bnfc --haskell --functor --text-token -p HStream -m -d SQL.cf
 make
 cp HStream/SQL/Lex.x .
 cp HStream/SQL/Par.y .

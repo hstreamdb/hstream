@@ -10,6 +10,7 @@ import qualified Data.Text as Text
 keywords :: [Text]
 keywords =
   [ "SELECT", "AS", "FROM", "WHERE", "OR", "AND", "NOT", "BETWEEN"
+  , "EMIT", "CHANGES"
   , "JOIN", "INNER", "LEFT", "OUTER"
   , "GROUP", "BY", "WITHIN", "ON", "ORDER", "HAVING"
   , "TUMBLING", "HOPPING", "SESSION"
