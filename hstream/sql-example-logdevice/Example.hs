@@ -26,9 +26,9 @@ import           System.Random                (Random (randomR), getStdRandom)
 import           Z.Data.CBytes                (pack)
 
 ---------------------------------- Example -------------------------------------
--- CREATE STREAM demoSink AS SELECT * FROM source1 WITH (FORMAT = "JSON");
+-- CREATE STREAM demoSink AS SELECT * FROM source1 EMIT CHANGES WITH (FORMAT = "JSON");
 
--- CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2 INNER JOIN source1 WITHIN (INTERVAL 5 SECOND) ON (source2.temperature = source1.temperature) WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
+-- CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2 INNER JOIN source1 WITHIN (INTERVAL 5 SECOND) ON (source2.temperature = source1.temperature) WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = "JSON");
 --------------------------------------------------------------------------------
 
 main :: IO ()

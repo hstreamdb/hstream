@@ -71,47 +71,49 @@ import qualified Data.Text
   'AVG' { PT _ (TS _ 18) }
   'BETWEEN' { PT _ (TS _ 19) }
   'BY' { PT _ (TS _ 20) }
-  'COUNT' { PT _ (TS _ 21) }
-  'COUNT(*)' { PT _ (TS _ 22) }
-  'CREATE' { PT _ (TS _ 23) }
-  'DATE' { PT _ (TS _ 24) }
-  'DAY' { PT _ (TS _ 25) }
-  'FORMAT' { PT _ (TS _ 26) }
-  'FROM' { PT _ (TS _ 27) }
-  'GROUP' { PT _ (TS _ 28) }
-  'HAVING' { PT _ (TS _ 29) }
-  'HOPPING' { PT _ (TS _ 30) }
-  'INNER' { PT _ (TS _ 31) }
-  'INSERT' { PT _ (TS _ 32) }
-  'INTERVAL' { PT _ (TS _ 33) }
-  'INTO' { PT _ (TS _ 34) }
-  'JOIN' { PT _ (TS _ 35) }
-  'LEFT' { PT _ (TS _ 36) }
-  'MAX' { PT _ (TS _ 37) }
-  'MIN' { PT _ (TS _ 38) }
-  'MINUTE' { PT _ (TS _ 39) }
-  'MONTH' { PT _ (TS _ 40) }
-  'NOT' { PT _ (TS _ 41) }
-  'ON' { PT _ (TS _ 42) }
-  'OR' { PT _ (TS _ 43) }
-  'OUTER' { PT _ (TS _ 44) }
-  'SECOND' { PT _ (TS _ 45) }
-  'SELECT' { PT _ (TS _ 46) }
-  'SESSION' { PT _ (TS _ 47) }
-  'STREAM' { PT _ (TS _ 48) }
-  'SUM' { PT _ (TS _ 49) }
-  'TIME' { PT _ (TS _ 50) }
-  'TUMBLING' { PT _ (TS _ 51) }
-  'VALUES' { PT _ (TS _ 52) }
-  'WEEK' { PT _ (TS _ 53) }
-  'WHERE' { PT _ (TS _ 54) }
-  'WITH' { PT _ (TS _ 55) }
-  'WITHIN' { PT _ (TS _ 56) }
-  'YEAR' { PT _ (TS _ 57) }
-  '[' { PT _ (TS _ 58) }
-  ']' { PT _ (TS _ 59) }
-  '{' { PT _ (TS _ 60) }
-  '}' { PT _ (TS _ 61) }
+  'CHANGES' { PT _ (TS _ 21) }
+  'COUNT' { PT _ (TS _ 22) }
+  'COUNT(*)' { PT _ (TS _ 23) }
+  'CREATE' { PT _ (TS _ 24) }
+  'DATE' { PT _ (TS _ 25) }
+  'DAY' { PT _ (TS _ 26) }
+  'EMIT' { PT _ (TS _ 27) }
+  'FORMAT' { PT _ (TS _ 28) }
+  'FROM' { PT _ (TS _ 29) }
+  'GROUP' { PT _ (TS _ 30) }
+  'HAVING' { PT _ (TS _ 31) }
+  'HOPPING' { PT _ (TS _ 32) }
+  'INNER' { PT _ (TS _ 33) }
+  'INSERT' { PT _ (TS _ 34) }
+  'INTERVAL' { PT _ (TS _ 35) }
+  'INTO' { PT _ (TS _ 36) }
+  'JOIN' { PT _ (TS _ 37) }
+  'LEFT' { PT _ (TS _ 38) }
+  'MAX' { PT _ (TS _ 39) }
+  'MIN' { PT _ (TS _ 40) }
+  'MINUTE' { PT _ (TS _ 41) }
+  'MONTH' { PT _ (TS _ 42) }
+  'NOT' { PT _ (TS _ 43) }
+  'ON' { PT _ (TS _ 44) }
+  'OR' { PT _ (TS _ 45) }
+  'OUTER' { PT _ (TS _ 46) }
+  'SECOND' { PT _ (TS _ 47) }
+  'SELECT' { PT _ (TS _ 48) }
+  'SESSION' { PT _ (TS _ 49) }
+  'STREAM' { PT _ (TS _ 50) }
+  'SUM' { PT _ (TS _ 51) }
+  'TIME' { PT _ (TS _ 52) }
+  'TUMBLING' { PT _ (TS _ 53) }
+  'VALUES' { PT _ (TS _ 54) }
+  'WEEK' { PT _ (TS _ 55) }
+  'WHERE' { PT _ (TS _ 56) }
+  'WITH' { PT _ (TS _ 57) }
+  'WITHIN' { PT _ (TS _ 58) }
+  'YEAR' { PT _ (TS _ 59) }
+  '[' { PT _ (TS _ 60) }
+  ']' { PT _ (TS _ 61) }
+  '{' { PT _ (TS _ 62) }
+  '}' { PT _ (TS _ 63) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -162,7 +164,7 @@ ListValueExpr : {- empty -} { (Nothing, []) }
               | ValueExpr ',' ListValueExpr { (fst $1, (:) (snd $1) (snd $3)) }
 
 Select :: { (Maybe (Int, Int),  (HStream.SQL.Abs.Select (Maybe (Int, Int))) ) }
-Select : Sel From Where GroupBy Having { (fst $1, HStream.SQL.Abs.DSelect (fst $1) (snd $1) (snd $2) (snd $3) (snd $4) (snd $5)) }
+Select : Sel From Where GroupBy Having 'EMIT' 'CHANGES' { (fst $1, HStream.SQL.Abs.DSelect (fst $1) (snd $1) (snd $2) (snd $3) (snd $4) (snd $5)) }
 
 Sel :: { (Maybe (Int, Int),  (HStream.SQL.Abs.Sel (Maybe (Int, Int))) ) }
 Sel : 'SELECT' SelList { (Just (tokenLineCol $1), HStream.SQL.Abs.DSel (Just (tokenLineCol $1)) (snd $2)) }

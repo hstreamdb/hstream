@@ -10,11 +10,11 @@ Implemented queries:
 It can parse the following file content:
 
 ```
-SELECT * FROM temperatureSource;
+SELECT * FROM temperatureSource EMIT CHANGES;
 
 CREATE STREAM demoStream WITH (FORMAT = "JSON");
 
-CREATE STREAM demoSink AS SELECT SUM(humiditySource.humidity) AS result FROM humiditySource INNER JOIN temperatureSource WITHIN (INTERVAL 5 SECOND) ON (humiditySource.temperature = temperatureSource.temperature) WHERE humiditySource.humidity > 20 GROUP BY humiditySource.humidity, TUMBLING (INTERVAL 10 SECOND) WITH (FORMAT = "JSON");
+CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2 INNER JOIN source1 WITHIN (INTERVAL 5 SECOND) ON (source2.temperature = source1.temperature) WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = "JSON");
 
 INSERT INTO demoStream (temperature, humidity) VALUES (30, 75);
 -}
@@ -42,7 +42,7 @@ separator Ident "," ;
 separator ValueExpr "," ;
 
 ---- Select Query
-DSelect. Select ::= Sel From Where GroupBy Having ;
+DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;
 
 -- Sel
 DSel. Sel ::= "SELECT" SelList ;

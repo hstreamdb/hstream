@@ -137,7 +137,7 @@ instance Print [HStream.SQL.Abs.ValueExpr a] where
 
 instance Print (HStream.SQL.Abs.Select a) where
   prt i e = case e of
-    HStream.SQL.Abs.DSelect _ sel from where_ groupby having -> prPrec i 0 (concatD [prt 0 sel, prt 0 from, prt 0 where_, prt 0 groupby, prt 0 having])
+    HStream.SQL.Abs.DSelect _ sel from where_ groupby having -> prPrec i 0 (concatD [prt 0 sel, prt 0 from, prt 0 where_, prt 0 groupby, prt 0 having, doc (showString "EMIT"), doc (showString "CHANGES")])
 
 instance Print (HStream.SQL.Abs.Sel a) where
   prt i e = case e of

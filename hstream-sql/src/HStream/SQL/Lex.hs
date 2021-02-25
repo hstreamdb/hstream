@@ -184,7 +184,7 @@ eitherResIdent tv s = treeFind resWords
                               | s == a = t
 
 resWords :: BTree
-resWords = b "INNER" 31 (b "AND" 16 (b ":" 8 (b "+" 4 (b ")" 2 (b "(" 1 N N) (b "*" 3 N N)) (b "-" 6 (b "," 5 N N) (b "." 7 N N))) (b "<>" 12 (b "<" 10 (b ";" 9 N N) (b "<=" 11 N N)) (b ">" 14 (b "=" 13 N N) (b ">=" 15 N N)))) (b "DATE" 24 (b "BY" 20 (b "AVG" 18 (b "AS" 17 N N) (b "BETWEEN" 19 N N)) (b "COUNT(*)" 22 (b "COUNT" 21 N N) (b "CREATE" 23 N N))) (b "GROUP" 28 (b "FORMAT" 26 (b "DAY" 25 N N) (b "FROM" 27 N N)) (b "HOPPING" 30 (b "HAVING" 29 N N) N)))) (b "SESSION" 47 (b "MINUTE" 39 (b "JOIN" 35 (b "INTERVAL" 33 (b "INSERT" 32 N N) (b "INTO" 34 N N)) (b "MAX" 37 (b "LEFT" 36 N N) (b "MIN" 38 N N))) (b "OR" 43 (b "NOT" 41 (b "MONTH" 40 N N) (b "ON" 42 N N)) (b "SECOND" 45 (b "OUTER" 44 N N) (b "SELECT" 46 N N)))) (b "WITH" 55 (b "TUMBLING" 51 (b "SUM" 49 (b "STREAM" 48 N N) (b "TIME" 50 N N)) (b "WEEK" 53 (b "VALUES" 52 N N) (b "WHERE" 54 N N))) (b "]" 59 (b "YEAR" 57 (b "WITHIN" 56 N N) (b "[" 58 N N)) (b "}" 61 (b "{" 60 N N) N))))
+resWords = b "HOPPING" 32 (b "AND" 16 (b ":" 8 (b "+" 4 (b ")" 2 (b "(" 1 N N) (b "*" 3 N N)) (b "-" 6 (b "," 5 N N) (b "." 7 N N))) (b "<>" 12 (b "<" 10 (b ";" 9 N N) (b "<=" 11 N N)) (b ">" 14 (b "=" 13 N N) (b ">=" 15 N N)))) (b "CREATE" 24 (b "BY" 20 (b "AVG" 18 (b "AS" 17 N N) (b "BETWEEN" 19 N N)) (b "COUNT" 22 (b "CHANGES" 21 N N) (b "COUNT(*)" 23 N N))) (b "FORMAT" 28 (b "DAY" 26 (b "DATE" 25 N N) (b "EMIT" 27 N N)) (b "GROUP" 30 (b "FROM" 29 N N) (b "HAVING" 31 N N))))) (b "SELECT" 48 (b "MIN" 40 (b "INTO" 36 (b "INSERT" 34 (b "INNER" 33 N N) (b "INTERVAL" 35 N N)) (b "LEFT" 38 (b "JOIN" 37 N N) (b "MAX" 39 N N))) (b "ON" 44 (b "MONTH" 42 (b "MINUTE" 41 N N) (b "NOT" 43 N N)) (b "OUTER" 46 (b "OR" 45 N N) (b "SECOND" 47 N N)))) (b "WHERE" 56 (b "TIME" 52 (b "STREAM" 50 (b "SESSION" 49 N N) (b "SUM" 51 N N)) (b "VALUES" 54 (b "TUMBLING" 53 N N) (b "WEEK" 55 N N))) (b "[" 60 (b "WITHIN" 58 (b "WITH" 57 N N) (b "YEAR" 59 N N)) (b "{" 62 (b "]" 61 N N) (b "}" 63 N N)))))
    where b s n = let bs = Data.Text.pack s
                  in  B bs (TS bs n)
 
@@ -300,6 +300,7 @@ alex_action_7 =  tok (\p s -> PT p (TD s))
 
 
 
+
 -- Do not remove this comment. Required to fix CPP parsing when using GCC and a clang-compiled alex.
 #if __GLASGOW_HASKELL__ > 706
 #define GTE(n,m) (tagToEnum# (n >=# m))
@@ -334,6 +335,7 @@ uncheckedShiftL# = shiftL#
 #endif
 
 {-# INLINE alexIndexInt16OffAddr #-}
+alexIndexInt16OffAddr :: AlexAddr -> Int# -> Int#
 alexIndexInt16OffAddr (AlexA# arr) off =
 #ifdef WORDS_BIGENDIAN
   narrow16Int# i
@@ -343,7 +345,10 @@ alexIndexInt16OffAddr (AlexA# arr) off =
         low  = int2Word# (ord# (indexCharOffAddr# arr off'))
         off' = off *# 2#
 #else
-  indexInt16OffAddr# arr off
+#if __GLASGOW_HASKELL__ >= 901
+  int16ToInt#
+#endif
+    (indexInt16OffAddr# arr off)
 #endif
 
 
@@ -351,6 +356,7 @@ alexIndexInt16OffAddr (AlexA# arr) off =
 
 
 {-# INLINE alexIndexInt32OffAddr #-}
+alexIndexInt32OffAddr :: AlexAddr -> Int# -> Int#
 alexIndexInt32OffAddr (AlexA# arr) off =
 #ifdef WORDS_BIGENDIAN
   narrow32Int# i
@@ -364,7 +370,10 @@ alexIndexInt32OffAddr (AlexA# arr) off =
    b0   = int2Word# (ord# (indexCharOffAddr# arr off'))
    off' = off *# 4#
 #else
-  indexInt32OffAddr# arr off
+#if __GLASGOW_HASKELL__ >= 901
+  int32ToInt#
+#endif
+    (indexInt32OffAddr# arr off)
 #endif
 
 
