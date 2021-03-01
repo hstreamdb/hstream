@@ -9,6 +9,9 @@ cradle:
     - path: "hstream/sql-example-logdevice/Example.hs"
       component: "hstream:exe:sql-example-logdevice"
 
+    - path: "hstream/test"
+      component: "hstream:test:hstream-test"
+
     - path: "hstream-hesp/src"
       component: "lib:hesp"
 
