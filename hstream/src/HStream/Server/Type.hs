@@ -45,14 +45,14 @@ data TaskInfo
   | CreateTopic
       { taskid     :: Int,
         tasksql    :: Text,
-        taskTopic  :: Text,
+        taskStream :: Text,
         taskState  :: TaskState,
         createTime :: UTCTime
       }
   | InsertTopic
       { taskid     :: Int,
         tasksql    :: Text,
-        taskTopic  :: Text,
+        taskStream :: Text,
         taskState  :: TaskState,
         createTime :: UTCTime
       }
