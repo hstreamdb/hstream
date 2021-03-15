@@ -33,7 +33,7 @@ The database built for IoT streaming data storage and real-time stream processin
 
 - __Reliable persistent storage with low latency__
 
-    With an optimized storage design based on [LogDevide](https://logdevice.io/), not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data written to it.
+    With an optimized storage design based on [LogDevice](https://logdevice.io/), not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data written to it.
 
 - __Seamless scaling and high availability__
 
