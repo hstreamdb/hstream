@@ -156,6 +156,9 @@ if __name__ == '__main__':
     parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
     parser_haskell_cabal.add_argument(
         '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
+    # TODO: since python3.9 there is BooleanOptionalAction available in argparse
+    parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
+    parser_haskell_cabal.add_argument('--no-tty', action='store_true')
     parser_haskell_cabal.add_argument('--container-bin', default='docker')
     parser_haskell_cabal.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
@@ -174,6 +177,8 @@ if __name__ == '__main__':
     elif sub_command == 'shell':
         haskell_env(command='bash', cmd_args="", tty=True, interactive=True, rm=True, **args)
     elif sub_command == 'cabal':
-        haskell_env(command='/opt/ghc/bin/cabal', tty=True, interactive=True, rm=True, **args)
+        args['interactive'] = not args.pop('no_interactive')
+        args['tty'] = not args.pop('no_tty')
+        haskell_env(command='/opt/ghc/bin/cabal', rm=True, **args)
     else:
         parser.print_help()
