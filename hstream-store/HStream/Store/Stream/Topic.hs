@@ -188,20 +188,22 @@ getTopicGroupSync client path =
     StreamTopicGroup <$> newForeignPtr FFI.c_free_logdevice_loggroup_fun group'
 
 removeTopicGroupSync :: StreamClient -> CBytes -> IO ()
-removeTopicGroupSync client path =
+removeTopicGroupSync client path = do
+  Cache.delete topicCache path
   withForeignPtr (unStreamClient client) $ \client' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
-    void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync client' path' nullPtr
+    ZC.withCBytesUnsafe path $ \path' -> do
+      void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync client' path' nullPtr
 
 -- | The same as 'removeTopicGroupSync', but return the version of the
 -- logsconfig at which the topic group got removed.
 removeTopicGroupSync' :: StreamClient -> CBytes -> IO Word64
-removeTopicGroupSync' client path =
+removeTopicGroupSync' client path = do
+  Cache.delete topicCache path
   withForeignPtr (unStreamClient client) $ \client' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
-    (version, _) <- Z.withPrimUnsafe 0 $ \version' ->
-      E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync' client' path' version'
-    return version
+    ZC.withCBytesUnsafe path $ \path' -> do
+      (version, _) <- Z.withPrimUnsafe 0 $ \version' ->
+        E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync' client' path' version'
+      return version
 
 topicGroupGetRange :: StreamTopicGroup -> IO TopicRange
 topicGroupGetRange group =
