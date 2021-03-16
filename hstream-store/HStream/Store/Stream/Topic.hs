@@ -177,7 +177,7 @@ makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent = do
         (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' -> do
           void $ E.throwStreamErrorIfNotOK $
             FFI.c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
-        StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
+        StreamTopicGroup <$> newForeignPtr FFI.c_free_logdevice_loggroup_fun group'
 
 getTopicGroupSync :: StreamClient -> CBytes -> IO StreamTopicGroup
 getTopicGroupSync client path =
@@ -185,7 +185,7 @@ getTopicGroupSync client path =
   ZC.withCBytesUnsafe path $ \path' -> do
     (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_loggroup_sync client' path' group''
-    StreamTopicGroup <$> newForeignPtr FFI.c_free_lodevice_loggroup_fun group'
+    StreamTopicGroup <$> newForeignPtr FFI.c_free_logdevice_loggroup_fun group'
 
 removeTopicGroupSync :: StreamClient -> CBytes -> IO ()
 removeTopicGroupSync client path =
@@ -239,7 +239,7 @@ makeTopicDirectorySync client path attrs mkParent = do
       (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
         void $ E.throwStreamErrorIfNotOK $
           FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
-      StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
+      StreamTopicDirectory <$> newForeignPtr FFI.c_free_logdevice_logdirectory_fun dir'
 
 getTopicDirectorySync :: StreamClient -> CBytes -> IO StreamTopicDirectory
 getTopicDirectorySync (StreamClient client) path =
@@ -247,7 +247,7 @@ getTopicDirectorySync (StreamClient client) path =
   ZC.withCBytesUnsafe path $ \path' -> do
     (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_directory_sync client' path' dir''
-    StreamTopicDirectory <$> newForeignPtr FFI.c_free_lodevice_logdirectory_fun dir'
+    StreamTopicDirectory <$> newForeignPtr FFI.c_free_logdevice_logdirectory_fun dir'
 
 removeTopicDirectorySync :: StreamClient -> CBytes -> Bool -> IO ()
 removeTopicDirectorySync (StreamClient client) path recursive =
