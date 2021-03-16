@@ -71,7 +71,7 @@ uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group) {
   return group->rep->version();
 }
 
-void* free_lodevice_loggroup(logdevice_loggroup_t* group) { delete group; }
+void* free_logdevice_loggroup(logdevice_loggroup_t* group) { delete group; }
 
 // ----------------------------------------------------------------------------
 // LogConfigType: LogDirectory
@@ -116,7 +116,7 @@ ld_client_remove_directory_sync(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
-void* free_lodevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
+void* free_logdevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
 
 const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir) {
   return dir->rep->name().c_str();

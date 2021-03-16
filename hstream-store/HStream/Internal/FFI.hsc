@@ -296,11 +296,11 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
     -> MBA## (Ptr LogDeviceLogDirectory)
     -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h free_lodevice_logdirectory"
-  c_free_lodevice_logdirectory :: Ptr LogDeviceLogDirectory -> IO ()
+foreign import ccall unsafe "hs_logdevice.h free_logdevice_logdirectory"
+  c_free_logdevice_logdirectory :: Ptr LogDeviceLogDirectory -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h &free_lodevice_logdirectory"
-  c_free_lodevice_logdirectory_fun :: FunPtr (Ptr LogDeviceLogDirectory -> IO ())
+foreign import ccall unsafe "hs_logdevice.h &free_logdevice_logdirectory"
+  c_free_logdevice_logdirectory_fun :: FunPtr (Ptr LogDeviceLogDirectory -> IO ())
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_get_directory_sync"
   c_ld_client_get_directory_sync :: Ptr LogDeviceClient
@@ -364,10 +364,10 @@ foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_version"
   c_ld_loggroup_get_version :: Ptr LogDeviceLogGroup
                             -> IO Word64
 
-foreign import ccall safe "hs_logdevice.h free_lodevice_loggroup"
-  c_free_lodevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
-foreign import ccall unsafe "hs_logdevice.h &free_lodevice_loggroup"
-  c_free_lodevice_loggroup_fun :: FunPtr (Ptr LogDeviceLogGroup -> IO ())
+foreign import ccall safe "hs_logdevice.h free_logdevice_loggroup"
+  c_free_logdevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
+foreign import ccall unsafe "hs_logdevice.h &free_logdevice_loggroup"
+  c_free_logdevice_loggroup_fun :: FunPtr (Ptr LogDeviceLogGroup -> IO ())
 
 -------------------------------------------------------------------------------
 -- Writer API
