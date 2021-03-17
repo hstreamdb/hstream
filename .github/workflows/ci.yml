@@ -63,4 +63,33 @@ jobs:
 
       - name: Build and Test
         run: |
-          GHC_VERSION=${{ matrix.ghc }} script/docker-test.sh
+          python3 script/dev-tools cluster-start
+          sleep 5     # waiting cluster start
+
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} update
+
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --upgrade-dependencies --only-dependencies all
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --enable-tests --enable-benchmarks all
+
+          echo "====== Test hstream-store ======"
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-store
+          echo "====== Test hstream-sql ======"
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-sql
+          echo "====== Test hstream-processing ======"
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-processing
+          echo "====== Test hstream ======"
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream
+
+          # unfortunately, there is no `cabal check all`
+          #log_info "Run all cabal check..."
+          # Note that we ignore hstream-store package to run cabal check, because there
+          # is an unexpected warning:
+          #   ...
+          #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
+          #   Warning: Hackage would reject this package.
+          bash -c 'cd hstream-sql && python3 ../script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} check'
+          bash -c 'cd hstream-processing && python3 ../script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} check'
+          bash -c 'cd hstream && python3 ../script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} check'
+
+          echo "====== cabal haddock ======"
+          python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock --flag server-tests --enable-tests --enable-benchmarks all
