@@ -1,9 +1,8 @@
-name: Publish
+name: Publish latest
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [master, main]
 
 env:
   IMAGE_NAME: "hstreamdb/hstream"
@@ -21,7 +20,6 @@ jobs:
           echo "Login dockerhub..."
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-          TAG=${GITHUB_REF#refs/*/}
-          echo "Build & Push ${IMAGE_NAME}:${TAG}..."
-          docker build . -t ${IMAGE_NAME}:${TAG}
-          docker push ${IMAGE_NAME}:${TAG}
+          echo "Build & Push ${IMAGE_NAME}..."
+          docker build . -t ${IMAGE_NAME}:latest
+          docker push ${IMAGE_NAME}:latest
