@@ -7,3 +7,6 @@
 [submodule "z-yaml"]
 	path = z-yaml
 	url = git@github.com:ZHaskell/z-yaml.git
+[submodule "z-messagepack"]
+	path = z-messagepack
+	url = git@github.com:ZHaskell/z-messagepack.git
