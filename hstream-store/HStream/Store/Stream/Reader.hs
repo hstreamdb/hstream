@@ -14,7 +14,7 @@ module HStream.Store.Stream.Reader
 
     -- * Checkpointed Reader
   , StreamSyncCheckpointedReader
-  , newStreamSyncCheckpointReader
+  , newStreamSyncCheckpointedReader
   , checkpointedReaderStartReading
   , checkpointedReaderStopReading
   , checkpointedReaderSetTimeout
@@ -63,13 +63,12 @@ newStreamReader client max_logs buffer_size =
     i <- FFI.c_new_logdevice_reader clientPtr max_logs buffer_size
     StreamReader <$> newForeignPtr FFI.c_free_logdevice_reader_fun i
 
--- fix me: change function name to newStreamSyncCheckpointedReader
-newStreamSyncCheckpointReader :: CBytes
+newStreamSyncCheckpointedReader :: CBytes
                               -> StreamReader
                               -> CheckpointStore
                               -> Word32
                               -> IO StreamSyncCheckpointedReader
-newStreamSyncCheckpointReader name reader store retries =
+newStreamSyncCheckpointedReader name reader store retries =
   ZC.withCBytesUnsafe name $ \name' ->
   withForeignPtr (unStreamReader reader) $ \reader' ->
   withForeignPtr (unCheckpointStore store) $ \store' -> do

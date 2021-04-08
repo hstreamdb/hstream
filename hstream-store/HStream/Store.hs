@@ -131,7 +131,7 @@ mkConsumer ConsumerConfig{..} ts = do
   -- in an undefined behaviour.
   reader <- S.newStreamReader client (fromIntegral $ length ts) consumerBufferSize
   checkpointStore <- S.newFileBasedCheckpointStore consumerCheckpointUri
-  checkpointedReader <- S.newStreamSyncCheckpointReader consumerName reader checkpointStore consumerCheckpointRetries
+  checkpointedReader <- S.newStreamSyncCheckpointedReader consumerName reader checkpointStore consumerCheckpointRetries
   forM_ topics $ \(topicID, lastSN)-> do
     S.checkpointedReaderStartReading checkpointedReader topicID (lastSN + 1) maxBound
   return $ Consumer checkpointedReader (Map.fromList $ zip ts (map fst topics))

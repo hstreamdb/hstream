@@ -420,7 +420,7 @@ foreign import ccall unsafe "hs_logdevice.h new_rsm_based_checkpoint_store"
   c_new_rsm_based_checkpoint_store
     :: Ptr LogDeviceClient
     -> C_LogID
-    -> C_Timestamp
+    -> Int64
     -> IO (Ptr LogDeviceCheckpointStore)
 
 foreign import ccall unsafe "hs_logdevice.h free_checkpoint_store"

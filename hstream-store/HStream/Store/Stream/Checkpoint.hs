@@ -37,7 +37,12 @@ newFileBasedCheckpointStore root_path =
     i <- FFI.c_new_file_based_checkpoint_store path'
     CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
 
-newRSMBasedCheckpointStore :: StreamClient -> TopicID -> Int64 -> IO CheckpointStore
+newRSMBasedCheckpointStore
+  :: StreamClient
+  -> TopicID
+  -> Int64
+  -- ^ Timeout for the RSM to stop after calling shutdown, in milliseconds.
+  -> IO CheckpointStore
 newRSMBasedCheckpointStore (StreamClient client) (TopicID log_id) stop_timeout =
   withForeignPtr client $ \client' -> do
     i <- FFI.c_new_rsm_based_checkpoint_store client' log_id stop_timeout
