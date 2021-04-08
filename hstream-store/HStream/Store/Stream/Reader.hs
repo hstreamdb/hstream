@@ -62,6 +62,7 @@ newStreamReader client max_logs buffer_size =
     i <- FFI.c_new_logdevice_reader clientPtr max_logs buffer_size
     StreamReader <$> newForeignPtr FFI.c_free_logdevice_reader_fun i
 
+-- fix me: change function name to newStreamSyncCheckpointedReader
 newStreamSyncCheckpointReader :: CBytes
                               -> StreamReader
                               -> CheckpointStore

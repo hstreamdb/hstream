@@ -2,6 +2,7 @@ module HStream.Store.Stream.Checkpoint
   ( -- * Checkpoint Store
     CheckpointStore
   , newFileBasedCheckpointStore
+  , newRSMBasedCheckpointStore
   , getSequenceNumSync
   , updateSequenceNumSync
   , updateMultiSequenceNumSync
@@ -16,7 +17,8 @@ import qualified Z.Data.CBytes           as ZC
 import qualified Z.Foreign               as Z
 
 import           HStream.Internal.FFI    (CheckpointStore (..),
-                                          SequenceNum (..), TopicID (..))
+                                          SequenceNum (..), TopicID (..),
+                                          C_Timestamp, StreamClient (..))
 import qualified HStream.Internal.FFI    as FFI
 import qualified HStream.Store.Exception as E
 
@@ -32,6 +34,12 @@ newFileBasedCheckpointStore :: CBytes -> IO CheckpointStore
 newFileBasedCheckpointStore root_path =
   ZC.withCBytesUnsafe root_path $ \path' -> do
     i <- FFI.c_new_file_based_checkpoint_store path'
+    CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
+
+newRSMBasedCheckpointStore :: StreamClient -> TopicID -> C_Timestamp -> IO CheckpointStore
+newRSMBasedCheckpointStore (StreamClient client) (TopicID log_id) stop_timeout =
+  withForeignPtr client $ \client' -> do
+    i <- FFI.c_new_rsm_based_checkpoint_store client' log_id stop_timeout
     CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
 
 getSequenceNumSync :: CheckpointStore -> CBytes -> TopicID -> IO SequenceNum

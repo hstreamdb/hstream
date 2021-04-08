@@ -20,6 +20,18 @@ new_file_based_checkpoint_store(const char* root_path) {
   return result;
 }
 
+logdevice_checkpoint_store_t*
+new_rsm_based_checkpoint_store(logdevice_client_t* client,
+                               c_logid_t log_id,
+                               c_timestamp_t stop_timeout) {
+  std::chrono::milliseconds ms(stop_timeout);
+  std::unique_ptr<CheckpointStore> checkpoint_store =
+      CheckpointStoreFactory().createRSMBasedCheckpointStore(client->rep, logid_t(log_id), ms);
+  logdevice_checkpoint_store_t* result = new logdevice_checkpoint_store_t;
+  result->rep = std::move(checkpoint_store);
+  return result;
+}
+
 void free_checkpoint_store(logdevice_checkpoint_store_t* p) { delete p; }
 
 facebook::logdevice::Status

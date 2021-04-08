@@ -419,6 +419,13 @@ foreign import ccall safe "hs_logdevice.h logdevice_append_with_attrs_sync"
 foreign import ccall unsafe "hs_logdevice.h new_file_based_checkpoint_store"
   c_new_file_based_checkpoint_store :: BA## Word8 -> IO (Ptr LogDeviceCheckpointStore)
 
+foreign import ccall unsafe "hs_logdevice.h new_rsm_based_checkpoint_store"
+  c_new_rsm_based_checkpoint_store
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> C_Timestamp
+    -> IO (Ptr LogDeviceCheckpointStore)
+
 foreign import ccall unsafe "hs_logdevice.h free_checkpoint_store"
   c_free_checkpoint_store :: Ptr LogDeviceCheckpointStore -> IO ()
 
