@@ -39,12 +39,12 @@ import qualified Z.Data.CBytes                   as ZC
 import           Z.Data.Vector                   (Bytes)
 import qualified Z.Foreign                       as Z
 
-import           HStream.Internal.FFI            (DataRecord (..),
+import qualified HStream.Store.Exception         as E
+import           HStream.Store.Internal.FFI      (DataRecord (..),
                                                   SequenceNum (..),
                                                   StreamClient (..),
                                                   TopicID (..))
-import qualified HStream.Internal.FFI            as FFI
-import qualified HStream.Store.Exception         as E
+import qualified HStream.Store.Internal.FFI      as FFI
 import           HStream.Store.Stream.Appender
 import           HStream.Store.Stream.Checkpoint
 import           HStream.Store.Stream.Reader

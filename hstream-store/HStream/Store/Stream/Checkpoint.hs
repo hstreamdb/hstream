@@ -8,19 +8,20 @@ module HStream.Store.Stream.Checkpoint
   , updateMultiSequenceNumSync
   ) where
 
-import           Control.Monad           (void)
-import           Data.Map.Strict         (Map)
-import qualified Data.Map.Strict         as Map
-import           Foreign.ForeignPtr      (newForeignPtr, withForeignPtr)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.CBytes           as ZC
-import qualified Z.Foreign               as Z
+import           Control.Monad              (void)
+import           Data.Int                   (Int64)
+import           Data.Map.Strict            (Map)
+import qualified Data.Map.Strict            as Map
+import           Foreign.ForeignPtr         (newForeignPtr, withForeignPtr)
+import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as ZC
+import qualified Z.Foreign                  as Z
 
-import           HStream.Internal.FFI    (CheckpointStore (..),
-                                          SequenceNum (..), TopicID (..),
-                                          C_Timestamp, StreamClient (..))
-import qualified HStream.Internal.FFI    as FFI
-import qualified HStream.Store.Exception as E
+import qualified HStream.Store.Exception    as E
+import           HStream.Store.Internal.FFI (CheckpointStore (..),
+                                             SequenceNum (..),
+                                             StreamClient (..), TopicID (..))
+import qualified HStream.Store.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
 
@@ -36,7 +37,7 @@ newFileBasedCheckpointStore root_path =
     i <- FFI.c_new_file_based_checkpoint_store path'
     CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
 
-newRSMBasedCheckpointStore :: StreamClient -> TopicID -> C_Timestamp -> IO CheckpointStore
+newRSMBasedCheckpointStore :: StreamClient -> TopicID -> Int64 -> IO CheckpointStore
 newRSMBasedCheckpointStore (StreamClient client) (TopicID log_id) stop_timeout =
   withForeignPtr client $ \client' -> do
     i <- FFI.c_new_rsm_based_checkpoint_store client' log_id stop_timeout

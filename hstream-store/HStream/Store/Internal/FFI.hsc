@@ -6,7 +6,7 @@
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE UnliftedFFITypes           #-}
 
-module HStream.Internal.FFI where
+module HStream.Store.Internal.FFI where
 
 import           Control.Exception (bracket_)
 import           Control.Monad     (forM)
@@ -189,10 +189,7 @@ foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
   c_free_log_attributes_fun :: FunPtr (Ptr LogDeviceLogAttributes -> IO ())
 
 foreign import ccall unsafe "hs_logdevice.h with_replicationFactor"
-  c_log_attrs_set_replication_factor
-    :: Ptr LogDeviceLogAttributes
-    -> CInt
-    -> IO ()
+  c_log_attrs_set_replication_factor :: Ptr LogDeviceLogAttributes -> CInt -> IO ()
 
 -------------------------------------------------------------------------------
 

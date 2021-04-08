@@ -120,16 +120,16 @@ module HStream.Store.Exception
   , USER_STREAM_ERROR        (..)
   ) where
 
-import           Control.Exception    (Exception (..))
-import qualified Control.Exception    as E
-import           Data.Typeable        (cast)
-import           GHC.Stack            (CallStack, HasCallStack, callStack,
-                                       prettyCallStack)
-import qualified Z.Data.Text          as T
-import qualified Z.Data.Text.Print    as T
-import qualified Z.Foreign            as Z
+import           Control.Exception          (Exception (..))
+import qualified Control.Exception          as E
+import           Data.Typeable              (cast)
+import           GHC.Stack                  (CallStack, HasCallStack, callStack,
+                                             prettyCallStack)
+import qualified Z.Data.Text                as T
+import qualified Z.Data.Text.Print          as T
+import qualified Z.Foreign                  as Z
 
-import qualified HStream.Internal.FFI as FFI
+import qualified HStream.Store.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
 
