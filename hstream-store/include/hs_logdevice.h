@@ -261,6 +261,10 @@ logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
 logdevice_checkpoint_store_t*
 new_file_based_checkpoint_store(const char* root_path);
 
+logdevice_checkpoint_store_t*
+new_rsm_based_checkpoint_store(logdevice_client_t* client, c_logid_t log_id,
+                               int64_t stop_timeout);
+
 void free_checkpoint_store(logdevice_checkpoint_store_t* p);
 
 facebook::logdevice::Status

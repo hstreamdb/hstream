@@ -14,7 +14,7 @@ module HStream.Store.Stream.Reader
 
     -- * Checkpointed Reader
   , StreamSyncCheckpointedReader
-  , newStreamSyncCheckpointReader
+  , newStreamSyncCheckpointedReader
   , checkpointedReaderStartReading
   , checkpointedReaderStopReading
   , checkpointedReaderSetTimeout
@@ -26,26 +26,27 @@ module HStream.Store.Stream.Reader
   , writeLastCheckpointsSync
   ) where
 
-import           Control.Monad           (void)
-import           Data.Int                (Int32, Int64)
-import           Data.Map.Strict         (Map)
-import qualified Data.Map.Strict         as Map
-import           Data.Word               (Word32)
-import           Foreign.C.Types         (CInt, CSize)
-import           Foreign.ForeignPtr      (newForeignPtr, withForeignPtr)
-import           Foreign.Marshal         (allocaBytes)
-import           Foreign.Ptr             (Ptr, nullPtr)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.CBytes           as ZC
-import qualified Z.Foreign               as Z
+import           Control.Monad              (void)
+import           Data.Int                   (Int32, Int64)
+import           Data.Map.Strict            (Map)
+import qualified Data.Map.Strict            as Map
+import           Data.Word                  (Word32)
+import           Foreign.C.Types            (CInt, CSize)
+import           Foreign.ForeignPtr         (newForeignPtr, withForeignPtr)
+import           Foreign.Marshal            (allocaBytes)
+import           Foreign.Ptr                (Ptr, nullPtr)
+import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as ZC
+import qualified Z.Foreign                  as Z
 
-import           HStream.Internal.FFI    (CheckpointStore (..), DataRecord (..),
-                                          SequenceNum (..), StreamClient (..),
-                                          StreamReader (..),
-                                          StreamSyncCheckpointedReader (..),
-                                          TopicID (..))
-import qualified HStream.Internal.FFI    as FFI
-import qualified HStream.Store.Exception as E
+import qualified HStream.Store.Exception    as E
+import           HStream.Store.Internal.FFI (CheckpointStore (..),
+                                             DataRecord (..), SequenceNum (..),
+                                             StreamClient (..),
+                                             StreamReader (..),
+                                             StreamSyncCheckpointedReader (..),
+                                             TopicID (..))
+import qualified HStream.Store.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
 
@@ -62,12 +63,12 @@ newStreamReader client max_logs buffer_size =
     i <- FFI.c_new_logdevice_reader clientPtr max_logs buffer_size
     StreamReader <$> newForeignPtr FFI.c_free_logdevice_reader_fun i
 
-newStreamSyncCheckpointReader :: CBytes
+newStreamSyncCheckpointedReader :: CBytes
                               -> StreamReader
                               -> CheckpointStore
                               -> Word32
                               -> IO StreamSyncCheckpointedReader
-newStreamSyncCheckpointReader name reader store retries =
+newStreamSyncCheckpointedReader name reader store retries =
   ZC.withCBytesUnsafe name $ \name' ->
   withForeignPtr (unStreamReader reader) $ \reader' ->
   withForeignPtr (unCheckpointStore store) $ \store' -> do

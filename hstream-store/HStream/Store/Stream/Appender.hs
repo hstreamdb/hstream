@@ -1,38 +1,40 @@
 module HStream.Store.Stream.Appender
   ( FFI.AppendCallBackData (appendCbLogID, appendCbLSN, appendCbTimestamp)
-  , appendAsync
+  , append
   , appendSync
   , appendSyncTS
   ) where
 
-import           Control.Concurrent      (forkIO, myThreadId, newEmptyMVar,
-                                          takeMVar, threadCapability)
-import           Control.Exception       (mask_, onException)
-import           Control.Monad           (void)
-import           Data.Int                (Int64)
-import           Foreign.ForeignPtr      (mallocForeignPtrBytes,
-                                          touchForeignPtr, withForeignPtr)
-import           Foreign.Ptr             (nullPtr)
-import           GHC.Conc                (newStablePtrPrimMVar)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.CBytes           as ZC
-import           Z.Data.Vector           (Bytes)
-import qualified Z.Foreign               as Z
+import           Control.Concurrent         (forkIO, myThreadId, newEmptyMVar,
+                                             takeMVar, threadCapability)
+import           Control.Exception          (mask_, onException)
+import           Control.Monad              (void)
+import           Data.Int                   (Int64)
+import           Foreign.ForeignPtr         (mallocForeignPtrBytes,
+                                             touchForeignPtr, withForeignPtr)
+import           Foreign.Ptr                (nullPtr)
+import           GHC.Conc                   (newStablePtrPrimMVar)
+import           GHC.Stack                  (HasCallStack)
+import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as ZC
+import           Z.Data.Vector              (Bytes)
+import qualified Z.Foreign                  as Z
 
-import           HStream.Internal.FFI    (SequenceNum (..), StreamClient (..),
-                                          TopicID (..))
-import qualified HStream.Internal.FFI    as FFI
-import qualified HStream.Store.Exception as E
+import qualified HStream.Store.Exception    as E
+import           HStream.Store.Internal.FFI (SequenceNum (..),
+                                             StreamClient (..), TopicID (..))
+import qualified HStream.Store.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
 
-appendAsync :: StreamClient
-            -> TopicID
-            -> Bytes
-            -> Maybe (FFI.KeyType, CBytes)
-            -> (FFI.AppendCallBackData -> IO a)
-            -> IO a
-appendAsync (StreamClient client) (TopicID topicid) payload m_key_attr f =
+append :: HasCallStack
+       => StreamClient
+       -> TopicID
+       -> Bytes
+       -> Maybe (FFI.KeyType, CBytes)
+       -> (FFI.AppendCallBackData -> IO a)
+       -> IO a
+append (StreamClient client) (TopicID topicid) payload m_key_attr f =
   withForeignPtr client $ \client' ->
   Z.withPrimVectorUnsafe payload $ \payload' offset len -> mask_ $ do
     mvar <- newEmptyMVar

@@ -4,20 +4,20 @@ module HStream.Store.AdminClient
   , adminSyncGetVersion
   ) where
 
-import           Data.Int                (Int64)
-import           Data.Word               (Word16, Word32)
-import           Foreign.ForeignPtr      (newForeignPtr, withForeignPtr)
-import           Foreign.Ptr             (nullPtr)
-import           GHC.Stack               (HasCallStack, callStack)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.CBytes           as ZC
-import qualified Z.Data.Text             as ZT
-import qualified Z.Foreign               as Z
+import           Data.Int                   (Int64)
+import           Data.Word                  (Word16, Word32)
+import           Foreign.ForeignPtr         (newForeignPtr, withForeignPtr)
+import           Foreign.Ptr                (nullPtr)
+import           GHC.Stack                  (HasCallStack, callStack)
+import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as ZC
+import qualified Z.Data.Text                as ZT
+import qualified Z.Foreign                  as Z
 
-import           HStream.Internal.FFI    (RpcOptions (..),
-                                          StreamAdminClient (..))
-import qualified HStream.Internal.FFI    as FFI
-import qualified HStream.Store.Exception as E
+import qualified HStream.Store.Exception    as E
+import           HStream.Store.Internal.FFI (RpcOptions (..),
+                                             StreamAdminClient (..))
+import qualified HStream.Store.Internal.FFI as FFI
 
 newStreamAdminClient :: HasCallStack
                      => CBytes -> Word16 -> Bool -> Word32
@@ -39,4 +39,4 @@ adminSyncGetVersion :: StreamAdminClient -> RpcOptions -> IO ZT.Text
 adminSyncGetVersion (StreamAdminClient client) (RpcOptions options) =
   withForeignPtr client $ \client' ->
   withForeignPtr options $ \options' -> do
-    ZT.validate <$> (Z.fromStdString $ FFI.ld_admin_sync_getVersion client' options')
+    ZT.validate <$> Z.fromStdString (FFI.ld_admin_sync_getVersion client' options')

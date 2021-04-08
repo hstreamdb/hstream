@@ -15,9 +15,9 @@ module HStream.Store.Logger
   , logDeviceDbgUseFD
   ) where
 
-import           Foreign.C.Types      (CInt)
+import           Foreign.C.Types            (CInt)
 
-import qualified HStream.Internal.FFI as FFI
+import qualified HStream.Store.Internal.FFI as FFI
 
 type FD = CInt
 

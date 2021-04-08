@@ -6,7 +6,7 @@
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE UnliftedFFITypes           #-}
 
-module HStream.Internal.FFI where
+module HStream.Store.Internal.FFI where
 
 import           Control.Exception (bracket_)
 import           Control.Monad     (forM)
@@ -189,10 +189,7 @@ foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
   c_free_log_attributes_fun :: FunPtr (Ptr LogDeviceLogAttributes -> IO ())
 
 foreign import ccall unsafe "hs_logdevice.h with_replicationFactor"
-  c_log_attrs_set_replication_factor
-    :: Ptr LogDeviceLogAttributes
-    -> CInt
-    -> IO ()
+  c_log_attrs_set_replication_factor :: Ptr LogDeviceLogAttributes -> CInt -> IO ()
 
 -------------------------------------------------------------------------------
 
@@ -418,6 +415,13 @@ foreign import ccall safe "hs_logdevice.h logdevice_append_with_attrs_sync"
 
 foreign import ccall unsafe "hs_logdevice.h new_file_based_checkpoint_store"
   c_new_file_based_checkpoint_store :: BA## Word8 -> IO (Ptr LogDeviceCheckpointStore)
+
+foreign import ccall unsafe "hs_logdevice.h new_rsm_based_checkpoint_store"
+  c_new_rsm_based_checkpoint_store
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Int64
+    -> IO (Ptr LogDeviceCheckpointStore)
 
 foreign import ccall unsafe "hs_logdevice.h free_checkpoint_store"
   c_free_checkpoint_store :: Ptr LogDeviceCheckpointStore -> IO ()

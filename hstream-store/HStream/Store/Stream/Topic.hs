@@ -39,27 +39,27 @@ module HStream.Store.Stream.Topic
   , topicDirectoryGetVersion
   ) where
 
-import           Control.Exception       (try)
-import           Control.Monad           (void, when)
-import           Data.Bits               (shiftL, xor)
-import qualified Data.Cache              as Cache
-import           Data.Map.Strict         (Map)
-import qualified Data.Map.Strict         as Map
-import           Data.Time.Clock.System  (SystemTime (..), getSystemTime)
-import           Data.Word               (Word16, Word32, Word64)
-import           Foreign.ForeignPtr      (ForeignPtr, newForeignPtr,
-                                          withForeignPtr)
-import           Foreign.Ptr             (nullPtr)
-import           GHC.Stack               (HasCallStack, callStack)
-import           System.IO.Unsafe        (unsafePerformIO)
-import           System.Random           (randomRIO)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.CBytes           as ZC
-import qualified Z.Foreign               as Z
+import           Control.Exception          (try)
+import           Control.Monad              (void, when)
+import           Data.Bits                  (shiftL, xor)
+import qualified Data.Cache                 as Cache
+import           Data.Map.Strict            (Map)
+import qualified Data.Map.Strict            as Map
+import           Data.Time.Clock.System     (SystemTime (..), getSystemTime)
+import           Data.Word                  (Word16, Word32, Word64)
+import           Foreign.ForeignPtr         (ForeignPtr, newForeignPtr,
+                                             withForeignPtr)
+import           Foreign.Ptr                (nullPtr)
+import           GHC.Stack                  (HasCallStack, callStack)
+import           System.IO.Unsafe           (unsafePerformIO)
+import           System.Random              (randomRIO)
+import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as ZC
+import qualified Z.Foreign                  as Z
 
-import           HStream.Internal.FFI    (StreamClient (..), TopicID (..))
-import qualified HStream.Internal.FFI    as FFI
-import qualified HStream.Store.Exception as E
+import qualified HStream.Store.Exception    as E
+import           HStream.Store.Internal.FFI (StreamClient (..), TopicID (..))
+import qualified HStream.Store.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
 
@@ -117,7 +117,7 @@ createTopicSync client topic attrs = go (10 :: Int)
            result <- try $ makeTopicGroupSync client topic topicID topicID attrs True
            case result of
              Right group            -> do
-               syncTopicConfigVersion client =<< (topicGroupGetVersion group)
+               syncTopicConfigVersion client =<< topicGroupGetVersion group
                Cache.insert topicCache topic topicID
              Left (_ :: E.ID_CLASH) -> go (maxTries - 1)
 

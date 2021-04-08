@@ -75,7 +75,7 @@ mkProducer config = do
 sendMessage :: Producer -> ProducerRecord -> IO ()
 sendMessage (Producer client) record@ProducerRecord{..} = do
   topicID <- S.getTopicIDByName client dataInTopic
-  void $ S.appendAsync client topicID (JSON.encode record) Nothing return
+  void $ S.append client topicID (JSON.encode record) Nothing return
 
 -- FIXME: performance improvements
 sendMessages :: Producer -> [ProducerRecord] -> IO ()
@@ -131,7 +131,7 @@ mkConsumer ConsumerConfig{..} ts = do
   -- in an undefined behaviour.
   reader <- S.newStreamReader client (fromIntegral $ length ts) consumerBufferSize
   checkpointStore <- S.newFileBasedCheckpointStore consumerCheckpointUri
-  checkpointedReader <- S.newStreamSyncCheckpointReader consumerName reader checkpointStore consumerCheckpointRetries
+  checkpointedReader <- S.newStreamSyncCheckpointedReader consumerName reader checkpointStore consumerCheckpointRetries
   forM_ topics $ \(topicID, lastSN)-> do
     S.checkpointedReaderStartReading checkpointedReader topicID (lastSN + 1) maxBound
   return $ Consumer checkpointedReader (Map.fromList $ zip ts (map fst topics))
