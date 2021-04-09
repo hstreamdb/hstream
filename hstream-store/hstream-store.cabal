@@ -97,11 +97,13 @@ test-suite hstream-store-test
     HStream.Store.AppenderSpec
     HStream.Store.ReaderSpec
     HStream.Store.TopicSpec
+    HStream.Store.CheckpointSpec
 
   hs-source-dirs:     test
   build-depends:
     , base           >=4.11 && <5
     , hspec
+    , containers     ^>=0.6
     , hstream-store
     , random         ^>=1.2
     , Z-Data

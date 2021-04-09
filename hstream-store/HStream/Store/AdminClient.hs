@@ -19,6 +19,7 @@ import           HStream.Store.Internal.FFI (RpcOptions (..),
                                              StreamAdminClient (..))
 import qualified HStream.Store.Internal.FFI as FFI
 
+
 newStreamAdminClient :: HasCallStack
                      => CBytes -> Word16 -> Bool -> Word32
                      -> IO StreamAdminClient
