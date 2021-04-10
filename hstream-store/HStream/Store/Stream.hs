@@ -70,7 +70,7 @@ getTailSequenceNum client (TopicID topicid) =
 -- max-payload-size setting.
 getMaxPayloadSize :: StreamClient -> IO Word
 getMaxPayloadSize (StreamClient client) =
-  withForeignPtr client $ FFI.c_ld_client_get_max_payload_size
+  withForeignPtr client FFI.c_ld_client_get_max_payload_size
 
 -- | Change settings for the Client.
 --

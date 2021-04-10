@@ -261,7 +261,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_set_settings"
                            -> BA## Word8
                            -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_lsn_sync"
+foreign import ccall safe "hs_logdevice.h ld_client_get_tail_lsn_sync"
   c_ld_client_get_tail_lsn_sync :: Ptr LogDeviceClient
                                 -> C_LogID
                                 -> IO C_LSN

@@ -8,6 +8,10 @@ import re
 
 
 HOME = os.getenv("HOME")
+CABAL_HOME = os.getenv("CABAL_HOME", f"{HOME}/.cabal")
+STACK_HOME = os.getenv("STACK_HOME", f"{HOME}/.stack")
+HOOGLE_HOME = os.getenv("HOOGLE_HOME", f'{HOME}/.hoogle')
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(os.path.abspath(__file__))))
 CUID, CGID = os.getuid(), os.getgid()
 LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
@@ -80,18 +84,14 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
     if not is_cluster_started(container_bin):
         return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
-    stack_home = f"{HOME}/.stack"
-    cabal_home = f"{HOME}/.cabal"
-    hoogle_home = f'{HOME}/.hoogle'
-
     Path(f"{HOME}/.local/bin").mkdir(parents=True, exist_ok=True)
     Path(f"{HOME}/.ghc").mkdir(parents=True, exist_ok=True)
-    Path(f"{cabal_home}").mkdir(parents=True, exist_ok=True)
-    Path(f"{stack_home}").mkdir(parents=True, exist_ok=True)
-    Path(f"{hoogle_home}").mkdir(parents=True, exist_ok=True)
+    Path(f"{CABAL_HOME}").mkdir(parents=True, exist_ok=True)
+    Path(f"{STACK_HOME}").mkdir(parents=True, exist_ok=True)
+    Path(f"{HOOGLE_HOME}").mkdir(parents=True, exist_ok=True)
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
-    user_path = f"/opt/ghc/bin:/opt/cabal/bin:{HOME}/.local/bin:{HOME}/.cabal/bin:$PATH"
+    user_path = f"/opt/ghc/bin:/opt/cabal/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
     container_opts = " ".join([
         "-t" if tty else "",
         "-i" if interactive else "",
@@ -104,9 +104,9 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 -e PATH={user_path} \
                 -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
                 -v {HOME}/.ghc:{HOME}/.ghc:rw \
-                -v {stack_home}:{HOME}/.stack:rw \
-                -v {cabal_home}:{HOME}/.cabal:rw \
-                -v {hoogle_home}:{HOME}/.hoogle:rw \
+                -v {STACK_HOME}:{HOME}/.stack:rw \
+                -v {CABAL_HOME}:{HOME}/.cabal:rw \
+                -v {HOOGLE_HOME}:{HOME}/.hoogle:rw \
                 -v "{PROJECT_ROOT}:{PROJECT_ROOT}" \
                 -v "{data_dir}:/data/store" \
                 -v "/tmp:/tmp" \
