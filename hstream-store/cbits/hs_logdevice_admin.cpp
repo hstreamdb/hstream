@@ -43,5 +43,20 @@ std::string* ld_admin_sync_getVersion(logdevice_admin_async_client_t* client,
   return version;
 }
 
+fb_status ld_admin_sync_getStatus(logdevice_admin_async_client_t* client,
+                                  thrift_rpc_options_t* rpc_options) {
+  return client->rep->sync_getStatus(*(rpc_options->rep));
+}
+
+int64_t ld_admin_sync_aliveSince(logdevice_admin_async_client_t* client,
+                                 thrift_rpc_options_t* rpc_options) {
+  return client->rep->sync_aliveSince(*(rpc_options->rep));
+}
+
+int64_t ld_admin_sync_getPid(logdevice_admin_async_client_t* client,
+                             thrift_rpc_options_t* rpc_options) {
+  return client->rep->sync_getPid(*(rpc_options->rep));
+}
+
 // ----------------------------------------------------------------------------
 } // end extern "C"

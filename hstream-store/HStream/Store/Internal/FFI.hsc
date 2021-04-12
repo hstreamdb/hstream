@@ -530,6 +530,34 @@ foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
   c_logdevice_checkpointed_reader_read_safe :: Ptr LogDeviceSyncCheckpointedReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
 
 -------------------------------------------------------------------------------
+newtype FB_STATUS = FB_STATUS { unFB_STATUS :: CInt}
+  deriving (Eq, Num)
+
+instance Show FB_STATUS where
+  show FB_STATUS_STARTING = "FB_STATUS_STARTING"
+  show FB_STATUS_ALIVE = "FB_STATUS_ALIVE"
+  show FB_STATUS_DEAD = "FB_STATUS_DEAD"
+  show FB_STATUS_STOPPING = "FB_STATUS_STOPPING"
+  show FB_STATUS_STOPPED = "FB_STATUS_STOPPED"
+  show FB_STATUS_WARNING = "FB_STATUS_WARNING"
+
+pattern FB_STATUS_STARTING :: FB_STATUS
+pattern FB_STATUS_STARTING = (#const static_cast<int>(fb_status::STARTING))
+
+pattern FB_STATUS_ALIVE :: FB_STATUS
+pattern FB_STATUS_ALIVE = (#const static_cast<int>(fb_status::ALIVE))
+
+pattern FB_STATUS_DEAD :: FB_STATUS
+pattern FB_STATUS_DEAD = (#const static_cast<int>(fb_status::DEAD))
+
+pattern FB_STATUS_STOPPING :: FB_STATUS
+pattern FB_STATUS_STOPPING = (#const static_cast<int>(fb_status::STOPPING))
+
+pattern FB_STATUS_STOPPED :: FB_STATUS
+pattern FB_STATUS_STOPPED = (#const static_cast<int>(fb_status::STOPPED))
+
+pattern FB_STATUS_WARNING :: FB_STATUS
+pattern FB_STATUS_WARNING = (#const static_cast<int>(fb_status::WARNING))
 
 foreign import ccall unsafe "hs_logdevice.h new_logdevice_admin_async_client"
   c_new_logdevice_admin_async_client
@@ -557,6 +585,21 @@ foreign import ccall safe "hs_logdevice.h ld_admin_sync_getVersion"
   ld_admin_sync_getVersion :: Ptr LogDeviceAdminAsyncClient
                            -> Ptr ThriftRpcOptions
                            -> IO (Ptr Z.StdString)
+
+foreign import ccall safe "hs_logdevice.h ld_admin_sync_getStatus"
+  ld_admin_sync_getStatus :: Ptr LogDeviceAdminAsyncClient
+                          -> Ptr ThriftRpcOptions
+                          -> IO FB_STATUS
+
+foreign import ccall safe "hs_logdevice.h ld_admin_sync_aliveSince"
+  ld_admin_sync_aliveSince :: Ptr LogDeviceAdminAsyncClient
+                           -> Ptr ThriftRpcOptions
+                           -> IO Int64
+
+foreign import ccall safe "hs_logdevice.h ld_admin_sync_getPid"
+  ld_admin_sync_getPid :: Ptr LogDeviceAdminAsyncClient
+                       -> Ptr ThriftRpcOptions
+                       -> IO Int64
 
 -------------------------------------------------------------------------------
 -- Misc

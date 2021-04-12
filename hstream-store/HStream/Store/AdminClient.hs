@@ -2,22 +2,28 @@ module HStream.Store.AdminClient
   ( newStreamAdminClient
   , newRpcOptions
   , adminSyncGetVersion
+  , adminSyncGetStatus
+  , adminSyncGetPid
+  , adminSyncAliveSince
+  , FB_STATUS(..)
   ) where
 
-import           Data.Int                   (Int64)
-import           Data.Word                  (Word16, Word32)
-import           Foreign.ForeignPtr         (newForeignPtr, withForeignPtr)
-import           Foreign.Ptr                (nullPtr)
-import           GHC.Stack                  (HasCallStack, callStack)
-import           Z.Data.CBytes              (CBytes)
-import qualified Z.Data.CBytes              as ZC
-import qualified Z.Data.Text                as ZT
-import qualified Z.Foreign                  as Z
+import           Data.Int                          (Int64)
+import           Data.Word                         (Word16, Word32)
+import           Foreign.ForeignPtr                (newForeignPtr,
+                                                    withForeignPtr)
+import           Foreign.Ptr                       (nullPtr)
+import           GHC.Stack                         (HasCallStack, callStack)
+import           Z.Data.CBytes                     (CBytes)
+import qualified Z.Data.CBytes                     as ZC
+import qualified Z.Data.Text                       as ZT
+import qualified Z.Foreign                         as Z
 
-import qualified HStream.Store.Exception    as E
-import           HStream.Store.Internal.FFI (RpcOptions (..),
-                                             StreamAdminClient (..))
-import qualified HStream.Store.Internal.FFI as FFI
+import qualified HStream.Store.Exception           as E
+import           HStream.Store.Internal.FFI        (RpcOptions (..),
+                                                    StreamAdminClient (..))
+import qualified HStream.Store.Internal.FFI        as FFI
+import           HStreamHStream.Store.Internal.FFI (FB_STATUS (..))
 
 
 newStreamAdminClient :: HasCallStack
@@ -41,3 +47,18 @@ adminSyncGetVersion (StreamAdminClient client) (RpcOptions options) =
   withForeignPtr client $ \client' ->
   withForeignPtr options $ \options' -> do
     ZT.validate <$> Z.fromStdString (FFI.ld_admin_sync_getVersion client' options')
+
+adminSyncGetStatus :: StreamAdminClient -> RpcOptions -> IO FB_STATUS
+adminSyncGetStatus (StreamAdminClient client) (RpcOptions options) =
+  withForeignPtr client $ \client' ->
+  withForeignPtr options (FFI.ld_admin_sync_getStatus client')
+
+adminSyncAliveSince :: StreamAdminClient -> RpcOptions -> IO Int64
+adminSyncAliveSince (StreamAdminClient client) (RpcOptions options) =
+  withForeignPtr client $ \client' ->
+  withForeignPtr options (FFI.ld_admin_sync_aliveSince client')
+
+adminSyncGetPid :: StreamAdminClient -> RpcOptions -> IO Int64
+adminSyncGetPid (StreamAdminClient client) (RpcOptions options) =
+  withForeignPtr client $ \client' ->
+  withForeignPtr options (FFI.ld_admin_sync_getPid client')
