@@ -26,19 +26,19 @@ type StreamName = Text
 type FieldName  = Text
 
 type RDate = Time.Day
-type instance RefinedType (Date a) = RDate
-instance Refine (Date a) where
+type instance RefinedType Date = RDate
+instance Refine Date where
   refine (DDate _ year month day) = Time.fromGregorian year (fromInteger month) (fromInteger day)
 
 type RTime = Time.DiffTime
-type instance RefinedType (Time a) = RTime
-instance Refine (Time a) where
+type instance RefinedType Time = RTime
+instance Refine Time where
   refine (DTime _ hour minute second) = Time.secondsToDiffTime $
     hour * 3600 + minute * 60 + second
 
 type RInterval = Time.DiffTime
-type instance RefinedType (Interval a) = RInterval
-instance Refine (Interval a) where
+type instance RefinedType Interval = RInterval
+instance Refine Interval where
   refine (DInterval _ n (TimeUnitSec _  )) = Time.secondsToDiffTime   n
   refine (DInterval _ n (TimeUnitMin _  )) = Time.secondsToDiffTime $ n * 60
   refine (DInterval _ n (TimeUnitDay _  )) = Time.secondsToDiffTime $ n * 60 * 24
@@ -78,8 +78,8 @@ data RValueExpr = RExprCol       ExprName (Maybe StreamName) FieldName
                 -- TODO: Add UnaryOp if needed
                 deriving (Eq, Show)
 
-type instance RefinedType (ValueExpr a) = RValueExpr
-instance Refine (ValueExpr Position) where -- FIXME: Inconsistent form (Position instead of a)
+type instance RefinedType ValueExpr = RValueExpr
+instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of a)
   refine expr@(ExprAdd _ e1 e2)         = RExprBinOp  (printTree expr) OpAdd (refine e1) (refine e2)
   refine expr@(ExprSub _ e1 e2)         = RExprBinOp  (printTree expr) OpSub (refine e1) (refine e2)
   refine expr@(ExprMul _ e1 e2)         = RExprBinOp  (printTree expr) OpMul (refine e1) (refine e2)
@@ -109,8 +109,8 @@ data RSel = RSelAsterisk
           | RSelAggregate Aggregate FieldAlias -- FIXME: Not that natural?
           deriving (Eq, Show)
 
-type instance RefinedType (DerivedCol a) = Either (RValueExpr, FieldAlias) (Aggregate, FieldAlias)
-instance Refine (DerivedCol Position) where
+type instance RefinedType DerivedCol = Either (RValueExpr, FieldAlias) (Aggregate, FieldAlias)
+instance Refine DerivedCol where
   refine (DerivedColSimpl _ expr) = case refine expr of
     RExprAggregate    exprName agg    -> Right (agg, exprName)
     rexpr@(RExprCol   exprName _ _  ) -> Left  (rexpr, exprName)
@@ -120,8 +120,8 @@ instance Refine (DerivedCol Position) where
     Left  (rexpr, _) -> Left  (rexpr, Text.unpack t)
     Right (agg, _)   -> Right (agg, Text.unpack t)
 
-type instance RefinedType (Sel a) = RSel
-instance Refine (Sel Position) where
+type instance RefinedType Sel = RSel
+instance Refine Sel where
   refine (DSel _ (SelListAsterisk _)) = RSelAsterisk
   refine (DSel _ (SelListSublist pos cols))
     | anyAgg = case L.head rcols of -- NOTE: Ensured by Validate: if there is agg, there is only one
@@ -133,33 +133,33 @@ instance Refine (Sel Position) where
 
 ---- Frm
 data RJoinType = RJoinInner | RJoinLeft | RJoinOuter deriving (Eq, Show)
-type instance RefinedType (JoinType a) = RJoinType
-instance Refine (JoinType Position) where
+type instance RefinedType JoinType = RJoinType
+instance Refine JoinType where
   refine (JoinInner  _)   = RJoinInner
   refine (JoinLeft  pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinLeft
   refine (JoinOuter pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinOuter
 
 -- TODO: Defined a RJoinWindow type to describe different windows (symmetry, left, right, ...) ?
 type RJoinWindow = RInterval
-type instance RefinedType (JoinWindow a) = RInterval
-instance Refine (JoinWindow a) where
+type instance RefinedType JoinWindow = RInterval
+instance Refine JoinWindow where
   refine (DJoinWindow _ interval) = refine interval
 
-type instance RefinedType (JoinCond a) = RSearchCond
-instance Refine (JoinCond Position) where
+type instance RefinedType JoinCond = RSearchCond
+instance Refine JoinCond where
   refine (DJoinCond _ cond) = refine cond
 
 -- TODO: Stream alias is not supported yet
 data RFrom = RFromSingle StreamName
            | RFromJoin   (StreamName,FieldName) (StreamName,FieldName) RJoinType RJoinWindow
            deriving (Eq, Show)
-type instance RefinedType (From a) = RFrom
+type instance RefinedType From = RFrom
 
 -- Note: Ensured by Validate: only the following situations are allowed:
 --       1. stream1
 --       2. stream1 `JOIN` stream2
 --       Ensured by Validate: stream names in JOIN ON and FROM match
-instance Refine (From Position) where
+instance Refine From where
   refine (DFrom _ [TableRefSimple _ (Ident t)]) = RFromSingle t
   refine (DFrom pos [
                    TableRefJoin _
@@ -180,8 +180,8 @@ instance Refine (From Position) where
 
 ---- Whr
 data RCompOp = RCompOpEQ | RCompOpNE | RCompOpLT | RCompOpGT | RCompOpLEQ | RCompOpGEQ deriving (Eq, Show)
-type instance RefinedType (CompOp a) = RCompOp
-instance Refine (CompOp a) where
+type instance RefinedType CompOp = RCompOp
+instance Refine CompOp where
   refine (CompOpEQ  _) = RCompOpEQ
   refine (CompOpNE  _) = RCompOpNE
   refine (CompOpLT  _) = RCompOpLT
@@ -196,8 +196,8 @@ data RSearchCond = RCondOr      RSearchCond RSearchCond
                  | RCondOp      RCompOp RValueExpr RValueExpr
                  | RCondBetween RValueExpr RValueExpr RValueExpr
                  deriving (Eq, Show)
-type instance RefinedType (SearchCond a) = RSearchCond
-instance Refine (SearchCond Position) where
+type instance RefinedType SearchCond = RSearchCond
+instance Refine SearchCond where
   refine (CondOr      _ c1 c2)    = RCondOr  (refine c1) (refine c2)
   refine (CondAnd     _ c1 c2)    = RCondAnd (refine c1) (refine c2)
   refine (CondNot     _ c)        = RCondNot (refine c)
@@ -207,8 +207,8 @@ instance Refine (SearchCond Position) where
 data RWhere = RWhereEmpty
             | RWhere RSearchCond
             deriving (Eq, Show)
-type instance RefinedType (Where a) = RWhere
-instance Refine (Where Position) where
+type instance RefinedType Where = RWhere
+instance Refine Where where
   refine (DWhereEmpty _) = RWhereEmpty
   refine (DWhere _ cond) = RWhere (refine cond)
 
@@ -217,8 +217,8 @@ data RWindow = RTumblingWindow RInterval
              | RHoppingWIndow  RInterval RInterval
              | RSessionWindow  RInterval
              deriving (Eq, Show)
-type instance RefinedType (Window a) = RWindow
-instance Refine (Window a) where
+type instance RefinedType Window = RWindow
+instance Refine Window where
   refine (TumblingWindow _ interval) = RTumblingWindow (refine interval)
   refine (HoppingWindow  _ len hop ) = RHoppingWIndow (refine len) (refine hop)
   refine (SessionWindow  _ interval) = RSessionWindow (refine interval)
@@ -226,8 +226,8 @@ instance Refine (Window a) where
 data RGroupBy = RGroupByEmpty
               | RGroupBy (Maybe StreamName) FieldName (Maybe RWindow)
               deriving (Eq, Show)
-type instance RefinedType (GroupBy a) = RGroupBy
-instance Refine (GroupBy Position) where
+type instance RefinedType GroupBy = RGroupBy
+instance Refine GroupBy where
   refine (DGroupByEmpty _) = RGroupByEmpty
   refine (DGroupBy _ [GrpItemCol _ col]) =
     case col of
@@ -244,15 +244,15 @@ instance Refine (GroupBy Position) where
 data RHaving = RHavingEmpty
              | RHaving RSearchCond
              deriving (Eq, Show)
-type instance RefinedType (Having a) = RHaving
-instance Refine (Having Position) where
+type instance RefinedType Having = RHaving
+instance Refine Having where
   refine (DHavingEmpty _) = RHavingEmpty
   refine (DHaving _ cond) = RHaving (refine cond)
 
 ---- SELECT
 data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Eq, Show)
-type instance RefinedType (Select a) = RSelect
-instance Refine (Select Position) where
+type instance RefinedType Select = RSelect
+instance Refine Select where
   refine (DSelect _ sel frm whr grp hav) =
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
 
@@ -265,23 +265,23 @@ data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
              deriving (Eq, Show)
 
-type instance RefinedType [StreamOption a] = RStreamOptions
-instance Refine [StreamOption a] where
+type instance RefinedType [StreamOption] = RStreamOptions
+instance Refine [StreamOption] where
   refine [OptionFormat _ format] = RStreamOptions (refineFormat format)
     where refineFormat "json" = FormatJSON
           refineFormat "JSON" = FormatJSON
           refineFormat _      = throwSQLException RefineException Nothing "Impossible happened"
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
-type instance RefinedType (Create a) = RCreate
-instance Refine (Create Position) where
+type instance RefinedType Create = RCreate
+instance Refine Create where
   refine (DCreate  _ (Ident s) options)        = RCreate   s (refine options)
   refine (CreateAs _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
 
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)] deriving (Eq, Show)
-type instance RefinedType (Insert a) = RInsert
-instance Refine (Insert Position) where
+type instance RefinedType Insert = RInsert
+instance Refine Insert where
   refine (DInsert _ (Ident s) fields exprs) = RInsert s $
     zip ((\(Ident f) -> f) <$> fields) (refineConst <$> exprs)
     where
@@ -294,8 +294,8 @@ data RSQL = RQSelect RSelect
           | RQCreate RCreate
           | RQInsert RInsert
           deriving (Eq, Show)
-type instance RefinedType (SQL a) = RSQL
-instance Refine (SQL Position) where
+type instance RefinedType SQL = RSQL
+instance Refine SQL where
   refine (QSelect _ select) = RQSelect (refine select)
   refine (QCreate _ create) = RQCreate (refine create)
   refine (QInsert _ insert) = RQInsert (refine insert)

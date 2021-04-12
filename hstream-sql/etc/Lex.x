@@ -5,6 +5,8 @@
 {-# OPTIONS_GHC -w #-}
 module HStream.SQL.Lex where
 
+import Prelude
+
 import qualified Data.Text
 import qualified Data.Bits
 import Data.Word (Word8)
@@ -103,10 +105,9 @@ eitherResIdent :: (Data.Text.Text -> Tok) -> Data.Text.Text -> Tok
 eitherResIdent tv s = treeFind resWords
   where
   treeFind N = tv s
-  treeFind (B a t left right) | s < a  = treeFind left
-                              | s > a  = treeFind right
-                              | s == a = t
-
+  treeFind (B a t left right) | (Data.Text.toUpper s)  < (Data.Text.toUpper a) = treeFind left
+                              | (Data.Text.toUpper s)  > (Data.Text.toUpper a) = treeFind right
+                              | (Data.Text.toUpper s) == (Data.Text.toUpper a) = t
 resWords :: BTree
 resWords = b "HOPPING" 32 (b "AND" 16 (b ":" 8 (b "+" 4 (b ")" 2 (b "(" 1 N N) (b "*" 3 N N)) (b "-" 6 (b "," 5 N N) (b "." 7 N N))) (b "<>" 12 (b "<" 10 (b ";" 9 N N) (b "<=" 11 N N)) (b ">" 14 (b "=" 13 N N) (b ">=" 15 N N)))) (b "CREATE" 24 (b "BY" 20 (b "AVG" 18 (b "AS" 17 N N) (b "BETWEEN" 19 N N)) (b "COUNT" 22 (b "CHANGES" 21 N N) (b "COUNT(*)" 23 N N))) (b "FORMAT" 28 (b "DAY" 26 (b "DATE" 25 N N) (b "EMIT" 27 N N)) (b "GROUP" 30 (b "FROM" 29 N N) (b "HAVING" 31 N N))))) (b "SELECT" 48 (b "MIN" 40 (b "INTO" 36 (b "INSERT" 34 (b "INNER" 33 N N) (b "INTERVAL" 35 N N)) (b "LEFT" 38 (b "JOIN" 37 N N) (b "MAX" 39 N N))) (b "ON" 44 (b "MONTH" 42 (b "MINUTE" 41 N N) (b "NOT" 43 N N)) (b "OUTER" 46 (b "OR" 45 N N) (b "SECOND" 47 N N)))) (b "WHERE" 56 (b "TIME" 52 (b "STREAM" 50 (b "SESSION" 49 N N) (b "SUM" 51 N N)) (b "VALUES" 54 (b "TUMBLING" 53 N N) (b "WEEK" 55 N N))) (b "[" 60 (b "WITHIN" 58 (b "WITH" 57 N N) (b "YEAR" 59 N N)) (b "{" 62 (b "]" 61 N N) (b "}" 63 N N)))))
    where b s n = let bs = Data.Text.pack s

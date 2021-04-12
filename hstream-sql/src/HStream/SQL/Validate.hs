@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor     #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
@@ -14,29 +15,15 @@ import           Data.List.Extra       (anySame)
 import           Data.Text             (Text)
 import           Data.Time.Calendar    (isLeapYear)
 import           GHC.Stack             (HasCallStack)
-import           HStream.SQL.Abs       (ColName (..),
-                                        CompOp (CompOpEQ, CompOpNE),
-                                        Create (..), Date (..),
-                                        DerivedCol (DerivedColAs, DerivedColSimpl),
-                                        From (..), GroupBy (..),
-                                        GrpItem (GrpItemCol, GrpItemWin),
-                                        Having (..), Ident (Ident), Insert (..),
-                                        Interval (..), JoinCond (..),
-                                        JoinWindow (..),
-                                        LabelledValueExpr (DLabelledValueExpr),
-                                        SQL (..), SearchCond (..), Sel (..),
-                                        SelList (..), Select (..), SetFunc (..),
-                                        StreamOption (..), TableRef (..),
-                                        Time (..), ValueExpr (..), Where (..),
-                                        Window (..))
+import           HStream.SQL.Abs
 import           HStream.SQL.Exception (Position, SomeSQLException (..),
                                         buildSQLException)
 import           HStream.SQL.Extra     (anyJoin, extractCondRefNames,
                                         extractRefNames, extractSelRefNames)
 
 ------------------------------ TypeClass Definition ----------------------------
-class (Functor f) => Validate f where
-  validate :: HasCallStack => f Position -> Either SomeSQLException (f Position)
+class Validate t where
+  validate :: HasCallStack => t -> Either SomeSQLException t
   {-# MINIMAL validate #-}
 
 --------------------------------- Basic Types ----------------------------------
@@ -117,7 +104,7 @@ instance Validate ValueExpr where
   validate expr@(ExprColName _ col) = validate col   >> return expr
   validate expr@(ExprSetFunc _ func) = validate func >> return expr
 
-isNumExpr :: HasCallStack => ValueExpr Position -> Either SomeSQLException (ValueExpr Position)
+isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr@(ExprAdd _ e1 e2)  = isNumExpr e1 >> isNumExpr e2 >> return expr
 isNumExpr expr@(ExprSub _ e1 e2)  = isNumExpr e1 >> isNumExpr e2 >> return expr
 isNumExpr expr@(ExprMul _ e1 e2)  = isNumExpr e1 >> isNumExpr e2 >> return expr
@@ -137,7 +124,7 @@ isNumExpr expr@(ExprSetFunc _ (SetFuncSum _ e))   = isNumExpr e >> return expr
 isNumExpr expr@(ExprSetFunc _ (SetFuncMax _ e))   = isOrdExpr e >> return expr
 isNumExpr expr@(ExprSetFunc _ (SetFuncMin _ e))   = isOrdExpr e >> return expr
 
-isOrdExpr :: HasCallStack => ValueExpr Position -> Either SomeSQLException (ValueExpr Position)
+isOrdExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isOrdExpr expr@ExprAdd{}    = isNumExpr expr
 isOrdExpr expr@ExprSub{}    = isNumExpr expr
 isOrdExpr expr@ExprMul{}    = isNumExpr expr
@@ -158,7 +145,7 @@ isOrdExpr expr@(ExprSetFunc _ (SetFuncMax _ e))   = isOrdExpr e >> return expr
 isOrdExpr expr@(ExprSetFunc _ (SetFuncMin _ e))   = isOrdExpr e >> return expr
 
 -- For validating SearchCond
-isAggregateExpr :: HasCallStack => ValueExpr Position -> Either SomeSQLException (ValueExpr Position)
+isAggregateExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isAggregateExpr (ExprSetFunc pos _) = Left $ buildSQLException ParseException pos "Aggregate functions are not allowed in WHERE clause, HAVING clause and JOIN condition"
 isAggregateExpr expr@(ExprAdd _ e1 e2) = isAggregateExpr e1 >> isAggregateExpr e2 >> return expr
 isAggregateExpr expr@(ExprSub _ e1 e2) = isAggregateExpr e1 >> isAggregateExpr e2 >> return expr
@@ -169,7 +156,7 @@ isAggregateExpr expr@(ExprMap _ es)    = mapM_ (isAggregateExpr . extractExpr) e
 isAggregateExpr expr = return expr
 
 -- For validating Insert
-isConstExpr :: HasCallStack => ValueExpr Position -> Either SomeSQLException (ValueExpr Position)
+isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isConstExpr expr@ExprInt{}      = Right expr
 isConstExpr expr@ExprNum{}      = Right expr
 isConstExpr expr@ExprString{}   = Right expr
@@ -226,7 +213,7 @@ instance Validate From where
       (Left $ buildSQLException ParseException pos "One or more stream name in joining condition is not specified in FROM clause")
     return from
     where refNames = extractRefNames refs -- Stream names and aliases
-          ext :: TableRef a -> (Bool, [Text])
+          ext :: TableRef -> (Bool, [Text])
           ext (TableRefJoin _ _ _ _ _ (DJoinCond _ cond)) = extractCondRefNames cond
           ext _ = (False, [])
           -- Stream names in joining conditions
@@ -395,10 +382,10 @@ instance Validate Create where
 
 instance Validate StreamOption where
   validate op@(OptionFormat pos s) = do
-    unless (s `L.elem` ["\"JSON\"", "\"json\""]) (Left $ buildSQLException ParseException pos "Stream format can only support JSON yet")
+    unless (s `L.elem` ["JSON", "json"]) (Left $ buildSQLException ParseException pos $ "Stream format can only support JSON yet ")
     return op
 
-newtype StreamOptions a = StreamOptions [StreamOption a] deriving (Functor)
+newtype StreamOptions = StreamOptions [StreamOption]
 
 instance Validate StreamOptions where
   validate (StreamOptions options) = do
