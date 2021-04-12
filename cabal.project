@@ -6,4 +6,3 @@ packages:
   hstream-sql
   z-data
   z-io
-  z-messagepack
