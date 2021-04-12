@@ -27,14 +27,15 @@ import qualified HStream.Store.Internal.FFI as FFI
 
 -------------------------------------------------------------------------------
 
+-- | Appends a new record to the log. Block haskell thread until operation
+-- completes.
 append :: HasCallStack
        => StreamClient
        -> TopicID
        -> Bytes
        -> Maybe (FFI.KeyType, CBytes)
-       -> (FFI.AppendCallBackData -> IO a)
-       -> IO a
-append (StreamClient client) (TopicID topicid) payload m_key_attr f =
+       -> IO FFI.AppendCallBackData
+append (StreamClient client) (TopicID topicid) payload m_key_attr =
   withForeignPtr client $ \client' ->
   Z.withPrimVectorUnsafe payload $ \payload' offset len -> mask_ $ do
     mvar <- newEmptyMVar
@@ -51,9 +52,8 @@ append (StreamClient client) (TopicID topicid) payload m_key_attr f =
       takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
       FFI.peekAppendCallBackData data'
     void $ E.throwStreamErrorIfNotOK' $ FFI.appendCbRetCode result
-    f result
+    return result
 
--- | Appends a new record to the log. Blocks until operation completes.
 appendSync :: StreamClient
            -> TopicID
            -> Bytes
