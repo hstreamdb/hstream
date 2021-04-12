@@ -152,7 +152,7 @@ handleCreateStreamTask taskName (ReqSQL seqValue) = do
                   taskInfo <- createTask seqValue sources sink query
                   atomicModifyIORef' taskNameMap (\t -> (M.insert taskName (taskid taskInfo)  t, ()))
                   liftIO $ do
-                    cname <- mapM (\_ -> randomRIO ('A', 'z')) [1 .. 10 :: Int]
+                    cname <- mapM (\_ -> randomRIO ('A', 'Z')) [1 .. 10 :: Int]
                     cons <-
                       try $
                         mkConsumer
