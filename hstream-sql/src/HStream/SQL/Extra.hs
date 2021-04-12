@@ -11,13 +11,13 @@ import           Data.Text       (Text)
 import           HStream.SQL.Abs
 
 --------------------------------------------------------------------------------
-anyJoin :: [TableRef a] -> Bool
+anyJoin :: [TableRef] -> Bool
 anyJoin []                          = False
 anyJoin ((TableRefSimple _ _) : xs) = anyJoin xs
 anyJoin ((TableRefAs _ ref _) : xs) = anyJoin (ref : xs)
 anyJoin (TableRefJoin{} : _)        = True
 
-extractRefNames :: [TableRef a] -> [Text]
+extractRefNames :: [TableRef] -> [Text]
 extractRefNames [] = []
 extractRefNames ((TableRefSimple _ (Ident name)) : xs)  = name : extractRefNames xs
 extractRefNames ((TableRefAs _ ref (Ident name)) : xs)  = name : extractRefNames (ref : xs)
@@ -27,7 +27,7 @@ extractRefNames ((TableRefJoin _ ref1 _ ref2 _ _) : xs) = extractRefNames (ref1 
 -- | Extract stream names mentioned in DerivedCols (part of SELECT clause).
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "SELECT s1.col1, col2" -> (True, ["s1"])
-extractSelRefNames :: [DerivedCol a] -> (Bool, [Text])
+extractSelRefNames :: [DerivedCol] -> (Bool, [Text])
 extractSelRefNames [] = (False, [])
 extractSelRefNames ((DerivedColSimpl _ expr) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
   where (b1, refs1) = extractRefNameFromExpr expr
@@ -40,7 +40,7 @@ extractSelRefNames ((DerivedColAs _ expr _) : xs) = (b1 || b2, L.nub (refs1 ++ r
 -- | Extract stream names mentioned in a SearchCond.
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "s1.col1 > col2" -> (True, ["s1"])
-extractCondRefNames :: SearchCond a -> (Bool, [Text])
+extractCondRefNames :: SearchCond -> (Bool, [Text])
 extractCondRefNames (CondOp pos e1 _ e2)      = extractRefNameFromExpr (ExprArr pos [e1, e2])
 extractCondRefNames (CondBetween pos e1 e e2) = extractRefNameFromExpr (ExprArr pos [e1, e, e2])
 extractCondRefNames (CondOr _ c1 c2)        = (b1 || b2, L.nub (refs1 ++ refs2))
@@ -52,7 +52,7 @@ extractCondRefNames (CondNot _ c)           = extractCondRefNames c
 -- | Extract stream names mentioned in an expression.
 -- Return value: (anySimpleCol, [streamName])
 -- For example, "s1.col1 + col2" -> (True, ["s1"])
-extractRefNameFromExpr :: ValueExpr a -> (Bool, [Text])
+extractRefNameFromExpr :: ValueExpr -> (Bool, [Text])
 extractRefNameFromExpr (ExprColName _ (ColNameSimple _ _)) = (True, [])
 extractRefNameFromExpr (ExprColName _ (ColNameStream _ (Ident s) _)) = (False, [s])
 extractRefNameFromExpr (ExprColName _ (ColNameInner pos col _)) = extractRefNameFromExpr (ExprColName pos col)

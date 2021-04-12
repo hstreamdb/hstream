@@ -16,7 +16,7 @@ import           HStream.SQL.Par        (pSQL)
 import           HStream.SQL.Preprocess (preprocess)
 import           HStream.SQL.Validate   (Validate (validate))
 
-parse :: HasCallStack => Text -> IO (SQL Position)
+parse :: HasCallStack => Text -> IO SQL
 parse input = do
   let sql' = pSQL . tokens . preprocess $ input
   case sql' of

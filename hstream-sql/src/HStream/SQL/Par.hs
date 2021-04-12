@@ -4,7 +4,53 @@
 {-# OPTIONS_GHC -XPartialTypeSignatures #-}
 #endif
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns #-}
-module HStream.SQL.Par where
+module HStream.SQL.Par
+  ( happyError
+  , myLexer
+  , pSQL
+  , pCreate
+  , pListStreamOption
+  , pStreamOption
+  , pInsert
+  , pListIdent
+  , pListValueExpr
+  , pSelect
+  , pSel
+  , pSelList
+  , pListDerivedCol
+  , pDerivedCol
+  , pFrom
+  , pListTableRef
+  , pTableRef
+  , pJoinType
+  , pJoinWindow
+  , pJoinCond
+  , pWhere
+  , pGroupBy
+  , pListGrpItem
+  , pGrpItem
+  , pWindow
+  , pHaving
+  , pValueExpr
+  , pValueExpr1
+  , pValueExpr2
+  , pDate
+  , pTime
+  , pTimeUnit
+  , pInterval
+  , pListLabelledValueExpr
+  , pLabelledValueExpr
+  , pColName
+  , pSetFunc
+  , pSearchCond
+  , pSearchCond1
+  , pSearchCond2
+  , pSearchCond3
+  , pCompOp
+  ) where
+
+import Prelude
+
 import qualified HStream.SQL.Abs
 import HStream.SQL.Lex
 import qualified Data.Text
@@ -14,7 +60,7 @@ import qualified GHC.Exts as Happy_GHC_Exts
 import Control.Applicative(Applicative(..))
 import Control.Monad (ap)
 
--- parser produced by Happy Version 1.19.12
+-- parser produced by Happy Version 1.20.0
 
 newtype HappyAbsSyn  = HappyAbsSyn HappyAny
 #if __GLASGOW_HASKELL__ >= 607
@@ -22,309 +68,309 @@ type HappyAny = Happy_GHC_Exts.Any
 #else
 type HappyAny = forall a . a
 #endif
-newtype HappyWrap43 = HappyWrap43 ((Maybe (Int, Int), HStream.SQL.Abs.Ident))
-happyIn43 :: ((Maybe (Int, Int), HStream.SQL.Abs.Ident)) -> (HappyAbsSyn )
+newtype HappyWrap43 = HappyWrap43 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Ident))
+happyIn43 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Ident)) -> (HappyAbsSyn )
 happyIn43 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap43 x)
 {-# INLINE happyIn43 #-}
 happyOut43 :: (HappyAbsSyn ) -> HappyWrap43
 happyOut43 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut43 #-}
-newtype HappyWrap44 = HappyWrap44 ((Maybe (Int, Int), Double))
-happyIn44 :: ((Maybe (Int, Int), Double)) -> (HappyAbsSyn )
+newtype HappyWrap44 = HappyWrap44 ((HStream.SQL.Abs.BNFC'Position, Double))
+happyIn44 :: ((HStream.SQL.Abs.BNFC'Position, Double)) -> (HappyAbsSyn )
 happyIn44 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap44 x)
 {-# INLINE happyIn44 #-}
 happyOut44 :: (HappyAbsSyn ) -> HappyWrap44
 happyOut44 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut44 #-}
-newtype HappyWrap45 = HappyWrap45 ((Maybe (Int, Int), Integer))
-happyIn45 :: ((Maybe (Int, Int), Integer)) -> (HappyAbsSyn )
+newtype HappyWrap45 = HappyWrap45 ((HStream.SQL.Abs.BNFC'Position, Integer))
+happyIn45 :: ((HStream.SQL.Abs.BNFC'Position, Integer)) -> (HappyAbsSyn )
 happyIn45 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap45 x)
 {-# INLINE happyIn45 #-}
 happyOut45 :: (HappyAbsSyn ) -> HappyWrap45
 happyOut45 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut45 #-}
-newtype HappyWrap46 = HappyWrap46 ((Maybe (Int, Int), String))
-happyIn46 :: ((Maybe (Int, Int), String)) -> (HappyAbsSyn )
+newtype HappyWrap46 = HappyWrap46 ((HStream.SQL.Abs.BNFC'Position, String))
+happyIn46 :: ((HStream.SQL.Abs.BNFC'Position, String)) -> (HappyAbsSyn )
 happyIn46 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap46 x)
 {-# INLINE happyIn46 #-}
 happyOut46 :: (HappyAbsSyn ) -> HappyWrap46
 happyOut46 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut46 #-}
-newtype HappyWrap47 = HappyWrap47 ((Maybe (Int, Int),  (HStream.SQL.Abs.SQL (Maybe (Int, Int))) ))
-happyIn47 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SQL (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap47 = HappyWrap47 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SQL))
+happyIn47 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SQL)) -> (HappyAbsSyn )
 happyIn47 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap47 x)
 {-# INLINE happyIn47 #-}
 happyOut47 :: (HappyAbsSyn ) -> HappyWrap47
 happyOut47 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut47 #-}
-newtype HappyWrap48 = HappyWrap48 ((Maybe (Int, Int),  (HStream.SQL.Abs.Create (Maybe (Int, Int))) ))
-happyIn48 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Create (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap48 = HappyWrap48 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Create))
+happyIn48 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Create)) -> (HappyAbsSyn )
 happyIn48 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap48 x)
 {-# INLINE happyIn48 #-}
 happyOut48 :: (HappyAbsSyn ) -> HappyWrap48
 happyOut48 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut48 #-}
-newtype HappyWrap49 = HappyWrap49 ((Maybe (Int, Int),  [HStream.SQL.Abs.StreamOption (Maybe (Int, Int))] ))
-happyIn49 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.StreamOption (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap49 = HappyWrap49 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.StreamOption]))
+happyIn49 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.StreamOption])) -> (HappyAbsSyn )
 happyIn49 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap49 x)
 {-# INLINE happyIn49 #-}
 happyOut49 :: (HappyAbsSyn ) -> HappyWrap49
 happyOut49 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut49 #-}
-newtype HappyWrap50 = HappyWrap50 ((Maybe (Int, Int),  (HStream.SQL.Abs.StreamOption (Maybe (Int, Int))) ))
-happyIn50 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.StreamOption (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap50 = HappyWrap50 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.StreamOption))
+happyIn50 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.StreamOption)) -> (HappyAbsSyn )
 happyIn50 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap50 x)
 {-# INLINE happyIn50 #-}
 happyOut50 :: (HappyAbsSyn ) -> HappyWrap50
 happyOut50 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut50 #-}
-newtype HappyWrap51 = HappyWrap51 ((Maybe (Int, Int),  (HStream.SQL.Abs.Insert (Maybe (Int, Int))) ))
-happyIn51 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Insert (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap51 = HappyWrap51 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert))
+happyIn51 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert)) -> (HappyAbsSyn )
 happyIn51 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap51 x)
 {-# INLINE happyIn51 #-}
 happyOut51 :: (HappyAbsSyn ) -> HappyWrap51
 happyOut51 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut51 #-}
-newtype HappyWrap52 = HappyWrap52 ((Maybe (Int, Int),  [HStream.SQL.Abs.Ident] ))
-happyIn52 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.Ident] )) -> (HappyAbsSyn )
+newtype HappyWrap52 = HappyWrap52 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.Ident]))
+happyIn52 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.Ident])) -> (HappyAbsSyn )
 happyIn52 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap52 x)
 {-# INLINE happyIn52 #-}
 happyOut52 :: (HappyAbsSyn ) -> HappyWrap52
 happyOut52 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut52 #-}
-newtype HappyWrap53 = HappyWrap53 ((Maybe (Int, Int),  [HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))] ))
-happyIn53 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap53 = HappyWrap53 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.ValueExpr]))
+happyIn53 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.ValueExpr])) -> (HappyAbsSyn )
 happyIn53 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap53 x)
 {-# INLINE happyIn53 #-}
 happyOut53 :: (HappyAbsSyn ) -> HappyWrap53
 happyOut53 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut53 #-}
-newtype HappyWrap54 = HappyWrap54 ((Maybe (Int, Int),  (HStream.SQL.Abs.Select (Maybe (Int, Int))) ))
-happyIn54 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Select (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap54 = HappyWrap54 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Select))
+happyIn54 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Select)) -> (HappyAbsSyn )
 happyIn54 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap54 x)
 {-# INLINE happyIn54 #-}
 happyOut54 :: (HappyAbsSyn ) -> HappyWrap54
 happyOut54 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut54 #-}
-newtype HappyWrap55 = HappyWrap55 ((Maybe (Int, Int),  (HStream.SQL.Abs.Sel (Maybe (Int, Int))) ))
-happyIn55 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Sel (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap55 = HappyWrap55 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Sel))
+happyIn55 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Sel)) -> (HappyAbsSyn )
 happyIn55 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap55 x)
 {-# INLINE happyIn55 #-}
 happyOut55 :: (HappyAbsSyn ) -> HappyWrap55
 happyOut55 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut55 #-}
-newtype HappyWrap56 = HappyWrap56 ((Maybe (Int, Int),  (HStream.SQL.Abs.SelList (Maybe (Int, Int))) ))
-happyIn56 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SelList (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap56 = HappyWrap56 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SelList))
+happyIn56 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SelList)) -> (HappyAbsSyn )
 happyIn56 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap56 x)
 {-# INLINE happyIn56 #-}
 happyOut56 :: (HappyAbsSyn ) -> HappyWrap56
 happyOut56 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut56 #-}
-newtype HappyWrap57 = HappyWrap57 ((Maybe (Int, Int),  [HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))] ))
-happyIn57 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap57 = HappyWrap57 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.DerivedCol]))
+happyIn57 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.DerivedCol])) -> (HappyAbsSyn )
 happyIn57 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap57 x)
 {-# INLINE happyIn57 #-}
 happyOut57 :: (HappyAbsSyn ) -> HappyWrap57
 happyOut57 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut57 #-}
-newtype HappyWrap58 = HappyWrap58 ((Maybe (Int, Int),  (HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))) ))
-happyIn58 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.DerivedCol (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap58 = HappyWrap58 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.DerivedCol))
+happyIn58 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.DerivedCol)) -> (HappyAbsSyn )
 happyIn58 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap58 x)
 {-# INLINE happyIn58 #-}
 happyOut58 :: (HappyAbsSyn ) -> HappyWrap58
 happyOut58 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut58 #-}
-newtype HappyWrap59 = HappyWrap59 ((Maybe (Int, Int),  (HStream.SQL.Abs.From (Maybe (Int, Int))) ))
-happyIn59 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.From (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap59 = HappyWrap59 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.From))
+happyIn59 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.From)) -> (HappyAbsSyn )
 happyIn59 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap59 x)
 {-# INLINE happyIn59 #-}
 happyOut59 :: (HappyAbsSyn ) -> HappyWrap59
 happyOut59 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut59 #-}
-newtype HappyWrap60 = HappyWrap60 ((Maybe (Int, Int),  [HStream.SQL.Abs.TableRef (Maybe (Int, Int))] ))
-happyIn60 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.TableRef (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap60 = HappyWrap60 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.TableRef]))
+happyIn60 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.TableRef])) -> (HappyAbsSyn )
 happyIn60 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap60 x)
 {-# INLINE happyIn60 #-}
 happyOut60 :: (HappyAbsSyn ) -> HappyWrap60
 happyOut60 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut60 #-}
-newtype HappyWrap61 = HappyWrap61 ((Maybe (Int, Int),  (HStream.SQL.Abs.TableRef (Maybe (Int, Int))) ))
-happyIn61 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.TableRef (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap61 = HappyWrap61 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.TableRef))
+happyIn61 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.TableRef)) -> (HappyAbsSyn )
 happyIn61 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap61 x)
 {-# INLINE happyIn61 #-}
 happyOut61 :: (HappyAbsSyn ) -> HappyWrap61
 happyOut61 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut61 #-}
-newtype HappyWrap62 = HappyWrap62 ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinType (Maybe (Int, Int))) ))
-happyIn62 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinType (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap62 = HappyWrap62 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.JoinType))
+happyIn62 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.JoinType)) -> (HappyAbsSyn )
 happyIn62 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap62 x)
 {-# INLINE happyIn62 #-}
 happyOut62 :: (HappyAbsSyn ) -> HappyWrap62
 happyOut62 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut62 #-}
-newtype HappyWrap63 = HappyWrap63 ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinWindow (Maybe (Int, Int))) ))
-happyIn63 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinWindow (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap63 = HappyWrap63 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.JoinWindow))
+happyIn63 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.JoinWindow)) -> (HappyAbsSyn )
 happyIn63 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap63 x)
 {-# INLINE happyIn63 #-}
 happyOut63 :: (HappyAbsSyn ) -> HappyWrap63
 happyOut63 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut63 #-}
-newtype HappyWrap64 = HappyWrap64 ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinCond (Maybe (Int, Int))) ))
-happyIn64 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.JoinCond (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap64 = HappyWrap64 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.JoinCond))
+happyIn64 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.JoinCond)) -> (HappyAbsSyn )
 happyIn64 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap64 x)
 {-# INLINE happyIn64 #-}
 happyOut64 :: (HappyAbsSyn ) -> HappyWrap64
 happyOut64 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut64 #-}
-newtype HappyWrap65 = HappyWrap65 ((Maybe (Int, Int),  (HStream.SQL.Abs.Where (Maybe (Int, Int))) ))
-happyIn65 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Where (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap65 = HappyWrap65 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Where))
+happyIn65 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Where)) -> (HappyAbsSyn )
 happyIn65 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap65 x)
 {-# INLINE happyIn65 #-}
 happyOut65 :: (HappyAbsSyn ) -> HappyWrap65
 happyOut65 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut65 #-}
-newtype HappyWrap66 = HappyWrap66 ((Maybe (Int, Int),  (HStream.SQL.Abs.GroupBy (Maybe (Int, Int))) ))
-happyIn66 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.GroupBy (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap66 = HappyWrap66 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.GroupBy))
+happyIn66 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.GroupBy)) -> (HappyAbsSyn )
 happyIn66 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap66 x)
 {-# INLINE happyIn66 #-}
 happyOut66 :: (HappyAbsSyn ) -> HappyWrap66
 happyOut66 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut66 #-}
-newtype HappyWrap67 = HappyWrap67 ((Maybe (Int, Int),  [HStream.SQL.Abs.GrpItem (Maybe (Int, Int))] ))
-happyIn67 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.GrpItem (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap67 = HappyWrap67 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.GrpItem]))
+happyIn67 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.GrpItem])) -> (HappyAbsSyn )
 happyIn67 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap67 x)
 {-# INLINE happyIn67 #-}
 happyOut67 :: (HappyAbsSyn ) -> HappyWrap67
 happyOut67 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut67 #-}
-newtype HappyWrap68 = HappyWrap68 ((Maybe (Int, Int),  (HStream.SQL.Abs.GrpItem (Maybe (Int, Int))) ))
-happyIn68 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.GrpItem (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap68 = HappyWrap68 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.GrpItem))
+happyIn68 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.GrpItem)) -> (HappyAbsSyn )
 happyIn68 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap68 x)
 {-# INLINE happyIn68 #-}
 happyOut68 :: (HappyAbsSyn ) -> HappyWrap68
 happyOut68 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut68 #-}
-newtype HappyWrap69 = HappyWrap69 ((Maybe (Int, Int),  (HStream.SQL.Abs.Window (Maybe (Int, Int))) ))
-happyIn69 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Window (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap69 = HappyWrap69 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Window))
+happyIn69 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Window)) -> (HappyAbsSyn )
 happyIn69 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap69 x)
 {-# INLINE happyIn69 #-}
 happyOut69 :: (HappyAbsSyn ) -> HappyWrap69
 happyOut69 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut69 #-}
-newtype HappyWrap70 = HappyWrap70 ((Maybe (Int, Int),  (HStream.SQL.Abs.Having (Maybe (Int, Int))) ))
-happyIn70 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Having (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap70 = HappyWrap70 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Having))
+happyIn70 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Having)) -> (HappyAbsSyn )
 happyIn70 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap70 x)
 {-# INLINE happyIn70 #-}
 happyOut70 :: (HappyAbsSyn ) -> HappyWrap70
 happyOut70 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut70 #-}
-newtype HappyWrap71 = HappyWrap71 ((Maybe (Int, Int),  (HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))) ))
-happyIn71 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.ValueExpr (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap71 = HappyWrap71 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr))
+happyIn71 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr)) -> (HappyAbsSyn )
 happyIn71 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap71 x)
 {-# INLINE happyIn71 #-}
 happyOut71 :: (HappyAbsSyn ) -> HappyWrap71
 happyOut71 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut71 #-}
-newtype HappyWrap72 = HappyWrap72 ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) ))
-happyIn72 :: ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap72 = HappyWrap72 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr))
+happyIn72 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr)) -> (HappyAbsSyn )
 happyIn72 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap72 x)
 {-# INLINE happyIn72 #-}
 happyOut72 :: (HappyAbsSyn ) -> HappyWrap72
 happyOut72 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut72 #-}
-newtype HappyWrap73 = HappyWrap73 ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) ))
-happyIn73 :: ((Maybe (Int, Int),  HStream.SQL.Abs.ValueExpr (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap73 = HappyWrap73 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr))
+happyIn73 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr)) -> (HappyAbsSyn )
 happyIn73 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap73 x)
 {-# INLINE happyIn73 #-}
 happyOut73 :: (HappyAbsSyn ) -> HappyWrap73
 happyOut73 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut73 #-}
-newtype HappyWrap74 = HappyWrap74 ((Maybe (Int, Int),  (HStream.SQL.Abs.Date (Maybe (Int, Int))) ))
-happyIn74 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Date (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap74 = HappyWrap74 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Date))
+happyIn74 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Date)) -> (HappyAbsSyn )
 happyIn74 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap74 x)
 {-# INLINE happyIn74 #-}
 happyOut74 :: (HappyAbsSyn ) -> HappyWrap74
 happyOut74 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut74 #-}
-newtype HappyWrap75 = HappyWrap75 ((Maybe (Int, Int),  (HStream.SQL.Abs.Time (Maybe (Int, Int))) ))
-happyIn75 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Time (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap75 = HappyWrap75 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Time))
+happyIn75 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Time)) -> (HappyAbsSyn )
 happyIn75 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap75 x)
 {-# INLINE happyIn75 #-}
 happyOut75 :: (HappyAbsSyn ) -> HappyWrap75
 happyOut75 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut75 #-}
-newtype HappyWrap76 = HappyWrap76 ((Maybe (Int, Int),  (HStream.SQL.Abs.TimeUnit (Maybe (Int, Int))) ))
-happyIn76 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.TimeUnit (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap76 = HappyWrap76 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.TimeUnit))
+happyIn76 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.TimeUnit)) -> (HappyAbsSyn )
 happyIn76 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap76 x)
 {-# INLINE happyIn76 #-}
 happyOut76 :: (HappyAbsSyn ) -> HappyWrap76
 happyOut76 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut76 #-}
-newtype HappyWrap77 = HappyWrap77 ((Maybe (Int, Int),  (HStream.SQL.Abs.Interval (Maybe (Int, Int))) ))
-happyIn77 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.Interval (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap77 = HappyWrap77 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Interval))
+happyIn77 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Interval)) -> (HappyAbsSyn )
 happyIn77 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap77 x)
 {-# INLINE happyIn77 #-}
 happyOut77 :: (HappyAbsSyn ) -> HappyWrap77
 happyOut77 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut77 #-}
-newtype HappyWrap78 = HappyWrap78 ((Maybe (Int, Int),  [HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))] ))
-happyIn78 :: ((Maybe (Int, Int),  [HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))] )) -> (HappyAbsSyn )
+newtype HappyWrap78 = HappyWrap78 ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.LabelledValueExpr]))
+happyIn78 :: ((HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.LabelledValueExpr])) -> (HappyAbsSyn )
 happyIn78 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap78 x)
 {-# INLINE happyIn78 #-}
 happyOut78 :: (HappyAbsSyn ) -> HappyWrap78
 happyOut78 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut78 #-}
-newtype HappyWrap79 = HappyWrap79 ((Maybe (Int, Int),  (HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))) ))
-happyIn79 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.LabelledValueExpr (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap79 = HappyWrap79 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.LabelledValueExpr))
+happyIn79 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.LabelledValueExpr)) -> (HappyAbsSyn )
 happyIn79 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap79 x)
 {-# INLINE happyIn79 #-}
 happyOut79 :: (HappyAbsSyn ) -> HappyWrap79
 happyOut79 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut79 #-}
-newtype HappyWrap80 = HappyWrap80 ((Maybe (Int, Int),  (HStream.SQL.Abs.ColName (Maybe (Int, Int))) ))
-happyIn80 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.ColName (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap80 = HappyWrap80 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ColName))
+happyIn80 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ColName)) -> (HappyAbsSyn )
 happyIn80 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap80 x)
 {-# INLINE happyIn80 #-}
 happyOut80 :: (HappyAbsSyn ) -> HappyWrap80
 happyOut80 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut80 #-}
-newtype HappyWrap81 = HappyWrap81 ((Maybe (Int, Int),  (HStream.SQL.Abs.SetFunc (Maybe (Int, Int))) ))
-happyIn81 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SetFunc (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap81 = HappyWrap81 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SetFunc))
+happyIn81 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SetFunc)) -> (HappyAbsSyn )
 happyIn81 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap81 x)
 {-# INLINE happyIn81 #-}
 happyOut81 :: (HappyAbsSyn ) -> HappyWrap81
 happyOut81 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut81 #-}
-newtype HappyWrap82 = HappyWrap82 ((Maybe (Int, Int),  (HStream.SQL.Abs.SearchCond (Maybe (Int, Int))) ))
-happyIn82 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.SearchCond (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap82 = HappyWrap82 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond))
+happyIn82 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond)) -> (HappyAbsSyn )
 happyIn82 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap82 x)
 {-# INLINE happyIn82 #-}
 happyOut82 :: (HappyAbsSyn ) -> HappyWrap82
 happyOut82 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut82 #-}
-newtype HappyWrap83 = HappyWrap83 ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
-happyIn83 :: ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap83 = HappyWrap83 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond))
+happyIn83 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond)) -> (HappyAbsSyn )
 happyIn83 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap83 x)
 {-# INLINE happyIn83 #-}
 happyOut83 :: (HappyAbsSyn ) -> HappyWrap83
 happyOut83 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut83 #-}
-newtype HappyWrap84 = HappyWrap84 ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
-happyIn84 :: ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap84 = HappyWrap84 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond))
+happyIn84 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond)) -> (HappyAbsSyn )
 happyIn84 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap84 x)
 {-# INLINE happyIn84 #-}
 happyOut84 :: (HappyAbsSyn ) -> HappyWrap84
 happyOut84 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut84 #-}
-newtype HappyWrap85 = HappyWrap85 ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) ))
-happyIn85 :: ((Maybe (Int, Int),  HStream.SQL.Abs.SearchCond (Maybe (Int, Int)) )) -> (HappyAbsSyn )
+newtype HappyWrap85 = HappyWrap85 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond))
+happyIn85 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond)) -> (HappyAbsSyn )
 happyIn85 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap85 x)
 {-# INLINE happyIn85 #-}
 happyOut85 :: (HappyAbsSyn ) -> HappyWrap85
 happyOut85 x = Happy_GHC_Exts.unsafeCoerce# x
 {-# INLINE happyOut85 #-}
-newtype HappyWrap86 = HappyWrap86 ((Maybe (Int, Int),  (HStream.SQL.Abs.CompOp (Maybe (Int, Int))) ))
-happyIn86 :: ((Maybe (Int, Int),  (HStream.SQL.Abs.CompOp (Maybe (Int, Int))) )) -> (HappyAbsSyn )
+newtype HappyWrap86 = HappyWrap86 ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.CompOp))
+happyIn86 :: ((HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.CompOp)) -> (HappyAbsSyn )
 happyIn86 x = Happy_GHC_Exts.unsafeCoerce# (HappyWrap86 x)
 {-# INLINE happyIn86 #-}
 happyOut86 :: (HappyAbsSyn ) -> HappyWrap86
@@ -345,14 +391,14 @@ happyExpList = HappyA# "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20
 happyExpListPerState st =
     token_strs_expected
   where token_strs = ["error","%dummy","%start_pSQL_internal","%start_pCreate_internal","%start_pListStreamOption_internal","%start_pStreamOption_internal","%start_pInsert_internal","%start_pListIdent_internal","%start_pListValueExpr_internal","%start_pSelect_internal","%start_pSel_internal","%start_pSelList_internal","%start_pListDerivedCol_internal","%start_pDerivedCol_internal","%start_pFrom_internal","%start_pListTableRef_internal","%start_pTableRef_internal","%start_pJoinType_internal","%start_pJoinWindow_internal","%start_pJoinCond_internal","%start_pWhere_internal","%start_pGroupBy_internal","%start_pListGrpItem_internal","%start_pGrpItem_internal","%start_pWindow_internal","%start_pHaving_internal","%start_pValueExpr_internal","%start_pValueExpr1_internal","%start_pValueExpr2_internal","%start_pDate_internal","%start_pTime_internal","%start_pTimeUnit_internal","%start_pInterval_internal","%start_pListLabelledValueExpr_internal","%start_pLabelledValueExpr_internal","%start_pColName_internal","%start_pSetFunc_internal","%start_pSearchCond_internal","%start_pSearchCond1_internal","%start_pSearchCond2_internal","%start_pSearchCond3_internal","%start_pCompOp_internal","Ident","Double","Integer","String","SQL","Create","ListStreamOption","StreamOption","Insert","ListIdent","ListValueExpr","Select","Sel","SelList","ListDerivedCol","DerivedCol","From","ListTableRef","TableRef","JoinType","JoinWindow","JoinCond","Where","GroupBy","ListGrpItem","GrpItem","Window","Having","ValueExpr","ValueExpr1","ValueExpr2","Date","Time","TimeUnit","Interval","ListLabelledValueExpr","LabelledValueExpr","ColName","SetFunc","SearchCond","SearchCond1","SearchCond2","SearchCond3","CompOp","'('","')'","'*'","'+'","','","'-'","'.'","':'","';'","'<'","'<='","'<>'","'='","'>'","'>='","'AND'","'AS'","'AVG'","'BETWEEN'","'BY'","'CHANGES'","'COUNT'","'COUNT(*)'","'CREATE'","'DATE'","'DAY'","'EMIT'","'FORMAT'","'FROM'","'GROUP'","'HAVING'","'HOPPING'","'INNER'","'INSERT'","'INTERVAL'","'INTO'","'JOIN'","'LEFT'","'MAX'","'MIN'","'MINUTE'","'MONTH'","'NOT'","'ON'","'OR'","'OUTER'","'SECOND'","'SELECT'","'SESSION'","'STREAM'","'SUM'","'TIME'","'TUMBLING'","'VALUES'","'WEEK'","'WHERE'","'WITH'","'WITHIN'","'YEAR'","'['","']'","'{'","'}'","L_Ident","L_doubl","L_integ","L_quoted","%eof"]
-        bit_start = st * 154
-        bit_end = (st + 1) * 154
+        bit_start = st Prelude.* 154
+        bit_end = (st Prelude.+ 1) Prelude.* 154
         read_bit = readArrayBit happyExpList
-        bits = map read_bit [bit_start..bit_end - 1]
-        bits_indexed = zip bits [0..153]
-        token_strs_expected = concatMap f bits_indexed
-        f (False, _) = []
-        f (True, nr) = [token_strs !! nr]
+        bits = Prelude.map read_bit [bit_start..bit_end Prelude.- 1]
+        bits_indexed = Prelude.zip bits [0..153]
+        token_strs_expected = Prelude.concatMap f bits_indexed
+        f (Prelude.False, _) = []
+        f (Prelude.True, nr) = [token_strs Prelude.!! nr]
 
 happyActOffsets :: HappyAddr
 happyActOffsets = HappyA# "\x5b\x00\xeb\xff\x33\x00\x33\x00\xfa\xff\x17\x00\x90\x00\x2b\x00\x2b\x00\x01\x00\x90\x00\x90\x00\x5a\x00\x3f\x00\x3f\x00\x8e\x00\x56\x00\x66\x00\x6b\x00\x9c\x00\x81\x00\x81\x00\xf0\xff\x8f\x00\x90\x00\x22\x01\x22\x01\xa9\x00\x93\x00\xab\x00\xa6\x00\xa5\x00\xa5\x00\xa5\x00\x19\x02\x25\x00\x25\x00\x25\x00\xb4\x00\x45\x01\xa5\x00\x00\x00\x8b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xe6\x00\x00\x00\x00\x00\x00\x00\x92\x04\xee\x00\x00\x00\x00\x00\x00\x00\x00\x00\xad\x00\x00\x00\xaf\x00\x25\x00\xfd\x00\xff\x00\x00\x00\xc4\x00\xc4\x00\x0c\x01\x0e\x01\x27\x01\xe8\x00\xc7\x00\xf5\x00\x00\x00\x00\x00\x00\x00\xf9\x00\x00\x00\xeb\x00\xf6\xff\x00\x00\xdf\xff\x33\x01\x1c\x01\xd5\xff\x51\x01\x1d\x01\x1d\x01\x61\x01\x28\x01\x28\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x28\x01\x28\x01\x28\x01\xfe\x00\x02\x00\x03\x00\x28\x01\x25\x00\x28\x01\x7a\x01\x7c\x01\x7d\x01\x4c\x01\x00\x00\x56\x01\x54\x01\x95\x01\x55\x01\x89\x01\x57\x01\x25\x00\x57\x01\x25\x00\x57\x01\x9b\x01\x5b\x01\x00\x00\x00\x00\x00\x00\x00\x00\xfc\xff\x5b\x01\x0a\x00\x5b\x01\x5e\x01\x5c\x01\x4f\x00\x5c\x01\xa1\x01\x64\x01\x00\x00\x00\x00\x64\x01\x59\x00\x64\x01\x8c\x01\x71\x01\xa7\x00\xb2\x01\x74\x01\x74\x01\x9f\x01\x80\x01\xb8\x01\x82\x01\xc2\x01\x84\x01\x97\x01\x86\x01\xc3\x01\xc4\x01\xc9\x01\x00\x00\x00\x00\x00\x00\x8b\x01\xb7\x01\x91\x01\x96\x01\x96\x01\x22\x01\xfe\x00\x22\x01\x9d\x01\x00\x00\xfe\x00\x98\x01\x00\x00\xb4\x01\x9a\x01\x9a\x01\xbd\x01\xaa\x01\xaa\x01\x81\x00\x81\x00\xd4\xff\xc0\x01\xc0\x01\xc0\x01\xb5\x01\x22\x01\x14\x01\xaf\x01\xfe\x00\x7d\x00\x7d\x00\x00\x00\xb3\x01\xc1\x01\xe9\x01\xfe\x00\xfe\x00\xfe\x00\xe2\x00\xef\x01\xfe\x00\xfe\x00\x86\x04\xff\xff\xfe\x00\xfe\x00\xc5\x01\x00\x00\xdb\x00\x2d\x00\x00\x00\x00\x00\x1e\x01\x40\x01\xbb\x01\x00\x00\x87\x01\x88\x01\x8d\x01\xbb\x01\x00\x00\x00\x00\xf0\x01\x00\x00\x2d\x00\x00\x00\x00\x00\xfa\x01\xff\x01\x00\x02\xc6\x01\xc7\x01\x00\x00\x00\x00\x04\x02\x00\x00\x00\x00\xcc\x01\x00\x00\x00\x00\xf1\x01\x0a\x02\x00\x00\x0a\x02\x00\x00\x06\x02\x00\x00\x00\x00\xf9\xff\xde\x01\x0f\x02\xd1\x01\xf3\x01\x28\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xf7\x01\x0b\x02\x00\x00\x00\x00\x00\x00\x0e\x02\x00\x00\x00\x00\xfe\x00\x2d\x00\xda\x01\xda\x01\x1b\x02\xf4\x01\x11\x02\x27\x02\x1c\x02\xfe\x01\x38\x02\x39\x02\x07\x02\x25\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x3b\x02\x00\x00\x22\x02\x3d\x02\xfe\x00\x44\x02\x00\x00\x00\x00\x00\x00"#
@@ -484,35 +530,35 @@ happyReduceArr = Happy_Data_Array.array (40, 148) [
 	(148 , happyReduce_148)
 	]
 
-happy_n_terms = 69 :: Int
-happy_n_nonterms = 44 :: Int
+happy_n_terms = 69 :: Prelude.Int
+happy_n_nonterms = 44 :: Prelude.Int
 
 happyReduce_40 = happySpecReduce_1  0# happyReduction_40
 happyReduction_40 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn43
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.Ident (tokenText happy_var_1))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.Ident (tokenText happy_var_1))
 	)}
 
 happyReduce_41 = happySpecReduce_1  1# happyReduction_41
 happyReduction_41 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn44
-		 ((Just (tokenLineCol happy_var_1), (read (Data.Text.unpack (tokenText happy_var_1))) :: Double)
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), (read (Data.Text.unpack (tokenText happy_var_1))) :: Double)
 	)}
 
 happyReduce_42 = happySpecReduce_1  2# happyReduction_42
 happyReduction_42 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn45
-		 ((Just (tokenLineCol happy_var_1), (read (Data.Text.unpack (tokenText happy_var_1))) :: Integer)
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), (read (Data.Text.unpack (tokenText happy_var_1))) :: Integer)
 	)}
 
 happyReduce_43 = happySpecReduce_1  3# happyReduction_43
 happyReduction_43 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn46
-		 ((Just (tokenLineCol happy_var_1), Data.Text.unpack (tokenText happy_var_1))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), (Data.Text.unpack ((\(PT _ (TL s)) -> s) happy_var_1)))
 	)}
 
 happyReduce_44 = happySpecReduce_2  4# happyReduction_44
@@ -552,7 +598,7 @@ happyReduction_47 (happy_x_7 `HappyStk`
 	case happyOut43 happy_x_3 of { (HappyWrap43 happy_var_3) -> 
 	case happyOut49 happy_x_6 of { (HappyWrap49 happy_var_6) -> 
 	happyIn48
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DCreate (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_6))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DCreate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_6))
 	) `HappyStk` happyRest}}}
 
 happyReduce_48 = happyReduce 9# 5# happyReduction_48
@@ -571,12 +617,12 @@ happyReduction_48 (happy_x_9 `HappyStk`
 	case happyOut54 happy_x_5 of { (HappyWrap54 happy_var_5) -> 
 	case happyOut49 happy_x_8 of { (HappyWrap49 happy_var_8) -> 
 	happyIn48
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CreateAs (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_8))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CreateAs (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_8))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_49 = happySpecReduce_0  6# happyReduction_49
 happyReduction_49  =  happyIn49
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_50 = happySpecReduce_1  6# happyReduction_50
@@ -603,7 +649,7 @@ happyReduction_52 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut46 happy_x_3 of { (HappyWrap46 happy_var_3) -> 
 	happyIn50
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.OptionFormat (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.OptionFormat (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	)}}
 
 happyReduce_53 = happyReduce 10# 8# happyReduction_53
@@ -623,12 +669,12 @@ happyReduction_53 (happy_x_10 `HappyStk`
 	case happyOut52 happy_x_5 of { (HappyWrap52 happy_var_5) -> 
 	case happyOut53 happy_x_9 of { (HappyWrap53 happy_var_9) -> 
 	happyIn51
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DInsert (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_9))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DInsert (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5) (snd happy_var_9))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_54 = happySpecReduce_0  9# happyReduction_54
 happyReduction_54  =  happyIn52
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_55 = happySpecReduce_1  9# happyReduction_55
@@ -650,7 +696,7 @@ happyReduction_56 happy_x_3
 
 happyReduce_57 = happySpecReduce_0  10# happyReduction_57
 happyReduction_57  =  happyIn53
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_58 = happySpecReduce_1  10# happyReduction_58
@@ -694,14 +740,14 @@ happyReduction_61 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut56 happy_x_2 of { (HappyWrap56 happy_var_2) -> 
 	happyIn55
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DSel (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DSel (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_62 = happySpecReduce_1  13# happyReduction_62
 happyReduction_62 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn56
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SelListAsterisk (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SelListAsterisk (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_63 = happySpecReduce_1  13# happyReduction_63
@@ -713,7 +759,7 @@ happyReduction_63 happy_x_1
 
 happyReduce_64 = happySpecReduce_0  14# happyReduction_64
 happyReduction_64  =  happyIn57
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_65 = happySpecReduce_1  14# happyReduction_65
@@ -756,12 +802,12 @@ happyReduction_69 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut60 happy_x_2 of { (HappyWrap60 happy_var_2) -> 
 	happyIn59
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DFrom (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DFrom (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_70 = happySpecReduce_0  17# happyReduction_70
 happyReduction_70  =  happyIn60
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_71 = happySpecReduce_1  17# happyReduction_71
@@ -819,21 +865,21 @@ happyReduce_76 = happySpecReduce_1  19# happyReduction_76
 happyReduction_76 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinInner (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinInner (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_77 = happySpecReduce_1  19# happyReduction_77
 happyReduction_77 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinLeft (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinLeft (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_78 = happySpecReduce_1  19# happyReduction_78
 happyReduction_78 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn62
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinOuter (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.JoinOuter (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_79 = happyReduce 4# 20# happyReduction_79
@@ -845,7 +891,7 @@ happyReduction_79 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	happyIn63
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DJoinWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DJoinWindow (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_80 = happySpecReduce_2  21# happyReduction_80
@@ -854,12 +900,12 @@ happyReduction_80 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn64
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DJoinCond (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DJoinCond (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_81 = happySpecReduce_0  22# happyReduction_81
 happyReduction_81  =  happyIn65
-		 ((Nothing, HStream.SQL.Abs.DWhereEmpty (Nothing))
+		 ((HStream.SQL.Abs.BNFC'NoPosition, HStream.SQL.Abs.DWhereEmpty HStream.SQL.Abs.BNFC'NoPosition)
 	)
 
 happyReduce_82 = happySpecReduce_2  22# happyReduction_82
@@ -868,12 +914,12 @@ happyReduction_82 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn65
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DWhere (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DWhere (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_83 = happySpecReduce_0  23# happyReduction_83
 happyReduction_83  =  happyIn66
-		 ((Nothing, HStream.SQL.Abs.DGroupByEmpty (Nothing))
+		 ((HStream.SQL.Abs.BNFC'NoPosition, HStream.SQL.Abs.DGroupByEmpty HStream.SQL.Abs.BNFC'NoPosition)
 	)
 
 happyReduce_84 = happySpecReduce_3  23# happyReduction_84
@@ -883,12 +929,12 @@ happyReduction_84 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut67 happy_x_3 of { (HappyWrap67 happy_var_3) -> 
 	happyIn66
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DGroupBy (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DGroupBy (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	)}}
 
 happyReduce_85 = happySpecReduce_0  24# happyReduction_85
 happyReduction_85  =  happyIn67
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_86 = happySpecReduce_1  24# happyReduction_86
@@ -931,7 +977,7 @@ happyReduction_90 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	happyIn69
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TumblingWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TumblingWindow (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_91 = happyReduce 6# 26# happyReduction_91
@@ -946,7 +992,7 @@ happyReduction_91 (happy_x_6 `HappyStk`
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	case happyOut77 happy_x_5 of { (HappyWrap77 happy_var_5) -> 
 	happyIn69
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.HoppingWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.HoppingWindow (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3) (snd happy_var_5))
 	) `HappyStk` happyRest}}}
 
 happyReduce_92 = happyReduce 4# 26# happyReduction_92
@@ -958,12 +1004,12 @@ happyReduction_92 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut77 happy_x_3 of { (HappyWrap77 happy_var_3) -> 
 	happyIn69
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SessionWindow (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SessionWindow (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_93 = happySpecReduce_0  27# happyReduction_93
 happyReduction_93  =  happyIn70
-		 ((Nothing, HStream.SQL.Abs.DHavingEmpty (Nothing))
+		 ((HStream.SQL.Abs.BNFC'NoPosition, HStream.SQL.Abs.DHavingEmpty HStream.SQL.Abs.BNFC'NoPosition)
 	)
 
 happyReduce_94 = happySpecReduce_2  27# happyReduction_94
@@ -972,7 +1018,7 @@ happyReduction_94 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn70
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DHaving (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DHaving (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_95 = happySpecReduce_3  28# happyReduction_95
@@ -1002,7 +1048,7 @@ happyReduction_97 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut53 happy_x_2 of { (HappyWrap53 happy_var_2) -> 
 	happyIn71
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.ExprArr (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.ExprArr (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_98 = happySpecReduce_3  28# happyReduction_98
@@ -1012,7 +1058,7 @@ happyReduction_98 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut78 happy_x_2 of { (HappyWrap78 happy_var_2) -> 
 	happyIn71
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.ExprMap (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.ExprMap (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_99 = happySpecReduce_1  28# happyReduction_99
@@ -1102,7 +1148,7 @@ happyReduction_110 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_2 of { (HappyWrap71 happy_var_2) -> 
 	happyIn73
-		 ((Just (tokenLineCol happy_var_1), (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), (snd happy_var_2))
 	)}}
 
 happyReduce_111 = happyReduce 6# 31# happyReduction_111
@@ -1118,7 +1164,7 @@ happyReduction_111 (happy_x_6 `HappyStk`
 	case happyOut45 happy_x_4 of { (HappyWrap45 happy_var_4) -> 
 	case happyOut45 happy_x_6 of { (HappyWrap45 happy_var_6) -> 
 	happyIn74
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DDate (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DDate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_112 = happyReduce 6# 32# happyReduction_112
@@ -1134,49 +1180,49 @@ happyReduction_112 (happy_x_6 `HappyStk`
 	case happyOut45 happy_x_4 of { (HappyWrap45 happy_var_4) -> 
 	case happyOut45 happy_x_6 of { (HappyWrap45 happy_var_6) -> 
 	happyIn75
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DTime (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DTime (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_4) (snd happy_var_6))
 	) `HappyStk` happyRest}}}}
 
 happyReduce_113 = happySpecReduce_1  33# happyReduction_113
 happyReduction_113 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitYear (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitYear (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_114 = happySpecReduce_1  33# happyReduction_114
 happyReduction_114 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitMonth (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitMonth (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_115 = happySpecReduce_1  33# happyReduction_115
 happyReduction_115 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitWeek (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitWeek (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_116 = happySpecReduce_1  33# happyReduction_116
 happyReduction_116 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitDay (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitDay (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_117 = happySpecReduce_1  33# happyReduction_117
 happyReduction_117 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitMin (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitMin (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_118 = happySpecReduce_1  33# happyReduction_118
 happyReduction_118 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn76
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitSec (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.TimeUnitSec (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_119 = happySpecReduce_3  34# happyReduction_119
@@ -1187,12 +1233,12 @@ happyReduction_119 happy_x_3
 	case happyOut45 happy_x_2 of { (HappyWrap45 happy_var_2) -> 
 	case happyOut76 happy_x_3 of { (HappyWrap76 happy_var_3) -> 
 	happyIn77
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.DInterval (Just (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.DInterval (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2) (snd happy_var_3))
 	)}}}
 
 happyReduce_120 = happySpecReduce_0  35# happyReduction_120
 happyReduction_120  =  happyIn78
-		 ((Nothing, [])
+		 ((HStream.SQL.Abs.BNFC'NoPosition, [])
 	)
 
 happyReduce_121 = happySpecReduce_1  35# happyReduction_121
@@ -1267,7 +1313,7 @@ happyReduce_128 = happySpecReduce_1  38# happyReduction_128
 happyReduction_128 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncCountAll (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncCountAll (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_129 = happyReduce 4# 38# happyReduction_129
@@ -1279,7 +1325,7 @@ happyReduction_129 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncCount (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncCount (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_130 = happyReduce 4# 38# happyReduction_130
@@ -1291,7 +1337,7 @@ happyReduction_130 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncAvg (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncAvg (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_131 = happyReduce 4# 38# happyReduction_131
@@ -1303,7 +1349,7 @@ happyReduction_131 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncSum (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncSum (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_132 = happyReduce 4# 38# happyReduction_132
@@ -1315,7 +1361,7 @@ happyReduction_132 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncMax (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncMax (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_133 = happyReduce 4# 38# happyReduction_133
@@ -1327,7 +1373,7 @@ happyReduction_133 (happy_x_4 `HappyStk`
 	 = case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut71 happy_x_3 of { (HappyWrap71 happy_var_3) -> 
 	happyIn81
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncMin (Just (tokenLineCol happy_var_1)) (snd happy_var_3))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.SetFuncMin (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_3))
 	) `HappyStk` happyRest}}
 
 happyReduce_134 = happySpecReduce_3  39# happyReduction_134
@@ -1370,7 +1416,7 @@ happyReduction_138 happy_x_2
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut85 happy_x_2 of { (HappyWrap85 happy_var_2) -> 
 	happyIn84
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CondNot (Just (tokenLineCol happy_var_1)) (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CondNot (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)) (snd happy_var_2))
 	)}}
 
 happyReduce_139 = happySpecReduce_1  41# happyReduction_139
@@ -1412,49 +1458,49 @@ happyReduction_142 happy_x_3
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	case happyOut82 happy_x_2 of { (HappyWrap82 happy_var_2) -> 
 	happyIn85
-		 ((Just (tokenLineCol happy_var_1), (snd happy_var_2))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), (snd happy_var_2))
 	)}}
 
 happyReduce_143 = happySpecReduce_1  43# happyReduction_143
 happyReduction_143 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpEQ (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpEQ (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_144 = happySpecReduce_1  43# happyReduction_144
 happyReduction_144 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpNE (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpNE (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_145 = happySpecReduce_1  43# happyReduction_145
 happyReduction_145 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpLT (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpLT (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_146 = happySpecReduce_1  43# happyReduction_146
 happyReduction_146 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpGT (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpGT (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_147 = happySpecReduce_1  43# happyReduction_147
 happyReduction_147 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpLEQ (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpLEQ (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyReduce_148 = happySpecReduce_1  43# happyReduction_148
 happyReduction_148 happy_x_1
 	 =  case happyOutTok happy_x_1 of { happy_var_1 -> 
 	happyIn86
-		 ((Just (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpGEQ (Just (tokenLineCol happy_var_1)))
+		 ((uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1), HStream.SQL.Abs.CompOpGEQ (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol happy_var_1)))
 	)}
 
 happyNewToken action sts stk [] =
@@ -1536,14 +1582,14 @@ happyNewToken action sts stk (tk:tks) =
 happyError_ explist 68# tk tks = happyError' (tks, explist)
 happyError_ explist _ tk tks = happyError' ((tk:tks), explist)
 
-happyThen :: () => Either String a -> (a -> Either String b) -> Either String b
+happyThen :: () => Err a -> (a -> Err b) -> Err b
 happyThen = ((>>=))
-happyReturn :: () => a -> Either String a
+happyReturn :: () => a -> Err a
 happyReturn = (return)
 happyThen1 m k tks = ((>>=)) m (\a -> k a tks)
-happyReturn1 :: () => a -> b -> Either String a
+happyReturn1 :: () => a -> b -> Err a
 happyReturn1 = \a tks -> (return) a
-happyError' :: () => ([(Token)], [String]) -> Either String a
+happyError' :: () => ([(Token)], [Prelude.String]) -> Err a
 happyError' = (\(tokens, _) -> happyError tokens)
 pSQL_internal tks = happySomeParser where
  happySomeParser = happyThen (happyParse 0# tks) (\x -> happyReturn (let {(HappyWrap47 x') = happyOut47 x} in x'))
@@ -1668,7 +1714,9 @@ pCompOp_internal tks = happySomeParser where
 happySeq = happyDontSeq
 
 
-happyError :: [Token] -> Either String a
+type Err = Either String
+
+happyError :: [Token] -> Err a
 happyError ts = Left $
   "syntax error at " ++ tokenPos ts ++
   case ts of
@@ -1676,47 +1724,130 @@ happyError ts = Left $
     [Err _] -> " due to lexer error"
     t:_     -> " before `" ++ (prToken t) ++ "'"
 
+myLexer :: Data.Text.Text -> [Token]
 myLexer = tokens
-pSQL = (>>= return . snd) . pSQL_internal
-pCreate = (>>= return . snd) . pCreate_internal
-pListStreamOption = (>>= return . snd) . pListStreamOption_internal
-pStreamOption = (>>= return . snd) . pStreamOption_internal
-pInsert = (>>= return . snd) . pInsert_internal
-pListIdent = (>>= return . snd) . pListIdent_internal
-pListValueExpr = (>>= return . snd) . pListValueExpr_internal
-pSelect = (>>= return . snd) . pSelect_internal
-pSel = (>>= return . snd) . pSel_internal
-pSelList = (>>= return . snd) . pSelList_internal
-pListDerivedCol = (>>= return . snd) . pListDerivedCol_internal
-pDerivedCol = (>>= return . snd) . pDerivedCol_internal
-pFrom = (>>= return . snd) . pFrom_internal
-pListTableRef = (>>= return . snd) . pListTableRef_internal
-pTableRef = (>>= return . snd) . pTableRef_internal
-pJoinType = (>>= return . snd) . pJoinType_internal
-pJoinWindow = (>>= return . snd) . pJoinWindow_internal
-pJoinCond = (>>= return . snd) . pJoinCond_internal
-pWhere = (>>= return . snd) . pWhere_internal
-pGroupBy = (>>= return . snd) . pGroupBy_internal
-pListGrpItem = (>>= return . snd) . pListGrpItem_internal
-pGrpItem = (>>= return . snd) . pGrpItem_internal
-pWindow = (>>= return . snd) . pWindow_internal
-pHaving = (>>= return . snd) . pHaving_internal
-pValueExpr = (>>= return . snd) . pValueExpr_internal
-pValueExpr1 = (>>= return . snd) . pValueExpr1_internal
-pValueExpr2 = (>>= return . snd) . pValueExpr2_internal
-pDate = (>>= return . snd) . pDate_internal
-pTime = (>>= return . snd) . pTime_internal
-pTimeUnit = (>>= return . snd) . pTimeUnit_internal
-pInterval = (>>= return . snd) . pInterval_internal
-pListLabelledValueExpr = (>>= return . snd) . pListLabelledValueExpr_internal
-pLabelledValueExpr = (>>= return . snd) . pLabelledValueExpr_internal
-pColName = (>>= return . snd) . pColName_internal
-pSetFunc = (>>= return . snd) . pSetFunc_internal
-pSearchCond = (>>= return . snd) . pSearchCond_internal
-pSearchCond1 = (>>= return . snd) . pSearchCond1_internal
-pSearchCond2 = (>>= return . snd) . pSearchCond2_internal
-pSearchCond3 = (>>= return . snd) . pSearchCond3_internal
-pCompOp = (>>= return . snd) . pCompOp_internal
+
+-- Entrypoints
+
+pSQL :: [Token] -> Err HStream.SQL.Abs.SQL
+pSQL = fmap snd . pSQL_internal
+
+pCreate :: [Token] -> Err HStream.SQL.Abs.Create
+pCreate = fmap snd . pCreate_internal
+
+pListStreamOption :: [Token] -> Err [HStream.SQL.Abs.StreamOption]
+pListStreamOption = fmap snd . pListStreamOption_internal
+
+pStreamOption :: [Token] -> Err HStream.SQL.Abs.StreamOption
+pStreamOption = fmap snd . pStreamOption_internal
+
+pInsert :: [Token] -> Err HStream.SQL.Abs.Insert
+pInsert = fmap snd . pInsert_internal
+
+pListIdent :: [Token] -> Err [HStream.SQL.Abs.Ident]
+pListIdent = fmap snd . pListIdent_internal
+
+pListValueExpr :: [Token] -> Err [HStream.SQL.Abs.ValueExpr]
+pListValueExpr = fmap snd . pListValueExpr_internal
+
+pSelect :: [Token] -> Err HStream.SQL.Abs.Select
+pSelect = fmap snd . pSelect_internal
+
+pSel :: [Token] -> Err HStream.SQL.Abs.Sel
+pSel = fmap snd . pSel_internal
+
+pSelList :: [Token] -> Err HStream.SQL.Abs.SelList
+pSelList = fmap snd . pSelList_internal
+
+pListDerivedCol :: [Token] -> Err [HStream.SQL.Abs.DerivedCol]
+pListDerivedCol = fmap snd . pListDerivedCol_internal
+
+pDerivedCol :: [Token] -> Err HStream.SQL.Abs.DerivedCol
+pDerivedCol = fmap snd . pDerivedCol_internal
+
+pFrom :: [Token] -> Err HStream.SQL.Abs.From
+pFrom = fmap snd . pFrom_internal
+
+pListTableRef :: [Token] -> Err [HStream.SQL.Abs.TableRef]
+pListTableRef = fmap snd . pListTableRef_internal
+
+pTableRef :: [Token] -> Err HStream.SQL.Abs.TableRef
+pTableRef = fmap snd . pTableRef_internal
+
+pJoinType :: [Token] -> Err HStream.SQL.Abs.JoinType
+pJoinType = fmap snd . pJoinType_internal
+
+pJoinWindow :: [Token] -> Err HStream.SQL.Abs.JoinWindow
+pJoinWindow = fmap snd . pJoinWindow_internal
+
+pJoinCond :: [Token] -> Err HStream.SQL.Abs.JoinCond
+pJoinCond = fmap snd . pJoinCond_internal
+
+pWhere :: [Token] -> Err HStream.SQL.Abs.Where
+pWhere = fmap snd . pWhere_internal
+
+pGroupBy :: [Token] -> Err HStream.SQL.Abs.GroupBy
+pGroupBy = fmap snd . pGroupBy_internal
+
+pListGrpItem :: [Token] -> Err [HStream.SQL.Abs.GrpItem]
+pListGrpItem = fmap snd . pListGrpItem_internal
+
+pGrpItem :: [Token] -> Err HStream.SQL.Abs.GrpItem
+pGrpItem = fmap snd . pGrpItem_internal
+
+pWindow :: [Token] -> Err HStream.SQL.Abs.Window
+pWindow = fmap snd . pWindow_internal
+
+pHaving :: [Token] -> Err HStream.SQL.Abs.Having
+pHaving = fmap snd . pHaving_internal
+
+pValueExpr :: [Token] -> Err HStream.SQL.Abs.ValueExpr
+pValueExpr = fmap snd . pValueExpr_internal
+
+pValueExpr1 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
+pValueExpr1 = fmap snd . pValueExpr1_internal
+
+pValueExpr2 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
+pValueExpr2 = fmap snd . pValueExpr2_internal
+
+pDate :: [Token] -> Err HStream.SQL.Abs.Date
+pDate = fmap snd . pDate_internal
+
+pTime :: [Token] -> Err HStream.SQL.Abs.Time
+pTime = fmap snd . pTime_internal
+
+pTimeUnit :: [Token] -> Err HStream.SQL.Abs.TimeUnit
+pTimeUnit = fmap snd . pTimeUnit_internal
+
+pInterval :: [Token] -> Err HStream.SQL.Abs.Interval
+pInterval = fmap snd . pInterval_internal
+
+pListLabelledValueExpr :: [Token] -> Err [HStream.SQL.Abs.LabelledValueExpr]
+pListLabelledValueExpr = fmap snd . pListLabelledValueExpr_internal
+
+pLabelledValueExpr :: [Token] -> Err HStream.SQL.Abs.LabelledValueExpr
+pLabelledValueExpr = fmap snd . pLabelledValueExpr_internal
+
+pColName :: [Token] -> Err HStream.SQL.Abs.ColName
+pColName = fmap snd . pColName_internal
+
+pSetFunc :: [Token] -> Err HStream.SQL.Abs.SetFunc
+pSetFunc = fmap snd . pSetFunc_internal
+
+pSearchCond :: [Token] -> Err HStream.SQL.Abs.SearchCond
+pSearchCond = fmap snd . pSearchCond_internal
+
+pSearchCond1 :: [Token] -> Err HStream.SQL.Abs.SearchCond
+pSearchCond1 = fmap snd . pSearchCond1_internal
+
+pSearchCond2 :: [Token] -> Err HStream.SQL.Abs.SearchCond
+pSearchCond2 = fmap snd . pSearchCond2_internal
+
+pSearchCond3 :: [Token] -> Err HStream.SQL.Abs.SearchCond
+pSearchCond3 = fmap snd . pSearchCond3_internal
+
+pCompOp :: [Token] -> Err HStream.SQL.Abs.CompOp
+pCompOp = fmap snd . pCompOp_internal
 {-# LINE 1 "templates/GenericTemplate.hs" #-}
 -- $Id: GenericTemplate.hs,v 1.26 2005/01/14 14:47:22 simonmar Exp $
 
@@ -1734,9 +1865,9 @@ pCompOp = (>>= return . snd) . pCompOp_internal
 
 -- Do not remove this comment. Required to fix CPP parsing when using GCC and a clang-compiled alex.
 #if __GLASGOW_HASKELL__ > 706
-#define LT(n,m) ((Happy_GHC_Exts.tagToEnum# (n Happy_GHC_Exts.<# m)) :: Bool)
-#define GTE(n,m) ((Happy_GHC_Exts.tagToEnum# (n Happy_GHC_Exts.>=# m)) :: Bool)
-#define EQ(n,m) ((Happy_GHC_Exts.tagToEnum# (n Happy_GHC_Exts.==# m)) :: Bool)
+#define LT(n,m) ((Happy_GHC_Exts.tagToEnum# (n Happy_GHC_Exts.<# m)) :: Prelude.Bool)
+#define GTE(n,m) ((Happy_GHC_Exts.tagToEnum# (n Happy_GHC_Exts.>=# m)) :: Prelude.Bool)
+#define EQ(n,m) ((Happy_GHC_Exts.tagToEnum# (n Happy_GHC_Exts.==# m)) :: Prelude.Bool)
 #else
 #define LT(n,m) (n Happy_GHC_Exts.<# m)
 #define GTE(n,m) (n Happy_GHC_Exts.>=# m)
@@ -1830,7 +1961,7 @@ happyDoAction i tk st
         = {- nothing -}
           case action of
                 0#           -> {- nothing -}
-                                     happyFail (happyExpListPerState ((Happy_GHC_Exts.I# (st)) :: Int)) i tk st
+                                     happyFail (happyExpListPerState ((Happy_GHC_Exts.I# (st)) :: Prelude.Int)) i tk st
                 -1#          -> {- nothing -}
                                      happyAccept i tk st
                 n | LT(n,(0# :: Happy_GHC_Exts.Int#)) -> {- nothing -}
@@ -1843,10 +1974,10 @@ happyDoAction i tk st
          off_i  = (off Happy_GHC_Exts.+# i)
          check  = if GTE(off_i,(0# :: Happy_GHC_Exts.Int#))
                   then EQ(indexShortOffAddr happyCheck off_i, i)
-                  else False
+                  else Prelude.False
          action
           | check     = indexShortOffAddr happyTable off_i
-          | otherwise = indexShortOffAddr happyDefActions st
+          | Prelude.otherwise = indexShortOffAddr happyDefActions st
 
 
 
@@ -1867,7 +1998,7 @@ happyLt x y = LT(x,y)
 
 
 readArrayBit arr bit =
-    Bits.testBit (Happy_GHC_Exts.I# (indexShortOffAddr arr ((unbox_int bit) `Happy_GHC_Exts.iShiftRA#` 4#))) (bit `mod` 16)
+    Bits.testBit (Happy_GHC_Exts.I# (indexShortOffAddr arr ((unbox_int bit) `Happy_GHC_Exts.iShiftRA#` 4#))) (bit `Prelude.mod` 16)
   where unbox_int (Happy_GHC_Exts.I# x) = x
 
 
@@ -2011,7 +2142,7 @@ happyFail explist i tk (action) sts stk =
 -- Internal happy errors:
 
 notHappyAtAll :: a
-notHappyAtAll = error "Internal Happy error\n"
+notHappyAtAll = Prelude.error "Internal Happy error\n"
 
 -----------------------------------------------------------------------------
 -- Hack to get the typechecker to accept our action functions
@@ -2029,7 +2160,7 @@ happyTcHack x y = y
 --      happySeq = happyDontSeq
 
 happyDoSeq, happyDontSeq :: a -> b -> b
-happyDoSeq   a b = a `seq` b
+happyDoSeq   a b = a `Prelude.seq` b
 happyDontSeq a b = b
 
 -----------------------------------------------------------------------------

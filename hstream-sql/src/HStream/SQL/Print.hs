@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 #if __GLASGOW_HASKELL__ <= 708
 {-# LANGUAGE OverlappingInstances #-}
 #endif
-{-# LANGUAGE FlexibleInstances #-}
+
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 
 -- | Pretty-printer for HStream.
@@ -10,8 +12,16 @@
 
 module HStream.SQL.Print where
 
+import Prelude
+  ( ($), (.)
+  , Bool(..), (==), (<)
+  , Int, Integer, Double, (+), (-), (*)
+  , String, (++)
+  , ShowS, showChar, showString
+  , all, dropWhile, elem, foldr, id, map, null, replicate, shows, span
+  )
+import Data.Char ( Char, isSpace )
 import qualified HStream.SQL.Abs
-import Data.Char
 import qualified Data.Text
 
 -- | The top-level printing method.
@@ -26,7 +36,7 @@ doc = (:)
 
 render :: Doc -> String
 render d = rend 0 (map ($ "") $ d []) "" where
-  rend i ss = case ss of
+  rend i = \case
     "["      :ts -> showChar '[' . rend i ts
     "("      :ts -> showChar '(' . rend i ts
     "{"      :ts -> showChar '{' . new (i+1) . rend (i+1) ts
@@ -78,16 +88,16 @@ instance {-# OVERLAPPABLE #-} Print a => Print [a] where
   prt = prtList
 
 instance Print Char where
-  prt _ s = doc (showChar '\'' . mkEsc '\'' s . showChar '\'')
+  prt     _ s = doc (showChar '\'' . mkEsc '\'' s . showChar '\'')
   prtList _ s = doc (showChar '"' . concatS (map (mkEsc '"') s) . showChar '"')
 
 mkEsc :: Char -> Char -> ShowS
-mkEsc q s = case s of
-  _ | s == q -> showChar '\\' . showChar s
-  '\\'-> showString "\\\\"
+mkEsc q = \case
+  s | s == q -> showChar '\\' . showChar s
+  '\\' -> showString "\\\\"
   '\n' -> showString "\\n"
   '\t' -> showString "\\t"
-  _ -> showChar s
+  s -> showChar s
 
 prPrec :: Int -> Int -> Doc -> Doc
 prPrec i j = if j < i then parenth else id
@@ -99,130 +109,130 @@ instance Print Double where
   prt _ x = doc (shows x)
 
 instance Print HStream.SQL.Abs.Ident where
-  prt _ (HStream.SQL.Abs.Ident i) = doc $ showString $ Data.Text.unpack i
+  prt _ (HStream.SQL.Abs.Ident i) = doc $ showString (Data.Text.unpack i)
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.SQL a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.SQL' a) where
+  prt i = \case
     HStream.SQL.Abs.QSelect _ select -> prPrec i 0 (concatD [prt 0 select, doc (showString ";")])
     HStream.SQL.Abs.QCreate _ create -> prPrec i 0 (concatD [prt 0 create, doc (showString ";")])
     HStream.SQL.Abs.QInsert _ insert -> prPrec i 0 (concatD [prt 0 insert, doc (showString ";")])
 
-instance Print (HStream.SQL.Abs.Create a) where
-  prt i e = case e of
-    HStream.SQL.Abs.DCreate _ id streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
-    HStream.SQL.Abs.CreateAs _ id select streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id, doc (showString "AS"), prt 0 select, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
+instance Print (HStream.SQL.Abs.Create' a) where
+  prt i = \case
+    HStream.SQL.Abs.DCreate _ id_ streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
+    HStream.SQL.Abs.CreateAs _ id_ select streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "AS"), prt 0 select, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
 
-instance Print [HStream.SQL.Abs.StreamOption a] where
+instance Print [HStream.SQL.Abs.StreamOption' a] where
   prt = prtList
 
-instance Print (HStream.SQL.Abs.StreamOption a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.StreamOption' a) where
+  prt i = \case
     HStream.SQL.Abs.OptionFormat _ str -> prPrec i 0 (concatD [doc (showString "FORMAT"), doc (showString "="), prt 0 str])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.Insert a) where
-  prt i e = case e of
-    HStream.SQL.Abs.DInsert _ id ids valueexprs -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id, doc (showString "("), prt 0 ids, doc (showString ")"), doc (showString "VALUES"), doc (showString "("), prt 0 valueexprs, doc (showString ")")])
+instance Print (HStream.SQL.Abs.Insert' a) where
+  prt i = \case
+    HStream.SQL.Abs.DInsert _ id_ ids valueexprs -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id_, doc (showString "("), prt 0 ids, doc (showString ")"), doc (showString "VALUES"), doc (showString "("), prt 0 valueexprs, doc (showString ")")])
 
 instance Print [HStream.SQL.Abs.Ident] where
   prt = prtList
 
-instance Print [HStream.SQL.Abs.ValueExpr a] where
+instance Print [HStream.SQL.Abs.ValueExpr' a] where
   prt = prtList
 
-instance Print (HStream.SQL.Abs.Select a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Select' a) where
+  prt i = \case
     HStream.SQL.Abs.DSelect _ sel from where_ groupby having -> prPrec i 0 (concatD [prt 0 sel, prt 0 from, prt 0 where_, prt 0 groupby, prt 0 having, doc (showString "EMIT"), doc (showString "CHANGES")])
 
-instance Print (HStream.SQL.Abs.Sel a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Sel' a) where
+  prt i = \case
     HStream.SQL.Abs.DSel _ sellist -> prPrec i 0 (concatD [doc (showString "SELECT"), prt 0 sellist])
 
-instance Print (HStream.SQL.Abs.SelList a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.SelList' a) where
+  prt i = \case
     HStream.SQL.Abs.SelListAsterisk _ -> prPrec i 0 (concatD [doc (showString "*")])
     HStream.SQL.Abs.SelListSublist _ derivedcols -> prPrec i 0 (concatD [prt 0 derivedcols])
 
-instance Print [HStream.SQL.Abs.DerivedCol a] where
+instance Print [HStream.SQL.Abs.DerivedCol' a] where
   prt = prtList
 
-instance Print (HStream.SQL.Abs.DerivedCol a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.DerivedCol' a) where
+  prt i = \case
     HStream.SQL.Abs.DerivedColSimpl _ valueexpr -> prPrec i 0 (concatD [prt 0 valueexpr])
-    HStream.SQL.Abs.DerivedColAs _ valueexpr id -> prPrec i 0 (concatD [prt 0 valueexpr, doc (showString "AS"), prt 0 id])
+    HStream.SQL.Abs.DerivedColAs _ valueexpr id_ -> prPrec i 0 (concatD [prt 0 valueexpr, doc (showString "AS"), prt 0 id_])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.From a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.From' a) where
+  prt i = \case
     HStream.SQL.Abs.DFrom _ tablerefs -> prPrec i 0 (concatD [doc (showString "FROM"), prt 0 tablerefs])
 
-instance Print [HStream.SQL.Abs.TableRef a] where
+instance Print [HStream.SQL.Abs.TableRef' a] where
   prt = prtList
 
-instance Print (HStream.SQL.Abs.TableRef a) where
-  prt i e = case e of
-    HStream.SQL.Abs.TableRefSimple _ id -> prPrec i 0 (concatD [prt 0 id])
-    HStream.SQL.Abs.TableRefAs _ tableref id -> prPrec i 0 (concatD [prt 0 tableref, doc (showString "AS"), prt 0 id])
+instance Print (HStream.SQL.Abs.TableRef' a) where
+  prt i = \case
+    HStream.SQL.Abs.TableRefSimple _ id_ -> prPrec i 0 (concatD [prt 0 id_])
+    HStream.SQL.Abs.TableRefAs _ tableref id_ -> prPrec i 0 (concatD [prt 0 tableref, doc (showString "AS"), prt 0 id_])
     HStream.SQL.Abs.TableRefJoin _ tableref1 jointype tableref2 joinwindow joincond -> prPrec i 0 (concatD [prt 0 tableref1, prt 0 jointype, doc (showString "JOIN"), prt 0 tableref2, prt 0 joinwindow, prt 0 joincond])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.JoinType a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.JoinType' a) where
+  prt i = \case
     HStream.SQL.Abs.JoinInner _ -> prPrec i 0 (concatD [doc (showString "INNER")])
     HStream.SQL.Abs.JoinLeft _ -> prPrec i 0 (concatD [doc (showString "LEFT")])
     HStream.SQL.Abs.JoinOuter _ -> prPrec i 0 (concatD [doc (showString "OUTER")])
 
-instance Print (HStream.SQL.Abs.JoinWindow a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.JoinWindow' a) where
+  prt i = \case
     HStream.SQL.Abs.DJoinWindow _ interval -> prPrec i 0 (concatD [doc (showString "WITHIN"), doc (showString "("), prt 0 interval, doc (showString ")")])
 
-instance Print (HStream.SQL.Abs.JoinCond a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.JoinCond' a) where
+  prt i = \case
     HStream.SQL.Abs.DJoinCond _ searchcond -> prPrec i 0 (concatD [doc (showString "ON"), prt 0 searchcond])
 
-instance Print (HStream.SQL.Abs.Where a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Where' a) where
+  prt i = \case
     HStream.SQL.Abs.DWhereEmpty _ -> prPrec i 0 (concatD [])
     HStream.SQL.Abs.DWhere _ searchcond -> prPrec i 0 (concatD [doc (showString "WHERE"), prt 0 searchcond])
 
-instance Print (HStream.SQL.Abs.GroupBy a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.GroupBy' a) where
+  prt i = \case
     HStream.SQL.Abs.DGroupByEmpty _ -> prPrec i 0 (concatD [])
     HStream.SQL.Abs.DGroupBy _ grpitems -> prPrec i 0 (concatD [doc (showString "GROUP"), doc (showString "BY"), prt 0 grpitems])
 
-instance Print [HStream.SQL.Abs.GrpItem a] where
+instance Print [HStream.SQL.Abs.GrpItem' a] where
   prt = prtList
 
-instance Print (HStream.SQL.Abs.GrpItem a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.GrpItem' a) where
+  prt i = \case
     HStream.SQL.Abs.GrpItemCol _ colname -> prPrec i 0 (concatD [prt 0 colname])
     HStream.SQL.Abs.GrpItemWin _ window -> prPrec i 0 (concatD [prt 0 window])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.Window a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Window' a) where
+  prt i = \case
     HStream.SQL.Abs.TumblingWindow _ interval -> prPrec i 0 (concatD [doc (showString "TUMBLING"), doc (showString "("), prt 0 interval, doc (showString ")")])
     HStream.SQL.Abs.HoppingWindow _ interval1 interval2 -> prPrec i 0 (concatD [doc (showString "HOPPING"), doc (showString "("), prt 0 interval1, doc (showString ","), prt 0 interval2, doc (showString ")")])
     HStream.SQL.Abs.SessionWindow _ interval -> prPrec i 0 (concatD [doc (showString "SESSION"), doc (showString "("), prt 0 interval, doc (showString ")")])
 
-instance Print (HStream.SQL.Abs.Having a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Having' a) where
+  prt i = \case
     HStream.SQL.Abs.DHavingEmpty _ -> prPrec i 0 (concatD [])
     HStream.SQL.Abs.DHaving _ searchcond -> prPrec i 0 (concatD [doc (showString "HAVING"), prt 0 searchcond])
 
-instance Print (HStream.SQL.Abs.ValueExpr a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.ValueExpr' a) where
+  prt i = \case
     HStream.SQL.Abs.ExprAdd _ valueexpr1 valueexpr2 -> prPrec i 0 (concatD [prt 0 valueexpr1, doc (showString "+"), prt 1 valueexpr2])
     HStream.SQL.Abs.ExprSub _ valueexpr1 valueexpr2 -> prPrec i 0 (concatD [prt 0 valueexpr1, doc (showString "-"), prt 1 valueexpr2])
     HStream.SQL.Abs.ExprMul _ valueexpr1 valueexpr2 -> prPrec i 1 (concatD [prt 1 valueexpr1, doc (showString "*"), prt 2 valueexpr2])
@@ -240,16 +250,16 @@ instance Print (HStream.SQL.Abs.ValueExpr a) where
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.Date a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Date' a) where
+  prt i = \case
     HStream.SQL.Abs.DDate _ n1 n2 n3 -> prPrec i 0 (concatD [doc (showString "DATE"), prt 0 n1, doc (showString "-"), prt 0 n2, doc (showString "-"), prt 0 n3])
 
-instance Print (HStream.SQL.Abs.Time a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Time' a) where
+  prt i = \case
     HStream.SQL.Abs.DTime _ n1 n2 n3 -> prPrec i 0 (concatD [doc (showString "TIME"), prt 0 n1, doc (showString ":"), prt 0 n2, doc (showString ":"), prt 0 n3])
 
-instance Print (HStream.SQL.Abs.TimeUnit a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.TimeUnit' a) where
+  prt i = \case
     HStream.SQL.Abs.TimeUnitYear _ -> prPrec i 0 (concatD [doc (showString "YEAR")])
     HStream.SQL.Abs.TimeUnitMonth _ -> prPrec i 0 (concatD [doc (showString "MONTH")])
     HStream.SQL.Abs.TimeUnitWeek _ -> prPrec i 0 (concatD [doc (showString "WEEK")])
@@ -257,29 +267,29 @@ instance Print (HStream.SQL.Abs.TimeUnit a) where
     HStream.SQL.Abs.TimeUnitMin _ -> prPrec i 0 (concatD [doc (showString "MINUTE")])
     HStream.SQL.Abs.TimeUnitSec _ -> prPrec i 0 (concatD [doc (showString "SECOND")])
 
-instance Print (HStream.SQL.Abs.Interval a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.Interval' a) where
+  prt i = \case
     HStream.SQL.Abs.DInterval _ n timeunit -> prPrec i 0 (concatD [doc (showString "INTERVAL"), prt 0 n, prt 0 timeunit])
 
-instance Print [HStream.SQL.Abs.LabelledValueExpr a] where
+instance Print [HStream.SQL.Abs.LabelledValueExpr' a] where
   prt = prtList
 
-instance Print (HStream.SQL.Abs.LabelledValueExpr a) where
-  prt i e = case e of
-    HStream.SQL.Abs.DLabelledValueExpr _ id valueexpr -> prPrec i 0 (concatD [prt 0 id, doc (showString ":"), prt 0 valueexpr])
+instance Print (HStream.SQL.Abs.LabelledValueExpr' a) where
+  prt i = \case
+    HStream.SQL.Abs.DLabelledValueExpr _ id_ valueexpr -> prPrec i 0 (concatD [prt 0 id_, doc (showString ":"), prt 0 valueexpr])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print (HStream.SQL.Abs.ColName a) where
-  prt i e = case e of
-    HStream.SQL.Abs.ColNameSimple _ id -> prPrec i 0 (concatD [prt 0 id])
-    HStream.SQL.Abs.ColNameStream _ id1 id2 -> prPrec i 0 (concatD [prt 0 id1, doc (showString "."), prt 0 id2])
-    HStream.SQL.Abs.ColNameInner _ colname id -> prPrec i 0 (concatD [prt 0 colname, doc (showString "["), prt 0 id, doc (showString "]")])
+instance Print (HStream.SQL.Abs.ColName' a) where
+  prt i = \case
+    HStream.SQL.Abs.ColNameSimple _ id_ -> prPrec i 0 (concatD [prt 0 id_])
+    HStream.SQL.Abs.ColNameStream _ id_1 id_2 -> prPrec i 0 (concatD [prt 0 id_1, doc (showString "."), prt 0 id_2])
+    HStream.SQL.Abs.ColNameInner _ colname id_ -> prPrec i 0 (concatD [prt 0 colname, doc (showString "["), prt 0 id_, doc (showString "]")])
     HStream.SQL.Abs.ColNameIndex _ colname n -> prPrec i 0 (concatD [prt 0 colname, doc (showString "["), prt 0 n, doc (showString "]")])
 
-instance Print (HStream.SQL.Abs.SetFunc a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.SetFunc' a) where
+  prt i = \case
     HStream.SQL.Abs.SetFuncCountAll _ -> prPrec i 0 (concatD [doc (showString "COUNT(*)")])
     HStream.SQL.Abs.SetFuncCount _ valueexpr -> prPrec i 0 (concatD [doc (showString "COUNT"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
     HStream.SQL.Abs.SetFuncAvg _ valueexpr -> prPrec i 0 (concatD [doc (showString "AVG"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
@@ -287,16 +297,16 @@ instance Print (HStream.SQL.Abs.SetFunc a) where
     HStream.SQL.Abs.SetFuncMax _ valueexpr -> prPrec i 0 (concatD [doc (showString "MAX"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
     HStream.SQL.Abs.SetFuncMin _ valueexpr -> prPrec i 0 (concatD [doc (showString "MIN"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
 
-instance Print (HStream.SQL.Abs.SearchCond a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.SearchCond' a) where
+  prt i = \case
     HStream.SQL.Abs.CondOr _ searchcond1 searchcond2 -> prPrec i 0 (concatD [prt 0 searchcond1, doc (showString "OR"), prt 1 searchcond2])
     HStream.SQL.Abs.CondAnd _ searchcond1 searchcond2 -> prPrec i 1 (concatD [prt 1 searchcond1, doc (showString "AND"), prt 2 searchcond2])
     HStream.SQL.Abs.CondNot _ searchcond -> prPrec i 2 (concatD [doc (showString "NOT"), prt 3 searchcond])
     HStream.SQL.Abs.CondOp _ valueexpr1 compop valueexpr2 -> prPrec i 3 (concatD [prt 0 valueexpr1, prt 0 compop, prt 0 valueexpr2])
     HStream.SQL.Abs.CondBetween _ valueexpr1 valueexpr2 valueexpr3 -> prPrec i 3 (concatD [prt 0 valueexpr1, doc (showString "BETWEEN"), prt 0 valueexpr2, doc (showString "AND"), prt 0 valueexpr3])
 
-instance Print (HStream.SQL.Abs.CompOp a) where
-  prt i e = case e of
+instance Print (HStream.SQL.Abs.CompOp' a) where
+  prt i = \case
     HStream.SQL.Abs.CompOpEQ _ -> prPrec i 0 (concatD [doc (showString "=")])
     HStream.SQL.Abs.CompOpNE _ -> prPrec i 0 (concatD [doc (showString "<>")])
     HStream.SQL.Abs.CompOpLT _ -> prPrec i 0 (concatD [doc (showString "<")])

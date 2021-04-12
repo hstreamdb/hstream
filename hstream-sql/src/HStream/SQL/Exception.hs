@@ -13,11 +13,12 @@ module HStream.SQL.Exception
 import           Control.Exception (Exception, throw)
 import           GHC.Stack         (CallStack, HasCallStack, callStack,
                                     prettyCallStack)
+import           HStream.SQL.Abs   (BNFC'Position)
 
 --------------------------------------------------------------------------------
 -- | Position in a SQL input text. 'Nothing' means that the position information
 -- has been erased.
-type Position = Maybe (Int, Int)
+type Position = BNFC'Position
 
 --------------------------------------------------------------------------------
 
