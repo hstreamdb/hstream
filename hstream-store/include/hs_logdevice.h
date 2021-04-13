@@ -51,6 +51,7 @@ using facebook::logdevice::client::LogAttributes;
 using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
+using facebook::fb303::cpp2::fb_status;
 using facebook::logdevice::thrift::AdminAPIAsyncClient;
 
 #ifdef __cplusplus
@@ -351,7 +352,15 @@ void free_thrift_rpc_options(thrift_rpc_options_t* p);
 std::string* ld_admin_sync_getVersion(logdevice_admin_async_client_t* client,
                                       thrift_rpc_options_t* rpc_options);
 
-// ----------------------------------------------------------------------------
+fb_status ld_admin_sync_getStatus(logdevice_admin_async_client_t* client,
+                                  thrift_rpc_options_t* rpc_options);
+
+int64_t ld_admin_sync_aliveSince(logdevice_admin_async_client_t* client,
+                                 thrift_rpc_options_t* rpc_options);
+
+int64_t ld_admin_sync_getPid(logdevice_admin_async_client_t* client,
+                             thrift_rpc_options_t* rpc_options);
+// ---------------------------------------------------------------------- ------
 
 #ifdef __cplusplus
 } /* end extern "C" */
