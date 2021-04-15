@@ -9,7 +9,7 @@ import           Test.Hspec
 
 spec :: Spec
 spec = describe "HStream.Store.Checkpoint" $ do
-  it "newRSMbasedCheckpointStore" $ do
+  it "newRSMBasedCheckpointStore" $ do
     client <- S.newStreamClient "/data/store/logdevice.conf"
     reader <- S.newStreamReader client 1 (-1)
     let readerName = "reader_name"

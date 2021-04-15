@@ -423,6 +423,11 @@ foreign import ccall unsafe "hs_logdevice.h new_rsm_based_checkpoint_store"
     -> Int64
     -> IO (Ptr LogDeviceCheckpointStore)
 
+foreign import ccall unsafe "hs_logdevice.h new_zookeeper_based_checkpoint_store"
+  c_new_zookeeper_based_checkpoint_store
+    :: Ptr LogDeviceClient
+    -> IO (Ptr LogDeviceCheckpointStore)
+
 foreign import ccall unsafe "hs_logdevice.h free_checkpoint_store"
   c_free_checkpoint_store :: Ptr LogDeviceCheckpointStore -> IO ()
 

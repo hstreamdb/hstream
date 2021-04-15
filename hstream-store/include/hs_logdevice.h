@@ -265,6 +265,8 @@ new_file_based_checkpoint_store(const char* root_path);
 logdevice_checkpoint_store_t*
 new_rsm_based_checkpoint_store(logdevice_client_t* client, c_logid_t log_id,
                                int64_t stop_timeout);
+logdevice_checkpoint_store_t*
+new_zookeeper_based_checkpoint_store(logdevice_client_t* client);
 
 void free_checkpoint_store(logdevice_checkpoint_store_t* p);
 
