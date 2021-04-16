@@ -122,6 +122,7 @@ module HStream.Store.Exception
 
 import           Control.Exception          (Exception (..))
 import qualified Control.Exception          as E
+import           Data.String                (fromString)
 import           Data.Typeable              (cast)
 import           GHC.Stack                  (CallStack, HasCallStack, callStack,
                                              prettyCallStack)
@@ -139,6 +140,9 @@ data SomeStreamException = forall e . E.Exception e => SomeStreamException e
 
 instance Show SomeStreamException where
   show (SomeStreamException e) = show e
+
+instance T.Print SomeStreamException where
+  toUTF8BuilderP _ (SomeStreamException e) = fromString $ show e
 
 instance E.Exception SomeStreamException
 
@@ -320,7 +324,7 @@ MAKE_SSE(USER_STREAM_ERROR)
 -- Unknown error code
 MAKE_SSE(UNKNOWN_CODE)
 
-throwStreamErrorIfNotOK :: IO FFI.ErrorCode -> IO FFI.ErrorCode
+throwStreamErrorIfNotOK :: HasCallStack => IO FFI.ErrorCode -> IO FFI.ErrorCode
 throwStreamErrorIfNotOK = (throwStreamErrorIfNotOK' =<<)
 
 throwStreamErrorIfNotOK' :: HasCallStack => FFI.ErrorCode -> IO FFI.ErrorCode
