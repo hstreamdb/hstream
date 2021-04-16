@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module HStream.Store.RPC.MessagePack
   ( serve
   , FileBasedCheckpointConfig (..)

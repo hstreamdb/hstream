@@ -16,20 +16,21 @@ module HStream.Store.AdminClient
   , pattern FFI.FB_STATUS_WARNING
   ) where
 
-import           Data.Int                   (Int64)
-import           Data.Word                  (Word16, Word32)
-import           Foreign.ForeignPtr         (newForeignPtr, withForeignPtr)
-import           Foreign.Ptr                (nullPtr)
-import           GHC.Stack                  (HasCallStack, callStack)
-import           Z.Data.CBytes              (CBytes)
-import qualified Z.Data.CBytes              as ZC
-import qualified Z.Data.Text                as ZT
-import qualified Z.Foreign                  as Z
+import           Data.Int                     (Int64)
+import           Data.Word                    (Word16, Word32)
+import           Foreign.ForeignPtr           (newForeignPtr, withForeignPtr)
+import           Foreign.Ptr                  (nullPtr)
+import           GHC.Stack                    (HasCallStack, callStack)
+import           Z.Data.CBytes                (CBytes)
+import qualified Z.Data.CBytes                as ZC
+import qualified Z.Data.Text                  as ZT
+import qualified Z.Foreign                    as Z
 
-import qualified HStream.Store.Exception    as E
-import           HStream.Store.Internal.FFI (FB_STATUS, RpcOptions (..),
-                                             StreamAdminClient (..))
-import qualified HStream.Store.Internal.FFI as FFI
+import qualified HStream.Store.Exception      as E
+import qualified HStream.Store.Internal.FFI   as FFI
+import           HStream.Store.Internal.Types (FB_STATUS, RpcOptions (..),
+                                               StreamAdminClient (..))
+import qualified HStream.Store.Internal.Types as FFI
 
 
 newStreamAdminClient :: HasCallStack

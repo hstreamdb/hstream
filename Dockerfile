@@ -20,7 +20,7 @@ repository $cabal_mirror_name \n\
 " > /root/.cabal/config && cabal user-config update && cabal update
 
 COPY --from=dependencies-meta /srv /srv
-RUN cd /srv && cabal update && cabal build --dependencies-only all
+RUN cd /srv && cabal update && cabal build all
 
 # ------------------------------------------------------------------------------
 
