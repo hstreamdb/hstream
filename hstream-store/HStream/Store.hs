@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module HStream.Store
   ( S.Topic
   , S.TopicAttrs (..)

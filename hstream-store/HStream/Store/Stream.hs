@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module HStream.Store.Stream
   ( -- * Client Record Types
     ProducerRecord (..)
@@ -50,11 +52,12 @@ import           Z.Data.Vector                   (Bytes)
 import qualified Z.Foreign                       as Z
 
 import qualified HStream.Store.Exception         as E
-import           HStream.Store.Internal.FFI      (DataRecord (..),
+import qualified HStream.Store.Internal.FFI      as FFI
+import           HStream.Store.Internal.Types    (DataRecord (..),
                                                   SequenceNum (..),
                                                   StreamClient (..),
                                                   TopicID (..))
-import qualified HStream.Store.Internal.FFI      as FFI
+import qualified HStream.Store.Internal.Types    as FFI
 import           HStream.Store.Stream.Appender
 import           HStream.Store.Stream.Checkpoint
 import           HStream.Store.Stream.Reader

@@ -270,6 +270,12 @@ new_zookeeper_based_checkpoint_store(logdevice_client_t* client);
 
 void free_checkpoint_store(logdevice_checkpoint_store_t* p);
 
+void checkpoint_store_get_lsn(logdevice_checkpoint_store_t* store,
+                              const char* customer_id, c_logid_t logid,
+                              HsStablePtr mvar, HsInt cap,
+                              facebook::logdevice::Status* st_out,
+                              c_lsn_t* value_out);
+
 facebook::logdevice::Status
 checkpoint_store_get_lsn_sync(logdevice_checkpoint_store_t* store,
                               const char* customer_id, c_logid_t logid,

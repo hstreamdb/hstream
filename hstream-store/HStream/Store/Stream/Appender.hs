@@ -5,25 +5,26 @@ module HStream.Store.Stream.Appender
   , appendSyncTS
   ) where
 
-import           Control.Concurrent         (forkIO, myThreadId, newEmptyMVar,
-                                             takeMVar, threadCapability)
-import           Control.Exception          (mask_, onException)
-import           Control.Monad              (void)
-import           Data.Int                   (Int64)
-import           Foreign.ForeignPtr         (mallocForeignPtrBytes,
-                                             touchForeignPtr, withForeignPtr)
-import           Foreign.Ptr                (nullPtr)
-import           GHC.Conc                   (newStablePtrPrimMVar)
-import           GHC.Stack                  (HasCallStack)
-import           Z.Data.CBytes              (CBytes)
-import qualified Z.Data.CBytes              as ZC
-import           Z.Data.Vector              (Bytes)
-import qualified Z.Foreign                  as Z
+import           Control.Concurrent           (forkIO, myThreadId, newEmptyMVar,
+                                               takeMVar, threadCapability)
+import           Control.Exception            (mask_, onException)
+import           Control.Monad                (void)
+import           Data.Int                     (Int64)
+import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
+                                               touchForeignPtr, withForeignPtr)
+import           Foreign.Ptr                  (nullPtr)
+import           GHC.Conc                     (newStablePtrPrimMVar)
+import           GHC.Stack                    (HasCallStack)
+import           Z.Data.CBytes                (CBytes)
+import qualified Z.Data.CBytes                as ZC
+import           Z.Data.Vector                (Bytes)
+import qualified Z.Foreign                    as Z
 
-import qualified HStream.Store.Exception    as E
-import           HStream.Store.Internal.FFI (SequenceNum (..),
-                                             StreamClient (..), TopicID (..))
-import qualified HStream.Store.Internal.FFI as FFI
+import qualified HStream.Store.Exception      as E
+import qualified HStream.Store.Internal.FFI   as FFI
+import           HStream.Store.Internal.Types (SequenceNum (..),
+                                               StreamClient (..), TopicID (..))
+import qualified HStream.Store.Internal.Types as FFI
 
 -------------------------------------------------------------------------------
 
