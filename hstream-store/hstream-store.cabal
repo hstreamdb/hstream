@@ -38,15 +38,14 @@ library
     HStream.Store.AdminClient
     HStream.Store.Exception
     HStream.Store.Logger
+    HStream.Store.RPC.MessagePack
     HStream.Store.Stream
-
-  other-modules:
-    HStream.Store.Internal.FFI
     HStream.Store.Stream.Appender
     HStream.Store.Stream.Checkpoint
     HStream.Store.Stream.Reader
     HStream.Store.Stream.Topic
 
+  other-modules:      HStream.Store.Internal.FFI
   build-depends:
     , base           >=4.13 && <5
     , cache          ^>=0.1
@@ -58,9 +57,22 @@ library
     , Z-Data
     , Z-IO
     , Z-MessagePack  >=0.4  && <1
+    , zoovisitor     >=0.1  && <1
 
   default-language:   Haskell2010
-  default-extensions: OverloadedStrings
+  default-extensions:
+    DeriveAnyClass
+    DeriveGeneric
+    DerivingStrategies
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    MagicHash
+    OverloadedStrings
+    PatternSynonyms
+    RecordWildCards
+    ScopedTypeVariables
+    UnliftedFFITypes
+
   extra-libraries:
     stdc++
     folly

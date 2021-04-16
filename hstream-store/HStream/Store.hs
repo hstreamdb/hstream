@@ -1,14 +1,9 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE RecordWildCards    #-}
-
 module HStream.Store
   ( S.Topic
   , S.TopicAttrs (..)
 
     -- * Producer
-  , ProducerRecord (..)
+  , S.ProducerRecord (..)
   , ProducerConfig (..)
   , Producer
   , mkProducer
@@ -16,7 +11,7 @@ module HStream.Store
   , sendMessages
 
     -- * Consumer
-  , ConsumerRecord (..)
+  , S.ConsumerRecord (..)
   , ConsumerConfig (..)
   , Consumer
   , mkConsumer
@@ -47,7 +42,6 @@ import           Data.Word               (Word32)
 import           GHC.Generics            (Generic)
 import           Z.Data.CBytes           (CBytes)
 import qualified Z.Data.JSON             as JSON
-import           Z.Data.Vector           (Bytes)
 
 import           HStream.Store.Exception
 import           HStream.Store.Logger
@@ -55,15 +49,9 @@ import qualified HStream.Store.Stream    as S
 
 -------------------------------------------------------------------------------
 
-data ProducerRecord = ProducerRecord
-  { dataInTopic     :: S.Topic
-  , dataInKey       :: Maybe CBytes
-  , dataInValue     :: Bytes
-  , dataInTimestamp :: Int64
-  } deriving (Show, Generic, JSON.JSON)
-
 newtype ProducerConfig = ProducerConfig { producerConfigUri :: CBytes }
-  deriving (Show, Generic, JSON.JSON)
+  deriving (Show, Generic)
+  deriving newtype (JSON.JSON)
 
 newtype Producer = Producer S.StreamClient
 
@@ -72,36 +60,16 @@ mkProducer config = do
   client <- S.newStreamClient (producerConfigUri config)
   return $ Producer client
 
-sendMessage :: Producer -> ProducerRecord -> IO ()
-sendMessage (Producer client) record@ProducerRecord{..} = do
+sendMessage :: Producer -> S.ProducerRecord -> IO ()
+sendMessage (Producer client) record@S.ProducerRecord{..} = do
   topicID <- S.getTopicIDByName client dataInTopic
-  void $ S.append client topicID (JSON.encode record) Nothing
+  void $ S.append client topicID (S.encodeRecord record) Nothing
 
 -- FIXME: performance improvements
-sendMessages :: Producer -> [ProducerRecord] -> IO ()
+sendMessages :: Producer -> [S.ProducerRecord] -> IO ()
 sendMessages producer xs = forM_ xs $ sendMessage producer
 
 -------------------------------------------------------------------------------
-
-data ConsumerRecord = ConsumerRecord
-  { dataOutTopic     :: S.Topic
-  , dataOutOffset    :: S.SequenceNum
-  , dataOutKey       :: Maybe CBytes
-  , dataOutValue     :: Bytes
-  , dataOutTimestamp :: Int64
-  } deriving (Show, Generic, JSON.JSON)
-
-dataRecordToConsumerRecord :: S.DataRecord -> ConsumerRecord
-dataRecordToConsumerRecord S.DataRecord{..} = do
-  case JSON.decode' recordPayload of
-    Left _err -> error "JSON decode error!"
-    Right ProducerRecord{..} ->
-      ConsumerRecord { dataOutTopic     = dataInTopic
-                     , dataOutOffset    = recordLSN
-                     , dataOutKey       = dataInKey
-                     , dataOutValue     = dataInValue
-                     , dataOutTimestamp = dataInTimestamp
-                     }
 
 data ConsumerConfig = ConsumerConfig
   { consumerConfigUri         :: CBytes
@@ -136,10 +104,10 @@ mkConsumer ConsumerConfig{..} ts = do
     S.checkpointedReaderStartReading checkpointedReader topicID (lastSN + 1) maxBound
   return $ Consumer checkpointedReader (Map.fromList $ zip ts (map fst topics))
 
-pollMessages :: Consumer -> Int -> Int32 -> IO [ConsumerRecord]
+pollMessages :: Consumer -> Int -> Int32 -> IO [S.ConsumerRecord]
 pollMessages (Consumer reader _) maxRecords timeout = do
   void $ S.checkpointedReaderSetTimeout reader timeout
-  map dataRecordToConsumerRecord <$> S.checkpointedReaderRead reader maxRecords
+  map S.decodeRecord <$> S.checkpointedReaderRead reader maxRecords
 
 seek :: Consumer -> S.Topic -> S.SequenceNum -> IO ()
 seek (Consumer reader topics) topic sn = do

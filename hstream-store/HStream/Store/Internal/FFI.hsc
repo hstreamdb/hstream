@@ -1,10 +1,4 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE UnliftedFFITypes           #-}
+{-# LANGUAGE CPP #-}
 
 module HStream.Store.Internal.FFI where
 
@@ -15,6 +9,7 @@ import           Data.Word
 import           Foreign
 import           Foreign.C
 import           GHC.Conc          (PrimMVar)
+import qualified Z.Data.MessagePack         as MP
 import           GHC.Generics      (Generic)
 import qualified Z.Data.JSON       as JSON
 import           Z.Data.Vector     (Bytes)
@@ -54,7 +49,8 @@ instance Bounded TopicID where
   maxBound = TopicID c_logid_max
 
 newtype SequenceNum = SequenceNum { unSequenceNum :: C_LSN }
-  deriving (Show, Eq, Ord, Num, JSON.JSON, Generic)
+  deriving (Generic)
+  deriving newtype (Show, Eq, Ord, Num, JSON.JSON, MP.MessagePack)
 
 instance Bounded SequenceNum where
   minBound = SequenceNum c_lsn_oldest

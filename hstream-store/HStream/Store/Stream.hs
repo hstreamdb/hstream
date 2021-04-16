@@ -1,13 +1,18 @@
 module HStream.Store.Stream
-  ( -- * Stream Client
-    StreamClient
+  ( -- * Client Record Types
+    ProducerRecord (..)
+  , ConsumerRecord (..)
+  , encodeRecord
+  , decodeRecord
+
+  -- * Stream Client
+  , StreamClient
   , newStreamClient
   , getTailSequenceNum
     -- ** Client Settings
   , setClientSettings
   , getClientSettings
   , getMaxPayloadSize
-
     -- ** Sequence Number
   , SequenceNum (unSequenceNum)
   , FFI.sequenceNumInvalid
@@ -32,10 +37,15 @@ module HStream.Store.Stream
   ) where
 
 import           Control.Monad                   (void)
+import           Data.Int                        (Int64)
 import           Foreign.ForeignPtr              (newForeignPtr, withForeignPtr)
 import           Foreign.Ptr                     (nullPtr)
+import           GHC.Generics                    (Generic)
+import           GHC.Stack                       (HasCallStack)
 import           Z.Data.CBytes                   (CBytes)
 import qualified Z.Data.CBytes                   as ZC
+import qualified Z.Data.JSON                     as JSON
+import qualified Z.Data.MessagePack              as MP
 import           Z.Data.Vector                   (Bytes)
 import qualified Z.Foreign                       as Z
 
@@ -52,8 +62,40 @@ import           HStream.Store.Stream.Topic
 
 -------------------------------------------------------------------------------
 
+data ProducerRecord = ProducerRecord
+  { dataInTopic     :: Topic
+  , dataInKey       :: Maybe CBytes
+  , dataInValue     :: Bytes
+  , dataInTimestamp :: Int64
+  } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
+
+encodeRecord :: ProducerRecord -> Bytes
+encodeRecord = JSON.encode
+
+data ConsumerRecord = ConsumerRecord
+  { dataOutTopic     :: Topic
+  , dataOutOffset    :: SequenceNum
+  , dataOutKey       :: Maybe CBytes
+  , dataOutValue     :: Bytes
+  , dataOutTimestamp :: Int64
+  } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
+
+decodeRecord :: DataRecord -> ConsumerRecord
+decodeRecord DataRecord{..} = do
+  case JSON.decode' recordPayload of
+    Left _err -> error "JSON decode error!"
+    Right ProducerRecord{..} ->
+      ConsumerRecord { dataOutTopic     = dataInTopic
+                     , dataOutOffset    = recordLSN
+                     , dataOutKey       = dataInKey
+                     , dataOutValue     = dataInValue
+                     , dataOutTimestamp = dataInTimestamp
+                     }
+
+-------------------------------------------------------------------------------
+
 -- | Create a new stream client from config url.
-newStreamClient :: CBytes -> IO StreamClient
+newStreamClient :: HasCallStack => CBytes -> IO StreamClient
 newStreamClient config = ZC.withCBytesUnsafe config $ \config' -> do
   (client', _) <- Z.withPrimUnsafe nullPtr $ \client'' ->
     E.throwStreamErrorIfNotOK $ FFI.c_new_logdevice_client config' client''
@@ -118,7 +160,7 @@ getMaxPayloadSize (StreamClient client) =
 --    Set this to true if you want to use the internal replicated storage for
 --    logs configuration, this will ignore loading the logs section from the
 --    config file.
-setClientSettings :: StreamClient -> CBytes -> CBytes -> IO ()
+setClientSettings :: HasCallStack => StreamClient -> CBytes -> CBytes -> IO ()
 setClientSettings (StreamClient client) key val =
   withForeignPtr client $ \client' ->
   ZC.withCBytesUnsafe key $ \key' ->

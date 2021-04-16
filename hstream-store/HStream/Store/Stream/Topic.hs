@@ -1,6 +1,3 @@
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module HStream.Store.Stream.Topic
   ( -- * Topic
     Topic
@@ -40,7 +37,7 @@ module HStream.Store.Stream.Topic
   ) where
 
 import           Control.Exception          (try)
-import           Control.Monad              (void, when)
+import           Control.Monad              (void, when, (<=<))
 import           Data.Bits                  (shiftL, xor)
 import qualified Data.Cache                 as Cache
 import           Data.Map.Strict            (Map)
@@ -50,11 +47,14 @@ import           Data.Word                  (Word16, Word32, Word64)
 import           Foreign.ForeignPtr         (ForeignPtr, newForeignPtr,
                                              withForeignPtr)
 import           Foreign.Ptr                (nullPtr)
+import           GHC.Generics               (Generic)
 import           GHC.Stack                  (HasCallStack, callStack)
 import           System.IO.Unsafe           (unsafePerformIO)
 import           System.Random              (randomRIO)
 import           Z.Data.CBytes              (CBytes)
 import qualified Z.Data.CBytes              as ZC
+import qualified Z.Data.JSON                as JSON
+import qualified Z.Data.MessagePack         as MP
 import qualified Z.Foreign                  as Z
 
 import qualified HStream.Store.Exception    as E
@@ -83,9 +83,10 @@ topicIDInvalid' = TopicID FFI.c_logid_invalid2
 type Topic = CBytes
 
 -- TODO: Default instance
-data TopicAttrs = TopicAttrs
+newtype TopicAttrs = TopicAttrs
   { replicationFactor :: Int
-  } deriving (Show)
+  } deriving (Show, Generic)
+    deriving newtype (JSON.JSON, MP.MessagePack)
 
 type LogAttrs = ForeignPtr FFI.LogDeviceLogAttributes
 
@@ -100,7 +101,7 @@ type TopicRange = (TopicID, TopicID)
 
 createTopicsSync :: StreamClient -> Map Topic TopicAttrs -> IO ()
 createTopicsSync client ts =
-  mapM_ (\(k, v) -> createTopicSync client k v) (Map.toList ts)
+  mapM_ (uncurry $ createTopicSync client) (Map.toList ts)
 
 createTopicSync :: HasCallStack
                 => StreamClient
@@ -208,19 +209,19 @@ removeTopicGroupSync' client path = do
 topicGroupGetRange :: StreamTopicGroup -> IO TopicRange
 topicGroupGetRange group =
   withForeignPtr (unStreamTopicGroup group) $ \group' -> do
-    (start_ret, (end_ret, _)) <- Z.withPrimUnsafe (FFI.c_logid_invalid) $ \start' -> do
+    (start_ret, (end_ret, _)) <- Z.withPrimUnsafe FFI.c_logid_invalid $ \start' -> do
       Z.withPrimUnsafe FFI.c_logid_invalid $ \end' ->
         FFI.c_ld_loggroup_get_range group' start' end'
     return (mkTopicID start_ret, mkTopicID end_ret)
 
 topicGroupGetName :: StreamTopicGroup -> IO CBytes
 topicGroupGetName group =
-  withForeignPtr (unStreamTopicGroup group) $ \group' ->
-    ZC.fromCString =<< FFI.c_ld_loggroup_get_name group'
+  withForeignPtr (unStreamTopicGroup group) $
+    ZC.fromCString <=< FFI.c_ld_loggroup_get_name
 
 topicGroupGetVersion :: StreamTopicGroup -> IO Word64
 topicGroupGetVersion (StreamTopicGroup group) =
-  withForeignPtr group $ FFI.c_ld_loggroup_get_version
+  withForeignPtr group FFI.c_ld_loggroup_get_version
 
 -------------------------------------------------------------------------------
 -- TopicDirectory
