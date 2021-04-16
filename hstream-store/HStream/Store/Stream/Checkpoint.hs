@@ -3,6 +3,7 @@ module HStream.Store.Stream.Checkpoint
     CheckpointStore
   , newFileBasedCheckpointStore
   , newRSMBasedCheckpointStore
+  , newZookeeperBasedCheckpointStore
   , getSequenceNumSync
   , updateSequenceNumSync
   , updateMultiSequenceNumSync
@@ -46,6 +47,12 @@ newRSMBasedCheckpointStore
 newRSMBasedCheckpointStore (StreamClient client) (TopicID log_id) stop_timeout =
   withForeignPtr client $ \client' -> do
     i <- FFI.c_new_rsm_based_checkpoint_store client' log_id stop_timeout
+    CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
+
+newZookeeperBasedCheckpointStore :: StreamClient -> IO CheckpointStore
+newZookeeperBasedCheckpointStore (StreamClient client) =
+  withForeignPtr client $ \client' -> do
+    i <- FFI.c_new_zookeeper_based_checkpoint_store client'
     CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
 
 getSequenceNumSync :: CheckpointStore -> CBytes -> TopicID -> IO SequenceNum

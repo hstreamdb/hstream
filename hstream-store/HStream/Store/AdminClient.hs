@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module HStream.Store.AdminClient
   ( newStreamAdminClient
   , newRpcOptions
@@ -5,25 +7,29 @@ module HStream.Store.AdminClient
   , adminSyncGetStatus
   , adminSyncGetPid
   , adminSyncAliveSince
-  , FB_STATUS(..)
+  , FB_STATUS
+  , pattern FFI.FB_STATUS_STARTING
+  , pattern FFI.FB_STATUS_ALIVE
+  , pattern FFI.FB_STATUS_DEAD
+  , pattern FFI.FB_STATUS_STOPPING
+  , pattern FFI.FB_STATUS_STOPPED
+  , pattern FFI.FB_STATUS_WARNING
   ) where
 
-import           Data.Int                          (Int64)
-import           Data.Word                         (Word16, Word32)
-import           Foreign.ForeignPtr                (newForeignPtr,
-                                                    withForeignPtr)
-import           Foreign.Ptr                       (nullPtr)
-import           GHC.Stack                         (HasCallStack, callStack)
-import           Z.Data.CBytes                     (CBytes)
-import qualified Z.Data.CBytes                     as ZC
-import qualified Z.Data.Text                       as ZT
-import qualified Z.Foreign                         as Z
+import           Data.Int                   (Int64)
+import           Data.Word                  (Word16, Word32)
+import           Foreign.ForeignPtr         (newForeignPtr, withForeignPtr)
+import           Foreign.Ptr                (nullPtr)
+import           GHC.Stack                  (HasCallStack, callStack)
+import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as ZC
+import qualified Z.Data.Text                as ZT
+import qualified Z.Foreign                  as Z
 
-import qualified HStream.Store.Exception           as E
-import           HStream.Store.Internal.FFI        (RpcOptions (..),
-                                                    StreamAdminClient (..))
-import qualified HStream.Store.Internal.FFI        as FFI
-import           HStreamHStream.Store.Internal.FFI (FB_STATUS (..))
+import qualified HStream.Store.Exception    as E
+import           HStream.Store.Internal.FFI (FB_STATUS, RpcOptions (..),
+                                             StreamAdminClient (..))
+import qualified HStream.Store.Internal.FFI as FFI
 
 
 newStreamAdminClient :: HasCallStack
