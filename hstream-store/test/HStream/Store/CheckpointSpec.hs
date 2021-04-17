@@ -10,6 +10,7 @@ import           Test.Hspec
 spec :: Spec
 spec = describe "HStream.Store.Checkpoint" $ do
   fileCheckpointStore
+  asyncFileCheckpointStore
   rsmCheckpointStore
 
 fileCheckpointStore :: Spec
@@ -29,6 +30,27 @@ fileCheckpointStore = do
 
     checkpointStore' <- S.newFileBasedCheckpointStore ckpPath
     S.getSequenceNum checkpointStore' readerName logid `shouldReturn` until_lsn
+
+asyncFileCheckpointStore :: Spec
+asyncFileCheckpointStore = do
+  it "Async LSN get and update" $ do
+    client <- S.newStreamClient "/data/store/logdevice.conf"
+    reader <- S.newStreamReader client 1 (-1)
+    let readerName = "reader_name_ckp_1"
+    let ckpPath = "/tmp/ckp"
+    let logid = S.mkTopicID 1
+
+    checkpointStore <- S.newFileBasedCheckpointStore ckpPath
+    ckpReader <- S.newStreamSyncCheckpointedReader readerName reader checkpointStore 10
+    _ <- S.append client logid "hello" Nothing
+    until_lsn <- S.getTailSequenceNum client logid
+    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
+
+    checkpointStore' <- S.newFileBasedCheckpointStore ckpPath
+    S.getSequenceNum checkpointStore' readerName logid `shouldReturn` until_lsn
+    let random_lsn = 0x1020304050607080
+    S.updateSequenceNum checkpointStore' readerName logid random_lsn
+    S.getSequenceNum checkpointStore' readerName logid `shouldReturn` random_lsn
 
 rsmCheckpointStore :: Spec
 rsmCheckpointStore = do

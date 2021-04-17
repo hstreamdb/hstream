@@ -70,6 +70,21 @@ void checkpoint_store_get_lsn(logdevice_checkpoint_store_t* store,
   store->rep->getLSN(customer_id_, logid_t(logid), cb);
 }
 
+void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
+                                 const char* customer_id, c_logid_t logid,
+                                 c_lsn_t lsn, HsStablePtr mvar, HsInt cap,
+                                 facebook::logdevice::Status* st_out) {
+  std::string customer_id_ = std::string(customer_id);
+  auto cb = [&](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = st;
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  store->rep->updateLSN(customer_id_, logid_t(logid), lsn, cb);
+}
+
 facebook::logdevice::Status
 checkpoint_store_update_lsn_sync(logdevice_checkpoint_store_t* store,
                                  const char* customer_id, c_logid_t logid,
