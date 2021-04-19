@@ -53,6 +53,9 @@ newRSMBasedCheckpointStore (StreamClient client) (TopicID log_id) stop_timeout =
     i <- FFI.c_new_rsm_based_checkpoint_store client' log_id stop_timeout
     CheckpointStore <$> newForeignPtr FFI.c_free_checkpoint_store_fun i
 
+-- | Creates a zookeeper based CheckpointStore.
+--
+-- zk path: "/logdevice/{}/checkpoints/"
 newZookeeperBasedCheckpointStore :: StreamClient -> IO CheckpointStore
 newZookeeperBasedCheckpointStore (StreamClient client) =
   withForeignPtr client $ \client' -> do

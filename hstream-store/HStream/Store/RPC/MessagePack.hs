@@ -7,27 +7,29 @@ module HStream.Store.RPC.MessagePack
   , ConsumerConfig (..)
   ) where
 
-import           Control.Monad           (forM, forM_, void)
-import           Data.IORef              (newIORef, readIORef, writeIORef)
-import           Data.Int                (Int32, Int64)
-import           Data.Map.Strict         (Map)
-import           Data.Maybe              (fromMaybe)
-import           Data.Word               (Word32)
-import           GHC.Generics            (Generic)
-import           Z.Data.CBytes           (CBytes)
-import qualified Z.Data.JSON             as JSON
-import qualified Z.Data.MessagePack      as MP
-import qualified Z.Data.Text             as T
-import           Z.Data.Vector           (Bytes)
-import qualified Z.IO.BIO                as Z
-import qualified Z.IO.Network            as Z
-import qualified Z.IO.RPC.MessagePack    as MP
+import           Control.Monad        (forM, forM_, void)
+import           Data.IORef           (newIORef, readIORef, writeIORef)
+import           Data.Int             (Int32, Int64)
+import           Data.Map.Strict      (Map)
+import           Data.Maybe           (fromMaybe)
+import           Data.Word            (Word32)
+import           GHC.Generics         (Generic)
+import           Z.Data.CBytes        (CBytes)
+import qualified Z.Data.JSON          as JSON
+import qualified Z.Data.MessagePack   as MP
+import qualified Z.IO.BIO             as Z
+import qualified Z.IO.Network         as Z
+import qualified Z.IO.RPC.MessagePack as MP
 
-import           HStream.Store.Exception
-import           HStream.Store.Logger
-import qualified HStream.Store.Stream    as S
+import qualified HStream.Store.Stream as S
 
 -------------------------------------------------------------------------------
+
+data ContextData = ContextData
+  { ctxStreamClient :: S.StreamClient
+  , ctxReaderClient :: Maybe S.StreamSyncCheckpointedReader
+  , ctxReaderTopics :: Maybe [CBytes]
+  }
 
 serve :: Z.TCPServerConfig -> IO ()
 serve tcpConf = MP.serveRPC (Z.startTCPServer tcpConf) $ MP.simpleRouter
@@ -35,24 +37,16 @@ serve tcpConf = MP.serveRPC (Z.startTCPServer tcpConf) $ MP.simpleRouter
   , ("create-topic", MP.CallHandler createTopic)
   , ("pub", MP.CallHandler pub)
   , ("sub", MP.StreamHandler sub)
+  , ("subc", MP.StreamHandler subFromCheckpoint)
+  , ("commit-checkpoint", MP.CallHandler commitCheckpoint)
   ]
-
-data ContextData = ContextData
-  { ctxStreamClient :: S.StreamClient
-  , ctxReaderClient :: Maybe S.StreamSyncCheckpointedReader
-  }
 
 -------------------------------------------------------------------------------
 
-newtype PrepareRequest = PrepareRequest
-  { initReqConfigUri :: CBytes
-  } deriving (Show, Generic)
-    deriving newtype (JSON.JSON, MP.MessagePack)
-
-prepare :: MP.SessionCtx ContextData -> PrepareRequest -> IO ()
-prepare ctx PrepareRequest{..} = do
-  client <- S.newStreamClient initReqConfigUri
-  MP.writeSessionCtx ctx $ ContextData client Nothing
+prepare :: MP.SessionCtx ContextData -> CBytes -> IO ()
+prepare ctx configUri = do
+  client <- S.newStreamClient configUri
+  MP.writeSessionCtx ctx $ ContextData client Nothing Nothing
 
 createTopic :: MP.SessionCtx ContextData -> Map CBytes S.TopicAttrs -> IO ()
 createTopic ctx ts = withStreamClient ctx $ \client -> do
@@ -68,11 +62,9 @@ data FileBasedCheckpointConfig = FileBasedCheckpointConfig
   , fileCheckpointRetries :: Word32
   } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
 
--- TODO
-data LogBasedCheckpointConfig
-
 data CheckpointConfig
   = FileCheckpoint FileBasedCheckpointConfig
+  | ZookeeperCheckpoint Word32
   deriving (Show, Generic, JSON.JSON, MP.MessagePack)
 
 data ConsumerConfig = ConsumerConfig
@@ -92,22 +84,66 @@ sub ctx ConsumerConfig{..} = withStreamClient ctx $ \client -> do
   topics <- forM consumerTopics $ \t -> do
     topicID <- S.getTopicIDByName client t
     lastSN <- S.getTailSequenceNum client topicID
-    return (topicID, lastSN)
-  let bufSize = fromMaybe (-1) consumerBufferSize
-  reader <- S.newStreamReader client (fromIntegral $ length consumerTopics) bufSize
-  ckpReader <-
-    case consumerCheckpoint of
-      FileCheckpoint FileBasedCheckpointConfig{..} -> do
-        ckpStore <- S.newFileBasedCheckpointStore fileCheckpointPath
-        S.newStreamSyncCheckpointedReader consumerName reader ckpStore fileCheckpointRetries
-  MP.modifySessionCtx ctx $ \x -> Just x{ctxReaderClient=Just ckpReader}
+    return (topicID, lastSN + 1, maxBound)
+  (s, ckpReader) <- newSubscriber client consumerName (Left topics) consumerMaxRecords
+                                  consumerBufferSize consumerTimeout consumerCheckpoint
+  MP.modifySessionCtx ctx $ \x -> Just x{ ctxReaderClient=Just ckpReader
+                                        , ctxReaderTopics=Just consumerTopics
+                                        }
+  return s
 
-  forM_ topics $ \(topicID, lastSN) ->
-    S.checkpointedReaderStartReading ckpReader topicID (lastSN + 1) maxBound
-  void $ S.checkpointedReaderSetTimeout ckpReader consumerTimeout
-  flattenListSource $ Z.sourceFromIO (Just . map S.decodeRecord <$> S.checkpointedReaderRead ckpReader consumerMaxRecords)
+subFromCheckpoint :: MP.SessionCtx ContextData -> ConsumerConfig -> IO (Z.Source S.ConsumerRecord)
+subFromCheckpoint ctx ConsumerConfig{..} = withStreamClient ctx $ \client -> do
+  topics <- forM consumerTopics $ \t -> do
+    topicID <- S.getTopicIDByName client t
+    return (topicID, maxBound)
+  (s, ckpReader) <- newSubscriber client consumerName (Right topics) consumerMaxRecords
+                                  consumerBufferSize consumerTimeout consumerCheckpoint
+  MP.modifySessionCtx ctx $ \x -> Just x{ ctxReaderClient=Just ckpReader
+                                        , ctxReaderTopics=Just consumerTopics
+                                        }
+  return s
+
+commitCheckpoint :: MP.SessionCtx ContextData -> [CBytes] -> IO ()
+commitCheckpoint ctx ts =
+  withStreamClient ctx $ \client ->
+  withReaderClient ctx $ \reader -> do
+    topicIDs <- forM ts (S.getTopicIDByName client)
+    S.writeLastCheckpointsSync reader topicIDs
 
 -------------------------------------------------------------------------------
+
+newSubscriber
+  :: S.StreamClient
+  -> CBytes
+  -> Either [(S.TopicID, S.SequenceNum, S.SequenceNum)] [(S.TopicID, S.SequenceNum)]
+  -> Int
+  -> Maybe Int64
+  -> Int32
+  -> CheckpointConfig
+  -> IO (Z.Source S.ConsumerRecord, S.StreamSyncCheckpointedReader)
+newSubscriber client name e_topics maxRecords m_buffSize timeout ckpConfig = do
+  let bufSize = fromMaybe (-1) m_buffSize
+      topics = case e_topics of
+                 Left ts -> map (\(i, start, end) reader -> S.checkpointedReaderStartReading reader i start end) ts
+                 Right ts -> map (\(i, end) reader -> S.startReadingFromCheckpoint reader i end) ts
+
+  reader <- S.newStreamReader client (fromIntegral $ length topics) bufSize
+  ckpReader <-
+    case ckpConfig of
+      FileCheckpoint FileBasedCheckpointConfig{..} -> do
+        ckpStore <- S.newFileBasedCheckpointStore fileCheckpointPath
+        S.newStreamSyncCheckpointedReader name reader ckpStore fileCheckpointRetries
+      ZookeeperCheckpoint retries -> do
+        ckpStore <- S.newZookeeperBasedCheckpointStore client
+        S.newStreamSyncCheckpointedReader name reader ckpStore retries
+
+  -- start reading
+  forM_ topics $ \f -> f ckpReader
+  void $ S.checkpointedReaderSetTimeout ckpReader timeout
+  src <- flattenListSource $
+    Z.sourceFromIO (Just . map S.decodeRecord <$> S.checkpointedReaderRead ckpReader maxRecords)
+  return (src, ckpReader)
 
 withStreamClient :: MP.SessionCtx ContextData -> (S.StreamClient -> IO a) -> IO a
 withStreamClient ctx f = do

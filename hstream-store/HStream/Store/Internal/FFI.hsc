@@ -336,6 +336,8 @@ foreign import ccall unsafe "hs_logdevice.h ld_reader_start_reading"
   c_ld_reader_start_reading :: Ptr LogDeviceReader -> C_LogID -> C_LSN -> C_LSN -> IO ErrorCode
 foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_start_reading"
   c_ld_checkpointed_reader_start_reading :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> C_LSN -> C_LSN -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_start_reading_from_ckp"
+  c_ld_checkpointed_reader_start_reading_from_ckp :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> C_LSN -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_stop_reading"
   c_ld_reader_stop_reading :: Ptr LogDeviceReader -> C_LogID -> IO ErrorCode
