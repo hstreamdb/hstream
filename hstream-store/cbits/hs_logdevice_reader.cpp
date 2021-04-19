@@ -169,5 +169,21 @@ sync_write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
       std::vector<logid_t>(logids, logids + len));
 }
 
+void write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                                 const c_logid_t* logids, size_t len,
+                                 HsStablePtr mvar, HsInt cap,
+                                 facebook::logdevice::Status* st_out) {
+  auto cb = [&](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = st;
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  reader->rep->asyncWriteCheckpoints(
+      cb, std::vector<logid_t>(logids, logids + len));
+}
+
+
 // ----------------------------------------------------------------------------
 } // end extern "C"
