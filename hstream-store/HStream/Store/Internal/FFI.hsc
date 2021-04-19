@@ -249,6 +249,16 @@ foreign import ccall safe "hs_logdevice.h checkpoint_store_update_lsn_sync"
     -> C_LSN
     -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_lsn"
+  c_checkpoint_store_update_lsn
+    :: Ptr LogDeviceCheckpointStore
+    -> BA## Word8    -- ^ customer_id
+    -> C_LogID
+    -> C_LSN
+    -> StablePtr PrimMVar -> Int
+    -> MBA## Word8
+    -> IO ()
+
 foreign import ccall safe "hs_logdevice.h checkpoint_store_update_multi_lsn_sync"
   c_checkpoint_store_update_multi_lsn_sync_safe
     :: Ptr LogDeviceCheckpointStore
@@ -265,6 +275,16 @@ foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
     -> Ptr C_LSN
     -> Word
     -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h write_checkpoints"
+  c_write_checkpoints
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> BA## C_LogID
+    -> BA## C_LSN
+    -> Word
+    -> StablePtr PrimMVar -> Int
+    -> MBA## Word8
+    -> IO ()
 
 foreign import ccall safe "hs_logdevice.h sync_write_last_read_checkpoints"
   c_sync_write_last_read_checkpoints_safe

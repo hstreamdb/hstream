@@ -7,6 +7,7 @@ module HStream.Store.Stream.Checkpoint
 
   , getSequenceNum
   , getSequenceNumSync
+  , updateSequenceNum
   , updateSequenceNumSync
   , updateMultiSequenceNumSync
   ) where
@@ -74,6 +75,14 @@ getSequenceNumSync (CheckpointStore store) customid (TopicID topicid) =
     (ret_lsn, _) <- Z.withPrimSafe FFI.c_lsn_invalid $ \sn' ->
       E.throwStreamErrorIfNotOK $ FFI.c_checkpoint_store_get_lsn_sync_safe store' customid' topicid sn'
     return $ SequenceNum ret_lsn
+
+updateSequenceNum :: CheckpointStore -> CBytes -> TopicID -> SequenceNum -> IO ()
+updateSequenceNum (CheckpointStore store) customid (TopicID topicid) (SequenceNum sn) =
+  ZC.withCBytesUnsafe customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: FFI.ErrorCode) $
+      FFI.c_checkpoint_store_update_lsn store' customid' topicid sn
+    void $ E.throwStreamErrorIfNotOK' errno
 
 updateSequenceNumSync :: CheckpointStore -> CBytes -> TopicID -> SequenceNum -> IO ()
 updateSequenceNumSync (CheckpointStore store) customid (TopicID topicid) (SequenceNum sn) =

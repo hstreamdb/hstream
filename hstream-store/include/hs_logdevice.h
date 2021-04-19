@@ -281,6 +281,11 @@ checkpoint_store_get_lsn_sync(logdevice_checkpoint_store_t* store,
                               const char* customer_id, c_logid_t logid,
                               c_lsn_t* value_out);
 
+void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
+                                 const char* customer_id, c_logid_t logid,
+                                 c_lsn_t lsn, HsStablePtr mvar, HsInt cap,
+                                 facebook::logdevice::Status* st_out);
+
 facebook::logdevice::Status
 checkpoint_store_update_lsn_sync(logdevice_checkpoint_store_t* store,
                                  const char* customer_id, c_logid_t logid,
@@ -339,6 +344,11 @@ facebook::logdevice::Status logdevice_checkpointed_reader_read(
 facebook::logdevice::Status
 sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
                        c_logid_t* logids, c_lsn_t* lsns, size_t len);
+
+void write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                       c_logid_t* logids, c_lsn_t* lsns, size_t len,
+                       HsStablePtr mvar, HsInt cap,
+                       facebook::logdevice::Status* st_out);
 
 facebook::logdevice::Status
 sync_write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
