@@ -61,7 +61,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-v1
 
-      - name: Build and Test
+      - name: build
         run: |
           python3 script/dev-tools cluster-start
           sleep 5     # waiting cluster start
@@ -71,6 +71,8 @@ jobs:
           python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --upgrade-dependencies --only-dependencies all
           python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --enable-tests --enable-benchmarks all
 
+      - name: test
+        run: |
           echo "====== Test hstream-store ======"
           python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-store
           echo "====== Test hstream-sql ======"
@@ -80,6 +82,8 @@ jobs:
           echo "====== Test hstream ======"
           python3 script/dev-tools cabal --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream
 
+      - name: check
+        run: |
           # unfortunately, there is no `cabal check all`
           #log_info "Run all cabal check..."
           # Note that we ignore hstream-store package to run cabal check, because there

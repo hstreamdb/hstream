@@ -80,5 +80,4 @@ HStreamDB is under the BSD 3-Clause license. See the [LICENSE](https://github.co
 
 ## Acknowledgments
 
-- Thanks [winterland](https://github.com/winterland1989) for providing modern Haskell engineering toolkits [Z.Haskell](https://z.haskell.world/).
 - Thanks [LogDevice](https://logdevice.io/) for the powerful storage engine.
