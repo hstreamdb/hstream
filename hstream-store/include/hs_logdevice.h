@@ -316,6 +316,9 @@ facebook::logdevice::Status ld_reader_start_reading(logdevice_reader_t* reader,
 facebook::logdevice::Status ld_checkpointed_reader_start_reading(
     logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid,
     c_lsn_t start, c_lsn_t until);
+facebook::logdevice::Status ld_checkpointed_reader_start_reading_from_ckp(
+    logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid,
+    c_lsn_t until);
 
 facebook::logdevice::Status ld_reader_stop_reading(logdevice_reader_t* reader,
                                                    c_logid_t logid);

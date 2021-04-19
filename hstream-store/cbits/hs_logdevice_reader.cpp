@@ -136,6 +136,15 @@ READ(logdevice_checkpointed_reader_read, logdevice_sync_checkpointed_reader_t)
 // ----------------------------------------------------------------------------
 // Checkpointed Reader
 
+facebook::logdevice::Status ld_checkpointed_reader_start_reading_from_ckp(
+    logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid,
+    c_lsn_t until) {
+  int ret = reader->rep->startReadingFromCheckpoint(logid_t(logid), until);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
 facebook::logdevice::Status
 sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
                        c_logid_t* logids, c_lsn_t* lsns, size_t len) {
@@ -183,7 +192,6 @@ void write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
   reader->rep->asyncWriteCheckpoints(
       cb, std::vector<logid_t>(logids, logids + len));
 }
-
 
 // ----------------------------------------------------------------------------
 } // end extern "C"

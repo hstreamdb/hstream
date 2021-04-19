@@ -16,15 +16,17 @@ module HStream.Store.Stream.Reader
   , StreamSyncCheckpointedReader
   , newStreamSyncCheckpointedReader
   , checkpointedReaderStartReading
+  , startReadingFromCheckpoint
   , checkpointedReaderStopReading
   , checkpointedReaderSetTimeout
   , checkpointedReaderRead
   , tryCheckpointedReaderRead
   , checkpointedReaderIsReading
   , checkpointedReaderIsReadingAny
+    -- ** checkpoint store
   , writeCheckpoints
-  , writeCheckpointsSync
   , writeLastCheckpoints
+  , writeCheckpointsSync
   , writeLastCheckpointsSync
   ) where
 
@@ -67,11 +69,12 @@ newStreamReader client max_logs buffer_size =
     i <- FFI.c_new_logdevice_reader clientPtr max_logs buffer_size
     StreamReader <$> newForeignPtr FFI.c_free_logdevice_reader_fun i
 
-newStreamSyncCheckpointedReader :: CBytes
-                              -> StreamReader
-                              -> CheckpointStore
-                              -> Word32
-                              -> IO StreamSyncCheckpointedReader
+newStreamSyncCheckpointedReader
+  :: CBytes
+  -> StreamReader
+  -> CheckpointStore
+  -> Word32
+  -> IO StreamSyncCheckpointedReader
 newStreamSyncCheckpointedReader name reader store retries =
   ZC.withCBytesUnsafe name $ \name' ->
   withForeignPtr (unStreamReader reader) $ \reader' ->
@@ -104,6 +107,15 @@ checkpointedReaderStartReading
 checkpointedReaderStartReading (StreamSyncCheckpointedReader reader) (TopicID topicid) (SequenceNum startSeq) (SequenceNum untilSeq) =
   withForeignPtr reader $ \ptr -> void $
     E.throwStreamErrorIfNotOK $ FFI.c_ld_checkpointed_reader_start_reading ptr topicid startSeq untilSeq
+
+startReadingFromCheckpoint
+  :: StreamSyncCheckpointedReader
+  -> TopicID
+  -> SequenceNum
+  -> IO ()
+startReadingFromCheckpoint (StreamSyncCheckpointedReader reader) (TopicID topicid) (SequenceNum untilSeq) =
+  withForeignPtr reader $ \ptr -> void $
+    E.throwStreamErrorIfNotOK $ FFI.c_ld_checkpointed_reader_start_reading_from_ckp ptr topicid untilSeq
 
 readerStopReading :: StreamReader -> TopicID -> IO ()
 readerStopReading (StreamReader reader) (TopicID topicid) =
