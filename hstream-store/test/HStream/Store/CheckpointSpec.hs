@@ -52,6 +52,11 @@ asyncFileCheckpointStore = do
     S.updateSequenceNum checkpointStore' readerName logid random_lsn
     S.getSequenceNum checkpointStore' readerName logid `shouldReturn` random_lsn
 
+    S.checkpointedReaderStartReading ckpReader logid until_lsn until_lsn
+    _ <- S.checkpointedReaderRead ckpReader 10
+    S.writeLastCheckpoints ckpReader [logid]
+    S.getSequenceNum checkpointStore' readerName logid `shouldReturn` until_lsn
+
 rsmCheckpointStore :: Spec
 rsmCheckpointStore = do
   it "newRSMBasedCheckpointStore" $ do

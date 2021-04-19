@@ -24,6 +24,7 @@ module HStream.Store.Stream.Reader
   , checkpointedReaderIsReadingAny
   , writeCheckpoints
   , writeCheckpointsSync
+  , writeLastCheckpoints
   , writeLastCheckpointsSync
   ) where
 
@@ -218,6 +219,15 @@ writeLastCheckpointsSync (StreamSyncCheckpointedReader reader) xs =
     let topicIDs = Z.primArrayFromList $ map unTopicID xs
     Z.withPrimArraySafe topicIDs $ \id' len -> void $ E.throwStreamErrorIfNotOK $
       FFI.c_sync_write_last_read_checkpoints_safe reader' id' (fromIntegral len)
+
+writeLastCheckpoints :: StreamSyncCheckpointedReader -> [TopicID] -> IO ()
+writeLastCheckpoints (StreamSyncCheckpointedReader reader) xs =
+  withForeignPtr reader $ \reader' -> do
+    let topicIDs = Z.primArrayFromList $ map unTopicID xs
+    Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
+      (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: FFI.ErrorCode) $
+        FFI.c_write_last_read_checkpoints reader' id' (fromIntegral len)
+      void $ E.throwStreamErrorIfNotOK' errno
 
 -------------------------------------------------------------------------------
 

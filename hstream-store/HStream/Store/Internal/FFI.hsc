@@ -293,6 +293,15 @@ foreign import ccall safe "hs_logdevice.h sync_write_last_read_checkpoints"
     -> Word
     -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h write_last_read_checkpoints"
+  c_write_last_read_checkpoints
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> BA## C_LogID
+    -> Word
+    -> StablePtr PrimMVar -> Int
+    -> MBA## Word8
+    -> IO ()
+
 -------------------------------------------------------------------------------
 -- Reader API
 
