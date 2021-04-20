@@ -1,44 +1,35 @@
-{-# LANGUAGE DeriveAnyClass      #-}
-{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
 
 module Main where
 
-import           Conduit
-import           Control.Exception        (SomeException, try)
-import           Data.Aeson               (FromJSON, eitherDecode')
-import qualified Data.ByteString.Char8    as BC
-import qualified Data.ByteString.Lazy     as BL
-import qualified Data.List                as L
-import           Data.Proxy               (Proxy (..))
-import           Data.Text                (pack)
+import           Control.Exception
+import           Control.Monad.IO.Class            (liftIO)
+import qualified Data.List                         as L
+import qualified Data.Text                         as T
+import qualified Data.Text.Lazy                    as TL
+import qualified Data.Text.Lazy.IO                 as TLIO
 import           HStream.SQL
-import           HStream.Server.Type
-import           Network.HTTP.Simple      (Request, getResponseBody, httpBS,
-                                           httpSink, parseRequest,
-                                           setRequestBodyJSON, setRequestMethod)
-import           Options.Applicative      (Parser, auto, execParser, fullDesc,
-                                           help, helper, info, long, metavar,
-                                           option, progDesc, short, showDefault,
-                                           strOption, value, (<**>))
-import           System.Console.Haskeline (Completion, CompletionFunc, InputT,
-                                           Settings, completeWord,
-                                           defaultSettings, getInputLine,
-                                           handleInterrupt, runInputT,
-                                           setComplete, simpleCompletion,
-                                           withInterrupt)
-import           System.Random
-import           Text.Pretty.Simple       (pPrint)
+import           HStream.Server.HStreamApi
+import           Network.GRPC.HighLevel.Generated
+import           System.Console.Haskeline
+import           ThirdParty.Google.Protobuf.Struct
 
-parseConfig :: Parser ClientConfig
-parseConfig =
-  ClientConfig
-    <$> strOption (long "host" <> metavar "HOST" <> showDefault <> value "http://localhost" <> help "host url")
-    <*> option auto (long "port" <> showDefault <> value 8081 <> short 'p' <> help "client port value" <> metavar "INT")
+helpInfo :: String
+helpInfo =
+  unlines
+    [ "Command ",
+      "  :h                        help command",
+      "  :q                        quit cli",
+      "  show queries              list all queries",
+      "  terminate query <taskid>  terminate query by id",
+      "  terminate query all       terminate all queries",
+      "  <sql>                     run sql"
+    ]
 
 def :: Settings IO
 def = setComplete compE defaultSettings
@@ -74,72 +65,66 @@ compword s = do
   cs <- specificComplete (words s)
   return $ map simpleCompletion (gs <> cs)
 
+clientConfig :: ClientConfig
+clientConfig = ClientConfig { clientServerHost = "localhost"
+                            , clientServerPort = 50051
+                            , clientArgs = []
+                            , clientSSLConfig = Nothing
+                            , clientAuthority = Nothing
+                            }
+
 main :: IO ()
 main = do
   putStrLn "Start HStream-Cli!"
-  cf <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "start hstream-cli")
   putStrLn helpInfo
-  runInputT def $ loop cf
+  runInputT def loop
   where
-    loop :: ClientConfig -> InputT IO ()
-    loop c@ClientConfig {..} = handleInterrupt ((liftIO $ putStrLn "interrupted") >> loop c) $
+    loop :: InputT IO ()
+    loop = handleInterrupt (liftIO (putStrLn "interrupted") >> loop) $
       withInterrupt $ do
         input <- getInputLine "> "
-        let createRequest api = liftIO $ parseRequest (cHttpUrl ++ ":" ++ show cServerPort ++ api)
         case input of
-          Nothing -> return ()
+          Nothing   -> return ()
           Just ":q" -> return ()
-          Just xs -> do
+          Just xs   -> do
             case words xs of
-              ":h" : _ -> liftIO $ putStrLn helpInfo
-              "show" : "queries" : _ -> createRequest "/show/queries" >>= handleReq @[TaskInfo] Proxy
-              "terminate" : "query" : "all" : _ -> createRequest ("/terminate/query/all") >>= handleReq @Resp Proxy
-              "terminate" : "query" : dbid -> createRequest ("/terminate/query/" ++ unwords dbid) >>= handleReq @Resp Proxy
-              val@(_ : _) -> do
-                (liftIO $ try $ parseAndRefine $ pack $ unwords val) >>= \case
-                  Left (err :: SomeException) -> liftIO $ putStrLn $ show err
-                  Right sql -> case sql of
-                    RQSelect _ -> do
-                      name <- liftIO $ mapM (\_ -> randomRIO ('a', 'z')) [1..8 :: Int]
-                      re <- createRequest ("/create/stream/query/" ++ name)
-                      liftIO $
-                        handleStreamReq $
-                          setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
-                            setRequestMethod "POST" re
-                    _ -> do
-                      re <- createRequest "/create/query"
-                      handleReq @(Either String TaskInfo) Proxy $
-                        setRequestBodyJSON (ReqSQL (pack $ unwords val)) $
-                          setRequestMethod "POST" re
+              ":h" : _                          -> liftIO $ putStrLn helpInfo
+              "show" : "queries" : _            -> undefined
+              "terminate" : "query" : "all" : _ -> undefined
+              "terminate" : "query" : dbid      -> undefined
+              val@(_ : _)                       -> do
+                let sql = T.pack (unwords val)
+                (liftIO . try . parseAndRefine $ sql) >>= \case
+                  Left (e :: SomeException) -> liftIO . print $ e
+                  Right rsql                -> case rsql of
+                    RQSelect _ -> liftIO $ sqlStreamAction (TL.fromStrict sql)
+                    _          -> liftIO $ sqlAction (TL.fromStrict sql)
               [] -> return ()
-            loop c
+            loop
 
-helpInfo :: String
-helpInfo =
-  unlines
-    [ "Command ",
-      "  :h                        help command",
-      "  :q                        quit cli",
-      "  show queries              list all queries",
-      "  terminate query <taskid>  terminate query by id",
-      "  terminate query all       terminate all queries",
-      "  <sql>                     run sql"
-    ]
+sqlStreamAction :: TL.Text -> IO ()
+sqlStreamAction sql = withGRPCClient clientConfig $ \client -> do
+  HStreamApi{..} <- hstreamApiClient client
+  let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
+  ClientReaderResponse _meta _status _details <-
+    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000 [] action)
+  return ()
+  where action _call _meta recv = go
+          where go = do msg <- recv
+                        case msg of
+                          Left err            -> print err
+                          Right Nothing       -> print "terminated"
+                          Right (Just result) -> do
+                            let Struct fields = result
+                            print fields
+                            go
 
-handleReq :: forall a. (Show a, FromJSON a) => Proxy a -> Request -> InputT IO ()
-handleReq _ req = liftIO $ do
-  (try $ httpBS req) >>= \case
-    Left (e :: SomeException) -> print e
-    Right a -> do
-      case getResponseBody a of
-        "" -> putStrLn "invalid command"
-        body -> case eitherDecode' (BL.fromStrict body) of
-          Left e           -> print e
-          Right (rsp :: a) -> pPrint rsp
-
-handleStreamReq :: Request -> IO ()
-handleStreamReq req = do
-  (try $ httpSink req (\_ -> mapM_C BC.putStrLn)) >>= \case
-    Left (e :: SomeException) -> print e
-    Right _                   -> return ()
-
+sqlAction :: TL.Text -> IO ()
+sqlAction sql = withGRPCClient clientConfig $ \client -> do
+  HStreamApi{..} <- hstreamApiClient client
+  let commandQuery = CommandQuery{ commandQueryStmtText = sql }
+  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
+  case resp of
+    ClientNormalResponse x@CommandQueryResponse{..} _meta1 _meta2 _status _details -> do
+      print x
+    ClientErrorResponse clientError -> print $ "client error: " <> show clientError

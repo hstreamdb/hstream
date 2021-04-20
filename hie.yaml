@@ -1,13 +1,52 @@
 cradle:
   cabal:
-    - path: "hstream/src"
-      component: "lib:hstream"
+    - path: "gRPC-haskell/core/src"
+      component: "lib:grpc-haskell-core"
 
-    - path: "hstream/sql-example-mock/Example.hs"
-      component: "hstream:exe:sql-example-mock"
+    - path: "gRPC-haskell/core/tests"
+      component: "grpc-haskell-core:test:tests"
 
-    - path: "hstream/sql-example-logdevice/Example.hs"
-      component: "hstream:exe:sql-example-logdevice"
+    - path: "gRPC-haskell/src"
+      component: "lib:grpc-haskell"
+
+    - path: "gRPC-haskell/examples/hellos/hellos-server/Main.hs"
+      component: "grpc-haskell:exe:hellos-server"
+
+    - path: "gRPC-haskell/examples/hellos/hellos-client/Main.hs"
+      component: "grpc-haskell:exe:hellos-client"
+
+    - path: "gRPC-haskell/examples/echo/echo-hs/EchoServer.hs"
+      component: "grpc-haskell:exe:echo-server"
+
+    - path: "gRPC-haskell/examples/echo/echo-hs/Echo.hs"
+      component: "grpc-haskell:exe:echo-server"
+
+    - path: "gRPC-haskell/examples/tutorial/ArithmeticServer.hs"
+      component: "grpc-haskell:exe:arithmetic-server"
+
+    - path: "gRPC-haskell/examples/tutorial/Arithmetic.hs"
+      component: "grpc-haskell:exe:arithmetic-server"
+
+    - path: "gRPC-haskell/examples/tutorial/ArithmeticClient.hs"
+      component: "grpc-haskell:exe:arithmetic-client"
+
+    - path: "gRPC-haskell/examples/tutorial/Arithmetic.hs"
+      component: "grpc-haskell:exe:arithmetic-client"
+
+    - path: "gRPC-haskell/examples/echo/echo-hs/EchoClient.hs"
+      component: "grpc-haskell:exe:echo-client"
+
+    - path: "gRPC-haskell/examples/echo/echo-hs/Echo.hs"
+      component: "grpc-haskell:exe:echo-client"
+
+    - path: "gRPC-haskell/tests"
+      component: "grpc-haskell:test:tests"
+
+    - path: "gRPC-haskell/bench/Bench.hs"
+      component: "grpc-haskell:bench:bench"
+
+    - path: "hstream/client/Main.hs"
+      component: "hstream:exe:hstream-client"
 
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
@@ -51,6 +90,21 @@ cradle:
     - path: "hstream-processing/example/LogDeviceExample0.hs"
       component: "hstream-processing:exe:logdevice-example0"
 
+    - path: "hstream-server/src"
+      component: "lib:hstream-server"
+
+    - path: "hstream-server/generated-src"
+      component: "lib:hstream-server"
+
+    - path: "hstream-server/app"
+      component: "lib:hstream-server"
+
+    - path: "hstream-server/generated-src"
+      component: "lib:hstream-server"
+
+    - path: "hstream-server/app/Server.hs"
+      component: "hstream-server:exe:hstream-server"
+
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"
 
@@ -68,6 +122,27 @@ cradle:
 
     - path: "hstream-store/test"
       component: "hstream-store:test:hstream-store-test"
+
+    - path: "proto3-suite/src"
+      component: "lib:proto3-suite"
+
+    - path: "proto3-suite/tests"
+      component: "proto3-suite:test:tests"
+
+    - path: "proto3-suite/gen"
+      component: "proto3-suite:test:tests"
+
+    - path: "proto3-suite/tools/compile-proto-file/Main.hs"
+      component: "proto3-suite:exe:compile-proto-file"
+
+    - path: "proto3-suite/tools/canonicalize-proto-file/Main.hs"
+      component: "proto3-suite:exe:canonicalize-proto-file"
+
+    - path: "proto3-wire/src"
+      component: "lib:proto3-wire"
+
+    - path: "proto3-wire/test"
+      component: "proto3-wire:test:tests"
 
     - path: "z-data/./"
       component: "lib:Z-Data"
