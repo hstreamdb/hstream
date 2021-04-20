@@ -136,6 +136,13 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup_sync"
                                     -> MBA## Word64
                                     -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup"
+  c_ld_client_remove_loggroup :: Ptr LogDeviceClient
+                              -> BA## Word8
+                              -> StablePtr PrimMVar -> Int
+                              -> Ptr LogsconfigStatusCbData
+                              -> IO Int
+
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
   c_ld_loggroup_get_range :: Ptr LogDeviceLogGroup
                           -> MBA## C_LogID    -- ^ returned value, start logid
@@ -154,6 +161,14 @@ foreign import ccall safe "hs_logdevice.h free_logdevice_loggroup"
   c_free_logdevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_loggroup"
   c_free_logdevice_loggroup_fun :: FunPtr (Ptr LogDeviceLogGroup -> IO ())
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_rename"
+  c_ld_client_rename :: Ptr LogDeviceClient
+                     -> BA## Word8    -- ^ from_path
+                     -> BA## Word8    -- ^ to_path
+                     -> StablePtr PrimMVar -> Int
+                     -> Ptr LogsconfigStatusCbData
+                     -> IO Int
 
 -------------------------------------------------------------------------------
 -- Writer API

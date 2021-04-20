@@ -224,6 +224,20 @@ const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
 const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group);
 uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group);
 
+typedef struct logsconfig_status_cb_data_t {
+  c_error_code_t st;
+  uint64_t version;
+  char* failure_reason;
+} logsconfig_status_cb_data_t;
+
+int ld_client_rename(logdevice_client_t* client, const char* from_path,
+                     const char* to_path, HsStablePtr mvar, HsInt cap,
+                     logsconfig_status_cb_data_t* data);
+
+int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
+                              HsStablePtr mvar, HsInt cap,
+                              logsconfig_status_cb_data_t* data);
+
 // ----------------------------------------------------------------------------
 // Appender
 

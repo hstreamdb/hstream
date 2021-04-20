@@ -1,5 +1,6 @@
 #include "hs_logdevice.h"
 
+
 extern "C" {
 
 // ----------------------------------------------------------------------------
@@ -49,6 +50,24 @@ ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
   if (ret)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
+}
+
+int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
+                              HsStablePtr mvar, HsInt cap,
+                              logsconfig_status_cb_data_t* data) {
+  // std::string path_ = std::string(path);
+  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  return client->rep->removeLogGroup(path, cb);  
 }
 
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
@@ -137,6 +156,25 @@ ld_client_sync_logsconfig_version(logdevice_client_t* client,
       facebook::logdevice::err == facebook::logdevice::E::LOGS_SECTION_MISSING)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
+}
+
+int ld_client_rename(logdevice_client_t* client, const char* from_path,
+                     const char* to_path, HsStablePtr mvar, HsInt cap,
+                     logsconfig_status_cb_data_t* data) {
+  std::string from_path_ = std::string(from_path);
+  std::string to_path_ = std::string(to_path);
+  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  return client->rep->rename(from_path_, to_path_, cb);
 }
 
 // ----------------------------------------------------------------------------

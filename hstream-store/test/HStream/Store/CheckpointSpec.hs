@@ -11,7 +11,7 @@ spec :: Spec
 spec = describe "HStream.Store.Checkpoint" $ do
   fileCheckpointStore
   asyncFileCheckpointStore
-  rsmCheckpointStore
+  -- rsmCheckpointStore
 
 fileCheckpointStore :: Spec
 fileCheckpointStore = do

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments, MagicHash #-}
 module HStream.Store.Stream.Topic
   ( -- * Topic
     Topic
@@ -17,12 +18,14 @@ module HStream.Store.Stream.Topic
     -- * Topic Config
   , TopicRange
   , syncTopicConfigVersion
+  , renameTopicGroup
     -- ** Topic Group
   , StreamTopicGroup
   , makeTopicGroupSync
   , getTopicGroupSync
   , removeTopicGroupSync
   , removeTopicGroupSync'
+  , removeTopicGroup
   , topicGroupGetRange
   , topicGroupGetName
   , topicGroupGetVersion
@@ -36,7 +39,6 @@ module HStream.Store.Stream.Topic
   , topicDirectoryGetVersion
   ) where
 
-import           Control.Exception            (try)
 import           Control.Monad                (void, when, (<=<))
 import           Data.Bits                    (shiftL, xor)
 import qualified Data.Cache                   as Cache
@@ -45,10 +47,9 @@ import qualified Data.Map.Strict              as Map
 import           Data.Time.Clock.System       (SystemTime (..), getSystemTime)
 import           Data.Word                    (Word16, Word32, Word64)
 import           Foreign.ForeignPtr           (ForeignPtr, newForeignPtr,
-                                               withForeignPtr)
+                                               withForeignPtr, mallocForeignPtrBytes, touchForeignPtr)
 import           Foreign.Ptr                  (nullPtr)
 import           GHC.Generics                 (Generic)
-import           GHC.Stack                    (HasCallStack, callStack)
 import           System.IO.Unsafe             (unsafePerformIO)
 import           System.Random                (randomRIO)
 import           Z.Data.CBytes                (CBytes)
@@ -61,6 +62,9 @@ import qualified HStream.Store.Exception      as E
 import qualified HStream.Store.Internal.FFI   as FFI
 import           HStream.Store.Internal.Types (StreamClient (..), TopicID (..))
 import qualified HStream.Store.Internal.Types as FFI
+import GHC.Conc
+import Z.IO.Exception
+import GHC.MVar
 
 -------------------------------------------------------------------------------
 
@@ -150,6 +154,75 @@ syncTopicConfigVersion :: StreamClient -> Word64 -> IO ()
 syncTopicConfigVersion (StreamClient client) version =
   withForeignPtr client $ \client' -> void $ E.throwStreamErrorIfNotOK $
     FFI.c_ld_client_sync_logsconfig_version_safe client' version
+
+-- | Rename the leaf of the supplied path. This does not move entities in the
+--   tree it only renames the last token in the path supplies.
+--
+-- The new path is the full path of the destination, it must not exist,
+-- otherwise you will receive status of E::EXISTS
+--
+-- Throw one of the following exceptions on failure:
+--
+-- * E::ID_CLASH - the ID range clashes with existing log group.
+-- * E::INVALID_ATTRIBUTES - After applying the parent attributes and the supplied
+--                           attributes, the resulting attributes are not valid.
+-- * E::NOTFOUND - source path doesn't exist.
+-- * E::NOTDIR - if the parent of destination path doesn't exist and mk_intermediate_dirs is false.
+-- * E::EXISTS the destination path already exists!
+-- * E::TIMEDOUT Operation timed out.
+-- * E::ACCESS you don't have permissions to mutate the logs configuration.
+renameTopicGroup :: StreamClient
+                 -> CBytes
+                 -- ^ The source path to rename
+                 -> CBytes
+                 -- ^ The new path you are renaming to
+                 -> IO Word64
+                 -- ^ Return the version of the logsconfig at which the path got renamed
+renameTopicGroup (StreamClient client) from_path to_path =
+  ZC.withCBytesUnsafe from_path $ \from_path_ ->
+    ZC.withCBytesUnsafe to_path $ \to_path_ ->
+      withForeignPtr client $ \client' -> do
+        mvar <- newEmptyMVar
+        sp <- newStablePtrPrimMVar mvar
+        fp <- mallocForeignPtrBytes FFI.logsconfigStatusCbDataSize
+        withForeignPtr fp $ \data' -> do
+          (cap, _) <- threadCapability =<< myThreadId
+          _ <- FFI.c_ld_client_rename client' from_path_ to_path_ sp cap data'
+          takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+          FFI.LogsconfigStatusCbData errno version info <- FFI.peekLogsconfigStatusCbData data'
+          _ <- E.throwStreamErrorIfNotOK' errno
+          if errno == 0
+            then return version
+            else E.throwUserStreamError (ZC.toText info) callStack
+
+-- | Removes a logGroup defined at path
+--
+-- Throw one of the following exceptions on failure:
+--
+-- * E::NOTFOUND - source path doesn't exist.
+-- * E::TIMEDOUT Operation timed out.
+-- * E::ACCESS you don't have permissions to mutate the logs configuration.
+removeTopicGroup :: StreamClient
+                 -> CBytes
+                 -- ^ The path of loggroup to remove
+                 -> IO Word64
+                 -- ^ Return the version of the logsconfig at which the log
+                 -- group got removed
+removeTopicGroup (StreamClient client) path =
+  ZC.withCBytesUnsafe path $ \path_ ->
+    withForeignPtr client $ \client' -> do
+      mvar <- newEmptyMVar
+      sp <- newStablePtrPrimMVar mvar
+      fp <- mallocForeignPtrBytes FFI.logsconfigStatusCbDataSize
+      withForeignPtr fp $ \data' -> do
+        (cap, _) <- threadCapability =<< myThreadId
+        _ <- FFI.c_ld_client_remove_loggroup client' path_ sp cap data'
+        takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+        FFI.LogsconfigStatusCbData errno version info <- FFI.peekLogsconfigStatusCbData data'
+        _ <- E.throwStreamErrorIfNotOK' errno
+        if errno == 0
+          then return version
+          else E.throwUserStreamError (ZC.toText info) callStack
 
 -------------------------------------------------------------------------------
 -- TopicGroup

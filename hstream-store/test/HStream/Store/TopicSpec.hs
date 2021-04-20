@@ -26,7 +26,7 @@ simpleSpec = context "Simple Create & Delete" $ do
     topicDirName <- newRandomName 5
     let topicDir = "ci/" <> topicDirName
     dir <- S.makeTopicDirectorySync client topicDir attrs True
-    S.syncTopicConfigVersion client =<< (S.topicDirectoryGetVersion dir)
+    S.syncTopicConfigVersion client =<< S.topicDirectoryGetVersion dir
 
     dir' <- S.getTopicDirectorySync client topicDir
     S.topicDirectoryGetName dir' `shouldReturn` topicDirName
@@ -38,22 +38,50 @@ simpleSpec = context "Simple Create & Delete" $ do
   it "create & delete topic group sync" $ do
     let attrs = S.TopicAttrs { S.replicationFactor = 2 }
     topicGroupName <- newRandomName 5
-    let topicGroup = "ci/stream/" <> topicGroupName
-    let start = S.mkTopicID 1000
-        end   = S.mkTopicID 1000
+    let topicGroup = "ci/stream/tmp/" <> topicGroupName
+    let start = S.mkTopicID 3000
+        end   = S.mkTopicID 3000
     group <- S.makeTopicGroupSync client topicGroup start end attrs True
-    S.syncTopicConfigVersion client =<< (S.topicGroupGetVersion group)
+    S.syncTopicConfigVersion client =<< S.topicGroupGetVersion group
 
     group' <- S.getTopicGroupSync client topicGroup
-    S.topicGroupGetRange group' `shouldReturn` (S.mkTopicID 1000, S.mkTopicID 1000)
+    S.topicGroupGetRange group' `shouldReturn` (start, end)
     S.topicGroupGetName group' `shouldReturn` topicGroupName
 
     version <- S.removeTopicGroupSync' client topicGroup
     S.syncTopicConfigVersion client version
     S.getTopicGroupSync client topicGroup `shouldThrow` notFoundException
 
+  it "rename and remove asyc" $ do
+    let attrs = S.TopicAttrs { S.replicationFactor = 2 }
+    topicGroupName <- newRandomName 5
+    let topicGroup = "ci/stream/tmp/" <> topicGroupName
+    let start = S.mkTopicID 3000
+        end   = S.mkTopicID 3000
+    group <- S.makeTopicGroupSync client topicGroup start end attrs True
+    S.syncTopicConfigVersion client =<< S.topicGroupGetVersion group
+
+    group' <- S.getTopicGroupSync client topicGroup
+    S.topicGroupGetRange group' `shouldReturn` (start, end)
+    S.topicGroupGetName group' `shouldReturn` topicGroupName
+
+    topicGroupName' <- newRandomName 5
+    let topicGroup' = "ci/stream/tmp/" <> topicGroupName'
+    version <- S.renameTopicGroup client topicGroup topicGroup'
+    S.syncTopicConfigVersion client version
+    group'' <- S.getTopicGroupSync client topicGroup'
+    S.topicGroupGetRange group'' `shouldReturn` (start, end)
+    S.topicGroupGetName group'' `shouldReturn` topicGroupName'
+    S.getTopicGroupSync client topicGroup `shouldThrow` notFoundException
+
+    version' <- S.removeTopicGroup client topicGroup'
+    -- version' <- S.removeTopicGroupSync' client topicGroup'
+    S.syncTopicConfigVersion client version'
+    S.getTopicGroupSync client topicGroup' `shouldThrow` notFoundException
+
+
 notFoundException :: Selector E.NOTFOUND
 notFoundException = const True
 
 newRandomName :: Int -> IO CBytes
-newRandomName n = (pack . take n . randomRs ('a', 'z')) <$> newStdGen
+newRandomName n = pack . take n . randomRs ('a', 'z') <$> newStdGen
