@@ -4,6 +4,7 @@ packages:
   hstream-store
   hstream-processing
   hstream-sql
+  hstream-server
   z-data
   z-io
   gRPC-haskell
