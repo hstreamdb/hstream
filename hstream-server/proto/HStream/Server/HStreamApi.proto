@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package hstream.server;
+
+import "third_party/google/protobuf/struct.proto";
+
+service HStreamApi {
+  // only for push query
+  // e.g., create as select
+  rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
+
+  // for execute any sql stmt except push query,
+  // e.g., insert, create, show/list, select(without emit changes) ...
+  rpc ExecuteQuery(CommandQuery) returns (CommandQueryResponse);
+}
+
+message CommandStreamTask{
+  string command_sql = 1;
+}
+
+message CommandStreamTaskResponse{
+  string command_resp = 1;
+}
+
+message CommandConnect {
+  string client_version = 1;
+  int32 protocol_version = 2;
+}
+
+message CommandConnected {
+  string server_version = 1;
+  int32 protocol_version = 2;
+}
+
+message CommandPushQuery {
+  string query_text = 1;
+}
+
+message CommandQuery {
+  string stmt_text = 1;
+}
+
+message CommandQueryResponse{
+  oneof kind {
+    CommandSuccess success = 1;
+    CommandQueryResultSet result_set = 2;
+  }
+}
+
+message CommandQueryResultSet {
+    repeated Struct result_set = 1;
+}
+
+message CommandSuccess {
+}

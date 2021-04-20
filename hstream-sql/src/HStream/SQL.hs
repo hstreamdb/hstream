@@ -7,5 +7,5 @@ module HStream.SQL
 
 import           HStream.SQL.AST
 import           HStream.SQL.Abs
-import           HStream.SQL.Parse
 import           HStream.SQL.Codegen
+import           HStream.SQL.Parse

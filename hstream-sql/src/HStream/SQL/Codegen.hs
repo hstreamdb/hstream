@@ -36,7 +36,6 @@ import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey,
 import qualified HStream.Processing.Table                        as HT
 import           HStream.Processing.Topic                        (TopicName)
 import           HStream.SQL.AST
-import           HStream.SQL.Parse
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
 import           HStream.SQL.Codegen.Utils                       (compareValue,
                                                                   composeColName,
@@ -47,6 +46,7 @@ import           HStream.SQL.Codegen.Utils                       (compareValue,
                                                                   opOnValue)
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
+import           HStream.SQL.Parse
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 
