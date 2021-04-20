@@ -35,7 +35,8 @@ import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey,
                                                                   timeWindowKeySerde)
 import qualified HStream.Processing.Table                        as HT
 import           HStream.Processing.Topic                        (TopicName)
-import           HStream.SQL
+import           HStream.SQL.AST
+import           HStream.SQL.Parse
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
 import           HStream.SQL.Codegen.Utils                       (compareValue,
                                                                   composeColName,
