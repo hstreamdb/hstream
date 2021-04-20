@@ -54,6 +54,15 @@ cradle:
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"
 
+    - path: "hstream-sql/sql-example-mock/Example.hs"
+      component: "hstream-sql:exe:sql-example-mock"
+
+    - path: "hstream-sql/sql-example-logdevice/Example.hs"
+      component: "hstream-sql:exe:sql-example-logdevice"
+
+    - path: "hstream-store/app/hstore.hs"
+      component: "hstream-store:exe:hstore"
+
     - path: "hstream-store/./"
       component: "lib:hstream-store"
 
@@ -72,5 +81,8 @@ cradle:
     - path: "z-io/test/"
       component: "Z-IO:test:Z-IO-Test"
 
-    - path: "z-yaml/./"
-      component: "lib:Z-YAML"
+    - path: "z-io/bench/GetTime.hs"
+      component: "Z-IO:bench:z-io-gettime"
+
+    - path: "z-io/bench/Http.hs"
+      component: "Z-IO:exe:z-io-http-bench"

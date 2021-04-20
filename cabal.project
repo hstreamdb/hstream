@@ -6,3 +6,7 @@ packages:
   hstream-sql
   z-data
   z-io
+  gRPC-haskell
+  gRPC-haskell/core
+  proto3-suite
+  proto3-wire
