@@ -1,4 +1,3 @@
-{-# LANGUAGE BlockArguments, MagicHash #-}
 module HStream.Store.Stream.Topic
   ( -- * Topic
     Topic
@@ -47,7 +46,7 @@ import qualified Data.Map.Strict              as Map
 import           Data.Time.Clock.System       (SystemTime (..), getSystemTime)
 import           Data.Word                    (Word16, Word32, Word64)
 import           Foreign.ForeignPtr           (ForeignPtr, newForeignPtr,
-                                               withForeignPtr, mallocForeignPtrBytes, touchForeignPtr)
+                                               withForeignPtr)
 import           Foreign.Ptr                  (nullPtr)
 import           GHC.Generics                 (Generic)
 import           System.IO.Unsafe             (unsafePerformIO)
@@ -56,15 +55,16 @@ import           Z.Data.CBytes                (CBytes)
 import qualified Z.Data.CBytes                as ZC
 import qualified Z.Data.JSON                  as JSON
 import qualified Z.Data.MessagePack           as MP
+import           Z.Data.Text                  (Text)
+import           Z.IO.Exception
 import qualified Z.Foreign                    as Z
 
 import qualified HStream.Store.Exception      as E
 import qualified HStream.Store.Internal.FFI   as FFI
 import           HStream.Store.Internal.Types (StreamClient (..), TopicID (..))
 import qualified HStream.Store.Internal.Types as FFI
-import GHC.Conc
-import Z.IO.Exception
-import GHC.MVar
+
+
 
 -------------------------------------------------------------------------------
 
@@ -182,18 +182,15 @@ renameTopicGroup (StreamClient client) from_path to_path =
   ZC.withCBytesUnsafe from_path $ \from_path_ ->
     ZC.withCBytesUnsafe to_path $ \to_path_ ->
       withForeignPtr client $ \client' -> do
-        mvar <- newEmptyMVar
-        sp <- newStablePtrPrimMVar mvar
-        fp <- mallocForeignPtrBytes FFI.logsconfigStatusCbDataSize
-        withForeignPtr fp $ \data' -> do
-          (cap, _) <- threadCapability =<< myThreadId
-          _ <- FFI.c_ld_client_rename client' from_path_ to_path_ sp cap data'
-          takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
-          FFI.LogsconfigStatusCbData errno version info <- FFI.peekLogsconfigStatusCbData data'
-          _ <- E.throwStreamErrorIfNotOK' errno
-          if errno == 0
-            then return version
-            else E.throwUserStreamError (ZC.toText info) callStack
+        let size = FFI.logsconfigStatusCbDataSize
+            peek_data = FFI.peekLogsconfigStatusCbData
+            cfun = FFI.c_ld_client_rename client' from_path_ to_path_
+        FFI.LogsconfigStatusCbData errno version info <- FFI.withAsync size peek_data cfun
+        throwStreamErrorIfNotOKWithInfo errno (ZC.toText info)
+        return version
+
+throwStreamErrorIfNotOKWithInfo :: FFI.ErrorCode -> Text -> IO ()
+throwStreamErrorIfNotOKWithInfo code text = void $ E.throwStreamErrorIfNotOK' code
 
 -- | Removes a logGroup defined at path
 --
@@ -211,18 +208,12 @@ removeTopicGroup :: StreamClient
 removeTopicGroup (StreamClient client) path =
   ZC.withCBytesUnsafe path $ \path_ ->
     withForeignPtr client $ \client' -> do
-      mvar <- newEmptyMVar
-      sp <- newStablePtrPrimMVar mvar
-      fp <- mallocForeignPtrBytes FFI.logsconfigStatusCbDataSize
-      withForeignPtr fp $ \data' -> do
-        (cap, _) <- threadCapability =<< myThreadId
-        _ <- FFI.c_ld_client_remove_loggroup client' path_ sp cap data'
-        takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
-        FFI.LogsconfigStatusCbData errno version info <- FFI.peekLogsconfigStatusCbData data'
-        _ <- E.throwStreamErrorIfNotOK' errno
-        if errno == 0
-          then return version
-          else E.throwUserStreamError (ZC.toText info) callStack
+      let size = FFI.logsconfigStatusCbDataSize
+          peek_data = FFI.peekLogsconfigStatusCbData
+          cfun = FFI.c_ld_client_remove_loggroup client' path_
+      FFI.LogsconfigStatusCbData errno version info <- FFI.withAsync size peek_data cfun
+      throwStreamErrorIfNotOKWithInfo errno (ZC.toText info)
+      return version
 
 -------------------------------------------------------------------------------
 -- TopicGroup

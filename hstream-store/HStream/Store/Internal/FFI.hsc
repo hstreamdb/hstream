@@ -3,8 +3,13 @@
 
 module HStream.Store.Internal.FFI where
 
-import           Control.Concurrent
-import           Control.Exception
+import           Control.Concurrent           (forkIO, myThreadId, newEmptyMVar,
+                                               takeMVar, threadCapability)
+import           Control.Exception            (mask_, onException)
+import           Control.Monad                (void)
+import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
+                                               touchForeignPtr, withForeignPtr)
+
 import           Control.Monad.Primitive
 import           Data.Int
 import           Data.Primitive
@@ -458,3 +463,17 @@ withAsyncPrimUnsafe2 a b f = mask_ $ do
       return c
   return (a_, b_, c_)
 {-# INLINE withAsyncPrimUnsafe2 #-}
+
+withAsync :: Int -> (Ptr a -> IO a)
+          -> (StablePtr PrimMVar -> Int -> Ptr a -> IO Int)
+          -> IO a
+withAsync size peek_data f = mask_ $ do
+  mvar <- newEmptyMVar
+  sp <- newStablePtrPrimMVar mvar
+  fp <- mallocForeignPtrBytes size
+  withForeignPtr fp $ \data' -> do
+    (cap, _) <- threadCapability =<< myThreadId
+    void $ f sp cap data'
+    takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+    peek_data data'
+{-# INLINE withAsync #-}
