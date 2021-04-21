@@ -67,7 +67,7 @@ int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
-  return client->rep->removeLogGroup(path, cb);  
+  return client->rep->removeLogGroup(path, cb);
 }
 
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,

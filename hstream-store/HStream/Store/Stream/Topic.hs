@@ -56,8 +56,8 @@ import qualified Z.Data.CBytes                as ZC
 import qualified Z.Data.JSON                  as JSON
 import qualified Z.Data.MessagePack           as MP
 import           Z.Data.Text                  (Text)
-import           Z.IO.Exception
 import qualified Z.Foreign                    as Z
+import           Z.IO.Exception
 
 import qualified HStream.Store.Exception      as E
 import qualified HStream.Store.Internal.FFI   as FFI
@@ -190,7 +190,7 @@ renameTopicGroup (StreamClient client) from_path to_path =
         return version
 
 throwStreamErrorIfNotOKWithInfo :: FFI.ErrorCode -> Text -> IO ()
-throwStreamErrorIfNotOKWithInfo code text = void $ E.throwStreamErrorIfNotOK' code
+throwStreamErrorIfNotOKWithInfo code _ = void $ E.throwStreamErrorIfNotOK' code
 
 -- | Removes a logGroup defined at path
 --

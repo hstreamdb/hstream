@@ -38,9 +38,9 @@ simpleSpec = context "Simple Create & Delete" $ do
   it "create & delete topic group sync" $ do
     let attrs = S.TopicAttrs { S.replicationFactor = 2 }
     topicGroupName <- newRandomName 5
-    let topicGroup = "ci/stream/tmp/" <> topicGroupName
-    let start = S.mkTopicID 3000
-        end   = S.mkTopicID 3000
+    let topicGroup = "ci/stream/" <> topicGroupName
+    let start = S.mkTopicID 1000
+        end   = S.mkTopicID 1000
     group <- S.makeTopicGroupSync client topicGroup start end attrs True
     S.syncTopicConfigVersion client =<< S.topicGroupGetVersion group
 
@@ -55,9 +55,9 @@ simpleSpec = context "Simple Create & Delete" $ do
   it "rename and remove asyc" $ do
     let attrs = S.TopicAttrs { S.replicationFactor = 2 }
     topicGroupName <- newRandomName 5
-    let topicGroup = "ci/stream/tmp/" <> topicGroupName
-    let start = S.mkTopicID 3000
-        end   = S.mkTopicID 3000
+    let topicGroup = "ci/stream/" <> topicGroupName
+    let start = S.mkTopicID 1000
+        end   = S.mkTopicID 1000
     group <- S.makeTopicGroupSync client topicGroup start end attrs True
     S.syncTopicConfigVersion client =<< S.topicGroupGetVersion group
 
@@ -66,7 +66,7 @@ simpleSpec = context "Simple Create & Delete" $ do
     S.topicGroupGetName group' `shouldReturn` topicGroupName
 
     topicGroupName' <- newRandomName 5
-    let topicGroup' = "ci/stream/tmp/" <> topicGroupName'
+    let topicGroup' = "ci/stream/" <> topicGroupName'
     version <- S.renameTopicGroup client topicGroup topicGroup'
     S.syncTopicConfigVersion client version
     group'' <- S.getTopicGroupSync client topicGroup'
@@ -75,7 +75,6 @@ simpleSpec = context "Simple Create & Delete" $ do
     S.getTopicGroupSync client topicGroup `shouldThrow` notFoundException
 
     version' <- S.removeTopicGroup client topicGroup'
-    -- version' <- S.removeTopicGroupSync' client topicGroup'
     S.syncTopicConfigVersion client version'
     S.getTopicGroupSync client topicGroup' `shouldThrow` notFoundException
 
