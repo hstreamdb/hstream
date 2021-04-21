@@ -1,0 +1,83 @@
+version: "3.5"
+
+services:
+
+  ld-admin-server:
+    image: hstreamdb/hstream
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.2
+    volumes:
+      - ./logdevice.json:/etc/logdevice/logdevice.json
+    entrypoint:
+      ld-admin-server --config-path /etc/logdevice/logdevice.json --enable-maintenance-manager --enable-safety-check-periodic-metadata-update --maintenance-log-snapshotting
+
+  logdeviced-0:
+    image: hstreamdb/hstream
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.20
+    volumes:
+      - ${DATA_DIR:-/data/logdevice}/0:/data/logdevice
+      - ./logdevice.json:/etc/logdevice/logdevice.json
+    entrypoint:
+      logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-0 --address 172.16.0.20 --local-log-store-path /data/logdevice
+
+  logdeviced-1:
+    image: hstreamdb/hstream
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.21
+    volumes:
+      - ${DATA_DIR:-/data/logdevice}/1:/data/logdevice
+      - ./logdevice.json:/etc/logdevice/logdevice.json
+    entrypoint:
+      logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-1 --address 172.16.0.21 --local-log-store-path /data/logdevice
+
+  logdeviced-2:
+    image: hstreamdb/hstream
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.22
+    volumes:
+      - ${DATA_DIR:-/data/logdevice}/2:/data/logdevice
+      - ./logdevice.json:/etc/logdevice/logdevice.json
+    entrypoint: logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-2 --address 172.16.0.22 --local-log-store-path /data/logdevice
+
+  logdeviced-3:
+    image: hstreamdb/hstream
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.23
+    volumes:
+      - ${DATA_DIR:-/data/logdevice}/3:/data/logdevice
+      - ./logdevice.json:/etc/logdevice/logdevice.json
+    entrypoint:
+      logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-3 --address 172.16.0.23 --local-log-store-path /data/logdevice
+
+  ld-zookeeper:
+    image: zookeeper:3.4
+    container_name: ld-zookeeper
+    volumes:
+      - ${DATA_DIR:-/data/logdevice}/zookeeper/data:/data
+      - ${DATA_DIR:-/data/logdevice}/zookeeper/datalog:/datalog
+    expose:
+      - 2181
+    networks:
+      hstream-net:
+        ipv4_address: 172.16.0.10
+
+  ldshell:
+    image: hstreamdb/logdevice
+    networks:
+      - hstream-net
+    entrypoint:
+      ldshell -s 172.16.0.2
+
+networks:
+  hstream-net:
+    name: hstream-net
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.16.0.0/24"

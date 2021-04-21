@@ -32,6 +32,23 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+executable hstore
+  main-is:          hstore.hs
+  hs-source-dirs:   app
+  build-depends:
+    , base                  >=4.13 && <5
+    , hstream-store
+    , optparse-applicative  ^>=0.16
+    , raw-strings-qq        ^>=1.1
+    , Z-IO
+    , Z-Data
+
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
 library
   exposed-modules:
     HStream.Store
