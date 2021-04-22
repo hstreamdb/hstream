@@ -5,9 +5,10 @@ packages:
   hstream-processing
   hstream-sql
   hstream-server
-  z-data
-  z-io
-  gRPC-haskell
-  gRPC-haskell/core
-  proto3-suite
-  proto3-wire
+
+  external/z-data
+  external/z-io
+  external/gRPC-haskell
+  external/gRPC-haskell/core
+  external/proto3-suite
+  external/proto3-wire
