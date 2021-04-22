@@ -1,15 +1,15 @@
-[submodule "z-data"]
+[submodule "external/z-data"]
 	path = external/z-data
 	url = git@github.com:ZHaskell/z-data.git
-[submodule "z-io"]
+[submodule "external/z-io"]
 	path = external/z-io
 	url = git@github.com:ZHaskell/z-io.git
-[submodule "gRPC-haskell"]
+[submodule "external/gRPC-haskell"]
 	path = external/gRPC-haskell
 	url = git@github.com:hstreamdb/gRPC-haskell.git
-[submodule "proto3-wire"]
+[submodule "external/proto3-wire"]
 	path = external/proto3-wire
-	url = git@github.com:awakesecurity/proto3-wire.git
-[submodule "proto3-suite"]
+	url = git@github.com:hstreamdb/proto3-wire.git
+[submodule "external/proto3-suite"]
 	path = external/proto3-suite
-	url = git@github.com:awakesecurity/proto3-suite.git
+	url = git@github.com:hstreamdb/proto3-suite.git
