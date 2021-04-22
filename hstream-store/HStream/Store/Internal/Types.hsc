@@ -6,6 +6,7 @@ module HStream.Store.Internal.Types where
 import           Control.Exception     (bracket_)
 import           Control.Monad         (forM)
 import           Data.Int
+import           Data.Map.Strict       (Map)
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
@@ -13,13 +14,66 @@ import           Foreign.Marshal.Alloc
 import           Foreign.Ptr
 import           Foreign.Storable
 import           GHC.Generics          (Generic)
+import           Z.Data.CBytes         as CBytes
 import qualified Z.Data.JSON           as JSON
 import qualified Z.Data.MessagePack    as MP
 import           Z.Data.Vector         (Bytes)
-import           Z.Data.CBytes         as CBytes
 import qualified Z.Foreign             as Z
 
 #include "hs_logdevice.h"
+
+-------------------------------------------------------------------------------
+
+type LDClient = ForeignPtr LogDeviceClient
+type LDLogGroup = ForeignPtr LogDeviceLogGroup
+type LDLogAttrs = ForeignPtr LogDeviceLogAttributes
+type LDLogID = Word64
+type LDLogsConfigVersion = Word64
+type LDLogRange = (LDLogID, LDLogID)
+
+data HsLogAttrs = HsLogAttrs
+  { replicationFactor :: Int
+  , extraTopicAttrs   :: Map CBytes CBytes
+  } deriving (Show)
+
+data LogAttrs = LogAttrs HsLogAttrs | LogAttrsPtr LDLogAttrs
+
+-------------------------------------------------------------------------------
+
+type C_LogID = Word64
+
+newtype TopicID = TopicID { unTopicID :: Word64 }
+  deriving (Show, Eq, Ord)
+
+instance Bounded TopicID where
+  minBound = TOPIC_ID_MIN
+  maxBound = TOPIC_ID_MAX
+
+pattern TOPIC_ID_MIN :: TopicID
+pattern TOPIC_ID_MIN = TopicID 1
+
+-- | Max valid user data logid value.
+--
+-- TOPIC_ID_MAX = USER_LOGID_MAX(LOGID_MAX - 1000)
+pattern TOPIC_ID_MAX :: TopicID
+pattern TOPIC_ID_MAX = TopicID (#const C_USER_LOGID_MAX)
+
+pattern TOPIC_ID_INVALID :: TopicID
+pattern TOPIC_ID_INVALID = TopicID (#const C_LOGID_INVALID)
+
+pattern TOPIC_ID_INVALID' :: TopicID
+pattern TOPIC_ID_INVALID' = TopicID (#const C_LOGID_INVALID2)
+
+c_logid_max :: Word64
+c_logid_max = (#const C_LOGID_MAX)
+
+c_user_logid_max :: Word64
+c_user_logid_max = (#const C_USER_LOGID_MAX)
+
+c_logid_max_bits :: CSize
+c_logid_max_bits = (#const C_LOGID_MAX_BITS)
+
+-------------------------------------------------------------------------------
 
 newtype StreamClient = StreamClient
   { unStreamClient :: ForeignPtr LogDeviceClient }
@@ -41,13 +95,6 @@ newtype StreamReader = StreamReader
 newtype CheckpointStore = CheckpointStore
   { unCheckpointStore :: ForeignPtr LogDeviceCheckpointStore }
   deriving (Show, Eq)
-
-newtype TopicID = TopicID { unTopicID :: C_LogID }
-  deriving (Show, Eq, Ord)
-
-instance Bounded TopicID where
-  minBound = TopicID c_logid_min
-  maxBound = TopicID c_logid_max
 
 newtype SequenceNum = SequenceNum { unSequenceNum :: C_LSN }
   deriving (Generic)
@@ -105,7 +152,7 @@ peekDataRecord ptr offset = bracket_ (return ()) release peekData
 
 data AppendCallBackData = AppendCallBackData
   { appendCbRetCode   :: !ErrorCode
-  , appendCbLogID     :: !C_LogID
+  , appendCbLogID     :: !LDLogID
   , appendCbLSN       :: !C_LSN
   , appendCbTimestamp :: !C_Timestamp
   }
@@ -153,27 +200,6 @@ data ThriftRpcOptions
 
 type C_Timestamp = Int64
 
--- | LogID
-type C_LogID = Word64
-
-c_logid_min :: C_LogID
-c_logid_min = 1
-
-c_logid_invalid :: C_LogID
-c_logid_invalid = (#const C_LOGID_INVALID)
-
-c_logid_invalid2 :: C_LogID
-c_logid_invalid2 = (#const C_LOGID_INVALID2)
-
-c_logid_max :: C_LogID
-c_logid_max = (#const C_LOGID_MAX)
-
-c_user_logid_max :: C_LogID
-c_user_logid_max = (#const C_USER_LOGID_MAX)
-
-c_logid_max_bits :: CSize
-c_logid_max_bits = (#const C_LOGID_MAX_BITS)
-
 -- | Log Sequence Number
 type C_LSN = Word64
 
@@ -193,18 +219,6 @@ c_keytype_findkey = (#const C_KeyType_FINDKEY)
 
 c_keytype_filterable :: C_KeyType
 c_keytype_filterable = (#const C_KeyType_FILTERABLE)
-
-foreign import ccall unsafe "hs_logdevice.h new_log_attributes"
-  c_new_log_attributes :: IO (Ptr LogDeviceLogAttributes)
-
-foreign import ccall unsafe "hs_logdevice.h free_log_attributes"
-  c_free_log_attributes :: Ptr LogDeviceLogAttributes -> IO ()
-
-foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
-  c_free_log_attributes_fun :: FunPtr (Ptr LogDeviceLogAttributes -> IO ())
-
-foreign import ccall unsafe "hs_logdevice.h with_replicationFactor"
-  c_log_attrs_set_replication_factor :: Ptr LogDeviceLogAttributes -> CInt -> IO ()
 
 -------------------------------------------------------------------------------
 

@@ -1,4 +1,8 @@
 #include <HsFFI.h>
+#include <rts/Types.h>
+#include <rts/prof/CCS.h>
+#include <rts/storage/Closures.h>
+
 #include <iostream>
 #include <limits.h>
 #include <stdbool.h>
@@ -48,15 +52,18 @@ using facebook::logdevice::Payload;
 using facebook::logdevice::Reader;
 using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::client::LogAttributes;
-using LogAttributes = facebook::logdevice::logsconfig::LogAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
 using facebook::fb303::cpp2::fb_status;
 using facebook::logdevice::thrift::AdminAPIAsyncClient;
 
+std::string* new_hs_std_string(std::string&& str);
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// ----------------------------------------------------------------------------
 
 typedef int64_t c_timestamp_t;
 typedef uint16_t c_error_code_t;
@@ -108,9 +115,17 @@ const c_logid_t C_USER_LOGID_MAX = facebook::logdevice::USER_LOGID_MAX.val();
 const size_t C_LOGID_MAX_BITS = facebook::logdevice::LOGID_BITS;
 
 // LogAttributes
-LogAttributes* new_log_attributes();
+#if __GLASGOW_HASKELL__ < 810
+LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
+                                  StgMutArrPtrs* keys_, StgMutArrPtrs* vals_);
+#else
+LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
+                                  StgArrBytes** keys, StgArrBytes** vals);
+#endif
 void free_log_attributes(LogAttributes* attrs);
-void with_replicationFactor(LogAttributes* attrs, int value);
+bool exist_log_attrs_extras(LogAttributes* attrs, char* key);
+std::string* get_log_attrs_extra(LogAttributes* attrs, char* key);
+void set_log_attrs_extra(LogAttributes* attrs, char* key, char* val);
 
 // LogSequenceNumber
 typedef uint64_t c_lsn_t;
@@ -222,6 +237,7 @@ void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
                            c_logid_t* end);
 const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
 const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group);
+const LogAttributes* ld_loggroup_get_attrs(logdevice_loggroup_t* group);
 uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group);
 
 typedef struct logsconfig_status_cb_data_t {
@@ -230,10 +246,11 @@ typedef struct logsconfig_status_cb_data_t {
   char* failure_reason;
 } logsconfig_status_cb_data_t;
 
-facebook::logdevice::Status
-ld_client_rename(logdevice_client_t* client, const char* from_path,
-                 const char* to_path, HsStablePtr mvar, HsInt cap,
-                 logsconfig_status_cb_data_t* data);
+facebook::logdevice::Status ld_client_rename(logdevice_client_t* client,
+                                             const char* from_path,
+                                             const char* to_path,
+                                             HsStablePtr mvar, HsInt cap,
+                                             logsconfig_status_cb_data_t* data);
 
 facebook::logdevice::Status
 ld_client_remove_loggroup(logdevice_client_t* client, const char* path,

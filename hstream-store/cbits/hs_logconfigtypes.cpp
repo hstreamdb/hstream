@@ -88,6 +88,11 @@ const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group) {
   return group->rep->getFullyQualifiedName().c_str();
 }
 
+const LogAttributes* ld_loggroup_get_attrs(logdevice_loggroup_t* group) {
+  const LogAttributes& attrs = group->rep->attrs();
+  return &attrs;
+}
+
 uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group) {
   return group->rep->version();
 }
