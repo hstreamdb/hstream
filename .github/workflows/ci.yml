@@ -19,7 +19,7 @@ jobs:
       - id: parser
         run: |
           pkgcabal="hstream/hstream.cabal"
-          GHCS=$(cat ${pkgcabal} | grep tested-with | sed -e 's/[^0-9|\.]/ /g' -e 's/^ *//g' -e 's/ *$//g' | python3 -c 'import sys, json; print(json.dumps([x.strip() for x in sys.stdin.read().split()]))')
+          GHCS=$(cat ${pkgcabal} | grep tested-with | python3 -c 'import sys, re, json; print(re.findall(r"(\d+\.\d+\.\d+)", sys.stdin.read()))')
           echo "Set ghc versions: $GHCS..."
           echo "::set-output name=ghc::$GHCS"
 
