@@ -3,6 +3,7 @@
 
 module HStream.Store.TopicSpec (spec) where
 
+import qualified Data.Map.Strict         as Map
 import           System.IO.Unsafe        (unsafePerformIO)
 import           System.Random           (newStdGen, randomRs)
 import           Test.Hspec
@@ -22,7 +23,9 @@ spec = describe "HStream.Store.Topic" $ do
 simpleSpec :: Spec
 simpleSpec = context "Simple Create & Delete" $ do
   it "create & delete topic directory" $ do
-    let attrs = S.TopicAttrs { S.replicationFactor = 0 }
+    let attrs = S.TopicAttrs { S.replicationFactor = 0
+                             , S.extraTopicAttrs = Map.fromList [("greet", "hi")]
+                             }
     topicDirName <- newRandomName 5
     let topicDir = "ci/" <> topicDirName
     dir <- S.makeTopicDirectorySync client topicDir attrs True
@@ -36,7 +39,9 @@ simpleSpec = context "Simple Create & Delete" $ do
     S.getTopicDirectorySync client topicDir `shouldThrow` notFoundException
 
   it "create & delete topic group sync" $ do
-    let attrs = S.TopicAttrs { S.replicationFactor = 2 }
+    let attrs = S.TopicAttrs { S.replicationFactor = 2
+                             , S.extraTopicAttrs = Map.fromList [("greet", "hello")]
+                             }
     topicGroupName <- newRandomName 5
     let topicGroup = "ci/stream/" <> topicGroupName
     let start = S.mkTopicID 1000
@@ -47,13 +52,16 @@ simpleSpec = context "Simple Create & Delete" $ do
     group' <- S.getTopicGroupSync client topicGroup
     S.topicGroupGetRange group' `shouldReturn` (start, end)
     S.topicGroupGetName group' `shouldReturn` topicGroupName
+    S.topicGroupGetAttr group' "greet" `shouldReturn` "hello"
 
     version <- S.removeTopicGroupSync' client topicGroup
     S.syncTopicConfigVersion client version
     S.getTopicGroupSync client topicGroup `shouldThrow` notFoundException
 
-  it "rename and remove asyc" $ do
-    let attrs = S.TopicAttrs { S.replicationFactor = 2 }
+  it "rename and remove topic" $ do
+    let attrs = S.TopicAttrs { S.replicationFactor = 2
+                             , S.extraTopicAttrs = Map.empty
+                             }
     topicGroupName <- newRandomName 5
     let topicGroup = "ci/stream/" <> topicGroupName
     let start = S.mkTopicID 1000

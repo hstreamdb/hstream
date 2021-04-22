@@ -70,7 +70,7 @@ library
     , base           >=4.13    && <5
     , cache          ^>=0.1
     , containers     ^>=0.6
-    , ghc-prim       >=0.5     && <0.7
+    , ghc-prim       >=0.5     && <1.0
     , primitive      ^>=0.7
     , random         ^>=1.2
     , time           >=1.9     && <2.0
@@ -113,6 +113,7 @@ library
     cbits/hs_logdevice_admin.cpp
     cbits/hs_logdevice_appender.cpp
     cbits/hs_logdevice_reader.cpp
+    cbits/utils.cpp
 
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h

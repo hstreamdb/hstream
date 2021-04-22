@@ -1,18 +1,28 @@
-{-# LANGUAGE CPP       #-}
-{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE CPP           #-}
+{-# LANGUAGE MagicHash     #-}
+-- Note that we need this UnboxedTuples to force ghci use -fobject-code for all
+-- related modules. Or ghci will complain "panic".
+--
+-- Also, manual add @{-# OPTIONS_GHC -fobject-code #-}@ is possible, but need
+-- to add all imported local modules. :(
+--
+-- Relatead ghc issues:
+-- * https://gitlab.haskell.org/ghc/ghc/-/issues/19733
+-- * https://gitlab.haskell.org/ghc/ghc/-/issues/15454
+{-# LANGUAGE UnboxedTuples #-}
 
 module HStream.Store.Internal.FFI where
 
 import           Control.Concurrent           (newEmptyMVar, takeMVar)
 import           Control.Exception            (mask_, onException)
 import           Control.Monad                (void)
-import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
-                                               touchForeignPtr, withForeignPtr)
 import           Control.Monad.Primitive
 import           Data.Int
 import           Data.Primitive
 import           Data.Word
 import           Foreign.C
+import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
+                                               touchForeignPtr, withForeignPtr)
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
@@ -21,8 +31,8 @@ import           GHC.Stack                    (HasCallStack)
 import           Z.Foreign                    (BA##, MBA##)
 import qualified Z.Foreign                    as Z
 
-import           HStream.Store.Internal.Types
 import qualified HStream.Store.Exception      as E
+import           HStream.Store.Internal.Types
 
 #include "hs_logdevice.h"
 
@@ -61,6 +71,35 @@ foreign import ccall safe "hs_logdevice.h ld_client_get_tail_lsn_sync"
                                 -> IO C_LSN
 
 -------------------------------------------------------------------------------
+-- LogAttributes
+
+foreign import ccall unsafe "hs_logdevice.h new_log_attributes"
+  c_new_log_attributes
+    :: CInt
+    -> Int -> Z.BAArray## Word8 -> Z.BAArray## Word8
+    -> IO (Ptr LogDeviceLogAttributes)
+
+foreign import ccall unsafe "hs_logdevice.h get_log_attrs_extra"
+  c_get_log_attrs_extra
+    :: Ptr LogDeviceLogAttributes
+    -> BA## Word8
+    -> IO (Ptr Z.StdString)
+
+foreign import ccall unsafe "hs_logdevice.h set_log_attrs_extra"
+  c_set_log_attrs_extra
+    :: Ptr LogDeviceLogAttributes
+    -> BA## Word8
+    -> BA## Word8
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h free_log_attributes"
+  c_free_log_attributes :: Ptr LogDeviceLogAttributes -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
+  c_free_log_attributes_fun :: FunPtr (Ptr LogDeviceLogAttributes -> IO ())
+
+-------------------------------------------------------------------------------
+-- LogsConfig
 
 -- | This waits (blocks) until this Client's local view of LogsConfig catches up
 -- to the given version or higher, or until the timeout has passed.
@@ -71,7 +110,7 @@ foreign import ccall safe "hs_logdevice.h ld_client_get_tail_lsn_sync"
 -- Does *not* guarantee that subsequent append(), makeDirectory(),
 -- makeLogGroup(), etc, will have an up-to-date view.
 foreign import ccall safe "hs_logdevice.h ld_client_sync_logsconfig_version"
-  c_ld_client_sync_logsconfig_version_safe
+  c_ld_client_sync_logsconfig_version
     :: Ptr LogDeviceClient
     -> Word64
     -- ^ The minimum version you need to sync LogsConfig to
@@ -113,7 +152,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_name"
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
   c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
 
-foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
+foreign import ccall safe "hs_logdevice.h ld_client_make_loggroup_sync"
   c_ld_client_make_loggroup_sync
     :: Ptr LogDeviceClient
     -> BA## Word8
@@ -124,7 +163,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
     -> MBA## (Ptr LogDeviceLogGroup) -- ^ result, can be nullptr
     -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
+foreign import ccall safe "hs_logdevice.h ld_client_get_loggroup_sync"
   c_ld_client_get_loggroup_sync :: Ptr LogDeviceClient
                                 -> BA## Word8
                                 -> MBA## (Ptr LogDeviceLogGroup)
@@ -155,12 +194,13 @@ foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
                           -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_name"
-  c_ld_loggroup_get_name :: Ptr LogDeviceLogGroup
-                          -> IO CString
+  c_ld_loggroup_get_name :: Ptr LogDeviceLogGroup -> IO CString
+
+foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_attrs"
+  c_ld_loggroup_get_attrs :: Ptr LogDeviceLogGroup -> IO (Ptr LogDeviceLogAttributes)
 
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_version"
-  c_ld_loggroup_get_version :: Ptr LogDeviceLogGroup
-                            -> IO Word64
+  c_ld_loggroup_get_version :: Ptr LogDeviceLogGroup -> IO Word64
 
 foreign import ccall safe "hs_logdevice.h free_logdevice_loggroup"
   c_free_logdevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
