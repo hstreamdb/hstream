@@ -3,13 +3,11 @@
 
 module HStream.Store.Internal.FFI where
 
-import           Control.Concurrent           (forkIO, myThreadId, newEmptyMVar,
-                                               takeMVar, threadCapability)
+import           Control.Concurrent           (newEmptyMVar, takeMVar)
 import           Control.Exception            (mask_, onException)
 import           Control.Monad                (void)
 import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
                                                touchForeignPtr, withForeignPtr)
-
 import           Control.Monad.Primitive
 import           Data.Int
 import           Data.Primitive
@@ -19,10 +17,12 @@ import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
+import           GHC.Stack                    (HasCallStack)
 import           Z.Foreign                    (BA##, MBA##)
 import qualified Z.Foreign                    as Z
 
 import           HStream.Store.Internal.Types
+import qualified HStream.Store.Exception      as E
 
 #include "hs_logdevice.h"
 
@@ -464,10 +464,11 @@ withAsyncPrimUnsafe2 a b f = mask_ $ do
   return (a_, b_, c_)
 {-# INLINE withAsyncPrimUnsafe2 #-}
 
-withAsync :: Int -> (Ptr a -> IO a)
+withAsync :: HasCallStack
+          => Int -> (Ptr a -> IO a) -> (Ptr a -> IO ErrorCode)
           -> (StablePtr PrimMVar -> Int -> Ptr a -> IO Int)
           -> IO a
-withAsync size peek_data f = mask_ $ do
+withAsync size peek_data peek_errno f = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
   fp <- mallocForeignPtrBytes size
@@ -475,5 +476,6 @@ withAsync size peek_data f = mask_ $ do
     (cap, _) <- threadCapability =<< myThreadId
     void $ f sp cap data'
     takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+    void $ E.throwStreamErrorIfNotOK' =<< peek_errno data'
     peek_data data'
 {-# INLINE withAsync #-}

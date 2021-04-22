@@ -78,7 +78,6 @@ simpleSpec = context "Simple Create & Delete" $ do
     S.syncTopicConfigVersion client version'
     S.getTopicGroupSync client topicGroup' `shouldThrow` notFoundException
 
-
 notFoundException :: Selector E.NOTFOUND
 notFoundException = const True
 

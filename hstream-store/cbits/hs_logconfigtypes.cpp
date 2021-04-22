@@ -1,6 +1,5 @@
 #include "hs_logdevice.h"
 
-
 extern "C" {
 
 // ----------------------------------------------------------------------------
@@ -63,7 +62,6 @@ int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
       data->version = version;
       data->failure_reason = strdup(failure_reason.c_str());
     }
-
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
@@ -170,7 +168,6 @@ int ld_client_rename(logdevice_client_t* client, const char* from_path,
       data->version = version;
       data->failure_reason = strdup(failure_reason.c_str());
     }
-
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };

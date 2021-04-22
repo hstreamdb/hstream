@@ -38,6 +38,7 @@ module HStream.Store.Stream.Topic
   , topicDirectoryGetVersion
   ) where
 
+import           Control.Exception            (try)
 import           Control.Monad                (void, when, (<=<))
 import           Data.Bits                    (shiftL, xor)
 import qualified Data.Cache                   as Cache
@@ -49,22 +50,19 @@ import           Foreign.ForeignPtr           (ForeignPtr, newForeignPtr,
                                                withForeignPtr)
 import           Foreign.Ptr                  (nullPtr)
 import           GHC.Generics                 (Generic)
+import           GHC.Stack                    (HasCallStack, callStack)
 import           System.IO.Unsafe             (unsafePerformIO)
 import           System.Random                (randomRIO)
 import           Z.Data.CBytes                (CBytes)
 import qualified Z.Data.CBytes                as ZC
 import qualified Z.Data.JSON                  as JSON
 import qualified Z.Data.MessagePack           as MP
-import           Z.Data.Text                  (Text)
 import qualified Z.Foreign                    as Z
-import           Z.IO.Exception
 
 import qualified HStream.Store.Exception      as E
 import qualified HStream.Store.Internal.FFI   as FFI
 import           HStream.Store.Internal.Types (StreamClient (..), TopicID (..))
 import qualified HStream.Store.Internal.Types as FFI
-
-
 
 -------------------------------------------------------------------------------
 
@@ -184,13 +182,10 @@ renameTopicGroup (StreamClient client) from_path to_path =
       withForeignPtr client $ \client' -> do
         let size = FFI.logsconfigStatusCbDataSize
             peek_data = FFI.peekLogsconfigStatusCbData
+            peek_errno = fmap FFI.logsConfigCbRetCode . peek_data
             cfun = FFI.c_ld_client_rename client' from_path_ to_path_
-        FFI.LogsconfigStatusCbData errno version info <- FFI.withAsync size peek_data cfun
-        throwStreamErrorIfNotOKWithInfo errno (ZC.toText info)
+        FFI.LogsconfigStatusCbData _ version _ <- FFI.withAsync size peek_data peek_errno cfun
         return version
-
-throwStreamErrorIfNotOKWithInfo :: FFI.ErrorCode -> Text -> IO ()
-throwStreamErrorIfNotOKWithInfo code _ = void $ E.throwStreamErrorIfNotOK' code
 
 -- | Removes a logGroup defined at path
 --
@@ -210,9 +205,9 @@ removeTopicGroup (StreamClient client) path =
     withForeignPtr client $ \client' -> do
       let size = FFI.logsconfigStatusCbDataSize
           peek_data = FFI.peekLogsconfigStatusCbData
+          peek_errno = fmap FFI.logsConfigCbRetCode . peek_data
           cfun = FFI.c_ld_client_remove_loggroup client' path_
-      FFI.LogsconfigStatusCbData errno version info <- FFI.withAsync size peek_data cfun
-      throwStreamErrorIfNotOKWithInfo errno (ZC.toText info)
+      FFI.LogsconfigStatusCbData _ version _ <- FFI.withAsync size peek_data peek_errno cfun
       return version
 
 -------------------------------------------------------------------------------
@@ -240,7 +235,7 @@ makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent = do
   withForeignPtr (unStreamClient client) $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       ZC.withCBytesUnsafe path $ \path' -> do
-        (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' -> do
+        (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
           void $ E.throwStreamErrorIfNotOK $
             FFI.c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
         StreamTopicGroup <$> newForeignPtr FFI.c_free_logdevice_loggroup_fun group'
@@ -257,7 +252,7 @@ removeTopicGroupSync :: StreamClient -> CBytes -> IO ()
 removeTopicGroupSync client path = do
   Cache.delete topicCache path
   withForeignPtr (unStreamClient client) $ \client' ->
-    ZC.withCBytesUnsafe path $ \path' -> do
+    ZC.withCBytesUnsafe path $ \path' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync client' path' nullPtr
 
 -- | The same as 'removeTopicGroupSync', but return the version of the
@@ -274,7 +269,7 @@ removeTopicGroupSync' client path = do
 topicGroupGetRange :: StreamTopicGroup -> IO TopicRange
 topicGroupGetRange group =
   withForeignPtr (unStreamTopicGroup group) $ \group' -> do
-    (start_ret, (end_ret, _)) <- Z.withPrimUnsafe FFI.c_logid_invalid $ \start' -> do
+    (start_ret, (end_ret, _)) <- Z.withPrimUnsafe FFI.c_logid_invalid $ \start' ->
       Z.withPrimUnsafe FFI.c_logid_invalid $ \end' ->
         FFI.c_ld_loggroup_get_range group' start' end'
     return (mkTopicID start_ret, mkTopicID end_ret)
@@ -304,7 +299,7 @@ makeTopicDirectorySync client path attrs mkParent = do
   withForeignPtr (unStreamClient client) $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
     ZC.withCBytesUnsafe path $ \path' -> do
-      (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' -> do
+      (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' ->
         void $ E.throwStreamErrorIfNotOK $
           FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
       StreamTopicDirectory <$> newForeignPtr FFI.c_free_logdevice_logdirectory_fun dir'
@@ -333,8 +328,8 @@ removeTopicDirectorySync' (StreamClient client) path recursive =
 
 topicDirectoryGetName :: StreamTopicDirectory -> IO CBytes
 topicDirectoryGetName dir = withForeignPtr (unStreamTopicDirectory dir) $
-  \dir' -> ZC.fromCString =<< FFI.c_ld_logdirectory_get_name dir'
+  (ZC.fromCString <=< FFI.c_ld_logdirectory_get_name)
 
 topicDirectoryGetVersion :: StreamTopicDirectory -> IO Word64
 topicDirectoryGetVersion (StreamTopicDirectory dir) =
-  withForeignPtr dir $ FFI.c_ld_logdirectory_get_version
+  withForeignPtr dir FFI.c_ld_logdirectory_get_version
