@@ -16,7 +16,7 @@ import           GHC.Generics          (Generic)
 import qualified Z.Data.JSON           as JSON
 import qualified Z.Data.MessagePack    as MP
 import           Z.Data.Vector         (Bytes)
-import           Z.Data.CBytes         (CBytes, fromCString)
+import           Z.Data.CBytes         as CBytes
 import qualified Z.Foreign             as Z
 
 #include "hs_logdevice.h"
@@ -130,13 +130,14 @@ data LogsconfigStatusCbData = LogsconfigStatusCbData
 logsconfigStatusCbDataSize :: Int
 logsconfigStatusCbDataSize = (#size logsconfig_status_cb_data_t)
 
-peekLogsconfigStatusCbData :: Ptr LogsconfigStatusCbData 
+peekLogsconfigStatusCbData :: Ptr LogsconfigStatusCbData
                            -> IO LogsconfigStatusCbData
 peekLogsconfigStatusCbData ptr = do
   retcode <- (#peek logsconfig_status_cb_data_t, st) ptr
   version <- (#peek logsconfig_status_cb_data_t, version) ptr
   failinfo_ptr <- (#peek logsconfig_status_cb_data_t, failure_reason) ptr
   failinfo <- fromCString failinfo_ptr
+  free failinfo_ptr
   return $ LogsconfigStatusCbData retcode version failinfo
 -------------------------------------------------------------------------------
 

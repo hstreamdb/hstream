@@ -54,7 +54,7 @@ import           GHC.Stack                    (HasCallStack, callStack)
 import           System.IO.Unsafe             (unsafePerformIO)
 import           System.Random                (randomRIO)
 import           Z.Data.CBytes                (CBytes)
-import qualified Z.Data.CBytes                as ZC
+import qualified Z.Data.CBytes                as CBytes
 import qualified Z.Data.JSON                  as JSON
 import qualified Z.Data.MessagePack           as MP
 import qualified Z.Foreign                    as Z
@@ -177,8 +177,8 @@ renameTopicGroup :: StreamClient
                  -> IO Word64
                  -- ^ Return the version of the logsconfig at which the path got renamed
 renameTopicGroup (StreamClient client) from_path to_path =
-  ZC.withCBytesUnsafe from_path $ \from_path_ ->
-    ZC.withCBytesUnsafe to_path $ \to_path_ ->
+  CBytes.withCBytesUnsafe from_path $ \from_path_ ->
+    CBytes.withCBytesUnsafe to_path $ \to_path_ ->
       withForeignPtr client $ \client' -> do
         let size = FFI.logsconfigStatusCbDataSize
             peek_data = FFI.peekLogsconfigStatusCbData
@@ -201,7 +201,7 @@ removeTopicGroup :: StreamClient
                  -- ^ Return the version of the logsconfig at which the log
                  -- group got removed
 removeTopicGroup (StreamClient client) path =
-  ZC.withCBytesUnsafe path $ \path_ ->
+  CBytes.withCBytesUnsafe path $ \path_ ->
     withForeignPtr client $ \client' -> do
       let size = FFI.logsconfigStatusCbDataSize
           peek_data = FFI.peekLogsconfigStatusCbData
@@ -234,7 +234,7 @@ makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent = do
   logAttrs <- newLogAttrs attrs
   withForeignPtr (unStreamClient client) $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
-      ZC.withCBytesUnsafe path $ \path' -> do
+      CBytes.withCBytesUnsafe path $ \path' -> do
         (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
           void $ E.throwStreamErrorIfNotOK $
             FFI.c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
@@ -243,7 +243,7 @@ makeTopicGroupSync client path (TopicID start) (TopicID end) attrs mkParent = do
 getTopicGroupSync :: StreamClient -> CBytes -> IO StreamTopicGroup
 getTopicGroupSync client path =
   withForeignPtr (unStreamClient client) $ \client' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
+  CBytes.withCBytesUnsafe path $ \path' -> do
     (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_loggroup_sync client' path' group''
     StreamTopicGroup <$> newForeignPtr FFI.c_free_logdevice_loggroup_fun group'
@@ -252,7 +252,7 @@ removeTopicGroupSync :: StreamClient -> CBytes -> IO ()
 removeTopicGroupSync client path = do
   Cache.delete topicCache path
   withForeignPtr (unStreamClient client) $ \client' ->
-    ZC.withCBytesUnsafe path $ \path' ->
+    CBytes.withCBytesUnsafe path $ \path' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync client' path' nullPtr
 
 -- | The same as 'removeTopicGroupSync', but return the version of the
@@ -261,7 +261,7 @@ removeTopicGroupSync' :: StreamClient -> CBytes -> IO Word64
 removeTopicGroupSync' client path = do
   Cache.delete topicCache path
   withForeignPtr (unStreamClient client) $ \client' ->
-    ZC.withCBytesUnsafe path $ \path' -> do
+    CBytes.withCBytesUnsafe path $ \path' -> do
       (version, _) <- Z.withPrimUnsafe 0 $ \version' ->
         E.throwStreamErrorIfNotOK $ FFI.c_ld_client_remove_loggroup_sync' client' path' version'
       return version
@@ -277,7 +277,7 @@ topicGroupGetRange group =
 topicGroupGetName :: StreamTopicGroup -> IO CBytes
 topicGroupGetName group =
   withForeignPtr (unStreamTopicGroup group) $
-    ZC.fromCString <=< FFI.c_ld_loggroup_get_name
+    CBytes.fromCString <=< FFI.c_ld_loggroup_get_name
 
 topicGroupGetVersion :: StreamTopicGroup -> IO Word64
 topicGroupGetVersion (StreamTopicGroup group) =
@@ -298,7 +298,7 @@ makeTopicDirectorySync client path attrs mkParent = do
   logAttrs <- newLogAttrs attrs
   withForeignPtr (unStreamClient client) $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
-    ZC.withCBytesUnsafe path $ \path' -> do
+    CBytes.withCBytesUnsafe path $ \path' -> do
       (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' ->
         void $ E.throwStreamErrorIfNotOK $
           FFI.c_ld_client_make_directory_sync client' path' mkParent attrs' dir''
@@ -307,7 +307,7 @@ makeTopicDirectorySync client path attrs mkParent = do
 getTopicDirectorySync :: StreamClient -> CBytes -> IO StreamTopicDirectory
 getTopicDirectorySync (StreamClient client) path =
   withForeignPtr client $ \client' ->
-  ZC.withCBytesUnsafe path $ \path' -> do
+  CBytes.withCBytesUnsafe path $ \path' -> do
     (dir', _) <- Z.withPrimUnsafe nullPtr $ \dir'' ->
       void $ E.throwStreamErrorIfNotOK $ FFI.c_ld_client_get_directory_sync client' path' dir''
     StreamTopicDirectory <$> newForeignPtr FFI.c_free_logdevice_logdirectory_fun dir'
@@ -315,20 +315,20 @@ getTopicDirectorySync (StreamClient client) path =
 removeTopicDirectorySync :: StreamClient -> CBytes -> Bool -> IO ()
 removeTopicDirectorySync (StreamClient client) path recursive =
   withForeignPtr client $ \client' ->
-  ZC.withCBytes path $ \path' -> void $ E.throwStreamErrorIfNotOK $
+  CBytes.withCBytes path $ \path' -> void $ E.throwStreamErrorIfNotOK $
     FFI.c_ld_client_remove_directory_sync_safe client' path' recursive nullPtr
 
 removeTopicDirectorySync' :: StreamClient -> CBytes -> Bool -> IO Word64
 removeTopicDirectorySync' (StreamClient client) path recursive =
   withForeignPtr client $ \client' ->
-  ZC.withCBytes path $ \path' -> do
+  CBytes.withCBytes path $ \path' -> do
     (version, _)<- Z.withPrimSafe 0 $ \version' -> void $ E.throwStreamErrorIfNotOK $
       FFI.c_ld_client_remove_directory_sync_safe client' path' recursive version'
     return version
 
 topicDirectoryGetName :: StreamTopicDirectory -> IO CBytes
 topicDirectoryGetName dir = withForeignPtr (unStreamTopicDirectory dir) $
-  (ZC.fromCString <=< FFI.c_ld_logdirectory_get_name)
+  (CBytes.fromCString <=< FFI.c_ld_logdirectory_get_name)
 
 topicDirectoryGetVersion :: StreamTopicDirectory -> IO Word64
 topicDirectoryGetVersion (StreamTopicDirectory dir) =
