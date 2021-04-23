@@ -39,6 +39,7 @@ serve tcpConf = MP.serveRPC (Z.startTCPServer tcpConf) $ MP.simpleRouter
   , ("sub", MP.StreamHandler sub)
   , ("subc", MP.StreamHandler subFromCheckpoint)
   , ("commit-checkpoint", MP.CallHandler commitCheckpoint)
+  , ("has-topic", MP.CallHandler hasTopic)
   ]
 
 -------------------------------------------------------------------------------
@@ -110,6 +111,10 @@ commitCheckpoint ctx ts =
   withReaderClient ctx $ \reader -> do
     topicIDs <- forM ts (S.getTopicIDByName client)
     S.writeLastCheckpointsSync reader topicIDs
+
+hasTopic :: MP.SessionCtx ContextData -> CBytes -> IO Bool
+hasTopic ctx topic =
+  withStreamClient ctx $ flip S.doesTopicExists topic
 
 -------------------------------------------------------------------------------
 
