@@ -51,6 +51,27 @@ ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+facebook::logdevice::Status
+ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
+                          HsStablePtr mvar, HsInt cap,
+                          logsconfig_status_cb_data_t* data) {
+  std::string path_ = path;
+  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->removeLogGroup(path, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
                            c_logid_t* end) {
   const facebook::logdevice::logid_range_t& range = group->rep->range();
@@ -135,6 +156,28 @@ ld_client_sync_logsconfig_version(logdevice_client_t* client,
   // FIXME: should we ignore LOGS_SECTION_MISSING err?
   if (ret ||
       facebook::logdevice::err == facebook::logdevice::E::LOGS_SECTION_MISSING)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+facebook::logdevice::Status
+ld_client_rename(logdevice_client_t* client, const char* from_path,
+                 const char* to_path, HsStablePtr mvar, HsInt cap,
+                 logsconfig_status_cb_data_t* data) {
+  std::string from_path_ = from_path;
+  std::string to_path_ = to_path;
+  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->rename(from_path_, to_path_, cb);
+  if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
 }

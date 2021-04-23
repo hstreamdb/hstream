@@ -3,8 +3,11 @@
 
 module HStream.Store.Internal.FFI where
 
-import           Control.Concurrent
-import           Control.Exception
+import           Control.Concurrent           (newEmptyMVar, takeMVar)
+import           Control.Exception            (mask_, onException)
+import           Control.Monad                (void)
+import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
+                                               touchForeignPtr, withForeignPtr)
 import           Control.Monad.Primitive
 import           Data.Int
 import           Data.Primitive
@@ -14,10 +17,12 @@ import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
+import           GHC.Stack                    (HasCallStack)
 import           Z.Foreign                    (BA##, MBA##)
 import qualified Z.Foreign                    as Z
 
 import           HStream.Store.Internal.Types
+import qualified HStream.Store.Exception      as E
 
 #include "hs_logdevice.h"
 
@@ -136,6 +141,13 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup_sync"
                                     -> MBA## Word64
                                     -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup"
+  c_ld_client_remove_loggroup :: Ptr LogDeviceClient
+                              -> BA## Word8
+                              -> StablePtr PrimMVar -> Int
+                              -> Ptr LogsconfigStatusCbData
+                              -> IO ErrorCode
+
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
   c_ld_loggroup_get_range :: Ptr LogDeviceLogGroup
                           -> MBA## C_LogID    -- ^ returned value, start logid
@@ -154,6 +166,14 @@ foreign import ccall safe "hs_logdevice.h free_logdevice_loggroup"
   c_free_logdevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
 foreign import ccall unsafe "hs_logdevice.h &free_logdevice_loggroup"
   c_free_logdevice_loggroup_fun :: FunPtr (Ptr LogDeviceLogGroup -> IO ())
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_rename"
+  c_ld_client_rename :: Ptr LogDeviceClient
+                     -> BA## Word8    -- ^ from_path
+                     -> BA## Word8    -- ^ to_path
+                     -> StablePtr PrimMVar -> Int
+                     -> Ptr LogsconfigStatusCbData
+                     -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Writer API
@@ -443,3 +463,18 @@ withAsyncPrimUnsafe2 a b f = mask_ $ do
       return c
   return (a_, b_, c_)
 {-# INLINE withAsyncPrimUnsafe2 #-}
+
+withAsync :: HasCallStack
+          => Int -> (Ptr a -> IO a)
+          -> (StablePtr PrimMVar -> Int -> Ptr a -> IO ErrorCode)
+          -> IO a
+withAsync size peek_data f = mask_ $ do
+  mvar <- newEmptyMVar
+  sp <- newStablePtrPrimMVar mvar
+  fp <- mallocForeignPtrBytes size
+  withForeignPtr fp $ \data' -> do
+    (cap, _) <- threadCapability =<< myThreadId
+    void $ E.throwStreamErrorIfNotOK' =<< f sp cap data'
+    takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+    peek_data data'
+{-# INLINE withAsync #-}
