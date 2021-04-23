@@ -230,13 +230,15 @@ typedef struct logsconfig_status_cb_data_t {
   char* failure_reason;
 } logsconfig_status_cb_data_t;
 
-int ld_client_rename(logdevice_client_t* client, const char* from_path,
-                     const char* to_path, HsStablePtr mvar, HsInt cap,
-                     logsconfig_status_cb_data_t* data);
+facebook::logdevice::Status
+ld_client_rename(logdevice_client_t* client, const char* from_path,
+                 const char* to_path, HsStablePtr mvar, HsInt cap,
+                 logsconfig_status_cb_data_t* data);
 
-int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
-                              HsStablePtr mvar, HsInt cap,
-                              logsconfig_status_cb_data_t* data);
+facebook::logdevice::Status
+ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
+                          HsStablePtr mvar, HsInt cap,
+                          logsconfig_status_cb_data_t* data);
 
 // ----------------------------------------------------------------------------
 // Appender

@@ -146,7 +146,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_remove_loggroup"
                               -> BA## Word8
                               -> StablePtr PrimMVar -> Int
                               -> Ptr LogsconfigStatusCbData
-                              -> IO Int
+                              -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_loggroup_get_range"
   c_ld_loggroup_get_range :: Ptr LogDeviceLogGroup
@@ -173,7 +173,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_rename"
                      -> BA## Word8    -- ^ to_path
                      -> StablePtr PrimMVar -> Int
                      -> Ptr LogsconfigStatusCbData
-                     -> IO Int
+                     -> IO ErrorCode
 
 -------------------------------------------------------------------------------
 -- Writer API
@@ -465,17 +465,16 @@ withAsyncPrimUnsafe2 a b f = mask_ $ do
 {-# INLINE withAsyncPrimUnsafe2 #-}
 
 withAsync :: HasCallStack
-          => Int -> (Ptr a -> IO a) -> (Ptr a -> IO ErrorCode)
-          -> (StablePtr PrimMVar -> Int -> Ptr a -> IO Int)
+          => Int -> (Ptr a -> IO a)
+          -> (StablePtr PrimMVar -> Int -> Ptr a -> IO ErrorCode)
           -> IO a
-withAsync size peek_data peek_errno f = mask_ $ do
+withAsync size peek_data f = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
   fp <- mallocForeignPtrBytes size
   withForeignPtr fp $ \data' -> do
     (cap, _) <- threadCapability =<< myThreadId
-    void $ f sp cap data'
+    void $ E.throwStreamErrorIfNotOK' =<< f sp cap data'
     takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
-    void $ E.throwStreamErrorIfNotOK' =<< peek_errno data'
     peek_data data'
 {-# INLINE withAsync #-}

@@ -51,10 +51,11 @@ ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
-int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
-                              HsStablePtr mvar, HsInt cap,
-                              logsconfig_status_cb_data_t* data) {
-  // std::string path_ = std::string(path);
+facebook::logdevice::Status
+ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
+                          HsStablePtr mvar, HsInt cap,
+                          logsconfig_status_cb_data_t* data) {
+  std::string path_ = path;
   auto cb = [&](facebook::logdevice::Status st, uint64_t version,
                 const std::string& failure_reason) {
     if (data) {
@@ -65,7 +66,10 @@ int ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
-  return client->rep->removeLogGroup(path, cb);
+  int ret = client->rep->removeLogGroup(path, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
 }
 
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
@@ -156,11 +160,12 @@ ld_client_sync_logsconfig_version(logdevice_client_t* client,
   return facebook::logdevice::err;
 }
 
-int ld_client_rename(logdevice_client_t* client, const char* from_path,
-                     const char* to_path, HsStablePtr mvar, HsInt cap,
-                     logsconfig_status_cb_data_t* data) {
-  std::string from_path_ = std::string(from_path);
-  std::string to_path_ = std::string(to_path);
+facebook::logdevice::Status
+ld_client_rename(logdevice_client_t* client, const char* from_path,
+                 const char* to_path, HsStablePtr mvar, HsInt cap,
+                 logsconfig_status_cb_data_t* data) {
+  std::string from_path_ = from_path;
+  std::string to_path_ = to_path;
   auto cb = [&](facebook::logdevice::Status st, uint64_t version,
                 const std::string& failure_reason) {
     if (data) {
@@ -171,7 +176,10 @@ int ld_client_rename(logdevice_client_t* client, const char* from_path,
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
-  return client->rep->rename(from_path_, to_path_, cb);
+  int ret = client->rep->rename(from_path_, to_path_, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
 }
 
 // ----------------------------------------------------------------------------

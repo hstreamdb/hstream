@@ -182,9 +182,9 @@ renameTopicGroup (StreamClient client) from_path to_path =
       withForeignPtr client $ \client' -> do
         let size = FFI.logsconfigStatusCbDataSize
             peek_data = FFI.peekLogsconfigStatusCbData
-            peek_errno = fmap FFI.logsConfigCbRetCode . peek_data
             cfun = FFI.c_ld_client_rename client' from_path_ to_path_
-        FFI.LogsconfigStatusCbData _ version _ <- FFI.withAsync size peek_data peek_errno cfun
+        FFI.LogsconfigStatusCbData errno version _ <- FFI.withAsync size peek_data cfun
+        void $ E.throwStreamErrorIfNotOK' errno
         return version
 
 -- | Removes a logGroup defined at path
@@ -205,9 +205,9 @@ removeTopicGroup (StreamClient client) path =
     withForeignPtr client $ \client' -> do
       let size = FFI.logsconfigStatusCbDataSize
           peek_data = FFI.peekLogsconfigStatusCbData
-          peek_errno = fmap FFI.logsConfigCbRetCode . peek_data
           cfun = FFI.c_ld_client_remove_loggroup client' path_
-      FFI.LogsconfigStatusCbData _ version _ <- FFI.withAsync size peek_data peek_errno cfun
+      FFI.LogsconfigStatusCbData errno version _ <- FFI.withAsync size peek_data cfun
+      void $ E.throwStreamErrorIfNotOK' errno
       return version
 
 -------------------------------------------------------------------------------
