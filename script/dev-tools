@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import sys
 from pathlib import Path
 import subprocess
 import re
@@ -60,7 +61,7 @@ def cluster_stop(container_bin):
     run_sh(f"{container_bin} kill {LOGDEVICE_CONTAINER_NAME}", check=False)
 
 
-def run_ldshell(image, data_dir, container_bin):
+def run_ldshell(image, container_bin, data_dir):
     if not is_cluster_started(container_bin):
         return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
@@ -79,10 +80,10 @@ def run_ldshell(image, data_dir, container_bin):
 
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
-                tty, interactive, rm, extra_container_options):
+                tty, interactive, rm, check, extra_container_options):
 
     if not is_cluster_started(container_bin):
-        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+        sys.exit("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
     Path(f"{HOME}/.local/bin").mkdir(parents=True, exist_ok=True)
     Path(f"{HOME}/.ghc").mkdir(parents=True, exist_ok=True)
@@ -115,13 +116,14 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 {extra_container_options} \
                 {image} {user_cmd}'''
     loginfo(f"Run <{user_cmd}> from <{image}> image...")
-    run_sh(cmd, check=False)
+    run_sh(cmd, check=check)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HStream dev tools.')
     subparsers = parser.add_subparsers(title='subcommands', dest='sub_command')
 
+    # cluster-start
     parser_cluster_start = subparsers.add_parser(
         'cluster-start', help='Start logdevice dev cluster')
     parser_cluster_start.add_argument(
@@ -131,10 +133,12 @@ if __name__ == '__main__':
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_cluster_start.add_argument('--container-bin', default='docker')
 
+    # cluster-stop
     parser_cluster_stop = subparsers.add_parser(
         'cluster-stop', help='Stop logdevice dev cluster')
     parser_cluster_stop.add_argument('--container-bin', default='docker')
 
+    # ldshell
     parser_cluster_ldshell = subparsers.add_parser(
         'ldshell', help='')
     parser_cluster_ldshell.add_argument(
@@ -144,21 +148,25 @@ if __name__ == '__main__':
     parser_cluster_ldshell.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
 
+    # shell
     parser_haskell = subparsers.add_parser(
         'shell', help='Enter in a shell with all haskell dev dependencies')
     parser_haskell.add_argument(
         '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
     parser_haskell.add_argument('--container-bin', default='docker')
+    parser_haskell.add_argument('--check', action='store_true')
     parser_haskell.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_haskell.add_argument('--extra-container-options', default='')
 
+    # cabal
     parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
     parser_haskell_cabal.add_argument(
         '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
     parser_haskell_cabal.add_argument('--no-tty', action='store_true')
+    parser_haskell_cabal.add_argument('--check', action='store_true')
     parser_haskell_cabal.add_argument('--container-bin', default='docker')
     parser_haskell_cabal.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
@@ -170,10 +178,10 @@ if __name__ == '__main__':
 
     if sub_command == 'cluster-start':
         cluster_start(**args)
-    elif sub_command == 'ldshell':
-        run_ldshell(**args)
     elif sub_command == 'cluster-stop':
         cluster_stop(**args)
+    elif sub_command == 'ldshell':
+        run_ldshell(**args)
     elif sub_command == 'shell':
         haskell_env(command='bash', cmd_args="", tty=True, interactive=True, rm=True, **args)
     elif sub_command == 'cabal':
