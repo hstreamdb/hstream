@@ -89,9 +89,9 @@ jobs:
           #   ...
           #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
           #   Warning: Hackage would reject this package.
-          bash -c 'cd hstream-sql && python3 ../script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} check'
-          bash -c 'cd hstream-processing && python3 ../script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} check'
-          bash -c 'cd hstream && python3 ../script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} check'
+          for dir in hstream-sql hstream-processing hstream; do
+            python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
+          done
 
           echo "====== cabal haddock ======"
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock --flag server-tests --enable-tests --enable-benchmarks all
