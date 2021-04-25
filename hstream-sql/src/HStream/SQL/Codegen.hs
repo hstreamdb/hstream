@@ -37,13 +37,14 @@ import qualified HStream.Processing.Table                        as HT
 import           HStream.Processing.Topic                        (TopicName)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
-import           HStream.SQL.Codegen.Utils                       (compareValue,
+import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
+                                                                  compareValue,
                                                                   composeColName,
                                                                   diffTimeToMs,
                                                                   genJoiner,
                                                                   genRandomSinkTopic,
                                                                   getFieldByName,
-                                                                  opOnValue)
+                                                                  unaryOpOnValue)
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Parse
@@ -168,6 +169,7 @@ constantToValue :: Constant -> Value
 constantToValue (ConstantInt n)         = Number (scientific (toInteger n) 0)
 constantToValue (ConstantNum n)         = Number (fromFloatDigits n)
 constantToValue (ConstantString s)      = String (pack s)
+constantToValue (ConstantBool b)        = Bool b
 constantToValue (ConstantDate day)      = String (pack $ showGregorian day) -- FIXME: No suitable type in `Value`
 constantToValue (ConstantTime diff)     = Number (scientific (diffTimeToPicoseconds diff) (-12)) -- FIXME: No suitable type in `Value`
 constantToValue (ConstantInterval diff) = Number (scientific (diffTimeToPicoseconds diff) (-12)) -- FIXME: No suitable type in `Value`
@@ -179,7 +181,10 @@ genRExprValue (RExprConst name constant)          _ = (pack name, constantToValu
 genRExprValue (RExprBinOp name op expr1 expr2)    o =
   let (_,v1) = genRExprValue expr1 o
       (_,v2) = genRExprValue expr2 o
-   in (pack name, opOnValue op v1 v2)
+   in (pack name, binOpOnValue op v1 v2)
+genRExprValue (RExprUnaryOp name op expr) o =
+  let (_,v) = genRExprValue expr o
+  in (pack name, unaryOpOnValue op v)
 genRExprValue (RExprAggregate _ _) _ =
   throwSQLException CodegenException Nothing "Impossible happened"
 

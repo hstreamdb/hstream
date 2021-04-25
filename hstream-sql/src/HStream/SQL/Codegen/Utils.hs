@@ -9,7 +9,8 @@ module HStream.SQL.Codegen.Utils
   , genRandomSinkTopic
   , genMockSinkTopic
   , compareValue
-  , opOnValue
+  , binOpOnValue
+  , unaryOpOnValue
   , diffTimeToMs
   , composeColName
   , genJoiner
@@ -17,10 +18,12 @@ module HStream.SQL.Codegen.Utils
 
 import           Data.Aeson
 import qualified Data.HashMap.Strict   as HM
+import           Data.Scientific
 import           Data.Time             (DiffTime, diffTimeToPicoseconds)
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
+import           Prelude               (read)
 import           RIO
 import           Text.StringRandom     (stringRandomIO)
 
@@ -53,12 +56,23 @@ compareValue (String x1) (String x2) = x1 `compare` x2
 compareValue _ _                     =
   throwSQLException CodegenException Nothing "Value does not support comparison"
 
-opOnValue :: HasCallStack => BinaryOp -> Value -> Value -> Value
-opOnValue OpAdd (Number n) (Number m) = Number (n+m)
-opOnValue OpSub (Number n) (Number m) = Number (n-m)
-opOnValue OpMul (Number n) (Number m) = Number (n*m)
-opOnValue op v1 v2 =
+binOpOnValue :: HasCallStack => BinaryOp -> Value -> Value -> Value
+binOpOnValue OpAdd (Number n) (Number m) = Number (n+m)
+binOpOnValue OpSub (Number n) (Number m) = Number (n-m)
+binOpOnValue OpMul (Number n) (Number m) = Number (n*m)
+binOpOnValue OpAnd (Bool b1)  (Bool b2)  = Bool (b1 && b2)
+binOpOnValue OpOr  (Bool b1)  (Bool b2)  = Bool (b1 || b2)
+binOpOnValue op v1 v2 =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported")
+
+unaryOpOnValue :: HasCallStack => UnaryOp -> Value -> Value
+unaryOpOnValue OpSin (Number n) = Number (funcOnScientific n sin)
+unaryOpOnValue OpAbs (Number n) = Number (abs n)
+unaryOpOnValue op v =
+  throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v <> " is not supported")
+
+funcOnScientific :: Scientific -> (Double -> Double) -> Scientific
+funcOnScientific sci f = read . show . f . toRealFloat $ sci
 
 --------------------------------------------------------------------------------
 diffTimeToMs :: DiffTime -> Int64

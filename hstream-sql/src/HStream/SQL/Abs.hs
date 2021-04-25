@@ -112,12 +112,15 @@ data Having' a = DHavingEmpty a | DHaving a (SearchCond' a)
 
 type ValueExpr = ValueExpr' BNFC'Position
 data ValueExpr' a
-    = ExprAdd a (ValueExpr' a) (ValueExpr' a)
+    = ExprOr a (ValueExpr' a) (ValueExpr' a)
+    | ExprAnd a (ValueExpr' a) (ValueExpr' a)
+    | ExprAdd a (ValueExpr' a) (ValueExpr' a)
     | ExprSub a (ValueExpr' a) (ValueExpr' a)
     | ExprMul a (ValueExpr' a) (ValueExpr' a)
     | ExprInt a Integer
     | ExprNum a Double
     | ExprString a String
+    | ExprBool a (Boolean' a)
     | ExprDate a (Date' a)
     | ExprTime a (Time' a)
     | ExprInterval a (Interval' a)
@@ -125,6 +128,11 @@ data ValueExpr' a
     | ExprMap a [LabelledValueExpr' a]
     | ExprColName a (ColName' a)
     | ExprSetFunc a (SetFunc' a)
+    | ExprScalarFunc a (ScalarFunc' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type Boolean = Boolean' BNFC'Position
+data Boolean' a = BoolTrue a | BoolFalse a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Date = Date' BNFC'Position
@@ -170,6 +178,11 @@ data SetFunc' a
     | SetFuncSum a (ValueExpr' a)
     | SetFuncMax a (ValueExpr' a)
     | SetFuncMin a (ValueExpr' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type ScalarFunc = ScalarFunc' BNFC'Position
+data ScalarFunc' a
+    = ScalarFuncSin a (ValueExpr' a) | ScalarFuncAbs a (ValueExpr' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type SearchCond = SearchCond' BNFC'Position
@@ -298,12 +311,15 @@ instance HasPosition Having where
 
 instance HasPosition ValueExpr where
   hasPosition = \case
+    ExprOr p _ _ -> p
+    ExprAnd p _ _ -> p
     ExprAdd p _ _ -> p
     ExprSub p _ _ -> p
     ExprMul p _ _ -> p
     ExprInt p _ -> p
     ExprNum p _ -> p
     ExprString p _ -> p
+    ExprBool p _ -> p
     ExprDate p _ -> p
     ExprTime p _ -> p
     ExprInterval p _ -> p
@@ -311,6 +327,12 @@ instance HasPosition ValueExpr where
     ExprMap p _ -> p
     ExprColName p _ -> p
     ExprSetFunc p _ -> p
+    ExprScalarFunc p _ -> p
+
+instance HasPosition Boolean where
+  hasPosition = \case
+    BoolTrue p -> p
+    BoolFalse p -> p
 
 instance HasPosition Date where
   hasPosition = \case
@@ -352,6 +374,11 @@ instance HasPosition SetFunc where
     SetFuncSum p _ -> p
     SetFuncMax p _ -> p
     SetFuncMin p _ -> p
+
+instance HasPosition ScalarFunc where
+  hasPosition = \case
+    ScalarFuncSin p _ -> p
+    ScalarFuncAbs p _ -> p
 
 instance HasPosition SearchCond where
   hasPosition = \case

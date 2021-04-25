@@ -22,7 +22,7 @@ $i = [$l $d _ ']     -- identifier character
 $u = [. \n]          -- universal: any character
 
 @rsyms =    -- symbols and non-identifier-like reserved words
-   \; | \( | \) | \, | \= | \* | \+ | \- | \: | \[ | \] | \{ | \} | \. | "COUNT" \( \* \) | \< \> | \< | \> | \< \= | \> \=
+   \; | \( | \) | \, | \= | \* | \| \| | \& \& | \+ | \- | \: | \[ | \] | \{ | \} | \. | "COUNT" \( \* \) | \< \> | \< | \> | \< \= | \> \=
 
 :-
 
@@ -108,8 +108,9 @@ eitherResIdent tv s = treeFind resWords
   treeFind (B a t left right) | (Data.Text.toUpper s)  < (Data.Text.toUpper a) = treeFind left
                               | (Data.Text.toUpper s)  > (Data.Text.toUpper a) = treeFind right
                               | (Data.Text.toUpper s) == (Data.Text.toUpper a) = t
+
 resWords :: BTree
-resWords = b "HOPPING" 32 (b "AND" 16 (b ":" 8 (b "+" 4 (b ")" 2 (b "(" 1 N N) (b "*" 3 N N)) (b "-" 6 (b "," 5 N N) (b "." 7 N N))) (b "<>" 12 (b "<" 10 (b ";" 9 N N) (b "<=" 11 N N)) (b ">" 14 (b "=" 13 N N) (b ">=" 15 N N)))) (b "CREATE" 24 (b "BY" 20 (b "AVG" 18 (b "AS" 17 N N) (b "BETWEEN" 19 N N)) (b "COUNT" 22 (b "CHANGES" 21 N N) (b "COUNT(*)" 23 N N))) (b "FORMAT" 28 (b "DAY" 26 (b "DATE" 25 N N) (b "EMIT" 27 N N)) (b "GROUP" 30 (b "FROM" 29 N N) (b "HAVING" 31 N N))))) (b "SELECT" 48 (b "MIN" 40 (b "INTO" 36 (b "INSERT" 34 (b "INNER" 33 N N) (b "INTERVAL" 35 N N)) (b "LEFT" 38 (b "JOIN" 37 N N) (b "MAX" 39 N N))) (b "ON" 44 (b "MONTH" 42 (b "MINUTE" 41 N N) (b "NOT" 43 N N)) (b "OUTER" 46 (b "OR" 45 N N) (b "SECOND" 47 N N)))) (b "WHERE" 56 (b "TIME" 52 (b "STREAM" 50 (b "SESSION" 49 N N) (b "SUM" 51 N N)) (b "VALUES" 54 (b "TUMBLING" 53 N N) (b "WEEK" 55 N N))) (b "[" 60 (b "WITHIN" 58 (b "WITH" 57 N N) (b "YEAR" 59 N N)) (b "{" 62 (b "]" 61 N N) (b "}" 63 N N)))))
+resWords = b "HOPPING" 35 (b "AND" 18 (b ":" 9 (b "+" 5 (b ")" 3 (b "(" 2 (b "&&" 1 N N) N) (b "*" 4 N N)) (b "-" 7 (b "," 6 N N) (b "." 8 N N))) (b "=" 14 (b "<=" 12 (b "<" 11 (b ";" 10 N N) N) (b "<>" 13 N N)) (b ">=" 16 (b ">" 15 N N) (b "ABS" 17 N N)))) (b "DATE" 27 (b "CHANGES" 23 (b "BETWEEN" 21 (b "AVG" 20 (b "AS" 19 N N) N) (b "BY" 22 N N)) (b "COUNT(*)" 25 (b "COUNT" 24 N N) (b "CREATE" 26 N N))) (b "FORMAT" 31 (b "EMIT" 29 (b "DAY" 28 N N) (b "FALSE" 30 N N)) (b "GROUP" 33 (b "FROM" 32 N N) (b "HAVING" 34 N N))))) (b "SIN" 53 (b "MINUTE" 44 (b "JOIN" 40 (b "INTERVAL" 38 (b "INSERT" 37 (b "INNER" 36 N N) N) (b "INTO" 39 N N)) (b "MAX" 42 (b "LEFT" 41 N N) (b "MIN" 43 N N))) (b "OUTER" 49 (b "ON" 47 (b "NOT" 46 (b "MONTH" 45 N N) N) (b "OR" 48 N N)) (b "SELECT" 51 (b "SECOND" 50 N N) (b "SESSION" 52 N N)))) (b "WITH" 62 (b "TUMBLING" 58 (b "TIME" 56 (b "SUM" 55 (b "STREAM" 54 N N) N) (b "TRUE" 57 N N)) (b "WEEK" 60 (b "VALUES" 59 N N) (b "WHERE" 61 N N))) (b "]" 66 (b "YEAR" 64 (b "WITHIN" 63 N N) (b "[" 65 N N)) (b "||" 68 (b "{" 67 N N) (b "}" 69 N N)))))
    where b s n = let bs = Data.Text.pack s
                  in  B bs (TS bs n)
 
