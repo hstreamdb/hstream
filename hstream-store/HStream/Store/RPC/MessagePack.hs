@@ -8,12 +8,13 @@ module HStream.Store.RPC.MessagePack
   ) where
 
 import           Control.Monad        (forM, forM_, void)
-import           Data.IORef           (newIORef, readIORef, writeIORef)
+import           Data.IORef           (IORef, readIORef)
 import           Data.Int             (Int32, Int64)
 import           Data.Map.Strict      (Map)
 import           Data.Maybe           (fromMaybe)
 import           Data.Word            (Word32)
 import           GHC.Generics         (Generic)
+import           GHC.Stack            (HasCallStack)
 import           Z.Data.CBytes        (CBytes)
 import qualified Z.Data.JSON          as JSON
 import qualified Z.Data.MessagePack   as MP
@@ -80,26 +81,34 @@ data ConsumerConfig = ConsumerConfig
   , consumerCheckpoint :: CheckpointConfig
   } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
 
-sub :: MP.SessionCtx ContextData -> ConsumerConfig -> IO (Z.Source S.ConsumerRecord)
-sub ctx ConsumerConfig{..} = withStreamClient ctx $ \client -> do
+sub :: MP.SessionCtx ContextData
+    -> IORef Bool
+    -> ConsumerConfig
+    -> IO (Z.Source S.ConsumerRecord)
+sub ctx eofRef ConsumerConfig{..} = withStreamClient ctx $ \client -> do
   topics <- forM consumerTopics $ \t -> do
     topicID <- S.getTopicIDByName client t
     lastSN <- S.getTailSequenceNum client topicID
     return (topicID, lastSN + 1, maxBound)
   (s, ckpReader) <- newSubscriber client consumerName (Left topics) consumerMaxRecords
                                   consumerBufferSize consumerTimeout consumerCheckpoint
+                                  eofRef
   MP.modifySessionCtx ctx $ \x -> Just x{ ctxReaderClient=Just ckpReader
                                         , ctxReaderTopics=Just consumerTopics
                                         }
   return s
 
-subFromCheckpoint :: MP.SessionCtx ContextData -> ConsumerConfig -> IO (Z.Source S.ConsumerRecord)
-subFromCheckpoint ctx ConsumerConfig{..} = withStreamClient ctx $ \client -> do
+subFromCheckpoint :: MP.SessionCtx ContextData
+                  -> IORef Bool
+                  -> ConsumerConfig
+                  -> IO (Z.Source S.ConsumerRecord)
+subFromCheckpoint ctx eofRef ConsumerConfig{..} = withStreamClient ctx $ \client -> do
   topics <- forM consumerTopics $ \t -> do
     topicID <- S.getTopicIDByName client t
     return (topicID, maxBound)
   (s, ckpReader) <- newSubscriber client consumerName (Right topics) consumerMaxRecords
                                   consumerBufferSize consumerTimeout consumerCheckpoint
+                                  eofRef
   MP.modifySessionCtx ctx $ \x -> Just x{ ctxReaderClient=Just ckpReader
                                         , ctxReaderTopics=Just consumerTopics
                                         }
@@ -119,15 +128,17 @@ hasTopic ctx topic =
 -------------------------------------------------------------------------------
 
 newSubscriber
-  :: S.StreamClient
+  :: HasCallStack
+  => S.StreamClient
   -> CBytes
   -> Either [(S.TopicID, S.SequenceNum, S.SequenceNum)] [(S.TopicID, S.SequenceNum)]
   -> Int
   -> Maybe Int64
   -> Int32
   -> CheckpointConfig
+  -> IORef Bool
   -> IO (Z.Source S.ConsumerRecord, S.StreamSyncCheckpointedReader)
-newSubscriber client name e_topics maxRecords m_buffSize timeout ckpConfig = do
+newSubscriber client name e_topics maxRecords m_buffSize timeout ckpConfig eofRef = do
   let bufSize = fromMaybe (-1) m_buffSize
       topics = case e_topics of
                  Left ts -> map (\(i, start, end) reader -> S.checkpointedReaderStartReading reader i start end) ts
@@ -146,9 +157,14 @@ newSubscriber client name e_topics maxRecords m_buffSize timeout ckpConfig = do
   -- start reading
   forM_ topics $ \f -> f ckpReader
   void $ S.checkpointedReaderSetTimeout ckpReader timeout
-  src <- flattenListSource $
-    Z.sourceFromIO (Just . map S.decodeRecord <$> S.checkpointedReaderRead ckpReader maxRecords)
-  return (src, ckpReader)
+  return (initSrc ckpReader, ckpReader)
+  where
+    initSrc reader f _ =
+      let loop = do
+            eof <- readIORef eofRef
+            if eof then f Z.EOF
+                   else (mapM_ (f . Just . S.decodeRecord) =<< S.checkpointedReaderRead reader maxRecords) >> loop
+       in loop
 
 withStreamClient :: MP.SessionCtx ContextData -> (S.StreamClient -> IO a) -> IO a
 withStreamClient ctx f = do
@@ -159,15 +175,3 @@ withReaderClient :: MP.SessionCtx ContextData -> (S.StreamSyncCheckpointedReader
 withReaderClient ctx f = do
   m_client <- MP.readSessionCtx ctx
   f $ fromMaybe (error "Empty reader session context.") (m_client >>= ctxReaderClient)
-
-flattenListSource :: Z.Source [a] -> IO (Z.Source a)
-flattenListSource sxs = newIORef [] >>= \ref -> return (Z.BIO{ pull = loop ref })
-  where
-    loop ref = do
-        rs' <- readIORef ref
-        case rs' of
-          [] -> do m_xs <- Z.pull sxs
-                   case m_xs of
-                     Just xs -> writeIORef ref xs >> loop ref
-                     Nothing -> return Nothing
-          (a:rest) -> writeIORef ref rest >> return (Just a)
