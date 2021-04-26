@@ -5,6 +5,8 @@
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE RankNTypes        #-}
 
+--{-# OPTIONS_GHC -Wno-unused-matches #-}
+
 module HStream.SQL.Validate
   ( Validate (..)
   ) where
@@ -16,7 +18,7 @@ import           Data.Text             (Text)
 import           Data.Time.Calendar    (isLeapYear)
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
-import           HStream.SQL.Exception (Position, SomeSQLException (..),
+import           HStream.SQL.Exception (SomeSQLException (..),
                                         buildSQLException)
 import           HStream.SQL.Extra     (anyJoin, extractCondRefNames,
                                         extractRefNames, extractSelRefNames)
@@ -27,6 +29,10 @@ class Validate t where
   {-# MINIMAL validate #-}
 
 --------------------------------- Basic Types ----------------------------------
+instance Validate Boolean where
+  validate e@(BoolTrue _)  = return e
+  validate e@(BoolFalse _) = return e
+
 -- 1. 0 <= year <= 9999
 -- 2. 1 <= month <= 12
 -- 3. 1 <= day <= real days(30, 31 or other ones)
@@ -77,6 +83,12 @@ instance Validate SetFunc where
   validate f@(SetFuncMin pos (ExprSetFunc _ _))   = Left $ buildSQLException ParseException pos "Nested set functions are not supported"
   validate f@(SetFuncMin _ e) = isOrdExpr e  >> return f
 
+-- 1. numeral expressions only
+-- 2. scalar functions should not be applied to aggregates
+instance Validate ScalarFunc where
+  validate f@(ScalarFuncSin _ e) = isNumExpr e >> notAggregateExpr e >> return f
+  validate f@(ScalarFuncAbs _ e) = isNumExpr e >> notAggregateExpr e >> return f
+
 --------------------------------------- ValueExpr ------------------------------
 
 -- 1. Add, Sub and Mul: exprs should be Num
@@ -84,13 +96,17 @@ instance Validate SetFunc where
 -- 3. Map and Arr are legal if all elements of them are legal (However Codegen does not support them yet)
 --    And Map requires that all keys are unique
 -- 4. Cols and Aggs should be legal
+-- 5. Scalar functions should not be applied to aggs
 instance Validate ValueExpr where
   validate expr@ExprAdd{}    = isNumExpr expr
   validate expr@ExprSub{}    = isNumExpr expr
   validate expr@ExprMul{}    = isNumExpr expr
+  validate expr@ExprAnd{}    = isBoolExpr expr
+  validate expr@ExprOr{}     = isBoolExpr expr
   validate expr@ExprInt{}    = Right expr
   validate expr@ExprNum{}    = Right expr
   validate expr@ExprString{} = Right expr
+  validate expr@ExprBool{}   = Right expr
   validate expr@(ExprDate _ date) = validate date >> return expr
   validate expr@(ExprTime _ time) = validate time >> return expr
   validate expr@(ExprInterval _ interval) = validate interval >> return expr
@@ -103,14 +119,18 @@ instance Validate ValueExpr where
           extractLabel (DLabelledValueExpr _ label _) = label
   validate expr@(ExprColName _ col) = validate col   >> return expr
   validate expr@(ExprSetFunc _ func) = validate func >> return expr
+  validate expr@(ExprScalarFunc _ func) = validate func >> return expr
 
 isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr@(ExprAdd _ e1 e2)  = isNumExpr e1 >> isNumExpr e2 >> return expr
 isNumExpr expr@(ExprSub _ e1 e2)  = isNumExpr e1 >> isNumExpr e2 >> return expr
 isNumExpr expr@(ExprMul _ e1 e2)  = isNumExpr e1 >> isNumExpr e2 >> return expr
+isNumExpr expr@(ExprAnd pos _ _)  = Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
+isNumExpr expr@(ExprOr pos _ _ )  = Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
 isNumExpr expr@(ExprInt _ _)      = Right expr
 isNumExpr expr@(ExprNum _ _)      = Right expr
 isNumExpr expr@(ExprString pos _)   = Left $ buildSQLException ParseException pos "Expected a numeric expression but got a String"
+isNumExpr expr@(ExprBool pos _)     = Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
 isNumExpr expr@(ExprDate pos _)     = Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Date"
 isNumExpr expr@(ExprTime pos _)     = Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Time"
 isNumExpr expr@(ExprInterval pos _) = Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Interval"
@@ -123,14 +143,20 @@ isNumExpr expr@(ExprSetFunc _ (SetFuncAvg _ e))   = isNumExpr e >> return expr
 isNumExpr expr@(ExprSetFunc _ (SetFuncSum _ e))   = isNumExpr e >> return expr
 isNumExpr expr@(ExprSetFunc _ (SetFuncMax _ e))   = isOrdExpr e >> return expr
 isNumExpr expr@(ExprSetFunc _ (SetFuncMin _ e))   = isOrdExpr e >> return expr
+isNumExpr expr@(ExprScalarFunc _ (ScalarFuncSin _ e)) = isNumExpr e >> return expr
+isNumExpr expr@(ExprScalarFunc _ (ScalarFuncAbs _ e)) = isNumExpr e >> return expr
+
 
 isOrdExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isOrdExpr expr@ExprAdd{}    = isNumExpr expr
 isOrdExpr expr@ExprSub{}    = isNumExpr expr
 isOrdExpr expr@ExprMul{}    = isNumExpr expr
+isOrdExpr expr@(ExprAnd pos _ _) = Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
+isOrdExpr expr@(ExprOr  pos _ _) = Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
 isOrdExpr expr@ExprInt{}    = Right expr
 isOrdExpr expr@ExprNum{}    = Right expr
 isOrdExpr expr@ExprString{} = Right expr
+isOrdExpr expr@(ExprBool pos _) = Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
 isOrdExpr expr@(ExprDate _ date) = validate date >> return expr
 isOrdExpr expr@(ExprTime _ time) = validate time >> return expr
 isOrdExpr expr@(ExprInterval _ interval) = validate interval >> return expr
@@ -143,23 +169,55 @@ isOrdExpr expr@(ExprSetFunc _ (SetFuncAvg _ e))   = isNumExpr e >> return expr
 isOrdExpr expr@(ExprSetFunc _ (SetFuncSum _ e))   = isNumExpr e >> return expr
 isOrdExpr expr@(ExprSetFunc _ (SetFuncMax _ e))   = isOrdExpr e >> return expr
 isOrdExpr expr@(ExprSetFunc _ (SetFuncMin _ e))   = isOrdExpr e >> return expr
+isOrdExpr expr@(ExprScalarFunc _ (ScalarFuncSin _ e)) = isNumExpr e >> return expr
+isOrdExpr expr@(ExprScalarFunc _ (ScalarFuncAbs _ e)) = isNumExpr e >> return expr
+
+isBoolExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
+isBoolExpr expr@(ExprAdd pos e1 e2)  = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprSub pos e1 e2)  = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprMul pos e1 e2)  = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprAnd _ e1 e2)    = isBoolExpr e1 >> isBoolExpr e2 >> return expr
+isBoolExpr expr@(ExprOr  _ e1 e2)    = isBoolExpr e1 >> isBoolExpr e2 >> return expr
+isBoolExpr expr@(ExprInt pos _)      = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprNum pos _)      = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprString pos _)   = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprBool _ _)       = Right expr
+isBoolExpr expr@(ExprDate pos _)     = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprTime pos _)     = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprInterval pos _) = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprArr pos _)      = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprMap pos _)      = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprColName _ _)    = Right expr -- TODO: Use schema to decide this
+isBoolExpr expr@(ExprSetFunc pos (SetFuncCountAll _)) = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprSetFunc pos (SetFuncCount _ _))  = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprSetFunc pos (SetFuncAvg _ e))    = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprSetFunc pos (SetFuncSum _ e))    = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprSetFunc pos (SetFuncMax _ e))    = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprSetFunc pos (SetFuncMin _ e))    = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprScalarFunc pos (ScalarFuncSin _ _)) = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+isBoolExpr expr@(ExprScalarFunc pos (ScalarFuncAbs _ _)) = Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
 
 -- For validating SearchCond
-isAggregateExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-isAggregateExpr (ExprSetFunc pos _) = Left $ buildSQLException ParseException pos "Aggregate functions are not allowed in WHERE clause, HAVING clause and JOIN condition"
-isAggregateExpr expr@(ExprAdd _ e1 e2) = isAggregateExpr e1 >> isAggregateExpr e2 >> return expr
-isAggregateExpr expr@(ExprSub _ e1 e2) = isAggregateExpr e1 >> isAggregateExpr e2 >> return expr
-isAggregateExpr expr@(ExprMul _ e1 e2) = isAggregateExpr e1 >> isAggregateExpr e2 >> return expr
-isAggregateExpr expr@(ExprArr _ es)    = mapM_ isAggregateExpr es >> return expr
-isAggregateExpr expr@(ExprMap _ es)    = mapM_ (isAggregateExpr . extractExpr) es >> return expr
+notAggregateExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
+notAggregateExpr (ExprSetFunc pos _) = Left $ buildSQLException ParseException pos "Aggregate functions are not allowed in WHERE clause, HAVING clause and JOIN condition"
+notAggregateExpr (ExprScalarFunc _ (ScalarFuncSin _ e)) = notAggregateExpr e
+notAggregateExpr (ExprScalarFunc _ (ScalarFuncAbs _ e)) = notAggregateExpr e
+notAggregateExpr expr@(ExprAdd _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprSub _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprMul _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprAnd _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprOr  _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprArr _ es)    = mapM_ notAggregateExpr es >> return expr
+notAggregateExpr expr@(ExprMap _ es)    = mapM_ (notAggregateExpr . extractExpr) es >> return expr
   where extractExpr (DLabelledValueExpr _ _ e) = e
-isAggregateExpr expr = return expr
+notAggregateExpr expr = return expr
 
 -- For validating Insert
 isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isConstExpr expr@ExprInt{}      = Right expr
 isConstExpr expr@ExprNum{}      = Right expr
 isConstExpr expr@ExprString{}   = Right expr
+isConstExpr expr@ExprBool{}     = Right expr
 isConstExpr expr@ExprDate{}     = Right expr
 isConstExpr expr@ExprTime{}     = Right expr
 isConstExpr expr@ExprInterval{} = Right expr
@@ -290,13 +348,13 @@ instance Validate SearchCond where
   validate cond@(CondAnd _ c1 c2)   = validate c1 >> validate c2 >> return cond
   validate cond@(CondNot _ c)       = validate c  >> return cond
   validate cond@(CondOp _ e1 op e2) = do
-    isAggregateExpr e1 >> isAggregateExpr e2
+    notAggregateExpr e1 >> notAggregateExpr e2
     case op of
       CompOpEQ _ -> validate e1  >> validate e2  >> return cond
       CompOpNE _ -> validate e1  >> validate e2  >> return cond
       _          -> isOrdExpr e1 >> isOrdExpr e2 >> return cond
   validate cond@(CondBetween _ e1 e e2) = do
-    isAggregateExpr e1 >> isAggregateExpr e2 >> isAggregateExpr e
+    notAggregateExpr e1 >> notAggregateExpr e2 >> notAggregateExpr e
     isOrdExpr e1 >> isOrdExpr e2 >> isOrdExpr e
     return cond
 

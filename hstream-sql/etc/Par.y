@@ -31,6 +31,9 @@ module HStream.SQL.Par
   , pValueExpr
   , pValueExpr1
   , pValueExpr2
+  , pValueExpr3
+  , pValueExpr4
+  , pBoolean
   , pDate
   , pTime
   , pTimeUnit
@@ -39,6 +42,7 @@ module HStream.SQL.Par
   , pLabelledValueExpr
   , pColName
   , pSetFunc
+  , pScalarFunc
   , pSearchCond
   , pSearchCond1
   , pSearchCond2
@@ -81,6 +85,9 @@ import qualified Data.Text
 %name pValueExpr_internal ValueExpr
 %name pValueExpr1_internal ValueExpr1
 %name pValueExpr2_internal ValueExpr2
+%name pValueExpr3_internal ValueExpr3
+%name pValueExpr4_internal ValueExpr4
+%name pBoolean_internal Boolean
 %name pDate_internal Date
 %name pTime_internal Time
 %name pTimeUnit_internal TimeUnit
@@ -89,6 +96,7 @@ import qualified Data.Text
 %name pLabelledValueExpr_internal LabelledValueExpr
 %name pColName_internal ColName
 %name pSetFunc_internal SetFunc
+%name pScalarFunc_internal ScalarFunc
 %name pSearchCond_internal SearchCond
 %name pSearchCond1_internal SearchCond1
 %name pSearchCond2_internal SearchCond2
@@ -98,69 +106,75 @@ import qualified Data.Text
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
 %token
-  '(' { PT _ (TS _ 1) }
-  ')' { PT _ (TS _ 2) }
-  '*' { PT _ (TS _ 3) }
-  '+' { PT _ (TS _ 4) }
-  ',' { PT _ (TS _ 5) }
-  '-' { PT _ (TS _ 6) }
-  '.' { PT _ (TS _ 7) }
-  ':' { PT _ (TS _ 8) }
-  ';' { PT _ (TS _ 9) }
-  '<' { PT _ (TS _ 10) }
-  '<=' { PT _ (TS _ 11) }
-  '<>' { PT _ (TS _ 12) }
-  '=' { PT _ (TS _ 13) }
-  '>' { PT _ (TS _ 14) }
-  '>=' { PT _ (TS _ 15) }
-  'AND' { PT _ (TS _ 16) }
-  'AS' { PT _ (TS _ 17) }
-  'AVG' { PT _ (TS _ 18) }
-  'BETWEEN' { PT _ (TS _ 19) }
-  'BY' { PT _ (TS _ 20) }
-  'CHANGES' { PT _ (TS _ 21) }
-  'COUNT' { PT _ (TS _ 22) }
-  'COUNT(*)' { PT _ (TS _ 23) }
-  'CREATE' { PT _ (TS _ 24) }
-  'DATE' { PT _ (TS _ 25) }
-  'DAY' { PT _ (TS _ 26) }
-  'EMIT' { PT _ (TS _ 27) }
-  'FORMAT' { PT _ (TS _ 28) }
-  'FROM' { PT _ (TS _ 29) }
-  'GROUP' { PT _ (TS _ 30) }
-  'HAVING' { PT _ (TS _ 31) }
-  'HOPPING' { PT _ (TS _ 32) }
-  'INNER' { PT _ (TS _ 33) }
-  'INSERT' { PT _ (TS _ 34) }
-  'INTERVAL' { PT _ (TS _ 35) }
-  'INTO' { PT _ (TS _ 36) }
-  'JOIN' { PT _ (TS _ 37) }
-  'LEFT' { PT _ (TS _ 38) }
-  'MAX' { PT _ (TS _ 39) }
-  'MIN' { PT _ (TS _ 40) }
-  'MINUTE' { PT _ (TS _ 41) }
-  'MONTH' { PT _ (TS _ 42) }
-  'NOT' { PT _ (TS _ 43) }
-  'ON' { PT _ (TS _ 44) }
-  'OR' { PT _ (TS _ 45) }
-  'OUTER' { PT _ (TS _ 46) }
-  'SECOND' { PT _ (TS _ 47) }
-  'SELECT' { PT _ (TS _ 48) }
-  'SESSION' { PT _ (TS _ 49) }
-  'STREAM' { PT _ (TS _ 50) }
-  'SUM' { PT _ (TS _ 51) }
-  'TIME' { PT _ (TS _ 52) }
-  'TUMBLING' { PT _ (TS _ 53) }
-  'VALUES' { PT _ (TS _ 54) }
-  'WEEK' { PT _ (TS _ 55) }
-  'WHERE' { PT _ (TS _ 56) }
-  'WITH' { PT _ (TS _ 57) }
-  'WITHIN' { PT _ (TS _ 58) }
-  'YEAR' { PT _ (TS _ 59) }
-  '[' { PT _ (TS _ 60) }
-  ']' { PT _ (TS _ 61) }
-  '{' { PT _ (TS _ 62) }
-  '}' { PT _ (TS _ 63) }
+  '&&' { PT _ (TS _ 1) }
+  '(' { PT _ (TS _ 2) }
+  ')' { PT _ (TS _ 3) }
+  '*' { PT _ (TS _ 4) }
+  '+' { PT _ (TS _ 5) }
+  ',' { PT _ (TS _ 6) }
+  '-' { PT _ (TS _ 7) }
+  '.' { PT _ (TS _ 8) }
+  ':' { PT _ (TS _ 9) }
+  ';' { PT _ (TS _ 10) }
+  '<' { PT _ (TS _ 11) }
+  '<=' { PT _ (TS _ 12) }
+  '<>' { PT _ (TS _ 13) }
+  '=' { PT _ (TS _ 14) }
+  '>' { PT _ (TS _ 15) }
+  '>=' { PT _ (TS _ 16) }
+  'ABS' { PT _ (TS _ 17) }
+  'AND' { PT _ (TS _ 18) }
+  'AS' { PT _ (TS _ 19) }
+  'AVG' { PT _ (TS _ 20) }
+  'BETWEEN' { PT _ (TS _ 21) }
+  'BY' { PT _ (TS _ 22) }
+  'CHANGES' { PT _ (TS _ 23) }
+  'COUNT' { PT _ (TS _ 24) }
+  'COUNT(*)' { PT _ (TS _ 25) }
+  'CREATE' { PT _ (TS _ 26) }
+  'DATE' { PT _ (TS _ 27) }
+  'DAY' { PT _ (TS _ 28) }
+  'EMIT' { PT _ (TS _ 29) }
+  'FALSE' { PT _ (TS _ 30) }
+  'FORMAT' { PT _ (TS _ 31) }
+  'FROM' { PT _ (TS _ 32) }
+  'GROUP' { PT _ (TS _ 33) }
+  'HAVING' { PT _ (TS _ 34) }
+  'HOPPING' { PT _ (TS _ 35) }
+  'INNER' { PT _ (TS _ 36) }
+  'INSERT' { PT _ (TS _ 37) }
+  'INTERVAL' { PT _ (TS _ 38) }
+  'INTO' { PT _ (TS _ 39) }
+  'JOIN' { PT _ (TS _ 40) }
+  'LEFT' { PT _ (TS _ 41) }
+  'MAX' { PT _ (TS _ 42) }
+  'MIN' { PT _ (TS _ 43) }
+  'MINUTE' { PT _ (TS _ 44) }
+  'MONTH' { PT _ (TS _ 45) }
+  'NOT' { PT _ (TS _ 46) }
+  'ON' { PT _ (TS _ 47) }
+  'OR' { PT _ (TS _ 48) }
+  'OUTER' { PT _ (TS _ 49) }
+  'SECOND' { PT _ (TS _ 50) }
+  'SELECT' { PT _ (TS _ 51) }
+  'SESSION' { PT _ (TS _ 52) }
+  'SIN' { PT _ (TS _ 53) }
+  'STREAM' { PT _ (TS _ 54) }
+  'SUM' { PT _ (TS _ 55) }
+  'TIME' { PT _ (TS _ 56) }
+  'TRUE' { PT _ (TS _ 57) }
+  'TUMBLING' { PT _ (TS _ 58) }
+  'VALUES' { PT _ (TS _ 59) }
+  'WEEK' { PT _ (TS _ 60) }
+  'WHERE' { PT _ (TS _ 61) }
+  'WITH' { PT _ (TS _ 62) }
+  'WITHIN' { PT _ (TS _ 63) }
+  'YEAR' { PT _ (TS _ 64) }
+  '[' { PT _ (TS _ 65) }
+  ']' { PT _ (TS _ 66) }
+  '{' { PT _ (TS _ 67) }
+  '||' { PT _ (TS _ 68) }
+  '}' { PT _ (TS _ 69) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -280,26 +294,40 @@ Having : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, HStream.SQL.Abs.DHaving
        | 'HAVING' SearchCond { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DHaving (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
 
 ValueExpr :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr) }
-ValueExpr : ValueExpr '+' ValueExpr1 { (fst $1, HStream.SQL.Abs.ExprAdd (fst $1) (snd $1) (snd $3)) }
-          | ValueExpr '-' ValueExpr1 { (fst $1, HStream.SQL.Abs.ExprSub (fst $1) (snd $1) (snd $3)) }
+ValueExpr : ValueExpr '||' ValueExpr1 { (fst $1, HStream.SQL.Abs.ExprOr (fst $1) (snd $1) (snd $3)) }
           | '[' ListValueExpr ']' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ExprArr (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
           | '{' ListLabelledValueExpr '}' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ExprMap (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+          | ScalarFunc { (fst $1, HStream.SQL.Abs.ExprScalarFunc (fst $1) (snd $1)) }
           | ValueExpr1 { (fst $1, (snd $1)) }
 
 ValueExpr1 :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr) }
-ValueExpr1 : ValueExpr1 '*' ValueExpr2 { (fst $1, HStream.SQL.Abs.ExprMul (fst $1) (snd $1) (snd $3)) }
+ValueExpr1 : ValueExpr1 '&&' ValueExpr2 { (fst $1, HStream.SQL.Abs.ExprAnd (fst $1) (snd $1) (snd $3)) }
            | ValueExpr2 { (fst $1, (snd $1)) }
 
 ValueExpr2 :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr) }
-ValueExpr2 : Integer { (fst $1, HStream.SQL.Abs.ExprInt (fst $1) (snd $1)) }
+ValueExpr2 : ValueExpr2 '+' ValueExpr3 { (fst $1, HStream.SQL.Abs.ExprAdd (fst $1) (snd $1) (snd $3)) }
+           | ValueExpr2 '-' ValueExpr3 { (fst $1, HStream.SQL.Abs.ExprSub (fst $1) (snd $1) (snd $3)) }
+           | ValueExpr3 { (fst $1, (snd $1)) }
+
+ValueExpr3 :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr) }
+ValueExpr3 : ValueExpr3 '*' ValueExpr4 { (fst $1, HStream.SQL.Abs.ExprMul (fst $1) (snd $1) (snd $3)) }
+           | ValueExpr4 { (fst $1, (snd $1)) }
+
+ValueExpr4 :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr) }
+ValueExpr4 : Integer { (fst $1, HStream.SQL.Abs.ExprInt (fst $1) (snd $1)) }
            | Double { (fst $1, HStream.SQL.Abs.ExprNum (fst $1) (snd $1)) }
            | String { (fst $1, HStream.SQL.Abs.ExprString (fst $1) (snd $1)) }
+           | Boolean { (fst $1, HStream.SQL.Abs.ExprBool (fst $1) (snd $1)) }
            | Date { (fst $1, HStream.SQL.Abs.ExprDate (fst $1) (snd $1)) }
            | Time { (fst $1, HStream.SQL.Abs.ExprTime (fst $1) (snd $1)) }
            | Interval { (fst $1, HStream.SQL.Abs.ExprInterval (fst $1) (snd $1)) }
            | ColName { (fst $1, HStream.SQL.Abs.ExprColName (fst $1) (snd $1)) }
            | SetFunc { (fst $1, HStream.SQL.Abs.ExprSetFunc (fst $1) (snd $1)) }
            | '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), (snd $2)) }
+
+Boolean :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Boolean) }
+Boolean : 'TRUE' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.BoolTrue (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
+        | 'FALSE' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.BoolFalse (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
 
 Date :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Date) }
 Date : 'DATE' Integer '-' Integer '-' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DDate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4) (snd $6)) }
@@ -339,6 +367,10 @@ SetFunc : 'COUNT(*)' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1),
         | 'SUM' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.SetFuncSum (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
         | 'MAX' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.SetFuncMax (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
         | 'MIN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.SetFuncMin (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+
+ScalarFunc :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ScalarFunc) }
+ScalarFunc : 'SIN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncSin (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ABS' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAbs (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
 
 SearchCond :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond) }
 SearchCond : SearchCond 'OR' SearchCond1 { (fst $1, HStream.SQL.Abs.CondOr (fst $1) (snd $1) (snd $3)) }
@@ -462,6 +494,15 @@ pValueExpr1 = fmap snd . pValueExpr1_internal
 pValueExpr2 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
 pValueExpr2 = fmap snd . pValueExpr2_internal
 
+pValueExpr3 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
+pValueExpr3 = fmap snd . pValueExpr3_internal
+
+pValueExpr4 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
+pValueExpr4 = fmap snd . pValueExpr4_internal
+
+pBoolean :: [Token] -> Err HStream.SQL.Abs.Boolean
+pBoolean = fmap snd . pBoolean_internal
+
 pDate :: [Token] -> Err HStream.SQL.Abs.Date
 pDate = fmap snd . pDate_internal
 
@@ -485,6 +526,9 @@ pColName = fmap snd . pColName_internal
 
 pSetFunc :: [Token] -> Err HStream.SQL.Abs.SetFunc
 pSetFunc = fmap snd . pSetFunc_internal
+
+pScalarFunc :: [Token] -> Err HStream.SQL.Abs.ScalarFunc
+pScalarFunc = fmap snd . pScalarFunc_internal
 
 pSearchCond :: [Token] -> Err HStream.SQL.Abs.SearchCond
 pSearchCond = fmap snd . pSearchCond_internal

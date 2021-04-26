@@ -11,7 +11,7 @@ import           Data.Text             as Text (Text, unpack)
 import qualified Data.Time             as Time
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
-import           HStream.SQL.Exception (Position, SomeSQLException (..),
+import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
 import           HStream.SQL.Print     (printTree)
 
@@ -24,6 +24,12 @@ class Refine a where
 --------------------------------------------------------------------------------
 type StreamName = Text
 type FieldName  = Text
+
+type RBool = Bool
+type instance RefinedType Boolean = RBool
+instance Refine Boolean where
+  refine (BoolTrue _ ) = True
+  refine (BoolFalse _) = False
 
 type RDate = Time.Day
 type instance RefinedType Date = RDate
@@ -49,13 +55,15 @@ instance Refine Interval where
 data Constant = ConstantInt       Int
               | ConstantNum       Double
               | ConstantString    String
+              | ConstantBool      Bool
               | ConstantDate      RDate
               | ConstantTime      RTime
               | ConstantInterval  RInterval
               -- TODO: Support Map and Arr
               deriving (Eq, Show)
 
-data BinaryOp = OpAdd | OpSub | OpMul deriving (Eq, Show)
+data BinaryOp = OpAdd | OpSub | OpMul | OpAnd | OpOr deriving (Eq, Show)
+data UnaryOp  = OpSin | OpAbs deriving (Eq, Show)
 
 data Aggregate = Nullary NullaryAggregate
                | Unary   UnaryAggregate RValueExpr
@@ -70,22 +78,26 @@ data UnaryAggregate   = AggCount
                       | AggMin
                       deriving (Eq, Show)
 
+
 type ExprName = String
 data RValueExpr = RExprCol       ExprName (Maybe StreamName) FieldName
                 | RExprConst     ExprName Constant
                 | RExprAggregate ExprName Aggregate
                 | RExprBinOp     ExprName BinaryOp RValueExpr RValueExpr
-                -- TODO: Add UnaryOp if needed
+                | RExprUnaryOp   ExprName UnaryOp  RValueExpr
                 deriving (Eq, Show)
 
 type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of a)
-  refine expr@(ExprAdd _ e1 e2)         = RExprBinOp  (printTree expr) OpAdd (refine e1) (refine e2)
-  refine expr@(ExprSub _ e1 e2)         = RExprBinOp  (printTree expr) OpSub (refine e1) (refine e2)
-  refine expr@(ExprMul _ e1 e2)         = RExprBinOp  (printTree expr) OpMul (refine e1) (refine e2)
+  refine expr@(ExprAdd _ e1 e2)         = RExprBinOp (printTree expr) OpAdd (refine e1) (refine e2)
+  refine expr@(ExprSub _ e1 e2)         = RExprBinOp (printTree expr) OpSub (refine e1) (refine e2)
+  refine expr@(ExprMul _ e1 e2)         = RExprBinOp (printTree expr) OpMul (refine e1) (refine e2)
+  refine expr@(ExprAnd _ e1 e2)         = RExprBinOp (printTree expr) OpAnd (refine e1) (refine e2)
+  refine expr@(ExprOr  _ e1 e2)         = RExprBinOp (printTree expr) OpOr  (refine e1) (refine e2)
   refine expr@(ExprInt _ n)             = RExprConst (printTree expr) (ConstantInt $ fromInteger n) -- WARNING: May lose presision
   refine expr@(ExprNum _ n)             = RExprConst (printTree expr) (ConstantNum n)
   refine expr@(ExprString _ s)          = RExprConst (printTree expr) (ConstantString s)
+  refine expr@(ExprBool _ b)            = RExprConst (printTree expr) (ConstantBool $ refine b)
   refine expr@(ExprDate _ date)         = RExprConst (printTree expr) (ConstantDate $ refine date)
   refine expr@(ExprTime _ time)         = RExprConst (printTree expr) (ConstantTime $ refine time)
   refine expr@(ExprInterval _ interval) = RExprConst (printTree expr) (ConstantInterval $ refine interval)
@@ -101,6 +113,8 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
   refine expr@(ExprSetFunc _ (SetFuncMin _ e )) = RExprAggregate (printTree expr) (Unary AggMin $ refine e)
   refine      (ExprArr pos _) = throwSQLException RefineException pos "Array constant is not supported yet"
   refine      (ExprMap pos _) = throwSQLException RefineException pos "Map constant is not supported yet"
+  refine expr@(ExprScalarFunc _ (ScalarFuncSin _ e)) = RExprUnaryOp (printTree expr) OpSin (refine e)
+  refine expr@(ExprScalarFunc _ (ScalarFuncAbs _ e)) = RExprUnaryOp (printTree expr) OpAbs (refine e)
 
 ---- Sel
 type FieldAlias = String
@@ -116,6 +130,7 @@ instance Refine DerivedCol where
     rexpr@(RExprCol   exprName _ _  ) -> Left  (rexpr, exprName)
     rexpr@(RExprConst exprName _    ) -> Left  (rexpr, exprName)
     rexpr@(RExprBinOp exprName _ _ _) -> Left  (rexpr, exprName)
+    rexpr@(RExprUnaryOp exprName _ _) -> Left  (rexpr, exprName)
   refine (DerivedColAs pos expr (Ident t)) = case refine (DerivedColSimpl pos expr) of
     Left  (rexpr, _) -> Left  (rexpr, Text.unpack t)
     Right (agg, _)   -> Right (agg, Text.unpack t)

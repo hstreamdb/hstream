@@ -91,23 +91,32 @@ DHaving.      Having ::= "HAVING" SearchCond ;
 --------------------------------------------------------------------------------
 
 ---- Value Expression
+-- Boolean Expr
+ExprOr.  ValueExpr  ::= ValueExpr  "||" ValueExpr1 ;
+ExprAnd. ValueExpr1 ::= ValueExpr1 "&&" ValueExpr2 ;
+
 -- Arith Expr
-ExprAdd. ValueExpr  ::= ValueExpr  "+" ValueExpr1 ;
-ExprSub. ValueExpr  ::= ValueExpr  "-" ValueExpr1 ;
-ExprMul. ValueExpr1 ::= ValueExpr1 "*" ValueExpr2 ;
+ExprAdd. ValueExpr2 ::= ValueExpr2 "+" ValueExpr3 ;
+ExprSub. ValueExpr2 ::= ValueExpr2 "-" ValueExpr3 ;
+ExprMul. ValueExpr3 ::= ValueExpr3 "*" ValueExpr4 ;
 
 -- Scalar Numeric Type
-ExprInt. ValueExpr2 ::= Integer ;
-ExprNum. ValueExpr2 ::= Double  ;
+ExprInt. ValueExpr4 ::= Integer ;
+ExprNum. ValueExpr4 ::= Double  ;
 
 -- Plain String
-ExprString. ValueExpr2 ::= String ;
+ExprString. ValueExpr4 ::= String ;
+
+-- Boolean Type
+BoolTrue.  Boolean ::= "TRUE"  ;
+BoolFalse. Boolean ::= "FALSE" ;
+ExprBool. ValueExpr4 ::= Boolean ;
 
 -- Date, Time and Interval
 DDate. Date ::= "DATE" Integer "-" Integer "-" Integer ;
 DTime. Time ::= "TIME" Integer ":" Integer ":" Integer ;
-ExprDate. ValueExpr2 ::= Date ;
-ExprTime. ValueExpr2 ::= Time ;
+ExprDate. ValueExpr4 ::= Date ;
+ExprTime. ValueExpr4 ::= Time ;
 
 TimeUnitYear.  TimeUnit ::= "YEAR"   ;
 TimeUnitMonth. TimeUnit ::= "MONTH"  ;
@@ -117,7 +126,7 @@ TimeUnitMin.   TimeUnit ::= "MINUTE" ;
 TimeUnitSec.   TimeUnit ::= "SECOND" ;
 
 DInterval. Interval ::= "INTERVAL" Integer TimeUnit ;
-ExprInterval. ValueExpr2 ::= Interval ;
+ExprInterval. ValueExpr4 ::= Interval ;
 
 -- Non-Scalar Type (Array and Map)
 ExprArr. ValueExpr ::= "[" [ValueExpr] "]" ;
@@ -131,7 +140,7 @@ ColNameSimple. ColName ::= Ident ;
 ColNameStream. ColName ::= Ident "." Ident ;
 ColNameInner.  ColName ::= ColName "[" Ident "]" ;
 ColNameIndex.  ColName ::= ColName "[" Integer "]" ;
-ExprColName. ValueExpr2 ::= ColName ;
+ExprColName. ValueExpr4 ::= ColName ;
 
 -- Set Functions
 SetFuncCountAll. SetFunc ::= "COUNT(*)" ;
@@ -140,9 +149,14 @@ SetFuncAvg.      SetFunc ::= "AVG"   "(" ValueExpr ")" ;
 SetFuncSum.      SetFunc ::= "SUM"   "(" ValueExpr ")" ;
 SetFuncMax.      SetFunc ::= "MAX"   "(" ValueExpr ")" ;
 SetFuncMin.      SetFunc ::= "MIN"   "(" ValueExpr ")" ;
-ExprSetFunc. ValueExpr2 ::= SetFunc ;
+ExprSetFunc. ValueExpr4 ::= SetFunc ;
 
-coercions ValueExpr 2 ;
+-- Scalar Functions
+ScalarFuncSin. ScalarFunc ::= "SIN" "(" ValueExpr ")" ;
+ScalarFuncAbs. ScalarFunc ::= "ABS" "(" ValueExpr ")" ;
+ExprScalarFunc. ValueExpr ::= ScalarFunc ;
+
+coercions ValueExpr 4 ;
 
 
 ---- Search Condition

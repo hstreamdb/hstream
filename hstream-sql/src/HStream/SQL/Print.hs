@@ -233,22 +233,31 @@ instance Print (HStream.SQL.Abs.Having' a) where
 
 instance Print (HStream.SQL.Abs.ValueExpr' a) where
   prt i = \case
-    HStream.SQL.Abs.ExprAdd _ valueexpr1 valueexpr2 -> prPrec i 0 (concatD [prt 0 valueexpr1, doc (showString "+"), prt 1 valueexpr2])
-    HStream.SQL.Abs.ExprSub _ valueexpr1 valueexpr2 -> prPrec i 0 (concatD [prt 0 valueexpr1, doc (showString "-"), prt 1 valueexpr2])
-    HStream.SQL.Abs.ExprMul _ valueexpr1 valueexpr2 -> prPrec i 1 (concatD [prt 1 valueexpr1, doc (showString "*"), prt 2 valueexpr2])
-    HStream.SQL.Abs.ExprInt _ n -> prPrec i 2 (concatD [prt 0 n])
-    HStream.SQL.Abs.ExprNum _ d -> prPrec i 2 (concatD [prt 0 d])
-    HStream.SQL.Abs.ExprString _ str -> prPrec i 2 (concatD [prt 0 str])
-    HStream.SQL.Abs.ExprDate _ date -> prPrec i 2 (concatD [prt 0 date])
-    HStream.SQL.Abs.ExprTime _ time -> prPrec i 2 (concatD [prt 0 time])
-    HStream.SQL.Abs.ExprInterval _ interval -> prPrec i 2 (concatD [prt 0 interval])
+    HStream.SQL.Abs.ExprOr _ valueexpr1 valueexpr2 -> prPrec i 0 (concatD [prt 0 valueexpr1, doc (showString "||"), prt 1 valueexpr2])
+    HStream.SQL.Abs.ExprAnd _ valueexpr1 valueexpr2 -> prPrec i 1 (concatD [prt 1 valueexpr1, doc (showString "&&"), prt 2 valueexpr2])
+    HStream.SQL.Abs.ExprAdd _ valueexpr1 valueexpr2 -> prPrec i 2 (concatD [prt 2 valueexpr1, doc (showString "+"), prt 3 valueexpr2])
+    HStream.SQL.Abs.ExprSub _ valueexpr1 valueexpr2 -> prPrec i 2 (concatD [prt 2 valueexpr1, doc (showString "-"), prt 3 valueexpr2])
+    HStream.SQL.Abs.ExprMul _ valueexpr1 valueexpr2 -> prPrec i 3 (concatD [prt 3 valueexpr1, doc (showString "*"), prt 4 valueexpr2])
+    HStream.SQL.Abs.ExprInt _ n -> prPrec i 4 (concatD [prt 0 n])
+    HStream.SQL.Abs.ExprNum _ d -> prPrec i 4 (concatD [prt 0 d])
+    HStream.SQL.Abs.ExprString _ str -> prPrec i 4 (concatD [prt 0 str])
+    HStream.SQL.Abs.ExprBool _ boolean -> prPrec i 4 (concatD [prt 0 boolean])
+    HStream.SQL.Abs.ExprDate _ date -> prPrec i 4 (concatD [prt 0 date])
+    HStream.SQL.Abs.ExprTime _ time -> prPrec i 4 (concatD [prt 0 time])
+    HStream.SQL.Abs.ExprInterval _ interval -> prPrec i 4 (concatD [prt 0 interval])
     HStream.SQL.Abs.ExprArr _ valueexprs -> prPrec i 0 (concatD [doc (showString "["), prt 0 valueexprs, doc (showString "]")])
     HStream.SQL.Abs.ExprMap _ labelledvalueexprs -> prPrec i 0 (concatD [doc (showString "{"), prt 0 labelledvalueexprs, doc (showString "}")])
-    HStream.SQL.Abs.ExprColName _ colname -> prPrec i 2 (concatD [prt 0 colname])
-    HStream.SQL.Abs.ExprSetFunc _ setfunc -> prPrec i 2 (concatD [prt 0 setfunc])
+    HStream.SQL.Abs.ExprColName _ colname -> prPrec i 4 (concatD [prt 0 colname])
+    HStream.SQL.Abs.ExprSetFunc _ setfunc -> prPrec i 4 (concatD [prt 0 setfunc])
+    HStream.SQL.Abs.ExprScalarFunc _ scalarfunc -> prPrec i 0 (concatD [prt 0 scalarfunc])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
+
+instance Print (HStream.SQL.Abs.Boolean' a) where
+  prt i = \case
+    HStream.SQL.Abs.BoolTrue _ -> prPrec i 0 (concatD [doc (showString "TRUE")])
+    HStream.SQL.Abs.BoolFalse _ -> prPrec i 0 (concatD [doc (showString "FALSE")])
 
 instance Print (HStream.SQL.Abs.Date' a) where
   prt i = \case
@@ -296,6 +305,11 @@ instance Print (HStream.SQL.Abs.SetFunc' a) where
     HStream.SQL.Abs.SetFuncSum _ valueexpr -> prPrec i 0 (concatD [doc (showString "SUM"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
     HStream.SQL.Abs.SetFuncMax _ valueexpr -> prPrec i 0 (concatD [doc (showString "MAX"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
     HStream.SQL.Abs.SetFuncMin _ valueexpr -> prPrec i 0 (concatD [doc (showString "MIN"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
+
+instance Print (HStream.SQL.Abs.ScalarFunc' a) where
+  prt i = \case
+    HStream.SQL.Abs.ScalarFuncSin _ valueexpr -> prPrec i 0 (concatD [doc (showString "SIN"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
+    HStream.SQL.Abs.ScalarFuncAbs _ valueexpr -> prPrec i 0 (concatD [doc (showString "ABS"), doc (showString "("), prt 0 valueexpr, doc (showString ")")])
 
 instance Print (HStream.SQL.Abs.SearchCond' a) where
   prt i = \case
