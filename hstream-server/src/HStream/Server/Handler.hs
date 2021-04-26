@@ -35,12 +35,12 @@ import           HStream.Store                     (AdminClient,
                                                     Producer,
                                                     ProducerConfig (..),
                                                     ProducerRecord (..),
+                                                    TopicAttrs (..),
                                                     createTopics, dataOutValue,
                                                     doesTopicExists,
                                                     mkAdminClient, mkConsumer,
                                                     mkProducer, pollMessages,
                                                     sendMessage)
-import qualified HStream.Store.Stream              as S
 import           RIO                               (logOptionsHandle, stderr,
                                                     withLogFunc)
 import           System.IO.Unsafe                  (unsafePerformIO)
@@ -112,7 +112,7 @@ executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
       return (ServerNormalResponse resp [] StatusUnknown "")
     Right (CreatePlan topic)                     -> do
       e' <- try $ createTopics admin
-            (M.fromList [(CB.pack . T.unpack $ topic, S.TopicAttrs topicRepFactor)])
+            (M.fromList [(CB.pack . T.unpack $ topic, TopicAttrs topicRepFactor Map.empty)])
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating topic"
@@ -122,7 +122,7 @@ executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
           return (ServerNormalResponse resp [] StatusOk "")
     Right (CreateBySelectPlan sources sink task) -> do
       e' <- try $ createTopics admin
-            (M.fromList [(CB.pack . T.unpack $ sink, S.TopicAttrs topicRepFactor)])
+            (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating topic"
@@ -172,7 +172,7 @@ executePushQueryHandler (ServerWriterRequest _metadata CommandPushQuery{..} stre
       case and exists of
           False -> return (ServerWriterResponse [] StatusAborted "some source topic do not exist")
           True  -> do
-            e' <- try $ createTopics admin (M.fromList [(CB.pack . T.unpack $ sink, S.TopicAttrs topicRepFactor)])
+            e' <- try $ createTopics admin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
             case e' of
               Left (e :: SomeException) -> return (ServerWriterResponse [] StatusAborted "error when creating sink topic")
               Right _                   -> do
