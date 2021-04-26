@@ -83,7 +83,7 @@ data ConsumerRecord = ConsumerRecord
   , dataOutTimestamp :: Int64
   } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
 
-decodeRecord :: DataRecord -> ConsumerRecord
+decodeRecord :: HasCallStack => DataRecord -> ConsumerRecord
 decodeRecord DataRecord{..} = do
   case JSON.decode' recordPayload of
     Left _err -> error "JSON decode error!"
