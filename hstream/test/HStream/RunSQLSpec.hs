@@ -11,10 +11,9 @@ import           HStream.Processing.Util      (getCurrentTimestamp)
 import           HStream.SQL.Codegen
 import           HStream.Store                (AdminClient,
                                                AdminClientConfig (..), Consumer,
-                                               Producer, createTopics,
-                                               mkAdminClient)
+                                               Producer, TopicAttrs (..),
+                                               createTopics, mkAdminClient)
 import           HStream.Store.Logger
-import           HStream.Store.Stream         (TopicAttrs (..))
 import           RIO
 import           RIO.ByteString.Lazy          (fromStrict, toStrict)
 import qualified RIO.ByteString.Lazy          as BL
@@ -123,7 +122,7 @@ handleCreateStreamSQL sql = do
   case plan of
     CreatePlan topicName ->
       createTopics adminClient
-      (Map.singleton (CB.pack . Text.unpack $ topicName) TopicAttrs {replicationFactor = 3})
+      (Map.singleton (CB.pack . Text.unpack $ topicName) TopicAttrs {replicationFactor = 3, extraTopicAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
 
 
