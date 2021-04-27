@@ -64,6 +64,7 @@ library
 
   other-modules:
     HStream.Store.Internal.FFI
+    HStream.Store.Internal.LogGroup
     HStream.Store.Internal.Types
 
   build-depends:
