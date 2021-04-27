@@ -93,5 +93,6 @@ jobs:
             python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
           done
 
-          echo "====== cabal haddock ======"
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock --flag server-tests --enable-tests --enable-benchmarks all
+      # TODO
+      #- name: haddock
+      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock --enable-tests --enable-benchmarks all
