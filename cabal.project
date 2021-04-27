@@ -2,6 +2,7 @@ packages:
   hstream
   hstream-hesp
   hstream-store
+  hstream-store/gen
   hstream-processing
   hstream-sql
   hstream-server
@@ -12,3 +13,8 @@ packages:
   external/gRPC-haskell/core
   external/proto3-suite
   external/proto3-wire
+
+  external/hsthrift/common/util/fb-util.cabal
+  external/hsthrift/common/github/fb-stubs.cabal
+  external/hsthrift/common/mangle/mangle.cabal
+  external/hsthrift/lib/thrift-lib.cabal
