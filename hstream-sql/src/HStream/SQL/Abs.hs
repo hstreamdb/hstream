@@ -182,7 +182,44 @@ data SetFunc' a
 
 type ScalarFunc = ScalarFunc' BNFC'Position
 data ScalarFunc' a
-    = ScalarFuncSin a (ValueExpr' a) | ScalarFuncAbs a (ValueExpr' a)
+    = ScalarFuncSin a (ValueExpr' a)
+    | ScalarFuncSinh a (ValueExpr' a)
+    | ScalarFuncAsin a (ValueExpr' a)
+    | ScalarFuncAsinh a (ValueExpr' a)
+    | ScalarFuncCos a (ValueExpr' a)
+    | ScalarFuncCosh a (ValueExpr' a)
+    | ScalarFuncAcos a (ValueExpr' a)
+    | ScalarFuncAcosh a (ValueExpr' a)
+    | ScalarFuncTan a (ValueExpr' a)
+    | ScalarFuncTanh a (ValueExpr' a)
+    | ScalarFuncAtan a (ValueExpr' a)
+    | ScalarFuncAtanh a (ValueExpr' a)
+    | ScalarFuncAbs a (ValueExpr' a)
+    | ScalarFuncCeil a (ValueExpr' a)
+    | ScalarFuncFloor a (ValueExpr' a)
+    | ScalarFuncRound a (ValueExpr' a)
+    | ScalarFuncSqrt a (ValueExpr' a)
+    | ScalarFuncLog a (ValueExpr' a)
+    | ScalarFuncLog2 a (ValueExpr' a)
+    | ScalarFuncLog10 a (ValueExpr' a)
+    | ScalarFuncExp a (ValueExpr' a)
+    | ScalarFuncIsInt a (ValueExpr' a)
+    | ScalarFuncIsFloat a (ValueExpr' a)
+    | ScalarFuncIsNum a (ValueExpr' a)
+    | ScalarFuncIsBool a (ValueExpr' a)
+    | ScalarFuncIsStr a (ValueExpr' a)
+    | ScalarFuncIsMap a (ValueExpr' a)
+    | ScalarFuncIsArr a (ValueExpr' a)
+    | ScalarFuncIsDate a (ValueExpr' a)
+    | ScalarFuncIsTime a (ValueExpr' a)
+    | ScalarFuncToStr a (ValueExpr' a)
+    | ScalarFuncToLower a (ValueExpr' a)
+    | ScalarFuncToUpper a (ValueExpr' a)
+    | ScalarFuncTrim a (ValueExpr' a)
+    | ScalarFuncLTrim a (ValueExpr' a)
+    | ScalarFuncRTrim a (ValueExpr' a)
+    | ScalarFuncRev a (ValueExpr' a)
+    | ScalarFuncStrlen a (ValueExpr' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type SearchCond = SearchCond' BNFC'Position
@@ -378,7 +415,43 @@ instance HasPosition SetFunc where
 instance HasPosition ScalarFunc where
   hasPosition = \case
     ScalarFuncSin p _ -> p
+    ScalarFuncSinh p _ -> p
+    ScalarFuncAsin p _ -> p
+    ScalarFuncAsinh p _ -> p
+    ScalarFuncCos p _ -> p
+    ScalarFuncCosh p _ -> p
+    ScalarFuncAcos p _ -> p
+    ScalarFuncAcosh p _ -> p
+    ScalarFuncTan p _ -> p
+    ScalarFuncTanh p _ -> p
+    ScalarFuncAtan p _ -> p
+    ScalarFuncAtanh p _ -> p
     ScalarFuncAbs p _ -> p
+    ScalarFuncCeil p _ -> p
+    ScalarFuncFloor p _ -> p
+    ScalarFuncRound p _ -> p
+    ScalarFuncSqrt p _ -> p
+    ScalarFuncLog p _ -> p
+    ScalarFuncLog2 p _ -> p
+    ScalarFuncLog10 p _ -> p
+    ScalarFuncExp p _ -> p
+    ScalarFuncIsInt p _ -> p
+    ScalarFuncIsFloat p _ -> p
+    ScalarFuncIsNum p _ -> p
+    ScalarFuncIsBool p _ -> p
+    ScalarFuncIsStr p _ -> p
+    ScalarFuncIsMap p _ -> p
+    ScalarFuncIsArr p _ -> p
+    ScalarFuncIsDate p _ -> p
+    ScalarFuncIsTime p _ -> p
+    ScalarFuncToStr p _ -> p
+    ScalarFuncToLower p _ -> p
+    ScalarFuncToUpper p _ -> p
+    ScalarFuncTrim p _ -> p
+    ScalarFuncLTrim p _ -> p
+    ScalarFuncRTrim p _ -> p
+    ScalarFuncRev p _ -> p
+    ScalarFuncStrlen p _ -> p
 
 instance HasPosition SearchCond where
   hasPosition = \case

@@ -35,6 +35,7 @@ library
                     HStream.SQL.Preprocess
                     HStream.SQL.Print
                     HStream.SQL.Validate
+                    HStream.SQL.Validate.Utils
                     HStream.SQL.Codegen.Boilerplate
                     HStream.SQL.Codegen.Utils
   hs-source-dirs:   src
