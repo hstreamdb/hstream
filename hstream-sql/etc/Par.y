@@ -123,58 +123,94 @@ import qualified Data.Text
   '>' { PT _ (TS _ 15) }
   '>=' { PT _ (TS _ 16) }
   'ABS' { PT _ (TS _ 17) }
-  'AND' { PT _ (TS _ 18) }
-  'AS' { PT _ (TS _ 19) }
-  'AVG' { PT _ (TS _ 20) }
-  'BETWEEN' { PT _ (TS _ 21) }
-  'BY' { PT _ (TS _ 22) }
-  'CHANGES' { PT _ (TS _ 23) }
-  'COUNT' { PT _ (TS _ 24) }
-  'COUNT(*)' { PT _ (TS _ 25) }
-  'CREATE' { PT _ (TS _ 26) }
-  'DATE' { PT _ (TS _ 27) }
-  'DAY' { PT _ (TS _ 28) }
-  'EMIT' { PT _ (TS _ 29) }
-  'FALSE' { PT _ (TS _ 30) }
-  'FORMAT' { PT _ (TS _ 31) }
-  'FROM' { PT _ (TS _ 32) }
-  'GROUP' { PT _ (TS _ 33) }
-  'HAVING' { PT _ (TS _ 34) }
-  'HOPPING' { PT _ (TS _ 35) }
-  'INNER' { PT _ (TS _ 36) }
-  'INSERT' { PT _ (TS _ 37) }
-  'INTERVAL' { PT _ (TS _ 38) }
-  'INTO' { PT _ (TS _ 39) }
-  'JOIN' { PT _ (TS _ 40) }
-  'LEFT' { PT _ (TS _ 41) }
-  'MAX' { PT _ (TS _ 42) }
-  'MIN' { PT _ (TS _ 43) }
-  'MINUTE' { PT _ (TS _ 44) }
-  'MONTH' { PT _ (TS _ 45) }
-  'NOT' { PT _ (TS _ 46) }
-  'ON' { PT _ (TS _ 47) }
-  'OR' { PT _ (TS _ 48) }
-  'OUTER' { PT _ (TS _ 49) }
-  'SECOND' { PT _ (TS _ 50) }
-  'SELECT' { PT _ (TS _ 51) }
-  'SESSION' { PT _ (TS _ 52) }
-  'SIN' { PT _ (TS _ 53) }
-  'STREAM' { PT _ (TS _ 54) }
-  'SUM' { PT _ (TS _ 55) }
-  'TIME' { PT _ (TS _ 56) }
-  'TRUE' { PT _ (TS _ 57) }
-  'TUMBLING' { PT _ (TS _ 58) }
-  'VALUES' { PT _ (TS _ 59) }
-  'WEEK' { PT _ (TS _ 60) }
-  'WHERE' { PT _ (TS _ 61) }
-  'WITH' { PT _ (TS _ 62) }
-  'WITHIN' { PT _ (TS _ 63) }
-  'YEAR' { PT _ (TS _ 64) }
-  '[' { PT _ (TS _ 65) }
-  ']' { PT _ (TS _ 66) }
-  '{' { PT _ (TS _ 67) }
-  '||' { PT _ (TS _ 68) }
-  '}' { PT _ (TS _ 69) }
+  'ACOS' { PT _ (TS _ 18) }
+  'ACOSH' { PT _ (TS _ 19) }
+  'AND' { PT _ (TS _ 20) }
+  'AS' { PT _ (TS _ 21) }
+  'ASIN' { PT _ (TS _ 22) }
+  'ASINH' { PT _ (TS _ 23) }
+  'ATAN' { PT _ (TS _ 24) }
+  'ATANH' { PT _ (TS _ 25) }
+  'AVG' { PT _ (TS _ 26) }
+  'BETWEEN' { PT _ (TS _ 27) }
+  'BY' { PT _ (TS _ 28) }
+  'CEIL' { PT _ (TS _ 29) }
+  'CHANGES' { PT _ (TS _ 30) }
+  'COS' { PT _ (TS _ 31) }
+  'COSH' { PT _ (TS _ 32) }
+  'COUNT' { PT _ (TS _ 33) }
+  'COUNT(*)' { PT _ (TS _ 34) }
+  'CREATE' { PT _ (TS _ 35) }
+  'DATE' { PT _ (TS _ 36) }
+  'DAY' { PT _ (TS _ 37) }
+  'EMIT' { PT _ (TS _ 38) }
+  'EXP' { PT _ (TS _ 39) }
+  'FALSE' { PT _ (TS _ 40) }
+  'FLOOR' { PT _ (TS _ 41) }
+  'FORMAT' { PT _ (TS _ 42) }
+  'FROM' { PT _ (TS _ 43) }
+  'GROUP' { PT _ (TS _ 44) }
+  'HAVING' { PT _ (TS _ 45) }
+  'HOPPING' { PT _ (TS _ 46) }
+  'INNER' { PT _ (TS _ 47) }
+  'INSERT' { PT _ (TS _ 48) }
+  'INTERVAL' { PT _ (TS _ 49) }
+  'INTO' { PT _ (TS _ 50) }
+  'IS_ARRAY' { PT _ (TS _ 51) }
+  'IS_BOOL' { PT _ (TS _ 52) }
+  'IS_DATE' { PT _ (TS _ 53) }
+  'IS_FLOAT' { PT _ (TS _ 54) }
+  'IS_INT' { PT _ (TS _ 55) }
+  'IS_MAP' { PT _ (TS _ 56) }
+  'IS_NUM' { PT _ (TS _ 57) }
+  'IS_STR' { PT _ (TS _ 58) }
+  'IS_TIME' { PT _ (TS _ 59) }
+  'JOIN' { PT _ (TS _ 60) }
+  'LEFT' { PT _ (TS _ 61) }
+  'LEFT_TRIM' { PT _ (TS _ 62) }
+  'LOG' { PT _ (TS _ 63) }
+  'LOG10' { PT _ (TS _ 64) }
+  'LOG2' { PT _ (TS _ 65) }
+  'MAX' { PT _ (TS _ 66) }
+  'MIN' { PT _ (TS _ 67) }
+  'MINUTE' { PT _ (TS _ 68) }
+  'MONTH' { PT _ (TS _ 69) }
+  'NOT' { PT _ (TS _ 70) }
+  'ON' { PT _ (TS _ 71) }
+  'OR' { PT _ (TS _ 72) }
+  'OUTER' { PT _ (TS _ 73) }
+  'REVERSE' { PT _ (TS _ 74) }
+  'RIGHT_TRIM' { PT _ (TS _ 75) }
+  'ROUND' { PT _ (TS _ 76) }
+  'SECOND' { PT _ (TS _ 77) }
+  'SELECT' { PT _ (TS _ 78) }
+  'SESSION' { PT _ (TS _ 79) }
+  'SIN' { PT _ (TS _ 80) }
+  'SINH' { PT _ (TS _ 81) }
+  'SQRT' { PT _ (TS _ 82) }
+  'STREAM' { PT _ (TS _ 83) }
+  'STRLEN' { PT _ (TS _ 84) }
+  'SUM' { PT _ (TS _ 85) }
+  'TAN' { PT _ (TS _ 86) }
+  'TANH' { PT _ (TS _ 87) }
+  'TIME' { PT _ (TS _ 88) }
+  'TO_LOWER' { PT _ (TS _ 89) }
+  'TO_STR' { PT _ (TS _ 90) }
+  'TO_UPPER' { PT _ (TS _ 91) }
+  'TRIM' { PT _ (TS _ 92) }
+  'TRUE' { PT _ (TS _ 93) }
+  'TUMBLING' { PT _ (TS _ 94) }
+  'VALUES' { PT _ (TS _ 95) }
+  'WEEK' { PT _ (TS _ 96) }
+  'WHERE' { PT _ (TS _ 97) }
+  'WITH' { PT _ (TS _ 98) }
+  'WITHIN' { PT _ (TS _ 99) }
+  'YEAR' { PT _ (TS _ 100) }
+  '[' { PT _ (TS _ 101) }
+  ']' { PT _ (TS _ 102) }
+  '{' { PT _ (TS _ 103) }
+  '||' { PT _ (TS _ 104) }
+  '}' { PT _ (TS _ 105) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -370,7 +406,43 @@ SetFunc : 'COUNT(*)' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1),
 
 ScalarFunc :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ScalarFunc) }
 ScalarFunc : 'SIN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncSin (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'SINH' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncSinh (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ASIN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAsin (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ASINH' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAsinh (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'COS' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncCos (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'COSH' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncCosh (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ACOS' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAcos (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ACOSH' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAcosh (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'TAN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncTan (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'TANH' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncTanh (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ATAN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAtan (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ATANH' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAtanh (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
            | 'ABS' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncAbs (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'CEIL' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncCeil (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'FLOOR' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncFloor (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'ROUND' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncRound (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'SQRT' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncSqrt (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'LOG' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncLog (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'LOG2' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncLog2 (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'LOG10' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncLog10 (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'EXP' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncExp (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_INT' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsInt (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_FLOAT' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsFloat (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_NUM' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsNum (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_BOOL' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsBool (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_STR' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsStr (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_MAP' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsMap (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_ARRAY' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsArr (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_DATE' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsDate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'IS_TIME' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncIsTime (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'TO_STR' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncToStr (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'TO_LOWER' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncToLower (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'TO_UPPER' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncToUpper (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'TRIM' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncTrim (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'LEFT_TRIM' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncLTrim (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'RIGHT_TRIM' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncRTrim (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'REVERSE' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncRev (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+           | 'STRLEN' '(' ValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ScalarFuncStrlen (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
 
 SearchCond :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SearchCond) }
 SearchCond : SearchCond 'OR' SearchCond1 { (fst $1, HStream.SQL.Abs.CondOr (fst $1) (snd $1) (snd $3)) }

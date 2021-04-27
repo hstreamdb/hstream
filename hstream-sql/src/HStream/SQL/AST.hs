@@ -63,7 +63,17 @@ data Constant = ConstantInt       Int
               deriving (Eq, Show)
 
 data BinaryOp = OpAdd | OpSub | OpMul | OpAnd | OpOr deriving (Eq, Show)
-data UnaryOp  = OpSin | OpAbs deriving (Eq, Show)
+
+data UnaryOp  = OpSin     | OpSinh    | OpAsin  | OpAsinh  | OpCos   | OpCosh
+              | OpAcos    | OpAcosh   | OpTan   | OpTanh   | OpAtan  | OpAtanh
+              | OpAbs     | OpCeil    | OpFloor | OpRound
+              | OpSqrt    | OpLog     | OpLog2  | OpLog10  | OpExp
+              | OpIsInt   | OpIsFloat | OpIsNum | OpIsBool | OpIsStr | OpIsMap
+              | OpIsArr   | OpIsDate  | OpIsTime
+              | OpToStr
+              | OpToLower | OpToUpper | OpTrim  | OpLTrim  | OpRTrim
+              | OpReverse | OpStrLen
+              deriving (Eq, Show)
 
 data Aggregate = Nullary NullaryAggregate
                | Unary   UnaryAggregate RValueExpr
@@ -89,32 +99,69 @@ data RValueExpr = RExprCol       ExprName (Maybe StreamName) FieldName
 
 type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of a)
-  refine expr@(ExprAdd _ e1 e2)         = RExprBinOp (printTree expr) OpAdd (refine e1) (refine e2)
-  refine expr@(ExprSub _ e1 e2)         = RExprBinOp (printTree expr) OpSub (refine e1) (refine e2)
-  refine expr@(ExprMul _ e1 e2)         = RExprBinOp (printTree expr) OpMul (refine e1) (refine e2)
-  refine expr@(ExprAnd _ e1 e2)         = RExprBinOp (printTree expr) OpAnd (refine e1) (refine e2)
-  refine expr@(ExprOr  _ e1 e2)         = RExprBinOp (printTree expr) OpOr  (refine e1) (refine e2)
-  refine expr@(ExprInt _ n)             = RExprConst (printTree expr) (ConstantInt $ fromInteger n) -- WARNING: May lose presision
-  refine expr@(ExprNum _ n)             = RExprConst (printTree expr) (ConstantNum n)
-  refine expr@(ExprString _ s)          = RExprConst (printTree expr) (ConstantString s)
-  refine expr@(ExprBool _ b)            = RExprConst (printTree expr) (ConstantBool $ refine b)
-  refine expr@(ExprDate _ date)         = RExprConst (printTree expr) (ConstantDate $ refine date)
-  refine expr@(ExprTime _ time)         = RExprConst (printTree expr) (ConstantTime $ refine time)
-  refine expr@(ExprInterval _ interval) = RExprConst (printTree expr) (ConstantInterval $ refine interval)
-  refine expr@(ExprColName _ (ColNameSimple _ (Ident t))) = RExprCol (printTree expr) Nothing t
-  refine expr@(ExprColName _ (ColNameStream _ (Ident s) (Ident f))) = RExprCol (printTree expr) (Just s) f
-  refine      (ExprColName pos ColNameIndex{}) = throwSQLException RefineException pos "Nested column name is not supported yet"
-  refine      (ExprColName pos ColNameInner{}) = throwSQLException RefineException pos "Nested column name is not supported yet"
-  refine expr@(ExprSetFunc _ (SetFuncCountAll _)) = RExprAggregate (printTree expr) (Nullary AggCountAll)
-  refine expr@(ExprSetFunc _ (SetFuncCount _ e )) = RExprAggregate (printTree expr) (Unary AggCount $ refine e)
-  refine expr@(ExprSetFunc _ (SetFuncAvg _ e )) = RExprAggregate (printTree expr) (Unary AggAvg $ refine e)
-  refine expr@(ExprSetFunc _ (SetFuncSum _ e )) = RExprAggregate (printTree expr) (Unary AggSum $ refine e)
-  refine expr@(ExprSetFunc _ (SetFuncMax _ e )) = RExprAggregate (printTree expr) (Unary AggMax $ refine e)
-  refine expr@(ExprSetFunc _ (SetFuncMin _ e )) = RExprAggregate (printTree expr) (Unary AggMin $ refine e)
-  refine      (ExprArr pos _) = throwSQLException RefineException pos "Array constant is not supported yet"
-  refine      (ExprMap pos _) = throwSQLException RefineException pos "Map constant is not supported yet"
-  refine expr@(ExprScalarFunc _ (ScalarFuncSin _ e)) = RExprUnaryOp (printTree expr) OpSin (refine e)
-  refine expr@(ExprScalarFunc _ (ScalarFuncAbs _ e)) = RExprUnaryOp (printTree expr) OpAbs (refine e)
+  refine expr = case expr of
+    (ExprAdd _ e1 e2)         -> RExprBinOp (printTree expr) OpAdd (refine e1) (refine e2)
+    (ExprSub _ e1 e2)         -> RExprBinOp (printTree expr) OpSub (refine e1) (refine e2)
+    (ExprMul _ e1 e2)         -> RExprBinOp (printTree expr) OpMul (refine e1) (refine e2)
+    (ExprAnd _ e1 e2)         -> RExprBinOp (printTree expr) OpAnd (refine e1) (refine e2)
+    (ExprOr  _ e1 e2)         -> RExprBinOp (printTree expr) OpOr  (refine e1) (refine e2)
+    (ExprInt _ n)             -> RExprConst (printTree expr) (ConstantInt $ fromInteger n) -- WARNING: May lose presision
+    (ExprNum _ n)             -> RExprConst (printTree expr) (ConstantNum n)
+    (ExprString _ s)          -> RExprConst (printTree expr) (ConstantString s)
+    (ExprBool _ b)            -> RExprConst (printTree expr) (ConstantBool $ refine b)
+    (ExprDate _ date)         -> RExprConst (printTree expr) (ConstantDate $ refine date)
+    (ExprTime _ time)         -> RExprConst (printTree expr) (ConstantTime $ refine time)
+    (ExprInterval _ interval) -> RExprConst (printTree expr) (ConstantInterval $ refine interval)
+    (ExprColName _ (ColNameSimple _ (Ident t))) -> RExprCol (printTree expr) Nothing t
+    (ExprColName _ (ColNameStream _ (Ident s) (Ident f))) -> RExprCol (printTree expr) (Just s) f
+    (ExprColName pos ColNameIndex{}) -> throwSQLException RefineException pos "Nested column name is not supported yet"
+    (ExprColName pos ColNameInner{}) -> throwSQLException RefineException pos "Nested column name is not supported yet"
+    (ExprSetFunc _ (SetFuncCountAll _)) -> RExprAggregate (printTree expr) (Nullary AggCountAll)
+    (ExprSetFunc _ (SetFuncCount _ e )) -> RExprAggregate (printTree expr) (Unary AggCount $ refine e)
+    (ExprSetFunc _ (SetFuncAvg _ e )) -> RExprAggregate (printTree expr) (Unary AggAvg $ refine e)
+    (ExprSetFunc _ (SetFuncSum _ e )) -> RExprAggregate (printTree expr) (Unary AggSum $ refine e)
+    (ExprSetFunc _ (SetFuncMax _ e )) -> RExprAggregate (printTree expr) (Unary AggMax $ refine e)
+    (ExprSetFunc _ (SetFuncMin _ e )) -> RExprAggregate (printTree expr) (Unary AggMin $ refine e)
+    (ExprArr pos _) -> throwSQLException RefineException pos "Array constant is not supported yet"
+    (ExprMap pos _) -> throwSQLException RefineException pos "Map constant is not supported yet"
+    (ExprScalarFunc _ (ScalarFuncSin     _ e)) -> RExprUnaryOp (printTree expr) OpSin     (refine e)
+    (ExprScalarFunc _ (ScalarFuncSinh    _ e)) -> RExprUnaryOp (printTree expr) OpSinh    (refine e)
+    (ExprScalarFunc _ (ScalarFuncAsin    _ e)) -> RExprUnaryOp (printTree expr) OpAsin    (refine e)
+    (ExprScalarFunc _ (ScalarFuncAsinh   _ e)) -> RExprUnaryOp (printTree expr) OpAsinh   (refine e)
+    (ExprScalarFunc _ (ScalarFuncCos     _ e)) -> RExprUnaryOp (printTree expr) OpCos     (refine e)
+    (ExprScalarFunc _ (ScalarFuncCosh    _ e)) -> RExprUnaryOp (printTree expr) OpCosh    (refine e)
+    (ExprScalarFunc _ (ScalarFuncAcos    _ e)) -> RExprUnaryOp (printTree expr) OpAcos    (refine e)
+    (ExprScalarFunc _ (ScalarFuncAcosh   _ e)) -> RExprUnaryOp (printTree expr) OpAcosh   (refine e)
+    (ExprScalarFunc _ (ScalarFuncTan     _ e)) -> RExprUnaryOp (printTree expr) OpTan     (refine e)
+    (ExprScalarFunc _ (ScalarFuncTanh    _ e)) -> RExprUnaryOp (printTree expr) OpTanh    (refine e)
+    (ExprScalarFunc _ (ScalarFuncAtan    _ e)) -> RExprUnaryOp (printTree expr) OpAtan    (refine e)
+    (ExprScalarFunc _ (ScalarFuncAtanh   _ e)) -> RExprUnaryOp (printTree expr) OpAtanh   (refine e)
+    (ExprScalarFunc _ (ScalarFuncAbs     _ e)) -> RExprUnaryOp (printTree expr) OpAbs     (refine e)
+    (ExprScalarFunc _ (ScalarFuncCeil    _ e)) -> RExprUnaryOp (printTree expr) OpCeil    (refine e)
+    (ExprScalarFunc _ (ScalarFuncFloor   _ e)) -> RExprUnaryOp (printTree expr) OpFloor   (refine e)
+    (ExprScalarFunc _ (ScalarFuncRound   _ e)) -> RExprUnaryOp (printTree expr) OpRound   (refine e)
+    (ExprScalarFunc _ (ScalarFuncSqrt    _ e)) -> RExprUnaryOp (printTree expr) OpSqrt    (refine e)
+    (ExprScalarFunc _ (ScalarFuncLog     _ e)) -> RExprUnaryOp (printTree expr) OpLog     (refine e)
+    (ExprScalarFunc _ (ScalarFuncLog2    _ e)) -> RExprUnaryOp (printTree expr) OpLog2    (refine e)
+    (ExprScalarFunc _ (ScalarFuncLog10   _ e)) -> RExprUnaryOp (printTree expr) OpLog10   (refine e)
+    (ExprScalarFunc _ (ScalarFuncExp     _ e)) -> RExprUnaryOp (printTree expr) OpExp     (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsInt   _ e)) -> RExprUnaryOp (printTree expr) OpIsInt   (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsFloat _ e)) -> RExprUnaryOp (printTree expr) OpIsFloat (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsNum   _ e)) -> RExprUnaryOp (printTree expr) OpIsNum   (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsBool  _ e)) -> RExprUnaryOp (printTree expr) OpIsBool  (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsStr   _ e)) -> RExprUnaryOp (printTree expr) OpIsStr   (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsMap   _ e)) -> RExprUnaryOp (printTree expr) OpIsMap   (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsArr   _ e)) -> RExprUnaryOp (printTree expr) OpIsArr   (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsDate  _ e)) -> RExprUnaryOp (printTree expr) OpIsDate  (refine e)
+    (ExprScalarFunc _ (ScalarFuncIsTime  _ e)) -> RExprUnaryOp (printTree expr) OpIsTime  (refine e)
+    (ExprScalarFunc _ (ScalarFuncToStr   _ e)) -> RExprUnaryOp (printTree expr) OpToStr   (refine e)
+    (ExprScalarFunc _ (ScalarFuncToLower _ e)) -> RExprUnaryOp (printTree expr) OpToLower (refine e)
+    (ExprScalarFunc _ (ScalarFuncToUpper _ e)) -> RExprUnaryOp (printTree expr) OpToUpper (refine e)
+    (ExprScalarFunc _ (ScalarFuncTrim    _ e)) -> RExprUnaryOp (printTree expr) OpTrim    (refine e)
+    (ExprScalarFunc _ (ScalarFuncLTrim   _ e)) -> RExprUnaryOp (printTree expr) OpLTrim   (refine e)
+    (ExprScalarFunc _ (ScalarFuncRTrim   _ e)) -> RExprUnaryOp (printTree expr) OpRTrim   (refine e)
+    (ExprScalarFunc _ (ScalarFuncRev     _ e)) -> RExprUnaryOp (printTree expr) OpReverse (refine e)
+    (ExprScalarFunc _ (ScalarFuncStrlen  _ e)) -> RExprUnaryOp (printTree expr) OpStrLen  (refine e)
 
 ---- Sel
 type FieldAlias = String

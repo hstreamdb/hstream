@@ -9,7 +9,7 @@ import           Data.Text              (Text)
 import           GHC.Stack              (HasCallStack)
 import           HStream.SQL.AST        (RSQL, Refine (refine))
 import           HStream.SQL.Abs        (SQL)
-import           HStream.SQL.Exception  (Position, SomeSQLException (..),
+import           HStream.SQL.Exception  (SomeSQLException (..),
                                          throwSQLException)
 import           HStream.SQL.Lex        (tokens)
 import           HStream.SQL.Par        (pSQL)

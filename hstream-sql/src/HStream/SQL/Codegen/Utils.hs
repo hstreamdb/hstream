@@ -19,6 +19,7 @@ module HStream.SQL.Codegen.Utils
 import           Data.Aeson
 import qualified Data.HashMap.Strict   as HM
 import           Data.Scientific
+import qualified Data.Text             as T
 import           Data.Time             (DiffTime, diffTimeToPicoseconds)
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeSQLException (..),
@@ -66,13 +67,70 @@ binOpOnValue op v1 v2 =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported")
 
 unaryOpOnValue :: HasCallStack => UnaryOp -> Value -> Value
-unaryOpOnValue OpSin (Number n) = Number (funcOnScientific n sin)
-unaryOpOnValue OpAbs (Number n) = Number (abs n)
+unaryOpOnValue OpSin     (Number n)  = Number (funcOnScientific sin n)
+unaryOpOnValue OpSinh    (Number n) = Number (funcOnScientific sinh n)
+unaryOpOnValue OpAsin    (Number n)
+  | n >= (-1) && n <= 1             = Number (funcOnScientific asin n)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpAsinh   (Number n) = Number (funcOnScientific asinh n)
+unaryOpOnValue OpCos     (Number n) = Number (funcOnScientific cos n)
+unaryOpOnValue OpCosh    (Number n) = Number (funcOnScientific cosh n)
+unaryOpOnValue OpAcos    (Number n)
+  | n >= (-1) && n <= 1             = Number (funcOnScientific acos n)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpAcosh   (Number n)
+  | n >= 1                          = Number (funcOnScientific acosh n)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpTan     (Number n) = Number (funcOnScientific tan n)
+unaryOpOnValue OpTanh    (Number n) = Number (funcOnScientific tanh n)
+unaryOpOnValue OpAtan    (Number n) = Number (funcOnScientific atan n)
+unaryOpOnValue OpAtanh   (Number n)
+  | n > (-1) && n < 1               = Number (funcOnScientific atanh n)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpAbs     (Number n) = Number (abs n)
+unaryOpOnValue OpCeil    (Number n) = Number (scientific (ceiling n) 0)
+unaryOpOnValue OpFloor   (Number n) = Number (scientific (floor n) 0)
+unaryOpOnValue OpRound   (Number n) = Number (scientific (round n) 0)
+unaryOpOnValue OpSqrt    (Number n) = Number (funcOnScientific sqrt n)
+unaryOpOnValue OpLog     (Number n)
+  | n > 0                           = Number (funcOnScientific log n)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpLog2    (Number n)
+  | n > 0                           = Number (fromFloatDigits $ log (toRealFloat n) / log 2)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpLog10   (Number n)
+  | n > 0                           = Number (fromFloatDigits $ log (toRealFloat n) / log 10)
+  | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
+unaryOpOnValue OpExp     (Number n) = Number (funcOnScientific exp n)
+unaryOpOnValue OpIsInt   (Number _) = Bool True
+unaryOpOnValue OpIsInt   _          = Bool False
+unaryOpOnValue OpIsFloat (Number _) = Bool True
+unaryOpOnValue OpIsFloat _          = Bool False
+unaryOpOnValue OpIsNum   (Number _) = Bool True
+unaryOpOnValue OpIsNum   _          = Bool False
+unaryOpOnValue OpIsBool  (Bool _)   = Bool True
+unaryOpOnValue OpIsBool  _          = Bool False
+unaryOpOnValue OpIsStr   (String _) = Bool True
+unaryOpOnValue OpIsStr   _          = Bool False
+unaryOpOnValue OpIsMap   (Object _) = Bool True
+unaryOpOnValue OpIsMap   _          = Bool False
+unaryOpOnValue OpIsArr   (Array _)  = Bool True
+unaryOpOnValue OpIsArr   _          = Bool False
+unaryOpOnValue OpIsDate  _          = throwSQLException CodegenException Nothing ("Operation " <> show OpIsDate <> "is not supported")
+unaryOpOnValue OpIsTime  _          = throwSQLException CodegenException Nothing ("Operation " <> show OpIsTime <> " is not supported")
+unaryOpOnValue OpToStr   v          = String (T.pack $ show v)
+unaryOpOnValue OpToLower (String s) = String (T.toLower s)
+unaryOpOnValue OpToUpper (String s) = String (T.toUpper s)
+unaryOpOnValue OpTrim    (String s) = String (T.strip s)
+unaryOpOnValue OpLTrim   (String s) = String (T.stripStart s)
+unaryOpOnValue OpRTrim   (String s) = String (T.stripEnd s)
+unaryOpOnValue OpReverse (String s) = String (T.reverse s)
+unaryOpOnValue OpStrLen  (String s) = Number (scientific (toInteger (T.length s)) 0)
 unaryOpOnValue op v =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v <> " is not supported")
 
-funcOnScientific :: Scientific -> (Double -> Double) -> Scientific
-funcOnScientific sci f = read . show . f . toRealFloat $ sci
+funcOnScientific :: RealFloat a => (a -> a) -> Scientific -> Scientific
+funcOnScientific f = fromFloatDigits . f . toRealFloat
 
 --------------------------------------------------------------------------------
 diffTimeToMs :: DiffTime -> Int64
