@@ -49,46 +49,40 @@ import qualified Z.Data.CBytes                     as CB
 import qualified Z.Foreign                         as ZF
 
 --------------------------------------------------------------------------------
-
-logDeviceConfigPath :: String
-logDeviceConfigPath = "/data/store/logdevice.conf"
-
 topicRepFactor :: Int
 topicRepFactor = 3
-
-defaultConsumerConfig :: ConsumerConfig
-defaultConsumerConfig =
-  ConsumerConfig
-  { consumerConfigUri = CB.pack logDeviceConfigPath
-  , consumerName = "defaultConsumerName"
-  , consumerBufferSize = -1
-  , consumerCheckpointUri = "defaultCheckpointUri"
-  , consumerCheckpointRetries = 3
-  }
-
-defaultProducerConfig :: ProducerConfig
-defaultProducerConfig =
-  ProducerConfig
-  { producerConfigUri = CB.pack logDeviceConfigPath
-  }
-
-producer :: Producer
-producer = unsafePerformIO $ mkProducer (ProducerConfig $ CB.pack logDeviceConfigPath)
-{-# NOINLINE producer #-}
-
-admin :: AdminClient
-admin = unsafePerformIO $ mkAdminClient (AdminClientConfig $ CB.pack logDeviceConfigPath)
-{-# NOINLINE admin #-}
 
 newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
+data DefaultInfo = DefaultInfo
+  { defaultConsumerConfig :: ConsumerConfig
+  , defaultProducerConfig :: ProducerConfig
+  , defaultProducer       :: Producer
+  , defaultAdmin          :: AdminClient
+  }
+
 --------------------------------------------------------------------------------
 
-handlers :: HStreamApi ServerRequest ServerResponse
-handlers = HStreamApi { hstreamApiExecuteQuery = executeQueryHandler
-                      , hstreamApiExecutePushQuery = executePushQueryHandler
-                      }
+handlers :: CB.CBytes -> HStreamApi ServerRequest ServerResponse
+handlers logDeviceConfigPath =
+  let defaultInfo = DefaultInfo
+        { defaultConsumerConfig = ConsumerConfig
+                                  { consumerConfigUri = logDeviceConfigPath
+                                  , consumerName = "defaultConsumerName"
+                                  , consumerBufferSize = -1
+                                  , consumerCheckpointUri = "defaultCheckpointUri"
+                                  , consumerCheckpointRetries = 3
+                                  }
+      , defaultProducerConfig = ProducerConfig
+                                  { producerConfigUri = logDeviceConfigPath
+                                  }
+      , defaultProducer = unsafePerformIO $ mkProducer    (ProducerConfig logDeviceConfigPath)
+      , defaultAdmin    = unsafePerformIO $ mkAdminClient (AdminClientConfig logDeviceConfigPath)
+      }
+   in HStreamApi { hstreamApiExecuteQuery     = executeQueryHandler defaultInfo
+                 , hstreamApiExecutePushQuery = executePushQueryHandler defaultInfo
+                 }
 
 genErrorStruct :: TL.Text -> Struct
 genErrorStruct = Struct . Map.singleton "errMsg" . Just . Value . Just . ValueKindStringValue
@@ -99,9 +93,10 @@ genErrorQueryResponse msg = CommandQueryResponse (Just . CommandQueryResponseKin
 genSuccessQueryResponse :: CommandQueryResponse
 genSuccessQueryResponse = CommandQueryResponse (Just . CommandQueryResponseKindSuccess $ CommandSuccess)
 
-executeQueryHandler :: ServerRequest 'Normal CommandQuery CommandQueryResponse
+executeQueryHandler :: DefaultInfo
+                    -> ServerRequest 'Normal CommandQuery CommandQueryResponse
                     -> IO (ServerResponse 'Normal CommandQueryResponse)
-executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
+executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{..}) = do
   plan' <- try $ streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
     Left (e :: SomeSQLException) -> do
@@ -111,7 +106,7 @@ executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
       let resp = genErrorQueryResponse "inconsistent method called"
       return (ServerNormalResponse resp [] StatusUnknown "")
     Right (CreatePlan topic)                     -> do
-      e' <- try $ createTopics admin
+      e' <- try $ createTopics defaultAdmin
             (M.fromList [(CB.pack . T.unpack $ topic, TopicAttrs topicRepFactor Map.empty)])
       case e' of
         Left (e :: SomeException) -> do
@@ -121,7 +116,7 @@ executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
     Right (CreateBySelectPlan sources sink task) -> do
-      e' <- try $ createTopics admin
+      e' <- try $ createTopics defaultAdmin
             (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
       case e' of
         Left (e :: SomeException) -> do
@@ -146,7 +141,7 @@ executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
           return (ServerNormalResponse resp [] StatusOk "")
     Right (InsertPlan topic payload)             -> do
       time <- getCurrentTimestamp
-      e'   <- try $ sendMessage producer $
+      e'   <- try $ sendMessage defaultProducer $
                     ProducerRecord
                       (CB.pack . T.unpack $ topic)
                       (Just . CB.fromBytes . ZF.fromByteString . BL.toStrict . encode $
@@ -161,18 +156,19 @@ executeQueryHandler (ServerNormalRequest _metadata CommandQuery{..}) = do
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
 
-executePushQueryHandler :: ServerRequest 'ServerStreaming CommandPushQuery Struct
+executePushQueryHandler :: DefaultInfo
+                        -> ServerRequest 'ServerStreaming CommandPushQuery Struct
                         -> IO (ServerResponse 'ServerStreaming Struct)
-executePushQueryHandler (ServerWriterRequest _metadata CommandPushQuery{..} streamSend) = do
+executePushQueryHandler DefaultInfo{..} (ServerWriterRequest _metadata CommandPushQuery{..} streamSend) = do
   plan' <- try $ streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
     Left (e :: SomeSQLException)         -> return (ServerWriterResponse [] StatusAborted "exception on parsing or codegen")
     Right (SelectPlan sources sink task) -> do
-      exists <- mapM (doesTopicExists admin) (CB.pack . T.unpack <$> sources)
+      exists <- mapM (doesTopicExists defaultAdmin) (CB.pack . T.unpack <$> sources)
       case and exists of
           False -> return (ServerWriterResponse [] StatusAborted "some source topic do not exist")
           True  -> do
-            e' <- try $ createTopics admin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
+            e' <- try $ createTopics defaultAdmin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
             case e' of
               Left (e :: SomeException) -> return (ServerWriterResponse [] StatusAborted "error when creating sink topic")
               Right _                   -> do
