@@ -69,10 +69,10 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "create streams" $
     (do
         setLogDeviceDbgLevel C_DBG_ERROR
-        handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (FORMAT = \"JSON\");"
-        handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> " WITH (FORMAT = \"JSON\");"
-        handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> " WITH (FORMAT = \"JSON\");"
-        handleCreateStreamSQL $ "CREATE STREAM " <> sink2   <> " WITH (FORMAT = \"JSON\");"
+        handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
+        handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
+        handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
+        handleCreateStreamSQL $ "CREATE STREAM " <> sink2   <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
     ) `shouldReturn` ()
 
   it "insert data to source topics" $
@@ -84,7 +84,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "a simple SQL query" $
     (do
       result <- async . handleCreateBySelectSQL $
-        "CREATE STREAM " <> sink1 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES WITH (FORMAT = \"JSON\");"
+        "CREATE STREAM " <> sink1 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES WITH (FORMAT = \"JSON\", REPLICATE = 3);"
       threadDelay 5000000
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (31, 26);"
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (22, 80);"
@@ -96,7 +96,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "a more complex query" $
     (do
        result <- async . handleCreateBySelectSQL $ Text.pack $ printf
-         "CREATE STREAM %s AS SELECT SUM(%s.humidity) AS result FROM %s INNER JOIN %s WITHIN (INTERVAL 5 SECOND) ON (%s.temperature = %s.temperature) WHERE %s.humidity > 20 GROUP BY %s.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = \"JSON\");" sink2 source2 source2 source1 source2 source1 source2 source2
+         "CREATE STREAM %s AS SELECT SUM(%s.humidity) AS result FROM %s INNER JOIN %s WITHIN (INTERVAL 5 SECOND) ON (%s.temperature = %s.temperature) WHERE %s.humidity > 20 GROUP BY %s.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = \"JSON\", REPLICATE = 3);" sink2 source2 source2 source1 source2 source1 source2 source2
        threadDelay 5000000
        handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (31, 26);"
        handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (22, 80);"
@@ -120,7 +120,7 @@ handleCreateStreamSQL :: Text -> IO ()
 handleCreateStreamSQL sql = do
   plan <- streamCodegen sql
   case plan of
-    CreatePlan topicName ->
+    CreatePlan topicName _ ->
       createTopics adminClient
       (Map.singleton (CB.pack . Text.unpack $ topicName) TopicAttrs {replicationFactor = 3, extraTopicAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
@@ -138,7 +138,7 @@ handleCreateBySelectSQL :: Text -> IO [BL.ByteString]
 handleCreateBySelectSQL sql = do
   plan <- streamCodegen sql
   case plan of
-    CreateBySelectPlan _ sink task -> do
+    CreateBySelectPlan _ sink task _ -> do
       logOptions <- logOptionsHandle stderr True
       _ <- async $ withLogFunc logOptions $ \lf -> do
         let taskConfig =

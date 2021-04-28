@@ -9,18 +9,18 @@
 module Main where
 
 import           Control.Exception
-import           Control.Monad.IO.Class            (liftIO)
-import           Data.ByteString                   (ByteString)
-import qualified Data.List                         as L
-import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
+import           Control.Monad.IO.Class           (liftIO)
+import           Data.ByteString                  (ByteString)
+import qualified Data.List                        as L
+import qualified Data.Text                        as T
+import qualified Data.Text.Lazy                   as TL
 import           HStream.SQL
 import           HStream.Server.HStreamApi
+import           HStream.Server.Utils             (structToJsonObject)
 import           Network.GRPC.HighLevel.Generated
 import           Options.Applicative
 import           System.Console.Haskeline
 import           Text.RawString.QQ
-import           ThirdParty.Google.Protobuf.Struct
 
 helpInfo :: String
 helpInfo =
@@ -139,8 +139,8 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
                           Left err            -> print err
                           Right Nothing       -> print "terminated"
                           Right (Just result) -> do
-                            let Struct fields = result
-                            print fields
+                            let object = structToJsonObject result
+                            print object
                             go
 
 sqlAction :: ClientConfig -> TL.Text -> IO ()
