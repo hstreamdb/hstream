@@ -22,6 +22,7 @@
 **/.ghc.environment.*
 **/stack*.yaml.lock
 **/local*
+!**/localhost*
 **/Local*
 **/*~
 **/*.swp
