@@ -36,7 +36,8 @@ data Create' a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type StreamOption = StreamOption' BNFC'Position
-data StreamOption' a = OptionFormat a String
+data StreamOption' a
+    = OptionFormat a String | OptionRepFactor a Integer
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Insert = Insert' BNFC'Position
@@ -273,6 +274,7 @@ instance HasPosition Create where
 instance HasPosition StreamOption where
   hasPosition = \case
     OptionFormat p _ -> p
+    OptionRepFactor p _ -> p
 
 instance HasPosition Insert where
   hasPosition = \case

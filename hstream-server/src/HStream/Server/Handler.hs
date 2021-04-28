@@ -49,9 +49,6 @@ import qualified Z.Data.CBytes                     as CB
 import qualified Z.Foreign                         as ZF
 
 --------------------------------------------------------------------------------
-topicRepFactor :: Int
-topicRepFactor = 3
-
 newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
@@ -60,6 +57,7 @@ data DefaultInfo = DefaultInfo
   , defaultProducerConfig :: ProducerConfig
   , defaultProducer       :: Producer
   , defaultAdmin          :: AdminClient
+  , defaultTopicRepFactor :: Int
   }
 
 --------------------------------------------------------------------------------
@@ -79,6 +77,7 @@ handlers logDeviceConfigPath =
                                   }
       , defaultProducer = unsafePerformIO $ mkProducer    (ProducerConfig logDeviceConfigPath)
       , defaultAdmin    = unsafePerformIO $ mkAdminClient (AdminClientConfig logDeviceConfigPath)
+      , defaultTopicRepFactor = 3
       }
    in HStreamApi { hstreamApiExecuteQuery     = executeQueryHandler defaultInfo
                  , hstreamApiExecutePushQuery = executePushQueryHandler defaultInfo
@@ -105,9 +104,9 @@ executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{
     Right SelectPlan{}           -> do
       let resp = genErrorQueryResponse "inconsistent method called"
       return (ServerNormalResponse resp [] StatusUnknown "")
-    Right (CreatePlan topic)                     -> do
+    Right (CreatePlan topic repFactor)                     -> do
       e' <- try $ createTopics defaultAdmin
-            (M.fromList [(CB.pack . T.unpack $ topic, TopicAttrs topicRepFactor Map.empty)])
+            (M.fromList [(CB.pack . T.unpack $ topic, TopicAttrs repFactor Map.empty)])
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating topic"
@@ -115,9 +114,9 @@ executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{
         Right ()                  -> do
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
-    Right (CreateBySelectPlan sources sink task) -> do
+    Right (CreateBySelectPlan sources sink task repFactor) -> do
       e' <- try $ createTopics defaultAdmin
-            (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
+            (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs repFactor Map.empty)])
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating topic"
@@ -168,7 +167,7 @@ executePushQueryHandler DefaultInfo{..} (ServerWriterRequest _metadata CommandPu
       case and exists of
           False -> return (ServerWriterResponse [] StatusAborted "some source topic do not exist")
           True  -> do
-            e' <- try $ createTopics defaultAdmin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs topicRepFactor Map.empty)])
+            e' <- try $ createTopics defaultAdmin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs defaultTopicRepFactor Map.empty)])
             case e' of
               Left (e :: SomeException) -> return (ServerWriterResponse [] StatusAborted "error when creating sink topic")
               Right _                   -> do

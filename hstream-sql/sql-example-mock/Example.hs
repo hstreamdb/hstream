@@ -31,9 +31,9 @@ run :: Text -> IO ()
 run input = do
   plan <- streamCodegen input
   (sTopicName,task) <- case plan of
-    SelectPlan source sink task         -> return (sink,task)
-    CreateBySelectPlan source sink task -> return (sink,task)
-    _                                   -> error "Not supported"
+    SelectPlan source sink task           -> return (sink,task)
+    CreateBySelectPlan source sink task _ -> return (sink,task)
+    _                                     -> error "Not supported"
 
   let tTopicName = "source1"
   let hTopicName = "source2"

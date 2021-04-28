@@ -548,6 +548,9 @@ instance Validate StreamOption where
   validate op@(OptionFormat pos s) = do
     unless (s `L.elem` ["JSON", "json"]) (Left $ buildSQLException ParseException pos $ "Stream format can only support JSON yet ")
     return op
+  validate op@(OptionRepFactor pos n) = do
+    unless (n > 0) (Left $ buildSQLException ParseException pos "Replicate factor can only be positive integers")
+    return op
 
 newtype StreamOptions = StreamOptions [StreamOption]
 
@@ -555,9 +558,10 @@ instance Validate StreamOptions where
   validate (StreamOptions options) = do
     mapM_ validate options
     case options of
-      [OptionFormat{}] -> return $ StreamOptions options
-      _                ->
-        Left $ buildSQLException ParseException Nothing "There should be one and only one FORMAT option"
+      [OptionFormat{}, OptionRepFactor{}] -> return $ StreamOptions options
+      [OptionRepFactor{}, OptionFormat{}] -> return $ StreamOptions options
+      _                                   ->
+        Left $ buildSQLException ParseException Nothing "There should be one and only one FORMAT and REPLICATE option"
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where

@@ -179,38 +179,39 @@ import qualified Data.Text
   'ON' { PT _ (TS _ 71) }
   'OR' { PT _ (TS _ 72) }
   'OUTER' { PT _ (TS _ 73) }
-  'REVERSE' { PT _ (TS _ 74) }
-  'RIGHT_TRIM' { PT _ (TS _ 75) }
-  'ROUND' { PT _ (TS _ 76) }
-  'SECOND' { PT _ (TS _ 77) }
-  'SELECT' { PT _ (TS _ 78) }
-  'SESSION' { PT _ (TS _ 79) }
-  'SIN' { PT _ (TS _ 80) }
-  'SINH' { PT _ (TS _ 81) }
-  'SQRT' { PT _ (TS _ 82) }
-  'STREAM' { PT _ (TS _ 83) }
-  'STRLEN' { PT _ (TS _ 84) }
-  'SUM' { PT _ (TS _ 85) }
-  'TAN' { PT _ (TS _ 86) }
-  'TANH' { PT _ (TS _ 87) }
-  'TIME' { PT _ (TS _ 88) }
-  'TO_LOWER' { PT _ (TS _ 89) }
-  'TO_STR' { PT _ (TS _ 90) }
-  'TO_UPPER' { PT _ (TS _ 91) }
-  'TRIM' { PT _ (TS _ 92) }
-  'TRUE' { PT _ (TS _ 93) }
-  'TUMBLING' { PT _ (TS _ 94) }
-  'VALUES' { PT _ (TS _ 95) }
-  'WEEK' { PT _ (TS _ 96) }
-  'WHERE' { PT _ (TS _ 97) }
-  'WITH' { PT _ (TS _ 98) }
-  'WITHIN' { PT _ (TS _ 99) }
-  'YEAR' { PT _ (TS _ 100) }
-  '[' { PT _ (TS _ 101) }
-  ']' { PT _ (TS _ 102) }
-  '{' { PT _ (TS _ 103) }
-  '||' { PT _ (TS _ 104) }
-  '}' { PT _ (TS _ 105) }
+  'REPLICATE' { PT _ (TS _ 74) }
+  'REVERSE' { PT _ (TS _ 75) }
+  'RIGHT_TRIM' { PT _ (TS _ 76) }
+  'ROUND' { PT _ (TS _ 77) }
+  'SECOND' { PT _ (TS _ 78) }
+  'SELECT' { PT _ (TS _ 79) }
+  'SESSION' { PT _ (TS _ 80) }
+  'SIN' { PT _ (TS _ 81) }
+  'SINH' { PT _ (TS _ 82) }
+  'SQRT' { PT _ (TS _ 83) }
+  'STREAM' { PT _ (TS _ 84) }
+  'STRLEN' { PT _ (TS _ 85) }
+  'SUM' { PT _ (TS _ 86) }
+  'TAN' { PT _ (TS _ 87) }
+  'TANH' { PT _ (TS _ 88) }
+  'TIME' { PT _ (TS _ 89) }
+  'TO_LOWER' { PT _ (TS _ 90) }
+  'TO_STR' { PT _ (TS _ 91) }
+  'TO_UPPER' { PT _ (TS _ 92) }
+  'TRIM' { PT _ (TS _ 93) }
+  'TRUE' { PT _ (TS _ 94) }
+  'TUMBLING' { PT _ (TS _ 95) }
+  'VALUES' { PT _ (TS _ 96) }
+  'WEEK' { PT _ (TS _ 97) }
+  'WHERE' { PT _ (TS _ 98) }
+  'WITH' { PT _ (TS _ 99) }
+  'WITHIN' { PT _ (TS _ 100) }
+  'YEAR' { PT _ (TS _ 101) }
+  '[' { PT _ (TS _ 102) }
+  ']' { PT _ (TS _ 103) }
+  '{' { PT _ (TS _ 104) }
+  '||' { PT _ (TS _ 105) }
+  '}' { PT _ (TS _ 106) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -246,6 +247,7 @@ ListStreamOption : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
 
 StreamOption :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.StreamOption) }
 StreamOption : 'FORMAT' '=' String { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.OptionFormat (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+             | 'REPLICATE' '=' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.OptionRepFactor (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
 
 Insert :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert) }
 Insert : 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInsert (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $9)) }

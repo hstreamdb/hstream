@@ -35,6 +35,7 @@ CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOptio
 
 -- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
 OptionFormat. StreamOption ::= "FORMAT" "=" String ;
+OptionRepFactor. StreamOption ::= "REPLICATE" "=" Integer ;
 
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
