@@ -14,14 +14,14 @@ import           ThirdParty.Google.Protobuf.Struct
 
 import           Control.Concurrent
 import           Control.Exception
-import           Data.Aeson                        (Value (String), encode)
-import qualified Data.ByteString.Char8             as B
+import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Lazy              as BL
 import qualified Data.HashMap.Strict               as HM
+import qualified Data.List                         as L
 import qualified Data.Map                          as M
 import qualified Data.Map.Strict                   as Map
+import           Data.Maybe                        (fromJust, isJust)
 import qualified Data.Text                         as T
-import           Data.Text.Encoding                (decodeUtf8)
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           HStream.Processing.Processor      (MessageStoreType (LogDevice),
@@ -29,6 +29,7 @@ import           HStream.Processing.Processor      (MessageStoreType (LogDevice)
 import           HStream.Processing.Util           (getCurrentTimestamp)
 import           HStream.SQL.Codegen
 import           HStream.SQL.Exception
+import           HStream.Server.Utils
 import           HStream.Store                     (AdminClient,
                                                     AdminClientConfig (..),
                                                     ConsumerConfig (..),
@@ -143,8 +144,8 @@ executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{
       e'   <- try $ sendMessage defaultProducer $
                     ProducerRecord
                       (CB.pack . T.unpack $ topic)
-                      (Just . CB.fromBytes . ZF.fromByteString . BL.toStrict . encode $
-                        HM.fromList [("key" :: T.Text, String "demoKey")])
+                      (Just . CB.fromBytes . ZF.fromByteString . BL.toStrict . Aeson.encode $
+                        HM.fromList [("key" :: T.Text, Aeson.String "demoKey")])
                       (ZF.fromByteString . BL.toStrict $ payload)
                       time
       case e' of
@@ -196,11 +197,20 @@ executePushQueryHandler DefaultInfo{..} (ServerWriterRequest _metadata CommandPu
     Right _                              -> return (ServerWriterResponse [] StatusAborted "inconsistent method called")
   where loop consumer = do
           ms <- pollMessages consumer 1 1000
-          let respMsg = TL.fromStrict $ decodeUtf8 $ B.concat $ ZF.toByteString . dataOutValue <$> ms
-          case TL.null respMsg of
+          let (objects' :: [Maybe Aeson.Object]) = Aeson.decode . BL.fromStrict . ZF.toByteString . dataOutValue <$> ms
+              structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+          case L.null structs of
             True  -> loop consumer
             False -> do
-              sendRes <- streamSend $ Struct $ Map.singleton "json_serialized" $ Just $ Value $ Just $ ValueKindStringValue respMsg
+              let streamSendMany xs = do
+                    case xs of
+                      []      -> return (Right ())
+                      (x:xs') -> do
+                        res <- streamSend x
+                        case res of
+                          Left err -> return (Left err)
+                          Right _  -> streamSendMany xs'
+              sendRes <- streamSendMany structs
               case sendRes of
                 Left err -> print err >> return (ServerWriterResponse [] StatusAborted  "aborted")
-                Right x  -> print x >> threadDelay 1000000 >> loop consumer
+                Right _  -> threadDelay 1000000 >> loop consumer
