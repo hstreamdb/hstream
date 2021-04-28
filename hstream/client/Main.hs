@@ -14,6 +14,8 @@ import           Data.ByteString                  (ByteString)
 import qualified Data.List                        as L
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import           HStream.Format                   (renderJSONObjectToTable,
+                                                   renderTable)
 import           HStream.SQL
 import           HStream.Server.HStreamApi
 import           HStream.Server.Utils             (structToJsonObject)
@@ -21,7 +23,6 @@ import           Network.GRPC.HighLevel.Generated
 import           Options.Applicative
 import           System.Console.Haskeline
 import           Text.RawString.QQ
-
 helpInfo :: String
 helpInfo =
   unlines
@@ -140,7 +141,7 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
                           Right Nothing       -> print "terminated"
                           Right (Just result) -> do
                             let object = structToJsonObject result
-                            print object
+                            putStrLn (unlines $ renderTable $ renderJSONObjectToTable object)
                             go
 
 sqlAction :: ClientConfig -> TL.Text -> IO ()
