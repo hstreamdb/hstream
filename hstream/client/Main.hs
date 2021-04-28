@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -9,14 +10,16 @@ module Main where
 
 import           Control.Exception
 import           Control.Monad.IO.Class            (liftIO)
+import           Data.ByteString                   (ByteString)
 import qualified Data.List                         as L
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
-import qualified Data.Text.Lazy.IO                 as TLIO
 import           HStream.SQL
 import           HStream.Server.HStreamApi
 import           Network.GRPC.HighLevel.Generated
+import           Options.Applicative
 import           System.Console.Haskeline
+import           Text.RawString.QQ
 import           ThirdParty.Google.Protobuf.Struct
 
 helpInfo :: String
@@ -65,17 +68,38 @@ compword s = do
   cs <- specificComplete (words s)
   return $ map simpleCompletion (gs <> cs)
 
-clientConfig :: ClientConfig
-clientConfig = ClientConfig { clientServerHost = "localhost"
-                            , clientServerPort = 50051
-                            , clientArgs = []
-                            , clientSSLConfig = Nothing
-                            , clientAuthority = Nothing
-                            }
+--------------------------------------------------------------------------------
+data UserConfig = UserConfig
+  { _serverHost :: ByteString
+  , _serverPort :: Int
+  }
+
+parseConfig :: Parser UserConfig
+parseConfig =
+  UserConfig
+    <$> strOption (long "host" <> metavar "HOST" <> showDefault <> value "127.0.0.1" <> help "server host value")
+    <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 50051 <> short 'p' <> help "server port value")
 
 main :: IO ()
 main = do
-  putStrLn "Start HStream-Cli!"
+  UserConfig{..} <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "HStream-Client")
+  putStrLn [r|
+      __  _________________  _________    __  ___
+     / / / / ___/_  __/ __ \/ ____/   |  /  |/  /
+    / /_/ /\__ \ / / / /_/ / __/ / /| | / /|_/ /
+   / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
+  /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
+  |]
+  let clientConfig = ClientConfig { clientServerHost = Host _serverHost
+                                  , clientServerPort = Port . fromIntegral $ _serverPort
+                                  , clientArgs = []
+                                  , clientSSLConfig = Nothing
+                                  , clientAuthority = Nothing
+                                  }
+   in app clientConfig
+
+app :: ClientConfig -> IO ()
+app clientConfig = do
   putStrLn helpInfo
   runInputT def loop
   where
@@ -97,13 +121,13 @@ main = do
                 (liftIO . try . parseAndRefine $ sql) >>= \case
                   Left (e :: SomeException) -> liftIO . print $ e
                   Right rsql                -> case rsql of
-                    RQSelect _ -> liftIO $ sqlStreamAction (TL.fromStrict sql)
-                    _          -> liftIO $ sqlAction (TL.fromStrict sql)
+                    RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
+                    _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
               [] -> return ()
             loop
 
-sqlStreamAction :: TL.Text -> IO ()
-sqlStreamAction sql = withGRPCClient clientConfig $ \client -> do
+sqlStreamAction :: ClientConfig -> TL.Text -> IO ()
+sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ClientReaderResponse _meta _status _details <-
@@ -119,8 +143,8 @@ sqlStreamAction sql = withGRPCClient clientConfig $ \client -> do
                             print fields
                             go
 
-sqlAction :: TL.Text -> IO ()
-sqlAction sql = withGRPCClient clientConfig $ \client -> do
+sqlAction :: ClientConfig -> TL.Text -> IO ()
+sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])

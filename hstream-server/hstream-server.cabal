@@ -64,10 +64,13 @@ executable hstream-server
     , grpc-haskell
     , grpc-haskell-core
     , hstream-server
+    , optparse-applicative
     , proto3-suite
     , proto3-wire
     , text
     , vector
+    , Z-Data
+    , Z-IO
 
   hs-source-dirs:   app
   ghc-options:
