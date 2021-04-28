@@ -152,7 +152,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_name"
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
   c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
 
-foreign import ccall safe "hs_logdevice.h ld_client_make_loggroup_sync"
+foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
   c_ld_client_make_loggroup_sync
     :: Ptr LogDeviceClient
     -> BA## Word8
@@ -163,7 +163,7 @@ foreign import ccall safe "hs_logdevice.h ld_client_make_loggroup_sync"
     -> MBA## (Ptr LogDeviceLogGroup) -- ^ result, can be nullptr
     -> IO ErrorCode
 
-foreign import ccall safe "hs_logdevice.h ld_client_get_loggroup_sync"
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
   c_ld_client_get_loggroup_sync :: Ptr LogDeviceClient
                                 -> BA## Word8
                                 -> MBA## (Ptr LogDeviceLogGroup)
