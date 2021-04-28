@@ -56,8 +56,8 @@ type SourceTopic = [TopicName]
 type SinkTopic   = TopicName
 
 data ExecutionPlan = SelectPlan         SourceTopic SinkTopic Task
-                   | CreatePlan         TopicName
-                   | CreateBySelectPlan SourceTopic SinkTopic Task
+                   | CreatePlan         TopicName Int
+                   | CreateBySelectPlan SourceTopic SinkTopic Task Int
                    | InsertPlan         TopicName BL.ByteString
 
 --------------------------------------------------------------------------------
@@ -68,10 +68,10 @@ streamCodegen input = do
     RQSelect select                     -> do
       (builder, source, sink) <- genStreamBuilderWithTopic "demo" Nothing select
       return $ SelectPlan source sink (HS.build builder)
-    RQCreate (RCreate topic _)          -> return . CreatePlan $ topic
-    RQCreate (RCreateAs topic select _) -> do
+    RQCreate (RCreate topic rOptions)   -> return $ CreatePlan topic (rRepFactor rOptions)
+    RQCreate (RCreateAs topic select rOptions) -> do
       (builder, source, sink) <- genStreamBuilderWithTopic "demo" (Just topic) select
-      return $ CreateBySelectPlan source sink (HS.build builder)
+      return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
     RQInsert (RInsert topic tuples)     -> do
       let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
       return $ InsertPlan topic (encode object)

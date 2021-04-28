@@ -131,6 +131,7 @@ instance Print [HStream.SQL.Abs.StreamOption' a] where
 instance Print (HStream.SQL.Abs.StreamOption' a) where
   prt i = \case
     HStream.SQL.Abs.OptionFormat _ str -> prPrec i 0 (concatD [doc (showString "FORMAT"), doc (showString "="), prt 0 str])
+    HStream.SQL.Abs.OptionRepFactor _ n -> prPrec i 0 (concatD [doc (showString "REPLICATE"), doc (showString "="), prt 0 n])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]

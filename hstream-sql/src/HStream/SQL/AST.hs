@@ -322,6 +322,7 @@ instance Refine Select where
 data StreamFormat = FormatJSON deriving (Eq, Show)
 data RStreamOptions = RStreamOptions
   { rStreamFormat :: StreamFormat
+  , rRepFactor    :: Int
   } deriving (Eq, Show)
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
@@ -329,10 +330,11 @@ data RCreate = RCreate   Text RStreamOptions
 
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
-  refine [OptionFormat _ format] = RStreamOptions (refineFormat format)
+  refine [OptionFormat _ format, OptionRepFactor _ rep] = RStreamOptions (refineFormat format) (fromInteger rep)
     where refineFormat "json" = FormatJSON
           refineFormat "JSON" = FormatJSON
           refineFormat _      = throwSQLException RefineException Nothing "Impossible happened"
+  refine xs@[OptionRepFactor{}, OptionFormat{}] = refine . reverse $ xs
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
 type instance RefinedType Create = RCreate
