@@ -20,7 +20,7 @@ FROM hstreamdb/haskell:8.10 as builder
 COPY --from=dependencies /srv/dist-newstyle /srv/dist-newstyle
 COPY --from=dependencies /root/.cabal /root/.cabal
 COPY . /srv
-RUN cd /srv && cabal install hstream
+RUN cd /srv && cabal install hstream hstream-server
 
 # ------------------------------------------------------------------------------
 
