@@ -64,6 +64,8 @@ library
 
   other-modules:
     HStream.Store.Internal.FFI
+    HStream.Store.Internal.Foreign
+    HStream.Store.Internal.LogDevice.VersionedConfigStore
     HStream.Store.Internal.LogGroup
     HStream.Store.Internal.Types
 
@@ -89,7 +91,6 @@ library
     GeneralizedNewtypeDeriving
     LambdaCase
     OverloadedStrings
-    PatternSynonyms
     RecordWildCards
     ScopedTypeVariables
     UnliftedFFITypes
@@ -114,6 +115,7 @@ library
     cbits/hs_logdevice_admin.cpp
     cbits/hs_logdevice_appender.cpp
     cbits/hs_logdevice_reader.cpp
+    cbits/logdevice/hs_versioned_config_store.cpp
     cbits/utils.cpp
 
   extra-lib-dirs:     /usr/local/lib

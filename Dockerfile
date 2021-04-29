@@ -1,16 +1,17 @@
 FROM hstreamdb/haskell:8.10 as dependencies
 
-ARG cabal_mirror_name="hackage.haskell.org"
-ARG cabal_mirror_url="http://hackage.haskell.org/"
-
 RUN rm -rf /srv/*
 WORKDIR /srv
 
+ARG CABAL_MIRROR_NAME="hackage.haskell.org"
+ARG CABAL_MIRROR_URL="http://hackage.haskell.org/"
 COPY . /srv
 RUN cabal user-config init && echo "\
-repository $cabal_mirror_name \n\
-  url: $cabal_mirror_url \n\
-" > /root/.cabal/config && cabal user-config update && cabal update && \
+repository $CABAL_MIRROR_NAME \n\
+  url: $CABAL_MIRROR_URL \n\
+" > /root/.cabal/config && cabal user-config update
+
+RUN cabal update && \
     cabal build --enable-tests --enable-benchmarks all
 
 # ------------------------------------------------------------------------------

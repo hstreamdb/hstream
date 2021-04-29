@@ -30,29 +30,30 @@ module HStream.Store.Stream.Reader
   , writeLastCheckpointsSync
   ) where
 
-import           Control.Monad                (void)
-import           Data.Int                     (Int32, Int64)
-import           Data.Map.Strict              (Map)
-import qualified Data.Map.Strict              as Map
-import           Data.Word                    (Word32)
-import           Foreign.C.Types              (CInt, CSize)
-import           Foreign.ForeignPtr           (newForeignPtr, withForeignPtr)
-import           Foreign.Marshal              (allocaBytes)
-import           Foreign.Ptr                  (Ptr, nullPtr)
-import           Z.Data.CBytes                (CBytes)
-import qualified Z.Data.CBytes                as ZC
-import qualified Z.Foreign                    as Z
+import           Control.Monad                  (void)
+import           Data.Int                       (Int32, Int64)
+import           Data.Map.Strict                (Map)
+import qualified Data.Map.Strict                as Map
+import           Data.Word                      (Word32)
+import           Foreign.C.Types                (CInt, CSize)
+import           Foreign.ForeignPtr             (newForeignPtr, withForeignPtr)
+import           Foreign.Marshal                (allocaBytes)
+import           Foreign.Ptr                    (Ptr, nullPtr)
+import           Z.Data.CBytes                  (CBytes)
+import qualified Z.Data.CBytes                  as ZC
+import qualified Z.Foreign                      as Z
 
-import qualified HStream.Store.Exception      as E
-import qualified HStream.Store.Internal.FFI   as FFI
-import           HStream.Store.Internal.Types (CheckpointStore (..),
-                                               DataRecord (..),
-                                               SequenceNum (..),
-                                               StreamClient (..),
-                                               StreamReader (..),
-                                               StreamSyncCheckpointedReader (..),
-                                               TopicID (..))
-import qualified HStream.Store.Internal.Types as FFI
+import qualified HStream.Store.Exception        as E
+import qualified HStream.Store.Internal.FFI     as FFI
+import qualified HStream.Store.Internal.Foreign as FFI
+import           HStream.Store.Internal.Types   (CheckpointStore (..),
+                                                 DataRecord (..),
+                                                 SequenceNum (..),
+                                                 StreamClient (..),
+                                                 StreamReader (..),
+                                                 StreamSyncCheckpointedReader (..),
+                                                 TopicID (..))
+import qualified HStream.Store.Internal.Types   as FFI
 
 -------------------------------------------------------------------------------
 

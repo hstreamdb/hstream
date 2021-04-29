@@ -1,18 +1,19 @@
 module HStream.Store.Internal.LogGroup where
 
-import           Control.Monad                (void, (<=<))
-import qualified Data.Map.Strict              as Map
-import           Data.Word                    (Word64)
-import           Foreign.ForeignPtr           (newForeignPtr, withForeignPtr)
-import           Foreign.Ptr                  (nullPtr)
-import           GHC.Stack                    (HasCallStack)
-import           Z.Data.CBytes                (CBytes)
-import qualified Z.Data.CBytes                as CBytes
-import qualified Z.Foreign                    as Z
+import           Control.Monad                  (void, (<=<))
+import qualified Data.Map.Strict                as Map
+import           Data.Word                      (Word64)
+import           Foreign.ForeignPtr             (newForeignPtr, withForeignPtr)
+import           Foreign.Ptr                    (nullPtr)
+import           GHC.Stack                      (HasCallStack)
+import           Z.Data.CBytes                  (CBytes)
+import qualified Z.Data.CBytes                  as CBytes
+import qualified Z.Foreign                      as Z
 
-import qualified HStream.Store.Exception      as E
-import qualified HStream.Store.Internal.FFI   as FFI
-import qualified HStream.Store.Internal.Types as FFI
+import qualified HStream.Store.Exception        as E
+import qualified HStream.Store.Internal.FFI     as FFI
+import qualified HStream.Store.Internal.Foreign as FFI
+import qualified HStream.Store.Internal.Types   as FFI
 
 -------------------------------------------------------------------------------
 
@@ -27,8 +28,8 @@ makeLogGroup
   :: HasCallStack
   => FFI.LDClient
   -> CBytes
-  -> FFI.LDLogID
-  -> FFI.LDLogID
+  -> FFI.C_LogID
+  -> FFI.C_LogID
   -> FFI.LogAttrs
   -> Bool
   -> IO FFI.LDLogGroup
@@ -100,7 +101,7 @@ removeLogGroup
   :: FFI.LDClient
   -> CBytes
   -- ^ The path of loggroup to remove
-  -> IO FFI.LDLogsConfigVersion
+  -> IO FFI.C_LogsConfigVersion
   -- ^ Return the version of the logsconfig at which the log
   -- group got removed
 removeLogGroup client path =
@@ -113,7 +114,7 @@ removeLogGroup client path =
       void $ E.throwStreamErrorIfNotOK' errno
       return version
 
-logGroupGetRange :: FFI.LDLogGroup -> IO FFI.LDLogRange
+logGroupGetRange :: FFI.LDLogGroup -> IO FFI.C_LogRange
 logGroupGetRange group =
   withForeignPtr group $ \group' -> do
     (start_ret, (end_ret, _)) <-
@@ -151,7 +152,7 @@ logGroupSetExtraAttr group key val =
     FFI.c_set_log_attrs_extra attrs_ptr key' val'
 {-# INLINE logGroupSetExtraAttr #-}
 
-logGroupGetVersion :: FFI.LDLogGroup -> IO FFI.LDLogsConfigVersion
+logGroupGetVersion :: FFI.LDLogGroup -> IO FFI.C_LogsConfigVersion
 logGroupGetVersion group = withForeignPtr group FFI.c_ld_loggroup_get_version
 {-# INLINE logGroupGetVersion #-}
 
@@ -193,7 +194,7 @@ setLogExtraAttr attrs key val =
 syncTopicConfigVersion
   :: HasCallStack
   => FFI.LDClient
-  -> FFI.LDLogsConfigVersion
+  -> FFI.C_LogsConfigVersion
   -- ^ The minimum version you need to sync LogsConfig to
   -> IO ()
 syncTopicConfigVersion client version =

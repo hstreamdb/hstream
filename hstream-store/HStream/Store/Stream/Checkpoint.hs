@@ -12,21 +12,23 @@ module HStream.Store.Stream.Checkpoint
   , updateMultiSequenceNumSync
   ) where
 
-import           Control.Monad                (void)
-import           Data.Int                     (Int64)
-import           Data.Map.Strict              (Map)
-import qualified Data.Map.Strict              as Map
-import           Foreign.ForeignPtr           (newForeignPtr, withForeignPtr)
-import           Z.Data.CBytes                (CBytes)
-import qualified Z.Data.CBytes                as ZC
-import qualified Z.Foreign                    as Z
+import           Control.Monad                  (void)
+import           Data.Int                       (Int64)
+import           Data.Map.Strict                (Map)
+import qualified Data.Map.Strict                as Map
+import           Foreign.ForeignPtr             (newForeignPtr, withForeignPtr)
+import           Z.Data.CBytes                  (CBytes)
+import qualified Z.Data.CBytes                  as ZC
+import qualified Z.Foreign                      as Z
 
-import qualified HStream.Store.Exception      as E
-import qualified HStream.Store.Internal.FFI   as FFI
-import           HStream.Store.Internal.Types (CheckpointStore (..),
-                                               SequenceNum (..),
-                                               StreamClient (..), TopicID (..))
-import qualified HStream.Store.Internal.Types as FFI
+import qualified HStream.Store.Exception        as E
+import qualified HStream.Store.Internal.FFI     as FFI
+import qualified HStream.Store.Internal.Foreign as FFI
+import           HStream.Store.Internal.Types   (CheckpointStore (..),
+                                                 SequenceNum (..),
+                                                 StreamClient (..),
+                                                 TopicID (..))
+import qualified HStream.Store.Internal.Types   as FFI
 
 -------------------------------------------------------------------------------
 
