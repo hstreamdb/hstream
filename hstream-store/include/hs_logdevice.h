@@ -14,7 +14,12 @@
 #include <folly/Singleton.h>
 #include <folly/String.h>
 #include <folly/io/async/AsyncSocket.h>
+
 #include <logdevice/admin/if/gen-cpp2/AdminAPI.h>
+#include <logdevice/common/Processor.h>
+#include <logdevice/common/RSMBasedVersionedConfigStore.h>
+#include <logdevice/common/VersionedConfigStore.h>
+#include <logdevice/common/checks.h>
 #include <logdevice/include/CheckpointStore.h>
 #include <logdevice/include/CheckpointStoreFactory.h>
 #include <logdevice/include/CheckpointedReaderBase.h>
@@ -30,6 +35,8 @@
 #include <logdevice/include/SyncCheckpointedReader.h>
 #include <logdevice/include/debug.h>
 #include <logdevice/include/types.h>
+#include <logdevice/lib/ClientImpl.h>
+
 #include <thrift/lib/cpp/async/TAsyncSSLSocket.h>
 #include <thrift/lib/cpp2/async/HeaderClientChannel.h>
 
@@ -43,14 +50,19 @@ using facebook::logdevice::CheckpointStore;
 using facebook::logdevice::CheckpointStoreFactory;
 using facebook::logdevice::Client;
 using facebook::logdevice::ClientFactory;
+using facebook::logdevice::ClientImpl;
 using facebook::logdevice::ClientSettings;
 using facebook::logdevice::DataRecord;
 using facebook::logdevice::KeyType;
 using facebook::logdevice::logid_t;
 using facebook::logdevice::lsn_t;
 using facebook::logdevice::Payload;
+using facebook::logdevice::Processor;
 using facebook::logdevice::Reader;
+using facebook::logdevice::RSMBasedVersionedConfigStore;
 using facebook::logdevice::SyncCheckpointedReader;
+using facebook::logdevice::vcs_config_version_t;
+using facebook::logdevice::VersionedConfigStore;
 using facebook::logdevice::client::LogAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
@@ -58,6 +70,7 @@ using facebook::fb303::cpp2::fb_status;
 using facebook::logdevice::thrift::AdminAPIAsyncClient;
 
 std::string* new_hs_std_string(std::string&& str);
+char* copyString(const std::string& str);
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,9 +78,12 @@ extern "C" {
 
 // ----------------------------------------------------------------------------
 
+void init_logdevice(void);
+
 typedef int64_t c_timestamp_t;
 typedef uint16_t c_error_code_t;
 typedef uint8_t c_keytype_t;
+typedef uint64_t c_vcs_config_version_t;
 
 struct logdevice_loggroup_t {
   std::unique_ptr<LogGroup> rep;
@@ -78,6 +94,9 @@ struct logdevice_logdirectory_t {
 struct logdevice_client_t {
   std::shared_ptr<Client> rep;
 };
+struct logdevice_vcs_t {
+  std::unique_ptr<VersionedConfigStore> rep;
+};
 struct logdevice_reader_t {
   std::unique_ptr<Reader> rep;
 };
@@ -87,6 +106,7 @@ struct logdevice_sync_checkpointed_reader_t {
 struct logdevice_checkpoint_store_t {
   std::unique_ptr<CheckpointStore> rep;
 };
+
 typedef struct logdevice_admin_async_client_t {
   std::unique_ptr<AdminAPIAsyncClient> rep;
 } logdevice_admin_async_client_t;
@@ -97,6 +117,7 @@ typedef struct thrift_rpc_options_t {
 typedef struct logdevice_loggroup_t logdevice_loggroup_t;
 typedef struct logdevice_logdirectory_t logdevice_logdirectory_t;
 typedef struct logdevice_client_t logdevice_client_t;
+typedef struct logdevice_vcs_t logdevice_vcs_t;
 typedef struct logdevice_checkpoint_store_t logdevice_checkpoint_store_t;
 typedef struct logdevice_reader_t logdevice_reader_t;
 typedef struct logdevice_sync_checkpointed_reader_t
@@ -177,13 +198,35 @@ const c_logdevice_dbg_level C_DBG_SPEW =
 void set_dbg_level(c_logdevice_dbg_level level);
 int dbg_use_fd(int fd);
 
-// AppendCallbackData
+// ----------------------------------------------------------------------------
+// callbacks
+
 typedef struct logdevice_append_cb_data_t {
   c_error_code_t st;
   c_logid_t logid;
   c_lsn_t lsn;
   c_timestamp_t timestamp;
 } logdevice_append_cb_data_t;
+
+// The status codes may be one of the following if the callback is invoked:
+//   OK
+//   NOTFOUND: key not found, corresponds to ZNONODE
+//   VERSION_MISMATCH: corresponds to ZBADVERSION
+//   ACCESS: permission denied, corresponds to ZNOAUTH
+//   UPTODATE: current version is up-to-date for conditional get
+//   AGAIN: transient errors (including connection closed ZCONNECTIONLOSS,
+//          timed out ZOPERATIONTIMEOUT, throttled ZWRITETHROTTLE)
+typedef struct vcs_value_callback_data_t {
+  c_error_code_t st;
+  HsInt val_len;
+  const char* value;
+} vcs_value_callback_data_t;
+typedef struct vcs_write_callback_data_t {
+  c_error_code_t st;
+  c_vcs_config_version_t version;
+  HsInt val_len;
+  const char* value;
+} vcs_write_callback_data_t;
 
 // ----------------------------------------------------------------------------
 // Client

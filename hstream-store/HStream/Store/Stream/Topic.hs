@@ -42,32 +42,34 @@ module HStream.Store.Stream.Topic
   , getLogExtraAttr
   ) where
 
-import           Control.Exception            (try)
-import           Control.Monad                (void, (<=<))
-import           Data.Bits                    (shiftL, xor)
-import qualified Data.Cache                   as Cache
-import           Data.Map.Strict              (Map)
-import qualified Data.Map.Strict              as Map
-import           Data.Time.Clock.System       (SystemTime (..), getSystemTime)
-import           Data.Word                    (Word16, Word32, Word64)
-import           Foreign.ForeignPtr           (ForeignPtr, newForeignPtr,
-                                               withForeignPtr)
-import           Foreign.Ptr                  (nullPtr)
-import           GHC.Generics                 (Generic)
-import           GHC.Stack                    (HasCallStack, callStack)
-import           System.IO.Unsafe             (unsafePerformIO)
-import           System.Random                (randomRIO)
-import           Z.Data.CBytes                (CBytes)
-import qualified Z.Data.CBytes                as CBytes
-import qualified Z.Data.JSON                  as JSON
-import qualified Z.Data.MessagePack           as MP
-import qualified Z.Data.Text                  as T
-import qualified Z.Foreign                    as Z
+import           Control.Exception              (try)
+import           Control.Monad                  (void, (<=<))
+import           Data.Bits                      (shiftL, xor)
+import qualified Data.Cache                     as Cache
+import           Data.Map.Strict                (Map)
+import qualified Data.Map.Strict                as Map
+import           Data.Time.Clock.System         (SystemTime (..), getSystemTime)
+import           Data.Word                      (Word16, Word32, Word64)
+import           Foreign.ForeignPtr             (ForeignPtr, newForeignPtr,
+                                                 withForeignPtr)
+import           Foreign.Ptr                    (nullPtr)
+import           GHC.Generics                   (Generic)
+import           GHC.Stack                      (HasCallStack, callStack)
+import           System.IO.Unsafe               (unsafePerformIO)
+import           System.Random                  (randomRIO)
+import           Z.Data.CBytes                  (CBytes)
+import qualified Z.Data.CBytes                  as CBytes
+import qualified Z.Data.JSON                    as JSON
+import qualified Z.Data.MessagePack             as MP
+import qualified Z.Data.Text                    as T
+import qualified Z.Foreign                      as Z
 
-import qualified HStream.Store.Exception      as E
-import qualified HStream.Store.Internal.FFI   as FFI
-import           HStream.Store.Internal.Types (StreamClient (..), TopicID (..))
-import qualified HStream.Store.Internal.Types as FFI
+import qualified HStream.Store.Exception        as E
+import qualified HStream.Store.Internal.FFI     as FFI
+import qualified HStream.Store.Internal.Foreign as FFI
+import           HStream.Store.Internal.Types   (StreamClient (..),
+                                                 TopicID (..))
+import qualified HStream.Store.Internal.Types   as FFI
 
 -------------------------------------------------------------------------------
 

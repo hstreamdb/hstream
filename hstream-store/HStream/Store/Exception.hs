@@ -1,5 +1,6 @@
-{-# LANGUAGE CPP   #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE CPP             #-}
+{-# LANGUAGE GADTs           #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module HStream.Store.Exception
   ( -- * Stream Exception
@@ -118,6 +119,114 @@ module HStream.Store.Exception
   , WRITE_STREAM_BROKEN      (..)
   , WRITE_STREAM_IGNORED     (..)
   , USER_STREAM_ERROR        (..)
+
+    -- * Patterns
+  , pattern C_OK
+  , pattern C_NOTFOUND
+  , pattern C_TIMEDOUT
+  , pattern C_NOSEQUENCER
+  , pattern C_CONNFAILED
+  , pattern C_NOTCONN
+  , pattern C_TOOBIG
+  , pattern C_TOOMANY
+  , pattern C_PREEMPTED
+  , pattern C_NOBUFS
+  , pattern C_NOMEM
+  , pattern C_INTERNAL
+  , pattern C_SYSLIMIT
+  , pattern C_TEMPLIMIT
+  , pattern C_PERMLIMIT
+  , pattern C_ACCESS
+  , pattern C_ALREADY
+  , pattern C_ISCONN
+  , pattern C_UNREACHABLE
+  , pattern C_UNROUTABLE
+  , pattern C_BADMSG
+  , pattern C_DISABLED
+  , pattern C_EXISTS
+  , pattern C_SHUTDOWN
+  , pattern C_NOTINCONFIG
+  , pattern C_PROTONOSUPPORT
+  , pattern C_PROTO
+  , pattern C_PEER_CLOSED
+  , pattern C_SEQNOBUFS
+  , pattern C_WOULDBLOCK
+  , pattern C_ABORTED
+  , pattern C_INPROGRESS
+  , pattern C_CANCELLED
+  , pattern C_NOTSTORAGE
+  , pattern C_AGAIN
+  , pattern C_PARTIAL
+  , pattern C_GAP
+  , pattern C_TRUNCATED
+  , pattern C_STALE
+  , pattern C_NOSPC
+  , pattern C_OVERLOADED
+  , pattern C_PENDING
+  , pattern C_PENDING_FULL
+  , pattern C_FAILED
+  , pattern C_SEQSYSLIMIT
+  , pattern C_REBUILDING
+  , pattern C_REDIRECTED
+  , pattern C_RETRY
+  , pattern C_BADPAYLOAD
+  , pattern C_NOSSLCONFIG
+  , pattern C_NOTREADY
+  , pattern C_DROPPED
+  , pattern C_FORWARD
+  , pattern C_NOTSUPPORTED
+  , pattern C_NOTINSERVERCONFIG
+  , pattern C_ISOLATED
+  , pattern C_SSLREQUIRED
+  , pattern C_CBREGISTERED
+  , pattern C_LOW_ON_SPC
+  , pattern C_PEER_UNAVAILABLE
+  , pattern C_NOTSUPPORTEDLOG
+  , pattern C_DATALOSS
+  , pattern C_NEVER_CONNECTED
+  , pattern C_NOTANODE
+  , pattern C_IDLE
+  , pattern C_INVALID_PARAM
+  , pattern C_INVALID_CLUSTER
+  , pattern C_INVALID_CONFIG
+  , pattern C_INVALID_THREAD
+  , pattern C_INVALID_IP
+  , pattern C_INVALID_OPERATION
+  , pattern C_UNKNOWN_SETTING
+  , pattern C_INVALID_SETTING_VALUE
+  , pattern C_UPTODATE
+  , pattern C_EMPTY
+  , pattern C_DESTINATION_MISMATCH
+  , pattern C_INVALID_ATTRIBUTES
+  , pattern C_NOTEMPTY
+  , pattern C_NOTDIR
+  , pattern C_ID_CLASH
+  , pattern C_LOGS_SECTION_MISSING
+  , pattern C_CHECKSUM_MISMATCH
+  , pattern C_COND_WRITE_NOT_READY
+  , pattern C_COND_WRITE_FAILED
+  , pattern C_FILE_OPEN
+  , pattern C_FILE_READ
+  , pattern C_LOCAL_LOG_STORE_WRITE
+  , pattern C_CAUGHT_UP
+  , pattern C_UNTIL_LSN_REACHED
+  , pattern C_WINDOW_END_REACHED
+  , pattern C_BYTE_LIMIT_REACHED
+  , pattern C_MALFORMED_RECORD
+  , pattern C_LOCAL_LOG_STORE_READ
+  , pattern C_SHADOW_DISABLED
+  , pattern C_SHADOW_UNCONFIGURED
+  , pattern C_SHADOW_FAILED
+  , pattern C_SHADOW_BUSY
+  , pattern C_SHADOW_LOADING
+  , pattern C_SHADOW_SKIP
+  , pattern C_VERSION_MISMATCH
+  , pattern C_SOURCE_STATE_MISMATCH
+  , pattern C_CONDITION_MISMATCH
+  , pattern C_MAINTENANCE_CLASH
+  , pattern C_WRITE_STREAM_UNKNOWN
+  , pattern C_WRITE_STREAM_BROKEN
+  , pattern C_WRITE_STREAM_IGNORED
   ) where
 
 import           Control.Exception            (Exception (..))
@@ -130,7 +239,7 @@ import qualified Z.Data.Text                  as T
 import qualified Z.Data.Text.Print            as T
 import qualified Z.Foreign                    as Z
 
-import qualified HStream.Store.Internal.Types as FFI
+import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
 
@@ -182,8 +291,8 @@ instance Exception e where                         \
 }
 #define MAKE_THROW_SSE(c, e) \
 throwStreamError c stack = do \
-  name <- T.validate <$> Z.fromNullTerminated (FFI.c_show_error_name c); \
-  desc <- T.validate <$> Z.fromNullTerminated (FFI.c_show_error_description c); \
+  name <- T.validate <$> Z.fromNullTerminated (c_show_error_name c); \
+  desc <- T.validate <$> Z.fromNullTerminated (c_show_error_description c); \
   E.throwIO $ e (SSEInfo name desc stack)
 
 MAKE_SSE(NOTFOUND         )
@@ -324,120 +433,120 @@ MAKE_SSE(USER_STREAM_ERROR)
 -- Unknown error code
 MAKE_SSE(UNKNOWN_CODE)
 
-throwStreamErrorIfNotOK :: HasCallStack => IO FFI.ErrorCode -> IO FFI.ErrorCode
+throwStreamErrorIfNotOK :: HasCallStack => IO ErrorCode -> IO ErrorCode
 throwStreamErrorIfNotOK = (throwStreamErrorIfNotOK' =<<)
 
-throwStreamErrorIfNotOK' :: HasCallStack => FFI.ErrorCode -> IO FFI.ErrorCode
+throwStreamErrorIfNotOK' :: HasCallStack => ErrorCode -> IO ErrorCode
 throwStreamErrorIfNotOK' code
-  | code == 0 = return 0
+  | code == C_OK = return C_OK
   | otherwise = throwStreamError code callStack
 
-throwStreamError :: FFI.ErrorCode -> CallStack -> IO a
-MAKE_THROW_SSE(  1, NOTFOUND              )
-MAKE_THROW_SSE(  2, TIMEDOUT              )
-MAKE_THROW_SSE(  3, NOSEQUENCER           )
-MAKE_THROW_SSE(  4, CONNFAILED            )
-MAKE_THROW_SSE(  5, NOTCONN               )
-MAKE_THROW_SSE(  6, TOOBIG                )
-MAKE_THROW_SSE(  7, TOOMANY               )
-MAKE_THROW_SSE(  8, PREEMPTED             )
-MAKE_THROW_SSE(  9, NOBUFS                )
-MAKE_THROW_SSE( 10, NOMEM                 )
-MAKE_THROW_SSE( 11, INTERNAL              )
-MAKE_THROW_SSE( 12, SYSLIMIT              )
-MAKE_THROW_SSE( 13, TEMPLIMIT             )
-MAKE_THROW_SSE( 14, PERMLIMIT             )
-MAKE_THROW_SSE( 15, ACCESS                )
-MAKE_THROW_SSE( 16, ALREADY               )
-MAKE_THROW_SSE( 17, ISCONN                )
-MAKE_THROW_SSE( 18, UNREACHABLE           )
-MAKE_THROW_SSE( 19, UNROUTABLE            )
-MAKE_THROW_SSE( 20, BADMSG                )
-MAKE_THROW_SSE( 21, DISABLED              )
-MAKE_THROW_SSE( 22, EXISTS                )
-MAKE_THROW_SSE( 23, SHUTDOWN              )
-MAKE_THROW_SSE( 24, NOTINCONFIG           )
-MAKE_THROW_SSE( 25, PROTONOSUPPORT        )
-MAKE_THROW_SSE( 26, PROTO                 )
-MAKE_THROW_SSE( 27, PEER_CLOSED           )
-MAKE_THROW_SSE( 28, SEQNOBUFS             )
-MAKE_THROW_SSE( 29, WOULDBLOCK            )
-MAKE_THROW_SSE( 30, ABORTED               )
-MAKE_THROW_SSE( 31, INPROGRESS            )
-MAKE_THROW_SSE( 32, CANCELLED             )
-MAKE_THROW_SSE( 33, NOTSTORAGE            )
-MAKE_THROW_SSE( 34, AGAIN                 )
-MAKE_THROW_SSE( 35, PARTIAL               )
-MAKE_THROW_SSE( 36, GAP                   )
-MAKE_THROW_SSE( 37, TRUNCATED             )
-MAKE_THROW_SSE( 38, STALE                 )
-MAKE_THROW_SSE( 39, NOSPC                 )
-MAKE_THROW_SSE( 40, OVERLOADED            )
-MAKE_THROW_SSE( 41, PENDING               )
-MAKE_THROW_SSE( 42, PENDING_FULL          )
-MAKE_THROW_SSE( 43, FAILED                )
-MAKE_THROW_SSE( 44, SEQSYSLIMIT           )
-MAKE_THROW_SSE( 45, REBUILDING            )
-MAKE_THROW_SSE( 46, REDIRECTED            )
-MAKE_THROW_SSE( 47, RETRY                 )
-MAKE_THROW_SSE( 48, BADPAYLOAD            )
-MAKE_THROW_SSE( 49, NOSSLCONFIG           )
-MAKE_THROW_SSE( 50, NOTREADY              )
-MAKE_THROW_SSE( 51, DROPPED               )
-MAKE_THROW_SSE( 52, FORWARD               )
-MAKE_THROW_SSE( 53, NOTSUPPORTED          )
-MAKE_THROW_SSE( 54, NOTINSERVERCONFIG     )
-MAKE_THROW_SSE( 55, ISOLATED              )
-MAKE_THROW_SSE( 56, SSLREQUIRED           )
-MAKE_THROW_SSE( 57, CBREGISTERED          )
-MAKE_THROW_SSE( 58, LOW_ON_SPC            )
-MAKE_THROW_SSE( 59, PEER_UNAVAILABLE      )
-MAKE_THROW_SSE( 60, NOTSUPPORTEDLOG       )
-MAKE_THROW_SSE( 61, DATALOSS              )
-MAKE_THROW_SSE( 62, NEVER_CONNECTED       )
-MAKE_THROW_SSE( 63, NOTANODE              )
-MAKE_THROW_SSE( 64, IDLE                  )
-MAKE_THROW_SSE(100, INVALID_PARAM         )
-MAKE_THROW_SSE(101, INVALID_CLUSTER       )
-MAKE_THROW_SSE(102, INVALID_CONFIG        )
-MAKE_THROW_SSE(103, INVALID_THREAD        )
-MAKE_THROW_SSE(104, INVALID_IP            )
-MAKE_THROW_SSE(105, INVALID_OPERATION     )
-MAKE_THROW_SSE(106, UNKNOWN_SETTING       )
-MAKE_THROW_SSE(107, INVALID_SETTING_VALUE )
-MAKE_THROW_SSE(108, UPTODATE              )
-MAKE_THROW_SSE(109, EMPTY                 )
-MAKE_THROW_SSE(110, DESTINATION_MISMATCH  )
-MAKE_THROW_SSE(111, INVALID_ATTRIBUTES    )
-MAKE_THROW_SSE(112, NOTEMPTY              )
-MAKE_THROW_SSE(113, NOTDIR                )
-MAKE_THROW_SSE(114, ID_CLASH              )
-MAKE_THROW_SSE(115, LOGS_SECTION_MISSING  )
-MAKE_THROW_SSE(116, CHECKSUM_MISMATCH     )
-MAKE_THROW_SSE(117, COND_WRITE_NOT_READY  )
-MAKE_THROW_SSE(118, COND_WRITE_FAILED     )
-MAKE_THROW_SSE(200, FILE_OPEN             )
-MAKE_THROW_SSE(201, FILE_READ             )
-MAKE_THROW_SSE(300, LOCAL_LOG_STORE_WRITE )
-MAKE_THROW_SSE(301, CAUGHT_UP             )
-MAKE_THROW_SSE(302, UNTIL_LSN_REACHED     )
-MAKE_THROW_SSE(303, WINDOW_END_REACHED    )
-MAKE_THROW_SSE(304, BYTE_LIMIT_REACHED    )
-MAKE_THROW_SSE(305, MALFORMED_RECORD      )
-MAKE_THROW_SSE(306, LOCAL_LOG_STORE_READ  )
-MAKE_THROW_SSE(401, SHADOW_DISABLED       )
-MAKE_THROW_SSE(402, SHADOW_UNCONFIGURED   )
-MAKE_THROW_SSE(403, SHADOW_FAILED         )
-MAKE_THROW_SSE(404, SHADOW_BUSY           )
-MAKE_THROW_SSE(405, SHADOW_LOADING        )
-MAKE_THROW_SSE(406, SHADOW_SKIP           )
-MAKE_THROW_SSE(500, VERSION_MISMATCH      )
-MAKE_THROW_SSE(501, SOURCE_STATE_MISMATCH )
-MAKE_THROW_SSE(502, CONDITION_MISMATCH    )
-MAKE_THROW_SSE(600, MAINTENANCE_CLASH     )
-MAKE_THROW_SSE(700, WRITE_STREAM_UNKNOWN  )
-MAKE_THROW_SSE(701, WRITE_STREAM_BROKEN   )
-MAKE_THROW_SSE(702, WRITE_STREAM_IGNORED  )
+throwStreamError :: ErrorCode -> CallStack -> IO a
+MAKE_THROW_SSE(C_NOTFOUND             , NOTFOUND              )
+MAKE_THROW_SSE(C_TIMEDOUT             , TIMEDOUT              )
+MAKE_THROW_SSE(C_NOSEQUENCER          , NOSEQUENCER           )
+MAKE_THROW_SSE(C_CONNFAILED           , CONNFAILED            )
+MAKE_THROW_SSE(C_NOTCONN              , NOTCONN               )
+MAKE_THROW_SSE(C_TOOBIG               , TOOBIG                )
+MAKE_THROW_SSE(C_TOOMANY              , TOOMANY               )
+MAKE_THROW_SSE(C_PREEMPTED            , PREEMPTED             )
+MAKE_THROW_SSE(C_NOBUFS               , NOBUFS                )
+MAKE_THROW_SSE(C_NOMEM                , NOMEM                 )
+MAKE_THROW_SSE(C_INTERNAL             , INTERNAL              )
+MAKE_THROW_SSE(C_SYSLIMIT             , SYSLIMIT              )
+MAKE_THROW_SSE(C_TEMPLIMIT            , TEMPLIMIT             )
+MAKE_THROW_SSE(C_PERMLIMIT            , PERMLIMIT             )
+MAKE_THROW_SSE(C_ACCESS               , ACCESS                )
+MAKE_THROW_SSE(C_ALREADY              , ALREADY               )
+MAKE_THROW_SSE(C_ISCONN               , ISCONN                )
+MAKE_THROW_SSE(C_UNREACHABLE          , UNREACHABLE           )
+MAKE_THROW_SSE(C_UNROUTABLE           , UNROUTABLE            )
+MAKE_THROW_SSE(C_BADMSG               , BADMSG                )
+MAKE_THROW_SSE(C_DISABLED             , DISABLED              )
+MAKE_THROW_SSE(C_EXISTS               , EXISTS                )
+MAKE_THROW_SSE(C_SHUTDOWN             , SHUTDOWN              )
+MAKE_THROW_SSE(C_NOTINCONFIG          , NOTINCONFIG           )
+MAKE_THROW_SSE(C_PROTONOSUPPORT       , PROTONOSUPPORT        )
+MAKE_THROW_SSE(C_PROTO                , PROTO                 )
+MAKE_THROW_SSE(C_PEER_CLOSED          , PEER_CLOSED           )
+MAKE_THROW_SSE(C_SEQNOBUFS            , SEQNOBUFS             )
+MAKE_THROW_SSE(C_WOULDBLOCK           , WOULDBLOCK            )
+MAKE_THROW_SSE(C_ABORTED              , ABORTED               )
+MAKE_THROW_SSE(C_INPROGRESS           , INPROGRESS            )
+MAKE_THROW_SSE(C_CANCELLED            , CANCELLED             )
+MAKE_THROW_SSE(C_NOTSTORAGE           , NOTSTORAGE            )
+MAKE_THROW_SSE(C_AGAIN                , AGAIN                 )
+MAKE_THROW_SSE(C_PARTIAL              , PARTIAL               )
+MAKE_THROW_SSE(C_GAP                  , GAP                   )
+MAKE_THROW_SSE(C_TRUNCATED            , TRUNCATED             )
+MAKE_THROW_SSE(C_STALE                , STALE                 )
+MAKE_THROW_SSE(C_NOSPC                , NOSPC                 )
+MAKE_THROW_SSE(C_OVERLOADED           , OVERLOADED            )
+MAKE_THROW_SSE(C_PENDING              , PENDING               )
+MAKE_THROW_SSE(C_PENDING_FULL         , PENDING_FULL          )
+MAKE_THROW_SSE(C_FAILED               , FAILED                )
+MAKE_THROW_SSE(C_SEQSYSLIMIT          , SEQSYSLIMIT           )
+MAKE_THROW_SSE(C_REBUILDING           , REBUILDING            )
+MAKE_THROW_SSE(C_REDIRECTED           , REDIRECTED            )
+MAKE_THROW_SSE(C_RETRY                , RETRY                 )
+MAKE_THROW_SSE(C_BADPAYLOAD           , BADPAYLOAD            )
+MAKE_THROW_SSE(C_NOSSLCONFIG          , NOSSLCONFIG           )
+MAKE_THROW_SSE(C_NOTREADY             , NOTREADY              )
+MAKE_THROW_SSE(C_DROPPED              , DROPPED               )
+MAKE_THROW_SSE(C_FORWARD              , FORWARD               )
+MAKE_THROW_SSE(C_NOTSUPPORTED         , NOTSUPPORTED          )
+MAKE_THROW_SSE(C_NOTINSERVERCONFIG    , NOTINSERVERCONFIG     )
+MAKE_THROW_SSE(C_ISOLATED             , ISOLATED              )
+MAKE_THROW_SSE(C_SSLREQUIRED          , SSLREQUIRED           )
+MAKE_THROW_SSE(C_CBREGISTERED         , CBREGISTERED          )
+MAKE_THROW_SSE(C_LOW_ON_SPC           , LOW_ON_SPC            )
+MAKE_THROW_SSE(C_PEER_UNAVAILABLE     , PEER_UNAVAILABLE      )
+MAKE_THROW_SSE(C_NOTSUPPORTEDLOG      , NOTSUPPORTEDLOG       )
+MAKE_THROW_SSE(C_DATALOSS             , DATALOSS              )
+MAKE_THROW_SSE(C_NEVER_CONNECTED      , NEVER_CONNECTED       )
+MAKE_THROW_SSE(C_NOTANODE             , NOTANODE              )
+MAKE_THROW_SSE(C_IDLE                 , IDLE                  )
+MAKE_THROW_SSE(C_INVALID_PARAM        , INVALID_PARAM         )
+MAKE_THROW_SSE(C_INVALID_CLUSTER      , INVALID_CLUSTER       )
+MAKE_THROW_SSE(C_INVALID_CONFIG       , INVALID_CONFIG        )
+MAKE_THROW_SSE(C_INVALID_THREAD       , INVALID_THREAD        )
+MAKE_THROW_SSE(C_INVALID_IP           , INVALID_IP            )
+MAKE_THROW_SSE(C_INVALID_OPERATION    , INVALID_OPERATION     )
+MAKE_THROW_SSE(C_UNKNOWN_SETTING      , UNKNOWN_SETTING       )
+MAKE_THROW_SSE(C_INVALID_SETTING_VALUE, INVALID_SETTING_VALUE )
+MAKE_THROW_SSE(C_UPTODATE             , UPTODATE              )
+MAKE_THROW_SSE(C_EMPTY                , EMPTY                 )
+MAKE_THROW_SSE(C_DESTINATION_MISMATCH , DESTINATION_MISMATCH  )
+MAKE_THROW_SSE(C_INVALID_ATTRIBUTES   , INVALID_ATTRIBUTES    )
+MAKE_THROW_SSE(C_NOTEMPTY             , NOTEMPTY              )
+MAKE_THROW_SSE(C_NOTDIR               , NOTDIR                )
+MAKE_THROW_SSE(C_ID_CLASH             , ID_CLASH              )
+MAKE_THROW_SSE(C_LOGS_SECTION_MISSING , LOGS_SECTION_MISSING  )
+MAKE_THROW_SSE(C_CHECKSUM_MISMATCH    , CHECKSUM_MISMATCH     )
+MAKE_THROW_SSE(C_COND_WRITE_NOT_READY , COND_WRITE_NOT_READY  )
+MAKE_THROW_SSE(C_COND_WRITE_FAILED    , COND_WRITE_FAILED     )
+MAKE_THROW_SSE(C_FILE_OPEN            , FILE_OPEN             )
+MAKE_THROW_SSE(C_FILE_READ            , FILE_READ             )
+MAKE_THROW_SSE(C_LOCAL_LOG_STORE_WRITE, LOCAL_LOG_STORE_WRITE )
+MAKE_THROW_SSE(C_CAUGHT_UP            , CAUGHT_UP             )
+MAKE_THROW_SSE(C_UNTIL_LSN_REACHED    , UNTIL_LSN_REACHED     )
+MAKE_THROW_SSE(C_WINDOW_END_REACHED   , WINDOW_END_REACHED    )
+MAKE_THROW_SSE(C_BYTE_LIMIT_REACHED   , BYTE_LIMIT_REACHED    )
+MAKE_THROW_SSE(C_MALFORMED_RECORD     , MALFORMED_RECORD      )
+MAKE_THROW_SSE(C_LOCAL_LOG_STORE_READ , LOCAL_LOG_STORE_READ  )
+MAKE_THROW_SSE(C_SHADOW_DISABLED      , SHADOW_DISABLED       )
+MAKE_THROW_SSE(C_SHADOW_UNCONFIGURED  , SHADOW_UNCONFIGURED   )
+MAKE_THROW_SSE(C_SHADOW_FAILED        , SHADOW_FAILED         )
+MAKE_THROW_SSE(C_SHADOW_BUSY          , SHADOW_BUSY           )
+MAKE_THROW_SSE(C_SHADOW_LOADING       , SHADOW_LOADING        )
+MAKE_THROW_SSE(C_SHADOW_SKIP          , SHADOW_SKIP           )
+MAKE_THROW_SSE(C_VERSION_MISMATCH     , VERSION_MISMATCH      )
+MAKE_THROW_SSE(C_SOURCE_STATE_MISMATCH, SOURCE_STATE_MISMATCH )
+MAKE_THROW_SSE(C_CONDITION_MISMATCH   , CONDITION_MISMATCH    )
+MAKE_THROW_SSE(C_MAINTENANCE_CLASH    , MAINTENANCE_CLASH     )
+MAKE_THROW_SSE(C_WRITE_STREAM_UNKNOWN , WRITE_STREAM_UNKNOWN  )
+MAKE_THROW_SSE(C_WRITE_STREAM_BROKEN  , WRITE_STREAM_BROKEN   )
+MAKE_THROW_SSE(C_WRITE_STREAM_IGNORED , WRITE_STREAM_IGNORED  )
 throwStreamError code stack =
   let codeBS = "UNKNOWN_CODE:" <> T.validate (T.toUTF8Bytes code)
    in E.throwIO $ UNKNOWN_CODE (SSEInfo codeBS "" stack)

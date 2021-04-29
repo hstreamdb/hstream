@@ -17,10 +17,9 @@ const char* show_error_description(facebook::logdevice::E err) {
   return facebook::logdevice::error_description(err);
 }
 
-// TODO
-// void init_logdevice(void) {
-//  folly::SingletonVault::singleton()->registrationComplete();
-//}
+void init_logdevice(void) {
+  folly::SingletonVault::singleton()->registrationComplete();
+}
 
 // ----------------------------------------------------------------------------
 // Client

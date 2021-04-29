@@ -1,8 +1,15 @@
 {-# LANGUAGE PatternSynonyms #-}
 
 module HStream.Store.Logger
-  ( -- * LogDevice debug level
-    FFI.C_DBG_LEVEL
+  ( Log.debug
+  , Log.info
+  , Log.warning
+  , Log.fatal
+  , Log.withDefaultLogger
+  , Log.flushDefaultLogger
+
+  -- * LogDevice debug level
+  , FFI.C_DBG_LEVEL
   , pattern FFI.C_DBG_CRITICAL
   , pattern FFI.C_DBG_ERROR
   , pattern FFI.C_DBG_WARNING
@@ -16,6 +23,8 @@ module HStream.Store.Logger
   ) where
 
 import           Foreign.C.Types              (CInt)
+import qualified Z.IO.Logger                  as Log
+
 import qualified HStream.Store.Internal.Types as FFI
 
 type FD = CInt
