@@ -19,6 +19,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
 import           HStream.SQL.Extra          (anyJoin, extractCondRefNames,
+                                             extractPNDouble, extractPNInteger,
                                              extractRefNames,
                                              extractSelRefNames)
 import           HStream.SQL.Validate.Utils
@@ -29,6 +30,12 @@ class Validate t where
   {-# MINIMAL validate #-}
 
 --------------------------------- Basic Types ----------------------------------
+instance Validate PNInteger where
+  validate = return
+
+instance Validate PNDouble where
+  validate = return
+
 instance Validate Boolean where
   validate e@(BoolTrue  _) = return e
   validate e@(BoolFalse _) = return e
@@ -37,19 +44,21 @@ instance Validate Boolean where
 -- 2. 1 <= month <= 12
 -- 3. 1 <= day <= real days(30, 31 or other ones)
 instance Validate Date where
-  validate date@(DDate pos y m d) = do
+  validate date@(DDate pos y' m' d') = do
     unless (y >= 0 && y <= 9999)     (Left $ buildSQLException ParseException pos "Year must be between 0 and 9999")
     unless (m >= 1 && m <= 12)       (Left $ buildSQLException ParseException pos "Month must be between 1 and 12")
     unless (d >= 1 && d <= realDays) (Left $ buildSQLException ParseException pos ("Day must be between 1 and " <> show realDays))
     return date
-    where daysOfMonth = [31,28 + if isLeapYear y then 1 else 0,31,30,31,30,31,31,30,31,30,31]
+    where [y,m,d] = extractPNInteger <$> [y',m',d']
+          daysOfMonth = [31,28 + if isLeapYear y then 1 else 0,31,30,31,30,31,31,30,31,30,31]
           realDays = daysOfMonth !! (fromInteger m - 1)
 
 -- 1. 0 <= hour   <= 23
 -- 2. 0 <= minute <= 59
 -- 3. 0 <= second <= 59
 instance Validate Time where
-  validate time@(DTime pos h m s) = do
+  validate time@(DTime pos h' m' s') = do
+    let [h,m,s] = extractPNInteger <$> [h',m',s']
     unless (h >= 0 && h <= 23) (Left $ buildSQLException ParseException pos "Hour must be between 0 and 23")
     unless (m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Minute must be between 0 and 59")
     unless (s >= 0 && s <= 59) (Left $ buildSQLException ParseException pos "Second must be between 0 and 59")
@@ -57,7 +66,8 @@ instance Validate Time where
 
 -- 1. number > 0
 instance Validate Interval where
-  validate i@(DInterval pos n _) = do
+  validate i@(DInterval pos n' _) = do
+    let n = extractPNInteger n'
     unless (n > 0) (Left $ buildSQLException ParseException pos "Interval must be positive")
     return i
 
@@ -548,7 +558,8 @@ instance Validate StreamOption where
   validate op@(OptionFormat pos s) = do
     unless (s `L.elem` ["JSON", "json"]) (Left $ buildSQLException ParseException pos $ "Stream format can only support JSON yet ")
     return op
-  validate op@(OptionRepFactor pos n) = do
+  validate op@(OptionRepFactor pos n') = do
+    let n = extractPNInteger n'
     unless (n > 0) (Left $ buildSQLException ParseException pos "Replicate factor can only be positive integers")
     return op
 

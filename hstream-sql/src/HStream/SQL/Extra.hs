@@ -1,5 +1,7 @@
 module HStream.SQL.Extra
-  ( anyJoin
+  ( extractPNInteger
+  , extractPNDouble
+  , anyJoin
   , extractRefNames
   , extractSelRefNames
   , extractCondRefNames
@@ -9,6 +11,17 @@ module HStream.SQL.Extra
 import qualified Data.List       as L
 import           Data.Text       (Text)
 import           HStream.SQL.Abs
+
+--------------------------------------------------------------------------------
+extractPNInteger :: PNInteger -> Integer
+extractPNInteger (PInteger  _ n) = n
+extractPNInteger (IPInteger _ n) = n
+extractPNInteger (NInteger  _ n) = (-n)
+
+extractPNDouble :: PNDouble -> Double
+extractPNDouble (PDouble  _ n) = n
+extractPNDouble (IPDouble _ n) = n
+extractPNDouble (NDouble  _ n) = (-n)
 
 --------------------------------------------------------------------------------
 anyJoin :: [TableRef] -> Bool

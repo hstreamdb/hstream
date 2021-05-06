@@ -4,6 +4,8 @@
 module HStream.SQL.Par
   ( happyError
   , myLexer
+  , pPNInteger
+  , pPNDouble
   , pSQL
   , pCreate
   , pListStreamOption
@@ -58,6 +60,8 @@ import qualified Data.Text
 
 }
 
+%name pPNInteger_internal PNInteger
+%name pPNDouble_internal PNDouble
 %name pSQL_internal SQL
 %name pCreate_internal Create
 %name pListStreamOption_internal ListStreamOption
@@ -231,6 +235,16 @@ Integer  : L_integ  { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), 
 String  :: { (HStream.SQL.Abs.BNFC'Position, String) }
 String   : L_quoted { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), (Data.Text.unpack ((\(PT _ (TL s)) -> s) $1))) }
 
+PNInteger :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.PNInteger) }
+PNInteger : '+' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.PInteger (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+          | Integer { (fst $1, HStream.SQL.Abs.IPInteger (fst $1) (snd $1)) }
+          | '-' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.NInteger (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+
+PNDouble :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.PNDouble) }
+PNDouble : '+' Double { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.PDouble (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+         | Double { (fst $1, HStream.SQL.Abs.IPDouble (fst $1) (snd $1)) }
+         | '-' Double { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.NDouble (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+
 SQL :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SQL) }
 SQL : Select ';' { (fst $1, HStream.SQL.Abs.QSelect (fst $1) (snd $1)) }
     | Create ';' { (fst $1, HStream.SQL.Abs.QCreate (fst $1) (snd $1)) }
@@ -247,7 +261,7 @@ ListStreamOption : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
 
 StreamOption :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.StreamOption) }
 StreamOption : 'FORMAT' '=' String { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.OptionFormat (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
-             | 'REPLICATE' '=' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.OptionRepFactor (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+             | 'REPLICATE' '=' PNInteger { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.OptionRepFactor (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
 
 Insert :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert) }
 Insert : 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInsert (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $9)) }
@@ -352,8 +366,8 @@ ValueExpr3 : ValueExpr3 '*' ValueExpr4 { (fst $1, HStream.SQL.Abs.ExprMul (fst $
            | ValueExpr4 { (fst $1, (snd $1)) }
 
 ValueExpr4 :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ValueExpr) }
-ValueExpr4 : Integer { (fst $1, HStream.SQL.Abs.ExprInt (fst $1) (snd $1)) }
-           | Double { (fst $1, HStream.SQL.Abs.ExprNum (fst $1) (snd $1)) }
+ValueExpr4 : PNInteger { (fst $1, HStream.SQL.Abs.ExprInt (fst $1) (snd $1)) }
+           | PNDouble { (fst $1, HStream.SQL.Abs.ExprNum (fst $1) (snd $1)) }
            | String { (fst $1, HStream.SQL.Abs.ExprString (fst $1) (snd $1)) }
            | Boolean { (fst $1, HStream.SQL.Abs.ExprBool (fst $1) (snd $1)) }
            | Date { (fst $1, HStream.SQL.Abs.ExprDate (fst $1) (snd $1)) }
@@ -368,10 +382,10 @@ Boolean : 'TRUE' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HSt
         | 'FALSE' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.BoolFalse (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
 
 Date :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Date) }
-Date : 'DATE' Integer '-' Integer '-' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DDate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4) (snd $6)) }
+Date : 'DATE' PNInteger '-' PNInteger '-' PNInteger { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DDate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4) (snd $6)) }
 
 Time :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Time) }
-Time : 'TIME' Integer ':' Integer ':' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DTime (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4) (snd $6)) }
+Time : 'TIME' PNInteger ':' PNInteger ':' PNInteger { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DTime (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4) (snd $6)) }
 
 TimeUnit :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.TimeUnit) }
 TimeUnit : 'YEAR' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.TimeUnitYear (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
@@ -382,7 +396,7 @@ TimeUnit : 'YEAR' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HS
          | 'SECOND' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.TimeUnitSec (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
 
 Interval :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Interval) }
-Interval : 'INTERVAL' Integer TimeUnit { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInterval (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $3)) }
+Interval : 'INTERVAL' PNInteger TimeUnit { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInterval (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $3)) }
 
 ListLabelledValueExpr :: { (HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.LabelledValueExpr]) }
 ListLabelledValueExpr : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
@@ -396,7 +410,7 @@ ColName :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ColName) }
 ColName : Ident { (fst $1, HStream.SQL.Abs.ColNameSimple (fst $1) (snd $1)) }
         | Ident '.' Ident { (fst $1, HStream.SQL.Abs.ColNameStream (fst $1) (snd $1) (snd $3)) }
         | ColName '[' Ident ']' { (fst $1, HStream.SQL.Abs.ColNameInner (fst $1) (snd $1) (snd $3)) }
-        | ColName '[' Integer ']' { (fst $1, HStream.SQL.Abs.ColNameIndex (fst $1) (snd $1) (snd $3)) }
+        | ColName '[' PNInteger ']' { (fst $1, HStream.SQL.Abs.ColNameIndex (fst $1) (snd $1) (snd $3)) }
 
 SetFunc :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SetFunc) }
 SetFunc : 'COUNT(*)' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.SetFuncCountAll (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
@@ -486,6 +500,12 @@ myLexer :: Data.Text.Text -> [Token]
 myLexer = tokens
 
 -- Entrypoints
+
+pPNInteger :: [Token] -> Err HStream.SQL.Abs.PNInteger
+pPNInteger = fmap snd . pPNInteger_internal
+
+pPNDouble :: [Token] -> Err HStream.SQL.Abs.PNDouble
+pPNDouble = fmap snd . pPNDouble_internal
 
 pSQL :: [Token] -> Err HStream.SQL.Abs.SQL
 pSQL = fmap snd . pSQL_internal

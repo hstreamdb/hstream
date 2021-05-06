@@ -114,6 +114,18 @@ instance Print HStream.SQL.Abs.Ident where
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
+instance Print (HStream.SQL.Abs.PNInteger' a) where
+  prt i = \case
+    HStream.SQL.Abs.PInteger _ n -> prPrec i 0 (concatD [doc (showString "+"), prt 0 n])
+    HStream.SQL.Abs.IPInteger _ n -> prPrec i 0 (concatD [prt 0 n])
+    HStream.SQL.Abs.NInteger _ n -> prPrec i 0 (concatD [doc (showString "-"), prt 0 n])
+
+instance Print (HStream.SQL.Abs.PNDouble' a) where
+  prt i = \case
+    HStream.SQL.Abs.PDouble _ d -> prPrec i 0 (concatD [doc (showString "+"), prt 0 d])
+    HStream.SQL.Abs.IPDouble _ d -> prPrec i 0 (concatD [prt 0 d])
+    HStream.SQL.Abs.NDouble _ d -> prPrec i 0 (concatD [doc (showString "-"), prt 0 d])
+
 instance Print (HStream.SQL.Abs.SQL' a) where
   prt i = \case
     HStream.SQL.Abs.QSelect _ select -> prPrec i 0 (concatD [prt 0 select, doc (showString ";")])
@@ -131,7 +143,7 @@ instance Print [HStream.SQL.Abs.StreamOption' a] where
 instance Print (HStream.SQL.Abs.StreamOption' a) where
   prt i = \case
     HStream.SQL.Abs.OptionFormat _ str -> prPrec i 0 (concatD [doc (showString "FORMAT"), doc (showString "="), prt 0 str])
-    HStream.SQL.Abs.OptionRepFactor _ n -> prPrec i 0 (concatD [doc (showString "REPLICATE"), doc (showString "="), prt 0 n])
+    HStream.SQL.Abs.OptionRepFactor _ pninteger -> prPrec i 0 (concatD [doc (showString "REPLICATE"), doc (showString "="), prt 0 pninteger])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
@@ -239,8 +251,8 @@ instance Print (HStream.SQL.Abs.ValueExpr' a) where
     HStream.SQL.Abs.ExprAdd _ valueexpr1 valueexpr2 -> prPrec i 2 (concatD [prt 2 valueexpr1, doc (showString "+"), prt 3 valueexpr2])
     HStream.SQL.Abs.ExprSub _ valueexpr1 valueexpr2 -> prPrec i 2 (concatD [prt 2 valueexpr1, doc (showString "-"), prt 3 valueexpr2])
     HStream.SQL.Abs.ExprMul _ valueexpr1 valueexpr2 -> prPrec i 3 (concatD [prt 3 valueexpr1, doc (showString "*"), prt 4 valueexpr2])
-    HStream.SQL.Abs.ExprInt _ n -> prPrec i 4 (concatD [prt 0 n])
-    HStream.SQL.Abs.ExprNum _ d -> prPrec i 4 (concatD [prt 0 d])
+    HStream.SQL.Abs.ExprInt _ pninteger -> prPrec i 4 (concatD [prt 0 pninteger])
+    HStream.SQL.Abs.ExprNum _ pndouble -> prPrec i 4 (concatD [prt 0 pndouble])
     HStream.SQL.Abs.ExprString _ str -> prPrec i 4 (concatD [prt 0 str])
     HStream.SQL.Abs.ExprBool _ boolean -> prPrec i 4 (concatD [prt 0 boolean])
     HStream.SQL.Abs.ExprDate _ date -> prPrec i 4 (concatD [prt 0 date])
@@ -262,11 +274,11 @@ instance Print (HStream.SQL.Abs.Boolean' a) where
 
 instance Print (HStream.SQL.Abs.Date' a) where
   prt i = \case
-    HStream.SQL.Abs.DDate _ n1 n2 n3 -> prPrec i 0 (concatD [doc (showString "DATE"), prt 0 n1, doc (showString "-"), prt 0 n2, doc (showString "-"), prt 0 n3])
+    HStream.SQL.Abs.DDate _ pninteger1 pninteger2 pninteger3 -> prPrec i 0 (concatD [doc (showString "DATE"), prt 0 pninteger1, doc (showString "-"), prt 0 pninteger2, doc (showString "-"), prt 0 pninteger3])
 
 instance Print (HStream.SQL.Abs.Time' a) where
   prt i = \case
-    HStream.SQL.Abs.DTime _ n1 n2 n3 -> prPrec i 0 (concatD [doc (showString "TIME"), prt 0 n1, doc (showString ":"), prt 0 n2, doc (showString ":"), prt 0 n3])
+    HStream.SQL.Abs.DTime _ pninteger1 pninteger2 pninteger3 -> prPrec i 0 (concatD [doc (showString "TIME"), prt 0 pninteger1, doc (showString ":"), prt 0 pninteger2, doc (showString ":"), prt 0 pninteger3])
 
 instance Print (HStream.SQL.Abs.TimeUnit' a) where
   prt i = \case
@@ -279,7 +291,7 @@ instance Print (HStream.SQL.Abs.TimeUnit' a) where
 
 instance Print (HStream.SQL.Abs.Interval' a) where
   prt i = \case
-    HStream.SQL.Abs.DInterval _ n timeunit -> prPrec i 0 (concatD [doc (showString "INTERVAL"), prt 0 n, prt 0 timeunit])
+    HStream.SQL.Abs.DInterval _ pninteger timeunit -> prPrec i 0 (concatD [doc (showString "INTERVAL"), prt 0 pninteger, prt 0 timeunit])
 
 instance Print [HStream.SQL.Abs.LabelledValueExpr' a] where
   prt = prtList
@@ -296,7 +308,7 @@ instance Print (HStream.SQL.Abs.ColName' a) where
     HStream.SQL.Abs.ColNameSimple _ id_ -> prPrec i 0 (concatD [prt 0 id_])
     HStream.SQL.Abs.ColNameStream _ id_1 id_2 -> prPrec i 0 (concatD [prt 0 id_1, doc (showString "."), prt 0 id_2])
     HStream.SQL.Abs.ColNameInner _ colname id_ -> prPrec i 0 (concatD [prt 0 colname, doc (showString "["), prt 0 id_, doc (showString "]")])
-    HStream.SQL.Abs.ColNameIndex _ colname n -> prPrec i 0 (concatD [prt 0 colname, doc (showString "["), prt 0 n, doc (showString "]")])
+    HStream.SQL.Abs.ColNameIndex _ colname pninteger -> prPrec i 0 (concatD [prt 0 colname, doc (showString "["), prt 0 pninteger, doc (showString "]")])
 
 instance Print (HStream.SQL.Abs.SetFunc' a) where
   prt i = \case

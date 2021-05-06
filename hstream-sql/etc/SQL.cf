@@ -21,6 +21,15 @@ INSERT INTO demoStream (temperature, humidity) VALUES (30, 75);
 
 --------------------------------------------------------------------------------
 
+PInteger.  PNInteger ::= "+" Integer ;
+IPInteger. PNInteger ::=     Integer ;
+NInteger.  PNInteger ::= "-" Integer ;
+
+PDouble.  PNDouble ::= "+" Double ;
+IPDouble. PNDouble ::=     Double ;
+NDouble.  PNDouble ::= "-" Double ;
+--------------------------------------------------------------------------------
+
 comment "//" ;
 comment "/*" "*/" ;
 
@@ -35,7 +44,7 @@ CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOptio
 
 -- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
 OptionFormat. StreamOption ::= "FORMAT" "=" String ;
-OptionRepFactor. StreamOption ::= "REPLICATE" "=" Integer ;
+OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
@@ -102,8 +111,8 @@ ExprSub. ValueExpr2 ::= ValueExpr2 "-" ValueExpr3 ;
 ExprMul. ValueExpr3 ::= ValueExpr3 "*" ValueExpr4 ;
 
 -- Scalar Numeric Type
-ExprInt. ValueExpr4 ::= Integer ;
-ExprNum. ValueExpr4 ::= Double  ;
+ExprInt. ValueExpr4 ::= PNInteger ;
+ExprNum. ValueExpr4 ::= PNDouble  ;
 
 -- Plain String
 ExprString. ValueExpr4 ::= String ;
@@ -114,8 +123,8 @@ BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr4 ::= Boolean ;
 
 -- Date, Time and Interval
-DDate. Date ::= "DATE" Integer "-" Integer "-" Integer ;
-DTime. Time ::= "TIME" Integer ":" Integer ":" Integer ;
+DDate. Date ::= "DATE" PNInteger "-" PNInteger "-" PNInteger ;
+DTime. Time ::= "TIME" PNInteger ":" PNInteger ":" PNInteger ;
 ExprDate. ValueExpr4 ::= Date ;
 ExprTime. ValueExpr4 ::= Time ;
 
@@ -126,7 +135,7 @@ TimeUnitDay.   TimeUnit ::= "DAY"    ;
 TimeUnitMin.   TimeUnit ::= "MINUTE" ;
 TimeUnitSec.   TimeUnit ::= "SECOND" ;
 
-DInterval. Interval ::= "INTERVAL" Integer TimeUnit ;
+DInterval. Interval ::= "INTERVAL" PNInteger TimeUnit ;
 ExprInterval. ValueExpr4 ::= Interval ;
 
 -- Non-Scalar Type (Array and Map)
@@ -140,7 +149,7 @@ DLabelledValueExpr. LabelledValueExpr ::= Ident ":" ValueExpr ;
 ColNameSimple. ColName ::= Ident ;
 ColNameStream. ColName ::= Ident "." Ident ;
 ColNameInner.  ColName ::= ColName "[" Ident "]" ;
-ColNameIndex.  ColName ::= ColName "[" Integer "]" ;
+ColNameIndex.  ColName ::= ColName "[" PNInteger "]" ;
 ExprColName. ValueExpr4 ::= ColName ;
 
 -- Set Functions
