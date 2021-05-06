@@ -34,10 +34,11 @@ type LDClient = ForeignPtr LogDeviceClient
 type LDLogGroup = ForeignPtr LogDeviceLogGroup
 type LDLogAttrs = ForeignPtr LogDeviceLogAttributes
 type LDVersionedConfigStore = ForeignPtr LogDeviceVersionedConfigStore
+type LDDirectory = ForeignPtr LogDeviceLogDirectory
 
 data HsLogAttrs = HsLogAttrs
-  { replicationFactor :: Int
-  , extraTopicAttrs   :: Map CBytes CBytes
+  { logReplicationFactor :: Int
+  , logExtraAttrs        :: Map CBytes CBytes
   } deriving (Show)
 
 data LogAttrs = LogAttrs HsLogAttrs | LogAttrsPtr LDLogAttrs
