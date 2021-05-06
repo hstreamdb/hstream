@@ -41,7 +41,7 @@ newStreamAdminClient host port allowNameLookup timeout =
     (client', ret) <- Z.withPrimUnsafe nullPtr $ \client'' ->
       FFI.c_new_logdevice_admin_async_client host' port allowNameLookup timeout client''
     if ret < 0
-       then E.throwUserStreamError "Couldn't create an admin client for node, it might mean that the node is down." callStack
+       then E.throwStoreError "Couldn't create an admin client for node, it might mean that the node is down." callStack
        else StreamAdminClient <$> newForeignPtr FFI.c_free_logdevice_admin_async_client_fun client'
 
 newRpcOptions :: Int64 -> IO RpcOptions
