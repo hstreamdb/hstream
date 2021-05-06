@@ -3,15 +3,18 @@
 {-# LANGUAGE PatternSynonyms #-}
 
 module HStream.Store.Exception
-  ( -- * Stream Exception
-    SomeStreamException
-  , someStreamExceptionToException
-  , someStreamExceptionFromException
+  ( -- * Store Exception
+    SomeHStoreException
+  , someHStoreExceptionToException
+  , someHStoreExceptionFromException
   , SSEInfo (..)
   , throwStreamError
   , throwStreamErrorIfNotOK
   , throwStreamErrorIfNotOK'
-  , throwUserStreamError
+  , throwStoreError
+
+    -- * General Store Exception
+  , StoreError               (..)
     -- ** Specific Stream Exception
   , NOTFOUND                 (..)
   , TIMEDOUT                 (..)
@@ -118,7 +121,6 @@ module HStream.Store.Exception
   , WRITE_STREAM_UNKNOWN     (..)
   , WRITE_STREAM_BROKEN      (..)
   , WRITE_STREAM_IGNORED     (..)
-  , USER_STREAM_ERROR        (..)
 
     -- * Patterns
   , pattern C_OK
@@ -245,25 +247,25 @@ import           HStream.Store.Internal.Types
 
 -- | The root type of all stream exceptions, you can catch some stream exception
 -- by catching this root type.
-data SomeStreamException = forall e . E.Exception e => SomeStreamException e
+data SomeHStoreException = forall e . E.Exception e => SomeHStoreException e
 
-instance Show SomeStreamException where
-  show (SomeStreamException e) = show e
+instance Show SomeHStoreException where
+  show (SomeHStoreException e) = show e
 
-instance T.Print SomeStreamException where
-  toUTF8BuilderP _ (SomeStreamException e) = fromString $ show e
+instance T.Print SomeHStoreException where
+  toUTF8BuilderP _ (SomeHStoreException e) = fromString $ show e
 
-instance E.Exception SomeStreamException
+instance E.Exception SomeHStoreException
 
-someStreamExceptionToException :: E.Exception e => e -> E.SomeException
-someStreamExceptionToException = E.toException . SomeStreamException
+someHStoreExceptionToException :: E.Exception e => e -> E.SomeException
+someHStoreExceptionToException = E.toException . SomeHStoreException
 
-someStreamExceptionFromException :: E.Exception e => E.SomeException -> Maybe e
-someStreamExceptionFromException x = do
-  SomeStreamException a <- E.fromException x
+someHStoreExceptionFromException :: E.Exception e => E.SomeException -> Maybe e
+someHStoreExceptionFromException x = do
+  SomeHStoreException a <- E.fromException x
   cast a
 
--- | SomeStreamException informations.
+-- | SomeHStoreException informations.
 data SSEInfo = SSEInfo
   { sseName        :: T.Text      -- ^ the errno name, empty if no errno.
   , sseDescription :: T.Text      -- ^ description for this io error.
@@ -286,8 +288,8 @@ instance Show SSEInfo where
 #define MAKE_SSE(e) \
 newtype e = e SSEInfo deriving (Show); \
 instance Exception e where                         \
-{ toException = someStreamExceptionToException;    \
-  fromException = someStreamExceptionFromException \
+{ toException = someHStoreExceptionToException;    \
+  fromException = someHStoreExceptionFromException \
 }
 #define MAKE_THROW_SSE(c, e) \
 throwStreamError c stack = do \
@@ -428,7 +430,7 @@ MAKE_SSE(WRITE_STREAM_UNKNOWN)
 MAKE_SSE(WRITE_STREAM_BROKEN)
 MAKE_SSE(WRITE_STREAM_IGNORED)
 
-MAKE_SSE(USER_STREAM_ERROR)
+MAKE_SSE(StoreError)
 
 -- Unknown error code
 MAKE_SSE(UNKNOWN_CODE)
@@ -551,6 +553,6 @@ throwStreamError code stack =
   let codeBS = "UNKNOWN_CODE:" <> T.validate (T.toUTF8Bytes code)
    in E.throwIO $ UNKNOWN_CODE (SSEInfo codeBS "" stack)
 
-throwUserStreamError :: T.Text -> CallStack -> IO a
-throwUserStreamError desc stack =
-  E.throwIO $ USER_STREAM_ERROR (SSEInfo "1000" desc stack)
+throwStoreError :: T.Text -> CallStack -> IO a
+throwStoreError desc stack =
+  E.throwIO $ StoreError (SSEInfo "1000" desc stack)

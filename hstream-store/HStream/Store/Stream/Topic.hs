@@ -105,7 +105,7 @@ createTopicSync client topic attrs = go (10 :: Int)
   where
     go maxTries =
       if maxTries <= 0
-         then E.throwUserStreamError "Ran out all retries, but still failed :(" callStack
+         then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
            topicID <- genRandomTopicID
            result <- try $ makeTopicGroupSync client topic topicID topicID attrs True
