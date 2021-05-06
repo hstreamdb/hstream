@@ -93,6 +93,7 @@ library
     OverloadedStrings
     RecordWildCards
     ScopedTypeVariables
+    TypeApplications
     UnliftedFFITypes
 
   extra-libraries:

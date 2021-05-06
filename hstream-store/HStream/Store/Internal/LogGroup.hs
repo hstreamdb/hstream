@@ -71,15 +71,16 @@ getLogGroup client path =
 -- * E::EXISTS the destination path already exists!
 -- * E::TIMEDOUT Operation timed out.
 -- * E::ACCESS you don't have permissions to mutate the logs configuration.
-renameTopicGroup
-  :: FFI.LDClient
+renameLogGroup
+  :: HasCallStack
+  => FFI.LDClient
   -> CBytes
   -- ^ The source path to rename
   -> CBytes
   -- ^ The new path you are renaming to
   -> IO Word64
   -- ^ Return the version of the logsconfig at which the path got renamed
-renameTopicGroup client from_path to_path =
+renameLogGroup client from_path to_path =
   CBytes.withCBytesUnsafe from_path $ \from_path_ ->
     CBytes.withCBytesUnsafe to_path $ \to_path_ ->
       withForeignPtr client $ \client' -> do
@@ -98,7 +99,8 @@ renameTopicGroup client from_path to_path =
 -- * TIMEDOUT Operation timed out.
 -- * ACCESS you don't have permissions to mutate the logs configuration.
 removeLogGroup
-  :: FFI.LDClient
+  :: HasCallStack
+  => FFI.LDClient
   -> CBytes
   -- ^ The path of loggroup to remove
   -> IO FFI.C_LogsConfigVersion
@@ -157,16 +159,28 @@ logGroupGetVersion group = withForeignPtr group FFI.c_ld_loggroup_get_version
 {-# INLINE logGroupGetVersion #-}
 
 -------------------------------------------------------------------------------
+-- Directory
+
+getDirectory :: FFI.LDClient -> CBytes -> FFI.LDDirectory
+getDirectory = undefined
+
+directoryGetName :: FFI.LDDirectory -> IO CBytes
+directoryGetName = undefined
+
+directoryGetLogsName :: Bool -> FFI.LDDirectory -> IO [CBytes]
+directoryGetLogsName recursive dir = undefined
+
+-------------------------------------------------------------------------------
 -- LogAttributes
 
 hsLogAttrsToLogDevice :: FFI.HsLogAttrs -> IO FFI.LDLogAttrs
 hsLogAttrsToLogDevice FFI.HsLogAttrs{..} = do
-  let extras = Map.toList extraTopicAttrs
+  let extras = Map.toList logExtraAttrs
   let ks = map (CBytes.rawPrimArray . fst) extras
       vs = map (CBytes.rawPrimArray . snd) extras
   Z.withPrimArrayListUnsafe ks $ \ks' l ->
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
-      i <- FFI.c_new_log_attributes (fromIntegral replicationFactor) l ks' vs'
+      i <- FFI.c_new_log_attributes (fromIntegral logReplicationFactor) l ks' vs'
       newForeignPtr FFI.c_free_log_attributes_fun i
 
 getLogExtraAttr :: FFI.LDLogAttrs -> CBytes -> IO CBytes
@@ -191,12 +205,12 @@ setLogExtraAttr attrs key val =
 -- etc) will get an up-to-date view.
 -- Does *not* guarantee that subsequent append(), makeDirectory(),
 -- 'makeLogGroup', etc, will have an up-to-date view.
-syncTopicConfigVersion
+syncLogConfigVersion
   :: HasCallStack
   => FFI.LDClient
   -> FFI.C_LogsConfigVersion
   -- ^ The minimum version you need to sync LogsConfig to
   -> IO ()
-syncTopicConfigVersion client version =
+syncLogConfigVersion client version =
   withForeignPtr client $ \client' -> void $ E.throwStreamErrorIfNotOK $
     FFI.c_ld_client_sync_logsconfig_version client' version
