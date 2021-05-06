@@ -3,7 +3,6 @@
 extern "C" {
 // ----------------------------------------------------------------------------
 
-// TODO
 #if __GLASGOW_HASKELL__ < 810
 LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
                                   StgMutArrPtrs* keys_, StgMutArrPtrs* vals_) {
