@@ -22,7 +22,7 @@ $i = [$l $d _ ']     -- identifier character
 $u = [. \n]          -- universal: any character
 
 @rsyms =    -- symbols and non-identifier-like reserved words
-   \; | \( | \) | \, | \= | \* | \| \| | \& \& | \+ | \- | \: | \[ | \] | \{ | \} | \. | "COUNT" \( \* \) | \< \> | \< | \> | \< \= | \> \=
+   \+ | \- | \; | \( | \) | \, | \= | \* | \| \| | \& \& | \: | \[ | \] | \{ | \} | \. | "COUNT" \( \* \) | \< \> | \< | \> | \< \= | \> \=
 
 :-
 

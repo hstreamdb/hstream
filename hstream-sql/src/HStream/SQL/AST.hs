@@ -13,6 +13,7 @@ import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
+import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger)
 import           HStream.SQL.Print     (printTree)
 
 --------------------------------------------------------------------------------
@@ -25,6 +26,14 @@ class Refine a where
 type StreamName = Text
 type FieldName  = Text
 
+type instance RefinedType PNInteger = Integer
+instance Refine PNInteger where
+  refine = extractPNInteger
+
+type instance RefinedType PNDouble = Double
+instance Refine PNDouble where
+  refine = extractPNDouble
+
 type RBool = Bool
 type instance RefinedType Boolean = RBool
 instance Refine Boolean where
@@ -34,23 +43,23 @@ instance Refine Boolean where
 type RDate = Time.Day
 type instance RefinedType Date = RDate
 instance Refine Date where
-  refine (DDate _ year month day) = Time.fromGregorian year (fromInteger month) (fromInteger day)
+  refine (DDate _ year month day) = Time.fromGregorian (refine year) (fromInteger $ refine month) (fromInteger $ refine day)
 
 type RTime = Time.DiffTime
 type instance RefinedType Time = RTime
 instance Refine Time where
   refine (DTime _ hour minute second) = Time.secondsToDiffTime $
-    hour * 3600 + minute * 60 + second
+    (refine hour) * 3600 + (refine minute) * 60 + (refine second)
 
 type RInterval = Time.DiffTime
 type instance RefinedType Interval = RInterval
 instance Refine Interval where
-  refine (DInterval _ n (TimeUnitSec _  )) = Time.secondsToDiffTime   n
-  refine (DInterval _ n (TimeUnitMin _  )) = Time.secondsToDiffTime $ n * 60
-  refine (DInterval _ n (TimeUnitDay _  )) = Time.secondsToDiffTime $ n * 60 * 24
-  refine (DInterval _ n (TimeUnitWeek _ )) = Time.secondsToDiffTime $ n * 60 * 24 * 7
-  refine (DInterval _ n (TimeUnitMonth _)) = Time.secondsToDiffTime $ n * 60 * 24 * 30
-  refine (DInterval _ n (TimeUnitYear _ )) = Time.secondsToDiffTime $ n * 60 * 24 * 365
+  refine (DInterval _ n (TimeUnitSec _  )) = Time.secondsToDiffTime $ refine n
+  refine (DInterval _ n (TimeUnitMin _  )) = Time.secondsToDiffTime $ (refine n) * 60
+  refine (DInterval _ n (TimeUnitDay _  )) = Time.secondsToDiffTime $ (refine n) * 60 * 24
+  refine (DInterval _ n (TimeUnitWeek _ )) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 7
+  refine (DInterval _ n (TimeUnitMonth _)) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 30
+  refine (DInterval _ n (TimeUnitYear _ )) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 365
 
 data Constant = ConstantInt       Int
               | ConstantNum       Double
@@ -105,8 +114,8 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprMul _ e1 e2)         -> RExprBinOp (printTree expr) OpMul (refine e1) (refine e2)
     (ExprAnd _ e1 e2)         -> RExprBinOp (printTree expr) OpAnd (refine e1) (refine e2)
     (ExprOr  _ e1 e2)         -> RExprBinOp (printTree expr) OpOr  (refine e1) (refine e2)
-    (ExprInt _ n)             -> RExprConst (printTree expr) (ConstantInt $ fromInteger n) -- WARNING: May lose presision
-    (ExprNum _ n)             -> RExprConst (printTree expr) (ConstantNum n)
+    (ExprInt _ n)             -> RExprConst (printTree expr) (ConstantInt . fromInteger . refine $ n) -- WARNING: May lose presision
+    (ExprNum _ n)             -> RExprConst (printTree expr) (ConstantNum $ refine n)
     (ExprString _ s)          -> RExprConst (printTree expr) (ConstantString s)
     (ExprBool _ b)            -> RExprConst (printTree expr) (ConstantBool $ refine b)
     (ExprDate _ date)         -> RExprConst (printTree expr) (ConstantDate $ refine date)
@@ -330,7 +339,7 @@ data RCreate = RCreate   Text RStreamOptions
 
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
-  refine [OptionFormat _ format, OptionRepFactor _ rep] = RStreamOptions (refineFormat format) (fromInteger rep)
+  refine [OptionFormat _ format, OptionRepFactor _ rep] = RStreamOptions (refineFormat format) (fromInteger $ refine rep)
     where refineFormat "json" = FormatJSON
           refineFormat "JSON" = FormatJSON
           refineFormat _      = throwSQLException RefineException Nothing "Impossible happened"

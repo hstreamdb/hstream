@@ -22,6 +22,16 @@ import qualified Data.String
 
 import qualified Data.Text
 
+type PNInteger = PNInteger' BNFC'Position
+data PNInteger' a
+    = PInteger a Integer | IPInteger a Integer | NInteger a Integer
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type PNDouble = PNDouble' BNFC'Position
+data PNDouble' a
+    = PDouble a Double | IPDouble a Double | NDouble a Double
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
 type SQL = SQL' BNFC'Position
 data SQL' a
     = QSelect a (Select' a)
@@ -37,7 +47,7 @@ data Create' a
 
 type StreamOption = StreamOption' BNFC'Position
 data StreamOption' a
-    = OptionFormat a String | OptionRepFactor a Integer
+    = OptionFormat a String | OptionRepFactor a (PNInteger' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Insert = Insert' BNFC'Position
@@ -118,8 +128,8 @@ data ValueExpr' a
     | ExprAdd a (ValueExpr' a) (ValueExpr' a)
     | ExprSub a (ValueExpr' a) (ValueExpr' a)
     | ExprMul a (ValueExpr' a) (ValueExpr' a)
-    | ExprInt a Integer
-    | ExprNum a Double
+    | ExprInt a (PNInteger' a)
+    | ExprNum a (PNDouble' a)
     | ExprString a String
     | ExprBool a (Boolean' a)
     | ExprDate a (Date' a)
@@ -137,11 +147,11 @@ data Boolean' a = BoolTrue a | BoolFalse a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Date = Date' BNFC'Position
-data Date' a = DDate a Integer Integer Integer
+data Date' a = DDate a (PNInteger' a) (PNInteger' a) (PNInteger' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Time = Time' BNFC'Position
-data Time' a = DTime a Integer Integer Integer
+data Time' a = DTime a (PNInteger' a) (PNInteger' a) (PNInteger' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type TimeUnit = TimeUnit' BNFC'Position
@@ -155,7 +165,7 @@ data TimeUnit' a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Interval = Interval' BNFC'Position
-data Interval' a = DInterval a Integer (TimeUnit' a)
+data Interval' a = DInterval a (PNInteger' a) (TimeUnit' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type LabelledValueExpr = LabelledValueExpr' BNFC'Position
@@ -168,7 +178,7 @@ data ColName' a
     = ColNameSimple a Ident
     | ColNameStream a Ident Ident
     | ColNameInner a (ColName' a) Ident
-    | ColNameIndex a (ColName' a) Integer
+    | ColNameIndex a (ColName' a) (PNInteger' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type SetFunc = SetFunc' BNFC'Position
@@ -259,6 +269,18 @@ pattern BNFC'Position line col = C.Just (line, col)
 
 class HasPosition a where
   hasPosition :: a -> BNFC'Position
+
+instance HasPosition PNInteger where
+  hasPosition = \case
+    PInteger p _ -> p
+    IPInteger p _ -> p
+    NInteger p _ -> p
+
+instance HasPosition PNDouble where
+  hasPosition = \case
+    PDouble p _ -> p
+    IPDouble p _ -> p
+    NDouble p _ -> p
 
 instance HasPosition SQL where
   hasPosition = \case
