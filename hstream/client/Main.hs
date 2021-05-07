@@ -8,7 +8,7 @@
 
 module Main where
 
-import           Control.Exception
+import           Control.Exception                (SomeException, finally, try)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
 import qualified Data.List                        as L
@@ -20,9 +20,14 @@ import           HStream.SQL
 import           HStream.Server.HStreamApi
 import           HStream.Server.Utils             (structToJsonObject)
 import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Options.Applicative
-import           System.Console.Haskeline
-import           Text.RawString.QQ
+import qualified System.Console.Haskeline         as H
+import           System.Posix                     (Handler (Catch),
+                                                   installHandler,
+                                                   keyboardSignal)
+import           Text.RawString.QQ                (r)
+
 helpInfo :: String
 helpInfo =
   unlines
@@ -35,11 +40,11 @@ helpInfo =
       "  <sql>                     run sql"
     ]
 
-def :: Settings IO
-def = setComplete compE defaultSettings
+def :: H.Settings IO
+def = H.setComplete compE H.defaultSettings
 
-compE :: CompletionFunc IO
-compE = completeWord Nothing [] compword
+compE :: H.CompletionFunc IO
+compE = H.completeWord Nothing [] compword
 
 wordTable :: [[String]]
 wordTable =
@@ -63,11 +68,11 @@ generalComplete t (x : xs) =
 specificComplete :: Monad m => [String] -> m [String]
 specificComplete _ = return []
 
-compword :: Monad m => String -> m [Completion]
+compword :: Monad m => String -> m [H.Completion]
 compword s = do
   let gs = generalComplete wordTable (words s)
   cs <- specificComplete (words s)
-  return $ map simpleCompletion (gs <> cs)
+  return $ map H.simpleCompletion (gs <> cs)
 
 --------------------------------------------------------------------------------
 data UserConfig = UserConfig
@@ -102,12 +107,11 @@ main = do
 app :: ClientConfig -> IO ()
 app clientConfig = do
   putStrLn helpInfo
-  runInputT def loop
+  H.runInputT def loop
   where
-    loop :: InputT IO ()
-    loop = handleInterrupt (liftIO (putStrLn "interrupted") >> loop) $
-      withInterrupt $ do
-        input <- getInputLine "> "
+    loop :: H.InputT IO ()
+    loop = do
+        input <- H.getInputLine "> "
         case input of
           Nothing   -> return ()
           Just ":q" -> return ()
@@ -134,15 +138,18 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   ClientReaderResponse _meta _status _details <-
     hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000 [] action)
   return ()
-  where action _call _meta recv = go
-          where go = do msg <- recv
-                        case msg of
-                          Left err            -> print err
-                          Right Nothing       -> print "terminated"
-                          Right (Just result) -> do
-                            let object = structToJsonObject result
-                            putStrLn (unlines $ renderTable $ renderJSONObjectToTable object)
-                            go
+  where
+    action call _meta recv =
+      let go = do
+            msg <- withInterrupt (clientCallCancel call) recv
+            case msg of
+              Left err            -> print err
+              Right Nothing       -> putStrLn "terminated"
+              Right (Just result) -> do
+                let object = structToJsonObject result
+                putStrLn (unlines $ renderTable $ renderJSONObjectToTable object)
+                go
+      in go
 
 sqlAction :: ClientConfig -> TL.Text -> IO ()
 sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
@@ -153,3 +160,8 @@ sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
     ClientNormalResponse x@CommandQueryResponse{..} _meta1 _meta2 _status _details -> do
       print x
     ClientErrorResponse clientError -> print $ "client error: " <> show clientError
+
+withInterrupt :: IO () -> IO a -> IO a
+withInterrupt handle act = do
+  old_handler <- installHandler keyboardSignal (Catch handle) Nothing
+  act `finally` installHandler keyboardSignal old_handler Nothing
