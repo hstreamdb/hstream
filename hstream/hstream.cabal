@@ -49,6 +49,8 @@ executable hstream-client
     , random
     , raw-strings-qq
     , text
+    , grpc-haskell-core
+    , unix
 
   default-language: Haskell2010
   ghc-options:
