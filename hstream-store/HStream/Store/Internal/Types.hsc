@@ -26,15 +26,71 @@ import qualified Z.Foreign             as Z
 
 -------------------------------------------------------------------------------
 
-type C_LogID = Word64
-type C_LogRange = (C_LogID, C_LogID)
-type C_LogsConfigVersion = Word64
-
 type LDClient = ForeignPtr LogDeviceClient
 type LDLogGroup = ForeignPtr LogDeviceLogGroup
 type LDLogAttrs = ForeignPtr LogDeviceLogAttributes
 type LDVersionedConfigStore = ForeignPtr LogDeviceVersionedConfigStore
 type LDDirectory = ForeignPtr LogDeviceLogDirectory
+type LDReader = ForeignPtr LogDeviceReader
+type LDSyncCkpReader = ForeignPtr LogDeviceSyncCheckpointedReader
+type LDCheckpointStore = ForeignPtr LogDeviceCheckpointStore
+
+type C_LogID = Word64
+type C_LogRange = (C_LogID, C_LogID)
+
+newtype LogID = LogID Word64
+  deriving (Show, Eq, Ord)
+
+instance Bounded LogID where
+  minBound = LOGID_MIN
+  maxBound = LOGID_MAX
+
+pattern LOGID_MIN :: LogID
+pattern LOGID_MIN = LogID 1
+
+-- | Max valid user data logid value.
+--
+-- TOPIC_ID_MAX = USER_LOGID_MAX(LOGID_MAX - 1000)
+pattern LOGID_MAX :: LogID
+pattern LOGID_MAX = LogID (#const C_USER_LOGID_MAX)
+
+-- 0 is not a valid logid.
+pattern C_LOGID_MIN_INVALID :: Word64
+pattern C_LOGID_MIN_INVALID = (#const C_LOGID_INVALID)
+
+pattern LOGID_MIN_INVALID :: LogID
+pattern LOGID_MIN_INVALID = LogID C_LOGID_MIN_INVALID
+
+-- ~0 is not a valid logid.
+pattern LOGID_MAX_INVALID :: LogID
+pattern LOGID_MAX_INVALID = LogID (#const C_LOGID_INVALID2)
+
+c_logid_max :: Word64
+c_logid_max = (#const C_LOGID_MAX)
+
+c_user_logid_max :: Word64
+c_user_logid_max = (#const C_USER_LOGID_MAX)
+
+c_logid_max_bits :: CSize
+c_logid_max_bits = (#const C_LOGID_MAX_BITS)
+
+-- | Log Sequence Number
+type LSN = Word64
+
+-- | Guaranteed to be less than or equal to the smallest valid LSN possible.
+-- Use this to seek to the oldest record in a log.
+pattern LSN_MIN :: LSN
+pattern LSN_MIN = (#const C_LSN_OLDEST)
+
+-- | Greatest valid LSN possible plus one.
+pattern LSN_MAX :: LSN
+pattern LSN_MAX = (#const C_LSN_MAX)
+
+-- | 0 is not a valid LSN.
+pattern LSN_INVALID :: LSN
+pattern LSN_INVALID = (#const C_LSN_INVALID)
+
+type C_LogsConfigVersion = Word64
 
 data HsLogAttrs = HsLogAttrs
   { logReplicationFactor :: Int
@@ -90,39 +146,6 @@ peekVcsWriteCallbackData ptr = bracket getSt release peekData
 
 -------------------------------------------------------------------------------
 
-newtype TopicID = TopicID { unTopicID :: Word64 }
-  deriving (Show, Eq, Ord)
-
-instance Bounded TopicID where
-  minBound = TOPIC_ID_MIN
-  maxBound = TOPIC_ID_MAX
-
-pattern TOPIC_ID_MIN :: TopicID
-pattern TOPIC_ID_MIN = TopicID 1
-
--- | Max valid user data logid value.
---
--- TOPIC_ID_MAX = USER_LOGID_MAX(LOGID_MAX - 1000)
-pattern TOPIC_ID_MAX :: TopicID
-pattern TOPIC_ID_MAX = TopicID (#const C_USER_LOGID_MAX)
-
-pattern TOPIC_ID_INVALID :: TopicID
-pattern TOPIC_ID_INVALID = TopicID (#const C_LOGID_INVALID)
-
-pattern TOPIC_ID_INVALID' :: TopicID
-pattern TOPIC_ID_INVALID' = TopicID (#const C_LOGID_INVALID2)
-
-c_logid_max :: Word64
-c_logid_max = (#const C_LOGID_MAX)
-
-c_user_logid_max :: Word64
-c_user_logid_max = (#const C_USER_LOGID_MAX)
-
-c_logid_max_bits :: CSize
-c_logid_max_bits = (#const C_LOGID_MAX_BITS)
-
--------------------------------------------------------------------------------
-
 newtype StreamClient = StreamClient
   { unStreamClient :: ForeignPtr LogDeviceClient }
 
@@ -144,37 +167,11 @@ newtype CheckpointStore = CheckpointStore
   { unCheckpointStore :: ForeignPtr LogDeviceCheckpointStore }
   deriving (Show, Eq)
 
-newtype SequenceNum = SequenceNum { unSequenceNum :: C_LSN }
-  deriving (Generic)
-  deriving newtype (Show, Eq, Ord, Num, JSON.JSON, MP.MessagePack)
-
-instance Bounded SequenceNum where
-  minBound = SequenceNum c_lsn_oldest
-  maxBound = SequenceNum c_lsn_max
-
-sequenceNumInvalid :: SequenceNum
-sequenceNumInvalid = SequenceNum c_lsn_invalid
-
-newtype KeyType = KeyType C_KeyType
-  deriving (Eq, Ord)
-
-instance Show KeyType where
-  show t
-    | t == keyTypeFindKey = "FINDKEY"
-    | t == keyTypeFilterable = "FILTERABLE"
-    | otherwise = "UNDEFINED"
-
-keyTypeFindKey :: KeyType
-keyTypeFindKey = KeyType c_keytype_findkey
-
-keyTypeFilterable :: KeyType
-keyTypeFilterable = KeyType c_keytype_filterable
-
 data DataRecord = DataRecord
-  { recordLogID   :: TopicID
-  , recordLSN     :: SequenceNum
-  , recordPayload :: Bytes
-  } deriving (Show)
+  { recordLogID   :: !C_LogID
+  , recordLSN     :: !LSN
+  , recordPayload :: !Bytes
+  } deriving (Show, Eq)
 
 dataRecordSize :: Int
 dataRecordSize = (#size logdevice_data_record_t)
@@ -193,7 +190,7 @@ peekDataRecord ptr offset = finally peekData release
       lsn <- (#peek logdevice_data_record_t, lsn) ptr'
       len <- (#peek logdevice_data_record_t, payload_len) ptr'
       payload <- flip Z.fromPtr len =<< (#peek logdevice_data_record_t, payload) ptr'
-      return $ DataRecord (TopicID logid) (SequenceNum lsn) payload
+      return $ DataRecord logid lsn payload
     release = do
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr
@@ -201,7 +198,7 @@ peekDataRecord ptr offset = finally peekData release
 data AppendCallBackData = AppendCallBackData
   { appendCbRetCode   :: !ErrorCode
   , appendCbLogID     :: !C_LogID
-  , appendCbLSN       :: !C_LSN
+  , appendCbLSN       :: !LSN
   , appendCbTimestamp :: !C_Timestamp
   }
 
@@ -216,24 +213,25 @@ peekAppendCallBackData ptr = do
   ts <- (#peek logdevice_append_cb_data_t, timestamp) ptr
   return $ AppendCallBackData retcode logid lsn ts
 
-data LogsconfigStatusCbData = LogsconfigStatusCbData
-  { logsConfigCbRetCode :: !ErrorCode
-  , logsConfigCbVersion :: !Word64
+data LogsConfigStatusCbData = LogsConfigStatusCbData
+  { logsConfigCbRetCode  :: !ErrorCode
+  , logsConfigCbVersion  :: !Word64
   , logsConfigCbFailInfo :: !CBytes
   }
 
-logsconfigStatusCbDataSize :: Int
-logsconfigStatusCbDataSize = (#size logsconfig_status_cb_data_t)
+logsConfigStatusCbDataSize :: Int
+logsConfigStatusCbDataSize = (#size logsconfig_status_cb_data_t)
 
-peekLogsconfigStatusCbData :: Ptr LogsconfigStatusCbData
-                           -> IO LogsconfigStatusCbData
-peekLogsconfigStatusCbData ptr = do
+peekLogsConfigStatusCbData :: Ptr LogsConfigStatusCbData
+                           -> IO LogsConfigStatusCbData
+peekLogsConfigStatusCbData ptr = do
   retcode <- (#peek logsconfig_status_cb_data_t, st) ptr
   version <- (#peek logsconfig_status_cb_data_t, version) ptr
   failinfo_ptr <- (#peek logsconfig_status_cb_data_t, failure_reason) ptr
   failinfo <- fromCString failinfo_ptr
   free failinfo_ptr
-  return $ LogsconfigStatusCbData retcode version failinfo
+  return $ LogsConfigStatusCbData retcode version failinfo
+
 -------------------------------------------------------------------------------
 
 data LogDeviceClient
@@ -249,24 +247,25 @@ data ThriftRpcOptions
 
 type C_Timestamp = Int64
 
--- | Log Sequence Number
-type C_LSN = Word64
+newtype KeyType = KeyType Word8
+  deriving (Eq, Ord)
 
-c_lsn_invalid :: C_LSN
-c_lsn_invalid = (#const C_LSN_INVALID)
+instance Show KeyType where
+  show t
+    | t == keyTypeFindKey = "FINDKEY"
+    | t == keyTypeFilterable = "FILTERABLE"
+    | otherwise = "UNDEFINED"
 
-c_lsn_oldest :: C_LSN
-c_lsn_oldest = (#const C_LSN_OLDEST)
+keyTypeFindKey :: KeyType
+keyTypeFindKey = KeyType c_keytype_findkey
 
-c_lsn_max :: C_LSN
-c_lsn_max = (#const C_LSN_MAX)
+keyTypeFilterable :: KeyType
+keyTypeFilterable = KeyType c_keytype_filterable
 
-type C_KeyType = Word8
-
-c_keytype_findkey :: C_KeyType
+c_keytype_findkey :: Word8
 c_keytype_findkey = (#const C_KeyType_FINDKEY)
 
-c_keytype_filterable :: C_KeyType
+c_keytype_filterable :: Word8
 c_keytype_filterable = (#const C_KeyType_FILTERABLE)
 
 -------------------------------------------------------------------------------

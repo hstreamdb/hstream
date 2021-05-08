@@ -2,6 +2,80 @@
 
 extern "C" {
 
+facebook::logdevice::Status
+ld_client_set_attributes(logdevice_client_t* client, const char* path,
+                         LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
+                         logsconfig_status_cb_data_t* data);
+
+// ----------------------------------------------------------------------------
+// LogAttributes
+
+#if __GLASGOW_HASKELL__ < 810
+LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
+                                  StgMutArrPtrs* keys_, StgMutArrPtrs* vals_) {
+  StgArrBytes** keys = (StgArrBytes**)keys_->payload;
+  StgArrBytes** vals = (StgArrBytes**)vals_->payload;
+#else
+LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
+                                  StgArrBytes** keys, StgArrBytes** vals) {
+#endif
+  auto attrs = LogAttributes().with_replicationFactor(replicationFactor);
+  if (extras_len > 0) {
+    LogAttributes::ExtrasMap extras;
+    for (int i = 0; i < extras_len; ++i) {
+      extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
+    }
+    attrs = attrs.with_extras(extras);
+  }
+  LogAttributes* attrs_ptr = new LogAttributes(attrs);
+  return attrs_ptr;
+}
+
+void free_log_attributes(LogAttributes* attrs) { delete attrs; }
+
+bool exist_log_attrs_extras(LogAttributes* attrs, char* key) {
+  if (attrs) {
+    auto extras = attrs->extras();
+    return extras.hasValue() && extras.value().contains(key);
+  }
+  return false;
+}
+
+// get extras without check the key exists.
+std::string* get_log_attrs_extra(LogAttributes* attrs, char* key) {
+  auto extras = attrs->extras().value();
+  return new_hs_std_string(std::move(extras[key]));
+}
+
+#if __GLASGOW_HASKELL__ < 810
+LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
+                                       StgMutArrPtrs* keys_,
+                                       StgMutArrPtrs* vals_) {
+  StgArrBytes** keys = (StgArrBytes**)keys_->payload;
+  StgArrBytes** vals = (StgArrBytes**)vals_->payload;
+#else
+LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
+                                       StgArrBytes** keys, StgArrBytes** vals) {
+#endif
+  LogAttributes::ExtrasMap new_extras = attrs->extras().value();
+  if (extras_len > 0) {
+    for (int i = 0; i < extras_len; ++i) {
+      new_extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
+    }
+  }
+  LogAttributes* attrs_ = new LogAttributes(attrs->with_extras(new_extras));
+  return attrs_;
+}
+
+// TODO: macro
+int get_replicationFactor(LogAttributes* attrs) {
+  return attrs->replicationFactor().value();
+}
+
+std::string* describe_log_maxWritesInFlight(LogAttributes* attrs) {
+  return new_hs_std_string(attrs->maxWritesInFlight().describe());
+}
+
 // ----------------------------------------------------------------------------
 // LogConfigType: LogGroup
 
@@ -97,6 +171,37 @@ uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group) {
   return group->rep->version();
 }
 
+#if __GLASGOW_HASKELL__ < 810
+facebook::logdevice::Status ld_loggroup_update_extra_attrs(
+    logdevice_client_t* client, logdevice_loggroup_t* group,
+    //
+    HsInt extras_len, StgMutArrPtrs* keys_, StgMutArrPtrs* vals_,
+    //
+    HsStablePtr mvar, HsInt cap, logsconfig_status_cb_data_t* data) {
+  StgArrBytes** keys = (StgArrBytes**)keys_->payload;
+  StgArrBytes** vals = (StgArrBytes**)vals_->payload;
+#else
+facebook::logdevice::Status ld_loggroup_update_extra_attrs(
+    logdevice_client_t* client, logdevice_loggroup_t* group,
+    //
+    HsInt extras_len, StgArrBytes** keys, StgArrBytes** vals,
+    //
+    HsStablePtr mvar, HsInt cap, logsconfig_status_cb_data_t* data) {
+#endif
+  const std::string& path = group->rep->getFullyQualifiedName();
+  const LogAttributes& logAttrs = group->rep->attrs();
+
+  LogAttributes::ExtrasMap new_extras = logAttrs.extras().value();
+  if (extras_len > 0) {
+    for (int i = 0; i < extras_len; ++i) {
+      new_extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
+    }
+  }
+  auto newLogAttrs = logAttrs.with_extras(new_extras);
+  return ld_client_set_attributes(client, path.c_str(), &newLogAttrs, mvar, cap,
+                                  data);
+}
+
 void free_logdevice_loggroup(logdevice_loggroup_t* group) { delete group; }
 
 // ----------------------------------------------------------------------------
@@ -182,6 +287,43 @@ ld_client_rename(logdevice_client_t* client, const char* from_path,
     hs_thread_done();
   };
   int ret = client->rep->rename(from_path_, to_path_, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+/**
+ * This sets either a LogGroup or LogsDirectory attributes to the supplied
+ * attributes object. If the path refers to directory, all child directories
+ * and log groups will be updated accordingly.
+ *
+ * @return  0 if the request was successfuly scheduled, -1 otherwise.
+ *                      sets err to one of:
+ *                        E::INVALID_ATTRIBUTES After applying the parent
+ *                                              attributes and the supplied
+ *                                              attributes, the resulting
+ *                                              attributes are not valid.
+ *                        E::NOTFOUND the path supplied doesn't exist.
+ *                        E::TIMEDOUT Operation timed out.
+ *                        E::ACCESS you don't have permissions to
+ *                                  mutate the logs configuration.
+ */
+facebook::logdevice::Status
+ld_client_set_attributes(logdevice_client_t* client, const char* path,
+                         LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
+                         logsconfig_status_cb_data_t* data) {
+  std::string path_ = path;
+  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->setAttributes(path, *attrs, cb);
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;

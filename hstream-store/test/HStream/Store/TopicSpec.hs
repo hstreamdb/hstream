@@ -3,91 +3,56 @@
 
 module HStream.Store.TopicSpec (spec) where
 
-import qualified Data.Map.Strict         as Map
-import           System.IO.Unsafe        (unsafePerformIO)
-import           System.Random           (newStdGen, randomRs)
+import qualified Data.Map.Strict  as Map
+import           System.IO.Unsafe (unsafePerformIO)
+import           System.Random    (newStdGen, randomRs)
 import           Test.Hspec
-import           Z.Data.CBytes           (CBytes, pack)
+import           Z.Data.CBytes    (CBytes)
+import qualified Z.Data.CBytes    as CBytes
 
-import qualified HStream.Store.Exception as E
-import qualified HStream.Store.Stream    as S
+import qualified HStream.Store    as S
 
-client :: S.StreamClient
-client = unsafePerformIO $ S.newStreamClient "/data/store/logdevice.conf"
+client :: S.LDClient
+client = unsafePerformIO $ S.newLDClient "/data/store/logdevice.conf"
 {-# NOINLINE client #-}
+
+topic :: S.Topic
+topic = unsafePerformIO $ ("ci/stream/" <>) <$> newRandomName 5
+{-# NOINLINE topic #-}
+
+newTopic :: S.Topic
+newTopic = unsafePerformIO $ ("ci/stream/" <>) <$> newRandomName 5
+{-# NOINLINE newTopic #-}
 
 spec :: Spec
 spec = describe "HStream.Store.Topic" $ do
-  simpleSpec
 
-simpleSpec :: Spec
-simpleSpec = context "Simple Create & Delete" $ do
-  it "create & delete topic directory" $ do
-    let attrs = S.TopicAttrs { S.replicationFactor = 0
-                             , S.extraTopicAttrs = Map.fromList [("greet", "hi")]
-                             }
-    topicDirName <- newRandomName 5
-    let topicDir = "ci/" <> topicDirName
-    dir <- S.makeTopicDirectorySync client topicDir attrs True
-    S.syncTopicConfigVersion client =<< S.topicDirectoryGetVersion dir
+  it ("create topic: " <> show (CBytes.toText topic)) $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
+                                                                         , ("A", "B")
+                                                                         ]
+                                        }
+    S.createTopic client topic attrs
+    S.doesTopicExists client topic `shouldReturn` True
 
-    dir' <- S.getTopicDirectorySync client topicDir
-    S.topicDirectoryGetName dir' `shouldReturn` topicDirName
+  it ("rename topic to " <> show (CBytes.toText newTopic)) $ do
+    S.renameTopic client topic newTopic
+    S.doesTopicExists client topic `shouldReturn` False
+    S.doesTopicExists client newTopic `shouldReturn` True
 
-    version <- S.removeTopicDirectorySync' client topicDir True
-    S.syncTopicConfigVersion client version
-    S.getTopicDirectorySync client topicDir `shouldThrow` notFoundException
+  it "get/set extra attrs" $ do
+    logGroup <- S.getLDLogGroup client newTopic
+    S.logGroupGetExtraAttr logGroup "greet" `shouldReturn` "hi"
+    S.logGroupUpdateExtraAttrs client logGroup $ Map.fromList [("greet", "hello"), ("Alice", "Bob")]
+    logGroup_ <- S.getLDLogGroup client newTopic
+    S.logGroupGetExtraAttr logGroup_ "greet" `shouldReturn` "hello"
+    S.logGroupGetExtraAttr logGroup_ "A" `shouldReturn` "B"
+    S.logGroupGetExtraAttr logGroup_ "Alice" `shouldReturn` "Bob"
 
-  it "create & delete topic group sync" $ do
-    let attrs = S.TopicAttrs { S.replicationFactor = 2
-                             , S.extraTopicAttrs = Map.fromList [("greet", "hello")]
-                             }
-    topicGroupName <- newRandomName 5
-    let topicGroup = "ci/stream/" <> topicGroupName
-    let start = S.mkTopicID 1000
-        end   = S.mkTopicID 1000
-    group <- S.makeTopicGroupSync client topicGroup start end attrs True
-    S.syncTopicConfigVersion client =<< S.topicGroupGetVersion group
-
-    group' <- S.getTopicGroupSync client topicGroup
-    S.topicGroupGetRange group' `shouldReturn` (start, end)
-    S.topicGroupGetName group' `shouldReturn` topicGroupName
-    S.topicGroupGetAttr group' "greet" `shouldReturn` "hello"
-
-    version <- S.removeTopicGroupSync' client topicGroup
-    S.syncTopicConfigVersion client version
-    S.getTopicGroupSync client topicGroup `shouldThrow` notFoundException
-
-  it "rename and remove topic" $ do
-    let attrs = S.TopicAttrs { S.replicationFactor = 2
-                             , S.extraTopicAttrs = Map.empty
-                             }
-    topicGroupName <- newRandomName 5
-    let topicGroup = "ci/stream/" <> topicGroupName
-    let start = S.mkTopicID 1000
-        end   = S.mkTopicID 1000
-    group <- S.makeTopicGroupSync client topicGroup start end attrs True
-    S.syncTopicConfigVersion client =<< S.topicGroupGetVersion group
-
-    group' <- S.getTopicGroupSync client topicGroup
-    S.topicGroupGetRange group' `shouldReturn` (start, end)
-    S.topicGroupGetName group' `shouldReturn` topicGroupName
-
-    topicGroupName' <- newRandomName 5
-    let topicGroup' = "ci/stream/" <> topicGroupName'
-    version <- S.renameTopicGroup client topicGroup topicGroup'
-    S.syncTopicConfigVersion client version
-    group'' <- S.getTopicGroupSync client topicGroup'
-    S.topicGroupGetRange group'' `shouldReturn` (start, end)
-    S.topicGroupGetName group'' `shouldReturn` topicGroupName'
-    S.getTopicGroupSync client topicGroup `shouldThrow` notFoundException
-
-    version' <- S.removeTopicGroup client topicGroup'
-    S.syncTopicConfigVersion client version'
-    S.getTopicGroupSync client topicGroup' `shouldThrow` notFoundException
-
-notFoundException :: Selector E.NOTFOUND
-notFoundException = const True
+  it "remove topic" $ do
+    S.removeTopic client newTopic
+    S.doesTopicExists client newTopic `shouldReturn` False
 
 newRandomName :: Int -> IO CBytes
-newRandomName n = pack . take n . randomRs ('a', 'z') <$> newStdGen
+newRandomName n = CBytes.pack . take n . randomRs ('a', 'z') <$> newStdGen
