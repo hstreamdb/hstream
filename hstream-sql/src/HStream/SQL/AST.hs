@@ -4,6 +4,8 @@
 
 module HStream.SQL.AST where
 
+import qualified Data.ByteString       as BS
+import qualified Data.ByteString.Char8 as BSC
 import           Data.Either           (isRight, lefts)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
@@ -352,7 +354,9 @@ instance Refine Create where
   refine (CreateAs _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
 
 ---- INSERT
-data RInsert = RInsert Text [(FieldName,Constant)] deriving (Eq, Show)
+data RInsert = RInsert Text [(FieldName,Constant)]
+             | RInsertBinary Text BS.ByteString
+             deriving (Eq, Show)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
   refine (DInsert _ (Ident s) fields exprs) = RInsert s $
@@ -361,6 +365,7 @@ instance Refine Insert where
       refineConst expr =
         let (RExprConst _ constant) = refine expr -- Ensured by Validate
          in constant
+  refine (InsertBinary _ (Ident s) bin) = RInsertBinary s (BSC.pack bin)
 
 ---- SQL
 data RSQL = RQSelect RSelect

@@ -265,6 +265,7 @@ StreamOption : 'FORMAT' '=' String { (uncurry HStream.SQL.Abs.BNFC'Position (tok
 
 Insert :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert) }
 Insert : 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInsert (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $9)) }
+       | 'INSERT' 'INTO' Ident 'VALUES' String { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.InsertBinary (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
 
 ListIdent :: { (HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.Ident]) }
 ListIdent : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }

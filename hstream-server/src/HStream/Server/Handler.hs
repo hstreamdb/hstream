@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -197,8 +196,10 @@ executePushQueryHandler DefaultInfo{..} (ServerWriterRequest _metadata CommandPu
     Right _                              -> return (ServerWriterResponse [] StatusAborted "inconsistent method called")
   where loop consumer = do
           ms <- pollMessages consumer 1 1000
-          let (objects' :: [Maybe Aeson.Object]) = Aeson.decode . BL.fromStrict . ZF.toByteString . dataOutValue <$> ms
-              structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+          let valBs = ZF.toByteString . dataOutValue <$> ms
+          let maybeObjectsWithBs = [ (Aeson.decode . BL.fromStrict $ bs :: Maybe Aeson.Object, bs)| bs <- valBs ]
+          let objects = [ fromJust o' | (o',_) <- maybeObjectsWithBs, isJust o' ]
+              structs = jsonObjectToStruct <$> objects
           case L.null structs of
             True  -> loop consumer
             False -> do

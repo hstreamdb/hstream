@@ -10,6 +10,7 @@ import qualified Data.HashMap.Strict                             as HM
 import           Data.Scientific                                 (fromFloatDigits,
                                                                   scientific)
 import           Data.Text                                       (pack)
+import           Data.Text.Encoding                              (decodeUtf8)
 import           Data.Time                                       (diffTimeToPicoseconds,
                                                                   showGregorian)
 import           HStream.Processing.Processor                    (Record (..))
@@ -74,6 +75,11 @@ streamCodegen input = do
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
     RQInsert (RInsert topic tuples)     -> do
       let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
+      return $ InsertPlan topic (encode object)
+    RQInsert (RInsertBinary topic bs)   -> do
+      let k = "unknown_binary_data" :: Text
+          v = String (decodeUtf8 bs)
+      let object = HM.fromList [(k,v)]
       return $ InsertPlan topic (encode object)
 
 --------------------------------------------------------------------------------
