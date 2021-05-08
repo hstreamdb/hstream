@@ -50,6 +50,7 @@ OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
 separator Ident "," ;
 separator ValueExpr "," ;
+InsertBinary. Insert ::= "INSERT" "INTO" Ident "VALUES" String ;
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;

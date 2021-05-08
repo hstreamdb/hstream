@@ -581,6 +581,7 @@ instance Validate Insert where
     mapM_ validate exprs
     mapM_ isConstExpr exprs
     return insert
+  validate insert@(InsertBinary _ _ _) = return insert
 
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where

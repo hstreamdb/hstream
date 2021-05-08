@@ -151,6 +151,7 @@ instance Print (HStream.SQL.Abs.StreamOption' a) where
 instance Print (HStream.SQL.Abs.Insert' a) where
   prt i = \case
     HStream.SQL.Abs.DInsert _ id_ ids valueexprs -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id_, doc (showString "("), prt 0 ids, doc (showString ")"), doc (showString "VALUES"), doc (showString "("), prt 0 valueexprs, doc (showString ")")])
+    HStream.SQL.Abs.InsertBinary _ id_ str -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id_, doc (showString "VALUES"), prt 0 str])
 
 instance Print [HStream.SQL.Abs.Ident] where
   prt = prtList

@@ -51,7 +51,9 @@ data StreamOption' a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Insert = Insert' BNFC'Position
-data Insert' a = DInsert a Ident [Ident] [ValueExpr' a]
+data Insert' a
+    = DInsert a Ident [Ident] [ValueExpr' a]
+    | InsertBinary a Ident String
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Select = Select' BNFC'Position
@@ -301,6 +303,7 @@ instance HasPosition StreamOption where
 instance HasPosition Insert where
   hasPosition = \case
     DInsert p _ _ _ -> p
+    InsertBinary p _ _ -> p
 
 instance HasPosition Select where
   hasPosition = \case
