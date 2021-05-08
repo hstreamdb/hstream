@@ -52,22 +52,21 @@ executable hstore
 library
   exposed-modules:
     HStream.Store
-    HStream.Store.AdminClient
-    HStream.Store.Exception
-    HStream.Store.Logger
+    HStream.Store.Internal.LogDevice
     HStream.Store.RPC.MessagePack
-    HStream.Store.Stream
-    HStream.Store.Stream.Appender
-    HStream.Store.Stream.Checkpoint
-    HStream.Store.Stream.Reader
-    HStream.Store.Stream.Topic
 
   other-modules:
+    HStream.Store.AdminClient
+    HStream.Store.Exception
     HStream.Store.Internal.FFI
     HStream.Store.Internal.Foreign
+    HStream.Store.Internal.LogDevice.Checkpoint
+    HStream.Store.Internal.LogDevice.LogConfigTypes
+    HStream.Store.Internal.LogDevice.Reader
     HStream.Store.Internal.LogDevice.VersionedConfigStore
-    HStream.Store.Internal.LogGroup
     HStream.Store.Internal.Types
+    HStream.Store.Logger
+    HStream.Store.Stream
 
   build-depends:
     , base           >=4.13    && <5
@@ -110,12 +109,11 @@ library
   cpp-options:        -std=c++17
   cxx-sources:
     cbits/hs_checkpoint.cpp
-    cbits/hs_logattribute.cpp
-    cbits/hs_logconfigtypes.cpp
     cbits/hs_logdevice.cpp
     cbits/hs_logdevice_admin.cpp
     cbits/hs_logdevice_appender.cpp
     cbits/hs_logdevice_reader.cpp
+    cbits/logdevice/hs_logconfigtypes.cpp
     cbits/logdevice/hs_versioned_config_store.cpp
     cbits/utils.cpp
 
@@ -132,7 +130,6 @@ test-suite hstream-store-test
   main-is:            Spec.hs
   other-modules:
     HStream.Store.AppenderSpec
-    HStream.Store.CheckpointSpec
     HStream.Store.ReaderSpec
     HStream.Store.TopicSpec
 

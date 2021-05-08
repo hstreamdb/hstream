@@ -146,7 +146,6 @@ LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
 void free_log_attributes(LogAttributes* attrs);
 bool exist_log_attrs_extras(LogAttributes* attrs, char* key);
 std::string* get_log_attrs_extra(LogAttributes* attrs, char* key);
-void set_log_attrs_extra(LogAttributes* attrs, char* key, char* val);
 
 // LogSequenceNumber
 typedef uint64_t c_lsn_t;

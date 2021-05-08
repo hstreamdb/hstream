@@ -1,67 +1,163 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 module HStream.Store.Stream
-  ( -- * Client Record Types
-    ProducerRecord (..)
-  , ConsumerRecord (..)
-  , encodeRecord
-  , decodeRecord
+  ( -- * Topic
+    Topic
+  , FFI.LogAttrs (LogAttrs)
+  , FFI.HsLogAttrs (..)
+  , createTopic
+  , renameTopic
+  , removeTopic
+  , doesTopicExists
 
-  -- * Stream Client
-  , StreamClient
-  , newStreamClient
-  , getTailSequenceNum
-    -- ** Client Settings
-  , setClientSettings
-  , getClientSettings
-  , getMaxPayloadSize
-    -- ** Sequence Number
-  , SequenceNum (unSequenceNum)
-  , FFI.sequenceNumInvalid
-    -- ** Data Record
-  , DataRecord (..)
-    -- ** KeyType
+  , FFI.LogID (..)
+  , FFI.C_LogID
+  , getCLogIDByTopicName
+  , LD.getLDLogGroup
+  , LD.logGroupGetExtraAttr
+  , LD.logGroupUpdateExtraAttrs
+
+    -- * Writer
+  , LD.append
+  , appendRecord
+  , ProducerRecord (..)
   , FFI.KeyType
   , FFI.keyTypeFindKey
   , FFI.keyTypeFilterable
-
-    -- * Topic
-  , module HStream.Store.Stream.Topic
-
-    -- * Writer
-  , module HStream.Store.Stream.Appender
+  , FFI.AppendCallBackData (..)
+  , encodeRecord
 
     -- * Reader
-  , module HStream.Store.Stream.Reader
+  , ConsumerRecord (..)
+  , decodeRecord
+  , FFI.DataRecord (..)
 
-    -- * Checkpoint
-  , module HStream.Store.Stream.Checkpoint
+  , LD.newFileBasedCheckpointStore
+  , LD.newRSMBasedCheckpointStore
+  , LD.newZookeeperBasedCheckpointStore
+  , LD.ckpStoreGetLSN
+
+  , LD.newLDReader
+  , LD.readerStartReading
+  , LD.readerRead
+  , LD.readerSetTimeout
+  , readerReadRecord
+
+  , newLDFileCkpReader
+  , newLDRsmCkpReader
+  , newLDZkCkpReader
+  , LD.writeCheckpoints
+  , LD.writeLastCheckpoints
+  , LD.ckpReaderStartReading
+  , LD.startReadingFromCheckpoint
+  , LD.ckpReaderRead
+  , LD.ckpReaderSetTimeout
   ) where
 
-import           Control.Monad                   (void)
-import           Data.Int                        (Int64)
-import           Foreign.ForeignPtr              (newForeignPtr, withForeignPtr)
-import           Foreign.Ptr                     (nullPtr)
-import           GHC.Generics                    (Generic)
-import           GHC.Stack                       (HasCallStack)
-import           Z.Data.CBytes                   (CBytes)
-import qualified Z.Data.CBytes                   as ZC
-import qualified Z.Data.JSON                     as JSON
-import qualified Z.Data.MessagePack              as MP
-import           Z.Data.Vector                   (Bytes)
-import qualified Z.Foreign                       as Z
+import           Control.Exception                (try)
+import           Control.Monad                    (unless)
+import           Data.Bits                        (shiftL, shiftR, (.&.), (.|.))
+import qualified Data.Cache                       as Cache
+import           Data.Int                         (Int64)
+import           Data.Time.Clock.System           (SystemTime (..))
+import           Data.Word                        (Word16, Word32, Word64)
+import           Foreign.C                        (CSize)
+import           GHC.Generics                     (Generic)
+import           GHC.Stack                        (HasCallStack, callStack)
+import           System.IO.Unsafe                 (unsafePerformIO)
+import           System.Random                    (randomRIO)
+import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.JSON                      as JSON
+import qualified Z.Data.MessagePack               as MP
+import           Z.Data.Vector                    (Bytes)
+import           Z.IO.Time                        (getSystemTime')
 
-import qualified HStream.Store.Exception         as E
-import qualified HStream.Store.Internal.FFI      as FFI
-import           HStream.Store.Internal.Types    (DataRecord (..),
-                                                  SequenceNum (..),
-                                                  StreamClient (..),
-                                                  TopicID (..))
-import qualified HStream.Store.Internal.Types    as FFI
-import           HStream.Store.Stream.Appender
-import           HStream.Store.Stream.Checkpoint
-import           HStream.Store.Stream.Reader
-import           HStream.Store.Stream.Topic
+import qualified HStream.Store.Exception          as E
+import qualified HStream.Store.Internal.LogDevice as LD
+import qualified HStream.Store.Internal.Types     as FFI
+
+-------------------------------------------------------------------------------
+
+type Topic = CBytes
+
+-- | Global topic name to logid cache
+topicNameCache :: Cache.Cache Topic FFI.C_LogID
+topicNameCache = unsafePerformIO $ Cache.newCache Nothing
+{-# NOINLINE topicNameCache #-}
+
+-- | Create topic
+--
+-- Currently 'Topic' is a loggroup which only contains one random logid.
+createTopic :: HasCallStack => FFI.LDClient -> Topic -> FFI.LogAttrs -> IO ()
+createTopic client topic attrs = go 10
+  where
+    go :: Int -> IO ()
+    go maxTries =
+      if maxTries <= 0
+         then E.throwStoreError "Ran out all retries, but still failed :(" callStack
+         else do
+           logid <- genRandomLogID
+           result <- try $ LD.makeLogGroup client topic logid logid attrs True
+           case result of
+             Right group -> do
+               LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
+               Cache.insert topicNameCache topic logid
+             Left (_ :: E.ID_CLASH) -> go $! maxTries - 1
+
+renameTopic
+  :: HasCallStack
+  => FFI.LDClient
+  -> Topic
+  -- ^ The source path to rename
+  -> Topic
+  -- ^ The new path you are renaming to
+  -> IO ()
+renameTopic client from to = do
+  LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from to
+  -- Do NOT combine these operations to a atomically one, since we need
+  -- delete the old topic name even the new one is insert failed.
+  m_v <- Cache.lookup' topicNameCache from
+  case m_v of
+    Just x -> do Cache.delete topicNameCache from
+                 Cache.insert topicNameCache to x
+    Nothing -> return ()
+
+removeTopic :: HasCallStack => FFI.LDClient -> Topic -> IO ()
+removeTopic client topic = do
+  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client topic
+  Cache.delete topicNameCache topic
+
+doesTopicExists :: HasCallStack => FFI.LDClient -> Topic -> IO Bool
+doesTopicExists client topic = do
+  m_v <- Cache.lookup topicNameCache topic
+  case m_v of
+    Just _  -> return True
+    Nothing -> do r <- try $ LD.getLDLogGroup client topic
+                  case r of
+                    Left (_ :: E.NOTFOUND) -> return False
+                    Right _                -> return True
+
+getCLogIDByTopicName :: FFI.LDClient -> Topic -> IO FFI.C_LogID
+getCLogIDByTopicName client topic = do
+  m_v <- Cache.lookup topicNameCache topic
+  maybe (fmap fst $ LD.logGroupGetRange =<< LD.getLDLogGroup client topic) return m_v
+
+-- | Generate a random logid through a simplify version of snowflake algorithm.
+genRandomLogID :: IO FFI.C_LogID
+genRandomLogID = do
+  let startTS = 1577808000  -- 2020-01-01
+  ts <- getSystemTime'
+  let sec = systemSeconds ts - startTS
+  unless (sec > 0) $ error "Impossible happened, make sure your system time is synchronized."
+  -- 32bit
+  let tsBit :: Int64 = fromIntegral (maxBound :: Word32) .&. sec
+  -- 8bit
+  let tsBit' :: Word32 = shiftR (systemNanoseconds ts) 24
+  -- 16bit
+  rdmBit :: Word16 <- randomRIO (0, maxBound :: Word16)
+  return $ fromIntegral (shiftL tsBit 24)
+       .|. fromIntegral (shiftL tsBit' 16)
+       .|. fromIntegral rdmBit
 
 -------------------------------------------------------------------------------
 
@@ -77,15 +173,16 @@ encodeRecord = JSON.encode
 
 data ConsumerRecord = ConsumerRecord
   { dataOutTopic     :: Topic
-  , dataOutOffset    :: SequenceNum
+  , dataOutOffset    :: Word64
   , dataOutKey       :: Maybe CBytes
   , dataOutValue     :: Bytes
   , dataOutTimestamp :: Int64
   } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
 
-decodeRecord :: HasCallStack => DataRecord -> ConsumerRecord
-decodeRecord DataRecord{..} = do
+decodeRecord :: HasCallStack => FFI.DataRecord -> ConsumerRecord
+decodeRecord FFI.DataRecord{..} = do
   case JSON.decode' recordPayload of
+    -- TODO
     Left _err -> error "JSON decode error!"
     Right ProducerRecord{..} ->
       ConsumerRecord { dataOutTopic     = dataInTopic
@@ -95,83 +192,76 @@ decodeRecord DataRecord{..} = do
                      , dataOutTimestamp = dataInTimestamp
                      }
 
--------------------------------------------------------------------------------
+-- | Appends a new record.
+appendRecord
+  :: HasCallStack
+  => FFI.LDClient
+  -> FFI.C_LogID
+  -> ProducerRecord
+  -> Maybe (FFI.KeyType, CBytes)
+  -> IO FFI.AppendCallBackData
+appendRecord client logid payload m_key_attr =
+  LD.append client logid (encodeRecord payload) m_key_attr
 
--- | Create a new stream client from config url.
-newStreamClient :: HasCallStack => CBytes -> IO StreamClient
-newStreamClient config = ZC.withCBytesUnsafe config $ \config' -> do
-  (client', _) <- Z.withPrimUnsafe nullPtr $ \client'' ->
-    E.throwStreamErrorIfNotOK $ FFI.c_new_logdevice_client config' client''
-  StreamClient <$> newForeignPtr FFI.c_free_logdevice_client_fun client'
+readerReadRecord :: FFI.LDReader -> Int -> IO [ConsumerRecord]
+readerReadRecord reader maxlen = map decodeRecord <$> LD.readerRead reader maxlen
 
-getTailSequenceNum :: StreamClient -> TopicID -> IO SequenceNum
-getTailSequenceNum client (TopicID topicid) =
-  withForeignPtr (unStreamClient client) $ \p ->
-    SequenceNum <$> FFI.c_ld_client_get_tail_lsn_sync p topicid
+newLDFileCkpReader
+  :: FFI.LDClient
+  -> CBytes
+  -- ^ CheckpointedReader name
+  -> CBytes
+  -- ^ root path
+  -> CSize
+  -- ^ maximum number of logs that can be read from
+  -- this Reader at the same time
+  -> Maybe Int64
+  -- ^ specify the read buffer size for this client, fallback
+  -- to the value in settings if it is Nothing.
+  -> Word32
+  -- ^ The number of retries when synchronously writing checkpoints.
+  -> IO FFI.LDSyncCkpReader
+newLDFileCkpReader client name root_path max_logs m_buffer_size retries = do
+  store <- LD.newFileBasedCheckpointStore root_path
+  reader <- LD.newLDReader client max_logs m_buffer_size
+  LD.newLDSyncCkpReader name reader store retries
 
--- | Returns the maximum permitted payload size for this client.
---
--- The default is 1MB, but this can be increased via changing the
--- max-payload-size setting.
-getMaxPayloadSize :: StreamClient -> IO Word
-getMaxPayloadSize (StreamClient client) =
-  withForeignPtr client FFI.c_ld_client_get_max_payload_size
+newLDRsmCkpReader
+  :: FFI.LDClient
+  -> CBytes
+  -- ^ CheckpointedReader name
+  -> FFI.C_LogID
+  -- ^ checkpointStore logid
+  -> Int64
+  -- ^ Timeout for the RSM to stop after calling shutdown, in milliseconds.
+  -> CSize
+  -- ^ maximum number of logs that can be read from
+  -- this Reader at the same time
+  -> Maybe Int64
+  -- ^ specify the read buffer size for this client, fallback
+  -- to the value in settings if it is Nothing.
+  -> Word32
+  -- ^ The number of retries when synchronously writing checkpoints.
+  -> IO FFI.LDSyncCkpReader
+newLDRsmCkpReader client name logid timeout max_logs m_buffer_size retries = do
+  store <- LD.newRSMBasedCheckpointStore client logid timeout
+  reader <- LD.newLDReader client max_logs m_buffer_size
+  LD.newLDSyncCkpReader name reader store retries
 
--- | Change settings for the Client.
---
--- Settings that are commonly used on the client:
---
--- connect-timeout
---    Connection timeout
---
--- handshake-timeout
---    Timeout for LogDevice protocol handshake sequence
---
--- num-workers
---    Number of worker threads on the client
---
--- client-read-buffer-size
---    Number of records to buffer while reading
---
--- max-payload-size
---    The maximum payload size that could be appended by the client
---
--- ssl-boundary
---    Enable SSL in cross-X traffic, where X is the setting. Example: if set
---    to "rack", all cross-rack traffic will be sent over SSL. Can be one of
---    "none", "node", "rack", "row", "cluster", "dc" or "region". If a value
---    other than "none" or "node" is specified, --my-location has to be
---    specified as well.
---
--- my-location
---    Specifies the location of the machine running the client. Used for
---    determining whether to use SSL based on --ssl-boundary. Format:
---    "{region}.{dc}.{cluster}.{row}.{rack}"
---
--- client-initial-redelivery-delay
---    Initial delay to use when downstream rejects a record or gap
---
--- client-max-redelivery-delay
---    Maximum delay to use when downstream rejects a record or gap
---
--- on-demand-logs-config
---    Set this to true if you want the client to get log configuration on
---    demand from the server when log configuration is not included in the
---    main config file.
---
--- enable-logsconfig-manager
---    Set this to true if you want to use the internal replicated storage for
---    logs configuration, this will ignore loading the logs section from the
---    config file.
-setClientSettings :: HasCallStack => StreamClient -> CBytes -> CBytes -> IO ()
-setClientSettings (StreamClient client) key val =
-  withForeignPtr client $ \client' ->
-  ZC.withCBytesUnsafe key $ \key' ->
-  ZC.withCBytesUnsafe val $ \val' -> void $
-    E.throwStreamErrorIfNotOK $ FFI.c_ld_client_set_settings client' key' val'
-
-getClientSettings :: StreamClient -> CBytes -> IO Bytes
-getClientSettings (StreamClient client) key =
-  withForeignPtr client $ \client' ->
-  ZC.withCBytesUnsafe key $ \key' ->
-    Z.fromStdString $ FFI.c_ld_client_get_settings client' key'
+newLDZkCkpReader
+  :: FFI.LDClient
+  -> CBytes
+  -- ^ CheckpointedReader name
+  -> CSize
+  -- ^ maximum number of logs that can be read from
+  -- this Reader at the same time
+  -> Maybe Int64
+  -- ^ specify the read buffer size for this client, fallback
+  -- to the value in settings if it is Nothing.
+  -> Word32
+  -- ^ The number of retries when synchronously writing checkpoints.
+  -> IO FFI.LDSyncCkpReader
+newLDZkCkpReader client name max_logs m_buffer_size retries = do
+  store <- LD.newZookeeperBasedCheckpointStore client
+  reader <- LD.newLDReader client max_logs m_buffer_size
+  LD.newLDSyncCkpReader name reader store retries
