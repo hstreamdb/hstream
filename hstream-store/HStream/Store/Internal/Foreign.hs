@@ -15,7 +15,7 @@ import           Foreign.ForeignPtr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
-import           GHC.Stack                    (HasCallStack)
+import           GHC.Stack
 import           Z.Foreign                    (BA#, MBA#)
 import qualified Z.Foreign                    as Z
 
@@ -85,3 +85,15 @@ withAsync' size peek_data g f = mask_ $ do
     a <- peek_data data'
     return (a, b)
 {-# INLINE withAsync' #-}
+
+retryWhileAgain :: HasCallStack => IO (ErrorCode, a) -> Int -> IO a
+retryWhileAgain f retries = do
+  (errno, r) <- f
+  case errno of
+    C_OK -> return r
+    C_AGAIN
+      | retries == 0 -> E.throwStreamError errno callStack
+      | retries < 0 -> threadDelay 5000 >> (retryWhileAgain f $! (-1))
+      | retries > 0 -> threadDelay 5000 >> (retryWhileAgain f $! retries - 1)
+    _ -> E.throwStreamError errno callStack
+{-# INLINE retryWhileAgain #-}
