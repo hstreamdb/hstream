@@ -22,7 +22,7 @@ import           Z.Foreign                      (BA#, MBA#)
 import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
-import           HStream.Store.Internal.Foreign (cbool2bool,
+import           HStream.Store.Internal.Foreign (cbool2bool, retryWhileAgain,
                                                  withAsyncPrimUnsafe)
 import           HStream.Store.Internal.Types
 
@@ -167,27 +167,26 @@ ckpReaderSetTimeout reader ms =
 
 -------------------------------------------------------------------------------
 
-writeCheckpoints :: LDSyncCkpReader -> Map C_LogID LSN -> IO ()
+writeCheckpoints :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> IO ()
 writeCheckpoints reader sns =
   withForeignPtr reader $ \reader' -> do
     let xs = Map.toList sns
     let ka = Z.primArrayFromList $ map fst xs
         va = Z.primArrayFromList $ map snd xs
     Z.withPrimArrayUnsafe ka $ \ks' len ->
-      Z.withPrimArrayUnsafe va $ \vs' _len -> do
-        (errno, _) <- withAsyncPrimUnsafe (0 :: ErrorCode) $
-          c_write_checkpoints reader' ks' vs' (fromIntegral len)
-        void $ E.throwStreamErrorIfNotOK' errno
+      Z.withPrimArrayUnsafe va $ \vs' _ -> do
+        let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_checkpoints reader' ks' vs' (fromIntegral len)
+        retryWhileAgain f 10
 
 writeLastCheckpoints :: LDSyncCkpReader -> [C_LogID] -> IO ()
 writeLastCheckpoints reader xs =
   withForeignPtr reader $ \reader' -> do
     let topicIDs = Z.primArrayFromList xs
     Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
-      (errno, _) <- withAsyncPrimUnsafe (0 :: ErrorCode) $
-        c_write_last_read_checkpoints reader' id' (fromIntegral len)
-      void $ E.throwStreamErrorIfNotOK' errno
+      let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_last_read_checkpoints reader' id' (fromIntegral len)
+      retryWhileAgain f 10
 
+{-# DEPRECATED writeCheckpointsSync "Don't use these, use writeCheckpoints instead" #-}
 writeCheckpointsSync :: LDSyncCkpReader
                      -> Map C_LogID LSN
                      -> IO ()
@@ -200,6 +199,7 @@ writeCheckpointsSync reader sns =
       Z.withPrimArraySafe va $ \vs' _len -> void $ E.throwStreamErrorIfNotOK $
         c_sync_write_checkpoints_safe reader' ks' vs' (fromIntegral len)
 
+{-# DEPRECATED writeLastCheckpointsSync "Don't use these, use writeLastCheckpoints instead" #-}
 writeLastCheckpointsSync :: LDSyncCkpReader -> [C_LogID] -> IO ()
 writeLastCheckpointsSync reader xs =
   withForeignPtr reader $ \reader' -> do
