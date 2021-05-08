@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -13,6 +14,7 @@ import           ThirdParty.Google.Protobuf.Struct
 
 import           Control.Concurrent
 import           Control.Exception
+import           Control.Monad                     (when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Lazy              as BL
 import qualified Data.HashMap.Strict               as HM
@@ -31,6 +33,7 @@ import           HStream.SQL.Exception
 import           HStream.Server.Utils
 import           HStream.Store                     (AdminClient,
                                                     AdminClientConfig (..),
+                                                    Consumer,
                                                     ConsumerConfig (..),
                                                     Producer,
                                                     ProducerConfig (..),
@@ -41,6 +44,9 @@ import           HStream.Store                     (AdminClient,
                                                     mkAdminClient, mkConsumer,
                                                     mkProducer, pollMessages,
                                                     sendMessage)
+import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
+                                                    OpRecvResult (OpRecvCloseOnServerResult),
+                                                    runOps)
 import           RIO                               (logOptionsHandle, stderr,
                                                     withLogFunc)
 import           System.IO.Unsafe                  (unsafePerformIO)
@@ -158,60 +164,69 @@ executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{
 executePushQueryHandler :: DefaultInfo
                         -> ServerRequest 'ServerStreaming CommandPushQuery Struct
                         -> IO (ServerResponse 'ServerStreaming Struct)
-executePushQueryHandler DefaultInfo{..} (ServerWriterRequest _metadata CommandPushQuery{..} streamSend) = do
+executePushQueryHandler DefaultInfo{..} (ServerWriterRequest meta CommandPushQuery{..} streamSend) = do
   plan' <- try $ streamCodegen (TL.toStrict commandPushQueryQueryText)
+  let returnRes = return . ServerWriterResponse [] StatusAborted
   case plan' of
-    Left (e :: SomeSQLException)         -> return (ServerWriterResponse [] StatusAborted "exception on parsing or codegen")
+    Left (e :: SomeSQLException)         -> returnRes "exception on parsing or codegen"
     Right (SelectPlan sources sink task) -> do
       exists <- mapM (doesTopicExists defaultAdmin) (CB.pack . T.unpack <$> sources)
-      case and exists of
-          False -> return (ServerWriterResponse [] StatusAborted "some source topic do not exist")
-          True  -> do
-            e' <- try $ createTopics defaultAdmin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs defaultTopicRepFactor Map.empty)])
-            case e' of
-              Left (e :: SomeException) -> return (ServerWriterResponse [] StatusAborted "error when creating sink topic")
-              Right _                   -> do
-                -- RUN TASK
-                _ <- forkIO $ do
-                  name       <- newRandomName 10
-                  logOptions <- logOptionsHandle stderr True
-                  let producerConfig = defaultProducerConfig
-                      consumerConfig = defaultConsumerConfig
-                                       { consumerName = name
-                                       , consumerCheckpointUri = "/tmp/checkpoint/" <> name
-                                       }
-                  withLogFunc logOptions $ \lf -> do
-                    let taskConfig = TaskConfig
-                          { tcMessageStoreType = LogDevice producerConfig consumerConfig
-                          , tcLogFunc = lf
-                          }
-                    runTask taskConfig task
-                -- FETCH RESULT TO CLIENT
-                name     <- newRandomName 10
-                consumer <- mkConsumer (defaultConsumerConfig
-                                        { consumerName = name
-                                        , consumerCheckpointUri = "/tmp/checkpoint" <> name
-                                        }) (CB.pack . T.unpack <$> [sink])
-                loop consumer
-    Right _                              -> return (ServerWriterResponse [] StatusAborted "inconsistent method called")
-  where loop consumer = do
-          ms <- pollMessages consumer 1 1000
-          let valBs = ZF.toByteString . dataOutValue <$> ms
-          let maybeObjectsWithBs = [ (Aeson.decode . BL.fromStrict $ bs :: Maybe Aeson.Object, bs)| bs <- valBs ]
-          let objects = [ fromJust o' | (o',_) <- maybeObjectsWithBs, isJust o' ]
-              structs = jsonObjectToStruct <$> objects
-          case L.null structs of
-            True  -> loop consumer
-            False -> do
-              let streamSendMany xs = do
-                    case xs of
-                      []      -> return (Right ())
-                      (x:xs') -> do
-                        res <- streamSend x
-                        case res of
-                          Left err -> return (Left err)
-                          Right _  -> streamSendMany xs'
-              sendRes <- streamSendMany structs
-              case sendRes of
-                Left err -> print err >> return (ServerWriterResponse [] StatusAborted  "aborted")
-                Right _  -> threadDelay 1000000 >> loop consumer
+      if (not . and) exists then returnRes "some source topic do not exist"
+      else do
+        e' <- try $ createTopics defaultAdmin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs defaultTopicRepFactor Map.empty)])
+        case e' of
+          Left (e :: SomeException) -> returnRes "error when creating sink topic"
+          Right _                   -> do
+            -- RUN TASK
+            tid <- forkIO $ do
+              name       <- newRandomName 10
+              logOptions <- logOptionsHandle stderr True
+              let producerConfig = defaultProducerConfig
+                  consumerConfig = defaultConsumerConfig
+                                   { consumerName = name
+                                   , consumerCheckpointUri = "/tmp/checkpoint/" <> name
+                                   }
+              withLogFunc logOptions $ \lf -> do
+                let taskConfig = TaskConfig
+                      { tcMessageStoreType = LogDevice producerConfig consumerConfig
+                      , tcLogFunc = lf
+                      }
+                runTask taskConfig task
+            -- FETCH RESULT TO CLIENT
+            name     <- newRandomName 10
+            consumer <- mkConsumer (defaultConsumerConfig
+                                    { consumerName = name
+                                    , consumerCheckpointUri = "/tmp/checkpoint" <> name
+                                    }) (CB.pack . T.unpack <$> [sink])
+            _ <- forkIO $ handleClientCallCanceled meta (killThread tid)
+            loop (sendToClient consumer streamSend)
+
+    Right _                              -> returnRes  "inconsistent method called"
+  where
+    loop f = f >>= \case
+        Just x  -> return x
+        Nothing -> loop f
+
+sendToClient :: Consumer -> (Struct -> IO (Either GRPCIOError ())) -> IO (Maybe (ServerResponse 'ServerStreaming Struct))
+sendToClient consumer streamSend = do
+  ms <- pollMessages consumer 1 1000
+  let (objects' :: [Maybe Aeson.Object]) = Aeson.decode . BL.fromStrict . ZF.toByteString . dataOutValue <$> ms
+      structs                            = jsonObjectToStruct . fromJust <$> filter isJust objects'
+  if L.null structs then return Nothing
+  else
+    let streamSendMany xs = case xs of
+          []      -> return (Right ())
+          (x:xs') -> streamSend x >>= \case
+            Left err -> return (Left err)
+            Right _  -> streamSendMany xs'
+    in streamSendMany structs >>= \case
+      Left err -> print err >> return (Just (ServerWriterResponse [] StatusAborted  "aborted"))
+      Right _  -> return Nothing
+
+handleClientCallCanceled :: ServerCall () -> IO () -> IO ()
+handleClientCallCanceled ServerCall{..} handle = do
+  x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
+  case x of
+    Left e                              -> print e
+    Right []                            -> print "GRPCIOInternalUnexpectedRecv"
+    Right [OpRecvCloseOnServerResult b] -> when b handle
