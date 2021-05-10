@@ -28,10 +28,14 @@ NInteger.  PNInteger ::= "-" Integer ;
 PDouble.  PNDouble ::= "+" Double ;
 IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
+
+token SString '\'' char+ '\'' ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
 comment "/*" "*/" ;
+
+entrypoints SQL ;
 
 QSelect. SQL ::= Select ";" ;
 QCreate. SQL ::= Create ";" ;
@@ -51,6 +55,7 @@ DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExp
 separator Ident "," ;
 separator ValueExpr "," ;
 InsertBinary. Insert ::= "INSERT" "INTO" Ident "VALUES" String ;
+InsertJson.   Insert ::= "INSERT" "INTO" Ident "VALUES" SString ;
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;

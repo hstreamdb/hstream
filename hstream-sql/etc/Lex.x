@@ -35,6 +35,8 @@ $u = [. \n]          -- universal: any character
 $white+ ;
 @rsyms
     { tok (\p s -> PT p (eitherResIdent TV s)) }
+\' $u + \'
+    { tok (\p s -> PT p (eitherResIdent T_SString s)) }
 
 $l $i*
     { tok (\p s -> PT p (eitherResIdent TV s)) }
@@ -58,6 +60,7 @@ data Tok =
  | TV !Data.Text.Text         -- identifiers
  | TD !Data.Text.Text         -- double precision float literals
  | TC !Data.Text.Text         -- character literals
+ | T_SString !Data.Text.Text
 
  deriving (Eq,Show,Ord)
 
@@ -95,6 +98,7 @@ tokenText t = case t of
   PT _ (TD s)   -> s
   PT _ (TC s)   -> s
   Err _         -> Data.Text.pack "#error"
+  PT _ (T_SString s) -> s
 
 prToken :: Token -> String
 prToken t = Data.Text.unpack (tokenText t)

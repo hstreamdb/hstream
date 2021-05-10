@@ -9,7 +9,9 @@ import qualified Data.ByteString.Char8 as BSC
 import           Data.Either           (isRight, lefts)
 import           Data.Kind             (Type)
 import qualified Data.List             as L
-import           Data.Text             as Text (Text, unpack)
+import           Data.Text             (Text)
+import qualified Data.Text             as Text
+import           Data.Text.Encoding    (encodeUtf8)
 import qualified Data.Time             as Time
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
@@ -35,6 +37,10 @@ instance Refine PNInteger where
 type instance RefinedType PNDouble = Double
 instance Refine PNDouble where
   refine = extractPNDouble
+
+type instance RefinedType SString = BS.ByteString
+instance Refine SString where
+  refine (SString t) = encodeUtf8 . Text.init . Text.tail $ t
 
 type RBool = Bool
 type instance RefinedType Boolean = RBool
@@ -356,6 +362,7 @@ instance Refine Create where
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]
              | RInsertBinary Text BS.ByteString
+             | RInsertJSON   Text BS.ByteString
              deriving (Eq, Show)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
@@ -366,6 +373,8 @@ instance Refine Insert where
         let (RExprConst _ constant) = refine expr -- Ensured by Validate
          in constant
   refine (InsertBinary _ (Ident s) bin) = RInsertBinary s (BSC.pack bin)
+  refine (InsertJson _ (Ident s) ss) =
+    RInsertJSON s (refine $ ss)
 
 ---- SQL
 data RSQL = RQSelect RSelect

@@ -4,52 +4,7 @@
 module HStream.SQL.Par
   ( happyError
   , myLexer
-  , pPNInteger
-  , pPNDouble
   , pSQL
-  , pCreate
-  , pListStreamOption
-  , pStreamOption
-  , pInsert
-  , pListIdent
-  , pListValueExpr
-  , pSelect
-  , pSel
-  , pSelList
-  , pListDerivedCol
-  , pDerivedCol
-  , pFrom
-  , pListTableRef
-  , pTableRef
-  , pJoinType
-  , pJoinWindow
-  , pJoinCond
-  , pWhere
-  , pGroupBy
-  , pListGrpItem
-  , pGrpItem
-  , pWindow
-  , pHaving
-  , pValueExpr
-  , pValueExpr1
-  , pValueExpr2
-  , pValueExpr3
-  , pValueExpr4
-  , pBoolean
-  , pDate
-  , pTime
-  , pTimeUnit
-  , pInterval
-  , pListLabelledValueExpr
-  , pLabelledValueExpr
-  , pColName
-  , pSetFunc
-  , pScalarFunc
-  , pSearchCond
-  , pSearchCond1
-  , pSearchCond2
-  , pSearchCond3
-  , pCompOp
   ) where
 
 import Prelude
@@ -60,52 +15,7 @@ import qualified Data.Text
 
 }
 
-%name pPNInteger_internal PNInteger
-%name pPNDouble_internal PNDouble
 %name pSQL_internal SQL
-%name pCreate_internal Create
-%name pListStreamOption_internal ListStreamOption
-%name pStreamOption_internal StreamOption
-%name pInsert_internal Insert
-%name pListIdent_internal ListIdent
-%name pListValueExpr_internal ListValueExpr
-%name pSelect_internal Select
-%name pSel_internal Sel
-%name pSelList_internal SelList
-%name pListDerivedCol_internal ListDerivedCol
-%name pDerivedCol_internal DerivedCol
-%name pFrom_internal From
-%name pListTableRef_internal ListTableRef
-%name pTableRef_internal TableRef
-%name pJoinType_internal JoinType
-%name pJoinWindow_internal JoinWindow
-%name pJoinCond_internal JoinCond
-%name pWhere_internal Where
-%name pGroupBy_internal GroupBy
-%name pListGrpItem_internal ListGrpItem
-%name pGrpItem_internal GrpItem
-%name pWindow_internal Window
-%name pHaving_internal Having
-%name pValueExpr_internal ValueExpr
-%name pValueExpr1_internal ValueExpr1
-%name pValueExpr2_internal ValueExpr2
-%name pValueExpr3_internal ValueExpr3
-%name pValueExpr4_internal ValueExpr4
-%name pBoolean_internal Boolean
-%name pDate_internal Date
-%name pTime_internal Time
-%name pTimeUnit_internal TimeUnit
-%name pInterval_internal Interval
-%name pListLabelledValueExpr_internal ListLabelledValueExpr
-%name pLabelledValueExpr_internal LabelledValueExpr
-%name pColName_internal ColName
-%name pSetFunc_internal SetFunc
-%name pScalarFunc_internal ScalarFunc
-%name pSearchCond_internal SearchCond
-%name pSearchCond1_internal SearchCond1
-%name pSearchCond2_internal SearchCond2
-%name pSearchCond3_internal SearchCond3
-%name pCompOp_internal CompOp
 -- no lexer declaration
 %monad { Err } { (>>=) } { return }
 %tokentype {Token}
@@ -220,6 +130,7 @@ import qualified Data.Text
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
   L_quoted { PT _ (TL _) }
+  L_SString { PT _ (T_SString _) }
 
 %%
 
@@ -234,6 +145,9 @@ Integer  : L_integ  { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), 
 
 String  :: { (HStream.SQL.Abs.BNFC'Position, String) }
 String   : L_quoted { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), (Data.Text.unpack ((\(PT _ (TL s)) -> s) $1))) }
+
+SString :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SString) }
+SString  : L_SString { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.SString (tokenText $1)) }
 
 PNInteger :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.PNInteger) }
 PNInteger : '+' Integer { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.PInteger (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
@@ -266,6 +180,7 @@ StreamOption : 'FORMAT' '=' String { (uncurry HStream.SQL.Abs.BNFC'Position (tok
 Insert :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert) }
 Insert : 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInsert (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $9)) }
        | 'INSERT' 'INTO' Ident 'VALUES' String { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.InsertBinary (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
+       | 'INSERT' 'INTO' Ident 'VALUES' SString { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.InsertJson (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
 
 ListIdent :: { (HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.Ident]) }
 ListIdent : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
@@ -502,142 +417,7 @@ myLexer = tokens
 
 -- Entrypoints
 
-pPNInteger :: [Token] -> Err HStream.SQL.Abs.PNInteger
-pPNInteger = fmap snd . pPNInteger_internal
-
-pPNDouble :: [Token] -> Err HStream.SQL.Abs.PNDouble
-pPNDouble = fmap snd . pPNDouble_internal
-
 pSQL :: [Token] -> Err HStream.SQL.Abs.SQL
 pSQL = fmap snd . pSQL_internal
-
-pCreate :: [Token] -> Err HStream.SQL.Abs.Create
-pCreate = fmap snd . pCreate_internal
-
-pListStreamOption :: [Token] -> Err [HStream.SQL.Abs.StreamOption]
-pListStreamOption = fmap snd . pListStreamOption_internal
-
-pStreamOption :: [Token] -> Err HStream.SQL.Abs.StreamOption
-pStreamOption = fmap snd . pStreamOption_internal
-
-pInsert :: [Token] -> Err HStream.SQL.Abs.Insert
-pInsert = fmap snd . pInsert_internal
-
-pListIdent :: [Token] -> Err [HStream.SQL.Abs.Ident]
-pListIdent = fmap snd . pListIdent_internal
-
-pListValueExpr :: [Token] -> Err [HStream.SQL.Abs.ValueExpr]
-pListValueExpr = fmap snd . pListValueExpr_internal
-
-pSelect :: [Token] -> Err HStream.SQL.Abs.Select
-pSelect = fmap snd . pSelect_internal
-
-pSel :: [Token] -> Err HStream.SQL.Abs.Sel
-pSel = fmap snd . pSel_internal
-
-pSelList :: [Token] -> Err HStream.SQL.Abs.SelList
-pSelList = fmap snd . pSelList_internal
-
-pListDerivedCol :: [Token] -> Err [HStream.SQL.Abs.DerivedCol]
-pListDerivedCol = fmap snd . pListDerivedCol_internal
-
-pDerivedCol :: [Token] -> Err HStream.SQL.Abs.DerivedCol
-pDerivedCol = fmap snd . pDerivedCol_internal
-
-pFrom :: [Token] -> Err HStream.SQL.Abs.From
-pFrom = fmap snd . pFrom_internal
-
-pListTableRef :: [Token] -> Err [HStream.SQL.Abs.TableRef]
-pListTableRef = fmap snd . pListTableRef_internal
-
-pTableRef :: [Token] -> Err HStream.SQL.Abs.TableRef
-pTableRef = fmap snd . pTableRef_internal
-
-pJoinType :: [Token] -> Err HStream.SQL.Abs.JoinType
-pJoinType = fmap snd . pJoinType_internal
-
-pJoinWindow :: [Token] -> Err HStream.SQL.Abs.JoinWindow
-pJoinWindow = fmap snd . pJoinWindow_internal
-
-pJoinCond :: [Token] -> Err HStream.SQL.Abs.JoinCond
-pJoinCond = fmap snd . pJoinCond_internal
-
-pWhere :: [Token] -> Err HStream.SQL.Abs.Where
-pWhere = fmap snd . pWhere_internal
-
-pGroupBy :: [Token] -> Err HStream.SQL.Abs.GroupBy
-pGroupBy = fmap snd . pGroupBy_internal
-
-pListGrpItem :: [Token] -> Err [HStream.SQL.Abs.GrpItem]
-pListGrpItem = fmap snd . pListGrpItem_internal
-
-pGrpItem :: [Token] -> Err HStream.SQL.Abs.GrpItem
-pGrpItem = fmap snd . pGrpItem_internal
-
-pWindow :: [Token] -> Err HStream.SQL.Abs.Window
-pWindow = fmap snd . pWindow_internal
-
-pHaving :: [Token] -> Err HStream.SQL.Abs.Having
-pHaving = fmap snd . pHaving_internal
-
-pValueExpr :: [Token] -> Err HStream.SQL.Abs.ValueExpr
-pValueExpr = fmap snd . pValueExpr_internal
-
-pValueExpr1 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
-pValueExpr1 = fmap snd . pValueExpr1_internal
-
-pValueExpr2 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
-pValueExpr2 = fmap snd . pValueExpr2_internal
-
-pValueExpr3 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
-pValueExpr3 = fmap snd . pValueExpr3_internal
-
-pValueExpr4 :: [Token] -> Err HStream.SQL.Abs.ValueExpr
-pValueExpr4 = fmap snd . pValueExpr4_internal
-
-pBoolean :: [Token] -> Err HStream.SQL.Abs.Boolean
-pBoolean = fmap snd . pBoolean_internal
-
-pDate :: [Token] -> Err HStream.SQL.Abs.Date
-pDate = fmap snd . pDate_internal
-
-pTime :: [Token] -> Err HStream.SQL.Abs.Time
-pTime = fmap snd . pTime_internal
-
-pTimeUnit :: [Token] -> Err HStream.SQL.Abs.TimeUnit
-pTimeUnit = fmap snd . pTimeUnit_internal
-
-pInterval :: [Token] -> Err HStream.SQL.Abs.Interval
-pInterval = fmap snd . pInterval_internal
-
-pListLabelledValueExpr :: [Token] -> Err [HStream.SQL.Abs.LabelledValueExpr]
-pListLabelledValueExpr = fmap snd . pListLabelledValueExpr_internal
-
-pLabelledValueExpr :: [Token] -> Err HStream.SQL.Abs.LabelledValueExpr
-pLabelledValueExpr = fmap snd . pLabelledValueExpr_internal
-
-pColName :: [Token] -> Err HStream.SQL.Abs.ColName
-pColName = fmap snd . pColName_internal
-
-pSetFunc :: [Token] -> Err HStream.SQL.Abs.SetFunc
-pSetFunc = fmap snd . pSetFunc_internal
-
-pScalarFunc :: [Token] -> Err HStream.SQL.Abs.ScalarFunc
-pScalarFunc = fmap snd . pScalarFunc_internal
-
-pSearchCond :: [Token] -> Err HStream.SQL.Abs.SearchCond
-pSearchCond = fmap snd . pSearchCond_internal
-
-pSearchCond1 :: [Token] -> Err HStream.SQL.Abs.SearchCond
-pSearchCond1 = fmap snd . pSearchCond1_internal
-
-pSearchCond2 :: [Token] -> Err HStream.SQL.Abs.SearchCond
-pSearchCond2 = fmap snd . pSearchCond2_internal
-
-pSearchCond3 :: [Token] -> Err HStream.SQL.Abs.SearchCond
-pSearchCond3 = fmap snd . pSearchCond3_internal
-
-pCompOp :: [Token] -> Err HStream.SQL.Abs.CompOp
-pCompOp = fmap snd . pCompOp_internal
 }
 
