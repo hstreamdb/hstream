@@ -159,7 +159,7 @@ sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   case resp of
     ClientNormalResponse x@CommandQueryResponse{..} _meta1 _meta2 _status _details -> do
       print x
-    ClientErrorResponse clientError -> print $ "client error: " <> show clientError
+    ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a
 withInterrupt handle act = do

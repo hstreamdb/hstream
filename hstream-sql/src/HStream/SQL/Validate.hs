@@ -572,7 +572,7 @@ instance Validate StreamOptions where
       [OptionFormat{}, OptionRepFactor{}] -> return $ StreamOptions options
       [OptionRepFactor{}, OptionFormat{}] -> return $ StreamOptions options
       _                                   ->
-        Left $ buildSQLException ParseException Nothing "There should be one and only one FORMAT and REPLICATE option"
+        Left $ buildSQLException ParseException Nothing "There should be one and only one FORMAT and REPLICATE option each"
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
