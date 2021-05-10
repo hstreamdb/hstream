@@ -1,0 +1,76 @@
+cabal-version:      2.2
+name:               ldamin
+version:            0.1.0.0
+synopsis:           LogDevice Admin
+description:
+  Please see the README on Github at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Feng Lee <feng@emqx.io>
+maintainer:         lambda@emqx.io
+tested-with:        GHC ==8.10.4
+category:           Database
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
+build-type:         Simple
+extra-source-files: README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+library
+  hs-source-dirs:     gen-hs2
+  exposed-modules:
+    Admin.AdminAPI.Client
+    Admin.AdminAPI.Service
+    Admin.Types
+    AdminCommands.Types
+    ClusterMembership.Types
+    Common.Types
+    Exceptions.Types
+    Fb303.FacebookService.Client
+    Fb303.FacebookService.Service
+    Fb303.Types
+    Logtree.Types
+    Maintenance.Types
+    Membership.Types
+    Nodes.Types
+    Safety.Types
+    Settings.Types
+
+  build-depends:
+    , aeson
+    , base                  >=4.11.1   && <4.15
+    , bytestring            ^>=0.10.8.2
+    , containers
+    , data-default
+    , deepseq
+    , hashable              >=1.2.7.0  && <1.4
+    , network
+    , STMonadTrans
+    , text                  ^>=1.2.3.0
+    , thrift-lib
+    , transformers          ^>=0.5.5.0
+    , unordered-containers  ^>=0.2.9.0
+    , vector                ^>=0.12.0.1
+
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    UnliftedFFITypes
+
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
