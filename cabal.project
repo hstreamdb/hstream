@@ -6,9 +6,11 @@ packages:
   hstream-sql
   hstream-server
 
-  external/z-data
-  external/z-io
   external/gRPC-haskell
   external/gRPC-haskell/core
   external/proto3-suite
   external/proto3-wire
+
+constraints:
+  Z-IO >= 0.8 && <= 0.9,
+  Z-Data >= 0.8 && <= 0.9
