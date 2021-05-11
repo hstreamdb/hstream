@@ -100,12 +100,10 @@ facebook::logdevice::Status ld_client_make_loggroup_sync(
   return facebook::logdevice::err;
 }
 
-facebook::logdevice::Status
-ld_client_make_loggroup(logdevice_client_t* client, const char* path,
-                        const c_logid_t start_logid, const c_logid_t end_logid,
-                        LogAttributes* attrs, bool mk_intermediate_dirs,
-                        HsStablePtr mvar, HsInt cap,
-                        make_loggroup_cb_data_t* data) {
+facebook::logdevice::Status ld_client_make_loggroup(
+    logdevice_client_t* client, const char* path, const c_logid_t start_logid,
+    const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
+    HsStablePtr mvar, HsInt cap, make_loggroup_cb_data_t* data) {
   std::string path_ = path;
   auto start = facebook::logdevice::logid_t(start_logid);
   auto end = facebook::logdevice::logid_t(end_logid);
@@ -121,8 +119,8 @@ ld_client_make_loggroup(logdevice_client_t* client, const char* path,
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
-  int ret = client->rep->makeLogGroup(path_, std::make_pair(start, end),
-                                      *attrs, mk_intermediate_dirs, cb);
+  int ret = client->rep->makeLogGroup(path_, std::make_pair(start, end), *attrs,
+                                      mk_intermediate_dirs, cb);
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
@@ -354,7 +352,8 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
                         facebook::logdevice::Status* st_out,
                         logdevice_logdirectory_t** logdir_result) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st, std::unique_ptr<LogDirectory> logdir) {
+  auto cb = [&](facebook::logdevice::Status st,
+                std::unique_ptr<LogDirectory> logdir) {
     if (st_out && logdir_result) {
       *st_out = st;
       if (logdir) {
@@ -372,40 +371,35 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
-std::vector<std::string> logdir_get_logs_name(const std::unique_ptr<LogDirectory>& dir,
-                                              bool recursive) {
-  std::vector<std::string> res;
-  auto& dmap = dir->children();
-  auto& gmap = dir->logs();
-
-  for (const auto& [k, grp] : gmap) {
-    res.push_back(grp->name());
+void get_logs_name(const std::unique_ptr<LogDirectory>& dir, bool rec,
+                   std::vector<std::string>* lognames) {
+  auto& logs = dir->logs();
+  for (const auto& logMap : logs) {
+    lognames->push_back(logMap.second->getFullyQualifiedName());
   }
-  if (recursive) {
-    for (const auto& [k, subdir] : dmap) {
-      auto res_ = logdir_get_logs_name(subdir, recursive);
-      res.insert(res.end(), res_.begin(), res_.end());
+  if (rec) {
+    auto& dirs = dir->children();
+    for (const auto& dirMap : dirs) {
+      get_logs_name(dirMap.second, rec, lognames);
     }
   }
-  return res;
 }
 
-int ld_logdirectory_get_logs_name(logdevice_logdirectory_t* dir,
-                                  bool recursive, char*** names_ptr) {
-  const auto& names_vec = logdir_get_logs_name(dir->rep, recursive);
-  int len = names_vec.size();
-  if (len <= 0)
-    return 0;
+void ld_logdirectory_get_logs_name(logdevice_logdirectory_t* dir_,
+                                   bool recursive,
+                                   //
+                                   size_t* len, std::string** names_ptr,
+                                   //
+                                   std::vector<std::string>** lognames_) {
+  std::vector<std::string>* lognames = new std::vector<std::string>;
+  get_logs_name(std::move(dir_->rep), recursive, lognames);
 
-  char** names = new char*[len];
-  for (int i = 0; i < len; ++i) {
-    names[i] = const_cast<char*>(names_vec[i].c_str());
-  }
-  *names_ptr = names;
-  return len;
+  *len = lognames->size();
+  *names_ptr = lognames->data();
+  *lognames_ = lognames;
 }
 
-void free_logs_name(char** names) { delete [] names; }
+void free_logs_name(std::vector<std::string>* lognames) { delete lognames; }
 
 // ----------------------------------------------------------------------------
 

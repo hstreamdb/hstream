@@ -11,3 +11,10 @@ char* copyString(const std::string& str) {
   memcpy(result, str.data(), sizeof(char) * str.size());
   return result;
 }
+
+extern "C" {
+
+std::string* hs_cal_std_string_off(std::string* str, HsInt idx) {
+  return str + idx;
+}
+}
