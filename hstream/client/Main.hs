@@ -8,15 +8,18 @@
 
 module Main where
 
-import           Control.Exception                (SomeException, finally, try)
+import           Control.Exception                (finally, try)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
 import qualified Data.List                        as L
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
-import           HStream.Format                   (renderJSONObjectToTable,
+import           HStream.Format                   (formatCommandQueryResponse,
+                                                   formatSomeSQLException,
+                                                   renderJSONObjectToTable,
                                                    renderTable)
 import           HStream.SQL
+import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Utils             (structToJsonObject)
 import           Network.GRPC.HighLevel.Generated
@@ -124,7 +127,7 @@ app clientConfig = do
               val@(_ : _)                       -> do
                 let sql = T.pack (unwords val)
                 (liftIO . try . parseAndRefine $ sql) >>= \case
-                  Left (e :: SomeException) -> liftIO . print $ e
+                  Left (e :: SomeSQLException) -> liftIO . putStr . formatSomeSQLException $ e
                   Right rsql                -> case rsql of
                     RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
                     _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
@@ -147,7 +150,7 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
               Right Nothing       -> putStrLn "terminated"
               Right (Just result) -> do
                 let object = structToJsonObject result
-                putStrLn (unlines $ renderTable $ renderJSONObjectToTable object)
+                putStr (unlines $ renderTable $ renderJSONObjectToTable object)
                 go
       in go
 
@@ -158,7 +161,7 @@ sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
   case resp of
     ClientNormalResponse x@CommandQueryResponse{..} _meta1 _meta2 _status _details -> do
-      print x
+      putStr $ formatCommandQueryResponse x
     ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a

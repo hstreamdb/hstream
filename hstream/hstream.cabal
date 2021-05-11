@@ -30,6 +30,10 @@ library
     , aeson
     , text
     , unordered-containers
+    , vector
+    , hstream-server
+    , hstream-sql
+    , containers
 
   default-language: Haskell2010
   exposed-modules:  HStream.Format
