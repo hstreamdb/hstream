@@ -13,7 +13,7 @@ module HStream.Store.Stream
   , FFI.LogID (..)
   , FFI.C_LogID
   , getCLogIDByTopicName
-  , LD.getLDLogGroup
+  , LD.getLogGroup
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
 
@@ -132,7 +132,7 @@ doesTopicExists client topic = do
   m_v <- Cache.lookup topicNameCache topic
   case m_v of
     Just _  -> return True
-    Nothing -> do r <- try $ LD.getLDLogGroup client topic
+    Nothing -> do r <- try $ LD.getLogGroup client topic
                   case r of
                     Left (_ :: E.NOTFOUND) -> return False
                     Right _                -> return True
@@ -140,7 +140,7 @@ doesTopicExists client topic = do
 getCLogIDByTopicName :: FFI.LDClient -> Topic -> IO FFI.C_LogID
 getCLogIDByTopicName client topic = do
   m_v <- Cache.lookup topicNameCache topic
-  maybe (fmap fst $ LD.logGroupGetRange =<< LD.getLDLogGroup client topic) return m_v
+  maybe (fmap fst $ LD.logGroupGetRange =<< LD.getLogGroup client topic) return m_v
 
 -- | Generate a random logid through a simplify version of snowflake algorithm.
 genRandomLogID :: IO FFI.C_LogID

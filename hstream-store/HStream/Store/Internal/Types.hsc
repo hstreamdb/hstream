@@ -232,6 +232,44 @@ peekLogsConfigStatusCbData ptr = do
   free failinfo_ptr
   return $ LogsConfigStatusCbData retcode version failinfo
 
+data MakeLogGroupCbData = MakeLogGroupCbData
+   { makeLogGroupCbRetCode :: !ErrorCode
+   , makeLogGroupCbGrpPtr :: !(Ptr LogDeviceLogGroup)
+   , makeLogGroupFailInfo :: !CBytes
+   }
+
+makeLogGroupCbDataSize :: Int
+makeLogGroupCbDataSize = (#size make_loggroup_cb_data_t)
+
+peekMakeLogGroupCbData :: Ptr MakeLogGroupCbData
+                       -> IO MakeLogGroupCbData
+peekMakeLogGroupCbData ptr = do
+  retcode <- (#peek make_loggroup_cb_data_t, st) ptr
+  loggroup_ptr <- (#peek make_loggroup_cb_data_t, loggroup) ptr
+  failinfo_ptr <- (#peek make_loggroup_cb_data_t, failure_reason) ptr
+  failinfo <- fromCString failinfo_ptr
+  free failinfo_ptr
+  return $ MakeLogGroupCbData retcode loggroup_ptr failinfo
+
+data MakeDirectoryCbData = MakeDirectoryCbData
+   { makeDirectoryCbRetCode :: !ErrorCode
+   , makeDirectoryCbDirPtr :: !(Ptr LogDeviceLogDirectory)
+   , makeDirectoryFailInfo :: !CBytes
+   }
+
+makeDirectoryCbDataSize :: Int
+makeDirectoryCbDataSize = (#size make_directory_cb_data_t)
+
+peekMakeDirectoryCbData :: Ptr MakeDirectoryCbData
+                        -> IO MakeDirectoryCbData
+peekMakeDirectoryCbData ptr = do
+  retcode <- (#peek make_directory_cb_data_t, st) ptr
+  directory_ptr <- (#peek make_directory_cb_data_t, directory) ptr
+  failinfo_ptr <- (#peek make_directory_cb_data_t, failure_reason) ptr
+  failinfo <- fromCString failinfo_ptr
+  free failinfo_ptr
+  return $ MakeDirectoryCbData retcode directory_ptr failinfo
+
 -------------------------------------------------------------------------------
 
 data LogDeviceClient

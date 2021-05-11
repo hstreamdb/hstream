@@ -253,26 +253,69 @@ facebook::logdevice::Status
 ld_client_sync_logsconfig_version(logdevice_client_t* client, uint64_t version);
 
 // LogDirectory
+typedef struct make_directory_cb_data_t {
+  c_error_code_t st;
+  logdevice_logdirectory_t* directory;
+  char* failure_reason;
+} make_directory_cb_data_t;
+
 facebook::logdevice::Status
 ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
                               bool mk_intermediate_dirs, LogAttributes* attrs,
                               logdevice_logdirectory_t** logdir_ret);
+facebook::logdevice::Status
+ld_client_make_directory(logdevice_client_t* client, const char* path,
+                         bool mk_intermediate_dirs, LogAttributes* attrs,
+                         HsStablePtr mvar, HsInt cap,
+                         make_directory_cb_data_t* data);
 
 void free_logdevice_logdirectory(logdevice_logdirectory_t* dir);
 
 const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir);
 uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir);
 
+facebook::logdevice::Status
+ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
+                             logdevice_logdirectory_t** logdir_result);
+facebook::logdevice::Status
+ld_client_get_directory(logdevice_client_t* client, const char* path,
+                        HsStablePtr mvar, HsInt cap,
+                        facebook::logdevice::Status* st_out,
+                        logdevice_logdirectory_t** logdir_result);
+
+int ld_logdirectory_get_logs_name(logdevice_logdirectory_t* dir,
+                                  bool recursive, char*** names_ptr);
+
+void free_logs_name(char** names);
+
 // LogGroup
+typedef struct make_loggroup_cb_data_t {
+  c_error_code_t st;
+  logdevice_loggroup_t* loggroup;
+  char* failure_reason;
+} make_loggroup_cb_data_t;
+
 facebook::logdevice::Status ld_client_make_loggroup_sync(
     logdevice_client_t* client, const char* path, const c_logid_t start_logid,
     const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
     logdevice_loggroup_t** loggroup_result);
 
+facebook::logdevice::Status
+ld_client_make_loggroup(logdevice_client_t* client, const char* path,
+                        const c_logid_t start_logid, const c_logid_t end_logid,
+                        LogAttributes* attrs, bool mk_intermediate_dirs,
+                        HsStablePtr mvar, HsInt cap,
+                        make_loggroup_cb_data_t* data);
+
 void free_logdevice_loggroup(logdevice_loggroup_t* group);
 
 facebook::logdevice::Status
 ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
+                            logdevice_loggroup_t** loggroup_result);
+
+void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
+                            HsStablePtr mvar, HsInt cap,
+                            facebook::logdevice::Status* st_out,
                             logdevice_loggroup_t** loggroup_result);
 
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
