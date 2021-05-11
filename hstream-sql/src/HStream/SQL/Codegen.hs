@@ -6,6 +6,7 @@
 module HStream.SQL.Codegen where
 
 import           Data.Aeson
+import qualified Data.ByteString.Lazy                            as BSL
 import qualified Data.HashMap.Strict                             as HM
 import           Data.Scientific                                 (fromFloatDigits,
                                                                   scientific)
@@ -81,6 +82,8 @@ streamCodegen input = do
           v = String (decodeUtf8 bs)
       let object = HM.fromList [(k,v)]
       return $ InsertPlan topic (encode object)
+    RQInsert (RInsertJSON topic bs) -> do
+      return $ InsertPlan topic (BSL.fromStrict bs)
 
 --------------------------------------------------------------------------------
 type SourceConfigType = HS.StreamSourceConfig Object Object

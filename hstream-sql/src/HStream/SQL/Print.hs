@@ -114,6 +114,9 @@ instance Print HStream.SQL.Abs.Ident where
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
+instance Print HStream.SQL.Abs.SString where
+  prt _ (HStream.SQL.Abs.SString i) = doc $ showString (Data.Text.unpack i)
+
 instance Print (HStream.SQL.Abs.PNInteger' a) where
   prt i = \case
     HStream.SQL.Abs.PInteger _ n -> prPrec i 0 (concatD [doc (showString "+"), prt 0 n])
@@ -152,6 +155,7 @@ instance Print (HStream.SQL.Abs.Insert' a) where
   prt i = \case
     HStream.SQL.Abs.DInsert _ id_ ids valueexprs -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id_, doc (showString "("), prt 0 ids, doc (showString ")"), doc (showString "VALUES"), doc (showString "("), prt 0 valueexprs, doc (showString ")")])
     HStream.SQL.Abs.InsertBinary _ id_ str -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id_, doc (showString "VALUES"), prt 0 str])
+    HStream.SQL.Abs.InsertJson _ id_ sstring -> prPrec i 0 (concatD [doc (showString "INSERT"), doc (showString "INTO"), prt 0 id_, doc (showString "VALUES"), prt 0 sstring])
 
 instance Print [HStream.SQL.Abs.Ident] where
   prt = prtList

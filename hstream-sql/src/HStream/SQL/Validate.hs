@@ -1,26 +1,30 @@
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PolyKinds         #-}
-{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.SQL.Validate
   ( Validate (..)
   ) where
 
 import           Control.Monad              (unless, void, when)
+import qualified Data.Aeson                 as Aeson
+import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.List                  as L
 import           Data.List.Extra            (anySame)
 import           Data.Text                  (Text)
+import qualified Data.Text                  as Text
+import           Data.Text.Encoding         (encodeUtf8)
 import           Data.Time.Calendar         (isLeapYear)
 import           GHC.Stack                  (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
 import           HStream.SQL.Extra          (anyJoin, extractCondRefNames,
-                                             extractPNDouble, extractPNInteger,
-                                             extractRefNames,
+                                             extractPNInteger, extractRefNames,
                                              extractSelRefNames)
 import           HStream.SQL.Validate.Utils
 
@@ -36,6 +40,9 @@ instance Validate PNInteger where
 instance Validate PNDouble where
   validate = return
 
+instance Validate SString where
+  validate = return
+
 instance Validate Boolean where
   validate e@(BoolTrue  _) = return e
   validate e@(BoolFalse _) = return e
@@ -49,7 +56,9 @@ instance Validate Date where
     unless (m >= 1 && m <= 12)       (Left $ buildSQLException ParseException pos "Month must be between 1 and 12")
     unless (d >= 1 && d <= realDays) (Left $ buildSQLException ParseException pos ("Day must be between 1 and " <> show realDays))
     return date
-    where [y,m,d] = extractPNInteger <$> [y',m',d']
+    where y = extractPNInteger y'
+          m = extractPNInteger m'
+          d = extractPNInteger d'
           daysOfMonth = [31,28 + if isLeapYear y then 1 else 0,31,30,31,30,31,31,30,31,30,31]
           realDays = daysOfMonth !! (fromInteger m - 1)
 
@@ -58,7 +67,9 @@ instance Validate Date where
 -- 3. 0 <= second <= 59
 instance Validate Time where
   validate time@(DTime pos h' m' s') = do
-    let [h,m,s] = extractPNInteger <$> [h',m',s']
+    let h = extractPNInteger h'
+        m = extractPNInteger m'
+        s = extractPNInteger s'
     unless (h >= 0 && h <= 23) (Left $ buildSQLException ParseException pos "Hour must be between 0 and 23")
     unless (m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Minute must be between 0 and 59")
     unless (s >= 0 && s <= 59) (Left $ buildSQLException ParseException pos "Second must be between 0 and 59")
@@ -582,6 +593,12 @@ instance Validate Insert where
     mapM_ isConstExpr exprs
     return insert
   validate insert@(InsertBinary _ _ _) = return insert
+  validate insert@(InsertJson pos _ (SString text)) = do
+    let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ text
+    let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
+    case o' of
+      Nothing -> Left $ buildSQLException ParseException pos "Invalid JSON text"
+      Just _  -> return insert
 
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where

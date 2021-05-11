@@ -54,6 +54,7 @@ type Insert = Insert' BNFC'Position
 data Insert' a
     = DInsert a Ident [Ident] [ValueExpr' a]
     | InsertBinary a Ident String
+    | InsertJson a Ident SString
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Select = Select' BNFC'Position
@@ -257,6 +258,9 @@ data CompOp' a
 newtype Ident = Ident Data.Text.Text
   deriving (C.Eq, C.Ord, C.Show, C.Read, Data.String.IsString)
 
+newtype SString = SString Data.Text.Text
+  deriving (C.Eq, C.Ord, C.Show, C.Read, Data.String.IsString)
+
 -- | Start position (line, column) of something.
 
 type BNFC'Position = C.Maybe (C.Int, C.Int)
@@ -304,6 +308,7 @@ instance HasPosition Insert where
   hasPosition = \case
     DInsert p _ _ _ -> p
     InsertBinary p _ _ -> p
+    InsertJson p _ _ -> p
 
 instance HasPosition Select where
   hasPosition = \case
