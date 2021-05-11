@@ -13,13 +13,14 @@
 
 module HStream.Store.Internal.LogDevice.LogConfigTypes where
 
-import           Control.Monad                  (void, (<=<))
+import           Control.Monad                  (void, (<=<), forM)
 import qualified Data.Map.Strict                as Map
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.StablePtr
+import           Foreign.Storable               (peek, sizeOf)
 import           GHC.Conc
 import           GHC.Stack                      (HasCallStack)
 import           Z.Data.CBytes                  (CBytes)
@@ -28,7 +29,7 @@ import           Z.Foreign                      (BA#, BAArray#, MBA#)
 import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
-import           HStream.Store.Internal.Foreign (withAsync)
+import           HStream.Store.Internal.Foreign (withAsync, withAsyncPrimUnsafe2)
 import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
@@ -89,28 +90,66 @@ foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
 -------------------------------------------------------------------------------
 -- * Directory
 
-getDirectory :: LDClient -> CBytes -> LDDirectory
-getDirectory = undefined
+getLogDirectory :: LDClient -> CBytes -> IO LDDirectory
+getLogDirectory client path =
+  CBytes.withCBytesUnsafe path $ \path' ->
+    withForeignPtr client $ \client' -> do
+      let cfun = c_ld_client_get_directory client' path'
+      (errno, dir, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr cfun
+      _ <- E.throwStreamErrorIfNotOK' errno
+      newForeignPtr c_free_logdevice_logdirectory_fun dir
 
-directoryGetName :: LDDirectory -> IO CBytes
-directoryGetName = undefined
+logDirectoryGetName :: LDDirectory -> IO CBytes
+logDirectoryGetName dir = withForeignPtr dir $
+   CBytes.fromCString <=< c_ld_logdirectory_get_name
 
-directoryGetLogsName :: Bool -> LDDirectory -> IO [CBytes]
-directoryGetLogsName recursive dir = undefined
+logDirectoryGetLogsName :: Bool -> LDDirectory -> IO [CBytes]
+logDirectoryGetLogsName recursive dir =
+   withForeignPtr dir $ \dir' -> do
+     (names_ptr, len) <- Z.withPrimUnsafe nullPtr $ \names_ptr' ->
+       c_ld_logdirectory_get_logs_name dir' recursive names_ptr'
+     if len == 0
+       then return []
+       else do
+       ptr <- peek names_ptr
+       let ptrSize = sizeOf ptr
+       res <- forM [0 .. len - 1] $
+         \i -> peek (names_ptr `plusPtr` (i * ptrSize)) >>= CBytes.fromCString
+       c_free_logs_name names_ptr
+       return res
 
-directoryGetVersion :: LDDirectory -> IO C_LogsConfigVersion
-directoryGetVersion = undefined
+logDirectoryGetVersion :: LDDirectory -> IO C_LogsConfigVersion
+logDirectoryGetVersion dir = withForeignPtr dir c_ld_logdirectory_get_version
 
-makeDirectory
+makeLogDirectory
   :: LDClient
   -> CBytes
   -> LogAttrs
   -> Bool
   -> IO LDDirectory
-makeDirectory client path attrs mkParent = undefined
+makeLogDirectory client path attrs mkParent = do
+  logAttrs <- case attrs of
+                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
+                LogAttrsPtr p -> return p
+  withForeignPtr client $ \client' ->
+    withForeignPtr logAttrs $ \attrs' ->
+      CBytes.withCBytesUnsafe path $ \path' -> do
+        let cfun = c_ld_client_make_directory client' path' mkParent attrs'
+        MakeDirectoryCbData errno directory _ <-
+          withAsync makeDirectoryCbDataSize peekMakeDirectoryCbData cfun
+        void $ E.throwStreamErrorIfNotOK' errno
+        newForeignPtr c_free_logdevice_logdirectory_fun directory
 
 removeLogDirectory :: LDClient -> CBytes -> Bool -> IO C_LogsConfigVersion
-removeLogDirectory = undefined
+removeLogDirectory client path recursive =
+  CBytes.withCBytesUnsafe path $ \path' ->
+    withForeignPtr client $ \client' -> do
+      let size = logsConfigStatusCbDataSize
+          peek_data = peekLogsConfigStatusCbData
+          cfun = c_ld_client_remove_directory client' path' recursive
+      LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
+      void $ E.throwStreamErrorIfNotOK' errno
+      return version
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
   c_ld_client_make_directory_sync
@@ -119,6 +158,16 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
     -> Bool
     -> Ptr LogDeviceLogAttributes
     -> MBA# (Ptr LogDeviceLogDirectory)
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory"
+  c_ld_client_make_directory
+    :: Ptr LogDeviceClient
+    -> BA# Word8   -- ^ path
+    -> Bool
+    -> Ptr LogDeviceLogAttributes
+    -> StablePtr PrimMVar -> Int
+    -> Ptr MakeDirectoryCbData
     -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h free_logdevice_logdirectory"
@@ -141,12 +190,39 @@ foreign import ccall safe "hs_logdevice.h ld_client_remove_directory_sync"
     -> Ptr Word64
     -> IO ErrorCode
 
+foreign import ccall unsafe "hs_logdevice.h ld_client_remove_directory"
+  c_ld_client_remove_directory
+    :: Ptr LogDeviceClient
+    -> BA# Word8   -- ^ path
+    -> Bool
+    -> StablePtr PrimMVar -> Int
+    -> Ptr LogsConfigStatusCbData
+    -> IO ErrorCode
+
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_name"
   c_ld_logdirectory_get_name :: Ptr LogDeviceLogDirectory -> IO CString
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
   c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
 
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_directory"
+  c_ld_client_get_directory :: Ptr LogDeviceClient
+                            -> BA# Word8
+                            -> StablePtr PrimMVar -> Int
+                            -> MBA# ErrorCode
+                            -> MBA# (Ptr LogDeviceLogDirectory)
+                            -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_logs_name"
+  c_ld_logdirectory_get_logs_name :: Ptr LogDeviceLogDirectory
+                                  -> Bool -> MBA# (Ptr CString)
+                                  -> IO Int
+
+foreign import ccall unsafe "hs_logdevice.h free_logs_name"
+  c_free_logs_name :: Ptr CString -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_logs_name"
+  c_free_logs_name_fun :: FunPtr (Ptr CString -> IO ())
 -------------------------------------------------------------------------------
 -- * LogGroup
 
@@ -157,7 +233,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
 -- be usable for a few seconds (appends may fail with NOTFOUND or
 -- NOTINSERVERCONFIG). Same applies to all other logs config update methods,
 -- e.g. setAttributes().
-makeLogGroup
+makeLogGroupSync
   :: HasCallStack
   => LDClient
   -> CBytes
@@ -166,7 +242,7 @@ makeLogGroup
   -> LogAttrs
   -> Bool
   -> IO LDLogGroup
-makeLogGroup client path start end attrs mkParent = do
+makeLogGroupSync client path start end attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
                 LogAttrsPtr p -> return p
@@ -175,18 +251,47 @@ makeLogGroup client path start end attrs mkParent = do
       CBytes.withCBytesUnsafe path $ \path' -> do
         (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
           void $ E.throwStreamErrorIfNotOK $
-            -- TODO: use async version
             c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
         newForeignPtr c_free_logdevice_loggroup_fun group'
 
-getLDLogGroup :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
-getLDLogGroup client path =
+makeLogGroup
+   :: HasCallStack
+   => LDClient
+   -> CBytes
+   -> C_LogID
+   -> C_LogID
+   -> LogAttrs
+   -> Bool
+   -> IO LDLogGroup
+makeLogGroup client path start end attrs mkParent = do
+  logAttrs <- case attrs of
+                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
+                LogAttrsPtr p -> return p
+  withForeignPtr client $ \client' ->
+    withForeignPtr logAttrs $ \attrs' ->
+      CBytes.withCBytesUnsafe path $ \path' -> do
+        let cfun = c_ld_client_make_loggroup client' path' start end attrs' mkParent
+        MakeLogGroupCbData errno group _ <-
+          withAsync makeLogGroupCbDataSize peekMakeLogGroupCbData cfun
+        void $ E.throwStreamErrorIfNotOK' errno
+        newForeignPtr c_free_logdevice_loggroup_fun group
+
+getLogGroupSync :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
+getLogGroupSync client path =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe path $ \path' -> do
     (group', _) <- Z.withPrimUnsafe nullPtr $ \group'' ->
-      -- TODO: use async version
       void $ E.throwStreamErrorIfNotOK $ c_ld_client_get_loggroup_sync client' path' group''
     newForeignPtr c_free_logdevice_loggroup_fun group'
+
+getLogGroup :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
+getLogGroup client path =
+  withForeignPtr client $ \client' ->
+  CBytes.withCBytesUnsafe path $ \path' -> do
+    let cfun = c_ld_client_get_loggroup client' path'
+    (errno, group_ptr, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr cfun
+    void $ E.throwStreamErrorIfNotOK' errno
+    newForeignPtr c_free_logdevice_loggroup_fun group_ptr
 
 -- | Rename the leaf of the supplied path. This does not move entities in the
 -- tree it only renames the last token in the path supplies.
@@ -300,6 +405,18 @@ logGroupGetVersion :: LDLogGroup -> IO C_LogsConfigVersion
 logGroupGetVersion group = withForeignPtr group c_ld_loggroup_get_version
 {-# INLINE logGroupGetVersion #-}
 
+foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup"
+  c_ld_client_make_loggroup
+    :: Ptr LogDeviceClient
+    -> BA# Word8
+    -> C_LogID
+    -> C_LogID
+    -> Ptr LogDeviceLogAttributes
+    -> Bool
+    -> StablePtr PrimMVar -> Int
+    -> Ptr MakeLogGroupCbData
+    -> IO ErrorCode
+
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
   c_ld_client_make_loggroup_sync
     :: Ptr LogDeviceClient
@@ -310,6 +427,14 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
     -> Bool
     -> MBA# (Ptr LogDeviceLogGroup) -- ^ result, can be nullptr
     -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup"
+  c_ld_client_get_loggroup :: Ptr LogDeviceClient
+                           -> BA# Word8
+                           -> StablePtr PrimMVar -> Int
+                           -> MBA# ErrorCode
+                           -> MBA# (Ptr LogDeviceLogGroup)
+                           -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
   c_ld_client_get_loggroup_sync :: Ptr LogDeviceClient
