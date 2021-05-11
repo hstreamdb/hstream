@@ -272,6 +272,30 @@ ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
 }
 
 facebook::logdevice::Status
+ld_client_make_directory(logdevice_client_t* client, const char* path,
+                         bool mk_intermediate_dirs, LogAttributes* attrs,
+                         HsStablePtr mvar, HsInt cap,
+                         make_directory_cb_data_t* data) {
+  std::string path_ = path;
+  auto cb = [&](facebook::logdevice::Status st,
+                std::unique_ptr<LogDirectory> directory_ptr,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->directory = new logdevice_logdirectory_t;
+      data->directory->rep = std::move(directory_ptr);
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->makeDirectory(path_, mk_intermediate_dirs, *attrs, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+facebook::logdevice::Status
 ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
                              logdevice_logdirectory_t** logdir_result) {
   std::unique_ptr<LogDirectory> logdir = client->rep->getDirectorySync(path);
@@ -293,6 +317,27 @@ ld_client_remove_directory_sync(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+facebook::logdevice::Status
+ld_client_remove_directory(logdevice_client_t* client, const char* path,
+                           bool recursive, HsStablePtr mvar, HsInt cap,
+                           logsconfig_status_cb_data_t* data) {
+  std::string path_ = path;
+  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->removeDirectory(path_, recursive, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
 void free_logdevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
 
 const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir) {
@@ -302,6 +347,65 @@ const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir) {
 uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
   return dir->rep->version();
 }
+
+facebook::logdevice::Status
+ld_client_get_directory(logdevice_client_t* client, const char* path,
+                        HsStablePtr mvar, HsInt cap,
+                        facebook::logdevice::Status* st_out,
+                        logdevice_logdirectory_t** logdir_result) {
+  std::string path_ = path;
+  auto cb = [&](facebook::logdevice::Status st, std::unique_ptr<LogDirectory> logdir) {
+    if (st_out && logdir_result) {
+      *st_out = st;
+      if (logdir) {
+        logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
+        result->rep = std::move(logdir);
+        *logdir_result = result;
+      }
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->getDirectory(path_, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+std::vector<std::string> logdir_get_logs_name(const std::unique_ptr<LogDirectory>& dir,
+                                              bool recursive) {
+  std::vector<std::string> res;
+  auto& dmap = dir->children();
+  auto& gmap = dir->logs();
+
+  for (const auto& [k, grp] : gmap) {
+    res.push_back(grp->name());
+  }
+  if (recursive) {
+    for (const auto& [k, subdir] : dmap) {
+      auto res_ = logdir_get_logs_name(subdir, recursive);
+      res.insert(res.end(), res_.begin(), res_.end());
+    }
+  }
+  return res;
+}
+
+int ld_logdirectory_get_logs_name(logdevice_logdirectory_t* dir,
+                                  bool recursive, char*** names_ptr) {
+  const auto& names_vec = logdir_get_logs_name(dir->rep, recursive);
+  int len = names_vec.size();
+  if (len <= 0)
+    return 0;
+
+  char** names = new char*[len];
+  for (int i = 0; i < len; ++i) {
+    names[i] = const_cast<char*>(names_vec[i].c_str());
+  }
+  *names_ptr = names;
+  return len;
+}
+
+void free_logs_name(char** names) { delete [] names; }
 
 // ----------------------------------------------------------------------------
 
