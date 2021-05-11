@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns  #-}
 {-# LANGUAGE CPP           #-}
 {-# LANGUAGE MagicHash     #-}
 {-# LANGUAGE RankNTypes    #-}
@@ -7,15 +8,21 @@ module HStream.Store.Internal.Foreign where
 
 import           Control.Concurrent           (newEmptyMVar, takeMVar)
 import           Control.Exception            (mask_, onException)
+import           Control.Monad
 import           Control.Monad.Primitive
 import           Data.Primitive
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
+import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
 import           GHC.Stack
+import           Z.Data.CBytes                (CBytes)
+import qualified Z.Data.CBytes                as CBytes
+import           Z.Data.Vector                (Bytes)
+import           Z.Data.Vector.Base           (PrimVector (..))
 import           Z.Foreign                    (BA#, MBA#)
 import qualified Z.Foreign                    as Z
 
@@ -97,3 +104,20 @@ retryWhileAgain f retries = do
       | retries > 0 -> threadDelay 5000 >> (retryWhileAgain f $! retries - 1)
     _ -> E.throwStreamError errno callStack
 {-# INLINE retryWhileAgain #-}
+
+peekStdStringToCBytesN :: Int -> Ptr Z.StdString -> IO [CBytes]
+peekStdStringToCBytesN len ptr = forM [0..len-1] (peekStdStringToCBytesIdx ptr)
+
+peekStdStringToCBytesIdx :: Ptr Z.StdString -> Int -> IO CBytes
+peekStdStringToCBytesIdx p offset = do
+  ptr <- hs_cal_std_string_off p offset
+  siz :: Int <- Z.hs_std_string_size ptr
+  let !siz' = siz + 1
+  (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld a) <- newPrimArray siz'
+  !_ <- Z.hs_copy_std_string ptr siz mba#
+  Z.writePrimArray mpa siz 0
+  CBytes.fromMutablePrimArray mpa
+{-# INLINE peekStdStringToCBytesIdx #-}
+
+foreign import ccall unsafe "hs_logdevice.h hs_cal_std_string_off"
+  hs_cal_std_string_off :: Ptr Z.StdString -> Int -> IO (Ptr Z.StdString)

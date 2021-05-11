@@ -76,6 +76,8 @@ char* copyString(const std::string& str);
 extern "C" {
 #endif
 
+std::string* hs_cal_std_string_off(std::string* str, HsInt idx);
+
 // ----------------------------------------------------------------------------
 
 void init_logdevice(void);
@@ -283,11 +285,6 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
                         facebook::logdevice::Status* st_out,
                         logdevice_logdirectory_t** logdir_result);
 
-int ld_logdirectory_get_logs_name(logdevice_logdirectory_t* dir,
-                                  bool recursive, char*** names_ptr);
-
-void free_logs_name(char** names);
-
 // LogGroup
 typedef struct make_loggroup_cb_data_t {
   c_error_code_t st;
@@ -300,12 +297,10 @@ facebook::logdevice::Status ld_client_make_loggroup_sync(
     const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
     logdevice_loggroup_t** loggroup_result);
 
-facebook::logdevice::Status
-ld_client_make_loggroup(logdevice_client_t* client, const char* path,
-                        const c_logid_t start_logid, const c_logid_t end_logid,
-                        LogAttributes* attrs, bool mk_intermediate_dirs,
-                        HsStablePtr mvar, HsInt cap,
-                        make_loggroup_cb_data_t* data);
+facebook::logdevice::Status ld_client_make_loggroup(
+    logdevice_client_t* client, const char* path, const c_logid_t start_logid,
+    const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
+    HsStablePtr mvar, HsInt cap, make_loggroup_cb_data_t* data);
 
 void free_logdevice_loggroup(logdevice_loggroup_t* group);
 
