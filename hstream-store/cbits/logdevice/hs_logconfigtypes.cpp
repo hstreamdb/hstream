@@ -101,6 +101,34 @@ facebook::logdevice::Status ld_client_make_loggroup_sync(
 }
 
 facebook::logdevice::Status
+ld_client_make_loggroup(logdevice_client_t* client, const char* path,
+                        const c_logid_t start_logid, const c_logid_t end_logid,
+                        LogAttributes* attrs, bool mk_intermediate_dirs,
+                        HsStablePtr mvar, HsInt cap,
+                        make_loggroup_cb_data_t* data) {
+  std::string path_ = path;
+  auto start = facebook::logdevice::logid_t(start_logid);
+  auto end = facebook::logdevice::logid_t(end_logid);
+  auto cb = [&](facebook::logdevice::Status st,
+                std::unique_ptr<LogGroup> loggroup_ptr,
+                const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->loggroup = new logdevice_loggroup_t;
+      data->loggroup->rep = std::move(loggroup_ptr);
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->makeLogGroup(path_, std::make_pair(start, end),
+                                      *attrs, mk_intermediate_dirs, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+facebook::logdevice::Status
 ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
                             logdevice_loggroup_t** loggroup_result) {
   std::unique_ptr<LogGroup> loggroup = nullptr;
@@ -113,6 +141,24 @@ ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
     return facebook::logdevice::E::OK;
   }
   return facebook::logdevice::err;
+}
+
+void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
+                            HsStablePtr mvar, HsInt cap,
+                            facebook::logdevice::Status* st_out,
+                            logdevice_loggroup_t** loggroup_result) {
+  std::string path_ = path;
+  auto cb = [&](facebook::logdevice::Status st,
+                std::unique_ptr<LogGroup> loggroup_ptr) {
+    if (st_out && loggroup_result) {
+      *st_out = st;
+      *loggroup_result = new logdevice_loggroup_t;
+      (*loggroup_result)->rep = std::move(loggroup_ptr);
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  client->rep->getLogGroup(path_, cb);
 }
 
 facebook::logdevice::Status
