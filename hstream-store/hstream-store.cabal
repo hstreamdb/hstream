@@ -32,7 +32,7 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
-executable hstore
+executable hstore-server
   main-is:          hstore.hs
   hs-source-dirs:   app
   build-depends:

@@ -1,7 +1,7 @@
 cabal-version:      2.2
-name:               ldamin
+name:               hstore-admin
 version:            0.1.0.0
-synopsis:           LogDevice Admin
+synopsis:           HStore Admin
 description:
   Please see the README on Github at
   <https://github.com/hstreamdb/hstream#readme>
@@ -16,7 +16,9 @@ category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Simple
-extra-source-files: README.md
+extra-source-files:
+  LICENSE
+  README.md
 
 source-repository head
   type:     git
