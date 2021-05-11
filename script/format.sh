@@ -9,10 +9,10 @@ if [ "$1" == "ci" ] || [ -z "$1" ]; then
         -not -path "*/dist-newstyle/*" \
         -not -path "*/.stack-work/*" \
         -not -path "*/hstream-processing/*" \
-        -not -path "*/z-*" \
-        -not -path "*/gRPC-haskell/*" \
+        -not -path "*/external/*" \
         -not -path "*/proto3-*/*" \
         -not -path "*/generated-src/*" \
+        -not -path "*/gen-hs2/*" \
         -not -path */hstream-sql/src/HStream/SQL/Abs.hs \
         -not -path */hstream-sql/src/HStream/SQL/Lex.hs \
         -not -path */hstream-sql/src/HStream/SQL/Par.hs \
