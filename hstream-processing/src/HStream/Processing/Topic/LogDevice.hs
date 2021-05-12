@@ -13,7 +13,6 @@ where
 
 import           HStream.Processing.Topic.Type
 import qualified HStream.Store                 as HStore
-import           HStream.Store.Stream          (SequenceNum (..))
 import           RIO
 import qualified RIO.ByteString.Lazy           as BL
 import qualified RIO.HashMap                   as HM
@@ -36,7 +35,7 @@ toRawConsumerRecord :: HStore.ConsumerRecord -> RawConsumerRecord
 toRawConsumerRecord HStore.ConsumerRecord {..} =
   RawConsumerRecord
     { rcrTopic = T.pack $ ZCB.unpack dataOutTopic,
-      rcrOffset = unSequenceNum dataOutOffset,
+      rcrOffset = dataOutOffset,
       rcrTimestamp = dataOutTimestamp,
       rcrKey = fmap (BL.fromStrict . ZF.toByteString . ZCB.toBytes) dataOutKey,
       rcrValue = BL.fromStrict $ ZF.toByteString dataOutValue

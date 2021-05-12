@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module Main where
@@ -15,9 +16,10 @@ import           HStream.Processing.Util
 import           HStream.SQL.Codegen          (ExecutionPlan (..),
                                                streamCodegen)
 import           HStream.Store                (AdminClientConfig (..),
-                                               createTopics, mkAdminClient)
-import           HStream.Store.Logger
-import           HStream.Store.Stream         (TopicAttrs (..))
+                                               HsLogAttrs (..), LogAttrs (..),
+                                               createTopic_, mkAdminClient,
+                                               pattern C_DBG_ERROR,
+                                               setLogDeviceDbgLevel)
 import qualified Prelude                      as P
 import           RIO
 import qualified RIO.ByteString.Lazy          as BL
@@ -61,9 +63,10 @@ run input = do
   let adminConfig =
         AdminClientConfig {adminConfigUri = "/data/store/logdevice.conf"}
   adminClient <- mkAdminClient adminConfig
-  createTopics adminClient (Map.singleton "source1" TopicAttrs {replicationFactor = 3})
-  createTopics adminClient (Map.singleton "source2" TopicAttrs {replicationFactor = 3})
-  createTopics adminClient (Map.singleton (pack.unpack $ sTopicName) TopicAttrs {replicationFactor = 3})
+
+  createTopic_ adminClient "source1" (LogAttrs HsLogAttrs{logReplicationFactor=3, logExtraAttrs=Map.empty})
+  createTopic_ adminClient "source2" (LogAttrs HsLogAttrs{logReplicationFactor=3, logExtraAttrs=Map.empty})
+  createTopic_ adminClient (pack.unpack $ sTopicName) (LogAttrs HsLogAttrs{logReplicationFactor=3, logExtraAttrs=Map.empty})
 
   mp <- mkProducer producerConfig
   mc <- mkConsumer consumerConfig [sTopicName]
