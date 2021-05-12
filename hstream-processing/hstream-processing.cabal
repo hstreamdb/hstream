@@ -27,6 +27,8 @@ library
   exposed-modules:
     HStream.Processing.Encoding
     HStream.Processing.Error
+    HStream.Processing.MockRuntime
+    HStream.Processing.MockStreamStore
     HStream.Processing.Processor
     HStream.Processing.Processor.Internal
     HStream.Processing.Store
@@ -39,10 +41,6 @@ library
     HStream.Processing.Stream.TimeWindowedStream
     HStream.Processing.Stream.TimeWindows
     HStream.Processing.Table
-    HStream.Processing.Topic
-    HStream.Processing.Topic.LogDevice
-    HStream.Processing.Topic.MockStore
-    HStream.Processing.Topic.Type
     HStream.Processing.Type
     HStream.Processing.Util
 
@@ -52,13 +50,11 @@ library
     , binary
     , bytestring
     , data-default
-    , hstream-store
     , rio
     , template-haskell
     , time
-    , Z-Data
-    , Z-IO
 
+  -- hstream-store
   default-language: Haskell2010
   ghc-options:      -Wall
 
@@ -173,22 +169,6 @@ executable stream-example5
     , base                >=4.11 && <5
     , binary
     , hstream-processing
-    , random
-    , rio
-    , text
-
-  default-language: Haskell2010
-  ghc-options:      -Wall
-
-executable logdevice-example0
-  main-is:          LogDeviceExample0.hs
-  hs-source-dirs:   example
-  build-depends:
-    , aeson
-    , base                >=4.11 && <5
-    , binary
-    , hstream-processing
-    , hstream-store
     , random
     , rio
     , text
