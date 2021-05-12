@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms   #-}
 
 module HStream.RunSQLSpec (spec) where
 
@@ -11,9 +12,11 @@ import           HStream.Processing.Util      (getCurrentTimestamp)
 import           HStream.SQL.Codegen
 import           HStream.Store                (AdminClient,
                                                AdminClientConfig (..), Consumer,
-                                               Producer, TopicAttrs (..),
-                                               createTopics, mkAdminClient)
-import           HStream.Store.Logger
+                                               HsLogAttrs (..), LogAttrs (..),
+                                               Producer, createTopic_,
+                                               mkAdminClient,
+                                               pattern C_DBG_ERROR,
+                                               setLogDeviceDbgLevel)
 import           RIO
 import           RIO.ByteString.Lazy          (fromStrict, toStrict)
 import qualified RIO.ByteString.Lazy          as BL
@@ -121,8 +124,7 @@ handleCreateStreamSQL sql = do
   plan <- streamCodegen sql
   case plan of
     CreatePlan topicName _ ->
-      createTopics adminClient
-      (Map.singleton (CB.pack . Text.unpack $ topicName) TopicAttrs {replicationFactor = 3, extraTopicAttrs=Map.empty})
+      createTopic_ adminClient (CB.pack . Text.unpack $ topicName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
 
 

@@ -35,12 +35,12 @@ import           HStream.Store                     (AdminClient,
                                                     AdminClientConfig (..),
                                                     Consumer,
                                                     ConsumerConfig (..),
-                                                    Producer,
+                                                    HsLogAttrs (..),
+                                                    LogAttrs (..), Producer,
                                                     ProducerConfig (..),
                                                     ProducerRecord (..),
-                                                    TopicAttrs (..),
-                                                    createTopics, dataOutValue,
-                                                    doesTopicExists,
+                                                    createTopic_, dataOutValue,
+                                                    doesTopicExists_,
                                                     mkAdminClient, mkConsumer,
                                                     mkProducer, pollMessages,
                                                     sendMessage)
@@ -111,8 +111,7 @@ executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{
       let resp = genErrorQueryResponse "inconsistent method called"
       return (ServerNormalResponse resp [] StatusUnknown "")
     Right (CreatePlan topic repFactor)                     -> do
-      e' <- try $ createTopics defaultAdmin
-            (M.fromList [(CB.pack . T.unpack $ topic, TopicAttrs repFactor Map.empty)])
+      e' <- try $ createTopic_ defaultAdmin (CB.pack . T.unpack $ topic) (LogAttrs $ HsLogAttrs repFactor Map.empty)
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating topic"
@@ -121,8 +120,7 @@ executeQueryHandler DefaultInfo{..} (ServerNormalRequest _metadata CommandQuery{
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
     Right (CreateBySelectPlan sources sink task repFactor) -> do
-      e' <- try $ createTopics defaultAdmin
-            (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs repFactor Map.empty)])
+      e' <- try $ createTopic_ defaultAdmin (CB.pack . T.unpack $ sink) (LogAttrs $ HsLogAttrs repFactor Map.empty)
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating topic"
@@ -170,10 +168,10 @@ executePushQueryHandler DefaultInfo{..} (ServerWriterRequest meta CommandPushQue
   case plan' of
     Left (e :: SomeSQLException)         -> returnRes "exception on parsing or codegen"
     Right (SelectPlan sources sink task) -> do
-      exists <- mapM (doesTopicExists defaultAdmin) (CB.pack . T.unpack <$> sources)
+      exists <- mapM (doesTopicExists_ defaultAdmin) (CB.pack . T.unpack <$> sources)
       if (not . and) exists then returnRes "some source topic do not exist"
       else do
-        e' <- try $ createTopics defaultAdmin (M.fromList [(CB.pack . T.unpack $ sink, TopicAttrs defaultTopicRepFactor Map.empty)])
+        e' <- try $ createTopic_ defaultAdmin (CB.pack . T.unpack $ sink) (LogAttrs $ HsLogAttrs defaultTopicRepFactor Map.empty)
         case e' of
           Left (e :: SomeException) -> returnRes "error when creating sink topic"
           Right _                   -> do

@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
 
@@ -13,9 +14,10 @@ import           HStream.Processing.Processor
 import           HStream.Processing.Topic
 import           HStream.Processing.Util
 import           HStream.Store                (AdminClientConfig (..),
-                                               createTopics, mkAdminClient)
-import           HStream.Store.Logger
-import           HStream.Store.Stream         (TopicAttrs (..))
+                                               HsLogAttrs (..), LogAttrs (..),
+                                               createTopic_, mkAdminClient,
+                                               pattern C_DBG_ERROR,
+                                               setLogDeviceDbgLevel)
 import qualified Prelude                      as P
 import           RIO
 import qualified RIO.ByteString.Lazy          as BL
@@ -25,7 +27,7 @@ import           System.Random
 data R
   = R
       { temperature :: Int,
-        humidity :: Int
+        humidity    :: Int
       }
   deriving (Generic, Show, Typeable)
 
@@ -75,8 +77,8 @@ main = do
   let adminConfig =
         AdminClientConfig {adminConfigUri = "/data/store/logdevice.conf"}
   adminClient <- mkAdminClient adminConfig
-  createTopics adminClient (Map.singleton "demo-source" TopicAttrs {replicationFactor = 3})
-  createTopics adminClient (Map.singleton "demo-sink" TopicAttrs {replicationFactor = 3})
+  createTopic_ adminClient "demo-source" (LogAttrs $ HsLogAttrs 3 Map.empty)
+  createTopic_ adminClient "demo-sink" (LogAttrs $ HsLogAttrs 3 Map.empty)
   mp <- mkProducer producerConfig
   mc <- mkConsumer consumerConfig ["demo-sink"]
   _ <- async
