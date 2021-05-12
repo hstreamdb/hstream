@@ -8,9 +8,9 @@ packages:
 
   external/gRPC-haskell
   external/gRPC-haskell/core
-  external/proto3-suite
-  external/proto3-wire
 
 constraints:
-  Z-IO >= 0.8 && <= 0.9,
-  Z-Data >= 0.8 && <= 0.9
+    Z-IO == 0.8.0.0
+  , Z-Data == 0.8.2.0
+  , proto3-suite == 0.4.1
+  , proto3-wire == 1.2.1
