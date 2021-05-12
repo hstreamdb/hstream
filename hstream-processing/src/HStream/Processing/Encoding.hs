@@ -18,11 +18,10 @@ newtype Deserializer a = Deserializer {runDeser :: BL.ByteString -> a}
 
 newtype Serializer a = Serializer {runSer :: a -> BL.ByteString}
 
-data Serde a
-  = Serde
-      { serializer :: Serializer a,
-        deserializer :: Deserializer a
-      }
+data Serde a = Serde
+  { serializer :: Serializer a,
+    deserializer :: Deserializer a
+  }
 
 voidDeserializer :: Maybe (Deserializer Void)
 voidDeserializer = Nothing

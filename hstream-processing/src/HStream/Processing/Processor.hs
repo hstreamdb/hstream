@@ -10,7 +10,7 @@ module HStream.Processing.Processor
     addProcessor,
     addSink,
     addStateStore,
-    runTask,
+    -- runTask,
     forward,
     getKVStateStore,
     getSessionStateStore,
@@ -19,8 +19,8 @@ module HStream.Processing.Processor
     Processor (..),
     SourceConfig (..),
     SinkConfig (..),
-    TaskConfig (..),
-    MessageStoreType (..),
+    -- TaskConfig (..),
+    -- MessageStoreType (..),
   )
 where
 
@@ -31,8 +31,7 @@ import           HStream.Processing.Encoding
 import           HStream.Processing.Error              (HStreamError (..))
 import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
-import           HStream.Processing.Topic
-import           HStream.Processing.Util
+-- import           HStream.Processing.Util
 import           RIO
 import qualified RIO.ByteString.Lazy                   as BL
 import qualified RIO.HashMap                           as HM
@@ -96,21 +95,19 @@ validateTopology TaskTopologyConfig {..} =
         then throw $ TaskTopologyBuildError "task build error: no valid sink config"
         else ()
 
-data SourceConfig k v
-  = SourceConfig
-      { sourceName :: T.Text,
-        sourceTopicName :: T.Text,
-        keyDeserializer :: Maybe (Deserializer k),
-        valueDeserializer :: Deserializer v
-      }
+data SourceConfig k v = SourceConfig
+  { sourceName :: T.Text,
+    sourceTopicName :: T.Text,
+    keyDeserializer :: Maybe (Deserializer k),
+    valueDeserializer :: Deserializer v
+  }
 
-data SinkConfig k v
-  = SinkConfig
-      { sinkName :: T.Text,
-        sinkTopicName :: T.Text,
-        keySerializer :: Maybe (Serializer k),
-        valueSerializer :: Serializer v
-      }
+data SinkConfig k v = SinkConfig
+  { sinkName :: T.Text,
+    sinkTopicName :: T.Text,
+    keySerializer :: Maybe (Serializer k),
+    valueSerializer :: Serializer v
+  }
 
 addSource ::
   (Typeable k, Typeable v) =>
@@ -170,23 +167,6 @@ buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
   let rv = runSer valueSerializer recordValue
   forward r {recordKey = rk, recordValue = rv}
 
-buildInternalSinkProcessor ::
-  TopicProducer p =>
-  p ->
-  InternalSinkConfig ->
-  Processor BL.ByteString BL.ByteString
-buildInternalSinkProcessor producer InternalSinkConfig {..} = Processor $ \Record {..} -> do
-  ts <- liftIO getCurrentTimestamp
-  liftIO $
-    send
-      producer
-      RawProducerRecord
-        { rprTopic = iSinkTopicName,
-          rprKey = recordKey,
-          rprValue = recordValue,
-          rprTimestamp = ts
-        }
-
 addSink ::
   (Typeable k, Typeable v) =>
   SinkConfig k v ->
@@ -220,64 +200,6 @@ addStateStore storeName store processors =
           storeName
           (wrapStateStore store, HS.fromList processors)
     }
-
-runTask ::
-  TaskConfig ->
-  Task ->
-  IO ()
-runTask TaskConfig {..} task@Task {..} = do
-  let sourceTopicNames = HM.keys taskSourceConfig
-  case tcMessageStoreType of
-    Mock mockStore -> do
-      topicConsumer <- mkMockTopicConsumer mockStore sourceTopicNames
-      topicProducer <- mkMockTopicProducer mockStore
-      runTaskInternal topicProducer topicConsumer
-    LogDevice producerConfig consumerConfig -> do
-      topicConsumer <- mkConsumer consumerConfig sourceTopicNames
-      topicProducer <- mkProducer producerConfig
-      runTaskInternal topicProducer topicConsumer
-    Kafka -> throwIO $ UnSupportedMessageStoreError "Kafka is not supported!"
-  where
-    runTaskInternal ::
-      (TopicProducer p, TopicConsumer c) =>
-      p ->
-      c ->
-      IO ()
-    runTaskInternal topicProducer topicConsumer = do
-      -- add InternalSink Node
-      let newTaskTopologyForward =
-            HM.foldlWithKey'
-              ( \a k v@InternalSinkConfig {..} ->
-                  let internalSinkProcessor = buildInternalSinkProcessor topicProducer v
-                      ep = mkEProcessor internalSinkProcessor
-                      (sinkProcessor, children) = taskTopologyForward HM'.! k
-                      name = T.append iSinkTopicName "-INTERNAL-SINK"
-                      tp = HM.insert k (sinkProcessor, children ++ [name]) a
-                   in HM.insert name (ep, []) tp
-              )
-              taskTopologyForward
-              taskSinkConfig
-      ctx <- buildTaskContext task {taskTopologyForward = newTaskTopologyForward} tcLogFunc
-      forever
-        $ runRIO ctx
-        $ do
-          logDebug "start iteration..."
-          rawRecords <- liftIO $ pollRecords topicConsumer 100 2000
-          logDebug $ "polled " <> display (length rawRecords) <> " records"
-          forM_
-            rawRecords
-            ( \RawConsumerRecord {..} -> do
-                let acSourceName = iSourceName (taskSourceConfig HM'.! rcrTopic)
-                let (sourceEProcessor, _) = newTaskTopologyForward HM'.! acSourceName
-                liftIO $ updateTimestampInTaskContext ctx rcrTimestamp
-                runEP sourceEProcessor (mkERecord Record {recordKey = rcrKey, recordValue = rcrValue, recordTimestamp = rcrTimestamp})
-            )
-
-data TaskConfig
-  = TaskConfig
-      { tcMessageStoreType :: MessageStoreType,
-        tcLogFunc :: LogFunc
-      }
 
 forward ::
   (Typeable k, Typeable v) =>

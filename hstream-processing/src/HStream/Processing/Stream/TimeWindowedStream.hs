@@ -21,14 +21,13 @@ import           HStream.Processing.Table
 import           RIO
 import qualified RIO.Text                              as T
 
-data TimeWindowedStream k v
-  = TimeWindowedStream
-      { twsKeySerde :: Maybe (Serde k),
-        twsValueSerde :: Maybe (Serde v),
-        twsProcessorName :: T.Text,
-        twsTimeWindows :: TimeWindows,
-        twsInternalBuilder :: InternalStreamBuilder
-      }
+data TimeWindowedStream k v = TimeWindowedStream
+  { twsKeySerde :: Maybe (Serde k),
+    twsValueSerde :: Maybe (Serde v),
+    twsProcessorName :: T.Text,
+    twsTimeWindows :: TimeWindows,
+    twsInternalBuilder :: InternalStreamBuilder
+  }
 
 aggregate ::
   (Typeable k, Typeable v, Ord k, Typeable a) =>

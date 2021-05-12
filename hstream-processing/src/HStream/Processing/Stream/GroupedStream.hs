@@ -25,13 +25,12 @@ import           HStream.Processing.Table
 import           RIO
 import qualified RIO.Text                                        as T
 
-data GroupedStream k v
-  = GroupedStream
-      { gsKeySerde :: Maybe (Serde k),
-        gsValueSerde :: Maybe (Serde v),
-        gsProcessorName :: T.Text,
-        gsInternalBuilder :: InternalStreamBuilder
-      }
+data GroupedStream k v = GroupedStream
+  { gsKeySerde :: Maybe (Serde k),
+    gsValueSerde :: Maybe (Serde v),
+    gsProcessorName :: T.Text,
+    gsInternalBuilder :: InternalStreamBuilder
+  }
 
 aggregate ::
   (Typeable k, Typeable v, Ord k, Typeable a) =>

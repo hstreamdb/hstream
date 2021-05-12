@@ -6,45 +6,42 @@
 
 import           Data.Aeson
 import           Data.Maybe
-import qualified Data.Text.Lazy               as TL
-import qualified Data.Text.Lazy.Encoding      as TLE
+import qualified Data.Text.Lazy                     as TL
+import qualified Data.Text.Lazy.Encoding            as TLE
 import           HStream.Processing.Encoding
-import           HStream.Processing.Processor
-import qualified HStream.Processing.Stream    as HS
-import           HStream.Processing.Topic
+import           HStream.Processing.MockRuntime
+import           HStream.Processing.MockStreamStore
+import qualified HStream.Processing.Stream          as HS
 import           HStream.Processing.Util
-import qualified Prelude                      as P
+import qualified Prelude                            as P
 import           RIO
-import qualified RIO.ByteString.Lazy          as BL
+import qualified RIO.ByteString.Lazy                as BL
 import           System.Random
 
-data R
-  = R
-      { temperature :: Int,
-        humidity :: Int
-      }
+data R = R
+  { temperature :: Int,
+    humidity :: Int
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R
 
 instance FromJSON R
 
-data R1
-  = R1
-      { location :: TL.Text
-      }
+data R1 = R1
+  { location :: TL.Text
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R1
 
 instance FromJSON R1
 
-data R2
-  = R2
-      { r2Location :: TL.Text,
-        r2Temperature :: Int,
-        r2Humidity :: Int
-      }
+data R2 = R2
+  { r2Location :: TL.Text,
+    r2Temperature :: Int,
+    r2Humidity :: Int
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R2
@@ -106,9 +103,9 @@ main = do
       >>= HS.stream streamSourceConfig1
       >>= HS.joinTable table joiner textSerde r1Serde
       >>= HS.to streamSinkConfig
-  mockStore <- mkMockTopicStore
-  mp <- mkMockTopicProducer mockStore
-  mc <- mkMockTopicConsumer mockStore [sinkTopicName]
+  mockStore <- mkMockStreamStore
+  mp <- mkMockProducer mockStore
+  mc <- mkMockConsumer mockStore [sinkTopicName]
   forM_
     ([1 .. 3] :: [Int])
     ( \i ->
@@ -121,33 +118,27 @@ main = do
               rprTimestamp = -1
             }
     )
-  _ <- async
-    $ forever
-    $ do
-      threadDelay 1000000
-      MockMessage {..} <- mkMockData
-      send
-        mp
-        RawProducerRecord
-          { rprTopic = streamTopicName,
-            rprKey = mmKey,
-            rprValue = mmValue,
-            rprTimestamp = mmTimestamp
-          }
-  _ <- async
-    $ forever
-    $ do
-      records <- pollRecords mc 100 1000
-      forM_ records $ \RawConsumerRecord {..} ->
-        P.putStr "joined data: " >> BL.putStrLn rcrValue
-  logOptions <- logOptionsHandle stderr True
-  withLogFunc logOptions $ \lf -> do
-    let taskConfig =
-          TaskConfig
-            { tcMessageStoreType = Mock mockStore,
-              tcLogFunc = lf
+  _ <- async $
+    forever $
+      do
+        threadDelay 1000000
+        MockMessage {..} <- mkMockData
+        send
+          mp
+          RawProducerRecord
+            { rprTopic = streamTopicName,
+              rprKey = mmKey,
+              rprValue = mmValue,
+              rprTimestamp = mmTimestamp
             }
-    runTask taskConfig (HS.build streamBuilder)
+  _ <- async $
+    forever $
+      do
+        records <- pollRecords mc 100 1000
+        forM_ records $ \RawConsumerRecord {..} ->
+          P.putStr "joined data: " >> BL.putStrLn rcrValue
+
+  runTask mockStore (HS.build streamBuilder)
 
 joiner :: R -> R1 -> R2
 joiner R {..} R1 {..} =

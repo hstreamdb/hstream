@@ -34,35 +34,31 @@ import           HStream.Processing.Stream.GroupedStream
 import           HStream.Processing.Stream.Internal
 import           HStream.Processing.Stream.JoinWindows
 import           HStream.Processing.Table
-import           HStream.Processing.Topic
 import           HStream.Processing.Type
 import           RIO
 import qualified RIO.ByteString.Lazy                     as BL
 import qualified RIO.Text                                as T
 
-data StreamBuilder
-  = StreamBuilder
-      { sbInternalBuilder :: InternalStreamBuilder
-      }
+data StreamBuilder = StreamBuilder
+  { sbInternalBuilder :: InternalStreamBuilder
+  }
 
 mkStreamBuilder :: T.Text -> IO StreamBuilder
 mkStreamBuilder taskName = do
   internalStreamBuilder <- mkInternalStreamBuilder $ buildTask taskName
   return StreamBuilder {sbInternalBuilder = internalStreamBuilder}
 
-data StreamSourceConfig k v
-  = StreamSourceConfig
-      { sscTopicName :: TopicName,
-        sscKeySerde :: Serde k,
-        sscValueSerde :: Serde v
-      }
+data StreamSourceConfig k v = StreamSourceConfig
+  { sscTopicName :: T.Text,
+    sscKeySerde :: Serde k,
+    sscValueSerde :: Serde v
+  }
 
-data StreamSinkConfig k v
-  = StreamSinkConfig
-      { sicTopicName :: TopicName,
-        sicKeySerde :: Serde k,
-        sicValueSerde :: Serde v
-      }
+data StreamSinkConfig k v = StreamSinkConfig
+  { sicTopicName :: T.Text,
+    sicKeySerde :: Serde k,
+    sicValueSerde :: Serde v
+  }
 
 stream ::
   (Typeable k, Typeable v) =>
@@ -214,15 +210,14 @@ groupBy f Stream {..} = do
         gsValueSerde = Nothing
       }
 
-data StreamJoined k1 v1 k2 v2
-  = StreamJoined
-      { sjK1Serde :: Serde k1,
-        sjV1Serde :: Serde v1,
-        sjK2Serde :: Serde k2,
-        sjV2Serde :: Serde v2,
-        sjThisStore :: StateStore BL.ByteString BL.ByteString,
-        sjOtherStore :: StateStore BL.ByteString BL.ByteString
-      }
+data StreamJoined k1 v1 k2 v2 = StreamJoined
+  { sjK1Serde :: Serde k1,
+    sjV1Serde :: Serde v1,
+    sjK2Serde :: Serde k2,
+    sjV2Serde :: Serde v2,
+    sjThisStore :: StateStore BL.ByteString BL.ByteString,
+    sjOtherStore :: StateStore BL.ByteString BL.ByteString
+  }
 
 joinStream ::
   (Typeable k1, Typeable v1, Typeable k2, Typeable v2, Typeable k3, Typeable v3, Eq k3) =>

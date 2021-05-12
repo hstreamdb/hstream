@@ -30,26 +30,24 @@ mkEProcessor proc = EProcessor $ \(ERecord record) ->
     Just r -> runP proc r
     Nothing -> throw $ TypeCastError ("mkEProcessor: type cast error, real record type is: " `T.append` T.pack (show (typeOf record)))
 
-data Record k v
-  = Record
-      { recordKey :: Maybe k,
-        recordValue :: v,
-        recordTimestamp :: Timestamp
-      }
+data Record k v = Record
+  { recordKey :: Maybe k,
+    recordValue :: v,
+    recordTimestamp :: Timestamp
+  }
 
 data ERecord = forall k v. (Typeable k, Typeable v) => ERecord (Record k v)
 
 mkERecord :: (Typeable k, Typeable v) => Record k v -> ERecord
 mkERecord = ERecord
 
-data TaskTopologyConfig
-  = TaskTopologyConfig
-      { ttcName :: T.Text,
-        sourceCfgs :: HM.HashMap T.Text InternalSourceConfig,
-        topology :: HM.HashMap T.Text (EProcessor, [T.Text]),
-        sinkCfgs :: HM.HashMap T.Text InternalSinkConfig,
-        stores :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
-      }
+data TaskTopologyConfig = TaskTopologyConfig
+  { ttcName :: T.Text,
+    sourceCfgs :: HM.HashMap T.Text InternalSourceConfig,
+    topology :: HM.HashMap T.Text (EProcessor, [T.Text]),
+    sinkCfgs :: HM.HashMap T.Text InternalSinkConfig,
+    stores :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
+  }
 
 instance Default TaskTopologyConfig where
   def =
@@ -68,27 +66,27 @@ instance Semigroup TaskTopologyConfig where
         sourceCfgs =
           HM.unionWithKey
             ( \name _ _ ->
-                throw
-                  $ TaskTopologyBuildError
-                  $ "source named " `T.append` name `T.append` " already existed"
+                throw $
+                  TaskTopologyBuildError $
+                    "source named " `T.append` name `T.append` " already existed"
             )
             (sourceCfgs t1)
             (sourceCfgs t2),
         topology =
           HM.unionWithKey
             ( \name _ _ ->
-                throw
-                  $ TaskTopologyBuildError
-                  $ "processor named " `T.append` name `T.append` " already existed"
+                throw $
+                  TaskTopologyBuildError $
+                    "processor named " `T.append` name `T.append` " already existed"
             )
             (topology t1)
             (topology t2),
         sinkCfgs =
           HM.unionWithKey
             ( \name _ _ ->
-                throw
-                  $ TaskTopologyBuildError
-                  $ "sink named " `T.append` name `T.append` " already existed"
+                throw $
+                  TaskTopologyBuildError $
+                    "sink named " `T.append` name `T.append` " already existed"
             )
             (sinkCfgs t1)
             (sinkCfgs t2),
@@ -104,37 +102,33 @@ instance Semigroup TaskTopologyConfig where
 instance Monoid TaskTopologyConfig where
   mempty = def
 
-data InternalSourceConfig
-  = InternalSourceConfig
-      { iSourceName :: T.Text,
-        iSourceTopicName :: T.Text
-      }
+data InternalSourceConfig = InternalSourceConfig
+  { iSourceName :: T.Text,
+    iSourceTopicName :: T.Text
+  }
 
-data InternalSinkConfig
-  = InternalSinkConfig
-      { iSinkName :: T.Text,
-        iSinkTopicName :: T.Text
-      }
+data InternalSinkConfig = InternalSinkConfig
+  { iSinkName :: T.Text,
+    iSinkTopicName :: T.Text
+  }
 
 type TaskBuilder = TaskTopologyConfig
 
-data Task
-  = Task
-      { taskName :: T.Text,
-        taskSourceConfig :: HM.HashMap T.Text InternalSourceConfig,
-        taskTopologyReversed :: HM.HashMap T.Text (EProcessor, [T.Text]),
-        taskTopologyForward :: HM.HashMap T.Text (EProcessor, [T.Text]),
-        taskSinkConfig :: HM.HashMap T.Text InternalSinkConfig,
-        taskStores :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
-      }
+data Task = Task
+  { taskName :: T.Text,
+    taskSourceConfig :: HM.HashMap T.Text InternalSourceConfig,
+    taskTopologyReversed :: HM.HashMap T.Text (EProcessor, [T.Text]),
+    taskTopologyForward :: HM.HashMap T.Text (EProcessor, [T.Text]),
+    taskSinkConfig :: HM.HashMap T.Text InternalSinkConfig,
+    taskStores :: HM.HashMap T.Text (EStateStore, HS.HashSet T.Text)
+  }
 
-data TaskContext
-  = TaskContext
-      { taskConfig :: Task,
-        tctLogFunc :: LogFunc,
-        curProcessor :: IORef T.Text,
-        tcTimestamp :: IORef Int64
-      }
+data TaskContext = TaskContext
+  { taskConfig :: Task,
+    tctLogFunc :: LogFunc,
+    curProcessor :: IORef T.Text,
+    tcTimestamp :: IORef Int64
+  }
 
 instance HasLogFunc TaskContext where
   logFuncL = lens tctLogFunc (\x y -> x {tctLogFunc = y})

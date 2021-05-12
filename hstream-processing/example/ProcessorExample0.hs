@@ -6,22 +6,22 @@
 
 import           Data.Aeson
 import           Data.Maybe
-import qualified Data.Text.Lazy               as TL
-import qualified Data.Text.Lazy.Encoding      as TLE
+import qualified Data.Text.Lazy                     as TL
+import qualified Data.Text.Lazy.Encoding            as TLE
 import           HStream.Processing.Encoding
+import           HStream.Processing.MockRuntime
+import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
-import           HStream.Processing.Topic
 import           HStream.Processing.Util
-import qualified Prelude                      as P
+import qualified Prelude                            as P
 import           RIO
-import qualified RIO.ByteString.Lazy          as BL
+import qualified RIO.ByteString.Lazy                as BL
 import           System.Random
 
-data R
-  = R
-      { temperature :: Int,
-        humidity :: Int
-      }
+data R = R
+  { temperature :: Int,
+    humidity :: Int
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R
@@ -53,36 +53,30 @@ main = do
               (filterProcessor filterR)
               ["source"]
             <> addSink sinkConfig ["filter"]
-  mockStore <- mkMockTopicStore
-  mp <- mkMockTopicProducer mockStore
-  mc <- mkMockTopicConsumer mockStore ["demo-sink"]
-  _ <- async
-    $ forever
-    $ do
-      threadDelay 1000000
-      MockMessage {..} <- mkMockData
-      send
-        mp
-        RawProducerRecord
-          { rprTopic = "demo-source",
-            rprKey = mmKey,
-            rprValue = mmValue,
-            rprTimestamp = mmTimestamp
-          }
-  _ <- async
-    $ forever
-    $ do
-      records <- pollRecords mc 100 1000
-      forM_ records $ \RawConsumerRecord {..} ->
-        P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
-  logOptions <- logOptionsHandle stderr True
-  withLogFunc logOptions $ \lf -> do
-    let taskConfig =
-          TaskConfig
-            { tcMessageStoreType = Mock mockStore,
-              tcLogFunc = lf
+  mockStore <- mkMockStreamStore
+  mp <- mkMockProducer mockStore
+  mc <- mkMockConsumer mockStore ["demo-sink"]
+  _ <- async $
+    forever $
+      do
+        threadDelay 1000000
+        MockMessage {..} <- mkMockData
+        send
+          mp
+          RawProducerRecord
+            { rprTopic = "demo-source",
+              rprKey = mmKey,
+              rprValue = mmValue,
+              rprTimestamp = mmTimestamp
             }
-    runTask taskConfig task
+  _ <- async $
+    forever $
+      do
+        records <- pollRecords mc 100 1000
+        forM_ records $ \RawConsumerRecord {..} ->
+          P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
+
+  runTask mockStore task
 
 filterR :: Record Void R -> Bool
 filterR Record {..} =

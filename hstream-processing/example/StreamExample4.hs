@@ -9,42 +9,40 @@ import           Data.Maybe
 import qualified Data.Text.Lazy                        as TL
 import qualified Data.Text.Lazy.Encoding               as TLE
 import           HStream.Processing.Encoding
+import           HStream.Processing.MockRuntime
+import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
 import           HStream.Processing.Store
 import qualified HStream.Processing.Stream             as HS
 import           HStream.Processing.Stream.JoinWindows
-import           HStream.Processing.Topic
 import           HStream.Processing.Util
 import qualified Prelude                               as P
 import           RIO
 import qualified RIO.ByteString.Lazy                   as BL
 import           System.Random
 
-data R
-  = R
-      { temperature :: Int,
-        humidity :: Int
-      }
+data R = R
+  { temperature :: Int,
+    humidity :: Int
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R
 
 instance FromJSON R
 
-data R1
-  = R1
-      { r1Temperature :: Int
-      }
+data R1 = R1
+  { r1Temperature :: Int
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R1
 
 instance FromJSON R1
 
-data R2
-  = R2
-      { r2Humidity :: Int
-      }
+data R2 = R2
+  { r2Humidity :: Int
+  }
   deriving (Generic, Show, Typeable)
 
 instance ToJSON R2
@@ -124,44 +122,38 @@ main = do
       >>= HS.joinStream stream2 joiner keySelector1 keySelector2 joinWindows streamJoined
       >>= HS.filter filterR
       >>= HS.to streamSinkConfig
-  mockStore <- mkMockTopicStore
-  mp <- mkMockTopicProducer mockStore
-  mc <- mkMockTopicConsumer mockStore [sTopicName]
-  _ <- async
-    $ forever
-    $ do
-      threadDelay 1000000
-      MockMessage {..} <- mkMockData
-      send
-        mp
-        RawProducerRecord
-          { rprTopic = hTopicName,
-            rprKey = mmKey,
-            rprValue = encode $ R2 {r2Humidity = humidity ((fromJust . decode) mmValue :: R)},
-            rprTimestamp = mmTimestamp
-          }
-      send
-        mp
-        RawProducerRecord
-          { rprTopic = tTopicName,
-            rprKey = mmKey,
-            rprValue = encode $ R1 {r1Temperature = temperature ((fromJust . decode) mmValue :: R)},
-            rprTimestamp = mmTimestamp
-          }
-  _ <- async
-    $ forever
-    $ do
-      records <- pollRecords mc 100 1000
-      forM_ records $ \RawConsumerRecord {..} ->
-        P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
-  logOptions <- logOptionsHandle stderr True
-  withLogFunc logOptions $ \lf -> do
-    let taskConfig =
-          TaskConfig
-            { tcMessageStoreType = Mock mockStore,
-              tcLogFunc = lf
+  mockStore <- mkMockStreamStore
+  mp <- mkMockProducer mockStore
+  mc <- mkMockConsumer mockStore [sTopicName]
+  _ <- async $
+    forever $
+      do
+        threadDelay 1000000
+        MockMessage {..} <- mkMockData
+        send
+          mp
+          RawProducerRecord
+            { rprTopic = hTopicName,
+              rprKey = mmKey,
+              rprValue = encode $ R2 {r2Humidity = humidity ((fromJust . decode) mmValue :: R)},
+              rprTimestamp = mmTimestamp
             }
-    runTask taskConfig (HS.build streamBuilder)
+        send
+          mp
+          RawProducerRecord
+            { rprTopic = tTopicName,
+              rprKey = mmKey,
+              rprValue = encode $ R1 {r1Temperature = temperature ((fromJust . decode) mmValue :: R)},
+              rprTimestamp = mmTimestamp
+            }
+  _ <- async $
+    forever $
+      do
+        records <- pollRecords mc 100 1000
+        forM_ records $ \RawConsumerRecord {..} ->
+          P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
+
+  runTask mockStore (HS.build streamBuilder)
 
 joiner :: R1 -> R2 -> R
 joiner R1 {..} R2 {..} =

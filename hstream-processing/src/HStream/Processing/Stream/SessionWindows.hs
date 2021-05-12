@@ -19,11 +19,10 @@ import           HStream.Processing.Encoding
 import           HStream.Processing.Stream.TimeWindows
 import           RIO
 
-data SessionWindows
-  = SessionWindows
-      { swInactivityGap :: Int64,
-        swGraceMs :: Int64
-      }
+data SessionWindows = SessionWindows
+  { swInactivityGap :: Int64,
+    swGraceMs :: Int64
+  }
 
 mkSessionWindows :: Int64 -> SessionWindows
 mkSessionWindows inactivityGap =

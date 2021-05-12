@@ -22,12 +22,11 @@ import qualified Data.ByteString.Builder     as BB
 import           HStream.Processing.Encoding
 import           RIO
 
-data TimeWindows
-  = TimeWindows
-      { twSizeMs :: Int64,
-        twAdvanceMs :: Int64,
-        twGraceMs :: Int64
-      }
+data TimeWindows = TimeWindows
+  { twSizeMs :: Int64,
+    twAdvanceMs :: Int64,
+    twGraceMs :: Int64
+  }
 
 mkTumblingWindow :: Int64 -> TimeWindows
 mkTumblingWindow windowSize =
@@ -45,11 +44,10 @@ mkHoppingWindow windowSize stepSize =
       twGraceMs = 24 * 3600 * 1000
     }
 
-data TimeWindow
-  = TimeWindow
-      { tWindowStart :: Int64,
-        tWindowEnd :: Int64
-      }
+data TimeWindow = TimeWindow
+  { tWindowStart :: Int64,
+    tWindowEnd :: Int64
+  }
 
 instance Show TimeWindow where
   show TimeWindow {..} = "[" ++ show tWindowStart ++ ", " ++ show tWindowEnd ++ "]"
@@ -61,11 +59,10 @@ mkTimeWindow startTs endTs =
       tWindowEnd = endTs
     }
 
-data TimeWindowKey k
-  = TimeWindowKey
-      { twkKey :: k,
-        twkWindow :: TimeWindow
-      }
+data TimeWindowKey k = TimeWindowKey
+  { twkKey :: k,
+    twkWindow :: TimeWindow
+  }
 
 instance (Show k) => Show (TimeWindowKey k) where
   show TimeWindowKey {..} = "key: " ++ show twkKey ++ ", window: " ++ show twkWindow
