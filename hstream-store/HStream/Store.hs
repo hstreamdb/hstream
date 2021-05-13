@@ -72,7 +72,7 @@ data ConsumerConfig = ConsumerConfig
 {-# DEPRECATED Consumer "" #-}
 data Consumer = Consumer
   { _unConsumer     :: LDSyncCkpReader
-  , _consumerTopics :: Map Topic C_LogID
+  , _consumerTopics :: Map StreamName C_LogID
   }
 
 {-# DEPRECATED mkProducer "" #-}
@@ -82,11 +82,11 @@ mkProducer config = do
   return $ Producer client
 
 {-# DEPRECATED mkConsumer "" #-}
-mkConsumer :: ConsumerConfig -> [Topic] -> IO Consumer
+mkConsumer :: ConsumerConfig -> [StreamName] -> IO Consumer
 mkConsumer ConsumerConfig{..} ts = do
   client <- newLDClient consumerConfigUri
   topics <- forM ts $ \t -> do
-    topicID <- getCLogIDByTopicName client t
+    topicID <- getCLogIDByStreamName client t
     lastSN <- getTailLSN client topicID
     return (topicID, lastSN)
   ckpReader <- newLDFileCkpReader client consumerName consumerCheckpointUri
@@ -98,7 +98,7 @@ mkConsumer ConsumerConfig{..} ts = do
 {-# DEPRECATED sendMessage "" #-}
 sendMessage :: Producer -> ProducerRecord -> IO ()
 sendMessage (Producer client) record@ProducerRecord{..} = do
-  topicID <- getCLogIDByTopicName client dataInTopic
+  topicID <- getCLogIDByStreamName client dataInTopic
   void $ appendRecord client topicID record Nothing
 
 {-# DEPRECATED pollMessages "" #-}
@@ -120,9 +120,9 @@ mkAdminClient AdminClientConfig{..} = do
   return $ AdminClient client
 
 {-# DEPRECATED createTopic_ "" #-}
-createTopic_ :: AdminClient -> Topic -> LogAttrs -> IO ()
-createTopic_ (AdminClient client) = createTopic client
+createTopic_ :: AdminClient -> StreamName -> LogAttrs -> IO ()
+createTopic_ (AdminClient client) = createStream client
 
 {-# DEPRECATED doesTopicExists_ "" #-}
-doesTopicExists_ :: AdminClient -> Topic -> IO Bool
-doesTopicExists_ (AdminClient client) = doesTopicExists client
+doesTopicExists_ :: AdminClient -> StreamName -> IO Bool
+doesTopicExists_ (AdminClient client) = doesStreamExists client
