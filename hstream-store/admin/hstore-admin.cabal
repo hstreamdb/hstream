@@ -24,9 +24,47 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+executable hstore-admin
+  main-is:            cli.hs
+  hs-source-dirs:     app
+  build-depends:
+    , base                  >=4.13    && <5
+    , hstore-admin
+    , network               ^>=3.1.2.1
+    , optparse-applicative  ^>=0.16
+    , text                  ^>=1.2.3.0
+    , Z-IO
+
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TupleSections
+    TypeApplications
+    UnliftedFFITypes
+
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
 library
-  hs-source-dirs:     gen-hs2
+  hs-source-dirs:     . gen-hs2
   exposed-modules:
+    HStream.Store.Admin.API
+    HStream.Store.Admin.Format
+    HStream.Store.Admin.NodesConfig
+    HStream.Store.Admin.Status
+    HStream.Store.Admin.Types
+
+  other-modules:
     Admin.AdminAPI.Client
     Admin.AdminAPI.Service
     Admin.Types
@@ -46,14 +84,17 @@ library
 
   build-depends:
     , aeson
+    , aeson-pretty
     , base                  >=4.11.1   && <4.15
     , bytestring            ^>=0.10.8.2
     , containers
     , data-default
     , deepseq
     , hashable              >=1.2.7.0  && <1.4
-    , network
+    , network               ^>=3.1.2.1
+    , optparse-applicative  ^>=0.16
     , STMonadTrans
+    , table-layout          ^>=0.9.1
     , text                  ^>=1.2.3.0
     , thrift-lib
     , transformers          ^>=0.5.5.0
@@ -69,8 +110,11 @@ library
     GeneralizedNewtypeDeriving
     LambdaCase
     OverloadedStrings
+    RankNTypes
     RecordWildCards
     ScopedTypeVariables
+    TupleSections
+    TypeApplications
     UnliftedFFITypes
 
   ghc-options:
