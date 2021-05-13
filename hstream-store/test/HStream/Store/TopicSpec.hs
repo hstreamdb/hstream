@@ -9,7 +9,7 @@ import           Test.Hspec
 import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
 
-newRandomTopic :: IO (S.Topic, S.Topic)
+newRandomTopic :: IO (S.StreamName, S.StreamName)
 newRandomTopic = do
   topic <- ("ci/stream/" <>) <$> newRandomName 5
   newTopic <- ("ci/stream/" <>) <$> newRandomName 5
@@ -21,20 +21,20 @@ spec = describe "HStream.Store.Topic" $ do
 
   it "create topic" $ do
     print $ "Create a new topic: " <> topic
-    S.doesTopicExists client topic `shouldReturn` False
+    S.doesStreamExists client topic `shouldReturn` False
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
                                                                          , ("A", "B")
                                                                          ]
                                         }
-    S.createTopic client topic attrs
-    S.doesTopicExists client topic `shouldReturn` True
+    S.createStream client topic attrs
+    S.doesStreamExists client topic `shouldReturn` True
 
   it "rename topic" $ do
     print $ "Rename topic " <> topic <> " to " <> newTopic
-    S.renameTopic client topic newTopic
-    S.doesTopicExists client topic `shouldReturn` False
-    S.doesTopicExists client newTopic `shouldReturn` True
+    S.renameStream client topic newTopic
+    S.doesStreamExists client topic `shouldReturn` False
+    S.doesStreamExists client newTopic `shouldReturn` True
 
   it "get/set extra-attrs" $ do
     logGroup <- S.getLogGroup client newTopic
@@ -47,5 +47,5 @@ spec = describe "HStream.Store.Topic" $ do
     S.logGroupGetExtraAttr logGroup_ "Alice" `shouldReturn` "Bob"
 
   it "remove topic" $ do
-    S.removeTopic client newTopic
-    S.doesTopicExists client newTopic `shouldReturn` False
+    S.removeStream client newTopic
+    S.doesStreamExists client newTopic `shouldReturn` False

@@ -1,18 +1,18 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 module HStream.Store.Stream
-  ( -- * Topic
-    Topic
+  ( -- * StreamName
+    StreamName
   , FFI.LogAttrs (LogAttrs)
   , FFI.HsLogAttrs (..)
-  , createTopic
-  , renameTopic
-  , removeTopic
-  , doesTopicExists
+  , createStream
+  , renameStream
+  , removeStream
+  , doesStreamExists
 
   , FFI.LogID (..)
   , FFI.C_LogID
-  , getCLogIDByTopicName
+  , getCLogIDByStreamName
   , LD.getLogGroup
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
@@ -78,18 +78,18 @@ import qualified HStream.Store.Internal.Types     as FFI
 
 -------------------------------------------------------------------------------
 
-type Topic = CBytes
+type StreamName = CBytes
 
--- | Global topic name to logid cache
-topicNameCache :: Cache.Cache Topic FFI.C_LogID
+-- | Global Stream name to logid cache
+topicNameCache :: Cache.Cache StreamName FFI.C_LogID
 topicNameCache = unsafePerformIO $ Cache.newCache Nothing
 {-# NOINLINE topicNameCache #-}
 
--- | Create topic
+-- | Create stream
 --
--- Currently 'Topic' is a loggroup which only contains one random logid.
-createTopic :: HasCallStack => FFI.LDClient -> Topic -> FFI.LogAttrs -> IO ()
-createTopic client topic attrs = go 10
+-- Currently a Stream is a loggroup which only contains one random logid.
+createStream :: HasCallStack => FFI.LDClient -> StreamName -> FFI.LogAttrs -> IO ()
+createStream client topic attrs = go 10
   where
     go :: Int -> IO ()
     go maxTries =
@@ -104,15 +104,15 @@ createTopic client topic attrs = go 10
                Cache.insert topicNameCache topic logid
              Left (_ :: E.ID_CLASH) -> go $! maxTries - 1
 
-renameTopic
+renameStream
   :: HasCallStack
   => FFI.LDClient
-  -> Topic
+  -> StreamName
   -- ^ The source path to rename
-  -> Topic
+  -> StreamName
   -- ^ The new path you are renaming to
   -> IO ()
-renameTopic client from to = do
+renameStream client from to = do
   LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from to
   -- Do NOT combine these operations to a atomically one, since we need
   -- delete the old topic name even the new one is insert failed.
@@ -122,13 +122,13 @@ renameTopic client from to = do
                  Cache.insert topicNameCache to x
     Nothing -> return ()
 
-removeTopic :: HasCallStack => FFI.LDClient -> Topic -> IO ()
-removeTopic client topic = do
+removeStream :: HasCallStack => FFI.LDClient -> StreamName -> IO ()
+removeStream client topic = do
   LD.syncLogsConfigVersion client =<< LD.removeLogGroup client topic
   Cache.delete topicNameCache topic
 
-doesTopicExists :: HasCallStack => FFI.LDClient -> Topic -> IO Bool
-doesTopicExists client topic = do
+doesStreamExists :: HasCallStack => FFI.LDClient -> StreamName -> IO Bool
+doesStreamExists client topic = do
   m_v <- Cache.lookup topicNameCache topic
   case m_v of
     Just _  -> return True
@@ -137,8 +137,8 @@ doesTopicExists client topic = do
                     Left (_ :: E.NOTFOUND) -> return False
                     Right _                -> return True
 
-getCLogIDByTopicName :: FFI.LDClient -> Topic -> IO FFI.C_LogID
-getCLogIDByTopicName client topic = do
+getCLogIDByStreamName :: FFI.LDClient -> StreamName -> IO FFI.C_LogID
+getCLogIDByStreamName client topic = do
   m_v <- Cache.lookup topicNameCache topic
   maybe (fmap fst $ LD.logGroupGetRange =<< LD.getLogGroup client topic) return m_v
 
@@ -162,7 +162,7 @@ genRandomLogID = do
 -------------------------------------------------------------------------------
 
 data ProducerRecord = ProducerRecord
-  { dataInTopic     :: Topic
+  { dataInTopic     :: StreamName
   , dataInKey       :: Maybe CBytes
   , dataInValue     :: Bytes
   , dataInTimestamp :: Int64
@@ -172,7 +172,7 @@ encodeRecord :: ProducerRecord -> Bytes
 encodeRecord = JSON.encode
 
 data ConsumerRecord = ConsumerRecord
-  { dataOutTopic     :: Topic
+  { dataOutTopic     :: StreamName
   , dataOutOffset    :: Word64
   , dataOutKey       :: Maybe CBytes
   , dataOutValue     :: Bytes
