@@ -396,8 +396,10 @@ logGroupUpdateExtraAttrs client group extraAttrs =
         let size = logsConfigStatusCbDataSize
             peek_data = peekLogsConfigStatusCbData
             cfun = c_ld_loggroup_update_extra_attrs client' group' l ks' vs'
-        LogsConfigStatusCbData errno _ _ <- withAsync size peek_data cfun
+        LogsConfigStatusCbData errno version _failure_reason <- withAsync size peek_data cfun
         void $ E.throwStreamErrorIfNotOK' errno
+        syncLogsConfigVersion client version
+
 {-# INLINE logGroupUpdateExtraAttrs #-}
 
 logGroupGetVersion :: LDLogGroup -> IO C_LogsConfigVersion

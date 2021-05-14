@@ -40,6 +40,7 @@ spec = describe "HStream.Store.Topic" $ do
     logGroup <- S.getLogGroup client newTopic
     S.logGroupGetExtraAttr logGroup "greet" `shouldReturn` "hi"
     S.logGroupUpdateExtraAttrs client logGroup $ Map.fromList [("greet", "hello"), ("Alice", "Bob")]
+
     logGroup_ <- S.getLogGroup client newTopic
     S.logGroupGetExtraAttr logGroup_ "greet" `shouldReturn` "hello"
     S.logGroupGetExtraAttr logGroup_ "A" `shouldReturn` "B"
