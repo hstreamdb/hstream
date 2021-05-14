@@ -3,31 +3,25 @@
 
 module HStream.Store.TopicSpec (spec) where
 
-import qualified Data.Map.Strict  as Map
-import           System.IO.Unsafe (unsafePerformIO)
-import           System.Random    (newStdGen, randomRs)
+import qualified Data.Map.Strict         as Map
 import           Test.Hspec
-import           Z.Data.CBytes    (CBytes)
-import qualified Z.Data.CBytes    as CBytes
 
-import qualified HStream.Store    as S
+import qualified HStream.Store           as S
+import           HStream.Store.SpecUtils
 
-client :: S.LDClient
-client = unsafePerformIO $ S.newLDClient "/data/store/logdevice.conf"
-{-# NOINLINE client #-}
-
-topic :: S.Topic
-topic = unsafePerformIO $ ("ci/stream/" <>) <$> newRandomName 5
-{-# NOINLINE topic #-}
-
-newTopic :: S.Topic
-newTopic = unsafePerformIO $ ("ci/stream/" <>) <$> newRandomName 5
-{-# NOINLINE newTopic #-}
+newRandomTopic :: IO (S.Topic, S.Topic)
+newRandomTopic = do
+  topic <- ("ci/stream/" <>) <$> newRandomName 5
+  newTopic <- ("ci/stream/" <>) <$> newRandomName 5
+  return (topic, newTopic)
 
 spec :: Spec
 spec = describe "HStream.Store.Topic" $ do
+  (topic, newTopic) <- runIO newRandomTopic
 
-  it ("create topic: " <> show (CBytes.toText topic)) $ do
+  it "create topic" $ do
+    print $ "Create a new topic: " <> topic
+    S.doesTopicExists client topic `shouldReturn` False
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
                                                                          , ("A", "B")
@@ -36,12 +30,13 @@ spec = describe "HStream.Store.Topic" $ do
     S.createTopic client topic attrs
     S.doesTopicExists client topic `shouldReturn` True
 
-  it ("rename topic to " <> show (CBytes.toText newTopic)) $ do
+  it "rename topic" $ do
+    print $ "Rename topic " <> topic <> " to " <> newTopic
     S.renameTopic client topic newTopic
     S.doesTopicExists client topic `shouldReturn` False
     S.doesTopicExists client newTopic `shouldReturn` True
 
-  it "get/set extra attrs" $ do
+  it "get/set extra-attrs" $ do
     logGroup <- S.getLogGroup client newTopic
     S.logGroupGetExtraAttr logGroup "greet" `shouldReturn` "hi"
     S.logGroupUpdateExtraAttrs client logGroup $ Map.fromList [("greet", "hello"), ("Alice", "Bob")]
@@ -53,6 +48,3 @@ spec = describe "HStream.Store.Topic" $ do
   it "remove topic" $ do
     S.removeTopic client newTopic
     S.doesTopicExists client newTopic `shouldReturn` False
-
-newRandomName :: Int -> IO CBytes
-newRandomName n = CBytes.pack . take n . randomRs ('a', 'z') <$> newStdGen

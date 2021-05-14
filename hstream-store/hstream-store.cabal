@@ -131,7 +131,9 @@ test-suite hstream-store-test
   other-modules:
     HStream.Store.AppenderSpec
     HStream.Store.ReaderSpec
+    HStream.Store.SpecUtils
     HStream.Store.TopicSpec
+    HStream.StoreSpec
 
   hs-source-dirs:     test
   build-depends:

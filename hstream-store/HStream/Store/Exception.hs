@@ -13,6 +13,11 @@ module HStream.Store.Exception
   , throwStreamErrorIfNotOK'
   , throwStoreError
 
+    -- * Custom Errors
+  , SubmitError (..)
+  , throwSubmitError
+  , throwSubmitIfNotOK
+
     -- * General Store Exception
   , StoreError               (..)
     -- ** Specific Stream Exception
@@ -552,6 +557,19 @@ MAKE_THROW_SSE(C_WRITE_STREAM_IGNORED , WRITE_STREAM_IGNORED  )
 throwStreamError code stack =
   let codeBS = "UNKNOWN_CODE:" <> T.validate (T.toUTF8Bytes code)
    in E.throwIO $ UNKNOWN_CODE (SSEInfo codeBS "" stack)
+
+data SubmitError = SubmitError T.Text CallStack
+  deriving (Show)
+
+instance Exception SubmitError where
+  toException = someHStoreExceptionToException
+  fromException = someHStoreExceptionFromException
+
+throwSubmitError :: CallStack -> IO a
+throwSubmitError = E.throwIO . SubmitError "submit error"
+
+throwSubmitIfNotOK :: CallStack -> Int  -> IO Int
+throwSubmitIfNotOK stack ret = if ret == 0 then return 0 else throwSubmitError stack
 
 throwStoreError :: T.Text -> CallStack -> IO a
 throwStoreError desc stack =

@@ -20,6 +20,7 @@
 #include <logdevice/common/RSMBasedVersionedConfigStore.h>
 #include <logdevice/common/VersionedConfigStore.h>
 #include <logdevice/common/checks.h>
+#include <logdevice/common/debug.h>
 #include <logdevice/include/CheckpointStore.h>
 #include <logdevice/include/CheckpointStoreFactory.h>
 #include <logdevice/include/CheckpointedReaderBase.h>
@@ -247,6 +248,9 @@ const std::string* ld_client_get_settings(logdevice_client_t* client,
 facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
                                                    const char* name,
                                                    const char* value);
+
+HsInt ld_client_trim(logdevice_client_t* client, c_logid_t logid, c_lsn_t lsn,
+                     HsStablePtr mvar, HsInt cap, c_error_code_t* st_out);
 
 // ----------------------------------------------------------------------------
 // LogConfigType
