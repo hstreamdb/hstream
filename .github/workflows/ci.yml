@@ -70,15 +70,7 @@ jobs:
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --enable-tests --enable-benchmarks all
 
       - name: test
-        run: |
-          echo "====== Test hstream-store ======"
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-store
-          echo "====== Test hstream-sql ======"
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-sql
-          echo "====== Test hstream-processing ======"
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream-processing
-          echo "====== Test hstream ======"
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=always hstream
+        run: GHC=${{ matrix.ghc }} bash script/run_test.sh
 
       - name: check
         run: |
