@@ -53,8 +53,8 @@ void logdevice_vcs_get_config(logdevice_vcs_t* vcs, const char* key,
                               c_vcs_config_version_t* base_version_,
                               HsStablePtr mvar, HsInt cap,
                               vcs_value_callback_data_t* cb_data) {
-  auto value_cb = [&mvar, &cap, &cb_data](facebook::logdevice::Status st,
-                                          std::string val) {
+  auto value_cb = [mvar, cap, cb_data](facebook::logdevice::Status st,
+                                       std::string val) {
     if (cb_data) {
       cb_data->st = static_cast<c_error_code_t>(st);
       // If status is OK, cb will be invoked with the value.
@@ -80,8 +80,8 @@ void logdevice_vcs_get_config(logdevice_vcs_t* vcs, const char* key,
 void logdevice_vcs_get_latest_config(logdevice_vcs_t* vcs, const char* key,
                                      HsStablePtr mvar, HsInt cap,
                                      vcs_value_callback_data_t* cb_data) {
-  auto value_cb = [&mvar, &cap, &cb_data](facebook::logdevice::Status st,
-                                          std::string val) {
+  auto value_cb = [mvar, cap, cb_data](facebook::logdevice::Status st,
+                                       std::string val) {
     if (cb_data) {
       cb_data->st = static_cast<c_error_code_t>(st);
       // If status is OK, cb will be invoked with the value.
@@ -143,9 +143,9 @@ void logdevice_vcs_update_config(
     HsInt condition_mode, c_vcs_config_version_t version,
     // VersionedConfigStore::Condition END
     HsStablePtr mvar, HsInt cap, vcs_write_callback_data_t* cb_data) {
-  auto cb = [&mvar, &cap, &cb_data](facebook::logdevice::Status st,
-                                    vcs_config_version_t version,
-                                    std::string val) {
+  auto cb = [mvar, cap, cb_data](facebook::logdevice::Status st,
+                                 vcs_config_version_t version,
+                                 std::string val) {
     if (cb_data) {
       cb_data->st = static_cast<c_error_code_t>(st);
       if (st == Status::OK || st == Status::VERSION_MISMATCH) {

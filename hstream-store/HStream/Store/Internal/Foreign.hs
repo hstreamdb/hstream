@@ -14,15 +14,12 @@ import           Data.Primitive
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
-import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
 import           GHC.Stack
 import           Z.Data.CBytes                (CBytes)
 import qualified Z.Data.CBytes                as CBytes
-import           Z.Data.Vector                (Bytes)
-import           Z.Data.Vector.Base           (PrimVector (..))
 import           Z.Foreign                    (BA#, MBA#)
 import qualified Z.Foreign                    as Z
 
@@ -42,15 +39,23 @@ withAsyncPrimUnsafe
   :: (Prim a)
   => a -> (StablePtr PrimMVar -> Int -> MBA# a -> IO b)
   -> IO (a, b)
-withAsyncPrimUnsafe a f = mask_ $ do
+withAsyncPrimUnsafe a f = withAsyncPrimUnsafe' a f pure
+{-# INLINE withAsyncPrimUnsafe #-}
+
+withAsyncPrimUnsafe'
+  :: (Prim a)
+  => a -> (StablePtr PrimMVar -> Int -> MBA# a -> IO b)
+  -> (b -> IO c)
+  -> IO (a, c)
+withAsyncPrimUnsafe' a f g = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
-  Z.withPrimUnsafe a $ \a' -> do
+  withPrimSafe' a $ \a' -> do
     (cap, _) <- threadCapability =<< myThreadId
-    b <- f sp cap a'
+    c <- g =<< f sp cap a'
     takeMVar mvar `onException` forkIO (do takeMVar mvar; primitive_ (touch# a'))
-    return b
-{-# INLINE withAsyncPrimUnsafe #-}
+    return c
+{-# INLINE withAsyncPrimUnsafe' #-}
 
 withAsyncPrimUnsafe2
   :: (Prim a, Prim b)
@@ -59,8 +64,8 @@ withAsyncPrimUnsafe2
 withAsyncPrimUnsafe2 a b f = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
-  (a_, (b_, c_)) <- Z.withPrimUnsafe a $ \a' -> do
-    Z.withPrimUnsafe b $ \b' -> do
+  (a_, (b_, c_)) <- withPrimSafe' a $ \a' -> do
+    withPrimSafe' b $ \b' -> do
       (cap, _) <- threadCapability =<< myThreadId
       c <- f sp cap a' b'
       takeMVar mvar `onException` forkIO (do takeMVar mvar; primitive_ (touch# a'); primitive_ (touch# b'))
@@ -104,6 +109,17 @@ retryWhileAgain f retries = do
       | retries > 0 -> threadDelay 5000 >> (retryWhileAgain f $! retries - 1)
     _ -> E.throwStreamError errno callStack
 {-# INLINE retryWhileAgain #-}
+
+-------------------------------------------------------------------------------
+
+withPrimSafe' :: forall a b. Prim a => a -> (MBA# a -> IO b) -> IO (a, b)
+withPrimSafe' v f = do
+    mpa@(MutablePrimArray mba#) <- newAlignedPinnedPrimArray 1
+    writePrimArray mpa 0 v
+    !b <- f mba#
+    !a <- readPrimArray mpa 0
+    return (a, b)
+{-# INLINE withPrimSafe' #-}
 
 peekStdStringToCBytesN :: Int -> Ptr Z.StdString -> IO [CBytes]
 peekStdStringToCBytesN len ptr = forM [0..len-1] (peekStdStringToCBytesIdx ptr)

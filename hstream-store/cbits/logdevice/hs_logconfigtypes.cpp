@@ -107,9 +107,9 @@ facebook::logdevice::Status ld_client_make_loggroup(
   std::string path_ = path;
   auto start = facebook::logdevice::logid_t(start_logid);
   auto end = facebook::logdevice::logid_t(end_logid);
-  auto cb = [&](facebook::logdevice::Status st,
-                std::unique_ptr<LogGroup> loggroup_ptr,
-                const std::string& failure_reason) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st,
+                              std::unique_ptr<LogGroup> loggroup_ptr,
+                              const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       data->loggroup = new logdevice_loggroup_t;
@@ -146,8 +146,9 @@ void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
                             facebook::logdevice::Status* st_out,
                             logdevice_loggroup_t** loggroup_result) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st,
-                std::unique_ptr<LogGroup> loggroup_ptr) {
+  auto cb = [st_out, loggroup_result, cap,
+             mvar](facebook::logdevice::Status st,
+                   std::unique_ptr<LogGroup> loggroup_ptr) {
     if (st_out && loggroup_result) {
       *st_out = st;
       *loggroup_result = new logdevice_loggroup_t;
@@ -174,8 +175,8 @@ ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
                           HsStablePtr mvar, HsInt cap,
                           logsconfig_status_cb_data_t* data) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
-                const std::string& failure_reason) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st, uint64_t version,
+                              const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       data->version = version;
@@ -275,9 +276,9 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
                          HsStablePtr mvar, HsInt cap,
                          make_directory_cb_data_t* data) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st,
-                std::unique_ptr<LogDirectory> directory_ptr,
-                const std::string& failure_reason) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st,
+                              std::unique_ptr<LogDirectory> directory_ptr,
+                              const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       data->directory = new logdevice_logdirectory_t;
@@ -320,8 +321,8 @@ ld_client_remove_directory(logdevice_client_t* client, const char* path,
                            bool recursive, HsStablePtr mvar, HsInt cap,
                            logsconfig_status_cb_data_t* data) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
-                const std::string& failure_reason) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st, uint64_t version,
+                              const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       data->version = version;
@@ -352,8 +353,9 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
                         facebook::logdevice::Status* st_out,
                         logdevice_logdirectory_t** logdir_result) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st,
-                std::unique_ptr<LogDirectory> logdir) {
+  auto cb = [st_out, logdir_result, cap,
+             mvar](facebook::logdevice::Status st,
+                   std::unique_ptr<LogDirectory> logdir) {
     if (st_out && logdir_result) {
       *st_out = st;
       if (logdir) {
@@ -420,8 +422,8 @@ ld_client_rename(logdevice_client_t* client, const char* from_path,
                  logsconfig_status_cb_data_t* data) {
   std::string from_path_ = from_path;
   std::string to_path_ = to_path;
-  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
-                const std::string& failure_reason) {
+  auto cb = [data, mvar, cap](facebook::logdevice::Status st, uint64_t version,
+                              const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       data->version = version;
@@ -457,8 +459,8 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
                          LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
                          logsconfig_status_cb_data_t* data) {
   std::string path_ = path;
-  auto cb = [&](facebook::logdevice::Status st, uint64_t version,
-                const std::string& failure_reason) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st, uint64_t version,
+                              const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       data->version = version;

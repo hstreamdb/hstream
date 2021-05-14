@@ -14,7 +14,7 @@
 module HStream.Store.Internal.LogDevice.LogConfigTypes where
 
 import           Control.Exception              (finally)
-import           Control.Monad                  (forM, void, (<=<))
+import           Control.Monad                  (void, (<=<))
 import qualified Data.Map.Strict                as Map
 import           Data.Word
 import           Foreign.C

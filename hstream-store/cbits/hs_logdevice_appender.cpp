@@ -33,7 +33,8 @@ facebook::logdevice::Status _append_payload_async(
     const char* payload, HsInt offset, HsInt length,
     // Payload End
     AppendAttributes&& attrs) {
-  auto cb = [&](facebook::logdevice::Status st, const DataRecord& r) {
+  auto cb = [cb_data, mvar, cap](facebook::logdevice::Status st,
+                                 const DataRecord& r) {
     if (cb_data) {
       cb_data->st = static_cast<c_error_code_t>(st);
       cb_data->logid = r.logid.val_;

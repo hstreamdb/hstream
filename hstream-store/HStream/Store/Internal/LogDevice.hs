@@ -10,6 +10,7 @@ module HStream.Store.Internal.LogDevice
   , append
   , appendSync
   , appendSyncTS
+  , trim
 
   , module HStream.Store.Internal.LogDevice.Checkpoint
   , module HStream.Store.Internal.LogDevice.LogConfigTypes
@@ -36,10 +37,12 @@ import qualified Z.Foreign                                             as Z
 import qualified HStream.Store.Exception                               as E
 import           HStream.Store.Internal.Types
 
+import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice.Checkpoint
 import           HStream.Store.Internal.LogDevice.LogConfigTypes
 import           HStream.Store.Internal.LogDevice.Reader
 import           HStream.Store.Internal.LogDevice.VersionedConfigStore
+import           Z.Foreign                                             (MBA#)
 
 -------------------------------------------------------------------------------
 -- Client
@@ -120,6 +123,14 @@ getClientSettings client key =
   CBytes.withCBytesUnsafe key $ \key' ->
     Z.fromStdString $ c_ld_client_get_settings client' key'
 
+trim :: LDClient -> C_LogID -> LSN -> IO ()
+trim client logid lsn =
+  withForeignPtr client $ \client' -> do
+    void $ E.throwStreamErrorIfNotOK' . fst =<<
+      withAsyncPrimUnsafe' (0 :: ErrorCode)
+                           (c_ld_client_trim client' logid lsn)
+                           (E.throwSubmitIfNotOK callStack)
+
 foreign import ccall unsafe "hs_logdevice.h new_logdevice_client"
   c_new_logdevice_client :: Z.BA# Word8
                          -> Z.MBA# (Ptr LogDeviceClient)
@@ -141,6 +152,14 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_set_settings"
 
 foreign import ccall safe "hs_logdevice.h ld_client_get_tail_lsn_sync"
   c_ld_client_get_tail_lsn :: Ptr LogDeviceClient -> C_LogID -> IO LSN
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
+  c_ld_client_trim :: Ptr LogDeviceClient
+                   -> C_LogID
+                   -> LSN
+                   -> StablePtr PrimMVar -> Int
+                   -> MBA# ErrorCode
+                   -> IO Int
 
 -------------------------------------------------------------------------------
 -- Writer API
