@@ -75,5 +75,21 @@ c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client,
   return client->rep->getTailLSNSync(facebook::logdevice::logid_t(logid));
 }
 
+facebook::logdevice::Status ld_client_trim(logdevice_client_t* client,
+                                           c_logid_t logid, c_lsn_t lsn,
+                                           HsStablePtr mvar, HsInt cap,
+                                           c_error_code_t* st_out) {
+  auto cb = [&](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = static_cast<c_error_code_t>(st);
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->trim(logid_t(logid), lsn, cb);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
 // ----------------------------------------------------------------------------
 } // end extern "C"

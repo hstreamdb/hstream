@@ -248,6 +248,11 @@ facebook::logdevice::Status ld_client_set_settings(logdevice_client_t* client,
                                                    const char* name,
                                                    const char* value);
 
+  facebook::logdevice::Status ld_client_trim(logdevice_client_t* client,
+                                           c_logid_t logid, c_lsn_t lsn,
+                                           HsStablePtr mvar, HsInt cap,
+                                           c_error_code_t* st_out);
+
 // ----------------------------------------------------------------------------
 // LogConfigType
 

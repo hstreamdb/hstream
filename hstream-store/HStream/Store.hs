@@ -13,6 +13,7 @@ module HStream.Store
   , setClientSettings
   , getClientSettings
   , getTailLSN
+  , trim
 
     -- * Stream
   , module HStream.Store.Stream
