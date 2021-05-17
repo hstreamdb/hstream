@@ -25,9 +25,9 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Processing.Connector
     HStream.Processing.Encoding
     HStream.Processing.Error
-    HStream.Processing.MockRuntime
     HStream.Processing.MockStreamStore
     HStream.Processing.Processor
     HStream.Processing.Processor.Internal

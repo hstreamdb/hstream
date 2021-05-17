@@ -10,11 +10,12 @@ import           Data.Maybe
 import qualified Data.Text                          as T
 import qualified Data.Text.Lazy                     as TL
 import qualified Data.Text.Lazy.Encoding            as TLE
+import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
-import           HStream.Processing.MockRuntime
 import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
 import           HStream.Processing.Store
+import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified Prelude                            as P
 import           RIO
@@ -33,6 +34,11 @@ instance FromJSON R
 
 main :: IO ()
 main = do
+  mockStore <- mkMockStreamStore
+  sourceConnector1 <- mkMockStoreSourceConnector mockStore
+  sourceConnector2 <- mkMockStoreSourceConnector mockStore
+  sinkConnector <- mkMockStoreSinkConnector mockStore
+
   let sourceConfig =
         SourceConfig
           { sourceName = "source",
@@ -60,37 +66,37 @@ main = do
               "count"
               (aggProcessor "demo-store" 0 countR)
               ["filter"]
-            <> addSink sinkConfig ["count"]
+            <> addSink sinkConfig ["count"] sinkConnector
             <> addStateStore "demo-store" memoryStore ["count"]
-  mockStore <- mkMockStreamStore
-  mp <- mkMockProducer mockStore
-  mc <- mkMockConsumer mockStore ["demo-sink"]
+
   _ <- async $
     forever $
       do
         threadDelay 1000000
         MockMessage {..} <- mkMockData
-        send
-          mp
-          RawProducerRecord
-            { rprTopic = "demo-source",
-              rprKey = mmKey,
-              rprValue = mmValue,
-              rprTimestamp = mmTimestamp
+        writeRecord
+          sinkConnector
+          SinkRecord
+            { snkStream = "demo-source",
+              snkKey = mmKey,
+              snkValue = mmValue,
+              snkTimestamp = mmTimestamp
             }
+
   _ <- async $
     forever $
       do
-        records <- pollRecords mc 100 1000
-        forM_ records $ \RawConsumerRecord {..} -> do
-          let k = fromJust rcrKey
+        subscribeToStream sourceConnector1 "demo-sink" Earlist
+        records <- readRecords sourceConnector1
+        forM_ records $ \SourceRecord {..} -> do
+          let k = fromJust srcKey
           P.putStrLn $
             ">>> count: key: "
               ++ show k
               ++ " , value: "
-              ++ show (B.decode rcrValue :: Int)
+              ++ show (B.decode srcValue :: Int)
 
-  runTask mockStore task
+  runTask sourceConnector2 task
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =

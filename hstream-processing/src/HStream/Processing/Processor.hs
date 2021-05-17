@@ -4,13 +4,13 @@
 {-# LANGUAGE StrictData        #-}
 
 module HStream.Processing.Processor
-  ( buildTask,
-    build,
+  ( build,
+    buildTask,
     addSource,
     addProcessor,
     addSink,
     addStateStore,
-    -- runTask,
+    runTask,
     forward,
     getKVStateStore,
     getSessionStateStore,
@@ -19,19 +19,18 @@ module HStream.Processing.Processor
     Processor (..),
     SourceConfig (..),
     SinkConfig (..),
-    -- TaskConfig (..),
-    -- MessageStoreType (..),
   )
 where
 
 import           Control.Exception                     (throw)
 import           Data.Maybe
 import           Data.Typeable
+import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
 import           HStream.Processing.Error              (HStreamError (..))
 import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
--- import           HStream.Processing.Util
+import           HStream.Processing.Type
 import           RIO
 import qualified RIO.ByteString.Lazy                   as BL
 import qualified RIO.HashMap                           as HM
@@ -85,6 +84,31 @@ buildTask taskName =
   mempty
     { ttcName = taskName
     }
+
+runTask ::
+  SourceConnector ->
+  Task ->
+  IO ()
+runTask SourceConnector {..} task@Task {..} = do
+  let sourceStreamNames = HM.keys taskSourceConfig
+  logOptions <- logOptionsHandle stderr True
+  withLogFunc logOptions $ \lf -> do
+    ctx <- buildTaskContext task lf
+    forM_ sourceStreamNames (`subscribeToStream` Latest)
+    forever $
+      runRIO ctx $
+        do
+          logDebug "start iteration..."
+          sourceRecords <- liftIO readRecords
+          logDebug $ "polled " <> display (length sourceRecords) <> " records"
+          forM_
+            sourceRecords
+            ( \SourceRecord {..} -> do
+                let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
+                let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
+                liftIO $ updateTimestampInTaskContext ctx srcTimestamp
+                runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+            )
 
 validateTopology :: TaskTopologyConfig -> ()
 validateTopology TaskTopologyConfig {..} =
@@ -160,24 +184,26 @@ addProcessor name processor parentNames =
 buildSinkProcessor ::
   (Typeable k, Typeable v) =>
   SinkConfig k v ->
+  SinkConnector ->
   Processor k v
-buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
-  logDebug "enter sink processor"
+buildSinkProcessor SinkConfig {..} SinkConnector {..} = Processor $ \Record {..} -> do
+  logDebug $ "enter sink processor for stream " <> display sinkName
   let rk = liftA2 runSer keySerializer recordKey
   let rv = runSer valueSerializer recordValue
-  forward r {recordKey = rk, recordValue = rv}
+  liftIO $ writeRecord SinkRecord {snkStream = sinkTopicName, snkKey = rk, snkValue = rv, snkTimestamp = recordTimestamp}
 
 addSink ::
   (Typeable k, Typeable v) =>
   SinkConfig k v ->
   [T.Text] ->
+  SinkConnector ->
   TaskBuilder
-addSink cfg@SinkConfig {..} parentNames =
+addSink cfg@SinkConfig {..} parentNames sinkConnector =
   mempty
     { topology =
         HM.singleton
           sinkName
-          (mkEProcessor $ buildSinkProcessor cfg, parentNames),
+          (mkEProcessor $ buildSinkProcessor cfg sinkConnector, parentNames),
       sinkCfgs =
         HM.singleton
           sinkName

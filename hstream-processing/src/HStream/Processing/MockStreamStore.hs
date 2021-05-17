@@ -5,33 +5,20 @@
 
 module HStream.Processing.MockStreamStore
   ( MockMessage (..),
-    MockStreamStore (..),
-    MockConsumer,
-    MockProducer,
-    StreamName,
-    Offset,
-    Timestamp,
-    RawConsumerRecord (..),
-    RawProducerRecord (..),
     mkMockStreamStore,
-    mkMockProducer,
-    mkMockConsumer,
-    pollRecords,
-    send,
+    mkMockStoreSourceConnector,
+    mkMockStoreSinkConnector,
   )
 where
 
+import           HStream.Processing.Connector
 import           HStream.Processing.Type
 import           RIO
-import qualified RIO.ByteString.Lazy     as BL
-import qualified RIO.HashMap             as HM
-import           RIO.HashMap.Partial     as HM'
-import qualified RIO.HashSet             as HS
-import qualified RIO.Text                as T
-
-type StreamName = T.Text
-
-type Offset = Word64
+import qualified RIO.ByteString.Lazy          as BL
+import qualified RIO.HashMap                  as HM
+import           RIO.HashMap.Partial          as HM'
+import qualified RIO.HashSet                  as HS
+import qualified RIO.Text                     as T
 
 data MockMessage = MockMessage
   { mmTimestamp :: Timestamp,
@@ -51,47 +38,71 @@ mkMockStreamStore = do
       { mssData = s
       }
 
+mkMockStoreSourceConnector :: MockStreamStore -> IO SourceConnector
+mkMockStoreSourceConnector mockStore = do
+  consumer <- mkMockConsumer mockStore
+  return $
+    SourceConnector
+      { subscribeToStream = subscribeToStreamMock consumer,
+        unSubscribeToStream = unSubscribeToStreamMock consumer,
+        readRecords = readRecordsMock consumer,
+        commitCheckpoint = commitCheckpointMock consumer
+      }
+
+mkMockStoreSinkConnector :: MockStreamStore -> IO SinkConnector
+mkMockStoreSinkConnector mockStore = do
+  producer <- mkMockProducer mockStore
+  return $
+    SinkConnector
+      { writeRecord = writeRecordMock producer
+      }
+
+-- 实现的时候都要传一个隐式的 共享的 client 进去的，
+-- 状态是可变的
 data MockConsumer = MockConsumer
-  { mcSubscribedStreams :: HS.HashSet StreamName,
-    mcStreamOffsets :: HM.HashMap T.Text Offset,
+  { mcSubscribedStreams :: IORef (HS.HashSet StreamName),
     mcStore :: MockStreamStore
   }
 
-data RawConsumerRecord = RawConsumerRecord
-  { rcrTopic :: StreamName,
-    rcrOffset :: Offset,
-    rcrTimestamp :: Timestamp,
-    rcrKey :: Maybe BL.ByteString,
-    rcrValue :: BL.ByteString
-  }
+mkMockConsumer :: MockStreamStore -> IO MockConsumer
+mkMockConsumer streamStore = do
+  s <- newIORef HS.empty
+  return
+    MockConsumer
+      { mcSubscribedStreams = s,
+        mcStore = streamStore
+      }
 
-data RawProducerRecord = RawProducerRecord
-  { rprTopic :: StreamName,
-    rprKey :: Maybe BL.ByteString,
-    rprValue :: BL.ByteString,
-    rprTimestamp :: Timestamp
-  }
+subscribeToStreamMock :: MockConsumer -> StreamName -> Offset -> IO ()
+subscribeToStreamMock MockConsumer {..} streamName _ = do
+  old <- readIORef mcSubscribedStreams
+  writeIORef mcSubscribedStreams $ HS.insert streamName old
 
-pollRecords :: MockConsumer -> Int -> Int -> IO [RawConsumerRecord]
-pollRecords MockConsumer {..} _ pollDuration = do
-  -- just ignore records num limit
-  threadDelay (pollDuration * 1000)
+unSubscribeToStreamMock :: MockConsumer -> StreamName -> IO ()
+unSubscribeToStreamMock MockConsumer {..} streamName = do
+  old <- readIORef mcSubscribedStreams
+  writeIORef mcSubscribedStreams $ HS.delete streamName old
+
+readRecordsMock :: MockConsumer -> IO [SourceRecord]
+readRecordsMock MockConsumer {..} = do
+  threadDelay (1000 * 1000)
+  streams <- readIORef mcSubscribedStreams
   atomically $ do
     dataStore <- readTVar $ mssData mcStore
     let r =
           HM.foldlWithKey'
             ( \a k v ->
-                if HS.member k mcSubscribedStreams
+                if HS.member k streams
                   then
                     a
                       ++ map
                         ( \MockMessage {..} ->
-                            RawConsumerRecord
-                              { rcrTopic = k,
-                                rcrOffset = 0,
-                                rcrTimestamp = mmTimestamp,
-                                rcrKey = mmKey,
-                                rcrValue = mmValue
+                            SourceRecord
+                              { srcStream = k,
+                                srcOffset = 0,
+                                srcTimestamp = mmTimestamp,
+                                srcKey = mmKey,
+                                srcValue = mmValue
                               }
                         )
                         v
@@ -102,7 +113,7 @@ pollRecords MockConsumer {..} _ pollDuration = do
     let newDataStore =
           HM.mapWithKey
             ( \k v ->
-                if HS.member k mcSubscribedStreams
+                if HS.member k streams
                   then []
                   else v
             )
@@ -110,14 +121,8 @@ pollRecords MockConsumer {..} _ pollDuration = do
     writeTVar (mssData mcStore) newDataStore
     return r
 
-mkMockConsumer :: MockStreamStore -> [StreamName] -> IO MockConsumer
-mkMockConsumer streamStore streams =
-  return
-    MockConsumer
-      { mcSubscribedStreams = HS.fromList streams,
-        mcStreamOffsets = HM.empty,
-        mcStore = streamStore
-      }
+commitCheckpointMock :: MockConsumer -> StreamName -> Offset -> IO ()
+commitCheckpointMock _ _ _ = return ()
 
 data MockProducer = MockProducer
   { mpStore :: MockStreamStore
@@ -132,21 +137,21 @@ mkMockProducer store =
       { mpStore = store
       }
 
-send :: MockProducer -> RawProducerRecord -> IO ()
-send MockProducer {..} RawProducerRecord {..} =
+writeRecordMock :: MockProducer -> SinkRecord -> IO ()
+writeRecordMock MockProducer {..} SinkRecord {..} = do
   atomically $ do
     let record =
           MockMessage
-            { mmTimestamp = rprTimestamp,
-              mmKey = rprKey,
-              mmValue = rprValue
+            { mmTimestamp = snkTimestamp,
+              mmKey = snkKey,
+              mmValue = snkValue
             }
     dataStore <- readTVar $ mssData mpStore
-    if HM.member rprTopic dataStore
+    if HM.member snkStream dataStore
       then do
-        let td = dataStore HM'.! rprTopic
-        let newDataStore = HM.insert rprTopic (td ++ [record]) dataStore
+        let td = dataStore HM'.! snkStream
+        let newDataStore = HM.insert snkStream (td ++ [record]) dataStore
         writeTVar (mssData mpStore) newDataStore
       else do
-        let newDataStore = HM.insert rprTopic [record] dataStore
+        let newDataStore = HM.insert snkStream [record] dataStore
         writeTVar (mssData mpStore) newDataStore
