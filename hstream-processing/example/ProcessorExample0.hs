@@ -8,10 +8,11 @@ import           Data.Aeson
 import           Data.Maybe
 import qualified Data.Text.Lazy                     as TL
 import qualified Data.Text.Lazy.Encoding            as TLE
+import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
-import           HStream.Processing.MockRuntime
 import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
+import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified Prelude                            as P
 import           RIO
@@ -30,6 +31,11 @@ instance FromJSON R
 
 main :: IO ()
 main = do
+  mockStore <- mkMockStreamStore
+  sourceConnector1 <- mkMockStoreSourceConnector mockStore
+  sourceConnector2 <- mkMockStoreSourceConnector mockStore
+  sinkConnector <- mkMockStoreSinkConnector mockStore
+
   let sourceConfig =
         SourceConfig
           { sourceName = "source",
@@ -52,31 +58,29 @@ main = do
               "filter"
               (filterProcessor filterR)
               ["source"]
-            <> addSink sinkConfig ["filter"]
-  mockStore <- mkMockStreamStore
-  mp <- mkMockProducer mockStore
-  mc <- mkMockConsumer mockStore ["demo-sink"]
+            <> addSink sinkConfig ["filter"] sinkConnector
   _ <- async $
     forever $
       do
         threadDelay 1000000
         MockMessage {..} <- mkMockData
-        send
-          mp
-          RawProducerRecord
-            { rprTopic = "demo-source",
-              rprKey = mmKey,
-              rprValue = mmValue,
-              rprTimestamp = mmTimestamp
+        writeRecord
+          sinkConnector
+          SinkRecord
+            { snkStream = "demo-source",
+              snkKey = mmKey,
+              snkValue = mmValue,
+              snkTimestamp = mmTimestamp
             }
   _ <- async $
     forever $
       do
-        records <- pollRecords mc 100 1000
-        forM_ records $ \RawConsumerRecord {..} ->
-          P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
+        subscribeToStream sourceConnector1 "demo-sink" Earlist
+        records <- readRecords sourceConnector1
+        forM_ records $ \SourceRecord {..} ->
+          P.putStr "detect abnormal data: " >> BL.putStrLn srcValue
 
-  runTask mockStore task
+  runTask sourceConnector2 task
 
 filterR :: Record Void R -> Bool
 filterR Record {..} =

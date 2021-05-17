@@ -26,6 +26,7 @@ module HStream.Processing.Stream
 where
 
 import           Data.Maybe
+import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Internal
@@ -131,9 +132,10 @@ tableStoreProcessor keySerde valueSerde storeName = Processor $ \r@Record {..} -
 to ::
   (Typeable k, Typeable v) =>
   StreamSinkConfig k v ->
+  SinkConnector ->
   Stream k v ->
   IO StreamBuilder
-to StreamSinkConfig {..} Stream {..} = do
+to StreamSinkConfig {..} sinkConnector Stream {..} = do
   sinkProcessorName <- mkInternalProcessorName (sicTopicName `T.append` "-SINK-") streamInternalBuilder
   let sinkCfg =
         SinkConfig
@@ -142,7 +144,7 @@ to StreamSinkConfig {..} Stream {..} = do
             keySerializer = Just $ serializer sicKeySerde,
             valueSerializer = serializer sicValueSerde
           }
-  let newBuilder = addSinkInternal sinkCfg [streamProcessorName] streamInternalBuilder
+  let newBuilder = addSinkInternal sinkCfg [streamProcessorName] sinkConnector streamInternalBuilder
   return $ StreamBuilder {sbInternalBuilder = newBuilder}
 
 build :: StreamBuilder -> Task

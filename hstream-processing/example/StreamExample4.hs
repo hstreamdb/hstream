@@ -8,13 +8,14 @@ import           Data.Aeson
 import           Data.Maybe
 import qualified Data.Text.Lazy                        as TL
 import qualified Data.Text.Lazy.Encoding               as TLE
+import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
-import           HStream.Processing.MockRuntime
 import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
 import           HStream.Processing.Store
 import qualified HStream.Processing.Stream             as HS
 import           HStream.Processing.Stream.JoinWindows
+import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified Prelude                               as P
 import           RIO
@@ -51,6 +52,11 @@ instance FromJSON R2
 
 main :: IO ()
 main = do
+  mockStore <- mkMockStreamStore
+  sourceConnector1 <- mkMockStoreSourceConnector mockStore
+  sourceConnector2 <- mkMockStoreSourceConnector mockStore
+  sinkConnector <- mkMockStoreSinkConnector mockStore
+
   let textSerde =
         Serde
           { serializer = Serializer TLE.encodeUtf8,
@@ -121,39 +127,39 @@ main = do
       >>= HS.stream streamSourceConfig1
       >>= HS.joinStream stream2 joiner keySelector1 keySelector2 joinWindows streamJoined
       >>= HS.filter filterR
-      >>= HS.to streamSinkConfig
-  mockStore <- mkMockStreamStore
-  mp <- mkMockProducer mockStore
-  mc <- mkMockConsumer mockStore [sTopicName]
+      >>= HS.to streamSinkConfig sinkConnector
+
   _ <- async $
     forever $
       do
         threadDelay 1000000
         MockMessage {..} <- mkMockData
-        send
-          mp
-          RawProducerRecord
-            { rprTopic = hTopicName,
-              rprKey = mmKey,
-              rprValue = encode $ R2 {r2Humidity = humidity ((fromJust . decode) mmValue :: R)},
-              rprTimestamp = mmTimestamp
+        writeRecord
+          sinkConnector
+          SinkRecord
+            { snkStream = hTopicName,
+              snkKey = mmKey,
+              snkValue = encode $ R2 {r2Humidity = humidity ((fromJust . decode) mmValue :: R)},
+              snkTimestamp = mmTimestamp
             }
-        send
-          mp
-          RawProducerRecord
-            { rprTopic = tTopicName,
-              rprKey = mmKey,
-              rprValue = encode $ R1 {r1Temperature = temperature ((fromJust . decode) mmValue :: R)},
-              rprTimestamp = mmTimestamp
+        writeRecord
+          sinkConnector
+          SinkRecord
+            { snkStream = tTopicName,
+              snkKey = mmKey,
+              snkValue = encode $ R1 {r1Temperature = temperature ((fromJust . decode) mmValue :: R)},
+              snkTimestamp = mmTimestamp
             }
+
   _ <- async $
     forever $
       do
-        records <- pollRecords mc 100 1000
-        forM_ records $ \RawConsumerRecord {..} ->
-          P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
+        subscribeToStream sourceConnector1 sTopicName Earlist
+        records <- readRecords sourceConnector1
+        forM_ records $ \SourceRecord {..} ->
+          P.putStr "detect abnormal data: " >> BL.putStrLn srcValue
 
-  runTask mockStore (HS.build streamBuilder)
+  runTask sourceConnector2 (HS.build streamBuilder)
 
 joiner :: R1 -> R2 -> R
 joiner R1 {..} R2 {..} =

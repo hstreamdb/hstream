@@ -13,6 +13,7 @@ import           HStream.Processing.Error (HStreamError (..))
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           RIO
+import qualified RIO.ByteString.Lazy      as BL
 import qualified RIO.HashMap              as HM
 import qualified RIO.HashSet              as HS
 import qualified RIO.Text                 as T
@@ -29,6 +30,11 @@ mkEProcessor proc = EProcessor $ \(ERecord record) ->
   case cast record of
     Just r -> runP proc r
     Nothing -> throw $ TypeCastError ("mkEProcessor: type cast error, real record type is: " `T.append` T.pack (show (typeOf record)))
+
+--
+newtype SourceProcessor = SourceProcessor {runSourceP :: RIO TaskContext ()}
+
+newtype SinkProcessor = SinkProcessor {runSinkP :: BL.ByteString -> RIO TaskContext ()}
 
 data Record k v = Record
   { recordKey :: Maybe k,
