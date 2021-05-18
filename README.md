@@ -74,6 +74,32 @@ You can reach the HStreamDB community and developers via the following channels:
 
 Please submit any bugs, issues, and feature requests to [hstreamdb/hstream](https://github.com/hstreamdb/hstream/issues).
 
+
+## How to build (for developers only)
+
+1. Make sure you have Docker installed, and can run `docker` as a non-root user.
+2. Change directory to the project root.
+3. Then you can run our script `dev-tools`
+
+Start dev-cluster:
+
+```sh
+script/dev-tools cluster-start
+```
+
+Enter an interactive shell:
+
+```sh
+script/dev-tools shell
+```
+
+Build as other haskell projects:
+
+```
+$ cabal build all
+```
+
+
 ## License
 
 HStreamDB is under the BSD 3-Clause license. See the [LICENSE](https://github.com/hstreamdb/hstream/blob/master/LICENSE) file for details.
