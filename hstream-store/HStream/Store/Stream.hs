@@ -14,6 +14,9 @@ module HStream.Store.Stream
   , FFI.C_LogID
   , getCLogIDByStreamName
   , LD.getLogGroup
+  , LD.getLogGroupByID
+  , LD.logGroupGetName
+  , LD.logGroupGetFullyQualifiedName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
 
@@ -200,8 +203,8 @@ appendRecord
   -> ProducerRecord
   -> Maybe (FFI.KeyType, CBytes)
   -> IO FFI.AppendCallBackData
-appendRecord client logid payload m_key_attr =
-  LD.append client logid (encodeRecord payload) m_key_attr
+appendRecord client logid payload =
+  LD.append client logid (encodeRecord payload)
 
 readerReadRecord :: FFI.LDReader -> Int -> IO [ConsumerRecord]
 readerReadRecord reader maxlen = map decodeRecord <$> LD.readerRead reader maxlen

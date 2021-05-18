@@ -11,8 +11,8 @@ import           HStream.Store.SpecUtils
 
 newRandomTopic :: IO (S.StreamName, S.StreamName)
 newRandomTopic = do
-  topic <- ("ci/stream/" <>) <$> newRandomName 5
-  newTopic <- ("ci/stream/" <>) <$> newRandomName 5
+  topic <- ("/ci/stream/" <>) <$> newRandomName 5
+  newTopic <- ("/ci/stream/" <>) <$> newRandomName 5
   return (topic, newTopic)
 
 spec :: Spec
@@ -29,6 +29,12 @@ spec = describe "HStream.Store.Topic" $ do
                                         }
     S.createStream client topic attrs
     S.doesStreamExists client topic `shouldReturn` True
+
+  it "get loggroup by name or id shoule be equal" $ do
+    name <- S.logGroupGetFullyQualifiedName =<< S.getLogGroup client topic
+    logid <- S.getCLogIDByStreamName client name
+    name' <- S.logGroupGetFullyQualifiedName =<< S.getLogGroupByID client logid
+    name `shouldBe` name'
 
   it "rename topic" $ do
     print $ "Rename topic " <> topic <> " to " <> newTopic
