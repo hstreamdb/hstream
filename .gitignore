@@ -28,4 +28,4 @@ Local*
 *.swp
 .idea/
 .vscode/
-/ldadmin/gen-hs2/
+gen-hs2/
