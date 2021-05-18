@@ -50,9 +50,9 @@ import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Parse
+import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
-
 --------------------------------------------------------------------------------
 type SourceTopic = [TopicName]
 type SinkTopic   = TopicName
@@ -84,7 +84,10 @@ streamCodegen input = do
       return $ InsertPlan topic (encode object)
     RQInsert (RInsertJSON topic bs) -> do
       return $ InsertPlan topic (BSL.fromStrict bs)
+    RQShow x -> print x >> throwIO NotSupported
 
+data NotSupported = NotSupported deriving Show
+instance Exception NotSupported
 --------------------------------------------------------------------------------
 type SourceConfigType = HS.StreamSourceConfig Object Object
 genStreamSourceConfig :: RFrom -> (SourceConfigType, Maybe SourceConfigType)

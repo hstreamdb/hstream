@@ -376,13 +376,32 @@ instance Refine Insert where
   refine (InsertJson _ (Ident s) ss) =
     RInsertJSON s (refine $ ss)
 
+---- SHOW
+data RShow
+  = RShow RShowOption
+  deriving (Eq, Show)
+instance Refine ShowQ where
+  refine (DShow _ showOp) = RShow (refine showOp)
+type instance RefinedType ShowQ = RShow
+
+data RShowOption
+  = RShowStreams
+  | RShowQueries
+  deriving (Eq, Show)
+instance Refine ShowOption where
+  refine (ShowStreams _) = RShowStreams
+  refine (ShowQueries _) = RShowQueries
+type instance RefinedType ShowOption = RShowOption
+
 ---- SQL
 data RSQL = RQSelect RSelect
           | RQCreate RCreate
           | RQInsert RInsert
+          | RQShow   RShow
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
   refine (QSelect _ select) = RQSelect (refine select)
   refine (QCreate _ create) = RQCreate (refine create)
   refine (QInsert _ insert) = RQInsert (refine insert)
+  refine (QShow   _ show)   = RQShow   (refine show)

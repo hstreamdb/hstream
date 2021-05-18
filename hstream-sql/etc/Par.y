@@ -93,39 +93,42 @@ import qualified Data.Text
   'ON' { PT _ (TS _ 71) }
   'OR' { PT _ (TS _ 72) }
   'OUTER' { PT _ (TS _ 73) }
-  'REPLICATE' { PT _ (TS _ 74) }
-  'REVERSE' { PT _ (TS _ 75) }
-  'RIGHT_TRIM' { PT _ (TS _ 76) }
-  'ROUND' { PT _ (TS _ 77) }
-  'SECOND' { PT _ (TS _ 78) }
-  'SELECT' { PT _ (TS _ 79) }
-  'SESSION' { PT _ (TS _ 80) }
-  'SIN' { PT _ (TS _ 81) }
-  'SINH' { PT _ (TS _ 82) }
-  'SQRT' { PT _ (TS _ 83) }
-  'STREAM' { PT _ (TS _ 84) }
-  'STRLEN' { PT _ (TS _ 85) }
-  'SUM' { PT _ (TS _ 86) }
-  'TAN' { PT _ (TS _ 87) }
-  'TANH' { PT _ (TS _ 88) }
-  'TIME' { PT _ (TS _ 89) }
-  'TO_LOWER' { PT _ (TS _ 90) }
-  'TO_STR' { PT _ (TS _ 91) }
-  'TO_UPPER' { PT _ (TS _ 92) }
-  'TRIM' { PT _ (TS _ 93) }
-  'TRUE' { PT _ (TS _ 94) }
-  'TUMBLING' { PT _ (TS _ 95) }
-  'VALUES' { PT _ (TS _ 96) }
-  'WEEK' { PT _ (TS _ 97) }
-  'WHERE' { PT _ (TS _ 98) }
-  'WITH' { PT _ (TS _ 99) }
-  'WITHIN' { PT _ (TS _ 100) }
-  'YEAR' { PT _ (TS _ 101) }
-  '[' { PT _ (TS _ 102) }
-  ']' { PT _ (TS _ 103) }
-  '{' { PT _ (TS _ 104) }
-  '||' { PT _ (TS _ 105) }
-  '}' { PT _ (TS _ 106) }
+  'QUERIES' { PT _ (TS _ 74) }
+  'REPLICATE' { PT _ (TS _ 75) }
+  'REVERSE' { PT _ (TS _ 76) }
+  'RIGHT_TRIM' { PT _ (TS _ 77) }
+  'ROUND' { PT _ (TS _ 78) }
+  'SECOND' { PT _ (TS _ 79) }
+  'SELECT' { PT _ (TS _ 80) }
+  'SESSION' { PT _ (TS _ 81) }
+  'SHOW' { PT _ (TS _ 82) }
+  'SIN' { PT _ (TS _ 83) }
+  'SINH' { PT _ (TS _ 84) }
+  'SQRT' { PT _ (TS _ 85) }
+  'STREAM' { PT _ (TS _ 86) }
+  'STREAMS' { PT _ (TS _ 87) }
+  'STRLEN' { PT _ (TS _ 88) }
+  'SUM' { PT _ (TS _ 89) }
+  'TAN' { PT _ (TS _ 90) }
+  'TANH' { PT _ (TS _ 91) }
+  'TIME' { PT _ (TS _ 92) }
+  'TO_LOWER' { PT _ (TS _ 93) }
+  'TO_STR' { PT _ (TS _ 94) }
+  'TO_UPPER' { PT _ (TS _ 95) }
+  'TRIM' { PT _ (TS _ 96) }
+  'TRUE' { PT _ (TS _ 97) }
+  'TUMBLING' { PT _ (TS _ 98) }
+  'VALUES' { PT _ (TS _ 99) }
+  'WEEK' { PT _ (TS _ 100) }
+  'WHERE' { PT _ (TS _ 101) }
+  'WITH' { PT _ (TS _ 102) }
+  'WITHIN' { PT _ (TS _ 103) }
+  'YEAR' { PT _ (TS _ 104) }
+  '[' { PT _ (TS _ 105) }
+  ']' { PT _ (TS _ 106) }
+  '{' { PT _ (TS _ 107) }
+  '||' { PT _ (TS _ 108) }
+  '}' { PT _ (TS _ 109) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -163,6 +166,7 @@ SQL :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.SQL) }
 SQL : Select ';' { (fst $1, HStream.SQL.Abs.QSelect (fst $1) (snd $1)) }
     | Create ';' { (fst $1, HStream.SQL.Abs.QCreate (fst $1) (snd $1)) }
     | Insert ';' { (fst $1, HStream.SQL.Abs.QInsert (fst $1) (snd $1)) }
+    | ShowQ ';' { (fst $1, HStream.SQL.Abs.QShow (fst $1) (snd $1)) }
 
 Create :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Create) }
 Create : 'CREATE' 'STREAM' Ident 'WITH' '(' ListStreamOption ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DCreate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $6)) }
@@ -191,6 +195,13 @@ ListValueExpr :: { (HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.ValueExpr]) 
 ListValueExpr : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
               | ValueExpr { (fst $1, (:[]) (snd $1)) }
               | ValueExpr ',' ListValueExpr { (fst $1, (:) (snd $1) (snd $3)) }
+
+ShowQ :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ShowQ) }
+ShowQ : 'SHOW' ShowOption { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DShow (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+
+ShowOption :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ShowOption) }
+ShowOption : 'QUERIES' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ShowQueries (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
+           | 'STREAMS' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ShowStreams (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
 
 Select :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Select) }
 Select : Sel From Where GroupBy Having 'EMIT' 'CHANGES' { (fst $1, HStream.SQL.Abs.DSelect (fst $1) (snd $1) (snd $2) (snd $3) (snd $4) (snd $5)) }

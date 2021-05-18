@@ -40,6 +40,7 @@ entrypoints SQL ;
 QSelect. SQL ::= Select ";" ;
 QCreate. SQL ::= Create ";" ;
 QInsert. SQL ::= Insert ";" ;
+QShow.   SQL ::= ShowQ  ";" ;
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
@@ -56,6 +57,11 @@ separator Ident "," ;
 separator ValueExpr "," ;
 InsertBinary. Insert ::= "INSERT" "INTO" Ident "VALUES" String ;
 InsertJson.   Insert ::= "INSERT" "INTO" Ident "VALUES" SString ;
+
+---- Show Query
+DShow. ShowQ ::= "SHOW" ShowOption ;
+ShowQueries. ShowOption ::= "QUERIES" ;
+ShowStreams. ShowOption ::= "STREAMS" ;
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;

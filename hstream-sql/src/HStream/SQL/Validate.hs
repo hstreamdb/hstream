@@ -600,8 +600,12 @@ instance Validate Insert where
       Nothing -> Left $ buildSQLException ParseException pos "Invalid JSON text"
       Just _  -> return insert
 
+------------------------------------- SHOW -------------------------------------
+instance Validate ShowQ where
+  validate show = return show
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where
   validate sql@(QSelect _ select) = validate select >> return sql
   validate sql@(QCreate _ create) = validate create >> return sql
   validate sql@(QInsert _ insert) = validate insert >> return sql
+  validate sql@(QShow   _ show)   = validate show   >> return sql

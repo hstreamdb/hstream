@@ -121,9 +121,6 @@ app clientConfig = do
           Just xs   -> do
             case words xs of
               ":h" : _                          -> liftIO $ putStrLn helpInfo
-              "show" : "queries" : _            -> undefined
-              "terminate" : "query" : "all" : _ -> undefined
-              "terminate" : "query" : dbid      -> undefined
               val@(_ : _)                       -> do
                 let sql = T.pack (unwords val)
                 (liftIO . try . parseAndRefine $ sql) >>= \case
