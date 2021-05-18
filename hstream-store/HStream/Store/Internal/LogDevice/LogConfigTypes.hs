@@ -110,8 +110,7 @@ logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
   (len, (names_ptr, stdvec_ptr)) <-
     Z.withPrimUnsafe 0 $ \len' ->
     Z.withPrimUnsafe nullPtr $ \names' ->
-    fst <$> (Z.withPrimUnsafe nullPtr $ \stdvec' ->
-      c_ld_logdirectory_get_logs_name dir' recursive len' names' stdvec')
+    fst <$> Z.withPrimUnsafe nullPtr (c_ld_logdirectory_get_logs_name dir' recursive len' names')
   if names_ptr == nullPtr
      then return []
      else finally (peekStdStringToCBytesN len names_ptr) (c_free_logs_name stdvec_ptr)
@@ -292,6 +291,12 @@ getLogGroup client path =
     void $ E.throwStreamErrorIfNotOK' errno
     newForeignPtr c_free_logdevice_loggroup_fun group_ptr
 
+getLogGroupByID :: HasCallStack => LDClient -> C_LogID -> IO LDLogGroup
+getLogGroupByID client logid = withForeignPtr client $ \client' -> do
+  (errno, group_ptr, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr (c_ld_client_get_loggroup_by_id client' logid)
+  void $ E.throwStreamErrorIfNotOK' errno
+  newForeignPtr c_free_logdevice_loggroup_fun group_ptr
+
 -- | Rename the leaf of the supplied path. This does not move entities in the
 -- tree it only renames the last token in the path supplies.
 --
@@ -368,6 +373,11 @@ logGroupGetName group =
   withForeignPtr group $ CBytes.fromCString <=< c_ld_loggroup_get_name
 {-# INLINE logGroupGetName #-}
 
+logGroupGetFullyQualifiedName :: LDLogGroup -> IO CBytes
+logGroupGetFullyQualifiedName group =
+  withForeignPtr group $ CBytes.fromCString <=< c_ld_loggroup_get_fully_qualified_name
+{-# INLINE logGroupGetFullyQualifiedName #-}
+
 -- Note that this pointer only valiad if LogGroup is valiad.
 logGroupGetAttrs :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
 logGroupGetAttrs group =
@@ -430,12 +440,23 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup_sync"
     -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup"
-  c_ld_client_get_loggroup :: Ptr LogDeviceClient
-                           -> BA# Word8
-                           -> StablePtr PrimMVar -> Int
-                           -> MBA# ErrorCode
-                           -> MBA# (Ptr LogDeviceLogGroup)
-                           -> IO ()
+  c_ld_client_get_loggroup
+    :: Ptr LogDeviceClient
+    -> BA# Word8
+    -> StablePtr PrimMVar -> Int
+    -- results
+    -> MBA# ErrorCode
+    -> MBA# (Ptr LogDeviceLogGroup)
+    -> IO ()
+
+foreign import ccall safe "hs_logdevice.h ld_client_get_loggroup_by_id"
+  c_ld_client_get_loggroup_by_id
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode
+    -> MBA# (Ptr LogDeviceLogGroup)
+    -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_get_loggroup_sync"
   c_ld_client_get_loggroup_sync :: Ptr LogDeviceClient

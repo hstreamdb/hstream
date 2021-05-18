@@ -14,10 +14,7 @@ import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc
 import           Foreign.Ptr
 import           Foreign.Storable
-import           GHC.Generics          (Generic)
 import           Z.Data.CBytes         as CBytes
-import qualified Z.Data.JSON           as JSON
-import qualified Z.Data.MessagePack    as MP
 import           Z.Data.Vector         (Bytes)
 import qualified Z.Data.Vector         as Vec
 import qualified Z.Foreign             as Z
@@ -62,8 +59,11 @@ pattern LOGID_MIN_INVALID :: LogID
 pattern LOGID_MIN_INVALID = LogID C_LOGID_MIN_INVALID
 
 -- ~0 is not a valid logid.
+pattern C_LOGID_MAX_INVALID :: Word64
+pattern C_LOGID_MAX_INVALID = (#const C_LOGID_INVALID2)
+
 pattern LOGID_MAX_INVALID :: LogID
-pattern LOGID_MAX_INVALID = LogID (#const C_LOGID_INVALID2)
+pattern LOGID_MAX_INVALID = LogID C_LOGID_MAX_INVALID
 
 c_logid_max :: Word64
 c_logid_max = (#const C_LOGID_MAX)

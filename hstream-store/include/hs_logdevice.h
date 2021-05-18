@@ -210,6 +210,24 @@ typedef struct logdevice_append_cb_data_t {
   c_timestamp_t timestamp;
 } logdevice_append_cb_data_t;
 
+typedef struct make_directory_cb_data_t {
+  c_error_code_t st;
+  logdevice_logdirectory_t* directory;
+  char* failure_reason;
+} make_directory_cb_data_t;
+
+typedef struct make_loggroup_cb_data_t {
+  c_error_code_t st;
+  logdevice_loggroup_t* loggroup;
+  char* failure_reason;
+} make_loggroup_cb_data_t;
+
+typedef struct logsconfig_status_cb_data_t {
+  c_error_code_t st;
+  uint64_t version;
+  char* failure_reason;
+} logsconfig_status_cb_data_t;
+
 // The status codes may be one of the following if the callback is invoked:
 //   OK
 //   NOTFOUND: key not found, corresponds to ZNONODE
@@ -259,12 +277,6 @@ facebook::logdevice::Status
 ld_client_sync_logsconfig_version(logdevice_client_t* client, uint64_t version);
 
 // LogDirectory
-typedef struct make_directory_cb_data_t {
-  c_error_code_t st;
-  logdevice_logdirectory_t* directory;
-  char* failure_reason;
-} make_directory_cb_data_t;
-
 facebook::logdevice::Status
 ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
                               bool mk_intermediate_dirs, LogAttributes* attrs,
@@ -290,12 +302,6 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
                         logdevice_logdirectory_t** logdir_result);
 
 // LogGroup
-typedef struct make_loggroup_cb_data_t {
-  c_error_code_t st;
-  logdevice_loggroup_t* loggroup;
-  char* failure_reason;
-} make_loggroup_cb_data_t;
-
 facebook::logdevice::Status ld_client_make_loggroup_sync(
     logdevice_client_t* client, const char* path, const c_logid_t start_logid,
     const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
@@ -323,12 +329,6 @@ const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
 const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group);
 const LogAttributes* ld_loggroup_get_attrs(logdevice_loggroup_t* group);
 uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group);
-
-typedef struct logsconfig_status_cb_data_t {
-  c_error_code_t st;
-  uint64_t version;
-  char* failure_reason;
-} logsconfig_status_cb_data_t;
 
 facebook::logdevice::Status ld_client_rename(logdevice_client_t* client,
                                              const char* from_path,

@@ -149,8 +149,8 @@ void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
   auto cb = [st_out, loggroup_result, cap,
              mvar](facebook::logdevice::Status st,
                    std::unique_ptr<LogGroup> loggroup_ptr) {
-    if (st_out && loggroup_result) {
-      *st_out = st;
+    *st_out = st;
+    if (loggroup_result) {
       *loggroup_result = new logdevice_loggroup_t;
       (*loggroup_result)->rep = std::move(loggroup_ptr);
     }
@@ -158,6 +158,24 @@ void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
     hs_thread_done();
   };
   client->rep->getLogGroup(path_, cb);
+}
+
+void ld_client_get_loggroup_by_id(logdevice_client_t* client, c_logid_t logid,
+                                  HsStablePtr mvar, HsInt cap,
+                                  facebook::logdevice::Status* st_out,
+                                  logdevice_loggroup_t** loggroup_result) {
+  auto cb = [st_out, loggroup_result, mvar,
+             cap](facebook::logdevice::Status st,
+                  std::unique_ptr<LogGroup> loggroup) {
+    *st_out = st;
+    if (loggroup_result) {
+      *loggroup_result = new logdevice_loggroup_t;
+      (*loggroup_result)->rep = std::move(loggroup);
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  client->rep->getLogGroupById(logid_t(logid), cb);
 }
 
 facebook::logdevice::Status
