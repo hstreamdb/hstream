@@ -1,7 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 module HStream.Processing.Stream
   ( mkStreamBuilder,
@@ -25,20 +25,19 @@ module HStream.Processing.Stream
   )
 where
 
-import           Data.Maybe
-import           HStream.Processing.Connector
-import           HStream.Processing.Encoding
-import           HStream.Processing.Processor
-import           HStream.Processing.Processor.Internal
-import           HStream.Processing.Store
-import           HStream.Processing.Stream.GroupedStream
-import           HStream.Processing.Stream.Internal
-import           HStream.Processing.Stream.JoinWindows
-import           HStream.Processing.Table
-import           HStream.Processing.Type
-import           RIO
-import qualified RIO.ByteString.Lazy                     as BL
-import qualified RIO.Text                                as T
+import Data.Maybe
+import HStream.Processing.Encoding
+import HStream.Processing.Processor
+import HStream.Processing.Processor.Internal
+import HStream.Processing.Store
+import HStream.Processing.Stream.GroupedStream
+import HStream.Processing.Stream.Internal
+import HStream.Processing.Stream.JoinWindows
+import HStream.Processing.Table
+import HStream.Processing.Type
+import RIO
+import qualified RIO.ByteString.Lazy as BL
+import qualified RIO.Text as T
 
 data StreamBuilder = StreamBuilder
   { sbInternalBuilder :: InternalStreamBuilder
@@ -132,10 +131,9 @@ tableStoreProcessor keySerde valueSerde storeName = Processor $ \r@Record {..} -
 to ::
   (Typeable k, Typeable v) =>
   StreamSinkConfig k v ->
-  SinkConnector ->
   Stream k v ->
   IO StreamBuilder
-to StreamSinkConfig {..} sinkConnector Stream {..} = do
+to StreamSinkConfig {..} Stream {..} = do
   sinkProcessorName <- mkInternalProcessorName (sicTopicName `T.append` "-SINK-") streamInternalBuilder
   let sinkCfg =
         SinkConfig
@@ -144,11 +142,11 @@ to StreamSinkConfig {..} sinkConnector Stream {..} = do
             keySerializer = Just $ serializer sicKeySerde,
             valueSerializer = serializer sicValueSerde
           }
-  let newBuilder = addSinkInternal sinkCfg [streamProcessorName] sinkConnector streamInternalBuilder
+  let newBuilder = addSinkInternal sinkCfg [streamProcessorName] streamInternalBuilder
   return $ StreamBuilder {sbInternalBuilder = newBuilder}
 
-build :: StreamBuilder -> Task
-build StreamBuilder {..} = buildInternal sbInternalBuilder
+build :: StreamBuilder -> TaskBuilder
+build StreamBuilder {..} = isbTaskBuilder sbInternalBuilder
 
 filter ::
   (Typeable k, Typeable v) =>
