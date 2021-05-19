@@ -14,7 +14,7 @@
 module HStream.Store.Internal.LogDevice.LogConfigTypes where
 
 import           Control.Exception              (finally)
-import           Control.Monad                  (void, (<=<))
+import           Control.Monad                  (void, when, (<=<))
 import qualified Data.Map.Strict                as Map
 import           Data.Word
 import           Foreign.C
@@ -22,7 +22,7 @@ import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
-import           GHC.Stack                      (HasCallStack)
+import           GHC.Stack                      (HasCallStack, callStack)
 import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as CBytes
 import           Z.Foreign                      (BA#, BAArray#, MBA#)
@@ -253,14 +253,13 @@ makeLogGroupSync client path start end attrs mkParent = do
         newForeignPtr c_free_logdevice_loggroup_fun group'
 
 makeLogGroup
-   :: HasCallStack
-   => LDClient
-   -> CBytes
-   -> C_LogID
-   -> C_LogID
-   -> LogAttrs
-   -> Bool
-   -> IO LDLogGroup
+  :: HasCallStack
+  => LDClient
+  -> CBytes
+  -> C_LogID -> C_LogID
+  -> LogAttrs
+  -> Bool
+  -> IO LDLogGroup
 makeLogGroup client path start end attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
@@ -272,6 +271,7 @@ makeLogGroup client path start end attrs mkParent = do
         MakeLogGroupCbData errno group _ <-
           withAsync makeLogGroupCbDataSize peekMakeLogGroupCbData cfun
         void $ E.throwStreamErrorIfNotOK' errno
+        when (group == nullPtr) $ E.throwStoreError "null loggroup" callStack
         newForeignPtr c_free_logdevice_loggroup_fun group
 
 getLogGroupSync :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup

@@ -14,7 +14,8 @@ import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc
 import           Foreign.Ptr
 import           Foreign.Storable
-import           Z.Data.CBytes         as CBytes
+import           Z.Data.CBytes         (CBytes)
+import qualified Z.Data.CBytes         as CBytes
 import           Z.Data.Vector         (Bytes)
 import qualified Z.Data.Vector         as Vec
 import qualified Z.Foreign             as Z
@@ -222,34 +223,34 @@ data LogsConfigStatusCbData = LogsConfigStatusCbData
 logsConfigStatusCbDataSize :: Int
 logsConfigStatusCbDataSize = (#size logsconfig_status_cb_data_t)
 
-peekLogsConfigStatusCbData :: Ptr LogsConfigStatusCbData
-                           -> IO LogsConfigStatusCbData
+peekLogsConfigStatusCbData :: Ptr LogsConfigStatusCbData -> IO LogsConfigStatusCbData
 peekLogsConfigStatusCbData ptr = do
   retcode <- (#peek logsconfig_status_cb_data_t, st) ptr
   version <- (#peek logsconfig_status_cb_data_t, version) ptr
   failinfo_ptr <- (#peek logsconfig_status_cb_data_t, failure_reason) ptr
-  failinfo <- fromCString failinfo_ptr
+  failinfo <- CBytes.fromCString failinfo_ptr
   free failinfo_ptr
   return $ LogsConfigStatusCbData retcode version failinfo
 
 data MakeLogGroupCbData = MakeLogGroupCbData
    { makeLogGroupCbRetCode :: !ErrorCode
-   , makeLogGroupCbGrpPtr :: !(Ptr LogDeviceLogGroup)
-   , makeLogGroupFailInfo :: !CBytes
+   , makeLogGroupCbGrpPtr  :: !(Ptr LogDeviceLogGroup)
+   , makeLogGroupFailInfo  :: !CBytes
    }
 
 makeLogGroupCbDataSize :: Int
 makeLogGroupCbDataSize = (#size make_loggroup_cb_data_t)
 
-peekMakeLogGroupCbData :: Ptr MakeLogGroupCbData
-                       -> IO MakeLogGroupCbData
-peekMakeLogGroupCbData ptr = do
-  retcode <- (#peek make_loggroup_cb_data_t, st) ptr
-  loggroup_ptr <- (#peek make_loggroup_cb_data_t, loggroup) ptr
-  failinfo_ptr <- (#peek make_loggroup_cb_data_t, failure_reason) ptr
-  failinfo <- fromCString failinfo_ptr
-  free failinfo_ptr
-  return $ MakeLogGroupCbData retcode loggroup_ptr failinfo
+peekMakeLogGroupCbData :: Ptr MakeLogGroupCbData -> IO MakeLogGroupCbData
+peekMakeLogGroupCbData ptr = finally peekData release
+  where
+    peekData = do
+      retcode <- (#peek make_loggroup_cb_data_t, st) ptr
+      loggroup_ptr <- (#peek make_loggroup_cb_data_t, loggroup) ptr
+      failinfo_ptr <- (#peek make_loggroup_cb_data_t, failure_reason) ptr
+      failinfo <- CBytes.fromCString failinfo_ptr
+      return $ MakeLogGroupCbData retcode loggroup_ptr failinfo
+    release = free =<< (#peek make_loggroup_cb_data_t, failure_reason) ptr
 
 data MakeDirectoryCbData = MakeDirectoryCbData
    { makeDirectoryCbRetCode :: !ErrorCode
@@ -266,7 +267,7 @@ peekMakeDirectoryCbData ptr = do
   retcode <- (#peek make_directory_cb_data_t, st) ptr
   directory_ptr <- (#peek make_directory_cb_data_t, directory) ptr
   failinfo_ptr <- (#peek make_directory_cb_data_t, failure_reason) ptr
-  failinfo <- fromCString failinfo_ptr
+  failinfo <- CBytes.fromCString failinfo_ptr
   free failinfo_ptr
   return $ MakeDirectoryCbData retcode directory_ptr failinfo
 
