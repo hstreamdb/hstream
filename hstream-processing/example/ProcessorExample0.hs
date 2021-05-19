@@ -51,13 +51,13 @@ main = do
             valueSerializer = Serializer (encode :: R -> BL.ByteString)
           }
   let task =
-          buildTask "demo"
-            <> addSource sourceConfig
-            <> addProcessor
-              "filter"
-              (filterProcessor filterR)
-              ["source"]
-            <> addSink sinkConfig ["filter"]
+        buildTask "demo"
+          <> addSource sourceConfig
+          <> addProcessor
+            "filter"
+            (filterProcessor filterR)
+            ["source"]
+          <> addSink sinkConfig ["filter"]
   _ <- async $
     forever $
       do

@@ -1,27 +1,27 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE StrictData #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE StrictData        #-}
 
-import Data.Aeson
-import qualified Data.Binary as B
-import Data.Maybe
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import HStream.Processing.Connector
-import HStream.Processing.Encoding
-import HStream.Processing.MockStreamStore
-import HStream.Processing.Processor
-import HStream.Processing.Store
-import qualified HStream.Processing.Stream as HS
+import           Data.Aeson
+import qualified Data.Binary                             as B
+import           Data.Maybe
+import qualified Data.Text.Lazy                          as TL
+import qualified Data.Text.Lazy.Encoding                 as TLE
+import           HStream.Processing.Connector
+import           HStream.Processing.Encoding
+import           HStream.Processing.MockStreamStore
+import           HStream.Processing.Processor
+import           HStream.Processing.Store
+import qualified HStream.Processing.Stream               as HS
 import qualified HStream.Processing.Stream.GroupedStream as HG
-import qualified HStream.Processing.Table as HT
-import HStream.Processing.Type
-import HStream.Processing.Util
-import RIO
-import System.Random
-import qualified Prelude as P
+import qualified HStream.Processing.Table                as HT
+import           HStream.Processing.Type
+import           HStream.Processing.Util
+import qualified Prelude                                 as P
+import           RIO
+import           System.Random
 
 data R = R
   { temperature :: Int,

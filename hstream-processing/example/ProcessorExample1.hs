@@ -55,18 +55,18 @@ main = do
           }
   memoryStore <- mkInMemoryStateKVStore :: IO (StateStore TL.Text Int)
   let task =
-          buildTask "demo"
-            <> addSource sourceConfig
-            <> addProcessor
-              "filter"
-              (filterProcessor filterR)
-              ["source"]
-            <> addProcessor
-              "count"
-              (aggProcessor "demo-store" 0 countR)
-              ["filter"]
-            <> addSink sinkConfig ["count"]
-            <> addStateStore "demo-store" memoryStore ["count"]
+        buildTask "demo"
+          <> addSource sourceConfig
+          <> addProcessor
+            "filter"
+            (filterProcessor filterR)
+            ["source"]
+          <> addProcessor
+            "count"
+            (aggProcessor "demo-store" 0 countR)
+            ["filter"]
+          <> addSink sinkConfig ["count"]
+          <> addStateStore "demo-store" memoryStore ["count"]
 
   _ <- async $
     forever $

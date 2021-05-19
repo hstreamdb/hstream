@@ -1,7 +1,7 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE StrictData        #-}
 
 module HStream.Processing.Stream
   ( mkStreamBuilder,
@@ -25,19 +25,19 @@ module HStream.Processing.Stream
   )
 where
 
-import Data.Maybe
-import HStream.Processing.Encoding
-import HStream.Processing.Processor
-import HStream.Processing.Processor.Internal
-import HStream.Processing.Store
-import HStream.Processing.Stream.GroupedStream
-import HStream.Processing.Stream.Internal
-import HStream.Processing.Stream.JoinWindows
-import HStream.Processing.Table
-import HStream.Processing.Type
-import RIO
-import qualified RIO.ByteString.Lazy as BL
-import qualified RIO.Text as T
+import           Data.Maybe
+import           HStream.Processing.Encoding
+import           HStream.Processing.Processor
+import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Store
+import           HStream.Processing.Stream.GroupedStream
+import           HStream.Processing.Stream.Internal
+import           HStream.Processing.Stream.JoinWindows
+import           HStream.Processing.Table
+import           HStream.Processing.Type
+import           RIO
+import qualified RIO.ByteString.Lazy                     as BL
+import qualified RIO.Text                                as T
 
 data StreamBuilder = StreamBuilder
   { sbInternalBuilder :: InternalStreamBuilder
