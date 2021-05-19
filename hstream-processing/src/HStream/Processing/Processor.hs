@@ -1,7 +1,7 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE StrictData        #-}
 
 module HStream.Processing.Processor
   ( buildTask,
@@ -21,23 +21,23 @@ module HStream.Processing.Processor
   )
 where
 
-import Control.Exception (throw)
-import Data.Maybe
-import Data.Typeable
-import HStream.Processing.Connector
-import HStream.Processing.Encoding
-import HStream.Processing.Error (HStreamError (..))
-import HStream.Processing.Processor.Internal
-import HStream.Processing.Store
-import HStream.Processing.Type
-import HStream.Processing.Util
-import RIO
-import qualified RIO.ByteString.Lazy as BL
-import qualified RIO.HashMap as HM
-import RIO.HashMap.Partial as HM'
-import qualified RIO.HashSet as HS
-import qualified RIO.List as L
-import qualified RIO.Text as T
+import           Control.Exception                     (throw)
+import           Data.Maybe
+import           Data.Typeable
+import           HStream.Processing.Connector
+import           HStream.Processing.Encoding
+import           HStream.Processing.Error              (HStreamError (..))
+import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Store
+import           HStream.Processing.Type
+import           HStream.Processing.Util
+import           RIO
+import qualified RIO.ByteString.Lazy                   as BL
+import qualified RIO.HashMap                           as HM
+import           RIO.HashMap.Partial                   as HM'
+import qualified RIO.HashSet                           as HS
+import qualified RIO.List                              as L
+import qualified RIO.Text                              as T
 
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =
