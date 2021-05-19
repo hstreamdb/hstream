@@ -222,6 +222,7 @@ typedef struct make_loggroup_cb_data_t {
   char* failure_reason;
 } make_loggroup_cb_data_t;
 
+
 typedef struct logsconfig_status_cb_data_t {
   c_error_code_t st;
   uint64_t version;
