@@ -37,6 +37,7 @@ data SQL' a
     = QSelect a (Select' a)
     | QCreate a (Create' a)
     | QInsert a (Insert' a)
+    | QShow a (ShowQ' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Create = Create' BNFC'Position
@@ -55,6 +56,14 @@ data Insert' a
     = DInsert a Ident [Ident] [ValueExpr' a]
     | InsertBinary a Ident String
     | InsertJson a Ident SString
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type ShowQ = ShowQ' BNFC'Position
+data ShowQ' a = DShow a (ShowOption' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type ShowOption = ShowOption' BNFC'Position
+data ShowOption' a = ShowQueries a | ShowStreams a
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Select = Select' BNFC'Position
@@ -293,6 +302,7 @@ instance HasPosition SQL where
     QSelect p _ -> p
     QCreate p _ -> p
     QInsert p _ -> p
+    QShow p _ -> p
 
 instance HasPosition Create where
   hasPosition = \case
@@ -309,6 +319,15 @@ instance HasPosition Insert where
     DInsert p _ _ _ -> p
     InsertBinary p _ _ -> p
     InsertJson p _ _ -> p
+
+instance HasPosition ShowQ where
+  hasPosition = \case
+    DShow p _ -> p
+
+instance HasPosition ShowOption where
+  hasPosition = \case
+    ShowQueries p -> p
+    ShowStreams p -> p
 
 instance HasPosition Select where
   hasPosition = \case

@@ -134,6 +134,7 @@ instance Print (HStream.SQL.Abs.SQL' a) where
     HStream.SQL.Abs.QSelect _ select -> prPrec i 0 (concatD [prt 0 select, doc (showString ";")])
     HStream.SQL.Abs.QCreate _ create -> prPrec i 0 (concatD [prt 0 create, doc (showString ";")])
     HStream.SQL.Abs.QInsert _ insert -> prPrec i 0 (concatD [prt 0 insert, doc (showString ";")])
+    HStream.SQL.Abs.QShow _ showq -> prPrec i 0 (concatD [prt 0 showq, doc (showString ";")])
 
 instance Print (HStream.SQL.Abs.Create' a) where
   prt i = \case
@@ -162,6 +163,15 @@ instance Print [HStream.SQL.Abs.Ident] where
 
 instance Print [HStream.SQL.Abs.ValueExpr' a] where
   prt = prtList
+
+instance Print (HStream.SQL.Abs.ShowQ' a) where
+  prt i = \case
+    HStream.SQL.Abs.DShow _ showoption -> prPrec i 0 (concatD [doc (showString "SHOW"), prt 0 showoption])
+
+instance Print (HStream.SQL.Abs.ShowOption' a) where
+  prt i = \case
+    HStream.SQL.Abs.ShowQueries _ -> prPrec i 0 (concatD [doc (showString "QUERIES")])
+    HStream.SQL.Abs.ShowStreams _ -> prPrec i 0 (concatD [doc (showString "STREAMS")])
 
 instance Print (HStream.SQL.Abs.Select' a) where
   prt i = \case
