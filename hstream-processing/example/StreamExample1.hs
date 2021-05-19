@@ -1,27 +1,27 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
-import           Data.Aeson
-import qualified Data.Binary                             as B
-import           Data.Maybe
-import qualified Data.Text.Lazy                          as TL
-import qualified Data.Text.Lazy.Encoding                 as TLE
-import           HStream.Processing.Connector
-import           HStream.Processing.Encoding
-import           HStream.Processing.MockStreamStore
-import           HStream.Processing.Processor
-import           HStream.Processing.Store
-import qualified HStream.Processing.Stream               as HS
+import Data.Aeson
+import qualified Data.Binary as B
+import Data.Maybe
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
+import HStream.Processing.Connector
+import HStream.Processing.Encoding
+import HStream.Processing.MockStreamStore
+import HStream.Processing.Processor
+import HStream.Processing.Store
+import qualified HStream.Processing.Stream as HS
 import qualified HStream.Processing.Stream.GroupedStream as HG
-import qualified HStream.Processing.Table                as HT
-import           HStream.Processing.Type
-import           HStream.Processing.Util
-import qualified Prelude                                 as P
-import           RIO
-import           System.Random
+import qualified HStream.Processing.Table as HT
+import HStream.Processing.Type
+import HStream.Processing.Util
+import RIO
+import System.Random
+import qualified Prelude as P
 
 data R = R
   { temperature :: Int,
@@ -84,7 +84,7 @@ main = do
       >>= HS.groupBy (fromJust . recordKey)
       >>= HG.count materialized
       >>= HT.toStream
-      >>= HS.to streamSinkConfig sinkConnector
+      >>= HS.to streamSinkConfig
 
   _ <- async $
     forever $
@@ -113,7 +113,7 @@ main = do
               ++ " , value: "
               ++ show (B.decode srcValue :: Int)
 
-  runTask sourceConnector2 (HS.build streamBuilder)
+  runTask sourceConnector2 sinkConnector (HS.build streamBuilder)
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =

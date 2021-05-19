@@ -1,24 +1,24 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
-import           Data.Aeson
-import           Data.Maybe
-import qualified Data.Text.Lazy                     as TL
-import qualified Data.Text.Lazy.Encoding            as TLE
-import           HStream.Processing.Connector
-import           HStream.Processing.Encoding
-import           HStream.Processing.MockStreamStore
-import           HStream.Processing.Processor
-import qualified HStream.Processing.Stream          as HS
-import           HStream.Processing.Type
-import           HStream.Processing.Util
-import qualified Prelude                            as P
-import           RIO
-import qualified RIO.ByteString.Lazy                as BL
-import           System.Random
+import Data.Aeson
+import Data.Maybe
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
+import HStream.Processing.Connector
+import HStream.Processing.Encoding
+import HStream.Processing.MockStreamStore
+import HStream.Processing.Processor
+import qualified HStream.Processing.Stream as HS
+import HStream.Processing.Type
+import HStream.Processing.Util
+import RIO
+import qualified RIO.ByteString.Lazy as BL
+import System.Random
+import qualified Prelude as P
 
 data R = R
   { temperature :: Int,
@@ -81,7 +81,7 @@ main = do
       >>= HS.stream streamSourceConfig
       >>= HS.filter filterR
       >>= HS.map mapR
-      >>= HS.to streamSinkConfig sinkConnector
+      >>= HS.to streamSinkConfig
 
   _ <- async $
     forever $
@@ -104,7 +104,7 @@ main = do
         forM_ records $ \SourceRecord {..} ->
           P.putStr "detect abnormal data: " >> BL.putStrLn srcValue
 
-  runTask sourceConnector2 (HS.build streamBuilder)
+  runTask sourceConnector2 sinkConnector (HS.build streamBuilder)
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =

@@ -51,14 +51,13 @@ main = do
             valueSerializer = Serializer (encode :: R -> BL.ByteString)
           }
   let task =
-        build $
           buildTask "demo"
             <> addSource sourceConfig
             <> addProcessor
               "filter"
               (filterProcessor filterR)
               ["source"]
-            <> addSink sinkConfig ["filter"] sinkConnector
+            <> addSink sinkConfig ["filter"]
   _ <- async $
     forever $
       do
@@ -80,7 +79,7 @@ main = do
         forM_ records $ \SourceRecord {..} ->
           P.putStr "detect abnormal data: " >> BL.putStrLn srcValue
 
-  runTask sourceConnector2 task
+  runTask sourceConnector2 sinkConnector task
 
 filterR :: Record Void R -> Bool
 filterR Record {..} =

@@ -55,7 +55,6 @@ main = do
           }
   memoryStore <- mkInMemoryStateKVStore :: IO (StateStore TL.Text Int)
   let task =
-        build $
           buildTask "demo"
             <> addSource sourceConfig
             <> addProcessor
@@ -66,7 +65,7 @@ main = do
               "count"
               (aggProcessor "demo-store" 0 countR)
               ["filter"]
-            <> addSink sinkConfig ["count"] sinkConnector
+            <> addSink sinkConfig ["count"]
             <> addStateStore "demo-store" memoryStore ["count"]
 
   _ <- async $
@@ -96,7 +95,7 @@ main = do
               ++ " , value: "
               ++ show (B.decode srcValue :: Int)
 
-  runTask sourceConnector2 task
+  runTask sourceConnector2 sinkConnector task
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =

@@ -1,11 +1,10 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 module HStream.Processing.Processor
-  ( build,
-    buildTask,
+  ( buildTask,
     addSource,
     addProcessor,
     addSink,
@@ -22,24 +21,23 @@ module HStream.Processing.Processor
   )
 where
 
-import           Control.Exception                     (throw)
-import           Data.Maybe
-import           Data.Typeable
-import           HStream.Processing.Connector
-import           HStream.Processing.Encoding
-import           HStream.Processing.Error              (HStreamError (..))
-import           HStream.Processing.Processor.Internal
-import           HStream.Processing.Store
-import           HStream.Processing.Type
-import           RIO
-import qualified RIO.ByteString.Lazy                   as BL
-import qualified RIO.HashMap                           as HM
-import           RIO.HashMap.Partial                   as HM'
-import qualified RIO.HashSet                           as HS
-import qualified RIO.List                              as L
-import qualified RIO.Text                              as T
-
--- import qualified Prelude as P
+import Control.Exception (throw)
+import Data.Maybe
+import Data.Typeable
+import HStream.Processing.Connector
+import HStream.Processing.Encoding
+import HStream.Processing.Error (HStreamError (..))
+import HStream.Processing.Processor.Internal
+import HStream.Processing.Store
+import HStream.Processing.Type
+import HStream.Processing.Util
+import RIO
+import qualified RIO.ByteString.Lazy as BL
+import qualified RIO.HashMap as HM
+import RIO.HashMap.Partial as HM'
+import qualified RIO.HashSet as HS
+import qualified RIO.List as L
+import qualified RIO.Text as T
 
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =
@@ -87,9 +85,28 @@ buildTask taskName =
 
 runTask ::
   SourceConnector ->
-  Task ->
+  SinkConnector ->
+  TaskBuilder ->
   IO ()
-runTask SourceConnector {..} task@Task {..} = do
+runTask SourceConnector {..} sinkConnector taskBuilder@TaskTopologyConfig {..} = do
+  -- build and add internalSinkProcessor
+  let sinkProcessors =
+        HM.map
+          (buildInternalSinkProcessor sinkConnector)
+          sinkCfgs
+
+  let newTaskBuilder =
+        HM.foldlWithKey'
+          ( \a k v ->
+              a <> addProcessor k v [T.append k serializerNameSuffix]
+          )
+          taskBuilder
+          sinkProcessors
+
+  -- build forward topology
+  let task@Task {..} = build newTaskBuilder
+
+  -- runTask
   let sourceStreamNames = HM.keys taskSourceConfig
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
@@ -184,26 +201,29 @@ addProcessor name processor parentNames =
 buildSinkProcessor ::
   (Typeable k, Typeable v) =>
   SinkConfig k v ->
-  SinkConnector ->
   Processor k v
-buildSinkProcessor SinkConfig {..} SinkConnector {..} = Processor $ \Record {..} -> do
-  logDebug $ "enter sink processor for stream " <> display sinkName
+buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
+  logDebug $ "enter sink serializer processor for stream " <> display sinkName
   let rk = liftA2 runSer keySerializer recordKey
   let rv = runSer valueSerializer recordValue
-  liftIO $ writeRecord SinkRecord {snkStream = sinkTopicName, snkKey = rk, snkValue = rv, snkTimestamp = recordTimestamp}
+  forward r {recordKey = rk, recordValue = rv}
+
+-- liftIO $ writeRecord SinkRecord {snkStream = sinkTopicName, snkKey = rk, snkValue = rv, snkTimestamp = recordTimestamp}
+
+serializerNameSuffix :: T.Text
+serializerNameSuffix = "-SERIALIZER"
 
 addSink ::
   (Typeable k, Typeable v) =>
   SinkConfig k v ->
   [T.Text] ->
-  SinkConnector ->
   TaskBuilder
-addSink cfg@SinkConfig {..} parentNames sinkConnector =
+addSink cfg@SinkConfig {..} parentNames =
   mempty
     { topology =
         HM.singleton
-          sinkName
-          (mkEProcessor $ buildSinkProcessor cfg sinkConnector, parentNames),
+          (T.append sinkName serializerNameSuffix)
+          (mkEProcessor $ buildSinkProcessor cfg, parentNames),
       sinkCfgs =
         HM.singleton
           sinkName
@@ -212,6 +232,22 @@ addSink cfg@SinkConfig {..} parentNames sinkConnector =
               iSinkTopicName = sinkTopicName
             }
     }
+
+buildInternalSinkProcessor ::
+  SinkConnector ->
+  InternalSinkConfig ->
+  Processor BL.ByteString BL.ByteString
+buildInternalSinkProcessor sinkConnector InternalSinkConfig {..} = Processor $ \Record {..} -> do
+  ts <- liftIO getCurrentTimestamp
+  liftIO $
+    writeRecord
+      sinkConnector
+      SinkRecord
+        { snkStream = iSinkTopicName,
+          snkKey = recordKey,
+          snkValue = recordValue,
+          snkTimestamp = ts
+        }
 
 addStateStore ::
   (Typeable k, Typeable v, Ord k) =>

@@ -88,7 +88,7 @@ main = do
       >>= HG.timeWindowedBy (mkHoppingWindow timeWindowSize 1000)
       >>= HTW.count materialized
       >>= HT.toStream
-      >>= HS.to streamSinkConfig sinkConnector
+      >>= HS.to streamSinkConfig
 
   _ <- async $
     forever $
@@ -117,7 +117,7 @@ main = do
               ++ " , value: "
               ++ show (B.decode srcValue :: Int)
 
-  runTask sourceConnector2 (HS.build streamBuilder)
+  runTask sourceConnector2 sinkConnector (HS.build streamBuilder)
 
 filterR :: Record TL.Text R -> Bool
 filterR Record {..} =

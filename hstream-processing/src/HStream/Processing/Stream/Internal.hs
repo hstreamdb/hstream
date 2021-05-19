@@ -15,12 +15,10 @@ module HStream.Processing.Stream.Internal
     addProcessorInternal,
     addSinkInternal,
     addStateStoreInternal,
-    buildInternal,
     mergeInternalStreamBuilder,
   )
 where
 
-import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
 import           HStream.Processing.Processor.Internal
@@ -96,11 +94,10 @@ addSinkInternal ::
   (Typeable k, Typeable v) =>
   SinkConfig k v ->
   [T.Text] ->
-  SinkConnector ->
   InternalStreamBuilder ->
   InternalStreamBuilder
-addSinkInternal sinkCfg parents sinkConnector builder@InternalStreamBuilder {..} =
-  let taskBuilder = isbTaskBuilder <> addSink sinkCfg parents sinkConnector
+addSinkInternal sinkCfg parents builder@InternalStreamBuilder {..} =
+  let taskBuilder = isbTaskBuilder <> addSink sinkCfg parents
    in builder {isbTaskBuilder = taskBuilder}
 
 addStateStoreInternal ::
@@ -113,9 +110,6 @@ addStateStoreInternal ::
 addStateStoreInternal storeName store processors builder@InternalStreamBuilder {..} =
   let taskBuilder = isbTaskBuilder <> addStateStore storeName store processors
    in builder {isbTaskBuilder = taskBuilder}
-
-buildInternal :: InternalStreamBuilder -> Task
-buildInternal InternalStreamBuilder {..} = build isbTaskBuilder
 
 mkInternalProcessorName :: T.Text -> InternalStreamBuilder -> IO T.Text
 mkInternalProcessorName namePrefix InternalStreamBuilder {..} = do
