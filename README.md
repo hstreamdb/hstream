@@ -105,8 +105,10 @@ script/dev-tools shell
 
 **Build as other haskell projects**
 
-```sh
-cabal build all
+*Inside the interactive shell, you have all extra dependencies installed.*
+
+```
+I have no name!@649bc6bb75ed:~$ cabal build all
 ```
 
 
