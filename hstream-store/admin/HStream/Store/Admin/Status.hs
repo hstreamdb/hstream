@@ -1,5 +1,5 @@
 module HStream.Store.Admin.Status
-  (runStatus
+  ( runStatus
   ) where
 
 import           Control.Monad

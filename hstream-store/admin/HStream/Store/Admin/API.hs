@@ -29,7 +29,6 @@ import           Fb303.FacebookService.Client
 import           Fb303.Types
 import           Logtree.Types
 import           Maintenance.Types
-import           Membership.Types
 import           Nodes.Types
 import           Safety.Types
 import           Settings.Types

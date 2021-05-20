@@ -74,6 +74,12 @@ services:
     entrypoint:
       ldshell -s 172.16.0.2
 
+  shell:
+    image: hstreamdb/logdevice
+    networks:
+      - hstream-net
+    entrypoint: bash
+
 networks:
   hstream-net:
     name: hstream-net

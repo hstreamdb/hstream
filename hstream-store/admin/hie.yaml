@@ -1,0 +1,7 @@
+cradle:
+  cabal:
+    - path: "."
+      component: "lib:hstore-admin"
+
+    - path: "app/cli.hs"
+      component: "hstore-admin:exe:hstore-admin"

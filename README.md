@@ -77,26 +77,36 @@ Please submit any bugs, issues, and feature requests to [hstreamdb/hstream](http
 
 ## How to build (for developers only)
 
-1. Make sure you have Docker installed, and can run `docker` as a non-root user.
-2. Change directory to the project root.
-3. Then you can run our script `dev-tools`
+**Pre-requirements**
 
-Start dev-cluster:
+1. Make sure you have Docker installed, and can run `docker` as a non-root user.
+2. Your can clone Github repository by ssh key.
+
+**Get the source code**
+
+```sh
+git clone --recursive git@github.com:hstreamdb/hstream.git
+cd hstream/
+```
+
+**Start dev-cluster**
+
+*A dev-cluster is required while running tests. All datas are stored under `your-project-root/local-data/logdevice`*
 
 ```sh
 script/dev-tools cluster-start
 ```
 
-Enter an interactive shell:
+**Enter in an interactive shell**
 
 ```sh
 script/dev-tools shell
 ```
 
-Build as other haskell projects:
+**Build as other haskell projects**
 
-```
-$ cabal build all
+```sh
+cabal build all
 ```
 
 
