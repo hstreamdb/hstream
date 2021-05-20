@@ -80,7 +80,8 @@ def run_ldshell(image, container_bin, data_dir):
 
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
-                tty, interactive, rm, check, extra_container_options):
+                tty, interactive, rm, check,
+                network="host", extra_container_options=""):
 
     if not is_cluster_started(container_bin):
         sys.exit("Please start the dev-cluster first. Run: dev-tools cluster-start")
@@ -112,7 +113,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 -v "{data_dir}:/data/store" \
                 -v "/tmp:/tmp" \
                 -w "{PROJECT_ROOT}" \
-                --network host \
+                --network {network} \
                 {extra_container_options} \
                 {image} {user_cmd}'''
     loginfo(f"Run <{user_cmd}> from <{image}> image...")
@@ -159,6 +160,7 @@ if __name__ == '__main__':
     parser_haskell.add_argument('--check', action='store_true')
     parser_haskell.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_haskell.add_argument('--network', default='host')
     parser_haskell.add_argument('--extra-container-options', default='')
     parser_haskell.add_argument('cmd_args', nargs='*')
 
@@ -173,6 +175,7 @@ if __name__ == '__main__':
     parser_haskell_cabal.add_argument('--container-bin', default='docker')
     parser_haskell_cabal.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_haskell_cabal.add_argument('--network', default='host')
     parser_haskell_cabal.add_argument('--extra-container-options', default='')
     parser_haskell_cabal.add_argument('cmd_args', nargs='*')
 

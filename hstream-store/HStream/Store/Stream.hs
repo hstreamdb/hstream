@@ -117,6 +117,7 @@ renameStream
   -> IO ()
 renameStream client from to = do
   LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from to
+  -- FIXME
   -- Do NOT combine these operations to a atomically one, since we need
   -- delete the old topic name even the new one is insert failed.
   m_v <- Cache.lookup' topicNameCache from
@@ -138,12 +139,20 @@ doesStreamExists client topic = do
     Nothing -> do r <- try $ LD.getLogGroup client topic
                   case r of
                     Left (_ :: E.NOTFOUND) -> return False
-                    Right _                -> return True
+                    Right group -> do
+                      logid <- fst <$> LD.logGroupGetRange group
+                      Cache.insert topicNameCache topic logid
+                      return True
 
 getCLogIDByStreamName :: FFI.LDClient -> StreamName -> IO FFI.C_LogID
 getCLogIDByStreamName client topic = do
   m_v <- Cache.lookup topicNameCache topic
-  maybe (fmap fst $ LD.logGroupGetRange =<< LD.getLogGroup client topic) return m_v
+  case m_v of
+    Just v -> return v
+    Nothing -> do
+      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client topic)
+      Cache.insert topicNameCache topic logid
+      return logid
 
 -- | Generate a random logid through a simplify version of snowflake algorithm.
 genRandomLogID :: IO FFI.C_LogID
