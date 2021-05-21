@@ -57,78 +57,81 @@ import qualified Data.Text
   'CREATE' { PT _ (TS _ 35) }
   'DATE' { PT _ (TS _ 36) }
   'DAY' { PT _ (TS _ 37) }
-  'EMIT' { PT _ (TS _ 38) }
-  'EXP' { PT _ (TS _ 39) }
-  'FALSE' { PT _ (TS _ 40) }
-  'FLOOR' { PT _ (TS _ 41) }
-  'FORMAT' { PT _ (TS _ 42) }
-  'FROM' { PT _ (TS _ 43) }
-  'GROUP' { PT _ (TS _ 44) }
-  'HAVING' { PT _ (TS _ 45) }
-  'HOPPING' { PT _ (TS _ 46) }
-  'INNER' { PT _ (TS _ 47) }
-  'INSERT' { PT _ (TS _ 48) }
-  'INTERVAL' { PT _ (TS _ 49) }
-  'INTO' { PT _ (TS _ 50) }
-  'IS_ARRAY' { PT _ (TS _ 51) }
-  'IS_BOOL' { PT _ (TS _ 52) }
-  'IS_DATE' { PT _ (TS _ 53) }
-  'IS_FLOAT' { PT _ (TS _ 54) }
-  'IS_INT' { PT _ (TS _ 55) }
-  'IS_MAP' { PT _ (TS _ 56) }
-  'IS_NUM' { PT _ (TS _ 57) }
-  'IS_STR' { PT _ (TS _ 58) }
-  'IS_TIME' { PT _ (TS _ 59) }
-  'JOIN' { PT _ (TS _ 60) }
-  'LEFT' { PT _ (TS _ 61) }
-  'LEFT_TRIM' { PT _ (TS _ 62) }
-  'LOG' { PT _ (TS _ 63) }
-  'LOG10' { PT _ (TS _ 64) }
-  'LOG2' { PT _ (TS _ 65) }
-  'MAX' { PT _ (TS _ 66) }
-  'MIN' { PT _ (TS _ 67) }
-  'MINUTE' { PT _ (TS _ 68) }
-  'MONTH' { PT _ (TS _ 69) }
-  'NOT' { PT _ (TS _ 70) }
-  'ON' { PT _ (TS _ 71) }
-  'OR' { PT _ (TS _ 72) }
-  'OUTER' { PT _ (TS _ 73) }
-  'QUERIES' { PT _ (TS _ 74) }
-  'REPLICATE' { PT _ (TS _ 75) }
-  'REVERSE' { PT _ (TS _ 76) }
-  'RIGHT_TRIM' { PT _ (TS _ 77) }
-  'ROUND' { PT _ (TS _ 78) }
-  'SECOND' { PT _ (TS _ 79) }
-  'SELECT' { PT _ (TS _ 80) }
-  'SESSION' { PT _ (TS _ 81) }
-  'SHOW' { PT _ (TS _ 82) }
-  'SIN' { PT _ (TS _ 83) }
-  'SINH' { PT _ (TS _ 84) }
-  'SQRT' { PT _ (TS _ 85) }
-  'STREAM' { PT _ (TS _ 86) }
-  'STREAMS' { PT _ (TS _ 87) }
-  'STRLEN' { PT _ (TS _ 88) }
-  'SUM' { PT _ (TS _ 89) }
-  'TAN' { PT _ (TS _ 90) }
-  'TANH' { PT _ (TS _ 91) }
-  'TIME' { PT _ (TS _ 92) }
-  'TO_LOWER' { PT _ (TS _ 93) }
-  'TO_STR' { PT _ (TS _ 94) }
-  'TO_UPPER' { PT _ (TS _ 95) }
-  'TRIM' { PT _ (TS _ 96) }
-  'TRUE' { PT _ (TS _ 97) }
-  'TUMBLING' { PT _ (TS _ 98) }
-  'VALUES' { PT _ (TS _ 99) }
-  'WEEK' { PT _ (TS _ 100) }
-  'WHERE' { PT _ (TS _ 101) }
-  'WITH' { PT _ (TS _ 102) }
-  'WITHIN' { PT _ (TS _ 103) }
-  'YEAR' { PT _ (TS _ 104) }
-  '[' { PT _ (TS _ 105) }
-  ']' { PT _ (TS _ 106) }
-  '{' { PT _ (TS _ 107) }
-  '||' { PT _ (TS _ 108) }
-  '}' { PT _ (TS _ 109) }
+  'DROP' { PT _ (TS _ 38) }
+  'EMIT' { PT _ (TS _ 39) }
+  'EXIST' { PT _ (TS _ 40) }
+  'EXP' { PT _ (TS _ 41) }
+  'FALSE' { PT _ (TS _ 42) }
+  'FLOOR' { PT _ (TS _ 43) }
+  'FORMAT' { PT _ (TS _ 44) }
+  'FROM' { PT _ (TS _ 45) }
+  'GROUP' { PT _ (TS _ 46) }
+  'HAVING' { PT _ (TS _ 47) }
+  'HOPPING' { PT _ (TS _ 48) }
+  'IF' { PT _ (TS _ 49) }
+  'INNER' { PT _ (TS _ 50) }
+  'INSERT' { PT _ (TS _ 51) }
+  'INTERVAL' { PT _ (TS _ 52) }
+  'INTO' { PT _ (TS _ 53) }
+  'IS_ARRAY' { PT _ (TS _ 54) }
+  'IS_BOOL' { PT _ (TS _ 55) }
+  'IS_DATE' { PT _ (TS _ 56) }
+  'IS_FLOAT' { PT _ (TS _ 57) }
+  'IS_INT' { PT _ (TS _ 58) }
+  'IS_MAP' { PT _ (TS _ 59) }
+  'IS_NUM' { PT _ (TS _ 60) }
+  'IS_STR' { PT _ (TS _ 61) }
+  'IS_TIME' { PT _ (TS _ 62) }
+  'JOIN' { PT _ (TS _ 63) }
+  'LEFT' { PT _ (TS _ 64) }
+  'LEFT_TRIM' { PT _ (TS _ 65) }
+  'LOG' { PT _ (TS _ 66) }
+  'LOG10' { PT _ (TS _ 67) }
+  'LOG2' { PT _ (TS _ 68) }
+  'MAX' { PT _ (TS _ 69) }
+  'MIN' { PT _ (TS _ 70) }
+  'MINUTE' { PT _ (TS _ 71) }
+  'MONTH' { PT _ (TS _ 72) }
+  'NOT' { PT _ (TS _ 73) }
+  'ON' { PT _ (TS _ 74) }
+  'OR' { PT _ (TS _ 75) }
+  'OUTER' { PT _ (TS _ 76) }
+  'QUERIES' { PT _ (TS _ 77) }
+  'REPLICATE' { PT _ (TS _ 78) }
+  'REVERSE' { PT _ (TS _ 79) }
+  'RIGHT_TRIM' { PT _ (TS _ 80) }
+  'ROUND' { PT _ (TS _ 81) }
+  'SECOND' { PT _ (TS _ 82) }
+  'SELECT' { PT _ (TS _ 83) }
+  'SESSION' { PT _ (TS _ 84) }
+  'SHOW' { PT _ (TS _ 85) }
+  'SIN' { PT _ (TS _ 86) }
+  'SINH' { PT _ (TS _ 87) }
+  'SQRT' { PT _ (TS _ 88) }
+  'STREAM' { PT _ (TS _ 89) }
+  'STREAMS' { PT _ (TS _ 90) }
+  'STRLEN' { PT _ (TS _ 91) }
+  'SUM' { PT _ (TS _ 92) }
+  'TAN' { PT _ (TS _ 93) }
+  'TANH' { PT _ (TS _ 94) }
+  'TIME' { PT _ (TS _ 95) }
+  'TO_LOWER' { PT _ (TS _ 96) }
+  'TO_STR' { PT _ (TS _ 97) }
+  'TO_UPPER' { PT _ (TS _ 98) }
+  'TRIM' { PT _ (TS _ 99) }
+  'TRUE' { PT _ (TS _ 100) }
+  'TUMBLING' { PT _ (TS _ 101) }
+  'VALUES' { PT _ (TS _ 102) }
+  'WEEK' { PT _ (TS _ 103) }
+  'WHERE' { PT _ (TS _ 104) }
+  'WITH' { PT _ (TS _ 105) }
+  'WITHIN' { PT _ (TS _ 106) }
+  'YEAR' { PT _ (TS _ 107) }
+  '[' { PT _ (TS _ 108) }
+  ']' { PT _ (TS _ 109) }
+  '{' { PT _ (TS _ 110) }
+  '||' { PT _ (TS _ 111) }
+  '}' { PT _ (TS _ 112) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -167,6 +170,7 @@ SQL : Select ';' { (fst $1, HStream.SQL.Abs.QSelect (fst $1) (snd $1)) }
     | Create ';' { (fst $1, HStream.SQL.Abs.QCreate (fst $1) (snd $1)) }
     | Insert ';' { (fst $1, HStream.SQL.Abs.QInsert (fst $1) (snd $1)) }
     | ShowQ ';' { (fst $1, HStream.SQL.Abs.QShow (fst $1) (snd $1)) }
+    | Drop ';' { (fst $1, HStream.SQL.Abs.QDrop (fst $1) (snd $1)) }
 
 Create :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Create) }
 Create : 'CREATE' 'STREAM' Ident 'WITH' '(' ListStreamOption ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DCreate (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $6)) }
@@ -202,6 +206,10 @@ ShowQ : 'SHOW' ShowOption { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol
 ShowOption :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ShowOption) }
 ShowOption : 'QUERIES' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ShowQueries (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
            | 'STREAMS' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.ShowStreams (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1))) }
+
+Drop :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Drop) }
+Drop : 'DROP' 'STREAM' Ident { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DDrop (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+     | 'DROP' 'STREAM' 'IF' 'EXIST' Ident { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DropIf (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $5)) }
 
 Select :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Select) }
 Select : Sel From Where GroupBy Having 'EMIT' 'CHANGES' { (fst $1, HStream.SQL.Abs.DSelect (fst $1) (snd $1) (snd $2) (snd $3) (snd $4) (snd $5)) }
