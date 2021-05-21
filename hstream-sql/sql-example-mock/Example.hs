@@ -5,18 +5,21 @@
 module Main where
 
 import           Data.Aeson
-import qualified Data.HashMap.Strict          as HM
+import qualified Data.HashMap.Strict                as HM
 import           Data.Scientific
-import           Data.Text.IO                 (getLine)
+import           Data.Text.IO                       (getLine)
+import           HStream.Processing.Connector
+import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
-import           HStream.Processing.Topic
+import           HStream.Processing.Type
 import           HStream.Processing.Util
-import           HStream.SQL.Codegen          (ExecutionPlan (..),
-                                               streamCodegen)
-import qualified Prelude                      as P
+import           HStream.SQL.Codegen                (ExecutionPlan (..),
+                                                     streamCodegen)
+import qualified Prelude                            as P
 import           RIO
-import qualified RIO.ByteString.Lazy          as BL
-import           System.Random                (Random (randomR), getStdRandom)
+import qualified RIO.ByteString.Lazy                as BL
+import           System.Random                      (Random (randomR),
+                                                     getStdRandom)
 
 ---------------------------------- Example -------------------------------------
 -- CREATE STREAM demoSink AS SELECT * FROM source1 EMIT CHANGES WITH (FORMAT = "JSON");
@@ -38,48 +41,42 @@ run input = do
   let tTopicName = "source1"
   let hTopicName = "source2"
 
-  mockStore <- mkMockTopicStore
-  mp <- mkMockTopicProducer mockStore
-  mc <- mkMockTopicConsumer mockStore [sTopicName]
-
-  async . forever $ do
-    threadDelay 1000000
-    MockMessage {..} <- mkMockData
-    send
-      mp
-      RawProducerRecord
-      { rprTopic = hTopicName,
-        rprKey = mmKey,
-        --rprValue = encode $
-        --  HM.fromList [ ("humidity" :: Text, (HM.!) ((fromJust . decode) mmValue :: Object) "humidity") ],
-        rprValue = mmValue,
-        rprTimestamp = mmTimestamp
-      }
-    send
-      mp
-      RawProducerRecord
-      { rprTopic = tTopicName,
-        rprKey = mmKey,
-        --rprValue = encode $
-        --  HM.fromList [ ("temperature" :: Text, (HM.!) ((fromJust . decode) mmValue :: Object) "temperature") ],
-        rprValue = mmValue,
-        rprTimestamp = mmTimestamp
-      }
+  mockStore <- mkMockStreamStore
+  sourceConnector1 <- mkMockStoreSourceConnector mockStore
+  sourceConnector2 <- mkMockStoreSourceConnector mockStore
+  sinkConnector <- mkMockStoreSinkConnector mockStore
 
   _ <- async $
-    forever $ do
-      records <- pollRecords mc 100 1000
-      forM_ records $ \RawConsumerRecord {..} ->
-        P.putStr "detect abnormal data: " >> BL.putStrLn rcrValue
-
-  logOptions <- logOptionsHandle stderr True
-  withLogFunc logOptions $ \lf -> do
-    let taskConfig =
-          TaskConfig
-            { tcMessageStoreType = Mock mockStore,
-              tcLogFunc = lf
+    forever $
+      do
+        threadDelay 1000000
+        MockMessage {..} <- mkMockData
+        writeRecord
+          sinkConnector
+          SinkRecord
+            { snkStream = hTopicName,
+              snkKey = mmKey,
+              snkValue = mmValue,
+              snkTimestamp = mmTimestamp
             }
-    runTask taskConfig task
+        writeRecord
+          sinkConnector
+          SinkRecord
+            { snkStream = tTopicName,
+              snkKey = mmKey,
+              snkValue = mmValue,
+              snkTimestamp = mmTimestamp
+            }
+
+  _ <- async $
+    forever $
+      do
+        subscribeToStream sourceConnector1 sTopicName Earlist
+        records <- readRecords sourceConnector1
+        forM_ records $ \SourceRecord {..} ->
+          P.putStr ">>> result: " >> BL.putStrLn srcValue
+
+  runTask sourceConnector2 sinkConnector task
 
 --------------------------------------------------------------------------------
 mkMockData :: IO MockMessage

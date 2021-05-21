@@ -14,8 +14,8 @@ import           Data.Text                                       (pack)
 import           Data.Text.Encoding                              (decodeUtf8)
 import           Data.Time                                       (diffTimeToPicoseconds,
                                                                   showGregorian)
-import           HStream.Processing.Processor                    (Record (..))
-import           HStream.Processing.Processor.Internal           (Task)
+import           HStream.Processing.Processor                    (Record (..),
+                                                                  TaskBuilder)
 import           HStream.Processing.Store                        (mkInMemoryStateKVStore,
                                                                   mkInMemoryStateSessionStore,
                                                                   mkInMemoryStateTimestampedKVStore)
@@ -36,7 +36,7 @@ import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey,
                                                                   mkTumblingWindow,
                                                                   timeWindowKeySerde)
 import qualified HStream.Processing.Table                        as HT
-import           HStream.Processing.Topic                        (TopicName)
+import qualified HStream.Processing.Type                         as HPT
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
 import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
@@ -54,12 +54,13 @@ import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 --------------------------------------------------------------------------------
+type TopicName = HPT.StreamName
 type SourceTopic = [TopicName]
 type SinkTopic   = TopicName
 
-data ExecutionPlan = SelectPlan         SourceTopic SinkTopic Task
+data ExecutionPlan = SelectPlan         SourceTopic SinkTopic TaskBuilder
                    | CreatePlan         TopicName Int
-                   | CreateBySelectPlan SourceTopic SinkTopic Task Int
+                   | CreateBySelectPlan SourceTopic SinkTopic TaskBuilder Int
                    | InsertPlan         TopicName BL.ByteString
 
 --------------------------------------------------------------------------------
