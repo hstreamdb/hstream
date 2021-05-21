@@ -560,15 +560,15 @@ instance Validate Select where
 
 ------------------------------------- CREATE -----------------------------------
 instance Validate Create where
-  validate create@(CreateAs _ _ select options) =
-    validate select >> validate (StreamOptions options) >> return create
-  validate create@(DCreate _ _ options) =
+  validate create@(DCreate _ _) = return create
+  validate create@(CreateOp _ _ options) =
     validate (StreamOptions options) >> return create
+  validate create@(CreateAs _ _ select) =
+    validate select >> return create
+  validate create@(CreateAsOp _ _ select options) =
+    validate select >> validate (StreamOptions options) >> return create
 
 instance Validate StreamOption where
-  validate op@(OptionFormat pos s) = do
-    unless (s `L.elem` ["JSON", "json"]) (Left $ buildSQLException ParseException pos $ "Stream format can only support JSON yet ")
-    return op
   validate op@(OptionRepFactor pos n') = do
     let n = extractPNInteger n'
     unless (n > 0) (Left $ buildSQLException ParseException pos "Replicate factor can only be positive integers")
@@ -580,10 +580,9 @@ instance Validate StreamOptions where
   validate (StreamOptions options) = do
     mapM_ validate options
     case options of
-      [OptionFormat{}, OptionRepFactor{}] -> return $ StreamOptions options
-      [OptionRepFactor{}, OptionFormat{}] -> return $ StreamOptions options
+      [OptionRepFactor{}] -> return $ StreamOptions options
       _                                   ->
-        Left $ buildSQLException ParseException Nothing "There should be one and only one FORMAT and REPLICATE option each"
+        Left $ buildSQLException ParseException Nothing "There should be one and only one REPLICATE option"
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
