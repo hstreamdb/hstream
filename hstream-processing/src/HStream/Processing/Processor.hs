@@ -14,10 +14,12 @@ module HStream.Processing.Processor
     getKVStateStore,
     getSessionStateStore,
     getTimestampedKVStateStore,
+    getTaskName,
     Record (..),
     Processor (..),
     SourceConfig (..),
     SinkConfig (..),
+    TaskBuilder,
   )
 where
 

@@ -21,11 +21,10 @@ where
 
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor
-import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           RIO
-import qualified RIO.ByteString.Lazy                   as BL
-import qualified RIO.Text                              as T
+import qualified RIO.ByteString.Lazy          as BL
+import qualified RIO.Text                     as T
 
 data Stream k v = Stream
   { streamKeySerde :: Maybe (Serde k),
