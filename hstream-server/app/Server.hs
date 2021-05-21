@@ -25,7 +25,7 @@ parseConfig =
   ServerConfig
     <$> strOption   (long "host" <> metavar "HOST" <> showDefault <> value "127.0.0.1" <> help "server host value")
     <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 50051 <> short 'p' <> help "server port value")
-    <*> option auto (long "config-path" <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
+    <*> strOption (long "config-path" <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
     <*> option auto (long "replicate-factor" <> metavar "INT" <> showDefault <> value 3 <> short 'f' <> help "topic replicate factor")
 
 app :: ServerConfig -> IO ()
@@ -34,7 +34,9 @@ app ServerConfig{..} = do
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
-  hstreamApiServer (handlers _logdeviceConfigPath) options
+  api <- handlers _logdeviceConfigPath
+  print _logdeviceConfigPath
+  hstreamApiServer api options
 
 main :: IO ()
 main = do

@@ -136,7 +136,7 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ClientReaderResponse _meta _status _details <-
-    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000 [] action)
+    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 [] action)
   return ()
   where
     action call _meta recv =
