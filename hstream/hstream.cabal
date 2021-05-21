@@ -73,6 +73,7 @@ test-suite hstream-test
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , hstream-server
     , random              ^>=1.2
     , rio
     , scientific
