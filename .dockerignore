@@ -30,3 +30,4 @@ docker/
 **/Dockerfile
 .git/
 .github/
+.DS_Store

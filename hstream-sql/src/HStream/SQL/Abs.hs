@@ -38,17 +38,19 @@ data SQL' a
     | QCreate a (Create' a)
     | QInsert a (Insert' a)
     | QShow a (ShowQ' a)
+    | QDrop a (Drop' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Create = Create' BNFC'Position
 data Create' a
-    = DCreate a Ident [StreamOption' a]
-    | CreateAs a Ident (Select' a) [StreamOption' a]
+    = DCreate a Ident
+    | CreateOp a Ident [StreamOption' a]
+    | CreateAs a Ident (Select' a)
+    | CreateAsOp a Ident (Select' a) [StreamOption' a]
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type StreamOption = StreamOption' BNFC'Position
-data StreamOption' a
-    = OptionFormat a String | OptionRepFactor a (PNInteger' a)
+data StreamOption' a = OptionRepFactor a (PNInteger' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Insert = Insert' BNFC'Position
@@ -64,6 +66,10 @@ data ShowQ' a = DShow a (ShowOption' a)
 
 type ShowOption = ShowOption' BNFC'Position
 data ShowOption' a = ShowQueries a | ShowStreams a
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type Drop = Drop' BNFC'Position
+data Drop' a = DDrop a Ident | DropIf a Ident
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Select = Select' BNFC'Position
@@ -303,15 +309,17 @@ instance HasPosition SQL where
     QCreate p _ -> p
     QInsert p _ -> p
     QShow p _ -> p
+    QDrop p _ -> p
 
 instance HasPosition Create where
   hasPosition = \case
-    DCreate p _ _ -> p
-    CreateAs p _ _ _ -> p
+    DCreate p _ -> p
+    CreateOp p _ _ -> p
+    CreateAs p _ _ -> p
+    CreateAsOp p _ _ _ -> p
 
 instance HasPosition StreamOption where
   hasPosition = \case
-    OptionFormat p _ -> p
     OptionRepFactor p _ -> p
 
 instance HasPosition Insert where
@@ -328,6 +336,11 @@ instance HasPosition ShowOption where
   hasPosition = \case
     ShowQueries p -> p
     ShowStreams p -> p
+
+instance HasPosition Drop where
+  hasPosition = \case
+    DDrop p _ -> p
+    DropIf p _ -> p
 
 instance HasPosition Select where
   hasPosition = \case

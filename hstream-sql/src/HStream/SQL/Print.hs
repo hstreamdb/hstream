@@ -135,18 +135,20 @@ instance Print (HStream.SQL.Abs.SQL' a) where
     HStream.SQL.Abs.QCreate _ create -> prPrec i 0 (concatD [prt 0 create, doc (showString ";")])
     HStream.SQL.Abs.QInsert _ insert -> prPrec i 0 (concatD [prt 0 insert, doc (showString ";")])
     HStream.SQL.Abs.QShow _ showq -> prPrec i 0 (concatD [prt 0 showq, doc (showString ";")])
+    HStream.SQL.Abs.QDrop _ drop -> prPrec i 0 (concatD [prt 0 drop, doc (showString ";")])
 
 instance Print (HStream.SQL.Abs.Create' a) where
   prt i = \case
-    HStream.SQL.Abs.DCreate _ id_ streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
-    HStream.SQL.Abs.CreateAs _ id_ select streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "AS"), prt 0 select, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
+    HStream.SQL.Abs.DCreate _ id_ -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_])
+    HStream.SQL.Abs.CreateOp _ id_ streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
+    HStream.SQL.Abs.CreateAs _ id_ select -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "AS"), prt 0 select])
+    HStream.SQL.Abs.CreateAsOp _ id_ select streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "AS"), prt 0 select, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
 
 instance Print [HStream.SQL.Abs.StreamOption' a] where
   prt = prtList
 
 instance Print (HStream.SQL.Abs.StreamOption' a) where
   prt i = \case
-    HStream.SQL.Abs.OptionFormat _ str -> prPrec i 0 (concatD [doc (showString "FORMAT"), doc (showString "="), prt 0 str])
     HStream.SQL.Abs.OptionRepFactor _ pninteger -> prPrec i 0 (concatD [doc (showString "REPLICATE"), doc (showString "="), prt 0 pninteger])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
@@ -172,6 +174,11 @@ instance Print (HStream.SQL.Abs.ShowOption' a) where
   prt i = \case
     HStream.SQL.Abs.ShowQueries _ -> prPrec i 0 (concatD [doc (showString "QUERIES")])
     HStream.SQL.Abs.ShowStreams _ -> prPrec i 0 (concatD [doc (showString "STREAMS")])
+
+instance Print (HStream.SQL.Abs.Drop' a) where
+  prt i = \case
+    HStream.SQL.Abs.DDrop _ id_ -> prPrec i 0 (concatD [doc (showString "DROP"), doc (showString "STREAM"), prt 0 id_])
+    HStream.SQL.Abs.DropIf _ id_ -> prPrec i 0 (concatD [doc (showString "DROP"), doc (showString "STREAM"), doc (showString "IF"), doc (showString "EXIST"), prt 0 id_])
 
 instance Print (HStream.SQL.Abs.Select' a) where
   prt i = \case

@@ -336,10 +336,8 @@ instance Refine Select where
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
 
 ---- CREATE
-data StreamFormat = FormatJSON deriving (Eq, Show)
 data RStreamOptions = RStreamOptions
-  { rStreamFormat :: StreamFormat
-  , rRepFactor    :: Int
+  { rRepFactor    :: Int
   } deriving (Eq, Show)
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
@@ -347,17 +345,16 @@ data RCreate = RCreate   Text RStreamOptions
 
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
-  refine [OptionFormat _ format, OptionRepFactor _ rep] = RStreamOptions (refineFormat format) (fromInteger $ refine rep)
-    where refineFormat "json" = FormatJSON
-          refineFormat "JSON" = FormatJSON
-          refineFormat _      = throwSQLException RefineException Nothing "Impossible happened"
-  refine xs@[OptionRepFactor{}, OptionFormat{}] = refine . reverse $ xs
+  refine [OptionRepFactor _ rep] = RStreamOptions (fromInteger $ refine rep)
+  refine [] = RStreamOptions 3
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
-  refine (DCreate  _ (Ident s) options)        = RCreate   s (refine options)
-  refine (CreateAs _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
+  refine (DCreate  _ (Ident s)) = RCreate s $ refine ([] :: [StreamOption])
+  refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
+  refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
+  refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
 
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]

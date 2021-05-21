@@ -45,10 +45,10 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "create streams" $
     (do
         setLogDeviceDbgLevel C_DBG_ERROR
-        handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
-        handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
-        handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
-        handleCreateStreamSQL $ "CREATE STREAM " <> sink2   <> " WITH (FORMAT = \"JSON\", REPLICATE = 3);"
+        handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
+        handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> ";"
+        handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
+        handleCreateStreamSQL $ "CREATE STREAM " <> sink2   <> " ;"
     ) `shouldReturn` ()
 
   it "insert data to source topics" $
@@ -60,8 +60,8 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "a simple SQL query" $
     (do
       result <- async . handleCreateBySelectSQL $
-        "CREATE STREAM " <> sink1 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES WITH (FORMAT = \"JSON\", REPLICATE = 3);"
-      threadDelay 3000000
+        "CREATE STREAM " <> sink1 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES WITH (REPLICATE = 3);"
+      threadDelay 5000000
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (31, 26);"
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (22, 80);"
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (15, 10);"

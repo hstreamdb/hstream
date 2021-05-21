@@ -44,12 +44,14 @@ QShow.   SQL ::= ShowQ  ";" ;
 QDrop.   SQL ::= Drop   ";" ;
 
 ---- Create Query
-DCreate.  Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
+DCreate.  Create ::= "CREATE" "STREAM" Ident ;
+CreateOp. Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
 separator StreamOption "," ;
-CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOption] ")" ;
+CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select ;
+CreateAsOp. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOption] ")" ;
 
 -- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
-OptionFormat. StreamOption ::= "FORMAT" "=" String ;
+-- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
 ---- Insert Query
