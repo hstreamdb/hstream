@@ -22,6 +22,7 @@ extra-source-files: CHANGELOG.md
 library
   exposed-modules:
     HStream.Server.Handler
+    HStream.Server.HStoreConnector
     HStream.Server.Utils
     HStream.Server.HStreamApi
     ThirdParty.Google.Protobuf.Struct

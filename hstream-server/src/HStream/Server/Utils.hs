@@ -3,6 +3,10 @@ module HStream.Server.Utils
   , jsonValueToValue
   , structToJsonObject
   , valueToJsonValue
+  , cbytesToText
+  , textToCBytes
+  , lazyByteStringToCbytes
+  , cbytesToLazyByteString
   ) where
 
 import qualified Data.Aeson                        as Aeson
@@ -12,7 +16,12 @@ import qualified Data.Map.Strict                   as Map
 import           Data.Scientific
 import qualified Data.Text.Lazy                    as TL
 import           Proto3.Suite
+import qualified RIO.ByteString.Lazy               as BL
+import qualified RIO.Text                          as T
 import           ThirdParty.Google.Protobuf.Struct
+import qualified Z.Data.CBytes                     as ZCB
+import           Z.Data.Vector.Base                (Bytes)
+import qualified Z.Foreign                         as ZF
 
 -- Aeson.Value  <-> PB.Value
 -- Aeson.Object <-> PB.Struct
@@ -44,3 +53,16 @@ valueToJsonValue (Value (Just (ValueKindStringValue text)))           = Aeson.St
 valueToJsonValue (Value (Just (ValueKindNumberValue num)))            = Aeson.Number (read . show $ num)
 valueToJsonValue (Value (Just (ValueKindBoolValue bool)))             = Aeson.Bool bool
 valueToJsonValue (Value (Just (ValueKindNullValue _)))                = Aeson.Null
+
+cbytesToText :: ZCB.CBytes -> T.Text
+cbytesToText = T.pack . ZCB.unpack
+
+textToCBytes :: T.Text -> ZCB.CBytes
+textToCBytes = ZCB.pack . T.unpack
+
+cbytesToLazyByteString :: ZCB.CBytes -> BL.ByteString
+cbytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
+
+lazyByteStringToCbytes :: BL.ByteString -> ZCB.CBytes
+lazyByteStringToCbytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
+
