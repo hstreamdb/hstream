@@ -41,6 +41,7 @@ QSelect. SQL ::= Select ";" ;
 QCreate. SQL ::= Create ";" ;
 QInsert. SQL ::= Insert ";" ;
 QShow.   SQL ::= ShowQ  ";" ;
+QDrop.   SQL ::= Drop   ";" ;
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
@@ -62,6 +63,10 @@ InsertJson.   Insert ::= "INSERT" "INTO" Ident "VALUES" SString ;
 DShow. ShowQ ::= "SHOW" ShowOption ;
 ShowQueries. ShowOption ::= "QUERIES" ;
 ShowStreams. ShowOption ::= "STREAMS" ;
+
+--- Drop Query
+DDrop.  Drop ::= "DROP" "STREAM" Ident ;
+DropIf. Drop ::= "DROP" "STREAM" "IF" "EXIST" Ident ;
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;
