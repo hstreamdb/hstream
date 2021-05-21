@@ -108,6 +108,9 @@ instance Semigroup TaskTopologyConfig where
 instance Monoid TaskTopologyConfig where
   mempty = def
 
+getTaskName :: TaskTopologyConfig -> T.Text
+getTaskName TaskTopologyConfig {..} = ttcName
+
 data InternalSourceConfig = InternalSourceConfig
   { iSourceName :: T.Text,
     iSourceTopicName :: T.Text
