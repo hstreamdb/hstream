@@ -54,14 +54,16 @@ import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 --------------------------------------------------------------------------------
-type TopicName = HPT.StreamName
-type SourceTopic = [TopicName]
-type SinkTopic   = TopicName
+type TopicName     = HPT.StreamName
+type SourceTopic   = [TopicName]
+type SinkTopic     = TopicName
+type CheckIfExist  = Bool
 
 data ExecutionPlan = SelectPlan         SourceTopic SinkTopic TaskBuilder
                    | CreatePlan         TopicName Int
                    | CreateBySelectPlan SourceTopic SinkTopic TaskBuilder Int
                    | InsertPlan         TopicName BL.ByteString
+                   | DropPlan           CheckIfExist TopicName
 
 --------------------------------------------------------------------------------
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
@@ -86,6 +88,7 @@ streamCodegen input = do
     RQInsert (RInsertJSON topic bs) -> do
       return $ InsertPlan topic (BSL.fromStrict bs)
     RQShow x -> print x >> throwIO NotSupported
+    RQDrop x -> print x >> throwIO NotSupported
 
 data NotSupported = NotSupported deriving Show
 instance Exception NotSupported

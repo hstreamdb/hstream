@@ -601,10 +601,16 @@ instance Validate Insert where
 
 ------------------------------------- SHOW -------------------------------------
 instance Validate ShowQ where
-  validate show = return show
+  validate = return
+
+------------------------------------- DROP -------------------------------------
+instance Validate Drop where
+  validate = return
+
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where
   validate sql@(QSelect _ select) = validate select >> return sql
   validate sql@(QCreate _ create) = validate create >> return sql
   validate sql@(QInsert _ insert) = validate insert >> return sql
   validate sql@(QShow   _ show)   = validate show   >> return sql
+  validate sql@(QDrop   _ drop)   = validate drop   >> return sql
