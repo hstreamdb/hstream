@@ -126,7 +126,24 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
         Right ()                  -> do
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
-
+    Right (DropPlan checkIfExist stream) -> do
+      streamExists <- doesStreamExists scLDClient (textToCBytes stream)
+      if streamExists then do
+        remove' <- try $ removeStream scLDClient (textToCBytes stream)
+        case remove' of
+          Left (e :: SomeException) -> do
+            let resp = genErrorQueryResponse "error removing stream"
+            return (ServerNormalResponse resp [] StatusUnknown "")
+          Right ()                  -> do
+            let resp = genSuccessQueryResponse
+            return (ServerNormalResponse resp [] StatusOk "")
+      else do
+        if checkIfExist then do
+          let resp = genSuccessQueryResponse
+          return (ServerNormalResponse resp [] StatusOk  "")
+        else do
+          let resp = genErrorQueryResponse "stream does not exist"
+          return (ServerNormalResponse resp [] StatusUnknown "")
 
 -- executePushQueryHandler :: DefaultInfo
 --                         -> ServerRequest 'ServerStreaming CommandPushQuery Struct

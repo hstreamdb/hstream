@@ -88,7 +88,8 @@ streamCodegen input = do
     RQInsert (RInsertJSON topic bs) -> do
       return $ InsertPlan topic (BSL.fromStrict bs)
     RQShow x -> print x >> throwIO NotSupported
-    RQDrop x -> print x >> throwIO NotSupported
+    RQDrop (RDrop x)   -> return $ DropPlan False x
+    RQDrop (RDropIf x) -> return $ DropPlan True x
 
 data NotSupported = NotSupported deriving Show
 instance Exception NotSupported
