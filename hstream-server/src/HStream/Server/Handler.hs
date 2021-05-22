@@ -127,6 +127,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
 
+
 -- executePushQueryHandler :: DefaultInfo
 --                         -> ServerRequest 'ServerStreaming CommandPushQuery Struct
 --                         -> IO (ServerResponse 'ServerStreaming Struct)
@@ -242,4 +243,3 @@ runTaskWrapper taskBuilder ldclient = do
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
-

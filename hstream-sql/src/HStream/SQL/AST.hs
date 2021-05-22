@@ -105,7 +105,6 @@ data UnaryAggregate   = AggCount
                       | AggMin
                       deriving (Eq, Show)
 
-
 type ExprName = String
 data RValueExpr = RExprCol       ExprName (Maybe StreamName) FieldName
                 | RExprConst     ExprName Constant
@@ -390,11 +389,22 @@ instance Refine ShowOption where
   refine (ShowQueries _) = RShowQueries
 type instance RefinedType ShowOption = RShowOption
 
+---- DROP
+data RDrop
+  = RDrop Text
+  | RDropIf Text
+  deriving (Eq, Show)
+instance Refine Drop where
+  refine (DDrop _  (Ident x)) = RDrop x
+  refine (DropIf _ (Ident x)) = RDropIf x
+type instance RefinedType Drop = RDrop
+
 ---- SQL
 data RSQL = RQSelect RSelect
           | RQCreate RCreate
           | RQInsert RInsert
           | RQShow   RShow
+          | RQDrop   RDrop
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
@@ -402,3 +412,4 @@ instance Refine SQL where
   refine (QCreate _ create) = RQCreate (refine create)
   refine (QInsert _ insert) = RQInsert (refine insert)
   refine (QShow   _ show)   = RQShow   (refine show)
+  refine (QDrop   _ drop)   = RQDrop   (refine drop)
