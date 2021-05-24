@@ -35,6 +35,13 @@ executable hstore-admin
     , text                  ^>=1.2.3.0
     , Z-IO
 
+  include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+
+  -- FIXME: we need this extra lib for old fbthrift builds.
+  --
+  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
+  extra-libraries:    protocol
   default-language:   Haskell2010
   default-extensions:
     DeriveGeneric
@@ -59,9 +66,8 @@ library
   hs-source-dirs:     . gen-hs2
   exposed-modules:
     HStream.Store.Admin.API
+    HStream.Store.Admin.Command
     HStream.Store.Admin.Format
-    HStream.Store.Admin.NodesConfig
-    HStream.Store.Admin.Status
     HStream.Store.Admin.Types
 
   other-modules:
@@ -75,6 +81,9 @@ library
     Fb303.FacebookService.Client
     Fb303.FacebookService.Service
     Fb303.Types
+    HStream.Store.Admin.Command.Connect
+    HStream.Store.Admin.Command.NodesConfig
+    HStream.Store.Admin.Command.Status
     Logtree.Types
     Maintenance.Types
     Membership.Types
@@ -103,13 +112,14 @@ library
     , unordered-containers  ^>=0.2.9.0
     , vector                ^>=0.12.0.1
 
-  extra-lib-dirs:     /usr/local/lib
   include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
   default-language:   Haskell2010
   default-extensions:
     DeriveGeneric
     DerivingStrategies
     EmptyDataDeriving
+    FlexibleContexts
     GADTSyntax
     GeneralizedNewtypeDeriving
     LambdaCase

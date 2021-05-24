@@ -1,5 +1,6 @@
 module HStream.Store.Admin.API
-  ( module Admin.AdminAPI.Client
+  ( sendAdminApiRequest
+  , module Admin.AdminAPI.Client
   , module Admin.AdminAPI.Service
   , module AdminCommands.Types
   , module ClusterMembership.Types
@@ -9,14 +10,16 @@ module HStream.Store.Admin.API
   , module Logtree.Types
   , module Maintenance.Types
   , module Nodes.Types
-  , module Thrift.Protocol
-  , module Thrift.Channel
-  , module Thrift.Monad
   , module Safety.Types
   , module Settings.Types
-  , module Thrift.Channel.SocketChannel
-  , module Thrift.Protocol.Id
   , module Common.Types
+  , module Thrift.Protocol
+  , module Thrift.Protocol.Id
+  , module Thrift.Protocol.ApplicationException.Types
+  , module Thrift.Channel
+  , module Thrift.Channel.HeaderChannel
+  , module Thrift.Channel.SocketChannel
+  , module Thrift.Monad
   ) where
 
 import           Admin.AdminAPI.Client
@@ -33,7 +36,19 @@ import           Nodes.Types
 import           Safety.Types
 import           Settings.Types
 import           Thrift.Channel
+import           Thrift.Channel.HeaderChannel
 import           Thrift.Channel.SocketChannel
+import           Thrift.Codegen
 import           Thrift.Monad
 import           Thrift.Protocol
+import           Thrift.Protocol.ApplicationException.Types
 import           Thrift.Protocol.Id
+import qualified Util.EventBase                             as FBUtil
+
+sendAdminApiRequest
+  :: HeaderConfig AdminAPI
+  ->(forall p. (Protocol p) => ThriftM p HeaderWrappedChannel AdminAPI a)
+  -> IO a
+sendAdminApiRequest conf m =
+  FBUtil.withEventBaseDataplane $ \evb ->
+    withHeaderChannel evb conf m

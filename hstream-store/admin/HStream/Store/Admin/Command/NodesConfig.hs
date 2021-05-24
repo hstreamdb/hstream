@@ -1,4 +1,4 @@
-module HStream.Store.Admin.NodesConfig
+module HStream.Store.Admin.Command.NodesConfig
   ( showConfig
   , bootstrap
   ) where
@@ -13,9 +13,9 @@ import           Data.Text.Encoding        (decodeUtf8)
 import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
 
-showConfig :: AA.SocketConfig AA.AdminAPI -> SimpleNodesFilter -> IO Text
-showConfig socketConfig s = do
-  config <- AA.withSocketChannel @AA.AdminAPI socketConfig $
+showConfig :: AA.HeaderConfig AA.AdminAPI -> SimpleNodesFilter -> IO Text
+showConfig conf s = do
+  config <- AA.sendAdminApiRequest conf $
     runSimpleNodesFilter s $ \case
       Nothing -> AA.getNodesConfig (AA.NodesFilter Nothing Nothing Nothing)
       Just nf -> AA.getNodesConfig nf
@@ -28,10 +28,10 @@ showConfig socketConfig s = do
       AA.NodesConfigResponse (concatMap AA.nodesConfigResponse_nodes cs)
                              (AA.nodesConfigResponse_version $ head cs)
 
-bootstrap :: AA.SocketConfig AA.AdminAPI -> [ReplicationPropertyPair] -> IO ()
-bootstrap socketConfig ps = do
+bootstrap :: AA.HeaderConfig AA.AdminAPI -> [ReplicationPropertyPair] -> IO ()
+bootstrap conf ps = do
   let replicationProperty = Map.fromList $ map unReplicationPropertyPair ps
   when (Map.null replicationProperty) $ errorWithoutStackTrace "Empty replication property!"
-  resp <- AA.withSocketChannel @AA.AdminAPI socketConfig $
+  resp <- AA.sendAdminApiRequest conf $
     AA.bootstrapCluster $ AA.BootstrapClusterRequest replicationProperty
   putStrLn $ "Successfully bootstrapped the cluster, new nodes configuration version: " <> show (AA.bootstrapClusterResponse_new_nodes_configuration_version resp)

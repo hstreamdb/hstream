@@ -1,11 +1,9 @@
-module HStream.Store.Admin.Status
+module HStream.Store.Admin.Command.Status
   ( runStatus
   ) where
 
 import           Control.Monad
-import           Data.Int
 import           Data.List                  (elemIndex, sortBy)
-import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
 import qualified Text.Layout.Table          as Table
 
@@ -20,9 +18,9 @@ import           HStream.Store.Admin.Types
 -- NodesStateResponse object. `force` will force this method to return all the
 -- available state even if the node is not fully ready. In this case we will
 -- not throw NodeNotReady exception but we will return partial data.
-runStatus :: AA.SocketConfig AA.AdminAPI -> StatusOpts -> IO String
-runStatus socketConfig StatusOpts{..} = do
-  states <- AA.withSocketChannel @AA.AdminAPI socketConfig $ do
+runStatus :: AA.HeaderConfig AA.AdminAPI -> StatusOpts -> IO String
+runStatus conf StatusOpts{..} = do
+  states <- AA.sendAdminApiRequest conf $ do
     case fromSimpleNodesFilter statusFilter of
       [] -> AA.nodesStateResponse_states <$> AA.getNodesState (AA.NodesStateRequest Nothing (Just statusForce))
       xs -> do
