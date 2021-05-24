@@ -57,13 +57,32 @@ spec = describe "HStream.RunSQLSpec" $ do
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (15, 10);"
     ) `shouldReturn` ()
 
+  it "drop streams" $
+    (do
+        setLogDeviceDbgLevel C_DBG_ERROR
+        handleDropStreamSQL $ "DROP STREAM " <> source1 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM " <> source2 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM " <> sink1   <> " ;"
+        handleDropStreamSQL $ "DROP STREAM " <> sink2   <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source1 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> sink1   <> " ;"
+    ) `shouldReturn` ()
+
   it "a simple SQL query" $
     (do
+      handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> ";"
+      handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> ";"
+      handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> ";"
+
       result <- async . handleCreateBySelectSQL $
         "CREATE STREAM " <> sink1 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES WITH (REPLICATE = 3);"
       threadDelay 5000000
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (31, 26);"
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (22, 80);"
+
+      handleDropStreamSQL   $ "DROP STREAM "   <> source2 <> " ;"
+      handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> ";"
+
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (15, 10);"
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (31, 26);"
       wait result
@@ -89,6 +108,15 @@ handleCreateStreamSQL sql = do
       createStream ldclient (textToCBytes topicName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
 
+handleDropStreamSQL :: Text -> IO ()
+handleDropStreamSQL sql = do
+  plan <- streamCodegen sql
+  case plan of
+    DropPlan checkIfExist stream -> do
+      streamExists <- doesStreamExists ldclient (textToCBytes stream)
+      if streamExists then removeStream ldclient (textToCBytes stream)
+      else if checkIfExist then return () else error "stream does not exist"
+    _ -> error "Execution plan type mismatched"
 
 handleInsertSQL :: Text -> IO ()
 handleInsertSQL sql = do
