@@ -93,15 +93,15 @@ import qualified HStream.Store.Internal.Types     as FFI
 type StreamName = CBytes
 
 -- | Global Stream name to logid cache
-topicNameCache :: Cache.Cache StreamName FFI.C_LogID
-topicNameCache = unsafePerformIO $ Cache.newCache Nothing
-{-# NOINLINE topicNameCache #-}
+streamNameCache :: Cache.Cache StreamName FFI.C_LogID
+streamNameCache = unsafePerformIO $ Cache.newCache Nothing
+{-# NOINLINE streamNameCache #-}
 
 -- | Create stream
 --
 -- Currently a Stream is a loggroup which only contains one random logid.
 createStream :: HasCallStack => FFI.LDClient -> StreamName -> FFI.LogAttrs -> IO ()
-createStream client topic attrs = go 10
+createStream client stream attrs = go 10
   where
     go :: Int -> IO ()
     go maxTries =
@@ -109,11 +109,11 @@ createStream client topic attrs = go 10
          then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
            logid <- genRandomLogID
-           result <- try $ LD.makeLogGroup client topic logid logid attrs True
+           result <- try $ LD.makeLogGroup client stream logid logid attrs True
            case result of
              Right group -> do
                LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
-               Cache.insert topicNameCache topic logid
+               Cache.insert streamNameCache stream logid
              Left (_ :: E.ID_CLASH) -> go $! maxTries - 1
 
 renameStream
@@ -128,39 +128,39 @@ renameStream client from to = do
   LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from to
   -- FIXME
   -- Do NOT combine these operations to a atomically one, since we need
-  -- delete the old topic name even the new one is insert failed.
-  m_v <- Cache.lookup' topicNameCache from
+  -- delete the old stream name even the new one is insert failed.
+  m_v <- Cache.lookup' streamNameCache from
   case m_v of
-    Just x -> do Cache.delete topicNameCache from
-                 Cache.insert topicNameCache to x
+    Just x -> do Cache.delete streamNameCache from
+                 Cache.insert streamNameCache to x
     Nothing -> return ()
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamName -> IO ()
-removeStream client topic = do
-  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client topic
-  Cache.delete topicNameCache topic
+removeStream client stream = do
+  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client stream
+  Cache.delete streamNameCache stream
 
 doesStreamExists :: HasCallStack => FFI.LDClient -> StreamName -> IO Bool
-doesStreamExists client topic = do
-  m_v <- Cache.lookup topicNameCache topic
+doesStreamExists client stream = do
+  m_v <- Cache.lookup streamNameCache stream
   case m_v of
     Just _  -> return True
-    Nothing -> do r <- try $ LD.getLogGroup client topic
+    Nothing -> do r <- try $ LD.getLogGroup client stream
                   case r of
                     Left (_ :: E.NOTFOUND) -> return False
                     Right group -> do
                       logid <- fst <$> LD.logGroupGetRange group
-                      Cache.insert topicNameCache topic logid
+                      Cache.insert streamNameCache stream logid
                       return True
 
 getCLogIDByStreamName :: FFI.LDClient -> StreamName -> IO FFI.C_LogID
-getCLogIDByStreamName client topic = do
-  m_v <- Cache.lookup topicNameCache topic
+getCLogIDByStreamName client stream = do
+  m_v <- Cache.lookup streamNameCache stream
   case m_v of
     Just v -> return v
     Nothing -> do
-      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client topic)
-      Cache.insert topicNameCache topic logid
+      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client stream)
+      Cache.insert streamNameCache stream logid
       return logid
 
 -- | Generate a random logid through a simplify version of snowflake algorithm.

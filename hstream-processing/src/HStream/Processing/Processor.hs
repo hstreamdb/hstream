@@ -140,14 +140,14 @@ validateTopology TaskTopologyConfig {..} =
 
 data SourceConfig k v = SourceConfig
   { sourceName :: T.Text,
-    sourceTopicName :: T.Text,
+    sourceStreamName :: T.Text,
     keyDeserializer :: Maybe (Deserializer k),
     valueDeserializer :: Deserializer v
   }
 
 data SinkConfig k v = SinkConfig
   { sinkName :: T.Text,
-    sinkTopicName :: T.Text,
+    sinkStreamName :: T.Text,
     keySerializer :: Maybe (Serializer k),
     valueSerializer :: Serializer v
   }
@@ -160,10 +160,10 @@ addSource cfg@SourceConfig {..} =
   mempty
     { sourceCfgs =
         HM.singleton
-          sourceTopicName
+          sourceStreamName
           InternalSourceConfig
             { iSourceName = sourceName,
-              iSourceTopicName = sourceTopicName
+              iSourceStreamName = sourceStreamName
             },
       topology =
         HM.singleton
@@ -210,7 +210,7 @@ buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
   let rv = runSer valueSerializer recordValue
   forward r {recordKey = rk, recordValue = rv}
 
--- liftIO $ writeRecord SinkRecord {snkStream = sinkTopicName, snkKey = rk, snkValue = rv, snkTimestamp = recordTimestamp}
+-- liftIO $ writeRecord SinkRecord {snkStream = sinkStreamName, snkKey = rk, snkValue = rv, snkTimestamp = recordTimestamp}
 
 serializerNameSuffix :: T.Text
 serializerNameSuffix = "-SERIALIZER"
@@ -231,7 +231,7 @@ addSink cfg@SinkConfig {..} parentNames =
           sinkName
           InternalSinkConfig
             { iSinkName = sinkName,
-              iSinkTopicName = sinkTopicName
+              iSinkStreamName = sinkStreamName
             }
     }
 
@@ -245,7 +245,7 @@ buildInternalSinkProcessor sinkConnector InternalSinkConfig {..} = Processor $ \
     writeRecord
       sinkConnector
       SinkRecord
-        { snkStream = iSinkTopicName,
+        { snkStream = iSinkStreamName,
           snkKey = recordKey,
           snkValue = recordValue,
           snkTimestamp = ts

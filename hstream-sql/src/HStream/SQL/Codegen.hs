@@ -37,14 +37,15 @@ import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey,
                                                                   timeWindowKeySerde)
 import qualified HStream.Processing.Table                        as HT
 import qualified HStream.Processing.Type                         as HPT
-import           HStream.SQL.AST
+import           HStream.SQL.AST                                 hiding
+                                                                 (StreamName)
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
 import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
                                                                   compareValue,
                                                                   composeColName,
                                                                   diffTimeToMs,
                                                                   genJoiner,
-                                                                  genRandomSinkTopic,
+                                                                  genRandomSinkStream,
                                                                   getFieldByName,
                                                                   unaryOpOnValue)
 import           HStream.SQL.Exception                           (SomeSQLException (..),
@@ -54,16 +55,16 @@ import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 --------------------------------------------------------------------------------
-type TopicName     = HPT.StreamName
-type SourceTopic   = [TopicName]
-type SinkTopic     = TopicName
+type StreamName     = HPT.StreamName
+type SourceStream   = [StreamName]
+type SinkStream     = StreamName
 type CheckIfExist  = Bool
 
-data ExecutionPlan = SelectPlan         SourceTopic SinkTopic TaskBuilder
-                   | CreatePlan         TopicName Int
-                   | CreateBySelectPlan SourceTopic SinkTopic TaskBuilder Int
-                   | InsertPlan         TopicName BL.ByteString
-                   | DropPlan           CheckIfExist TopicName
+data ExecutionPlan = SelectPlan         SourceStream SinkStream TaskBuilder
+                   | CreatePlan         StreamName Int
+                   | CreateBySelectPlan SourceStream SinkStream TaskBuilder Int
+                   | InsertPlan         StreamName BL.ByteString
+                   | DropPlan           CheckIfExist StreamName
 
 --------------------------------------------------------------------------------
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
@@ -71,23 +72,23 @@ streamCodegen input = do
   rsql <- parseAndRefine input
   case rsql of
     RQSelect select                     -> do
-      (builder, source, sink) <- genStreamBuilderWithTopic "demo" Nothing select
+      (builder, source, sink) <- genStreamBuilderWithStream "demo" Nothing select
       return $ SelectPlan source sink (HS.build builder)
-    RQCreate (RCreate topic rOptions)   -> return $ CreatePlan topic (rRepFactor rOptions)
-    RQCreate (RCreateAs topic select rOptions) -> do
-      (builder, source, sink) <- genStreamBuilderWithTopic "demo" (Just topic) select
+    RQCreate (RCreate stream rOptions)   -> return $ CreatePlan stream (rRepFactor rOptions)
+    RQCreate (RCreateAs stream select rOptions) -> do
+      (builder, source, sink) <- genStreamBuilderWithStream "demo" (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
     RQCreate x@(RCreateConnector s ifNotExist cOptions) -> print x >> throwIO NotSupported
-    RQInsert (RInsert topic tuples)     -> do
+    RQInsert (RInsert stream tuples)     -> do
       let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
-      return $ InsertPlan topic (encode object)
-    RQInsert (RInsertBinary topic bs)   -> do
+      return $ InsertPlan stream (encode object)
+    RQInsert (RInsertBinary stream bs)   -> do
       let k = "unknown_binary_data" :: Text
           v = String (decodeUtf8 bs)
       let object = HM.fromList [(k,v)]
-      return $ InsertPlan topic (encode object)
-    RQInsert (RInsertJSON topic bs) -> do
-      return $ InsertPlan topic (BSL.fromStrict bs)
+      return $ InsertPlan stream (encode object)
+    RQInsert (RInsertJSON stream bs) -> do
+      return $ InsertPlan stream (BSL.fromStrict bs)
     RQShow x -> print x >> throwIO NotSupported
     RQDrop (RDrop x)   -> return $ DropPlan False x
     RQDrop (RDropIf x) -> return $ DropPlan True x
@@ -100,33 +101,33 @@ genStreamSourceConfig :: RFrom -> (SourceConfigType, Maybe SourceConfigType)
 genStreamSourceConfig frm =
   let boilerplate = HS.StreamSourceConfig "" objectSerde objectSerde
    in case frm of
-        RFromSingle s -> (boilerplate {sscTopicName = s}, Nothing)
+        RFromSingle s -> (boilerplate {sscStreamName = s}, Nothing)
         RFromJoin (s1,_) (s2,_) _ _ ->
-          ( boilerplate {sscTopicName = s1}
-          , Just $ boilerplate {sscTopicName = s2}
+          ( boilerplate {sscStreamName = s1}
+          , Just $ boilerplate {sscStreamName = s2}
           )
 
 defaultTimeWindowSize :: Int64
 defaultTimeWindowSize = 3000
 
-data SinkConfigType = SinkConfigType SinkTopic (HS.StreamSinkConfig Object Object)
-                    | SinkConfigTypeWithWindow SinkTopic (HS.StreamSinkConfig (TimeWindowKey Object) Object)
+data SinkConfigType = SinkConfigType SinkStream (HS.StreamSinkConfig Object Object)
+                    | SinkConfigTypeWithWindow SinkStream (HS.StreamSinkConfig (TimeWindowKey Object) Object)
 
-genStreamSinkConfig :: Maybe TopicName -> RGroupBy -> IO SinkConfigType
-genStreamSinkConfig sinkTopic' grp = do
-  topic <- case sinkTopic' of
-    Nothing        -> genRandomSinkTopic
-    Just sinkTopic -> return sinkTopic
+genStreamSinkConfig :: Maybe StreamName -> RGroupBy -> IO SinkConfigType
+genStreamSinkConfig sinkStream' grp = do
+  stream <- case sinkStream' of
+    Nothing         -> genRandomSinkStream
+    Just sinkStream -> return sinkStream
   case grp of
     RGroupByEmpty ->
-      return $ SinkConfigType topic HS.StreamSinkConfig
-      { sicTopicName  = topic
+      return $ SinkConfigType stream HS.StreamSinkConfig
+      { sicStreamName  = stream
       , sicKeySerde   = objectSerde
       , sicValueSerde = objectSerde
       }
     _ ->
-      return $ SinkConfigTypeWithWindow topic HS.StreamSinkConfig
-      { sicTopicName = topic
+      return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
+      { sicStreamName = stream
       , sicKeySerde = timeWindowKeySerde objectSerde defaultTimeWindowSize
       , sicValueSerde = objectSerde
       }
@@ -159,12 +160,12 @@ genKeySelector field Record{..} =
   HM.singleton "SelectedKey" $ (HM.!) recordValue field
 
 type TaskName = Text
-genStreamWithSourceTopic :: HasCallStack => TaskName -> RFrom -> IO (Stream Object Object, SourceTopic)
-genStreamWithSourceTopic taskName frm = do
+genStreamWithSourceStream :: HasCallStack => TaskName -> RFrom -> IO (Stream Object Object, SourceStream)
+genStreamWithSourceStream taskName frm = do
   let (srcConfig1, srcConfig2') = genStreamSourceConfig frm
   baseStream <- HS.mkStreamBuilder taskName >>= HS.stream srcConfig1
   case frm of
-    RFromSingle s                     -> return (baseStream, [sscTopicName srcConfig1])
+    RFromSingle s                     -> return (baseStream, [sscStreamName srcConfig1])
     RFromJoin (s1,f1) (s2,f2) typ win ->
       case srcConfig2' of
         Nothing         ->
@@ -178,7 +179,7 @@ genStreamWithSourceTopic taskName frm = do
                                  (genKeySelector f1) (genKeySelector f2)
                                  (genJoinWindows win) streamJoined
                                  baseStream
-              return (joinedStream, [sscTopicName srcConfig1, sscTopicName srcConfig2])
+              return (joinedStream, [sscStreamName srcConfig1, sscStreamName srcConfig2])
             _          ->
               throwSQLException CodegenException Nothing "Impossible happened"
 
@@ -380,10 +381,10 @@ genFilteRNodeFromHaving :: RHaving -> Stream Object Object -> IO (Stream Object 
 genFilteRNodeFromHaving = HS.filter . genFilterRFromHaving
 
 ----
-genStreamBuilderWithTopic :: HasCallStack => TaskName -> Maybe TopicName -> RSelect -> IO (StreamBuilder, SourceTopic, SinkTopic)
-genStreamBuilderWithTopic taskName sinkTopic' select@(RSelect sel frm whr grp hav) = do
-  streamSinkConfig <- genStreamSinkConfig sinkTopic' grp
-  (s0, source)     <- genStreamWithSourceTopic taskName frm
+genStreamBuilderWithStream :: HasCallStack => TaskName -> Maybe StreamName -> RSelect -> IO (StreamBuilder, SourceStream, SinkStream)
+genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp hav) = do
+  streamSinkConfig <- genStreamSinkConfig sinkStream' grp
+  (s0, source)     <- genStreamWithSourceStream taskName frm
   s1               <- genFilterNode whr s0
                       >>= genMapNode sel
   case grp of

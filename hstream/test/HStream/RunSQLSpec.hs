@@ -51,7 +51,7 @@ spec = describe "HStream.RunSQLSpec" $ do
         handleCreateStreamSQL $ "CREATE STREAM " <> sink2   <> " ;"
     ) `shouldReturn` ()
 
-  it "insert data to source topics" $
+  it "insert data to source streams" $
     (do
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);"
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (15, 10);"
@@ -104,8 +104,8 @@ handleCreateStreamSQL :: Text -> IO ()
 handleCreateStreamSQL sql = do
   plan <- streamCodegen sql
   case plan of
-    CreatePlan topicName _ ->
-      createStream ldclient (textToCBytes topicName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
+    CreatePlan streamName _ ->
+      createStream ldclient (textToCBytes streamName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
 
 handleDropStreamSQL :: Text -> IO ()
@@ -122,12 +122,12 @@ handleInsertSQL :: Text -> IO ()
 handleInsertSQL sql = do
   plan <- streamCodegen sql
   case plan of
-    InsertPlan topicName payload -> do
+    InsertPlan streamName payload -> do
       timestamp <- getCurrentTimestamp
       writeRecord
         (hstoreSinkConnector ldclient)
         SinkRecord
-          { snkStream = topicName,
+          { snkStream = streamName,
             snkKey = Nothing,
             snkValue = payload,
             snkTimestamp = timestamp

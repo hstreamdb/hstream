@@ -6,8 +6,8 @@
 module HStream.SQL.Codegen.Utils
   ( getFieldByName
   , getFieldByName'
-  , genRandomSinkTopic
-  , genMockSinkTopic
+  , genRandomSinkStream
+  , genMockSinkStream
   , compareValue
   , binOpOnValue
   , unaryOpOnValue
@@ -36,11 +36,11 @@ getFieldByName' :: Object -> Text -> Maybe Value
 getFieldByName' = flip HM.lookup
 
 --------------------------------------------------------------------------------
-genRandomSinkTopic :: IO Text
-genRandomSinkTopic = stringRandomIO "[a-zA-Z]{20}"
+genRandomSinkStream :: IO Text
+genRandomSinkStream = stringRandomIO "[a-zA-Z]{20}"
 
-genMockSinkTopic :: IO Text
-genMockSinkTopic = return "demoSink"
+genMockSinkStream :: IO Text
+genMockSinkStream = return "demoSink"
 
 --------------------------------------------------------------------------------
 genJoiner :: StreamName -> StreamName -> Object -> Object -> Object
