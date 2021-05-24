@@ -1,16 +1,13 @@
-LogDevice Admin
-===============
-
-
-## Generate haskell code
-
-```sh
-CABAL=cabal-3.5 make
-```
+HStore-Admin
+============
 
 
 ## Build
 
+Inside the interactive shell created by `dev-tools`, run
+
 ```sh
-cabal-3.5 build
+make
+
+cabal build
 ```
