@@ -108,6 +108,7 @@ script/dev-tools shell
 *Inside the interactive shell, you have all extra dependencies installed.*
 
 ```
+I have no name!@649bc6bb75ed:~$ make
 I have no name!@649bc6bb75ed:~$ cabal build all
 ```
 
