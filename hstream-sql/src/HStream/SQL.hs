@@ -5,7 +5,7 @@ module HStream.SQL
   , module HStream.SQL.Codegen
   ) where
 
-import           HStream.SQL.AST
+import           HStream.SQL.AST     hiding (StreamName)
 import           HStream.SQL.Abs
 import           HStream.SQL.Codegen
 import           HStream.SQL.Parse

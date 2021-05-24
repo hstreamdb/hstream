@@ -113,12 +113,12 @@ getTaskName TaskTopologyConfig {..} = ttcName
 
 data InternalSourceConfig = InternalSourceConfig
   { iSourceName :: T.Text,
-    iSourceTopicName :: T.Text
+    iSourceStreamName :: T.Text
   }
 
 data InternalSinkConfig = InternalSinkConfig
   { iSinkName :: T.Text,
-    iSinkTopicName :: T.Text
+    iSinkStreamName :: T.Text
   }
 
 type TaskBuilder = TaskTopologyConfig

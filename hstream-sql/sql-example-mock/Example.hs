@@ -33,13 +33,13 @@ main = getLine >>= run
 run :: Text -> IO ()
 run input = do
   plan <- streamCodegen input
-  (sTopicName,task) <- case plan of
+  (sStreamName,task) <- case plan of
     SelectPlan source sink task           -> return (sink,task)
     CreateBySelectPlan source sink task _ -> return (sink,task)
     _                                     -> error "Not supported"
 
-  let tTopicName = "source1"
-  let hTopicName = "source2"
+  let tStreamName = "source1"
+  let hStreamName = "source2"
 
   mockStore <- mkMockStreamStore
   sourceConnector1 <- mkMockStoreSourceConnector mockStore
@@ -54,7 +54,7 @@ run input = do
         writeRecord
           sinkConnector
           SinkRecord
-            { snkStream = hTopicName,
+            { snkStream = hStreamName,
               snkKey = mmKey,
               snkValue = mmValue,
               snkTimestamp = mmTimestamp
@@ -62,7 +62,7 @@ run input = do
         writeRecord
           sinkConnector
           SinkRecord
-            { snkStream = tTopicName,
+            { snkStream = tStreamName,
               snkKey = mmKey,
               snkValue = mmValue,
               snkTimestamp = mmTimestamp
@@ -71,7 +71,7 @@ run input = do
   _ <- async $
     forever $
       do
-        subscribeToStream sourceConnector1 sTopicName Earlist
+        subscribeToStream sourceConnector1 sStreamName Earlist
         records <- readRecords sourceConnector1
         forM_ records $ \SourceRecord {..} ->
           P.putStr ">>> result: " >> BL.putStrLn srcValue

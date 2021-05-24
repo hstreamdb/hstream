@@ -60,13 +60,13 @@ main = do
           Serde Int
   let streamSourceConfig =
         HS.StreamSourceConfig
-          { sscTopicName = "demo-source",
+          { sscStreamName = "demo-source",
             sscKeySerde = textSerde,
             sscValueSerde = rSerde
           }
   let streamSinkConfig =
         HS.StreamSinkConfig
-          { sicTopicName = "demo-sink",
+          { sicStreamName = "demo-sink",
             sicKeySerde = textSerde,
             sicValueSerde = intSerde
           }

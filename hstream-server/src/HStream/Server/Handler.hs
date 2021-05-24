@@ -52,8 +52,8 @@ newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
 data ServerContext = ServerContext {
-  scLDClient              :: LDClient,
-  scDefaultTopicRepFactor :: Int
+  scLDClient               :: LDClient,
+  scDefaultStreamRepFactor :: Int
 }
 --------------------------------------------------------------------------------
 
@@ -63,7 +63,7 @@ handlers logDeviceConfigPath = do
   let serverContext =
         ServerContext {
           scLDClient = ldclient,
-          scDefaultTopicRepFactor = 3
+          scDefaultStreamRepFactor = 3
         }
   return
     HStreamApi { hstreamApiExecuteQuery     = executeQueryHandler serverContext
@@ -91,32 +91,32 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
     Right SelectPlan{}           -> do
       let resp = genErrorQueryResponse "inconsistent method called"
       return (ServerNormalResponse resp [] StatusUnknown "")
-    Right (CreatePlan topic repFactor)                     -> do
-      e' <- try $ createStream scLDClient (textToCBytes topic) (LogAttrs $ HsLogAttrs scDefaultTopicRepFactor Map.empty)
+    Right (CreatePlan stream repFactor)                     -> do
+      e' <- try $ createStream scLDClient (textToCBytes stream) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
       case e' of
         Left (e :: SomeException) -> do
-          let resp = genErrorQueryResponse "error when creating topic"
+          let resp = genErrorQueryResponse "error when creating stream"
           return (ServerNormalResponse resp [] StatusUnknown "")
         Right ()                  -> do
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
     Right (CreateBySelectPlan sources sink taskBuilder repFactor) -> do
-      e' <- try $ createStream scLDClient (textToCBytes sink) (LogAttrs $ HsLogAttrs scDefaultTopicRepFactor Map.empty)
+      e' <- try $ createStream scLDClient (textToCBytes sink) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
       case e' of
         Left (e :: SomeException) -> do
-          let resp = genErrorQueryResponse "error when creating topic"
+          let resp = genErrorQueryResponse "error when creating stream"
           return (ServerNormalResponse resp [] StatusUnknown "")
         Right ()                  -> do
           _ <- forkIO $ runTaskWrapper taskBuilder scLDClient
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
-    Right (InsertPlan topic payload)             -> do
+    Right (InsertPlan stream payload)             -> do
       timestamp <- getCurrentTimestamp
       e' <-  try $
         writeRecord
           (hstoreSinkConnector scLDClient)
           SinkRecord
-            { snkStream = topic,
+            { snkStream = stream,
               snkKey = Nothing,
               snkValue = payload,
               snkTimestamp = timestamp
@@ -157,11 +157,11 @@ executePushQueryHandler ServerContext{..} (ServerWriterRequest meta CommandPushQ
     Left (e :: SomeSQLException)         -> returnRes "exception on parsing or codegen"
     Right (SelectPlan sources sink taskBuilder) -> do
       exists <- mapM (doesStreamExists scLDClient) (CB.pack . T.unpack <$> sources)
-      if (not . and) exists then returnRes "some source topic do not exist"
+      if (not . and) exists then returnRes "some source stream do not exist"
       else do
-        e' <- try $ createStream scLDClient (textToCBytes sink) (LogAttrs $ HsLogAttrs scDefaultTopicRepFactor Map.empty)
+        e' <- try $ createStream scLDClient (textToCBytes sink) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         case e' of
-          Left (e :: SomeException) -> returnRes "error when creating sink topic"
+          Left (e :: SomeException) -> returnRes "error when creating sink stream"
           Right _                   -> do
             tid <- forkIO $ runTaskWrapper taskBuilder scLDClient
             -- FETCH RESULT TO CLIENT

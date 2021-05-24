@@ -49,13 +49,13 @@ mkStreamBuilder taskName = do
   return StreamBuilder {sbInternalBuilder = internalStreamBuilder}
 
 data StreamSourceConfig k v = StreamSourceConfig
-  { sscTopicName :: T.Text,
+  { sscStreamName :: T.Text,
     sscKeySerde :: Serde k,
     sscValueSerde :: Serde v
   }
 
 data StreamSinkConfig k v = StreamSinkConfig
-  { sicTopicName :: T.Text,
+  { sicStreamName :: T.Text,
     sicKeySerde :: Serde k,
     sicValueSerde :: Serde v
   }
@@ -66,11 +66,11 @@ stream ::
   StreamBuilder ->
   IO (Stream k v)
 stream StreamSourceConfig {..} StreamBuilder {..} = do
-  sourceProcessorName <- mkInternalProcessorName (sscTopicName `T.append` "-STREAM-SOURCE-") sbInternalBuilder
+  sourceProcessorName <- mkInternalProcessorName (sscStreamName `T.append` "-STREAM-SOURCE-") sbInternalBuilder
   let sourceCfg =
         SourceConfig
           { sourceName = sourceProcessorName,
-            sourceTopicName = sscTopicName,
+            sourceStreamName = sscStreamName,
             keyDeserializer = Just $ deserializer sscKeySerde,
             valueDeserializer = deserializer sscValueSerde
           }
@@ -89,12 +89,12 @@ table ::
   StreamBuilder ->
   IO (Table k v)
 table StreamSourceConfig {..} StreamBuilder {..} = do
-  tableSourceName <- mkInternalProcessorName (sscTopicName `T.append` "-TABLE-SOURCE-") sbInternalBuilder
+  tableSourceName <- mkInternalProcessorName (sscStreamName `T.append` "-TABLE-SOURCE-") sbInternalBuilder
   tableStore <- mkInMemoryStateKVStore :: IO (StateStore BL.ByteString BL.ByteString)
   let sourceCfg =
         SourceConfig
           { sourceName = tableSourceName,
-            sourceTopicName = sscTopicName,
+            sourceStreamName = sscStreamName,
             keyDeserializer = Just $ deserializer sscKeySerde,
             valueDeserializer = deserializer sscValueSerde
           }
@@ -134,11 +134,11 @@ to ::
   Stream k v ->
   IO StreamBuilder
 to StreamSinkConfig {..} Stream {..} = do
-  sinkProcessorName <- mkInternalProcessorName (sicTopicName `T.append` "-SINK-") streamInternalBuilder
+  sinkProcessorName <- mkInternalProcessorName (sicStreamName `T.append` "-SINK-") streamInternalBuilder
   let sinkCfg =
         SinkConfig
           { sinkName = sinkProcessorName,
-            sinkTopicName = sicTopicName,
+            sinkStreamName = sicStreamName,
             keySerializer = Just $ serializer sicKeySerde,
             valueSerializer = serializer sicValueSerde
           }
