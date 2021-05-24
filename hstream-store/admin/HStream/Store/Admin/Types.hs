@@ -43,10 +43,9 @@ fromSimpleNodesFilter s =
         StatusNodeName ns -> map fromName ns
 
 runSimpleNodesFilter
-  :: forall b p. AA.Protocol p
-  => SimpleNodesFilter
-  -> (Maybe AA.NodesFilter -> AA.ThriftM p AA.SocketChannel AA.AdminAPI b)
-  -> AA.ThriftM p AA.SocketChannel AA.AdminAPI (Either b [b])
+  :: SimpleNodesFilter
+  -> (Maybe AA.NodesFilter -> AA.ThriftM p c s b)
+  -> AA.ThriftM p c s (Either b [b])
 runSimpleNodesFilter s f = do
   case fromSimpleNodesFilter s of
     [] -> Left <$> f Nothing
@@ -100,6 +99,62 @@ nodesConfigParser = hsubparser
   )
 
 -------------------------------------------------------------------------------
+
+socketConfigParser :: Parser (AA.SocketConfig AA.AdminAPI)
+socketConfigParser = AA.SocketConfig
+  <$> strOption ( long "host"
+               <> metavar "HOST"
+               <> showDefault
+               <> value "127.0.0.1"
+               <> help "Admin server host, e.g. ::1"
+                )
+  <*> option auto ( long "port"
+                 <> metavar "PORT"
+                 <> help "Admin server port"
+                  )
+  <*> option auto ( long "protocol"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value AA.binaryProtocolId
+                 <> help "Protocol id, 0 for binary, 2 for compact"
+                  )
+
+headerConfigParser :: Parser (AA.HeaderConfig AA.AdminAPI)
+headerConfigParser = AA.HeaderConfig
+  <$> strOption ( long "host"
+               <> metavar "STRING"
+               <> showDefault
+               <> value "127.0.0.1"
+               <> help "Admin server host, e.g. ::1"
+                )
+  <*> option auto ( long "port"
+                 <> metavar "INT"
+                 <> help "Admin server port"
+                  )
+  <*> option auto ( long "protocol"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value AA.binaryProtocolId
+                 <> help "Protocol id, 0 for binary, 2 for compact"
+                  )
+  <*> option auto ( long "conntimeout"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 5000
+                 <> help "ConnTimeout"
+                  )
+  <*> option auto ( long "sendtimeout"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 5000
+                 <> help "SendTimeout"
+                  )
+  <*> option auto ( long "recvtimeout"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 5000
+                 <> help "RecvTimeout"
+                  )
 
 nodeIdParser :: Parser AA.NodeID
 nodeIdParser = AA.NodeID
