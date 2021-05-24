@@ -12,6 +12,7 @@ repository $CABAL_MIRROR_NAME \n\
 " > /root/.cabal/config && cabal user-config update
 
 RUN cabal update && \
+    make && \
     cabal build --enable-tests --enable-benchmarks all
 
 # ------------------------------------------------------------------------------
@@ -21,7 +22,7 @@ FROM hstreamdb/haskell:8.10 as builder
 COPY --from=dependencies /srv/dist-newstyle /srv/dist-newstyle
 COPY --from=dependencies /root/.cabal /root/.cabal
 COPY . /srv
-RUN cd /srv && cabal install hstream hstream-server
+RUN cd /srv && make && cabal install hstream hstream-server
 
 # ------------------------------------------------------------------------------
 

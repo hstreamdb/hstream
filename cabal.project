@@ -2,12 +2,41 @@ packages:
   hstream
   hstream-hesp
   hstream-store
+  hstream-store/admin/hstore-admin.cabal
   hstream-processing
   hstream-sql
   hstream-server
 
   external/gRPC-haskell
   external/gRPC-haskell/core
+  external/hsthrift/common/util/fb-util.cabal
+  external/hsthrift/common/github/fb-stubs.cabal
+  external/hsthrift/common/mangle/mangle.cabal
+  external/hsthrift/lib/thrift-lib.cabal
+  external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
+
+-- https://github.com/haskell/cabal/issues/4271
+package thrift-lib
+  flags: +use_sys_thrift_compiler
+  tests: false
+
+package fb-util
+  tests: false
+
+package fb-stubs
+  tests: false
+
+package mangle
+  tests: false
+
+package thrift-cpp-channel
+  tests: false
+
+package grpc-haskell
+  tests: false
+
+package grpc-haskell-core
+  tests: false
 
 constraints:
     Z-IO == 0.8.0.0
