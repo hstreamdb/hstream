@@ -49,6 +49,8 @@ module HStream.Store.Stream
   , newLDFileCkpReader
   , newLDRsmCkpReader
   , newLDZkCkpReader
+  , stopLDReaderByStreamName
+  , stopCkpReaderByStreamName
   , LD.writeCheckpoints
   , LD.writeLastCheckpoints
   , LD.ckpReaderStartReading
@@ -277,3 +279,13 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
   store <- LD.newZookeeperBasedCheckpointStore client
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store retries
+
+stopLDReaderByStreamName :: FFI.LDClient -> FFI.LDReader -> CBytes -> IO ()
+stopLDReaderByStreamName client reader name = do
+  logid <- getCLogIDByStreamName client name
+  LD.readerStopReading reader logid
+
+stopCkpReaderByStreamName :: FFI.LDClient -> FFI.LDSyncCkpReader -> CBytes -> IO ()
+stopCkpReaderByStreamName client reader name = do
+  logid <- getCLogIDByStreamName client name
+  LD.ckpReaderStopReading reader logid
