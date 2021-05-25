@@ -45,18 +45,18 @@ module HStream.Store.Stream
   , LD.readerRead
   , LD.readerSetTimeout
   , readerReadRecord
+  , stopReader
 
   , newLDFileCkpReader
   , newLDRsmCkpReader
   , newLDZkCkpReader
-  , stopLDReaderByStreamName
-  , stopCkpReaderByStreamName
   , LD.writeCheckpoints
   , LD.writeLastCheckpoints
   , LD.ckpReaderStartReading
   , LD.startReadingFromCheckpoint
   , LD.ckpReaderRead
   , LD.ckpReaderSetTimeout
+  , stopCkpReader
   ) where
 
 import           Control.Exception                (try)
@@ -280,12 +280,12 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store retries
 
-stopLDReaderByStreamName :: FFI.LDClient -> FFI.LDReader -> CBytes -> IO ()
-stopLDReaderByStreamName client reader name = do
+stopReader :: FFI.LDClient -> FFI.LDReader -> CBytes -> IO ()
+stopReader client reader name = do
   logid <- getCLogIDByStreamName client name
   LD.readerStopReading reader logid
 
-stopCkpReaderByStreamName :: FFI.LDClient -> FFI.LDSyncCkpReader -> CBytes -> IO ()
-stopCkpReaderByStreamName client reader name = do
+stopCkpReader :: FFI.LDClient -> FFI.LDSyncCkpReader -> CBytes -> IO ()
+stopCkpReader client reader name = do
   logid <- getCLogIDByStreamName client name
   LD.ckpReaderStopReading reader logid
