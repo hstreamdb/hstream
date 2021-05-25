@@ -7,6 +7,8 @@ module HStream.Server.Utils
   , textToCBytes
   , lazyByteStringToCbytes
   , cbytesToLazyByteString
+  , zTextToLazyByteString
+  , lazyByteStringToZText
   ) where
 
 import qualified Data.Aeson                        as Aeson
@@ -18,6 +20,7 @@ import qualified Data.Text.Lazy                    as TL
 import           Proto3.Suite
 import qualified RIO.ByteString.Lazy               as BL
 import qualified RIO.Text                          as T
+import qualified Z.Data.Text                        as ZT
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as ZCB
 import           Z.Data.Vector.Base                (Bytes)
@@ -66,3 +69,8 @@ cbytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
 lazyByteStringToCbytes :: BL.ByteString -> ZCB.CBytes
 lazyByteStringToCbytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
 
+zTextToLazyByteString :: ZT.Text -> BL.ByteString
+zTextToLazyByteString = BL.fromStrict . ZF.toByteString . ZT.getUTF8Bytes
+
+lazyByteStringToZText :: BL.ByteString -> ZT.Text
+lazyByteStringToZText = ZT.validate . ZF.fromByteString . BL.toStrict

@@ -49,7 +49,9 @@ library
     , time
     , unordered-containers
     , vector
+    , mysql-haskell
     , Z-Data
+    , Z-IO
 
   hs-source-dirs:   app generated-src
   default-language: Haskell2010
