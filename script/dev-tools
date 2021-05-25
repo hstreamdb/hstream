@@ -13,6 +13,10 @@ CABAL_HOME = os.getenv("CABAL_HOME", f"{HOME}/.cabal")
 STACK_HOME = os.getenv("STACK_HOME", f"{HOME}/.stack")
 HOOGLE_HOME = os.getenv("HOOGLE_HOME", f'{HOME}/.hoogle')
 
+DEFAULT_HS_IMAGE = 'docker.io/hstreamdb/haskell'
+DEFAULT_LD_IMAGE = 'docker.io/hstreamdb/logdevice'
+DEFAULT_DB_IMAGE = 'docker.io/hstreamdb/hstream'
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(os.path.abspath(__file__))))
 CUID, CGID = os.getuid(), os.getgid()
 LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
@@ -29,6 +33,14 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
     assert isinstance(sh, str)
     args = ["bash", "-c", sh]
     return subprocess.run(args, stderr=stderr, stdout=stdout, check=check)
+
+
+def update_images(images=None):
+    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE]
+    for i in images:
+        cmd = f"docker pull {i}"
+        loginfo(f"Run {cmd}...")
+        run_sh(cmd)
 
 
 def is_cluster_started(container_bin):
@@ -93,7 +105,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
     Path(f"{HOOGLE_HOME}").mkdir(parents=True, exist_ok=True)
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
-    user_path = f"/opt/ghc/bin:/opt/cabal/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
+    user_path = f"/opt/ghc/bin:/opt/cabal/bin:/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
     container_opts = " ".join([
         "-t" if tty else "",
         "-i" if interactive else "",
@@ -124,12 +136,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HStream dev tools.')
     subparsers = parser.add_subparsers(title='subcommands', dest='sub_command')
 
+    # update-image
+    parser_update_images = subparsers.add_parser(
+        'update-images', help='Update required docker images')
+
     # cluster-start
     parser_cluster_start = subparsers.add_parser(
         'cluster-start', help='Start logdevice dev cluster')
     parser_cluster_start.add_argument(
         '--image', '-i', help='logdevice docker images',
-        default='docker.io/hstreamdb/logdevice')
+        default=DEFAULT_LD_IMAGE)
     parser_cluster_start.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_cluster_start.add_argument('--container-bin', default='docker')
@@ -144,7 +160,7 @@ if __name__ == '__main__':
         'ldshell', help='')
     parser_cluster_ldshell.add_argument(
         '--image', '-i', help='logdevice docker images',
-        default='docker.io/hstreamdb/logdevice')
+        default=DEFAULT_LD_IMAGE)
     parser_cluster_ldshell.add_argument('--container-bin', default='docker')
     parser_cluster_ldshell.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
@@ -153,7 +169,7 @@ if __name__ == '__main__':
     parser_haskell = subparsers.add_parser(
         'shell', help='Enter in a shell with all haskell dev dependencies')
     parser_haskell.add_argument(
-        '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
+        '--image', '-i', help='logdevice docker images', default=DEFAULT_HS_IMAGE)
     parser_haskell.add_argument('--container-bin', default='docker')
     parser_haskell.add_argument('--no-interactive', action='store_true')
     parser_haskell.add_argument('--no-tty', action='store_true')
@@ -167,7 +183,7 @@ if __name__ == '__main__':
     # cabal
     parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
     parser_haskell_cabal.add_argument(
-        '--image', '-i', help='logdevice docker images', default='docker.io/hstreamdb/haskell')
+        '--image', '-i', help='logdevice docker images', default=DEFAULT_HS_IMAGE)
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
     parser_haskell_cabal.add_argument('--no-tty', action='store_true')
@@ -182,6 +198,8 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     sub_command = args.pop('sub_command')
 
+    if sub_command == 'update-images':
+        update_images()
     if sub_command == 'cluster-start':
         cluster_start(**args)
     elif sub_command == 'cluster-stop':
