@@ -80,13 +80,20 @@ Please submit any bugs, issues, and feature requests to [hstreamdb/hstream](http
 **Pre-requirements**
 
 1. Make sure you have Docker installed, and can run `docker` as a non-root user.
-2. Your can clone Github repository by ssh key.
+2. You have `python3` installed.
+3. Your can clone Github repository by ssh key.
 
 **Get the source code**
 
 ```sh
 git clone --recursive git@github.com:hstreamdb/hstream.git
 cd hstream/
+```
+
+**Update images**
+
+```sh
+script/dev-tools update-images
 ```
 
 **Start dev-cluster**
