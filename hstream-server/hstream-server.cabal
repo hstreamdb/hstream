@@ -31,6 +31,7 @@ library
   other-modules:
   hs-source-dirs:   src gen-src
   build-depends:
+    , clickhouse-haskell
     , aeson
     , base
     , bytestring
@@ -41,6 +42,7 @@ library
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , haxl
     , proto3-suite
     , proto3-wire
     , random
