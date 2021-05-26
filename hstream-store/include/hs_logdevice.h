@@ -29,6 +29,7 @@
 #include <logdevice/include/ClientSettings.h>
 #include <logdevice/include/Err.h>
 #include <logdevice/include/LogAttributes.h>
+#include <logdevice/include/LogHeadAttributes.h>
 #include <logdevice/include/LogsConfigTypes.h>
 #include <logdevice/include/Reader.h>
 #include <logdevice/include/Record.h>
@@ -66,6 +67,7 @@ using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::vcs_config_version_t;
 using facebook::logdevice::VersionedConfigStore;
 using facebook::logdevice::client::LogAttributes;
+using facebook::logdevice::LogHeadAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
 using facebook::fb303::cpp2::fb_status;
@@ -110,6 +112,9 @@ struct logdevice_sync_checkpointed_reader_t {
 struct logdevice_checkpoint_store_t {
   std::unique_ptr<CheckpointStore> rep;
 };
+struct logdevice_log_head_attributes_t {
+  std::unique_ptr<LogHeadAttributes> rep;
+};
 
 typedef struct logdevice_admin_async_client_t {
   std::unique_ptr<AdminAPIAsyncClient> rep;
@@ -126,6 +131,7 @@ typedef struct logdevice_checkpoint_store_t logdevice_checkpoint_store_t;
 typedef struct logdevice_reader_t logdevice_reader_t;
 typedef struct logdevice_sync_checkpointed_reader_t
     logdevice_sync_checkpointed_reader_t;
+typedef struct logdevice_log_head_attributes_t logdevice_log_head_attributes_t;
 
 // LogID
 typedef uint64_t c_logid_t;
@@ -270,6 +276,11 @@ typedef struct vcs_write_callback_data_t {
   const char* value;
 } vcs_write_callback_data_t;
 
+typedef struct log_head_attributes_cb_data_t {
+  c_error_code_t st;
+  logdevice_log_head_attributes_t* head_attributes;
+} log_head_attributes_cb_data_t;
+
 // ----------------------------------------------------------------------------
 // Client
 
@@ -362,6 +373,15 @@ facebook::logdevice::Status
 ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
                           HsStablePtr mvar, HsInt cap,
                           logsconfig_status_cb_data_t* data);
+
+//-----------------------------------------------------------------------------
+// Log Head Attributes
+
+void free_log_head_attributes(logdevice_log_head_attributes_t* p);
+facebook::logdevice::Status get_head_attributes(logdevice_client_t* client, c_logid_t logid,
+              HsStablePtr mvar, HsInt cap, log_head_attributes_cb_data_t* data );
+c_timestamp_t get_trim_point_timestamp(logdevice_log_head_attributes_t* attribute);
+lsn_t get_trim_point(logdevice_log_head_attributes_t* attribute);
 
 // ----------------------------------------------------------------------------
 // Appender

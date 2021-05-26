@@ -28,6 +28,7 @@ import qualified Z.Foreign             as Z
 type LDClient = ForeignPtr LogDeviceClient
 type LDLogGroup = ForeignPtr LogDeviceLogGroup
 type LDLogAttrs = ForeignPtr LogDeviceLogAttributes
+type LDLogHeadAttrs = ForeignPtr LogDeviceLogHeadAttributes
 type LDVersionedConfigStore = ForeignPtr LogDeviceVersionedConfigStore
 type LDDirectory = ForeignPtr LogDeviceLogDirectory
 type LDReader = ForeignPtr LogDeviceReader
@@ -269,10 +270,10 @@ peekMakeLogGroupCbData ptr = finally peekData release
     release = free =<< (#peek make_loggroup_cb_data_t, failure_reason) ptr
 
 data MakeDirectoryCbData = MakeDirectoryCbData
-   { makeDirectoryCbRetCode :: !ErrorCode
-   , makeDirectoryCbDirPtr :: !(Ptr LogDeviceLogDirectory)
-   , makeDirectoryFailInfo :: !CBytes
-   }
+  { makeDirectoryCbRetCode :: !ErrorCode
+  , makeDirectoryCbDirPtr :: !(Ptr LogDeviceLogDirectory)
+  , makeDirectoryFailInfo :: !CBytes
+  }
 
 makeDirectoryCbDataSize :: Int
 makeDirectoryCbDataSize = (#size make_directory_cb_data_t)
@@ -287,6 +288,20 @@ peekMakeDirectoryCbData ptr = do
   free failinfo_ptr
   return $ MakeDirectoryCbData retcode directory_ptr failinfo
 
+data LogHeadAttrsCbData = LogHeadAttrsCbData
+  { logHeadAttributesCbRetCode :: !ErrorCode
+  , logHeadAttributesCbAttrPtr :: !(Ptr LogDeviceLogHeadAttributes)
+  }
+
+logHeadAttrsCbDataSize :: Int
+logHeadAttrsCbDataSize = (#size log_head_attributes_cb_data_t)
+
+peekLogHeadAttrsCbData :: Ptr LogHeadAttrsCbData -> IO LogHeadAttrsCbData
+peekLogHeadAttrsCbData ptr = do
+  retcode <- (#peek log_head_attributes_cb_data_t, st) ptr
+  head_attributes_ptr <- (#peek log_head_attributes_cb_data_t, head_attributes) ptr
+  return $ LogHeadAttrsCbData retcode head_attributes_ptr
+
 -------------------------------------------------------------------------------
 
 data LogDeviceClient
@@ -296,6 +311,7 @@ data LogDeviceVersionedConfigStore
 data LogDeviceLogGroup
 data LogDeviceLogDirectory
 data LogDeviceLogAttributes
+data LogDeviceLogHeadAttributes
 data LogDeviceCheckpointStore
 data LogDeviceAdminAsyncClient
 data ThriftRpcOptions
