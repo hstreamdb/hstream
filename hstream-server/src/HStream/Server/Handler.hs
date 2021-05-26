@@ -17,12 +17,14 @@ import           Control.Concurrent
 import           Control.Exception
 import           Control.Monad                     (when)
 import qualified Data.Aeson                        as Aeson
+import qualified Data.ByteString                   as B
 import qualified Data.ByteString.Lazy              as BL
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.List                         as L
 import qualified Data.Map                          as M
 import qualified Data.Map.Strict                   as Map
 import           Data.Maybe                        (fromJust, isJust)
+import           Data.String                       (fromString)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
@@ -145,52 +147,6 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let resp = genErrorQueryResponse "stream does not exist"
           return (ServerNormalResponse resp [] StatusUnknown "")
 
--- executePushQueryHandler :: DefaultInfo
---                         -> ServerRequest 'ServerStreaming CommandPushQuery Struct
---                         -> IO (ServerResponse 'ServerStreaming Struct)
--- executePushQueryHandler DefaultInfo{..} (ServerWriterRequest meta CommandPushQuery{..} streamSend) = do
---   plan' <- try $ streamCodegen (TL.toStrict commandPushQueryQueryText)
---   let returnRes = return . ServerWriterResponse [] StatusAborted
---   case plan' of
---     Left (e :: SomeSQLException)         -> returnRes "exception on parsing or codegen"
---     Right (SelectPlan sources sink task) -> do
---       exists <- mapM (doesTopicExists_ defaultAdmin) (CB.pack . T.unpack <$> sources)
---       if (not . and) exists then returnRes "some source topic do not exist"
---       else do
---         e' <- try $ createTopic_ defaultAdmin (CB.pack . T.unpack $ sink) (LogAttrs $ HsLogAttrs defaultTopicRepFactor Map.empty)
---         case e' of
---           Left (e :: SomeException) -> returnRes "error when creating sink topic"
---           Right _                   -> do
---             -- RUN TASK
---             tid <- forkIO $ do
---               name       <- newRandomName 10
---               logOptions <- logOptionsHandle stderr True
---               let producerConfig = defaultProducerConfig
---                   consumerConfig = defaultConsumerConfig
---                                    { consumerName = name
---                                    , consumerCheckpointUri = "/tmp/checkpoint/" <> name
---                                    }
---               withLogFunc logOptions $ \lf -> do
---                 let taskConfig = TaskConfig
---                       { tcMessageStoreType = LogDevice producerConfig consumerConfig
---                       , tcLogFunc = lf
---                       }
---                 runTask taskConfig task
---             -- FETCH RESULT TO CLIENT
---             name     <- newRandomName 10
---             consumer <- mkConsumer (defaultConsumerConfig
---                                     { consumerName = name
---                                     , consumerCheckpointUri = "/tmp/checkpoint" <> name
---                                     }) (CB.pack . T.unpack <$> [sink])
---             _ <- forkIO $ handleClientCallCanceled meta (killThread tid)
---             loop (sendToClient consumer streamSend)
---
---     Right _                              -> returnRes  "inconsistent method called"
---   where
---     loop f = f >>= \case
---         Just x  -> return x
---         Nothing -> loop f
-
 executePushQueryHandler :: ServerContext
                         -> ServerRequest 'ServerStreaming CommandPushQuery Struct
                         -> IO (ServerResponse 'ServerStreaming Struct)
@@ -209,42 +165,43 @@ executePushQueryHandler ServerContext{..} (ServerWriterRequest meta CommandPushQ
           Right _                   -> do
             tid <- forkIO $ runTaskWrapper taskBuilder scLDClient
             -- FETCH RESULT TO CLIENT
-            _ <- forkIO $ handleClientCallCanceled meta (killThread tid)
+            isCancelled <- newMVar False
+            _ <- forkIO $ handlePushQueryCanceled meta isCancelled (killThread tid)
             ldreader' <- newLDFileCkpReader scLDClient (textToCBytes (T.append (getTaskName taskBuilder) "-result")) checkpointRootPath 1 Nothing 3
             let sc = hstoreSourceConnector scLDClient ldreader'
             subscribeToStream sc sink Latest
-            loop (sendToClient sc streamSend)
+            sendToClient isCancelled sc streamSend
 
 
     Right _                              -> returnRes  "inconsistent method called"
+
+sendToClient :: MVar Bool -> SourceConnector -> (Struct -> IO (Either GRPCIOError ())) -> IO (ServerResponse 'ServerStreaming Struct)
+sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
+  cancelled <- readMVar isCancelled
+  if cancelled
+  then return (ServerWriterResponse [] StatusUnknown "")
+  else do
+    sourceRecords <- readRecords
+    let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+        structs                            = jsonObjectToStruct . fromJust <$> filter isJust objects'
+    streamSendMany structs
   where
-    loop f = f >>= \case
-        Just x  -> return x
-        Nothing -> loop f
+    streamSendMany xs = case xs of
+      []      -> sendToClient isCancelled sc ss
+      (x:xs') -> streamSend x >>= \case
+        Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
+        Right _  -> streamSendMany xs'
 
-sendToClient :: SourceConnector -> (Struct -> IO (Either GRPCIOError ())) -> IO (Maybe (ServerResponse 'ServerStreaming Struct))
-sendToClient SourceConnector {..} streamSend = do
-  sourceRecords <- readRecords
-  let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
-      structs                            = jsonObjectToStruct . fromJust <$> filter isJust objects'
-  if L.null structs then return Nothing
-  else
-    let streamSendMany xs = case xs of
-          []      -> return (Right ())
-          (x:xs') -> streamSend x >>= \case
-            Left err -> return (Left err)
-            Right _  -> streamSendMany xs'
-    in streamSendMany structs >>= \case
-      Left err -> print err >> return (Just (ServerWriterResponse [] StatusAborted  "aborted"))
-      Right _  -> return Nothing
 
-handleClientCallCanceled :: ServerCall () -> IO () -> IO ()
-handleClientCallCanceled ServerCall{..} handle = do
+handlePushQueryCanceled :: ServerCall () -> MVar Bool -> IO () -> IO ()
+handlePushQueryCanceled ServerCall{..} isCancelled handle = do
   x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
   case x of
     Left e                              -> print e
     Right []                            -> print "GRPCIOInternalUnexpectedRecv"
-    Right [OpRecvCloseOnServerResult b] -> when b handle
+    Right [OpRecvCloseOnServerResult b] -> when b $ do
+                                            swapMVar isCancelled True
+                                            handle
 
 runTaskWrapper :: TaskBuilder ->  LDClient -> IO ()
 runTaskWrapper taskBuilder ldclient = do
