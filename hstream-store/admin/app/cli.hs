@@ -27,6 +27,7 @@ runCli :: AA.HeaderConfig AA.AdminAPI -> Command -> IO ()
 runCli s (StatusCmd statusOpts) = printTime $ putStrLn =<< runStatus s statusOpts
 runCli s (NodesConfigCmd (NodesConfigShow c)) = printTime $ TIO.putStrLn =<< showConfig s c
 runCli s (NodesConfigCmd (NodesConfigBootstrap ps)) = printTime $ bootstrap s ps
+runCli s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
 
 printTime :: IO a -> IO a
 printTime f = do
@@ -39,10 +40,12 @@ printTime f = do
 data Command
   = StatusCmd StatusOpts
   | NodesConfigCmd NodesConfigOpts
+  | ConfigCmd ConfigCmdOpts
   deriving (Show)
 
 commandParser :: O.Parser Command
 commandParser = O.hsubparser
   ( O.command "status" (O.info (StatusCmd <$> statusParser) (O.progDesc "Cluster status"))
  <> O.command "nodes-config" (O.info (NodesConfigCmd <$> nodesConfigParser) (O.progDesc "Manipulates the cluster's NodesConfig"))
+ <> O.command "config" (O.info (ConfigCmd <$> configCmdParser) (O.progDesc "Commands about logdevice config"))
   )

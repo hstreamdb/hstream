@@ -220,3 +220,10 @@ instance Read ReplicationPropertyPair where
       Read.Symbol ":" -> do factor :: Int32 <- Read.readPrec
                             return $ ReplicationPropertyPair (scope, factor)
       x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
+
+data ConfigCmdOpts = ConfigDump
+  deriving (Show)
+
+configCmdParser :: Parser ConfigCmdOpts
+configCmdParser = hsubparser
+  ( command "dump" (info (pure ConfigDump) (progDesc "Prints the server config in json format")))
