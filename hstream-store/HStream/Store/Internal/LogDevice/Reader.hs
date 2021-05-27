@@ -177,6 +177,12 @@ readerSetIncludeByteOffset reader = withForeignPtr reader c_ld_reader_include_by
 ckpReaderSetIncludeByteOffset :: LDSyncCkpReader -> IO ()
 ckpReaderSetIncludeByteOffset reader = withForeignPtr reader c_ld_ckp_reader_include_byteoffset
 
+readerSetWaitOnlyWhenNoData :: LDReader -> IO ()
+readerSetWaitOnlyWhenNoData reader = withForeignPtr reader c_ld_reader_wait_only_when_no_data
+
+ckpReaderSetWaitOnlyWhenNoData :: LDSyncCkpReader -> IO ()
+ckpReaderSetWaitOnlyWhenNoData reader = withForeignPtr reader c_ld_ckp_reader_wait_only_when_no_data
+
 -------------------------------------------------------------------------------
 
 writeCheckpoints :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> IO ()
@@ -308,6 +314,11 @@ foreign import ccall unsafe "hs_logdevice.h ld_reader_include_byteoffset"
   c_ld_reader_include_byteoffset :: Ptr LogDeviceReader -> IO ()
 foreign import ccall unsafe "hs_logdevice.h ld_ckp_reader_include_byteoffset"
   c_ld_ckp_reader_include_byteoffset :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h ld_reader_wait_only_when_no_data"
+  c_ld_reader_wait_only_when_no_data :: Ptr LogDeviceReader -> IO ()
+foreign import ccall unsafe "hs_logdevice.h ld_ckp_reader_wait_only_when_no_data"
+  c_ld_ckp_reader_wait_only_when_no_data :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
 
 foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
   c_logdevice_reader_read_safe :: Ptr LogDeviceReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode

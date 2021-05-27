@@ -115,8 +115,29 @@ WITHOUT_PAYLOAD(ld_ckp_reader_without_payload,
 #define INCLUDE_BYTEOFFSET(FuncName, ClassName)                                \
   void FuncName(ClassName* reader) { return reader->rep->includeByteOffset(); }
 INCLUDE_BYTEOFFSET(ld_reader_include_byteoffset, logdevice_reader_t)
-WITHOUT_PAYLOAD(ld_ckp_reader_include_byteoffset,
+INCLUDE_BYTEOFFSET(ld_ckp_reader_include_byteoffset,
                 logdevice_sync_checkpointed_reader_t)
+
+/**
+ * If called, whenever read() can return some records but not the number
+ * requested by the caller, it will return the records instead of waiting
+ * for more.
+ *
+ * Example:
+ * - Caller calls read(100, ...) asking for 100 data records.
+ * - Only 20 records are immediately available.
+ * - By default, read() would wait until 80 more records arrive or the
+ *   timeout expires.  This makes sense for callers that can benefit from
+ *   reading and processing batches of data records.
+ * - If this method was called before read(), it would return the 20 records
+ *   without waiting for more.  This may make sense for cases where latency
+ *   is more important.
+ */
+#define WAIT_ONLY_WHEN_NO_DATA(FuncName, ClassName)                            \
+  void FuncName(ClassName* reader) { return reader->rep->waitOnlyWhenNoData(); }
+WAIT_ONLY_WHEN_NO_DATA(ld_reader_wait_only_when_no_data, logdevice_reader_t)
+WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
+                       logdevice_sync_checkpointed_reader_t)
 
 #define READ(FuncName, ClassName)                                              \
   facebook::logdevice::Status FuncName(ClassName* reader, size_t maxlen,       \
