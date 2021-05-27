@@ -143,6 +143,8 @@ instance Print (HStream.SQL.Abs.Create' a) where
     HStream.SQL.Abs.CreateOp _ id_ streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
     HStream.SQL.Abs.CreateAs _ id_ select -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "AS"), prt 0 select])
     HStream.SQL.Abs.CreateAsOp _ id_ select streamoptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "STREAM"), prt 0 id_, doc (showString "AS"), prt 0 select, doc (showString "WITH"), doc (showString "("), prt 0 streamoptions, doc (showString ")")])
+    HStream.SQL.Abs.CreateConnector _ id_ connectoroptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "SOURCE"), doc (showString "|"), doc (showString "SINK"), doc (showString "CONNECTOR"), prt 0 id_, doc (showString "WITH"), doc (showString "("), prt 0 connectoroptions, doc (showString ")")])
+    HStream.SQL.Abs.CreateConnectorIf _ id_ connectoroptions -> prPrec i 0 (concatD [doc (showString "CREATE"), doc (showString "SOURCE"), doc (showString "|"), doc (showString "SINK"), doc (showString "CONNECTOR"), prt 0 id_, doc (showString "IF"), doc (showString "NOT"), doc (showString "EXIST"), doc (showString "WITH"), doc (showString "("), prt 0 connectoroptions, doc (showString ")")])
 
 instance Print [HStream.SQL.Abs.StreamOption' a] where
   prt = prtList
@@ -150,6 +152,16 @@ instance Print [HStream.SQL.Abs.StreamOption' a] where
 instance Print (HStream.SQL.Abs.StreamOption' a) where
   prt i = \case
     HStream.SQL.Abs.OptionRepFactor _ pninteger -> prPrec i 0 (concatD [doc (showString "REPLICATE"), doc (showString "="), prt 0 pninteger])
+  prtList _ [] = concatD []
+  prtList _ [x] = concatD [prt 0 x]
+  prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
+
+instance Print [HStream.SQL.Abs.ConnectorOption' a] where
+  prt = prtList
+
+instance Print (HStream.SQL.Abs.ConnectorOption' a) where
+  prt i = \case
+    HStream.SQL.Abs.PropertyAny _ id_ valueexpr -> prPrec i 0 (concatD [prt 0 id_, doc (showString "="), prt 0 valueexpr])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]

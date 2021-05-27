@@ -77,6 +77,7 @@ streamCodegen input = do
     RQCreate (RCreateAs topic select rOptions) -> do
       (builder, source, sink) <- genStreamBuilderWithTopic "demo" (Just topic) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
+    RQCreate x@(RCreateConnector s ifNotExist cOptions) -> print x >> throwIO NotSupported
     RQInsert (RInsert topic tuples)     -> do
       let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
       return $ InsertPlan topic (encode object)

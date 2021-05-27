@@ -567,6 +567,8 @@ instance Validate Create where
     validate select >> return create
   validate create@(CreateAsOp _ _ select options) =
     validate select >> validate (StreamOptions options) >> return create
+  validate create@(CreateConnector _ _ options) = mapM_ validate options >> return create
+  validate create@(CreateConnectorIf _ _ options) = mapM_ validate options >> return create
 
 instance Validate StreamOption where
   validate op@(OptionRepFactor pos n') = do
@@ -584,6 +586,8 @@ instance Validate StreamOptions where
       _                                   ->
         Left $ buildSQLException ParseException Nothing "There should be one and only one REPLICATE option"
 
+instance Validate ConnectorOption where
+  validate op@(PropertyAny _ _ expr) = isConstExpr expr >> return op
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
   validate insert@(DInsert pos _ fields exprs) = do

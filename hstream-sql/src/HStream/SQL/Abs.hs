@@ -47,10 +47,16 @@ data Create' a
     | CreateOp a Ident [StreamOption' a]
     | CreateAs a Ident (Select' a)
     | CreateAsOp a Ident (Select' a) [StreamOption' a]
+    | CreateConnector a Ident [ConnectorOption' a]
+    | CreateConnectorIf a Ident [ConnectorOption' a]
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type StreamOption = StreamOption' BNFC'Position
 data StreamOption' a = OptionRepFactor a (PNInteger' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
+
+type ConnectorOption = ConnectorOption' BNFC'Position
+data ConnectorOption' a = PropertyAny a Ident (ValueExpr' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Insert = Insert' BNFC'Position
@@ -317,10 +323,16 @@ instance HasPosition Create where
     CreateOp p _ _ -> p
     CreateAs p _ _ -> p
     CreateAsOp p _ _ _ -> p
+    CreateConnector p _ _ -> p
+    CreateConnectorIf p _ _ -> p
 
 instance HasPosition StreamOption where
   hasPosition = \case
     OptionRepFactor p _ -> p
+
+instance HasPosition ConnectorOption where
+  hasPosition = \case
+    PropertyAny p _ _ -> p
 
 instance HasPosition Insert where
   hasPosition = \case
