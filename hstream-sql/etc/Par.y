@@ -50,87 +50,91 @@ import qualified Data.Text
   'BY' { PT _ (TS _ 28) }
   'CEIL' { PT _ (TS _ 29) }
   'CHANGES' { PT _ (TS _ 30) }
-  'COS' { PT _ (TS _ 31) }
-  'COSH' { PT _ (TS _ 32) }
-  'COUNT' { PT _ (TS _ 33) }
-  'COUNT(*)' { PT _ (TS _ 34) }
-  'CREATE' { PT _ (TS _ 35) }
-  'DATE' { PT _ (TS _ 36) }
-  'DAY' { PT _ (TS _ 37) }
-  'DROP' { PT _ (TS _ 38) }
-  'EMIT' { PT _ (TS _ 39) }
-  'EXIST' { PT _ (TS _ 40) }
-  'EXP' { PT _ (TS _ 41) }
-  'FALSE' { PT _ (TS _ 42) }
-  'FLOOR' { PT _ (TS _ 43) }
-  'FROM' { PT _ (TS _ 44) }
-  'GROUP' { PT _ (TS _ 45) }
-  'HAVING' { PT _ (TS _ 46) }
-  'HOPPING' { PT _ (TS _ 47) }
-  'IF' { PT _ (TS _ 48) }
-  'INNER' { PT _ (TS _ 49) }
-  'INSERT' { PT _ (TS _ 50) }
-  'INTERVAL' { PT _ (TS _ 51) }
-  'INTO' { PT _ (TS _ 52) }
-  'IS_ARRAY' { PT _ (TS _ 53) }
-  'IS_BOOL' { PT _ (TS _ 54) }
-  'IS_DATE' { PT _ (TS _ 55) }
-  'IS_FLOAT' { PT _ (TS _ 56) }
-  'IS_INT' { PT _ (TS _ 57) }
-  'IS_MAP' { PT _ (TS _ 58) }
-  'IS_NUM' { PT _ (TS _ 59) }
-  'IS_STR' { PT _ (TS _ 60) }
-  'IS_TIME' { PT _ (TS _ 61) }
-  'JOIN' { PT _ (TS _ 62) }
-  'LEFT' { PT _ (TS _ 63) }
-  'LEFT_TRIM' { PT _ (TS _ 64) }
-  'LOG' { PT _ (TS _ 65) }
-  'LOG10' { PT _ (TS _ 66) }
-  'LOG2' { PT _ (TS _ 67) }
-  'MAX' { PT _ (TS _ 68) }
-  'MIN' { PT _ (TS _ 69) }
-  'MINUTE' { PT _ (TS _ 70) }
-  'MONTH' { PT _ (TS _ 71) }
-  'NOT' { PT _ (TS _ 72) }
-  'ON' { PT _ (TS _ 73) }
-  'OR' { PT _ (TS _ 74) }
-  'OUTER' { PT _ (TS _ 75) }
-  'QUERIES' { PT _ (TS _ 76) }
-  'REPLICATE' { PT _ (TS _ 77) }
-  'REVERSE' { PT _ (TS _ 78) }
-  'RIGHT_TRIM' { PT _ (TS _ 79) }
-  'ROUND' { PT _ (TS _ 80) }
-  'SECOND' { PT _ (TS _ 81) }
-  'SELECT' { PT _ (TS _ 82) }
-  'SESSION' { PT _ (TS _ 83) }
-  'SHOW' { PT _ (TS _ 84) }
-  'SIN' { PT _ (TS _ 85) }
-  'SINH' { PT _ (TS _ 86) }
-  'SQRT' { PT _ (TS _ 87) }
-  'STREAM' { PT _ (TS _ 88) }
-  'STREAMS' { PT _ (TS _ 89) }
-  'STRLEN' { PT _ (TS _ 90) }
-  'SUM' { PT _ (TS _ 91) }
-  'TAN' { PT _ (TS _ 92) }
-  'TANH' { PT _ (TS _ 93) }
-  'TIME' { PT _ (TS _ 94) }
-  'TO_LOWER' { PT _ (TS _ 95) }
-  'TO_STR' { PT _ (TS _ 96) }
-  'TO_UPPER' { PT _ (TS _ 97) }
-  'TRIM' { PT _ (TS _ 98) }
-  'TRUE' { PT _ (TS _ 99) }
-  'TUMBLING' { PT _ (TS _ 100) }
-  'VALUES' { PT _ (TS _ 101) }
-  'WEEK' { PT _ (TS _ 102) }
-  'WHERE' { PT _ (TS _ 103) }
-  'WITH' { PT _ (TS _ 104) }
-  'WITHIN' { PT _ (TS _ 105) }
-  'YEAR' { PT _ (TS _ 106) }
-  '[' { PT _ (TS _ 107) }
-  ']' { PT _ (TS _ 108) }
-  '{' { PT _ (TS _ 109) }
-  '||' { PT _ (TS _ 110) }
-  '}' { PT _ (TS _ 111) }
+  'CONNECTOR' { PT _ (TS _ 31) }
+  'COS' { PT _ (TS _ 32) }
+  'COSH' { PT _ (TS _ 33) }
+  'COUNT' { PT _ (TS _ 34) }
+  'COUNT(*)' { PT _ (TS _ 35) }
+  'CREATE' { PT _ (TS _ 36) }
+  'DATE' { PT _ (TS _ 37) }
+  'DAY' { PT _ (TS _ 38) }
+  'DROP' { PT _ (TS _ 39) }
+  'EMIT' { PT _ (TS _ 40) }
+  'EXIST' { PT _ (TS _ 41) }
+  'EXP' { PT _ (TS _ 42) }
+  'FALSE' { PT _ (TS _ 43) }
+  'FLOOR' { PT _ (TS _ 44) }
+  'FROM' { PT _ (TS _ 45) }
+  'GROUP' { PT _ (TS _ 46) }
+  'HAVING' { PT _ (TS _ 47) }
+  'HOPPING' { PT _ (TS _ 48) }
+  'IF' { PT _ (TS _ 49) }
+  'INNER' { PT _ (TS _ 50) }
+  'INSERT' { PT _ (TS _ 51) }
+  'INTERVAL' { PT _ (TS _ 52) }
+  'INTO' { PT _ (TS _ 53) }
+  'IS_ARRAY' { PT _ (TS _ 54) }
+  'IS_BOOL' { PT _ (TS _ 55) }
+  'IS_DATE' { PT _ (TS _ 56) }
+  'IS_FLOAT' { PT _ (TS _ 57) }
+  'IS_INT' { PT _ (TS _ 58) }
+  'IS_MAP' { PT _ (TS _ 59) }
+  'IS_NUM' { PT _ (TS _ 60) }
+  'IS_STR' { PT _ (TS _ 61) }
+  'IS_TIME' { PT _ (TS _ 62) }
+  'JOIN' { PT _ (TS _ 63) }
+  'LEFT' { PT _ (TS _ 64) }
+  'LEFT_TRIM' { PT _ (TS _ 65) }
+  'LOG' { PT _ (TS _ 66) }
+  'LOG10' { PT _ (TS _ 67) }
+  'LOG2' { PT _ (TS _ 68) }
+  'MAX' { PT _ (TS _ 69) }
+  'MIN' { PT _ (TS _ 70) }
+  'MINUTE' { PT _ (TS _ 71) }
+  'MONTH' { PT _ (TS _ 72) }
+  'NOT' { PT _ (TS _ 73) }
+  'ON' { PT _ (TS _ 74) }
+  'OR' { PT _ (TS _ 75) }
+  'OUTER' { PT _ (TS _ 76) }
+  'QUERIES' { PT _ (TS _ 77) }
+  'REPLICATE' { PT _ (TS _ 78) }
+  'REVERSE' { PT _ (TS _ 79) }
+  'RIGHT_TRIM' { PT _ (TS _ 80) }
+  'ROUND' { PT _ (TS _ 81) }
+  'SECOND' { PT _ (TS _ 82) }
+  'SELECT' { PT _ (TS _ 83) }
+  'SESSION' { PT _ (TS _ 84) }
+  'SHOW' { PT _ (TS _ 85) }
+  'SIN' { PT _ (TS _ 86) }
+  'SINH' { PT _ (TS _ 87) }
+  'SINK' { PT _ (TS _ 88) }
+  'SOURCE' { PT _ (TS _ 89) }
+  'SQRT' { PT _ (TS _ 90) }
+  'STREAM' { PT _ (TS _ 91) }
+  'STREAMS' { PT _ (TS _ 92) }
+  'STRLEN' { PT _ (TS _ 93) }
+  'SUM' { PT _ (TS _ 94) }
+  'TAN' { PT _ (TS _ 95) }
+  'TANH' { PT _ (TS _ 96) }
+  'TIME' { PT _ (TS _ 97) }
+  'TO_LOWER' { PT _ (TS _ 98) }
+  'TO_STR' { PT _ (TS _ 99) }
+  'TO_UPPER' { PT _ (TS _ 100) }
+  'TRIM' { PT _ (TS _ 101) }
+  'TRUE' { PT _ (TS _ 102) }
+  'TUMBLING' { PT _ (TS _ 103) }
+  'VALUES' { PT _ (TS _ 104) }
+  'WEEK' { PT _ (TS _ 105) }
+  'WHERE' { PT _ (TS _ 106) }
+  'WITH' { PT _ (TS _ 107) }
+  'WITHIN' { PT _ (TS _ 108) }
+  'YEAR' { PT _ (TS _ 109) }
+  '[' { PT _ (TS _ 110) }
+  ']' { PT _ (TS _ 111) }
+  '{' { PT _ (TS _ 112) }
+  '|' { PT _ (TS _ 113) }
+  '||' { PT _ (TS _ 114) }
+  '}' { PT _ (TS _ 115) }
   L_Ident  { PT _ (TV _) }
   L_doubl  { PT _ (TD _) }
   L_integ  { PT _ (TI _) }
@@ -176,6 +180,8 @@ Create : 'CREATE' 'STREAM' Ident { (uncurry HStream.SQL.Abs.BNFC'Position (token
        | 'CREATE' 'STREAM' Ident 'WITH' '(' ListStreamOption ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.CreateOp (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $6)) }
        | 'CREATE' 'STREAM' Ident 'AS' Select { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.CreateAs (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
        | 'CREATE' 'STREAM' Ident 'AS' Select 'WITH' '(' ListStreamOption ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.CreateAsOp (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $8)) }
+       | 'CREATE' 'SOURCE' '|' 'SINK' 'CONNECTOR' Ident 'WITH' '(' ListConnectorOption ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.CreateConnector (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $6) (snd $9)) }
+       | 'CREATE' 'SOURCE' '|' 'SINK' 'CONNECTOR' Ident 'IF' 'NOT' 'EXIST' 'WITH' '(' ListConnectorOption ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.CreateConnectorIf (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $6) (snd $12)) }
 
 ListStreamOption :: { (HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.StreamOption]) }
 ListStreamOption : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
@@ -184,6 +190,14 @@ ListStreamOption : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
 
 StreamOption :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.StreamOption) }
 StreamOption : 'REPLICATE' '=' PNInteger { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.OptionRepFactor (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+
+ListConnectorOption :: { (HStream.SQL.Abs.BNFC'Position, [HStream.SQL.Abs.ConnectorOption]) }
+ListConnectorOption : {- empty -} { (HStream.SQL.Abs.BNFC'NoPosition, []) }
+                    | ConnectorOption { (fst $1, (:[]) (snd $1)) }
+                    | ConnectorOption ',' ListConnectorOption { (fst $1, (:) (snd $1) (snd $3)) }
+
+ConnectorOption :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.ConnectorOption) }
+ConnectorOption : Ident '=' ValueExpr { (fst $1, HStream.SQL.Abs.PropertyAny (fst $1) (snd $1) (snd $3)) }
 
 Insert :: { (HStream.SQL.Abs.BNFC'Position, HStream.SQL.Abs.Insert) }
 Insert : 'INSERT' 'INTO' Ident '(' ListIdent ')' 'VALUES' '(' ListValueExpr ')' { (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1), HStream.SQL.Abs.DInsert (uncurry HStream.SQL.Abs.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $9)) }

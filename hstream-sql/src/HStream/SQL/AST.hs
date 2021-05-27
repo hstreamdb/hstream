@@ -338,8 +338,13 @@ instance Refine Select where
 data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
   } deriving (Eq, Show)
+
+data RConnectorOptions = RConnectorOptions [(Text, Constant)]
+  deriving (Eq, Show)
+
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
+             | RCreateConnector Text Bool RConnectorOptions
              deriving (Eq, Show)
 
 type instance RefinedType [StreamOption] = RStreamOptions
@@ -348,12 +353,22 @@ instance Refine [StreamOption] where
   refine [] = RStreamOptions 3
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
+type instance RefinedType [ConnectorOption] = RConnectorOptions
+instance Refine [ConnectorOption] where
+  refine (PropertyAny _ (Ident x) expr : opts) = RConnectorOptions ((x, constant):opts')
+    where
+      RExprConst _ constant = refine expr
+      RConnectorOptions opts' = refine opts
+  refine [] = RConnectorOptions []
+
 type instance RefinedType Create = RCreate
 instance Refine Create where
   refine (DCreate  _ (Ident s)) = RCreate s $ refine ([] :: [StreamOption])
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
+  refine (CreateConnector _ (Ident s) options) = RCreateConnector s False (refine options)
+  refine (CreateConnectorIf _ (Ident s) options) = RCreateConnector s True (refine options)
 
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]

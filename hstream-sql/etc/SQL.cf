@@ -54,6 +54,12 @@ CreateAsOp. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOpt
 -- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
+CreateConnector. Create ::= "CREATE" "SOURCE" "|" "SINK" "CONNECTOR" Ident "WITH" "(" [ConnectorOption] ")" ;
+CreateConnectorIf. Create ::= "CREATE" "SOURCE" "|" "SINK" "CONNECTOR" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+separator ConnectorOption "," ;
+
+PropertyAny. ConnectorOption ::= Ident "=" ValueExpr ;
+
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
 separator Ident "," ;
