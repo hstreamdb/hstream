@@ -60,6 +60,7 @@ using facebook::logdevice::lsn_t;
 using facebook::logdevice::Payload;
 using facebook::logdevice::Processor;
 using facebook::logdevice::Reader;
+using facebook::logdevice::RecordOffset;
 using facebook::logdevice::RSMBasedVersionedConfigStore;
 using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::vcs_config_version_t;
@@ -156,13 +157,34 @@ const c_lsn_t C_LSN_INVALID = facebook::logdevice::LSN_INVALID;
 const c_lsn_t C_LSN_OLDEST = facebook::logdevice::LSN_OLDEST;
 const c_lsn_t C_LSN_MAX = facebook::logdevice::LSN_MAX;
 
+// ----------------------------------------------------------------------------
 // DataRecord
+
 typedef struct logdevice_data_record_t {
   c_logid_t logid;
+  // log sequence number (LSN) of this record
   c_lsn_t lsn;
+  // timestamp in milliseconds since epoch assigned to this record by a
+  // LogDevice server
+  c_timestamp_t timestamp;
+  // If the record is part of a batch written through BufferedWriter, this
+  // contains the record's 0-based index within the batch.  (All records that
+  // get batched into a single write by BufferedWriter have the same LSN.)
+  HsInt batch_offset;
+  // Payload
   char* payload;
   size_t payload_len;
+  // RecordOffset object containing information on the amount of data written
+  // to the log (to which this record belongs) up to this record.
+  // Currently supports BYTE_OFFSET which represents the number of bytes
+  // written. if counter is invalid it will be set as BYTE_OFFSET_INVALID.
+  // BYTE_OFFSET will be invalid if this attribute was not requested by client
+  // (see includeByteOffset() reader option) or if it is not available to
+  // storage nodes.
+  uint64_t byte_offset;
 } logdevice_data_record_t;
+
+// ----------------------------------------------------------------------------
 
 // KeyType
 const c_keytype_t C_KeyType_FINDKEY =
@@ -221,7 +243,6 @@ typedef struct make_loggroup_cb_data_t {
   logdevice_loggroup_t* loggroup;
   char* failure_reason;
 } make_loggroup_cb_data_t;
-
 
 typedef struct logsconfig_status_cb_data_t {
   c_error_code_t st;

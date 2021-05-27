@@ -33,6 +33,7 @@ module HStream.Store.Stream
     -- * Reader
   , ConsumerRecord (..)
   , decodeRecord
+  , FFI.RecordByteOffset (..)
   , FFI.DataRecord (..)
 
   , LD.newFileBasedCheckpointStore
@@ -44,6 +45,8 @@ module HStream.Store.Stream
   , LD.readerStartReading
   , LD.readerRead
   , LD.readerSetTimeout
+  , LD.readerSetWithoutPayload
+  , LD.readerSetIncludeByteOffset
   , readerReadRecord
   , stopReader
 
@@ -56,6 +59,8 @@ module HStream.Store.Stream
   , LD.startReadingFromCheckpoint
   , LD.ckpReaderRead
   , LD.ckpReaderSetTimeout
+  , LD.ckpReaderSetWithoutPayload
+  , LD.ckpReaderSetIncludeByteOffset
   , stopCkpReader
   ) where
 

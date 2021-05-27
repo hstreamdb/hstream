@@ -3,16 +3,14 @@
 
 module HStream.Store.ReaderSpec (spec) where
 
-import           Control.Monad    (void)
-import qualified Data.Map.Strict  as Map
-import qualified HStream.Store    as S
-import           System.IO.Unsafe (unsafePerformIO)
-import           System.Timeout   (timeout)
+import           Control.Monad           (void)
+import qualified Data.Map.Strict         as Map
+import qualified HStream.Store           as S
+import           System.IO.Unsafe        (unsafePerformIO)
+import           System.Timeout          (timeout)
 import           Test.Hspec
 
-client :: S.LDClient
-client = unsafePerformIO $ S.newLDClient "/data/store/logdevice.conf"
-{-# NOINLINE client #-}
+import           HStream.Store.SpecUtils
 
 spec :: Spec
 spec = describe "Stream Reader" $ do
@@ -100,3 +98,14 @@ misc = do
     S.readerStartReading reader logid sn sn
     void $ S.readerSetTimeout reader 0
     timeout 1000000 (S.readerRead reader 1) `shouldReturn` Just []
+
+  -- TODO
+  -- it "Set IncludeByteOffset" $ do
+  --   reader <- S.newLDReader client 1 Nothing
+  --   sn <- S.getTailLSN client logid
+  --   S.readerStartReading reader logid sn sn
+  --   S.recordByteOffset . head <$> S.readerRead reader 1 `shouldReturn` S.RecordByteOffsetInvalid
+
+  --   S.readerSetIncludeByteOffset reader
+  --   S.readerStartReading reader logid sn sn
+  --   S.recordByteOffset . head <$> S.readerRead reader 1
