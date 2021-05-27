@@ -127,6 +127,51 @@ foreign import ccall unsafe "hs_logdevice.h &free_log_head_attributes"
   c_free_log_head_attributes_fun :: FunPtr (Ptr LogDeviceLogHeadAttributes -> IO ())
 
 -------------------------------------------------------------------------------
+-- * LogTailAttributes
+
+getLogTailAttrs :: LDClient -> C_LogID -> IO LDLogTailAttrs
+getLogTailAttrs client logid = withForeignPtr client $ \client' -> do
+  let cfun = c_ld_client_get_tail_attributes client' logid
+  LogTailAttrsCbData errno tailAttributes <-
+    withAsync logTailAttrsCbDataSize peekLogTailAttrsCbData cfun
+  void $ E.throwStreamErrorIfNotOK' errno
+  newForeignPtr c_free_log_tail_attributes_fun tailAttributes
+
+getLogTailAttrsLSN :: LDLogTailAttrs -> IO LSN
+getLogTailAttrsLSN tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_lsn;
+
+-- | Return  the estimated timestamp of record with last_released_real_lsn sequence number. It may be
+-- slightly larger than real timestamp of a record with last_released_real_lsn lsn.
+getLogTailAttrsLastTimeStamp :: LDLogTailAttrs -> IO C_Timestamp
+getLogTailAttrsLastTimeStamp tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_last_timestamp;
+
+getLogTailAttrsBytesOffset :: LDLogTailAttrs -> IO Word64
+getLogTailAttrsBytesOffset tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_bytes_offset;
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_attributes"
+  c_ld_client_get_tail_attributes
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> StablePtr PrimMVar -> Int
+    -> Ptr LogTailAttrsCbData
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_attributes_lsn"
+  c_ld_client_get_tail_attributes_lsn :: Ptr LogDeviceLogTailAttributes -> IO LSN
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_attributes_last_timestamp"
+ c_ld_client_get_tail_attributes_last_timestamp :: Ptr LogDeviceLogTailAttributes -> IO C_Timestamp
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_attributes_bytes_offset"
+ c_ld_client_get_tail_attributes_bytes_offset :: Ptr LogDeviceLogTailAttributes -> IO Word64
+
+foreign import ccall unsafe "hs_logdevice.h free_logdevice_tail_attributes"
+  c_free_log_tail_attributes :: Ptr LogDeviceLogTailAttributes -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h &free_logdevice_tail_attributes"
+  c_free_log_tail_attributes_fun :: FunPtr (Ptr LogDeviceLogTailAttributes -> IO ())
+
+-------------------------------------------------------------------------------
 -- * Directory
 
 getLogDirectory :: LDClient -> CBytes -> IO LDDirectory

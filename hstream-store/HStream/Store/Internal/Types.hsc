@@ -29,6 +29,7 @@ type LDClient = ForeignPtr LogDeviceClient
 type LDLogGroup = ForeignPtr LogDeviceLogGroup
 type LDLogAttrs = ForeignPtr LogDeviceLogAttributes
 type LDLogHeadAttrs = ForeignPtr LogDeviceLogHeadAttributes
+type LDLogTailAttrs = ForeignPtr LogDeviceLogTailAttributes
 type LDVersionedConfigStore = ForeignPtr LogDeviceVersionedConfigStore
 type LDDirectory = ForeignPtr LogDeviceLogDirectory
 type LDReader = ForeignPtr LogDeviceReader
@@ -302,6 +303,20 @@ peekLogHeadAttrsCbData ptr = do
   head_attributes_ptr <- (#peek log_head_attributes_cb_data_t, head_attributes) ptr
   return $ LogHeadAttrsCbData retcode head_attributes_ptr
 
+data LogTailAttrsCbData = LogTailAttrsCbData
+  { logTailAttributesCbRetCode :: !ErrorCode
+  , logTailAttributesCbAttrPtr :: !(Ptr LogDeviceLogTailAttributes)
+  }
+
+logTailAttrsCbDataSize :: Int
+logTailAttrsCbDataSize = (#size log_tail_attributes_cb_data_t)
+
+peekLogTailAttrsCbData :: Ptr LogTailAttrsCbData -> IO LogTailAttrsCbData
+peekLogTailAttrsCbData ptr = do
+  retcode <- (#peek log_tail_attributes_cb_data_t, st) ptr
+  tail_attributes_ptr <- (#peek log_tail_attributes_cb_data_t, tail_attributes) ptr
+  return $ LogTailAttrsCbData retcode tail_attributes_ptr
+
 -------------------------------------------------------------------------------
 
 data LogDeviceClient
@@ -312,6 +327,7 @@ data LogDeviceLogGroup
 data LogDeviceLogDirectory
 data LogDeviceLogAttributes
 data LogDeviceLogHeadAttributes
+data LogDeviceLogTailAttributes
 data LogDeviceCheckpointStore
 data LogDeviceAdminAsyncClient
 data ThriftRpcOptions

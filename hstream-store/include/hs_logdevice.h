@@ -30,6 +30,7 @@
 #include <logdevice/include/Err.h>
 #include <logdevice/include/LogAttributes.h>
 #include <logdevice/include/LogHeadAttributes.h>
+#include <logdevice/include/LogTailAttributes.h>
 #include <logdevice/include/LogsConfigTypes.h>
 #include <logdevice/include/Reader.h>
 #include <logdevice/include/Record.h>
@@ -68,6 +69,7 @@ using facebook::logdevice::vcs_config_version_t;
 using facebook::logdevice::VersionedConfigStore;
 using facebook::logdevice::client::LogAttributes;
 using facebook::logdevice::LogHeadAttributes;
+using facebook::logdevice::LogTailAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
 using facebook::fb303::cpp2::fb_status;
@@ -132,6 +134,7 @@ typedef struct logdevice_reader_t logdevice_reader_t;
 typedef struct logdevice_sync_checkpointed_reader_t
     logdevice_sync_checkpointed_reader_t;
 typedef struct logdevice_log_head_attributes_t logdevice_log_head_attributes_t;
+typedef struct log_tail_attributes_cb_data_t log_tail_attributes_cb_data_t;
 
 // LogID
 typedef uint64_t c_logid_t;
@@ -191,7 +194,27 @@ typedef struct logdevice_data_record_t {
 } logdevice_data_record_t;
 
 // ----------------------------------------------------------------------------
+// LogTailAttributes
+typedef struct logdevice_log_tail_attributes_t {
+  c_lsn_t last_released_real_lsn;
+  c_timestamp_t last_timestamp;
+  // RecordOffset struct contains information on amount of data written to
+  // the log, but currently it only supports BYTE_OFFSET. So here the offsets
+  // filed in the struct stores the amount of data in bytes written to the log.
+  uint64_t offsets;
+} logdevice_log_tail_attributes_t;
 
+bool valid_log_tail_attributes(logdevice_log_tail_attributes_t* tail_attr);
+
+facebook::logdevice::Status ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
+                                    HsStablePtr mvar, HsInt cap,
+                                    log_tail_attributes_cb_data_t* cb_data);
+lsn_t ld_client_get_tail_attributes_lsn(logdevice_log_tail_attributes_t* tail_attr);
+c_timestamp_t ld_client_get_tail_attributes_last_timestamp(logdevice_log_tail_attributes_t* tail_attr);
+uint64_t ld_client_get_tail_attributes_bytes_offset(logdevice_log_tail_attributes_t* tail_attr);
+void free_logdevice_tail_attributes(logdevice_log_tail_attributes_t* tail_attr);
+
+// ----------------------------------------------------------------------------
 // KeyType
 const c_keytype_t C_KeyType_FINDKEY =
     static_cast<c_keytype_t>(KeyType::FINDKEY);
@@ -281,6 +304,10 @@ typedef struct log_head_attributes_cb_data_t {
   logdevice_log_head_attributes_t* head_attributes;
 } log_head_attributes_cb_data_t;
 
+typedef struct log_tail_attributes_cb_data_t {
+    c_error_code_t st;
+    logdevice_log_tail_attributes_t* tail_attributes;
+} log_tail_attributes_cb_data_t;
 // ----------------------------------------------------------------------------
 // Client
 

@@ -110,6 +110,55 @@ c_lsn_t get_trim_point(logdevice_log_head_attributes_t* head_attributes){
 }
 
 // ----------------------------------------------------------------------------
+// LogTailAttributes
+bool valid_log_tail_attributes(logdevice_log_tail_attributes_t* attributes) {
+    return attributes->last_released_real_lsn != facebook::logdevice::LSN_INVALID &&
+        attributes->last_timestamp != c_timestamp_t{0};
+}
+
+facebook::logdevice::Status ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
+                                    HsStablePtr mvar, HsInt cap,
+                                    log_tail_attributes_cb_data_t* cb_data) {
+    auto cb = [cb_data, cap, mvar](facebook::logdevice::Status st,
+                       std::unique_ptr<LogTailAttributes> tail_attr_ptr) {
+        if (cb_data) {
+            cb_data->st = static_cast<c_error_code_t>(st);
+            if (tail_attr_ptr) {
+                auto tail_attrs = new logdevice_log_tail_attributes_t;
+                tail_attrs->last_released_real_lsn = tail_attr_ptr->last_released_real_lsn;
+                tail_attrs->last_timestamp = tail_attr_ptr->last_timestamp.count();
+                tail_attrs->offsets = tail_attr_ptr->offsets.getCounter(facebook::logdevice::BYTE_OFFSET);
+                cb_data->tail_attributes = tail_attrs;
+            } else {
+                cb_data->tail_attributes = NULL;
+            }
+        }
+        hs_try_putmvar(cap, mvar);
+        hs_thread_done();
+    };
+
+    int ret = client->rep->getTailAttributes(logid_t(logid), cb);
+    if (ret == 0) {
+        return facebook::logdevice::E::OK;
+    }
+    return facebook::logdevice::err;
+}
+
+lsn_t ld_client_get_tail_attributes_lsn(logdevice_log_tail_attributes_t* tail_attr) {
+    return tail_attr->last_released_real_lsn;
+}
+
+c_timestamp_t ld_client_get_tail_attributes_last_timestamp(logdevice_log_tail_attributes_t* tail_attr) {
+  return tail_attr->last_timestamp;
+}
+
+uint64_t ld_client_get_tail_attributes_bytes_offset(logdevice_log_tail_attributes_t* tail_attr) {
+  return tail_attr->offsets;
+}
+
+void free_logdevice_tail_attributes(logdevice_log_tail_attributes_t* tail_attr) { delete tail_attr; }
+
+// ----------------------------------------------------------------------------
 // LogConfigType: LogGroup
 
 facebook::logdevice::Status ld_client_make_loggroup(
