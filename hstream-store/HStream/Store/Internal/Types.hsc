@@ -1,3 +1,4 @@
+{-# LANGUAGE CApiFFI         #-}
 {-# LANGUAGE CPP             #-}
 {-# LANGUAGE DeriveAnyClass  #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -91,6 +92,14 @@ pattern LSN_MAX = (#const C_LSN_MAX)
 pattern LSN_INVALID :: LSN
 pattern LSN_INVALID = (#const C_LSN_INVALID)
 
+data RecordByteOffset
+  = RecordByteOffset Word64
+  | RecordByteOffsetInvalid
+  deriving (Show, Eq)
+
+pattern C_BYTE_OFFSET_INVALID :: Word64
+pattern C_BYTE_OFFSET_INVALID = (#const facebook::logdevice::BYTE_OFFSET_INVALID)
+
 type C_LogsConfigVersion = Word64
 
 data HsLogAttrs = HsLogAttrs
@@ -147,9 +156,6 @@ peekVcsWriteCallbackData ptr = bracket getSt release peekData
 
 -------------------------------------------------------------------------------
 
-newtype StreamClient = StreamClient
-  { unStreamClient :: ForeignPtr LogDeviceClient }
-
 newtype StreamAdminClient = StreamAdminClient
   { unStreamAdminClient :: ForeignPtr LogDeviceAdminAsyncClient }
 
@@ -160,18 +166,22 @@ newtype StreamSyncCheckpointedReader = StreamSyncCheckpointedReader
   { unStreamSyncCheckpointedReader :: ForeignPtr LogDeviceSyncCheckpointedReader }
   deriving (Show, Eq)
 
-newtype StreamReader = StreamReader
-  { unStreamReader :: ForeignPtr LogDeviceReader }
-  deriving (Show, Eq)
-
 newtype CheckpointStore = CheckpointStore
   { unCheckpointStore :: ForeignPtr LogDeviceCheckpointStore }
   deriving (Show, Eq)
 
 data DataRecord = DataRecord
-  { recordLogID   :: !C_LogID
-  , recordLSN     :: !LSN
-  , recordPayload :: !Bytes
+  { recordLogID       :: {-# UNPACK #-} !C_LogID
+  , recordLSN         :: {-# UNPACK #-} !LSN
+  , recordTimestamp   :: {-# UNPACK #-} !C_Timestamp
+  , recordBatchOffset :: {-# UNPACK #-} !Int
+  , recordPayload     :: !Bytes
+  , recordByteOffset  :: !RecordByteOffset
+  -- ^ Contains information on the amount of data written to the log
+  -- (to which this record belongs) up to this record.
+  -- BYTE_OFFSET will be invalid if this attribute was not requested by client
+  -- (see includeByteOffset() reader option) or if it is not available to
+  -- storage nodes.
   } deriving (Show, Eq)
 
 dataRecordSize :: Int
@@ -189,9 +199,15 @@ peekDataRecord ptr offset = finally peekData release
     peekData = do
       logid <- (#peek logdevice_data_record_t, logid) ptr'
       lsn <- (#peek logdevice_data_record_t, lsn) ptr'
+      timestamp <- (#peek logdevice_data_record_t, timestamp) ptr'
+      batchOffset <- (#peek logdevice_data_record_t, batch_offset) ptr'
       len <- (#peek logdevice_data_record_t, payload_len) ptr'
       payload <- flip Z.fromPtr len =<< (#peek logdevice_data_record_t, payload) ptr'
-      return $ DataRecord logid lsn payload
+      byteOffset' <- (#peek logdevice_data_record_t, byte_offset) ptr'
+      let byteOffset = case byteOffset' of
+                         C_BYTE_OFFSET_INVALID -> RecordByteOffsetInvalid
+                         x -> RecordByteOffset x
+      return $ DataRecord logid lsn timestamp batchOffset payload byteOffset
     release = do
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr

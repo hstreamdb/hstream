@@ -165,6 +165,18 @@ ckpReaderSetTimeout :: LDSyncCkpReader -> Int32 -> IO CInt
 ckpReaderSetTimeout reader ms =
   withForeignPtr reader $ \reader' -> c_ld_checkpointed_reader_set_timeout reader' ms
 
+readerSetWithoutPayload :: LDReader -> IO ()
+readerSetWithoutPayload reader = withForeignPtr reader c_ld_reader_without_payload
+
+ckpReaderSetWithoutPayload :: LDSyncCkpReader -> IO ()
+ckpReaderSetWithoutPayload reader = withForeignPtr reader c_ld_ckp_reader_without_payload
+
+readerSetIncludeByteOffset :: LDReader -> IO ()
+readerSetIncludeByteOffset reader = withForeignPtr reader c_ld_reader_include_byteoffset
+
+ckpReaderSetIncludeByteOffset :: LDSyncCkpReader -> IO ()
+ckpReaderSetIncludeByteOffset reader = withForeignPtr reader c_ld_ckp_reader_include_byteoffset
+
 -------------------------------------------------------------------------------
 
 writeCheckpoints :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> IO ()
@@ -286,6 +298,16 @@ foreign import ccall unsafe "hs_logdevice.h ld_reader_set_timeout"
   c_ld_reader_set_timeout :: Ptr LogDeviceReader -> Int32 -> IO CInt
 foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_set_timeout"
   c_ld_checkpointed_reader_set_timeout :: Ptr LogDeviceSyncCheckpointedReader -> Int32 -> IO CInt
+
+foreign import ccall unsafe "hs_logdevice.h ld_reader_without_payload"
+  c_ld_reader_without_payload :: Ptr LogDeviceReader -> IO ()
+foreign import ccall unsafe "hs_logdevice.h ld_ckp_reader_without_payload"
+  c_ld_ckp_reader_without_payload :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h ld_reader_include_byteoffset"
+  c_ld_reader_include_byteoffset :: Ptr LogDeviceReader -> IO ()
+foreign import ccall unsafe "hs_logdevice.h ld_ckp_reader_include_byteoffset"
+  c_ld_ckp_reader_include_byteoffset :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
 
 foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
   c_logdevice_reader_read_safe :: Ptr LogDeviceReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode

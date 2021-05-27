@@ -88,6 +88,36 @@ SET_TIMEOUT(ld_reader_set_timeout, logdevice_reader_t)
 SET_TIMEOUT(ld_checkpointed_reader_set_timeout,
             logdevice_sync_checkpointed_reader_t)
 
+/**
+ * If called, data records read by this Reader will not include payloads.
+ *
+ * This makes reading more efficient when payloads are not needed (they won't
+ * be transmitted over the network).
+ *
+ * Only affects subsequent startReading() calls.
+ */
+#define WITHOUT_PAYLOAD(FuncName, ClassName)                                   \
+  void FuncName(ClassName* reader) { return reader->rep->withoutPayload(); }
+WITHOUT_PAYLOAD(ld_reader_without_payload, logdevice_reader_t)
+WITHOUT_PAYLOAD(ld_ckp_reader_without_payload,
+                logdevice_sync_checkpointed_reader_t)
+
+/**
+ * If called, data records read by this Reader will start including
+ * approximate amount of data written to given log up to current record
+ * once it become available to Reader.
+ *
+ * The value itself stored in DataRecord::attrs::byte_offset. Set as
+ * BYTE_OFFSET_INVALID if unavailable to Reader yet.
+ *
+ * Only affects subsequent startReading() calls.
+ */
+#define INCLUDE_BYTEOFFSET(FuncName, ClassName)                                \
+  void FuncName(ClassName* reader) { return reader->rep->includeByteOffset(); }
+INCLUDE_BYTEOFFSET(ld_reader_include_byteoffset, logdevice_reader_t)
+WITHOUT_PAYLOAD(ld_ckp_reader_include_byteoffset,
+                logdevice_sync_checkpointed_reader_t)
+
 #define READ(FuncName, ClassName)                                              \
   facebook::logdevice::Status FuncName(ClassName* reader, size_t maxlen,       \
                                        logdevice_data_record_t* data_out,      \
@@ -107,8 +137,12 @@ SET_TIMEOUT(ld_checkpointed_reader_set_timeout,
         logid_t& logid = record_ptr->logid;                                    \
         data_out[i].logid = logid.val_;                                        \
         data_out[i].lsn = attrs.lsn;                                           \
+        data_out[i].timestamp = attrs.timestamp.count();                       \
+        data_out[i].batch_offset = attrs.batch_offset;                         \
         data_out[i].payload = copyString(payload.toString());                  \
         data_out[i].payload_len = payload.size();                              \
+        data_out[i].byte_offset =                                              \
+            attrs.offsets.getCounter(facebook::logdevice::BYTE_OFFSET);        \
         ++i;                                                                   \
       }                                                                        \
     } /* A gap in the numbering sequence. Warn about data loss but ignore      \
@@ -128,7 +162,7 @@ READ(logdevice_reader_read, logdevice_reader_t)
 READ(logdevice_checkpointed_reader_read, logdevice_sync_checkpointed_reader_t)
 
 // ----------------------------------------------------------------------------
-// Checkpointed Reader
+// Checkpoint Read & Write
 
 facebook::logdevice::Status ld_checkpointed_reader_start_reading_from_ckp(
     logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid,

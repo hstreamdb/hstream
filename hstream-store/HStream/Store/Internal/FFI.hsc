@@ -3,16 +3,10 @@
 
 module HStream.Store.Internal.FFI where
 
-import           Control.Concurrent           (newEmptyMVar, takeMVar)
-import           Control.Exception            (mask_, onException)
-import           Control.Monad                (void)
-import           Control.Monad.Primitive
 import           Data.Int
 import           Data.Primitive
 import           Data.Word
 import           Foreign.C
-import           Foreign.ForeignPtr           (mallocForeignPtrBytes,
-                                               touchForeignPtr, withForeignPtr)
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
