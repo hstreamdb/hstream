@@ -47,6 +47,7 @@ module HStream.Store.Stream
   , LD.readerSetTimeout
   , LD.readerSetWithoutPayload
   , LD.readerSetIncludeByteOffset
+  , LD.readerSetWaitOnlyWhenNoData
   , readerReadRecord
   , stopReader
 
@@ -61,6 +62,7 @@ module HStream.Store.Stream
   , LD.ckpReaderSetTimeout
   , LD.ckpReaderSetWithoutPayload
   , LD.ckpReaderSetIncludeByteOffset
+  , LD.ckpReaderSetWaitOnlyWhenNoData
   , stopCkpReader
   ) where
 
