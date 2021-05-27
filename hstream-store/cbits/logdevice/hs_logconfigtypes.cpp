@@ -76,6 +76,39 @@ std::string* describe_log_maxWritesInFlight(LogAttributes* attrs) {
   return new_hs_std_string(attrs->maxWritesInFlight().describe());
 }
 
+void free_log_head_attributes(logdevice_log_head_attributes_t* p){ delete p; }
+
+facebook::logdevice::Status get_head_attributes(logdevice_client_t* client, c_logid_t logid,
+              HsStablePtr mvar, HsInt cap, log_head_attributes_cb_data_t* data ) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st,
+                              std::unique_ptr<LogHeadAttributes> head_attrs_ptr) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      if (head_attrs_ptr) {
+        data->head_attributes = new logdevice_log_head_attributes_t;
+        data->head_attributes->rep = std::move(head_attrs_ptr);
+      } else {
+        data->head_attributes = NULL;
+      }
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  int ret = client->rep->getHeadAttributes(facebook::logdevice::logid_t(logid), cb);
+  if (ret == 0) {
+    return facebook::logdevice::E::OK;
+  }
+  return facebook::logdevice::err;
+}
+
+c_timestamp_t get_trim_point_timestamp(logdevice_log_head_attributes_t* head_attributes){
+  return head_attributes->rep->trim_point_timestamp.count();
+}
+
+c_lsn_t get_trim_point(logdevice_log_head_attributes_t* head_attributes){
+  return head_attributes->rep->trim_point;
+}
+
 // ----------------------------------------------------------------------------
 // LogConfigType: LogGroup
 
