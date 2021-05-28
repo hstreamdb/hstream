@@ -4,7 +4,7 @@
 
 ## Code of Conduct
 
-Please note that we have a code of conduct.Please follow it in all your interactions with the project.Please report unacceptable behavior to [hstream@emqx.io](mailto:hstream@emqx.io)
+Please note that we have a code of conduct. Please follow it in all your interactions with the project. Please report unacceptable behavior to [hstream@emqx.io](mailto:hstream@emqx.io)
 
 ## Quick Overview
 
