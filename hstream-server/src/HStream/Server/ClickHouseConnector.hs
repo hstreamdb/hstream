@@ -32,12 +32,13 @@ import Database.ClickHouseDriver
 import Database.ClickHouseDriver.Types
 import Haxl.Core (Env(states))
 import qualified Data.HashMap.Strict                             as HM
-import qualified Data.Map.Strict as DMS
 import           Data.Aeson
 import HStream.SQL.AST
 import Data.Aeson.Types
 import Data.Scientific
 import qualified Data.ByteString.Char8 as DBC
+import HStream.Server.Converter
+import qualified Data.Text as T
 
 
 main :: IO ()
@@ -87,17 +88,18 @@ writeRecordToClickHouse :: IO(Env () w) -> SinkRecord -> IO ()
 writeRecordToClickHouse ckClient SinkRecord{..} = do
     conn <- ckClient
     ping conn
-    print snkValue
-    let insertMap = (decode snkValue) :: Maybe (Map String Value)
-    -- print $ show tmp
+    let snkValue = "{\"temperature\":22,\"humidity\":\"80\",\"a\":{\"b\":1,\"c\":2,\"d\":{\"e\":5}}}"
+    let insertMap = (decode snkValue) :: Maybe (HM.HashMap T.Text Value)
+    print insertMap
     case insertMap of 
-      -- Just l -> print $ toList l
       Just l -> do
-        print $ DMS.keys l
-        let keys = DMS.keys l
-        let elems = DMS.elems l
-        insertOneRow conn ("INSERT INTO " ++ show snkStream ++ " " ++ keysAsSql keys ++" VALUES ") (valueToCKType <$> elems)
-      -- _ -> return ()
+        let flatterned = flattern l
+        print flatterned
+        print $ HM.keys flatterned
+        let keys = HM.keys flatterned
+        let elems = HM.elems flatterned
+        insertOneRow conn ("INSERT INTO " ++ show snkStream ++ " " ++ keysAsSql (map T.unpack keys) ++" VALUES ") (valueToCKType <$> elems)
+      _ -> do return "Invalid SinK Value"
 
     -- logId <- getCLogIDByStreamName ckClient (textToCBytes snkStream)
     -- let payload =
