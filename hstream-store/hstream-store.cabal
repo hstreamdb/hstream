@@ -108,13 +108,13 @@ library
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
   cxx-sources:
-    cbits/hs_checkpoint.cpp
     cbits/hs_logdevice.cpp
     cbits/hs_logdevice_admin.cpp
-    cbits/hs_logdevice_appender.cpp
-    cbits/hs_logdevice_reader.cpp
+    cbits/logdevice/hs_checkpoint.cpp
     cbits/logdevice/hs_logconfigtypes.cpp
+    cbits/logdevice/hs_reader.cpp
     cbits/logdevice/hs_versioned_config_store.cpp
+    cbits/logdevice/hs_writer.cpp
     cbits/utils.cpp
 
   extra-lib-dirs:     /usr/local/lib
