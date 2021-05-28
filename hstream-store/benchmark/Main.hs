@@ -30,7 +30,7 @@ nanosSinceEpoch =
 
 configPath :: CBytes
 {-# INLINEABLE configPath #-}
-configPath = "/run-ld/data/logdevice.conf"
+configPath = "/data/store/logdevice.conf"
 
 testDuration :: Int
 {-# INLINE testDuration #-}
@@ -66,8 +66,8 @@ testRead !client !ld_log !timeoutIO = do
   putStrLn $ "Total received is: " ++ show total_receive
   putStrLn "Average received latency is: TODO"
 
-testWrite :: HStore.LDClient -> HStore.C_LogID -> IO Bool -> IO Int
-testWrite _ 0 _ = return 1
+testWrite :: HStore.LDClient -> HStore.C_LogID -> IO Bool -> IO ()
+testWrite _ 0 _ = return ()
 testWrite !client !log !timeoutIO = do
   putStrLn "This is writing test"
   counterMVar <- MVar.newMVar (1000 :: Int)
@@ -94,7 +94,6 @@ testWrite !client !log !timeoutIO = do
   let (failures, criticals, total_commits) = folded
   putStrLn $ "TIMEOUT! total commit number is: " ++ show total_commits
   putStrLn $ "Total critical number is" ++ show criticals
-  return $ min 1 failures
 
 main :: IO ()
 main = do
@@ -119,5 +118,7 @@ main = do
           (Timeout.timeout testDuration $! return True)
 
   (void . forkIO) $ testRead client lo timeout
+
+  (void . forkIO) $ testWrite client lo timeout
 
   threadDelay 5000
