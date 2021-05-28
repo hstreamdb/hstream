@@ -34,7 +34,7 @@ source-repository head
 
 executable hstore-benchmark
   main-is:          Main.hs
-  hs-source-dirs:   benchamrk
+  hs-source-dirs:   benchmark
   build-depends:
     , base                  >=4.13 && <5
     , hstream-store
@@ -44,6 +44,7 @@ executable hstore-benchmark
     , Z-IO
     , time           >=1.9     && <2.0
     , monad-loops    >=0.4
+    , containers     >=0.6.2
 
   default-language: Haskell2010
   ghc-options:
@@ -74,6 +75,7 @@ library
     HStream.Store
     HStream.Store.Internal.LogDevice
     HStream.Store.RPC.MessagePack
+    HStream.Store.Internal.LogDevice.LogConfigTypes
 
   other-modules:
     HStream.Store.AdminClient
