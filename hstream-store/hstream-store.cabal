@@ -75,7 +75,6 @@ library
     HStream.Store
     HStream.Store.Internal.LogDevice
     HStream.Store.RPC.MessagePack
-    HStream.Store.Internal.LogDevice.LogConfigTypes
 
   other-modules:
     HStream.Store.AdminClient

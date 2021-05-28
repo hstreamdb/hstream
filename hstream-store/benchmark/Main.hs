@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
@@ -17,7 +18,6 @@ import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Data.Word (Word64)
 import GHC.List (foldl')
 import qualified HStream.Store as HStore
-import qualified HStream.Store.Internal.LogDevice.LogConfigTypes as HStore
 import qualified System.Timeout as Timeout
 import Z.Data.CBytes (CBytes)
 import Z.Data.Vector.Base (Bytes)
@@ -75,7 +75,7 @@ testWrite !client !log !timeoutIO = do
   lst <- whileM timeoutIO $ do
     QSemN.waitQSemN sem 1
     MVar.modifyMVar_ counterMVar \x->return $ x - 1
-    HStore.AppendCallBackData {appendCbRetCode = st} <-
+    HStore.AppendCallBackData {HStore.appendCbRetCode = st} <-
       HStore.append client log payloadBuilder1k Nothing
     let tup@(_, critical, _) :: (Int, Int, Int) =
           case st of

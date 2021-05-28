@@ -24,6 +24,8 @@ module HStream.Store
     -- * Exception
   , module HStream.Store.Exception
 
+  , module HStream.Store.Internal.LogDevice.LogConfigTypes
+
     -- * DEPRECATED
   , ProducerConfig (..), Producer, mkProducer
   , ConsumerConfig (..), Consumer, mkConsumer
@@ -37,6 +39,7 @@ import           HStream.Store.Internal.LogDevice
 import           HStream.Store.Internal.Types
 import           HStream.Store.Logger
 import           HStream.Store.Stream
+import  HStream.Store.Internal.LogDevice.LogConfigTypes
 
 -- DEPRECATED {
 import           Control.Monad                    (forM, forM_, void)
