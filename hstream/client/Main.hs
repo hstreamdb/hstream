@@ -87,7 +87,7 @@ parseConfig :: Parser UserConfig
 parseConfig =
   UserConfig
     <$> strOption (long "host" <> metavar "HOST" <> showDefault <> value "127.0.0.1" <> help "server host value")
-    <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 50051 <> short 'p' <> help "server port value")
+    <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 6570 <> short 'p' <> help "server port value")
 
 main :: IO ()
 main = do
@@ -100,7 +100,7 @@ main = do
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
   let clientConfig = ClientConfig { clientServerHost = Host _serverHost
-                                  , clientServerPort = Port . fromIntegral $ _serverPort
+                                  , clientServerPort = Port _serverPort
                                   , clientArgs = []
                                   , clientSSLConfig = Nothing
                                   , clientAuthority = Nothing
