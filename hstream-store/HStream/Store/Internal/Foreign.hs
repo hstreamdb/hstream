@@ -14,6 +14,7 @@ import           Data.Primitive
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
+import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Exts
@@ -130,7 +131,9 @@ withPrimSafe' v f = do
 {-# INLINE withPrimSafe' #-}
 
 peekStdStringToCBytesN :: Int -> Ptr Z.StdString -> IO [CBytes]
-peekStdStringToCBytesN len ptr = forM [0..len-1] (peekStdStringToCBytesIdx ptr)
+peekStdStringToCBytesN len ptr
+  | len <= 0 || ptr == nullPtr = return []
+  | otherwise = forM [0..len-1] (peekStdStringToCBytesIdx ptr)
 
 peekStdStringToCBytesIdx :: Ptr Z.StdString -> Int -> IO CBytes
 peekStdStringToCBytesIdx p offset = do
@@ -145,3 +148,8 @@ peekStdStringToCBytesIdx p offset = do
 
 foreign import ccall unsafe "hs_logdevice.h hs_cal_std_string_off"
   hs_cal_std_string_off :: Ptr Z.StdString -> Int -> IO (Ptr Z.StdString)
+
+data StdVector a
+
+foreign import ccall unsafe "hs_logdevice.h delete_vector_of_string"
+  delete_vector_of_string :: Ptr (StdVector Z.StdString) -> IO ()
