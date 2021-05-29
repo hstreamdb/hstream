@@ -1,28 +1,19 @@
-FROM hstreamdb/haskell:8.10 as dependencies
-
-RUN rm -rf /srv/*
-WORKDIR /srv
+FROM hstreamdb/haskell as builder
 
 ARG CABAL_MIRROR_NAME="hackage.haskell.org"
 ARG CABAL_MIRROR_URL="http://hackage.haskell.org/"
-COPY . /srv
+
 RUN cabal user-config init && echo "\
 repository $CABAL_MIRROR_NAME \n\
   url: $CABAL_MIRROR_URL \n\
-" > /root/.cabal/config && cabal user-config update
+" > /root/.cabal/config && cabal user-config update && \
+    cabal update
 
-RUN cabal update && \
-    make && \
-    cabal build --enable-tests --enable-benchmarks all
-
-# ------------------------------------------------------------------------------
-
-FROM hstreamdb/haskell:8.10 as builder
-
-COPY --from=dependencies /srv/dist-newstyle /srv/dist-newstyle
-COPY --from=dependencies /root/.cabal /root/.cabal
+RUN rm -rf /srv/*
+WORKDIR /srv
 COPY . /srv
-RUN cd /srv && make && cabal install hstream hstream-server
+RUN make && \
+    cabal build all && cabal install hstream hstream-server
 
 # ------------------------------------------------------------------------------
 
@@ -60,18 +51,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-pip                    \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
-COPY --from=hstreamdb/logdevice-client:latest /usr/local/lib/ /usr/local/lib/
-COPY --from=hstreamdb/logdevice:latest /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so.2
+COPY --from=hstreamdb/haskell:latest /usr/local/lib/ /usr/local/lib/
+COPY --from=hstreamdb/haskell:latest /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so.2
+RUN ln -sr /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so
+
 COPY --from=hstreamdb/logdevice:latest /usr/local/bin/logdeviced \
                                        /usr/local/bin/ld-dev-cluster \
                                        /usr/local/bin/ld-admin-server \
                                        /usr/local/bin/
 # ld-dev-cluster requires this
 COPY --from=hstreamdb/logdevice /logdevice/common/test/ssl_certs/ /logdevice/common/test/ssl_certs/
-
-RUN ln -sr /usr/local/lib/librocksdb.so.6.6.1 /usr/local/lib/librocksdb.so.6 && \
-    ln -sr /usr/local/lib/librocksdb.so.6.6.1 /usr/local/lib/librocksdb.so && \
-    ln -sr /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
