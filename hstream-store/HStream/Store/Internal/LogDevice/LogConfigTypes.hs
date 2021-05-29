@@ -31,10 +31,7 @@ import           Z.Foreign                      (BA#, BAArray#, MBA#)
 import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
-import           HStream.Store.Internal.Foreign (peekStdStringToCBytesN,
-                                                 withAsync,
-                                                 withAsyncPrimUnsafe2,
-                                                 withAsyncPrimUnsafe2')
+import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
@@ -68,6 +65,9 @@ updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
   Z.withPrimArrayListUnsafe ks $ \ks' l ->
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
       c_update_log_attrs_extras attrs' l ks' vs'
+
+-------------------------------------------------------------------------------
+-- LogHeadAttrs
 
 -- | Return current attributes of the head of the log.
 getLogHeadAttrs :: LDClient -> C_LogID -> IO LDLogHeadAttrs
@@ -196,7 +196,7 @@ getLogDirectory client path =
 
 logDirectoryGetName :: LDDirectory -> IO CBytes
 logDirectoryGetName dir = withForeignPtr dir $
-   CBytes.fromCString <=< c_ld_logdirectory_get_name
+   CBytes.fromCString <=< c_ld_logdirectory_name
 
 logDirectoryGetLogsName :: Bool -> LDDirectory -> IO [CBytes]
 logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
@@ -204,9 +204,7 @@ logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
     Z.withPrimUnsafe 0 $ \len' ->
     Z.withPrimUnsafe nullPtr $ \names' ->
     fst <$> Z.withPrimUnsafe nullPtr (c_ld_logdirectory_get_logs_name dir' recursive len' names')
-  if names_ptr == nullPtr
-     then return []
-     else finally (peekStdStringToCBytesN len names_ptr) (c_free_logs_name stdvec_ptr)
+  finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string stdvec_ptr)
 
 logDirectoryGetVersion :: LDDirectory -> IO C_LogsConfigVersion
 logDirectoryGetVersion dir = withForeignPtr dir c_ld_logdirectory_get_version
@@ -240,6 +238,20 @@ removeLogDirectory client path recursive =
       LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
       void $ E.throwStreamErrorIfNotOK' errno
       return version
+
+logDirChildrenNames :: LDDirectory -> IO [CBytes]
+logDirChildrenNames dir = withForeignPtr dir $ \dir' -> do
+  (len, (raw_ptr, names_ptr)) <-
+    Z.withPrimUnsafe @Int 0 $ \len' ->
+    Z.withPrimUnsafe nullPtr $ \names' ->
+      c_ld_logdir_children_keys dir' len' names'
+  finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string raw_ptr)
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdir_children_keys"
+  c_ld_logdir_children_keys
+    :: Ptr LogDeviceLogDirectory
+    -> MBA# CSize -> MBA# (Ptr (StdVector Z.StdString))
+    -> IO (Ptr Z.StdString)
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_directory_sync"
   c_ld_client_make_directory_sync
@@ -289,8 +301,8 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_remove_directory"
     -> Ptr LogsConfigStatusCbData
     -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_name"
-  c_ld_logdirectory_get_name :: Ptr LogDeviceLogDirectory -> IO CString
+foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_name"
+  c_ld_logdirectory_name :: Ptr LogDeviceLogDirectory -> IO CString
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
   c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
@@ -308,11 +320,8 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_logs_name"
     :: Ptr LogDeviceLogDirectory
     -> Bool     -- ^ recursive
     -> MBA# CSize -> MBA# (Ptr Z.StdString)
-    -> MBA# (Ptr a)
+    -> MBA# (Ptr (StdVector Z.StdString))
     -> IO ()
-
-foreign import ccall unsafe "hs_logdevice.h free_logs_name"
-  c_free_logs_name :: Ptr a -> IO ()
 
 -------------------------------------------------------------------------------
 -- * LogGroup

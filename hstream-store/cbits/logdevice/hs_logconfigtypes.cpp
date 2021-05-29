@@ -76,12 +76,16 @@ std::string* describe_log_maxWritesInFlight(LogAttributes* attrs) {
   return new_hs_std_string(attrs->maxWritesInFlight().describe());
 }
 
-void free_log_head_attributes(logdevice_log_head_attributes_t* p){ delete p; }
+// ----------------------------------------------------------------------------
+// LogHeadAttributes
 
-facebook::logdevice::Status get_head_attributes(logdevice_client_t* client, c_logid_t logid,
-              HsStablePtr mvar, HsInt cap, log_head_attributes_cb_data_t* data ) {
-  auto cb = [data, cap, mvar](facebook::logdevice::Status st,
-                              std::unique_ptr<LogHeadAttributes> head_attrs_ptr) {
+facebook::logdevice::Status
+get_head_attributes(logdevice_client_t* client, c_logid_t logid,
+                    HsStablePtr mvar, HsInt cap,
+                    log_head_attributes_cb_data_t* data) {
+  auto cb = [data, cap,
+             mvar](facebook::logdevice::Status st,
+                   std::unique_ptr<LogHeadAttributes> head_attrs_ptr) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
       if (head_attrs_ptr) {
@@ -94,69 +98,85 @@ facebook::logdevice::Status get_head_attributes(logdevice_client_t* client, c_lo
     hs_try_putmvar(cap, mvar);
     hs_thread_done();
   };
-  int ret = client->rep->getHeadAttributes(facebook::logdevice::logid_t(logid), cb);
+  int ret =
+      client->rep->getHeadAttributes(facebook::logdevice::logid_t(logid), cb);
   if (ret == 0) {
     return facebook::logdevice::E::OK;
   }
   return facebook::logdevice::err;
 }
 
-c_timestamp_t get_trim_point_timestamp(logdevice_log_head_attributes_t* head_attributes){
+void free_log_head_attributes(logdevice_log_head_attributes_t* p) { delete p; }
+
+c_timestamp_t
+get_trim_point_timestamp(logdevice_log_head_attributes_t* head_attributes) {
   return head_attributes->rep->trim_point_timestamp.count();
 }
 
-c_lsn_t get_trim_point(logdevice_log_head_attributes_t* head_attributes){
+c_lsn_t get_trim_point(logdevice_log_head_attributes_t* head_attributes) {
   return head_attributes->rep->trim_point;
 }
 
 // ----------------------------------------------------------------------------
 // LogTailAttributes
+
 bool valid_log_tail_attributes(logdevice_log_tail_attributes_t* attributes) {
-    return attributes->last_released_real_lsn != facebook::logdevice::LSN_INVALID &&
-        attributes->last_timestamp != c_timestamp_t{0};
+  return attributes->last_released_real_lsn !=
+             facebook::logdevice::LSN_INVALID &&
+         attributes->last_timestamp != c_timestamp_t{0};
 }
 
-facebook::logdevice::Status ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
-                                    HsStablePtr mvar, HsInt cap,
-                                    log_tail_attributes_cb_data_t* cb_data) {
-    auto cb = [cb_data, cap, mvar](facebook::logdevice::Status st,
-                       std::unique_ptr<LogTailAttributes> tail_attr_ptr) {
-        if (cb_data) {
-            cb_data->st = static_cast<c_error_code_t>(st);
-            if (tail_attr_ptr) {
-                auto tail_attrs = new logdevice_log_tail_attributes_t;
-                tail_attrs->last_released_real_lsn = tail_attr_ptr->last_released_real_lsn;
-                tail_attrs->last_timestamp = tail_attr_ptr->last_timestamp.count();
-                tail_attrs->offsets = tail_attr_ptr->offsets.getCounter(facebook::logdevice::BYTE_OFFSET);
-                cb_data->tail_attributes = tail_attrs;
-            } else {
-                cb_data->tail_attributes = NULL;
-            }
-        }
-        hs_try_putmvar(cap, mvar);
-        hs_thread_done();
-    };
-
-    int ret = client->rep->getTailAttributes(logid_t(logid), cb);
-    if (ret == 0) {
-        return facebook::logdevice::E::OK;
+facebook::logdevice::Status
+ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
+                              HsStablePtr mvar, HsInt cap,
+                              log_tail_attributes_cb_data_t* cb_data) {
+  auto cb = [cb_data, cap,
+             mvar](facebook::logdevice::Status st,
+                   std::unique_ptr<LogTailAttributes> tail_attr_ptr) {
+    if (cb_data) {
+      cb_data->st = static_cast<c_error_code_t>(st);
+      if (tail_attr_ptr) {
+        auto tail_attrs = new logdevice_log_tail_attributes_t;
+        tail_attrs->last_released_real_lsn =
+            tail_attr_ptr->last_released_real_lsn;
+        tail_attrs->last_timestamp = tail_attr_ptr->last_timestamp.count();
+        tail_attrs->offsets =
+            tail_attr_ptr->offsets.getCounter(facebook::logdevice::BYTE_OFFSET);
+        cb_data->tail_attributes = tail_attrs;
+      } else {
+        cb_data->tail_attributes = NULL;
+      }
     }
-    return facebook::logdevice::err;
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+
+  int ret = client->rep->getTailAttributes(logid_t(logid), cb);
+  if (ret == 0) {
+    return facebook::logdevice::E::OK;
+  }
+  return facebook::logdevice::err;
 }
 
-lsn_t ld_client_get_tail_attributes_lsn(logdevice_log_tail_attributes_t* tail_attr) {
-    return tail_attr->last_released_real_lsn;
+lsn_t ld_client_get_tail_attributes_lsn(
+    logdevice_log_tail_attributes_t* tail_attr) {
+  return tail_attr->last_released_real_lsn;
 }
 
-c_timestamp_t ld_client_get_tail_attributes_last_timestamp(logdevice_log_tail_attributes_t* tail_attr) {
+c_timestamp_t ld_client_get_tail_attributes_last_timestamp(
+    logdevice_log_tail_attributes_t* tail_attr) {
   return tail_attr->last_timestamp;
 }
 
-uint64_t ld_client_get_tail_attributes_bytes_offset(logdevice_log_tail_attributes_t* tail_attr) {
+uint64_t ld_client_get_tail_attributes_bytes_offset(
+    logdevice_log_tail_attributes_t* tail_attr) {
   return tail_attr->offsets;
 }
 
-void free_logdevice_tail_attributes(logdevice_log_tail_attributes_t* tail_attr) { delete tail_attr; }
+void free_logdevice_tail_attributes(
+    logdevice_log_tail_attributes_t* tail_attr) {
+  delete tail_attr;
+}
 
 // ----------------------------------------------------------------------------
 // LogConfigType: LogGroup
@@ -253,6 +273,7 @@ ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+// LogGroup attrs : range
 void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
                            c_logid_t* end) {
   const facebook::logdevice::logid_range_t& range = group->rep->range();
@@ -260,13 +281,13 @@ void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
   *end = range.second.val();
 }
 
-// NOTE: returned null-terminated string should be copied from ffi function.
-const char* ld_loggroup_get_name(logdevice_loggroup_t* group) {
-  return group->rep->name().c_str();
+// FIXME: Does this copy of string needed?
+char* ld_loggroup_get_name(logdevice_loggroup_t* group) {
+  return copyString(group->rep->name());
 }
 
-const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group) {
-  return group->rep->getFullyQualifiedName().c_str();
+char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group) {
+  return copyString(group->rep->getFullyQualifiedName());
 }
 
 const LogAttributes* ld_loggroup_get_attrs(logdevice_loggroup_t* group) {
@@ -311,72 +332,8 @@ facebook::logdevice::Status ld_loggroup_update_extra_attrs(
 
 void free_logdevice_loggroup(logdevice_loggroup_t* group) { delete group; }
 
-[[deprecated]] facebook::logdevice::Status ld_client_make_loggroup_sync(
-    logdevice_client_t* client, const char* path, const c_logid_t start_logid,
-    const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
-    logdevice_loggroup_t** loggroup_result) {
-  std::unique_ptr<LogGroup> loggroup = nullptr;
-  auto start = facebook::logdevice::logid_t(start_logid);
-  auto end = facebook::logdevice::logid_t(end_logid);
-  std::string reason;
-
-  loggroup = client->rep->makeLogGroupSync(
-      path, std::make_pair(start, end), *attrs, mk_intermediate_dirs, &reason);
-  if (loggroup) {
-    logdevice_loggroup_t* result = new logdevice_loggroup_t;
-    result->rep = std::move(loggroup);
-    *loggroup_result = result;
-    return facebook::logdevice::E::OK;
-  }
-  std::cerr << "-> ld_client_make_loggroup_sync error: " << reason << "\n";
-  return facebook::logdevice::err;
-}
-
-[[deprecated]] facebook::logdevice::Status
-ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
-                            logdevice_loggroup_t** loggroup_result) {
-  std::unique_ptr<LogGroup> loggroup = nullptr;
-  std::string path_ = path;
-  loggroup = client->rep->getLogGroupSync(path_);
-  if (loggroup) {
-    logdevice_loggroup_t* result = new logdevice_loggroup_t;
-    result->rep = std::move(loggroup);
-    *loggroup_result = result;
-    return facebook::logdevice::E::OK;
-  }
-  return facebook::logdevice::err;
-}
-
-[[deprecated]] facebook::logdevice::Status
-ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
-                               uint64_t* version) {
-  std::string path_ = path;
-  bool ret = client->rep->removeLogGroupSync(path_, version);
-  if (ret)
-    return facebook::logdevice::E::OK;
-  return facebook::logdevice::err;
-}
-
 // ----------------------------------------------------------------------------
 // LogConfigType: LogDirectory
-
-facebook::logdevice::Status
-ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
-                              bool mk_intermediate_dirs, LogAttributes* attrs,
-                              logdevice_logdirectory_t** logdir_ret) {
-  std::unique_ptr<LogDirectory> directory = nullptr;
-  std::string reason;
-  directory = client->rep->makeDirectorySync(path, mk_intermediate_dirs, *attrs,
-                                             &reason);
-  if (directory) {
-    logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
-    result->rep = std::move(directory);
-    *logdir_ret = result;
-    return facebook::logdevice::E::OK;
-  }
-  std::cerr << "-> ld_client_make_directory_sync error: " << reason << "\n";
-  return facebook::logdevice::err;
-}
 
 facebook::logdevice::Status
 ld_client_make_directory(logdevice_client_t* client, const char* path,
@@ -389,8 +346,12 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
                               const std::string& failure_reason) {
     if (data) {
       data->st = static_cast<c_error_code_t>(st);
-      data->directory = new logdevice_logdirectory_t;
-      data->directory->rep = std::move(directory_ptr);
+      if (directory_ptr) {
+        data->directory = new logdevice_logdirectory_t;
+        data->directory->rep = std::move(directory_ptr);
+      } else {
+        data->directory = NULL;
+      }
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
@@ -398,28 +359,6 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
   };
   int ret = client->rep->makeDirectory(path_, mk_intermediate_dirs, *attrs, cb);
   if (ret == 0)
-    return facebook::logdevice::E::OK;
-  return facebook::logdevice::err;
-}
-
-facebook::logdevice::Status
-ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
-                             logdevice_logdirectory_t** logdir_result) {
-  std::unique_ptr<LogDirectory> logdir = client->rep->getDirectorySync(path);
-  if (logdir) {
-    logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
-    result->rep = std::move(logdir);
-    *logdir_result = result;
-    return facebook::logdevice::E::OK;
-  }
-  return facebook::logdevice::err;
-}
-
-facebook::logdevice::Status
-ld_client_remove_directory_sync(logdevice_client_t* client, const char* path,
-                                bool recursive, uint64_t* version) {
-  bool ret = client->rep->removeDirectorySync(path, recursive, version);
-  if (ret)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
 }
@@ -443,16 +382,6 @@ ld_client_remove_directory(logdevice_client_t* client, const char* path,
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
-}
-
-void free_logdevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
-
-const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir) {
-  return dir->rep->name().c_str();
-}
-
-uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
-  return dir->rep->version();
 }
 
 facebook::logdevice::Status
@@ -481,16 +410,100 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+void free_logdevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
+
+// LogDirectory attrs : children keys
+std::string*
+ld_logdir_children_keys(logdevice_logdirectory_t* dir, HsInt* ret_len,
+                        const std::vector<std::string>** ret_raw_keys) {
+  auto& dirMap = dir->rep->children();
+  std::vector<std::string>* keys = getKeys(dirMap);
+  *ret_len = keys->size();
+  *ret_raw_keys = keys;
+  //printf("=> %d %p %p\n", *ret_len, keys, keys + 1);
+  //printf("-> %s %s\n", (*keys).c_str(), (*(keys + 1)).c_str());
+  return keys->data();
+}
+// LogDirectory attrs : logs keys
+void ld_logdir_logs(logdevice_logdirectory_t* dir, HsInt* len,
+                    std::string* key) {
+  // auto& logMap = dir->rep->logs();
+  // HsInt len_ = getKeys(logMap, key);
+  //*len = len_;
+}
+
+// LogDirectory attrs : name
+const char* ld_logdirectory_name(logdevice_logdirectory_t* dir) {
+  return dir->rep->name().c_str();
+}
+
+// LogDirectory attrs : fullyQualifiedName
+const char*
+ld_logdirectory_getFullyQualifiedName(logdevice_logdirectory_t* dir) {
+  return dir->rep->getFullyQualifiedName().c_str();
+}
+
+// LogDirectory attrs : version
+uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
+  return dir->rep->version();
+}
+
+#define LD_LOGDIRECTORY_MAP_ATTR(NAME, ATTR_NAME, RET_TYPE, FIND_FUN, NOT_FUN) \
+  RET_TYPE NAME(logdevice_logdirectory_t* dir, const char* key) {              \
+    auto& attrMap = dir->rep->ATTR_NAME();                                     \
+    auto value = attrMap.find(key);                                            \
+    if (value != attrMap.end()) {                                              \
+      return FIND_FUN;                                                         \
+    } else {                                                                   \
+      return NOT_FUN;                                                          \
+    }                                                                          \
+  }
+// children name
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_name, children, char*,
+                         copyString(value->second->name()), NULL)
+// children fully qualified name
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_full_name, children, char*,
+                         copyString(value->second->getFullyQualifiedName()),
+                         NULL)
+// children verison
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_version, children, uint64_t,
+                         (value->second->version()), 0)
+// dir log name
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_name, logs, char*,
+                         copyString(value->second->name()), NULL)
+// dir log fully qualified name
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_full_name, logs, char*,
+                         copyString(value->second->getFullyQualifiedName()),
+                         NULL)
+// dir log verison
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_version, logs, uint64_t,
+                         (value->second->version()), 0)
+// dir log attrs
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_attrs, logs, const LogAttributes*,
+                         (&(value->second->attrs())), NULL)
+// dir log range
+void ld_logdir_logs_range(logdevice_logdirectory_t* dir, const char* key,
+                          c_logid_t* start, c_logid_t* end) {
+  auto& attrMap = dir->rep->logs();
+  auto value = attrMap.find(key);
+  if (value != attrMap.end()) {
+    auto& range = value->second->range();
+    *start = range.first.val();
+    *end = range.second.val();
+  }
+}
+
+// helper function to get all loggroup names under a LogDirectory.
 void get_logs_name(const std::unique_ptr<LogDirectory>& dir, bool rec,
                    std::vector<std::string>* lognames) {
   auto& logs = dir->logs();
-  for (const auto& logMap : logs) {
-    lognames->push_back(logMap.second->getFullyQualifiedName());
+  for (const auto& [key, value] : logs) {
+    lognames->push_back(value->getFullyQualifiedName());
   }
   if (rec) {
     auto& dirs = dir->children();
-    for (const auto& dirMap : dirs) {
-      get_logs_name(dirMap.second, rec, lognames);
+    for (const auto& [key, value] : dirs) {
+      get_logs_name(value, rec, lognames);
     }
   }
 }
@@ -508,8 +521,6 @@ void ld_logdirectory_get_logs_name(logdevice_logdirectory_t* dir_,
   *names_ptr = lognames->data();
   *lognames_ = lognames;
 }
-
-void free_logs_name(std::vector<std::string>* lognames) { delete lognames; }
 
 // ----------------------------------------------------------------------------
 
@@ -579,6 +590,94 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
   };
   int ret = client->rep->setAttributes(path, *attrs, cb);
   if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+// ----------------------------------------------------------------------------
+
+[[deprecated]] facebook::logdevice::Status ld_client_make_loggroup_sync(
+    logdevice_client_t* client, const char* path, const c_logid_t start_logid,
+    const c_logid_t end_logid, LogAttributes* attrs, bool mk_intermediate_dirs,
+    logdevice_loggroup_t** loggroup_result) {
+  std::unique_ptr<LogGroup> loggroup = nullptr;
+  auto start = facebook::logdevice::logid_t(start_logid);
+  auto end = facebook::logdevice::logid_t(end_logid);
+  std::string reason;
+
+  loggroup = client->rep->makeLogGroupSync(
+      path, std::make_pair(start, end), *attrs, mk_intermediate_dirs, &reason);
+  if (loggroup) {
+    logdevice_loggroup_t* result = new logdevice_loggroup_t;
+    result->rep = std::move(loggroup);
+    *loggroup_result = result;
+    return facebook::logdevice::E::OK;
+  }
+  std::cerr << "-> ld_client_make_loggroup_sync error: " << reason << "\n";
+  return facebook::logdevice::err;
+}
+
+[[deprecated]] facebook::logdevice::Status
+ld_client_get_loggroup_sync(logdevice_client_t* client, const char* path,
+                            logdevice_loggroup_t** loggroup_result) {
+  std::unique_ptr<LogGroup> loggroup = nullptr;
+  std::string path_ = path;
+  loggroup = client->rep->getLogGroupSync(path_);
+  if (loggroup) {
+    logdevice_loggroup_t* result = new logdevice_loggroup_t;
+    result->rep = std::move(loggroup);
+    *loggroup_result = result;
+    return facebook::logdevice::E::OK;
+  }
+  return facebook::logdevice::err;
+}
+
+[[deprecated]] facebook::logdevice::Status
+ld_client_remove_loggroup_sync(logdevice_client_t* client, const char* path,
+                               uint64_t* version) {
+  std::string path_ = path;
+  bool ret = client->rep->removeLogGroupSync(path_, version);
+  if (ret)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+[[deprecated]] facebook::logdevice::Status
+ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
+                              bool mk_intermediate_dirs, LogAttributes* attrs,
+                              logdevice_logdirectory_t** logdir_ret) {
+  std::unique_ptr<LogDirectory> directory = nullptr;
+  std::string reason;
+  directory = client->rep->makeDirectorySync(path, mk_intermediate_dirs, *attrs,
+                                             &reason);
+  if (directory) {
+    logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
+    result->rep = std::move(directory);
+    *logdir_ret = result;
+    return facebook::logdevice::E::OK;
+  }
+  std::cerr << "-> ld_client_make_directory_sync error: " << reason << "\n";
+  return facebook::logdevice::err;
+}
+
+[[deprecated]] facebook::logdevice::Status
+ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
+                             logdevice_logdirectory_t** logdir_result) {
+  std::unique_ptr<LogDirectory> logdir = client->rep->getDirectorySync(path);
+  if (logdir) {
+    logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
+    result->rep = std::move(logdir);
+    *logdir_result = result;
+    return facebook::logdevice::E::OK;
+  }
+  return facebook::logdevice::err;
+}
+
+[[deprecated]] facebook::logdevice::Status
+ld_client_remove_directory_sync(logdevice_client_t* client, const char* path,
+                                bool recursive, uint64_t* version) {
+  bool ret = client->rep->removeDirectorySync(path, recursive, version);
+  if (ret)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
 }

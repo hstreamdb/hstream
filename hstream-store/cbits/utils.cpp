@@ -17,4 +17,8 @@ extern "C" {
 std::string* hs_cal_std_string_off(std::string* str, HsInt idx) {
   return str + idx;
 }
+
+void delete_vector_of_string(std::vector<std::string>* ss) { delete ss; }
+
+// End
 }

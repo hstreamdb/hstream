@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <unordered_map>
 
 #include <folly/Conv.h>
 #include <folly/Optional.h>
@@ -78,11 +79,23 @@ using facebook::logdevice::thrift::AdminAPIAsyncClient;
 std::string* new_hs_std_string(std::string&& str);
 char* copyString(const std::string& str);
 
+template <typename Container>
+std::vector<std::string>* getKeys(const Container& container) {
+  std::vector<std::string>* keys = new std::vector<std::string>;
+  for (const auto& x : container) {
+    keys->push_back(x.first);
+  }
+  return keys;
+}
+
+// ----------------------------------------------------------------------------
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 std::string* hs_cal_std_string_off(std::string* str, HsInt idx);
+void delete_vector_of_string(std::vector<std::string>* ss);
 
 // ----------------------------------------------------------------------------
 
@@ -200,7 +213,8 @@ typedef struct logdevice_log_tail_attributes_t {
   c_timestamp_t last_timestamp;
   // RecordOffset struct contains information on amount of data written to
   // the log, but currently it only supports BYTE_OFFSET. So here the offsets
-  // filed in the struct stores the amount of data in bytes written to the log.
+  // filed in the struct stores the amount of data in bytes written to the
+  // log.
   uint64_t offsets;
 } logdevice_log_tail_attributes_t;
 
@@ -358,9 +372,6 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
 
 void free_logdevice_logdirectory(logdevice_logdirectory_t* dir);
 
-const char* ld_logdirectory_get_name(logdevice_logdirectory_t* dir);
-uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir);
-
 facebook::logdevice::Status
 ld_client_get_directory_sync(logdevice_client_t* client, const char* path,
                              logdevice_logdirectory_t** logdir_result);
@@ -391,13 +402,6 @@ void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
                             HsStablePtr mvar, HsInt cap,
                             facebook::logdevice::Status* st_out,
                             logdevice_loggroup_t** loggroup_result);
-
-void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
-                           c_logid_t* end);
-const char* ld_loggroup_get_name(logdevice_loggroup_t* group);
-const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group);
-const LogAttributes* ld_loggroup_get_attrs(logdevice_loggroup_t* group);
-uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group);
 
 facebook::logdevice::Status ld_client_rename(logdevice_client_t* client,
                                              const char* from_path,
@@ -590,7 +594,8 @@ int64_t ld_admin_sync_aliveSince(logdevice_admin_async_client_t* client,
 
 int64_t ld_admin_sync_getPid(logdevice_admin_async_client_t* client,
                              thrift_rpc_options_t* rpc_options);
-// ---------------------------------------------------------------------- ------
+
+// ----------------------------------------------------------------------------
 
 #ifdef __cplusplus
 } /* end extern "C" */
