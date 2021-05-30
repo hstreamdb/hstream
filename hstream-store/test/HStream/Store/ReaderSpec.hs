@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module HStream.Store.ReaderSpec (spec) where
@@ -6,7 +5,6 @@ module HStream.Store.ReaderSpec (spec) where
 import           Control.Monad           (void)
 import qualified Data.Map.Strict         as Map
 import qualified HStream.Store           as S
-import           System.IO.Unsafe        (unsafePerformIO)
 import           System.Timeout          (timeout)
 import           Test.Hspec
 
@@ -24,8 +22,8 @@ fileBased = context "FileBasedCheckpointedReader" $ do
   let ckpPath = "/tmp/ckp"
   let logid = 1
 
-  let !ckpReader = unsafePerformIO $ S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10
-  let !checkpointStore = unsafePerformIO $ S.newFileBasedCheckpointStore ckpPath
+  ckpReader <- runIO $ S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10
+  checkpointStore <- runIO $ S.newFileBasedCheckpointStore ckpPath
 
   it "the checkpoint of writing/reading shoule be equal" $ do
     _ <- S.append client logid "hello" Nothing
@@ -59,8 +57,8 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
   let ckpLogID = 90
   let logid = 1
 
-  let !ckpReader = unsafePerformIO $ S.newLDRsmCkpReader client readerName ckpLogID 5000 1 Nothing 10
-  let !checkpointStore = unsafePerformIO $ S.newRSMBasedCheckpointStore client ckpLogID 5000
+  ckpReader <- runIO $ S.newLDRsmCkpReader client readerName ckpLogID 5000 1 Nothing 10
+  checkpointStore <- runIO $ S.newRSMBasedCheckpointStore client ckpLogID 5000
 
   it "the checkpoint of writing/reading shoule be equal" $ do
     _ <- S.append client logid "hello" Nothing

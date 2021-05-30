@@ -22,26 +22,17 @@ import           System.Random
 import           Test.Hspec
 import           Text.Printf                    (printf)
 
-source1, source2, sink1, sink2 :: Text
-
-source1 = unsafePerformIO $ newRandomText 10
-{-# NOINLINE source1 #-}
-
-source2 = unsafePerformIO $ newRandomText 10
-{-# NOINLINE source2 #-}
-
-sink1   = unsafePerformIO $ newRandomText 10
-{-# NOINLINE sink1 #-}
-
-sink2   = unsafePerformIO $ newRandomText 10
-{-# NOINLINE sink2 #-}
-
 ldclient :: LDClient
 ldclient = unsafePerformIO $ newLDClient  "/data/store/logdevice.conf"
 {-# NOINLINE ldclient #-}
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
+  source1 <- runIO $ newRandomText 10
+  source2 <- runIO $ newRandomText 10
+  sink1 <- runIO $ newRandomText 10
+  sink2 <- runIO $ newRandomText 10
+
   it "create streams" $
     (do
         setLogDeviceDbgLevel C_DBG_ERROR

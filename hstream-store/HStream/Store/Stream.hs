@@ -78,7 +78,9 @@ import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random                    (randomRIO)
+import qualified Z.Data.Builder                   as Builder
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.CBytes                    as CBytes
 import qualified Z.Data.JSON                      as JSON
 import qualified Z.Data.MessagePack               as MP
 import           Z.Data.Vector                    (Bytes)
@@ -87,6 +89,7 @@ import           Z.IO.Time                        (getSystemTime')
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
 import qualified HStream.Store.Internal.Types     as FFI
+import qualified HStream.Store.Logger             as Log
 
 -------------------------------------------------------------------------------
 
@@ -101,7 +104,7 @@ streamNameCache = unsafePerformIO $ Cache.newCache Nothing
 --
 -- Currently a Stream is a loggroup which only contains one random logid.
 createStream :: HasCallStack => FFI.LDClient -> StreamName -> FFI.LogAttrs -> IO ()
-createStream client stream attrs = go 10
+createStream client stream attrs = Log.withDefaultLogger $ go 10
   where
     go :: Int -> IO ()
     go maxTries =
@@ -109,6 +112,8 @@ createStream client stream attrs = go 10
          then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
            logid <- genRandomLogID
+           Log.debug $ "Create Stream with name: " <> CBytes.toBuilder stream
+                    <> " and logid: " <> Builder.integer (fromIntegral logid)
            result <- try $ LD.makeLogGroup client stream logid logid attrs True
            case result of
              Right group -> do
