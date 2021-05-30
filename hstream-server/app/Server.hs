@@ -24,7 +24,7 @@ parseConfig :: Parser ServerConfig
 parseConfig =
   ServerConfig
     <$> strOption   (long "host" <> metavar "HOST" <> showDefault <> value "127.0.0.1" <> help "server host value")
-    <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 50051 <> short 'p' <> help "server port value")
+    <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 6570 <> short 'p' <> help "server port value")
     <*> strOption (long "config-path" <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
     <*> option auto (long "replicate-factor" <> metavar "INT" <> showDefault <> value 3 <> short 'f' <> help "topic replicate factor")
 

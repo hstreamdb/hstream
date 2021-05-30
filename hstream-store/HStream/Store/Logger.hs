@@ -7,6 +7,9 @@ module HStream.Store.Logger
   , Log.fatal
   , Log.withDefaultLogger
   , Log.flushDefaultLogger
+  , Log.setDefaultLogger
+  , Log.getDefaultLogger
+  , Log.Logger
 
   -- * LogDevice debug level
   , FFI.C_DBG_LEVEL
