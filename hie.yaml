@@ -77,3 +77,9 @@ cradle:
 
     - path: "hstream-store/test"
       component: "hstream-store:test:hstream-store-test"
+
+    - path: "hstream-store/admin"
+      component: "lib:hstore-admin"
+
+    - path: "hstream-store/admin/app/cli.hs"
+      component: "hstore-admin:exe:hstore-admin"

@@ -1,5 +1,9 @@
 module HStream.Store.Admin.API
   ( sendAdminApiRequest
+  , getNodesAdminAddr
+  , buildLDClientRes
+  , withResource
+
   , module Admin.AdminAPI.Client
   , module Admin.AdminAPI.Service
   , module AdminCommands.Types
@@ -43,7 +47,21 @@ import           Thrift.Monad
 import           Thrift.Protocol
 import           Thrift.Protocol.ApplicationException.Types
 import           Thrift.Protocol.Id
+
+import Data.Maybe (fromJust)
+import qualified Data.Map.Strict                            as Map
+import qualified Data.Text.Encoding                         as DText
 import qualified Util.EventBase                             as FBUtil
+import           Z.Data.CBytes                              (CBytes)
+import           Z.Foreign                                  (fromByteString,
+                                                             withPrimVectorSafe)
+import           Z.IO.Buffered                              (writeOutput)
+import qualified Z.IO.FileSystem                            as FS
+import           Z.IO.Resource                              (Resource, liftIO,
+                                                             withResource)
+import qualified Z.IO.Environment         as Env
+
+import qualified HStream.Store                              as S
 
 sendAdminApiRequest
   :: HeaderConfig AdminAPI
@@ -52,3 +70,24 @@ sendAdminApiRequest
 sendAdminApiRequest conf m =
   FBUtil.withEventBaseDataplane $ \evb ->
     withHeaderChannel evb conf m
+
+getNodesAdminAddr :: HeaderConfig AdminAPI -> NodesFilter -> IO [SocketAddress]
+getNodesAdminAddr conf nodesFilter = do
+  config <- sendAdminApiRequest conf (getNodesConfig nodesFilter)
+  return $ map fromJust . filter (== Nothing) $
+    map (maybe Nothing addresses_admin . nodeConfig_other_addresses) (nodesConfigResponse_nodes config)
+
+buildLDClientRes
+  :: HeaderConfig AdminAPI
+  -> Map.Map CBytes CBytes
+  -> Resource S.LDClient
+buildLDClientRes conf settings = do
+  d <- liftIO Env.getTempDir
+  (path, file) <- FS.mkstemp d "ld_conf_" False
+  liftIO $ do
+    config <- sendAdminApiRequest conf dumpServerConfigJson
+    let content = fromByteString $ DText.encodeUtf8 config
+    withPrimVectorSafe content (writeOutput file)
+    client <- S.newLDClient path
+    S.setClientSettings client settings
+    return client
