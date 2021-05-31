@@ -17,7 +17,7 @@ spec = describe "HStoreSpec" $ do
     S.getMaxPayloadSize client `shouldReturn` (1024 * 1024)    -- 1MB
 
   it "modify default payload size for this client" $ do
-    S.setClientSettings client "max-payload-size" "1024" -- minimum value: 16
+    S.setClientSetting client "max-payload-size" "1024" -- minimum value: 16
     S.getMaxPayloadSize client `shouldReturn` 1024
     _ <- S.append client logid (packASCII $ replicate 1024 'a') Nothing
     S.append client logid (packASCII $ replicate 1025 'a') Nothing `shouldThrow` anyException
