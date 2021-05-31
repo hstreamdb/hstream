@@ -121,20 +121,19 @@ main = do
   --void $ HStore.makeLogGroupSync client "/log1" lo hi attr False
   putStrLn "ld_group created with path /log1"
 
-  --let timeout :: IO Bool =
-  --      fmap
-  --        ( \case
-  --            Nothing -> True
-  --            Just _ -> False
-  --        )
-  --        (Timeout.timeout testDuration $ (threadDelay 200))
---
+  let timeout :: IO Bool =
+        fmap
+          ( \case
+              Nothing -> True
+              Just _ -> False
+          )
+          (Timeout.timeout testDuration $ (threadDelay 200))
+
   (void . forkIO) $ testWrite client lo
   (void . forkIO) $ testRead client lo
-  --let run =  void $ whileM (return True) $ putStrLn "I am alive"
-
+  --let run =  void $ whileM (return True) $ putStrLn "I am alive
   --(void . forkIO) $ do 
-    --Timeout.timeout testDuration run
-    --putStrLn "done!"
+--Timeout.timeout testDuration run
+--putStrLn "done!"
 
   threadDelay 2000000
