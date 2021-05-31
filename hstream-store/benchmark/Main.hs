@@ -34,7 +34,7 @@ configPath = "/data/store/logdevice.conf"
 
 testDuration :: Int
 {-# INLINE testDuration #-}
-testDuration = 10000
+testDuration = 1000000
 
 isBuffered :: Bool
 {-# INLINEABLE isBuffered #-}
@@ -44,8 +44,8 @@ payloadBuilder1k :: Bytes
 {-# INLINEABLE payloadBuilder1k #-}
 payloadBuilder1k = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJK\n"
 
-testRead :: HStore.LDClient -> HStore.C_LogID -> IO Bool -> IO ()
-testRead !client !ld_log !timeoutIO = do
+testRead :: HStore.LDClient -> HStore.C_LogID -> IO ()
+testRead !client !ld_log = do
   putStrLn "This is reading test"
   start_time_fomatted <- Clock.getCurrentTime
   let start_time = nanosSinceEpoch start_time_fomatted
@@ -55,45 +55,57 @@ testRead !client !ld_log !timeoutIO = do
   putStrLn "Reader Created!"
   HStore.readerStartReading new_reader ld_log start_time until_time
   HStore.readerSetWaitOnlyWhenNoData new_reader
-  
-  receive_and_delay_list <- --TODO : count delay.
-    whileM timeoutIO $ do
-      records <- HStore.readerRead new_reader 100000
-      let receive_and_delay = [1 :: Integer | _ <- records]
-      return $ sum receive_and_delay
 
-  let total_receive = sum receive_and_delay_list
-  putStrLn $ "Total received is: " ++ show total_receive
+  receiveMVar <- MVar.newMVar (0 :: Int)
+                                                  --TODO : count delay.
+  Timeout.timeout testDuration $ whileM (return True) $ do
+    putStrLn "what happened"
+    records <- HStore.readerRead new_reader 100000
+    putStrLn "add one "
+    MVar.modifyMVar_ receiveMVar \x->return $ x + 1
+  
+  receives <- MVar.readMVar receiveMVar
+
+  putStrLn $ "Total received is: " ++ show receives
   putStrLn "Average received latency is: TODO"
 
-testWrite :: HStore.LDClient -> HStore.C_LogID -> IO Bool -> IO ()
-testWrite _ 0 _ = return ()
-testWrite !client !log !timeoutIO = do
+testWrite :: HStore.LDClient -> HStore.C_LogID -> IO ()
+testWrite _ 0 = return ()
+testWrite !client !log = do
   putStrLn "This is writing test"
   counterMVar <- MVar.newMVar (1000 :: Int)
+  putStrLn "counter created"
   sem <- QSemN.newQSemN 1000
-  lst <- whileM timeoutIO $ do
+  putStrLn "semaphore created"
+  failures <-  MVar.newMVar (0 :: Int)
+  criticals <- MVar.newMVar (0 :: Int)
+  total_commits <- MVar.newMVar (0 :: Int)
+  Timeout.timeout testDuration $ whileM (return True) $ do
     QSemN.waitQSemN sem 1
     MVar.modifyMVar_ counterMVar \x->return $ x - 1
     HStore.AppendCallBackData {HStore.appendCbRetCode = st} <-
       HStore.append client log payloadBuilder1k Nothing
-    let tup@(_, critical, _) :: (Int, Int, Int) =
-          case st of
-            1 -> (1, 1, 1)
-            0 -> (0, 0, 1)
-            _ -> (1, 0, 1)
-    when (critical == 1) $ putStrLn "Critical Error"
+    case st of
+      1 -> do 
+        MVar.modifyMVar_ failures \x->return $ x + 1
+        MVar.modifyMVar_ criticals \x->return $ x + 1
+        MVar.modifyMVar_ total_commits \x->return $ x + 1
+      0 -> do 
+        MVar.modifyMVar_ total_commits \x->return $ x + 1
+      _ -> do 
+        MVar.modifyMVar_ failures \x->return $ x + 1
+        MVar.modifyMVar_ total_commits \x->return $ x + 1
+    return ()
+    getCritical <- MVar.readMVar criticals
+    when (getCritical == 1) $ putStrLn "Critical Error"
     MVar.modifyMVar_ counterMVar \x->return $ x + 1
     counter <- MVar.readMVar counterMVar
     QSemN.signalQSemN sem counter
-    return tup
-  let folded = foldl' (
-        \(!x1, !x2, !x3) (!y1, !y2, !y3) 
-        -> (x1 + y1, x2 + y2, x3 + y3)
-       ) (0, 0, 0) lst
-  let (failures, criticals, total_commits) = folded
-  putStrLn $ "TIMEOUT! total commit number is: " ++ show total_commits
-  putStrLn $ "Total critical number is" ++ show criticals
+  fails <- MVar.readMVar failures
+  critics <- MVar.readMVar criticals
+  commits <- MVar.readMVar total_commits
+  putStrLn $ "TIMEOUT! total commit number is: " ++ show commits
+  putStrLn $ "Total critical number is " ++ show critics
 
 main :: IO ()
 main = do
@@ -106,19 +118,23 @@ main = do
   let lo :: HStore.C_LogID = 1000
   let hi :: HStore.C_LogID = 1010
   putStrLn "log id set up"
-  void $ HStore.makeLogGroupSync client "/log1" lo hi attr False
+  --void $ HStore.makeLogGroupSync client "/log1" lo hi attr False
   putStrLn "ld_group created with path /log1"
 
-  let timeout :: IO Bool =
-        fmap
-          ( \case
-              Nothing -> False
-              Just _ -> True
-          )
-          (Timeout.timeout testDuration $! return True)
+  --let timeout :: IO Bool =
+  --      fmap
+  --        ( \case
+  --            Nothing -> True
+  --            Just _ -> False
+  --        )
+  --        (Timeout.timeout testDuration $ (threadDelay 200))
+--
+  (void . forkIO) $ testWrite client lo
+  (void . forkIO) $ testRead client lo
+  --let run =  void $ whileM (return True) $ putStrLn "I am alive"
 
-  (void . forkIO) $ testRead client lo timeout
+  --(void . forkIO) $ do 
+    --Timeout.timeout testDuration run
+    --putStrLn "done!"
 
-  (void . forkIO) $ testWrite client lo timeout
-
-  threadDelay 5000
+  threadDelay 2000000
