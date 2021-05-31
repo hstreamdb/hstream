@@ -106,6 +106,7 @@ library
     , hashable              >=1.2.7.0  && <1.4
     , hstream-store
     , network               ^>=3.1.1
+    , hstream-store
     , optparse-applicative  ^>=0.16
     , STMonadTrans
     , table-layout          ^>=0.9.1
