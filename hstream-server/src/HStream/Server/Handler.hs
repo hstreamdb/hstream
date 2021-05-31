@@ -67,8 +67,8 @@ handlers logDeviceConfigPath = do
         }
   return
     HStreamApi { hstreamApiExecuteQuery     = executeQueryHandler serverContext
-                   , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
-                   }
+               , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
+               }
 
 genErrorStruct :: TL.Text -> Struct
 genErrorStruct = Struct . Map.singleton "errMsg" . Just . Value . Just . ValueKindStringValue
@@ -89,6 +89,9 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
       let resp = genErrorQueryResponse "error on parsing or codegen"
       return (ServerNormalResponse resp [] StatusUnknown "")
     Right SelectPlan{}           -> do
+      let resp = genErrorQueryResponse "inconsistent method called"
+      return (ServerNormalResponse resp [] StatusUnknown "")
+    Right ShowPlan{}           -> do
       let resp = genErrorQueryResponse "inconsistent method called"
       return (ServerNormalResponse resp [] StatusUnknown "")
     Right (CreatePlan stream repFactor)                     -> do
@@ -171,9 +174,22 @@ executePushQueryHandler ServerContext{..} (ServerWriterRequest meta CommandPushQ
             let sc = hstoreSourceConnector scLDClient ldreader'
             subscribeToStream sc sink Latest
             sendToClient isCancelled sc streamSend
-
-
-    Right _                              -> returnRes  "inconsistent method called"
+    Right (ShowPlan showObject) -> do
+      case showObject of
+        Streams -> do
+          directory' <- try $ getLogDirectory scLDClient "/"
+          case directory' of
+            Left (e :: SomeException) -> returnRes "getting log directory"
+            Right directory -> do
+              names' <- try $ logDirectoryGetLogsName True directory
+              case names' of
+                Left (e :: SomeException) -> returnRes "getting log names from directory"
+                Right names -> do
+                  streamSend (listToStruct $ cbytesToValue <$> L.sort names) >>= \case
+                    Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
+                    Right _  -> return (ServerWriterResponse [] StatusOk "names of streams are returned")
+        _ -> returnRes "not Supported"
+    Right _                              -> returnRes "inconsistent method called"
 
 sendToClient :: MVar Bool -> SourceConnector -> (Struct -> IO (Either GRPCIOError ())) -> IO (ServerResponse 'ServerStreaming Struct)
 sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
@@ -191,7 +207,6 @@ sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
       (x:xs') -> streamSend x >>= \case
         Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
-
 
 handlePushQueryCanceled :: ServerCall () -> MVar Bool -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} isCancelled handle = do

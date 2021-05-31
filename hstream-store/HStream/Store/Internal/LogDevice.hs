@@ -156,3 +156,115 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
                    -> StablePtr PrimMVar -> Int
                    -> MBA# ErrorCode
                    -> IO Int
+
+-------------------------------------------------------------------------------
+-- Writer API
+
+append
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> Bytes
+  -> Maybe (KeyType, CBytes)
+  -> IO AppendCallBackData
+append client logid payload m_key_attr =
+  withForeignPtr client $ \client' ->
+  Z.withPrimVectorUnsafe payload $ \payload' offset len -> mask_ $ do
+    mvar <- newEmptyMVar
+    sp <- newStablePtrPrimMVar mvar  -- freed by hs_try_takemvar()
+    fp <- mallocForeignPtrBytes appendCallBackDataSize
+    result <- withForeignPtr fp $ \data' -> do
+      (cap, _) <- threadCapability =<< myThreadId
+      void $ E.throwStreamErrorIfNotOK $
+        case m_key_attr of
+          Just (keytype, keyval) -> CBytes.withCBytesUnsafe keyval $ \keyval' ->
+            c_logdevice_append_with_attrs_async sp cap data' client' logid payload' offset len keytype keyval'
+          Nothing ->
+            c_logdevice_append_async sp cap data' client' logid payload' offset len
+      takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+      peekAppendCallBackData data'
+    void $ E.throwStreamErrorIfNotOK' $ appendCbRetCode result
+    return result
+{-# INLINABLE append #-}
+
+appendSync
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> Bytes
+  -> Maybe (KeyType, CBytes)
+  -> IO LSN
+appendSync client logid payload m_key_attr =
+  withForeignPtr client $ \client' ->
+  Z.withPrimVectorSafe payload $ \payload' len -> do
+    (sn_ret, _) <- Z.withPrimSafe LSN_INVALID $ \lsn' ->
+      E.throwStreamErrorIfNotOK $
+        case m_key_attr of
+          Just (keytype, keyval) -> do
+            CBytes.withCBytes keyval $ \keyval' ->
+              c_logdevice_append_with_attrs_sync_safe client' logid payload' 0 len keytype keyval' nullPtr lsn'
+          Nothing -> c_logdevice_append_sync_safe client' logid payload' 0 len nullPtr lsn'
+    return sn_ret
+
+-- | The same as 'appendSync', but also return the timestamp that stored with
+-- the record.
+appendSyncTS
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> Bytes
+  -> Maybe (KeyType, CBytes)
+  -> IO (Int64, LSN)
+appendSyncTS client logid payload m_key_attr =
+  withForeignPtr client $ \client' ->
+  Z.withPrimVectorSafe payload $ \payload' len -> do
+    (sn_ret, (ts, _)) <- Z.withPrimSafe LSN_INVALID $ \lsn' ->
+      Z.allocPrimSafe $ \ts' ->
+        E.throwStreamErrorIfNotOK $
+          case m_key_attr of
+            Just (keytype, keyval) -> do
+              CBytes.withCBytes keyval $ \keyval' ->
+                c_logdevice_append_with_attrs_sync_safe client' logid payload' 0 len keytype keyval' ts' lsn'
+            Nothing -> c_logdevice_append_sync_safe client' logid payload' 0 len ts' lsn'
+    return (ts, sn_ret)
+
+foreign import ccall unsafe "hs_logdevice.h logdevice_append_async"
+  c_logdevice_append_async
+    :: StablePtr PrimMVar
+    -> Int
+    -> Ptr AppendCallBackData
+    -> Ptr LogDeviceClient
+    -> C_LogID
+    -> Z.BA# Word8 -> Int -> Int
+    -- ^ Payload pointer,offset,length
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h logdevice_append_with_attrs_async"
+  c_logdevice_append_with_attrs_async
+    :: StablePtr PrimMVar
+    -> Int
+    -> Ptr AppendCallBackData
+    -> Ptr LogDeviceClient
+    -> C_LogID
+    -> Z.BA# Word8 -> Int -> Int    -- ^ Payload pointer,offset,length
+    -> KeyType -> Z.BA# Word8       -- ^ attrs: optional_key
+    -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h logdevice_append_sync"
+  c_logdevice_append_sync_safe
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Ptr Word8 -> Int -> Int -- ^ Payload pointer,offset,length
+    -> Ptr Int64      -- ^ returned timestamp, should be NULL
+    -> Ptr LSN        -- ^ returned value, log sequence number
+    -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h logdevice_append_with_attrs_sync"
+  c_logdevice_append_with_attrs_sync_safe
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Ptr Word8 -> Int -> Int    -- ^ Payload pointer,offset,length
+    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
+    -> Ptr Int64      -- ^ returned timestamp, should be NULL
+    -> Ptr LSN        -- ^ returned value, log sequence number
+    -> IO ErrorCode

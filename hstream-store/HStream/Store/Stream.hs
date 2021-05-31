@@ -27,6 +27,8 @@ module HStream.Store.Stream
   , LD.logGroupGetFullyQualifiedName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
+  , LD.getLogDirectory
+  , LD.logDirectoryGetLogsName
 
     -- * Writer
   , LD.append

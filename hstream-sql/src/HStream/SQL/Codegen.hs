@@ -60,12 +60,14 @@ type SourceStream   = [StreamName]
 type SinkStream     = StreamName
 type CheckIfExist  = Bool
 
+data ShowObject = Streams | Queries | Connectors
+
 data ExecutionPlan = SelectPlan         SourceStream SinkStream TaskBuilder
                    | CreatePlan         StreamName Int
                    | CreateBySelectPlan SourceStream SinkStream TaskBuilder Int
                    | InsertPlan         StreamName BL.ByteString
                    | DropPlan           CheckIfExist StreamName
-
+                   | ShowPlan           ShowObject
 --------------------------------------------------------------------------------
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
 streamCodegen input = do
@@ -89,7 +91,8 @@ streamCodegen input = do
       return $ InsertPlan stream (encode object)
     RQInsert (RInsertJSON stream bs) -> do
       return $ InsertPlan stream (BSL.fromStrict bs)
-    RQShow x -> print x >> throwIO NotSupported
+    RQShow (RShow RShowStreams) -> return $ ShowPlan Streams
+    RQShow (RShow RShowQueries) -> print RShowQueries >> throwIO NotSupported
     RQDrop (RDrop x)   -> return $ DropPlan False x
     RQDrop (RDropIf x) -> return $ DropPlan True x
 

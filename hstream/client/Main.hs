@@ -127,6 +127,7 @@ app clientConfig = do
                   Left (e :: SomeSQLException) -> liftIO . putStr . formatSomeSQLException $ e
                   Right rsql                -> case rsql of
                     RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
+                    RQShow   _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
                     _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
               [] -> return ()
             loop
