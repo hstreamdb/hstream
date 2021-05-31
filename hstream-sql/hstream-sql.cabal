@@ -38,7 +38,7 @@ library
                     HStream.SQL.Validate.Utils
                     HStream.SQL.Codegen.Boilerplate
                     HStream.SQL.Codegen.Utils
-  hs-source-dirs:   src
+  hs-source-dirs:   src gen-sql
   build-depends:    base       >= 4.11 && < 5
                   , aeson
                   , array

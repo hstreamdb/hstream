@@ -1,0 +1,8 @@
+eitherResIdent :: (Data.Text.Text -> Tok) -> Data.Text.Text -> Tok
+eitherResIdent tv s = treeFind resWords
+  where
+  treeFind N = tv s
+  treeFind (B a t left right) | (Data.Text.toUpper s) < (Data.Text.toUpper a) = treeFind left
+                              | (Data.Text.toUpper s) > (Data.Text.toUpper a) = treeFind right
+                              | (Data.Text.toUpper s) == (Data.Text.toUpper a) = t
+

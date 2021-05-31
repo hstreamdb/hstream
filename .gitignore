@@ -29,4 +29,5 @@ Local*
 .idea/
 .vscode/
 gen-hs2/
+gen-sql/
 .DS_Store
