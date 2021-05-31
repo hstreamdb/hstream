@@ -48,18 +48,18 @@ import           Thrift.Protocol
 import           Thrift.Protocol.ApplicationException.Types
 import           Thrift.Protocol.Id
 
-import Data.Maybe (fromJust)
 import qualified Data.Map.Strict                            as Map
+import           Data.Maybe                                 (fromJust)
 import qualified Data.Text.Encoding                         as DText
 import qualified Util.EventBase                             as FBUtil
 import           Z.Data.CBytes                              (CBytes)
 import           Z.Foreign                                  (fromByteString,
                                                              withPrimVectorSafe)
 import           Z.IO.Buffered                              (writeOutput)
+import qualified Z.IO.Environment                           as Env
 import qualified Z.IO.FileSystem                            as FS
 import           Z.IO.Resource                              (Resource, liftIO,
                                                              withResource)
-import qualified Z.IO.Environment         as Env
 
 import qualified HStream.Store                              as S
 

@@ -14,16 +14,15 @@ module HStream.Server.HStoreConnector
 where
 
 import           HStream.Processing.Connector
-import           HStream.Processing.Type          as HPT
+import           HStream.Processing.Type      as HPT
 import           HStream.Server.Utils
-import           HStream.Store
-import           HStream.Store.Internal.LogDevice
+import qualified HStream.Store                as S
 import           RIO
-import qualified RIO.Map                          as M
-import qualified Z.Data.CBytes                    as ZCB
-import qualified Z.Data.JSON                      as JSON
+import qualified RIO.Map                      as M
+import qualified Z.Data.CBytes                as ZCB
+import qualified Z.Data.JSON                  as JSON
 
-hstoreSourceConnector :: LDClient -> LDSyncCkpReader -> SourceConnector
+hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> SourceConnector
 hstoreSourceConnector ldclient reader = SourceConnector {
   subscribeToStream = subscribeToHStoreStream ldclient reader,
   unSubscribeToStream = unSubscribeToHStoreStream ldclient reader,
@@ -31,36 +30,35 @@ hstoreSourceConnector ldclient reader = SourceConnector {
   commitCheckpoint = commitCheckpointToHStore ldclient reader
 }
 
-hstoreSinkConnector :: LDClient -> SinkConnector
+hstoreSinkConnector :: S.LDClient -> SinkConnector
 hstoreSinkConnector ldclient = SinkConnector {
   writeRecord = writeRecordToHStore ldclient
 }
 
-subscribeToHStoreStream :: LDClient -> LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
+subscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 subscribeToHStoreStream ldclient reader stream startOffset = do
-  logId <- getCLogIDByStreamName ldclient (textToCBytes stream)
+  logId <- S.getCLogIDByStreamName ldclient (textToCBytes stream)
   startLSN <-
         case startOffset of
           Earlist    -> return 0
-          Latest     -> getTailLSN ldclient logId
+          Latest     -> S.getTailLSN ldclient logId
           Offset lsn -> return lsn
-  ckpReaderStartReading reader logId startLSN LSN_MAX
+  S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
 
-unSubscribeToHStoreStream :: LDClient -> LDSyncCkpReader -> HPT.StreamName -> IO ()
-unSubscribeToHStoreStream ldclient reader streamName = do
-  logId <- getCLogIDByStreamName ldclient (textToCBytes streamName)
-  ckpReaderStopReading reader logId
+unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> IO ()
+unSubscribeToHStoreStream ldclient reader streamName =
+  S.stopCkpReader ldclient reader (textToCBytes streamName)
 
-readRecordsFromHStore :: LDClient -> LDSyncCkpReader -> Int -> IO [SourceRecord]
+readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore ldclient reader maxlen = do
-  void $ ckpReaderSetTimeout reader 1000
-  dataRecords <- ckpReaderRead reader maxlen
+  void $ S.ckpReaderSetTimeout reader 1000
+  dataRecords <- S.ckpReaderRead reader maxlen
   mapM dataRecordToSourceRecord dataRecords
   where
-    dataRecordToSourceRecord :: DataRecord -> IO SourceRecord
-    dataRecordToSourceRecord DataRecord {..} = do
-      logGroup <- getLogGroupByID ldclient recordLogID
-      groupName <- logGroupGetName logGroup
+    dataRecordToSourceRecord :: S.DataRecord -> IO SourceRecord
+    dataRecordToSourceRecord S.DataRecord {..} = do
+      logGroup <- S.getLogGroupByID ldclient recordLogID
+      groupName <- S.logGroupGetName logGroup
       case JSON.decode' recordPayload of
         Left _ -> error "payload decode error!"
         Right Payload {..} ->
@@ -73,24 +71,24 @@ readRecordsFromHStore ldclient reader maxlen = do
               srcOffset = recordLSN
             }
 
-commitCheckpointToHStore :: LDClient -> LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
+commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 commitCheckpointToHStore ldclient reader streamName offset = do
-  logId <- getCLogIDByStreamName ldclient (textToCBytes streamName)
+  logId <- S.getCLogIDByStreamName ldclient (textToCBytes streamName)
   case offset of
     Earlist    -> error "expect normal offset, but get Earlist"
     Latest     -> error "expect normal offset, but get Latest"
-    Offset lsn -> writeCheckpointsSync reader (M.singleton logId lsn)
+    Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn)
 
-writeRecordToHStore :: LDClient -> SinkRecord -> IO ()
+writeRecordToHStore :: S.LDClient -> SinkRecord -> IO ()
 writeRecordToHStore ldclient SinkRecord{..} = do
-  logId <- getCLogIDByStreamName ldclient (textToCBytes snkStream)
+  logId <- S.getCLogIDByStreamName ldclient (textToCBytes snkStream)
   let payload =
         Payload {
           pTimestamp = snkTimestamp,
           pKey = fmap lazyByteStringToCbytes snkKey,
           pValue = lazyByteStringToCbytes snkValue
         }
-  lsn <- appendSync ldclient logId (JSON.encode payload) Nothing
+  _ <- S.append ldclient logId (JSON.encode payload) Nothing
   return ()
 
 data Payload = Payload {
@@ -98,4 +96,3 @@ data Payload = Payload {
   pKey       :: Maybe ZCB.CBytes,
   pValue     :: ZCB.CBytes
 } deriving (Show, Generic, JSON.JSON)
-
