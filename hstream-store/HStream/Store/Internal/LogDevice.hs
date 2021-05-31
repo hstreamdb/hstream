@@ -5,8 +5,8 @@ module HStream.Store.Internal.LogDevice
   ( newLDClient
   , getTailLSN
   , getMaxPayloadSize
-  , setClientSettings
-  , getClientSettings
+  , setClientSetting
+  , getClientSetting
   , append
   , appendSync
   , appendSyncTS
@@ -110,15 +110,15 @@ getMaxPayloadSize client = withForeignPtr client c_ld_client_get_max_payload_siz
 --    Set this to true if you want to use the internal replicated storage for
 --    logs configuration, this will ignore loading the logs section from the
 --    config file.
-setClientSettings :: HasCallStack => LDClient -> CBytes -> CBytes -> IO ()
-setClientSettings client key val =
+setClientSetting :: HasCallStack => LDClient -> CBytes -> CBytes -> IO ()
+setClientSetting client key val =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe key $ \key' ->
   CBytes.withCBytesUnsafe val $ \val' -> void $
     E.throwStreamErrorIfNotOK $ c_ld_client_set_settings client' key' val'
 
-getClientSettings :: LDClient -> CBytes -> IO Bytes
-getClientSettings client key =
+getClientSetting :: LDClient -> CBytes -> IO Bytes
+getClientSetting client key =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe key $ \key' ->
     Z.fromStdString $ c_ld_client_get_settings client' key'

@@ -10,8 +10,9 @@ module HStream.Store
 
   , newLDClient
   , getMaxPayloadSize
+  , setClientSetting
   , setClientSettings
-  , getClientSettings
+  , getClientSetting
   , getTailLSN
   , trim
 
@@ -32,6 +33,11 @@ module HStream.Store
   , createTopic_, doesTopicExists_
   ) where
 
+import           Control.Monad                    (forM_)
+import           Data.Map.Strict                  (Map)
+import qualified Data.Map.Strict                  as Map
+import           GHC.Stack                        (HasCallStack)
+
 import           HStream.Store.Exception
 import           HStream.Store.Internal.LogDevice
 import           HStream.Store.Internal.Types
@@ -39,13 +45,15 @@ import           HStream.Store.Logger
 import           HStream.Store.Stream
 
 -- DEPRECATED {
-import           Control.Monad                    (forM, forM_, void)
+import           Control.Monad                    (forM, void)
 import           Data.Int
-import           Data.Map.Strict                  (Map)
-import qualified Data.Map.Strict                  as Map
 import           Data.Word
 import           Z.Data.CBytes                    (CBytes)
 -- }
+
+setClientSettings :: HasCallStack => LDClient -> Map CBytes CBytes -> IO ()
+setClientSettings client settings = forM_ (Map.toList settings) $ \(k, v) -> do
+  setClientSetting client k v
 
 -------------------------------------------------------------------------------
 -- DEPRECATED
