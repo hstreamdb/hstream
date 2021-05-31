@@ -111,6 +111,7 @@ handleDropStreamSQL sql = do
 
 handleInsertSQL :: Text -> IO ()
 handleInsertSQL sql = do
+  putStrLn "Start handleInsertSQL..."
   plan <- streamCodegen sql
   case plan of
     InsertPlan streamName payload -> do

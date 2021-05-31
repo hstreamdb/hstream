@@ -64,6 +64,7 @@ library
     HStream.Store.Internal.LogDevice.LogConfigTypes
     HStream.Store.Internal.LogDevice.Reader
     HStream.Store.Internal.LogDevice.VersionedConfigStore
+    HStream.Store.Internal.LogDevice.Writer
     HStream.Store.Internal.Types
     HStream.Store.Logger
     HStream.Store.Stream

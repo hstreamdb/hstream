@@ -91,16 +91,33 @@ ld_new_append_attributes(KeyType* keytypes, const char** keyvals,
 void ld_free_append_attributes(AppendAttributes* attrs) { delete attrs; }
 
 facebook::logdevice::Status
-logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
-                      // Payload
-                      const char* payload, HsInt offset, HsInt length,
-                      // Payload End
-                      c_timestamp_t* ts, c_lsn_t* lsn_ret) {
-  return _append_payload_sync(client, logid_t(logid), payload, offset, length,
-                              AppendAttributes(), ts, lsn_ret);
+logdevice_append_async(logdevice_client_t* client, c_logid_t logid,
+                       // payload
+                       const char* payload, HsInt offset, HsInt length,
+                       // cb
+                       HsStablePtr mvar, HsInt cap,
+                       logdevice_append_cb_data_t* cb_data) {
+  return _append_payload_async(mvar, cap, cb_data, client, logid_t(logid),
+                               payload, offset, length, AppendAttributes());
 }
 
-facebook::logdevice::Status
+facebook::logdevice::Status logdevice_append_with_attrs_async(
+    logdevice_client_t* client, c_logid_t logid,
+    // payload
+    const char* payload, HsInt offset, HsInt length,
+    // attr
+    KeyType keytype, const char* keyval,
+    // cb
+    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
+  AppendAttributes attrs;
+  attrs.optional_keys[keytype] = keyval;
+  return _append_payload_async(mvar, cap, cb_data, client, logid_t(logid),
+                               payload, offset, length, std::move(attrs));
+}
+
+// ----------------------------------------------------------------------------
+
+[[deprecated]] facebook::logdevice::Status
 logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
                                  // Payload
                                  const char* payload, HsInt offset,
@@ -116,23 +133,14 @@ logdevice_append_with_attrs_sync(logdevice_client_t* client, c_logid_t logid,
                               std::move(attrs), ts, lsn_ret);
 }
 
-facebook::logdevice::Status
-logdevice_append_async(HsStablePtr mvar, HsInt cap,
-                       logdevice_append_cb_data_t* cb_data,
-                       logdevice_client_t* client, c_logid_t logid,
-                       const char* payload, HsInt offset, HsInt length) {
-  return _append_payload_async(mvar, cap, cb_data, client, logid_t(logid),
-                               payload, offset, length, AppendAttributes());
-}
-
-facebook::logdevice::Status logdevice_append_with_attrs_async(
-    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data,
-    logdevice_client_t* client, c_logid_t logid, const char* payload,
-    HsInt offset, HsInt length, KeyType keytype, const char* keyval) {
-  AppendAttributes attrs;
-  attrs.optional_keys[keytype] = keyval;
-  return _append_payload_async(mvar, cap, cb_data, client, logid_t(logid),
-                               payload, offset, length, std::move(attrs));
+[[deprecated]] facebook::logdevice::Status
+logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
+                      // Payload
+                      const char* payload, HsInt offset, HsInt length,
+                      // Payload End
+                      c_timestamp_t* ts, c_lsn_t* lsn_ret) {
+  return _append_payload_sync(client, logid_t(logid), payload, offset, length,
+                              AppendAttributes(), ts, lsn_ret);
 }
 
 // ----------------------------------------------------------------------------
