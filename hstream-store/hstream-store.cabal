@@ -56,9 +56,7 @@ library
     HStream.Store.RPC.MessagePack
 
   other-modules:
-    HStream.Store.AdminClient
     HStream.Store.Exception
-    HStream.Store.Internal.FFI
     HStream.Store.Internal.Foreign
     HStream.Store.Internal.LogDevice.Checkpoint
     HStream.Store.Internal.LogDevice.LogConfigTypes
