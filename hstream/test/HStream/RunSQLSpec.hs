@@ -96,7 +96,7 @@ handleCreateStreamSQL sql = do
   plan <- streamCodegen sql
   case plan of
     CreatePlan streamName _ ->
-      createStream ldclient (textToCBytes streamName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
+      createStream ldclient (transToStreamName streamName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
 
 handleDropStreamSQL :: Text -> IO ()
@@ -104,8 +104,8 @@ handleDropStreamSQL sql = do
   plan <- streamCodegen sql
   case plan of
     DropPlan checkIfExist stream -> do
-      streamExists <- doesStreamExists ldclient (textToCBytes stream)
-      if streamExists then removeStream ldclient (textToCBytes stream)
+      streamExists <- doesStreamExists ldclient (transToStreamName stream)
+      if streamExists then removeStream ldclient (transToStreamName stream)
       else if checkIfExist then return () else error "stream does not exist"
     _ -> error "Execution plan type mismatched"
 

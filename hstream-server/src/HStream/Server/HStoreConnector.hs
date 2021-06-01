@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -7,8 +8,9 @@
 
 
 module HStream.Server.HStoreConnector
-  ( hstoreSourceConnector,
-    hstoreSinkConnector,
+  ( hstoreSourceConnector
+  , hstoreSinkConnector
+  , transToStreamName
   )
 where
 
@@ -19,8 +21,11 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Type      as HPT
 import           HStream.Server.Utils
 import qualified HStream.Store                as S
+import qualified Z.Data.Builder               as B
 import qualified Z.Data.CBytes                as ZCB
 import qualified Z.Data.JSON                  as JSON
+import           Z.Data.Text                  (validate)
+import qualified Z.IO.Logger                  as Log
 
 hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> SourceConnector
 hstoreSourceConnector ldclient reader = SourceConnector {
@@ -76,7 +81,7 @@ readRecordsFromHStore ldclient reader maxlen = do
 
 commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 commitCheckpointToHStore ldclient reader streamName offset = do
-  logId <- S.getCLogIDByStreamName ldclient (textToCBytes streamName)
+  logId <- S.getCLogIDByStreamName ldclient (transToStreamName streamName)
   case offset of
     Earlist    -> error "expect normal offset, but get Earlist"
     Latest     -> error "expect normal offset, but get Latest"
@@ -85,8 +90,8 @@ commitCheckpointToHStore ldclient reader streamName offset = do
 writeRecordToHStore :: S.LDClient -> SinkRecord -> IO ()
 writeRecordToHStore ldclient SinkRecord{..} = do
   putStrLn "Start writeRecordToHStore..."
-  logId <- S.getCLogIDByStreamName ldclient (textToCBytes snkStream)
-  let payload = JSON.encode $
+  logId <- S.getCLogIDByStreamName ldclient (transToStreamName snkStream)
+  let payload =
         Payload {
           pTimestamp = snkTimestamp,
           pKey = fmap lazyByteStringToCbytes snkKey,
@@ -96,7 +101,11 @@ writeRecordToHStore ldclient SinkRecord{..} = do
   -- any information out if we evaluate the payload. So we here always print the
   -- payload.
   putStrLn $ "DEBUG: payload " <> show payload
-  _ <- S.append ldclient logId payload Nothing
+  let !_testText = validate "hello, world"
+  putStrLn "validate done"
+  let bin_payload = JSON.encode payload
+  Log.withDefaultLogger . Log.debug $ "bin payload: " <> B.bytes bin_payload
+  _ <- S.append ldclient logId bin_payload Nothing
   return ()
 
 data Payload = Payload {
