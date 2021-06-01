@@ -22,17 +22,12 @@ module HStream.Store.Stream
 
     -- * Writer
   , LD.append
-  , appendRecord
-  , ProducerRecord (..)
   , FFI.KeyType
   , FFI.keyTypeFindKey
   , FFI.keyTypeFilterable
   , FFI.AppendCallBackData (..)
-  , encodeRecord
 
     -- * Reader
-  , ConsumerRecord (..)
-  , decodeRecord
   , FFI.RecordByteOffset (..)
   , FFI.DataRecord (..)
 
@@ -48,7 +43,6 @@ module HStream.Store.Stream
   , LD.readerSetWithoutPayload
   , LD.readerSetIncludeByteOffset
   , LD.readerSetWaitOnlyWhenNoData
-  , readerReadRecord
   , stopReader
 
   , newLDFileCkpReader
@@ -72,18 +66,12 @@ import           Data.Bits                        (shiftL, shiftR, (.&.), (.|.))
 import qualified Data.Cache                       as Cache
 import           Data.Int                         (Int64)
 import           Data.Time.Clock.System           (SystemTime (..))
-import           Data.Word                        (Word16, Word32, Word64)
+import           Data.Word                        (Word16, Word32)
 import           Foreign.C                        (CSize)
-import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random                    (randomRIO)
-import qualified Z.Data.Builder                   as Builder
 import           Z.Data.CBytes                    (CBytes)
-import qualified Z.Data.CBytes                    as CBytes
-import qualified Z.Data.JSON                      as JSON
-import qualified Z.Data.MessagePack               as MP
-import           Z.Data.Vector                    (Bytes)
 import           Z.IO.Time                        (getSystemTime')
 
 import qualified HStream.Store.Exception          as E
@@ -112,14 +100,14 @@ createStream client stream attrs = Log.withDefaultLogger $ go 10
          then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
            logid <- genRandomLogID
-           Log.debug $ "Create Stream with name: " <> CBytes.toBuilder stream
-                    <> " and logid: " <> Builder.integer (fromIntegral logid)
            result <- try $ LD.makeLogGroup client stream logid logid attrs True
            case result of
              Right group -> do
                LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
                Cache.insert streamNameCache stream logid
-             Left (_ :: E.ID_CLASH) -> go $! maxTries - 1
+             Left (_ :: E.ID_CLASH) -> do
+               Log.warning "LogDevice ID_CLASH!"
+               go $! maxTries - 1
 
 renameStream
   :: HasCallStack
@@ -186,51 +174,6 @@ genRandomLogID = do
        .|. fromIntegral rdmBit
 
 -------------------------------------------------------------------------------
-
-data ProducerRecord = ProducerRecord
-  { dataInTopic     :: StreamName
-  , dataInKey       :: Maybe CBytes
-  , dataInValue     :: Bytes
-  , dataInTimestamp :: Int64
-  } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
-
-encodeRecord :: ProducerRecord -> Bytes
-encodeRecord = JSON.encode
-
-data ConsumerRecord = ConsumerRecord
-  { dataOutTopic     :: StreamName
-  , dataOutOffset    :: Word64
-  , dataOutKey       :: Maybe CBytes
-  , dataOutValue     :: Bytes
-  , dataOutTimestamp :: Int64
-  } deriving (Show, Generic, JSON.JSON, MP.MessagePack)
-
-decodeRecord :: HasCallStack => FFI.DataRecord -> ConsumerRecord
-decodeRecord FFI.DataRecord{..} = do
-  case JSON.decode' recordPayload of
-    -- TODO
-    Left _err -> error "JSON decode error!"
-    Right ProducerRecord{..} ->
-      ConsumerRecord { dataOutTopic     = dataInTopic
-                     , dataOutOffset    = recordLSN
-                     , dataOutKey       = dataInKey
-                     , dataOutValue     = dataInValue
-                     , dataOutTimestamp = dataInTimestamp
-                     }
-
--- | Appends a new record.
-appendRecord
-  :: HasCallStack
-  => FFI.LDClient
-  -> FFI.C_LogID
-  -> ProducerRecord
-  -> Maybe (FFI.KeyType, CBytes)
-  -> IO FFI.AppendCallBackData
-appendRecord client logid payload =
-  LD.append client logid (encodeRecord payload)
-
-readerReadRecord :: FFI.LDReader -> Int -> IO [ConsumerRecord]
-readerReadRecord reader maxlen = map decodeRecord <$> LD.readerRead reader maxlen
 
 newLDFileCkpReader
   :: FFI.LDClient

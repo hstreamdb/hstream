@@ -1,14 +1,16 @@
 {-# LANGUAGE CPP           #-}
 {-# LANGUAGE MagicHash     #-}
--- Note that we need this UnboxedTuples to force ghci use -fobject-code for all
--- related modules. Or ghci will complain "panic".
---
--- Also, manual add @{-# OPTIONS_GHC -fobject-code #-}@ is possible, but need
--- to add all imported local modules. :(
---
--- Relatead ghc issues:
--- * https://gitlab.haskell.org/ghc/ghc/-/issues/19733
--- * https://gitlab.haskell.org/ghc/ghc/-/issues/15454
+{-
+Note that we need this UnboxedTuples to force ghci use -fobject-code for all
+related modules. Or ghci will complain "panic".
+
+Also, manual add @{-# OPTIONS_GHC -fobject-code #-}@ is possible, but need
+to add all imported local modules. :(
+
+Relatead ghc issues:
+* https://gitlab.haskell.org/ghc/ghc/-/issues/19733
+* https://gitlab.haskell.org/ghc/ghc/-/issues/15454
+-}
 {-# LANGUAGE UnboxedTuples #-}
 
 module HStream.Store.Internal.LogDevice.LogConfigTypes where

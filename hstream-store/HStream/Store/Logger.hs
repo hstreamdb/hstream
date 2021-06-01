@@ -10,6 +10,7 @@ module HStream.Store.Logger
   , Log.setDefaultLogger
   , Log.getDefaultLogger
   , Log.Logger
+  , d, i, w, e
 
   -- * LogDevice debug level
   , FFI.C_DBG_LEVEL
@@ -26,9 +27,22 @@ module HStream.Store.Logger
   ) where
 
 import           Foreign.C.Types              (CInt)
+import qualified Z.Data.Builder               as B
 import qualified Z.IO.Logger                  as Log
 
 import qualified HStream.Store.Internal.Types as FFI
+
+d :: B.Builder () -> IO ()
+d = Log.withDefaultLogger . Log.debug
+
+i :: B.Builder () -> IO ()
+i = Log.withDefaultLogger . Log.info
+
+w :: B.Builder () -> IO ()
+w = Log.withDefaultLogger . Log.warning
+
+e :: B.Builder () -> IO ()
+e = Log.withDefaultLogger . Log.fatal
 
 type FD = CInt
 

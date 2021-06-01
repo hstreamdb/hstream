@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NoImplicitPrelude  #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE StrictData         #-}
@@ -13,12 +12,13 @@ module HStream.Server.HStoreConnector
   )
 where
 
+import           Control.Monad                (void)
+import qualified Data.Map.Strict              as M
+import           GHC.Generics                 (Generic)
 import           HStream.Processing.Connector
 import           HStream.Processing.Type      as HPT
 import           HStream.Server.Utils
 import qualified HStream.Store                as S
-import           RIO
-import qualified RIO.Map                      as M
 import qualified Z.Data.CBytes                as ZCB
 import qualified Z.Data.JSON                  as JSON
 
@@ -40,7 +40,7 @@ subscribeToHStoreStream ldclient reader stream startOffset = do
   logId <- S.getCLogIDByStreamName ldclient (textToCBytes stream)
   startLSN <-
         case startOffset of
-          Earlist    -> return 0
+          Earlist    -> return S.LSN_MIN
           Latest     -> S.getTailLSN ldclient logId
           Offset lsn -> return lsn
   S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
@@ -81,14 +81,19 @@ commitCheckpointToHStore ldclient reader streamName offset = do
 
 writeRecordToHStore :: S.LDClient -> SinkRecord -> IO ()
 writeRecordToHStore ldclient SinkRecord{..} = do
+  putStrLn "Start writeRecordToHStore..."
   logId <- S.getCLogIDByStreamName ldclient (textToCBytes snkStream)
-  let payload =
+  let payload = JSON.encode $
         Payload {
           pTimestamp = snkTimestamp,
           pKey = fmap lazyByteStringToCbytes snkKey,
           pValue = lazyByteStringToCbytes snkValue
         }
-  _ <- S.append ldclient logId (JSON.encode payload) Nothing
+  -- FIXME: for some unknown reasons, github action will exit failure without
+  -- any information out if we evaluate the payload. So we here always print the
+  -- payload.
+  putStrLn $ "DEBUG: payload " <> show payload
+  _ <- S.append ldclient logId payload Nothing
   return ()
 
 data Payload = Payload {

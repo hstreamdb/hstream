@@ -57,7 +57,9 @@ using facebook::logdevice::ClientImpl;
 using facebook::logdevice::ClientSettings;
 using facebook::logdevice::DataRecord;
 using facebook::logdevice::KeyType;
+using facebook::logdevice::LogHeadAttributes;
 using facebook::logdevice::logid_t;
+using facebook::logdevice::LogTailAttributes;
 using facebook::logdevice::lsn_t;
 using facebook::logdevice::Payload;
 using facebook::logdevice::Processor;
@@ -68,8 +70,6 @@ using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::vcs_config_version_t;
 using facebook::logdevice::VersionedConfigStore;
 using facebook::logdevice::client::LogAttributes;
-using facebook::logdevice::LogHeadAttributes;
-using facebook::logdevice::LogTailAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
 using facebook::fb303::cpp2::fb_status;
@@ -206,12 +206,16 @@ typedef struct logdevice_log_tail_attributes_t {
 
 bool valid_log_tail_attributes(logdevice_log_tail_attributes_t* tail_attr);
 
-facebook::logdevice::Status ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
-                                    HsStablePtr mvar, HsInt cap,
-                                    log_tail_attributes_cb_data_t* cb_data);
-lsn_t ld_client_get_tail_attributes_lsn(logdevice_log_tail_attributes_t* tail_attr);
-c_timestamp_t ld_client_get_tail_attributes_last_timestamp(logdevice_log_tail_attributes_t* tail_attr);
-uint64_t ld_client_get_tail_attributes_bytes_offset(logdevice_log_tail_attributes_t* tail_attr);
+facebook::logdevice::Status
+ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
+                              HsStablePtr mvar, HsInt cap,
+                              log_tail_attributes_cb_data_t* cb_data);
+lsn_t ld_client_get_tail_attributes_lsn(
+    logdevice_log_tail_attributes_t* tail_attr);
+c_timestamp_t ld_client_get_tail_attributes_last_timestamp(
+    logdevice_log_tail_attributes_t* tail_attr);
+uint64_t ld_client_get_tail_attributes_bytes_offset(
+    logdevice_log_tail_attributes_t* tail_attr);
 void free_logdevice_tail_attributes(logdevice_log_tail_attributes_t* tail_attr);
 
 // ----------------------------------------------------------------------------
@@ -305,8 +309,8 @@ typedef struct log_head_attributes_cb_data_t {
 } log_head_attributes_cb_data_t;
 
 typedef struct log_tail_attributes_cb_data_t {
-    c_error_code_t st;
-    logdevice_log_tail_attributes_t* tail_attributes;
+  c_error_code_t st;
+  logdevice_log_tail_attributes_t* tail_attributes;
 } log_tail_attributes_cb_data_t;
 // ----------------------------------------------------------------------------
 // Client
@@ -405,24 +409,33 @@ ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
 // Log Head Attributes
 
 void free_log_head_attributes(logdevice_log_head_attributes_t* p);
-facebook::logdevice::Status get_head_attributes(logdevice_client_t* client, c_logid_t logid,
-              HsStablePtr mvar, HsInt cap, log_head_attributes_cb_data_t* data );
-c_timestamp_t get_trim_point_timestamp(logdevice_log_head_attributes_t* attribute);
+facebook::logdevice::Status
+get_head_attributes(logdevice_client_t* client, c_logid_t logid,
+                    HsStablePtr mvar, HsInt cap,
+                    log_head_attributes_cb_data_t* data);
+c_timestamp_t
+get_trim_point_timestamp(logdevice_log_head_attributes_t* attribute);
 lsn_t get_trim_point(logdevice_log_head_attributes_t* attribute);
 
 // ----------------------------------------------------------------------------
 // Appender
 
 facebook::logdevice::Status
-logdevice_append_async(HsStablePtr mvar, HsInt cap,
-                       logdevice_append_cb_data_t* cb_data,
-                       logdevice_client_t* client, c_logid_t logid,
-                       const char* payload, HsInt offset, HsInt length);
+logdevice_append_async(logdevice_client_t* client, c_logid_t logid,
+                       // payload
+                       const char* payload, HsInt offset, HsInt length,
+                       // cb
+                       HsStablePtr mvar, HsInt cap,
+                       logdevice_append_cb_data_t* cb_data);
 
 facebook::logdevice::Status logdevice_append_with_attrs_async(
-    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data,
-    logdevice_client_t* client, c_logid_t logid, const char* payload,
-    HsInt offset, HsInt length, KeyType keytype, const char* keyval);
+    logdevice_client_t* client, c_logid_t logid,
+    // payload
+    const char* payload, HsInt offset, HsInt length,
+    // attr
+    KeyType keytype, const char* keyval,
+    // cb
+    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data);
 
 facebook::logdevice::Status
 logdevice_append_sync(logdevice_client_t* client, c_logid_t logid,
