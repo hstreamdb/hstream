@@ -1,4 +1,5 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module HStream.Format where
 
 import qualified Data.Aeson                        as A
@@ -11,6 +12,7 @@ import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
+import           HStream.Server.Utils              (structToJsonObject)
 import qualified ThirdParty.Google.Protobuf.Struct as P
 
 type Width = Int
@@ -95,3 +97,11 @@ formatValueKind (P.ValueKindStringValue s) = TL.unpack s
 formatValueKind (P.ValueKindBoolValue   b) = show b
 formatValueKind (P.ValueKindStructValue struct) = formatStruct struct
 formatValueKind (P.ValueKindListValue (P.ListValue vs)) = unwords . map formatValue . V.toList $ vs
+
+formatResult :: P.Struct -> String
+formatResult struct@(P.Struct kv) =
+  case M.toList kv of
+    [("SHOW", Just v)] -> unlines .  words . formatValue $ v
+    [("SELECT", Just (P.Value (Just (P.ValueKindStructValue struct))))]
+                -> unlines $ renderTable $ renderJSONObjectToTable $ structToJsonObject struct
+    _           -> formatStruct struct

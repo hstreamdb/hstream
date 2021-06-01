@@ -177,17 +177,13 @@ executePushQueryHandler ServerContext{..} (ServerWriterRequest meta CommandPushQ
     Right (ShowPlan showObject) -> do
       case showObject of
         Streams -> do
-          directory' <- try $ getLogDirectory scLDClient "/"
-          case directory' of
-            Left (e :: SomeException) -> returnRes "getting log directory"
-            Right directory -> do
-              names' <- try $ logDirectoryGetLogsName True directory
-              case names' of
-                Left (e :: SomeException) -> returnRes "getting log names from directory"
-                Right names -> do
-                  streamSend (listToStruct $ cbytesToValue <$> L.sort names) >>= \case
-                    Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
-                    Right _  -> return (ServerWriterResponse [] StatusOk "names of streams are returned")
+          names' <- try $ findStreams scLDClient True
+          case names' of
+            Left (e :: SomeException) -> returnRes "getting log names from directory"
+            Right names -> do
+              streamSend (listToStruct "SHOW" $ cbytesToValue . getStreamName <$> L.sort names) >>= \case
+                Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
+                Right _  -> return (ServerWriterResponse [] StatusOk "names of streams are returned")
         _ -> returnRes "not Supported"
     Right _                              -> returnRes "inconsistent method called"
 
@@ -204,7 +200,7 @@ sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
   where
     streamSendMany xs = case xs of
       []      -> sendToClient isCancelled sc ss
-      (x:xs') -> streamSend x >>= \case
+      (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
         Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
 

@@ -7,6 +7,7 @@ module HStream.Store.Stream
     -- ** StreamName
   , StreamName
   , mkStreamName
+  , getStreamName
   , FFI.LogAttrs (LogAttrs)
   , FFI.HsLogAttrs (..)
   , createStream
@@ -27,8 +28,6 @@ module HStream.Store.Stream
   , LD.logGroupGetFullyQualifiedName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
-  , LD.getLogDirectory
-  , LD.logDirectoryGetLogsName
 
     -- * Writer
   , LD.append
@@ -105,6 +104,9 @@ newtype StreamName = StreamName CBytes
 -- TODO: validation
 mkStreamName :: CBytes -> StreamName
 mkStreamName = StreamName
+
+getStreamName :: StreamName -> CBytes
+getStreamName (StreamName name) = name
 
 newtype StreamSettings = StreamSettings
   { streamNamePrefix :: CBytes

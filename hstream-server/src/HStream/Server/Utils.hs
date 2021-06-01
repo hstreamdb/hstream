@@ -10,6 +10,7 @@ module HStream.Server.Utils
   , cbytesToLazyByteString
   , cbytesToValue
   , listToStruct
+  , structToStruct
   ) where
 
 import qualified Data.Aeson                        as Aeson
@@ -70,8 +71,11 @@ cbytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
 lazyByteStringToCbytes :: BL.ByteString -> ZCB.CBytes
 lazyByteStringToCbytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
 
-listToStruct :: [Value] -> Struct
-listToStruct = Struct . Map.singleton "singleton". Just . Value . Just . ValueKindListValue . ListValue . fromList
+listToStruct :: TL.Text -> [Value] -> Struct
+listToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindListValue . ListValue . fromList
+
+structToStruct :: TL.Text -> Struct -> Struct
+structToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindStructValue
 
 cbytesToValue :: ZCB.CBytes -> Value
 cbytesToValue = Value . Just . ValueKindStringValue . TL.fromStrict . cbytesToText
