@@ -35,6 +35,9 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
                                                     runOps)
+import           RIO                               (logOptionsHandle, stderr,
+                                                    withLogFunc, async, forever, forM_)
+import           System.IO.Unsafe                  (unsafePerformIO)
 import           System.Random                     (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as CB
@@ -44,6 +47,9 @@ import qualified Z.Data.Vector                     as ZV
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
 import           ZooKeeper.Types
+import           HStream.SQL.AST
+import           HStream.Server.ClickHouseConnector
+
 --------------------------------------------------------------------------------
 
 newRandomName :: Int -> IO CB.CBytes
@@ -121,6 +127,48 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           _ <- forkIO $ runTaskWrapper taskBuilder scLDClient
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
+    Right (CreateConnectorPlan cName (RConnectorOptions cOptions)) -> do
+        let cMap = parseOptions cOptions Map.empty
+        ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
+        let sc = hstoreSourceConnector scLDClient ldreader
+        let streamM = Map.lookup "stream" cMap
+        let typeM = Map.lookup "type" cMap
+        let resp = genSuccessQueryResponse
+        -- TODO: deal with types in addition to clickhouse
+        let sk = clickHouseSinkConnector defaultCKClient
+        case streamM of
+          Just stream -> do
+            subscribeToStream sc (T.pack stream) Latest
+            _ <- async $
+                forever $
+                  do
+                    records <- readRecords sc
+                    forM_ records $ \SourceRecord {..} ->
+                      writeRecord
+                        sk
+                        SinkRecord
+                          { snkStream = (T.pack stream),
+                            snkKey = srcKey,
+                            snkValue = srcValue,
+                            snkTimestamp = srcTimestamp
+                          }
+            return (ServerNormalResponse resp [] StatusOk "")
+          Nothing -> return (ServerNormalResponse resp [] StatusUnknown "")
+      where
+        parseOptions :: [(T.Text, Constant)] -> Map.Map String String -> Map.Map String String
+        parseOptions cOptions cMap = do
+          case cOptions of
+            [] -> cMap
+            (x:xs) -> do
+              case x of
+                ("type", ConstantString t) -> do
+                  let cMap' = Map.insert "type" t cMap
+                  parseOptions xs cMap'
+                ("stream", ConstantString s) -> do
+                  let cMap' = Map.insert "stream" s cMap
+                  parseOptions xs cMap'
+                _ -> parseOptions xs cMap
+
     Right (InsertPlan stream payload)             -> do
       timestamp <- getCurrentTimestamp
       e' <-  try $

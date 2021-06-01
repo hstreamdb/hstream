@@ -4,6 +4,7 @@
 module HStream.Processing.Type
   ( Timestamp,
     StreamName,
+    ConnectorName,
     Offset (..),
     SourceRecord (..),
     SinkRecord (..),
@@ -19,6 +20,8 @@ import qualified RIO.Text            as T
 type Timestamp = Int64
 
 type StreamName = T.Text
+
+type ConnectorName = T.Text
 
 data Offset
   = Earlist

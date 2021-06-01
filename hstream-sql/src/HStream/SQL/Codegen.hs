@@ -66,13 +66,14 @@ type CheckIfExist  = Bool
 
 data ShowObject = Streams | Queries | Connectors
 
-data ExecutionPlan = SelectPlan         SourceStream SinkStream TaskBuilder
-                   | CreatePlan         StreamName Int
-                   | CreateBySelectPlan SourceStream SinkStream TaskBuilder Int
-                   | InsertPlan         StreamName BL.ByteString
-                   | DropPlan           CheckIfExist StreamName
-                   | ShowPlan           ShowObject
 
+data ExecutionPlan = SelectPlan          SourceStream SinkStream TaskBuilder
+                   | CreatePlan          StreamName Int
+                   | CreateConnectorPlan HPT.ConnectorName RConnectorOptions
+                   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
+                   | InsertPlan          StreamName BL.ByteString
+                   | DropPlan            CheckIfExist StreamName
+                   | ShowPlan            ShowObject
 --------------------------------------------------------------------------------
 
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
@@ -88,7 +89,7 @@ streamCodegen input = do
       tName <- genTaskName
       (builder, source, sink) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
-    RQCreate x@(RCreateConnector _ ifNotExist cOptions) -> print x >> throwIO NotSupported
+    RQCreate x@(RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
     RQInsert (RInsert stream tuples)     -> do
       let object_ = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
       return $ InsertPlan stream (encode object_)

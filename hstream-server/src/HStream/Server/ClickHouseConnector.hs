@@ -10,6 +10,7 @@
 module HStream.Server.ClickHouseConnector
   ( 
     clickHouseSinkConnector,
+    defaultCKClient,
   )
 where
 
@@ -41,9 +42,9 @@ import HStream.Server.Converter
 import qualified Data.Text as T
 
 
-main :: IO ()
-main = do
-  handleInsertSQL $ "INSERT INTO " <> "source1" <> " (temperature, humidity) VALUES (22, \"80\");"
+-- main :: IO ()
+-- main = do
+--   handleInsertSQL $ "INSERT INTO " <> "source2" <> " (temperature, humidity) VALUES (22, \"80\");"
 
 defaultCKClient :: IO(Env () w)
 defaultCKClient = createClient ConnParams{
@@ -88,7 +89,7 @@ writeRecordToClickHouse :: IO(Env () w) -> SinkRecord -> IO ()
 writeRecordToClickHouse ckClient SinkRecord{..} = do
     conn <- ckClient
     ping conn
-    let snkValue = "{\"temperature\":22,\"humidity\":\"80\",\"a\":{\"b\":1,\"c\":2,\"d\":{\"e\":5}}}"
+    -- let snkValue = "{\"temperature\":22,\"humidity\":\"80\",\"a\":{\"b\":1,\"c\":2,\"d\":{\"e\":5}}}"
     let insertMap = (decode snkValue) :: Maybe (HM.HashMap T.Text Value)
     print insertMap
     case insertMap of 
