@@ -35,9 +35,12 @@ hstoreSinkConnector ldclient = SinkConnector {
   writeRecord = writeRecordToHStore ldclient
 }
 
+transToStreamName :: HPT.StreamName -> S.StreamName
+transToStreamName = S.mkStreamName . textToCBytes
+
 subscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 subscribeToHStoreStream ldclient reader stream startOffset = do
-  logId <- S.getCLogIDByStreamName ldclient (textToCBytes stream)
+  logId <- S.getCLogIDByStreamName ldclient (transToStreamName stream)
   startLSN <-
         case startOffset of
           Earlist    -> return S.LSN_MIN
@@ -47,7 +50,7 @@ subscribeToHStoreStream ldclient reader stream startOffset = do
 
 unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> IO ()
 unSubscribeToHStoreStream ldclient reader streamName =
-  S.stopCkpReader ldclient reader (textToCBytes streamName)
+  S.stopCkpReader ldclient reader (transToStreamName streamName)
 
 readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore ldclient reader maxlen = do
