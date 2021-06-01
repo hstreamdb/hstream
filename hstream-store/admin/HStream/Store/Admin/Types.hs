@@ -5,6 +5,9 @@ import           Data.Int
 import           Data.Text               (Text)
 import           Options.Applicative
 import qualified Text.Read               as Read
+import qualified Z.Data.Parser           as P
+import           Z.Data.Vector           (Bytes)
+import qualified Z.Data.Vector           as V
 
 import qualified HStream.Store.Admin.API as AA
 
@@ -99,6 +102,20 @@ nodesConfigParser = hsubparser
   )
 
 -------------------------------------------------------------------------------
+
+parseShard :: String -> Either P.ParseError AA.ShardID
+parseShard = parseShard' . V.packASCII
+
+parseShard' :: Bytes -> Either P.ParseError AA.ShardID
+parseShard' = P.parse' $ do
+  P.skipSpaces
+  P.char8 'N' <|> P.charUTF8 'n'
+  n <- P.int
+  P.char8 ':'
+  P.char8 'S' <|> P.charUTF8 's'
+  s <- P.int
+  P.skipSpaces
+  return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
 
 socketConfigParser :: Parser (AA.SocketConfig AA.AdminAPI)
 socketConfigParser = AA.SocketConfig
