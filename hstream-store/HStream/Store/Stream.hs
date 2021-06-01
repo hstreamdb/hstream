@@ -1,18 +1,26 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 module HStream.Store.Stream
-  ( -- * StreamName
-    StreamName
+  ( -- * Stream
+    StreamSettings (..)
+  , updateGloStreamSettings
+    -- ** StreamName
+  , StreamName
+  , mkStreamName
   , FFI.LogAttrs (LogAttrs)
   , FFI.HsLogAttrs (..)
   , createStream
   , renameStream
   , removeStream
+  , findStreams
   , doesStreamExists
+  , streamNameToLogPath
+  , logPathToStreamName
+  , getCLogIDByStreamName
 
+    -- * Internal Log
   , FFI.LogID (..)
   , FFI.C_LogID
-  , getCLogIDByStreamName
   , LD.getLogGroup
   , LD.getLogGroupByID
   , LD.logGroupGetName
@@ -27,14 +35,15 @@ module HStream.Store.Stream
   , FFI.keyTypeFilterable
   , FFI.AppendCallBackData (..)
 
-    -- * Reader
-  , FFI.RecordByteOffset (..)
-  , FFI.DataRecord (..)
-
+    -- * Checkpoint Store
   , LD.newFileBasedCheckpointStore
   , LD.newRSMBasedCheckpointStore
   , LD.newZookeeperBasedCheckpointStore
   , LD.ckpStoreGetLSN
+
+    -- * Reader
+  , FFI.RecordByteOffset (..)
+  , FFI.DataRecord (..)
 
   , LD.newLDReader
   , LD.readerStartReading
@@ -44,7 +53,7 @@ module HStream.Store.Stream
   , LD.readerSetIncludeByteOffset
   , LD.readerSetWaitOnlyWhenNoData
   , stopReader
-
+    -- ** Checkpointed Reader
   , newLDFileCkpReader
   , newLDRsmCkpReader
   , newLDZkCkpReader
@@ -61,10 +70,13 @@ module HStream.Store.Stream
   ) where
 
 import           Control.Exception                (try)
-import           Control.Monad                    (unless)
+import           Control.Monad                    (forM, unless)
 import           Data.Bits                        (shiftL, shiftR, (.&.), (.|.))
 import qualified Data.Cache                       as Cache
+import           Data.IORef                       (IORef, atomicModifyIORef',
+                                                   newIORef, readIORef)
 import           Data.Int                         (Int64)
+import           Data.String                      (IsString)
 import           Data.Time.Clock.System           (SystemTime (..))
 import           Data.Word                        (Word16, Word32)
 import           Foreign.C                        (CSize)
@@ -72,6 +84,7 @@ import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random                    (randomRIO)
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.IO.FileSystem                  as FS
 import           Z.IO.Time                        (getSystemTime')
 
 import qualified HStream.Store.Exception          as E
@@ -81,12 +94,41 @@ import qualified HStream.Store.Logger             as Log
 
 -------------------------------------------------------------------------------
 
-type StreamName = CBytes
+-- | A stream name is an identity of the stream.
+--
+-- The first character of the StreamName should not be '/'.
+newtype StreamName = StreamName CBytes
+  deriving newtype (Show, Eq, Ord, Semigroup, Monoid, IsString)
 
--- | Global Stream name to logid cache
-streamNameCache :: Cache.Cache StreamName FFI.C_LogID
-streamNameCache = unsafePerformIO $ Cache.newCache Nothing
-{-# NOINLINE streamNameCache #-}
+-- TODO: validation
+mkStreamName :: CBytes -> StreamName
+mkStreamName = StreamName
+
+newtype StreamSettings = StreamSettings
+  { streamNamePrefix :: CBytes
+  }
+
+gloStreamSettings :: IORef StreamSettings
+gloStreamSettings = unsafePerformIO $ newIORef (StreamSettings "/hstream")
+{-# NOINLINE gloStreamSettings #-}
+
+updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
+updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
+
+streamNameToLogPath :: StreamName -> IO CBytes
+streamNameToLogPath (StreamName stream) = do
+  s <- readIORef gloStreamSettings
+  streamNamePrefix s `FS.join` stream
+
+logPathToStreamName :: CBytes -> IO StreamName
+logPathToStreamName path = do
+  prefix <- streamNamePrefix <$> readIORef gloStreamSettings
+  StreamName <$>FS.relative prefix path
+
+-- | Global loggroup path to logid cache
+logPathCache :: Cache.Cache CBytes FFI.C_LogID
+logPathCache = unsafePerformIO $ Cache.newCache Nothing
+{-# NOINLINE logPathCache #-}
 
 -- | Create stream
 --
@@ -100,11 +142,12 @@ createStream client stream attrs = Log.withDefaultLogger $ go 10
          then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
            logid <- genRandomLogID
-           result <- try $ LD.makeLogGroup client stream logid logid attrs True
+           logPath <- streamNameToLogPath stream
+           result <- try $ LD.makeLogGroup client logPath logid logid attrs True
            case result of
              Right group -> do
                LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
-               Cache.insert streamNameCache stream logid
+               Cache.insert logPathCache logPath logid
              Left (_ :: E.ID_CLASH) -> do
                Log.warning "LogDevice ID_CLASH!"
                go $! maxTries - 1
@@ -118,42 +161,58 @@ renameStream
   -- ^ The new path you are renaming to
   -> IO ()
 renameStream client from to = do
-  LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from to
+  from' <- streamNameToLogPath from
+  to'   <- streamNameToLogPath to
+  LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to'
   -- FIXME
   -- Do NOT combine these operations to a atomically one, since we need
   -- delete the old stream name even the new one is insert failed.
-  m_v <- Cache.lookup' streamNameCache from
+  m_v <- Cache.lookup' logPathCache from'
   case m_v of
-    Just x -> do Cache.delete streamNameCache from
-                 Cache.insert streamNameCache to x
+    Just x -> do Cache.delete logPathCache from'
+                 Cache.insert logPathCache to' x
     Nothing -> return ()
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamName -> IO ()
 removeStream client stream = do
-  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client stream
-  Cache.delete streamNameCache stream
+  path <- streamNameToLogPath stream
+  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client path
+  Cache.delete logPathCache path
+
+findStreams :: HasCallStack => FFI.LDClient -> Bool -> IO [StreamName]
+findStreams client recursive = do
+  prefix <- streamNamePrefix <$> readIORef gloStreamSettings
+  d <- try $ LD.getLogDirectory client prefix
+  case d of
+    Left (_ :: E.NOTFOUND) -> return []
+    Right dir -> do
+      ps <- LD.logDirectoryGetLogsName recursive dir
+      forM ps logPathToStreamName
 
 doesStreamExists :: HasCallStack => FFI.LDClient -> StreamName -> IO Bool
 doesStreamExists client stream = do
-  m_v <- Cache.lookup streamNameCache stream
+  path <- streamNameToLogPath stream
+  m_v <- Cache.lookup logPathCache path
   case m_v of
     Just _  -> return True
-    Nothing -> do r <- try $ LD.getLogGroup client stream
-                  case r of
-                    Left (_ :: E.NOTFOUND) -> return False
-                    Right group -> do
-                      logid <- fst <$> LD.logGroupGetRange group
-                      Cache.insert streamNameCache stream logid
-                      return True
+    Nothing -> do
+      r <- try $ LD.getLogGroup client path
+      case r of
+        Left (_ :: E.NOTFOUND) -> return False
+        Right group -> do
+          logid <- fst <$> LD.logGroupGetRange group
+          Cache.insert logPathCache path logid
+          return True
 
 getCLogIDByStreamName :: FFI.LDClient -> StreamName -> IO FFI.C_LogID
 getCLogIDByStreamName client stream = do
-  m_v <- Cache.lookup streamNameCache stream
+  path <- streamNameToLogPath stream
+  m_v <- Cache.lookup logPathCache path
   case m_v of
     Just v -> return v
     Nothing -> do
-      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client stream)
-      Cache.insert streamNameCache stream logid
+      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client path)
+      Cache.insert logPathCache path logid
       return logid
 
 -- | Generate a random logid through a simplify version of snowflake algorithm.
@@ -235,12 +294,12 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store retries
 
-stopReader :: FFI.LDClient -> FFI.LDReader -> CBytes -> IO ()
+stopReader :: FFI.LDClient -> FFI.LDReader -> StreamName -> IO ()
 stopReader client reader name = do
   logid <- getCLogIDByStreamName client name
   LD.readerStopReading reader logid
 
-stopCkpReader :: FFI.LDClient -> FFI.LDSyncCkpReader -> CBytes -> IO ()
+stopCkpReader :: FFI.LDClient -> FFI.LDSyncCkpReader -> StreamName -> IO ()
 stopCkpReader client reader name = do
   logid <- getCLogIDByStreamName client name
   LD.ckpReaderStopReading reader logid

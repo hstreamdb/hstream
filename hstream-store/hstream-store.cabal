@@ -131,7 +131,7 @@ test-suite hstream-store-test
     HStream.Store.AppenderSpec
     HStream.Store.ReaderSpec
     HStream.Store.SpecUtils
-    HStream.Store.TopicSpec
+    HStream.Store.StreamSpec
     HStream.StoreSpec
 
   hs-source-dirs:     test

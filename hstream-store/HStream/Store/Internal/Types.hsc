@@ -46,8 +46,11 @@ instance Bounded LogID where
   minBound = LOGID_MIN
   maxBound = LOGID_MAX
 
+pattern C_LOGID_MIN :: C_LogID
+pattern C_LOGID_MIN = 1
+
 pattern LOGID_MIN :: LogID
-pattern LOGID_MIN = LogID 1
+pattern LOGID_MIN = LogID C_LOGID_MIN
 
 -- | Max valid user data logid value.
 --

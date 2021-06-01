@@ -49,11 +49,12 @@ hsLogAttrsToLDLogAttrs HsLogAttrs{..} = do
       i <- c_new_log_attributes (fromIntegral logReplicationFactor) l ks' vs'
       newForeignPtr c_free_log_attributes_fun i
 
-getLogAttrsExtra :: LDLogAttrs -> CBytes -> IO CBytes
-getLogAttrsExtra attrs key =
-  withForeignPtr attrs $ \attrs' ->
-  CBytes.withCBytesUnsafe key $ \key' ->
-    CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' key')
+getLogAttrsExtra :: LDLogAttrs -> CBytes -> IO (Maybe CBytes)
+getLogAttrsExtra attrs key = withForeignPtr attrs $ \attrs' ->
+  CBytes.withCBytesUnsafe key $ \key' -> do
+    et <- c_exist_log_attrs_extras attrs' key'
+    if et then Just . CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' key')
+          else return Nothing
 
 updateLogAttrsExtrasPtr
   :: Ptr LogDeviceLogAttributes
@@ -95,6 +96,12 @@ foreign import ccall unsafe "hs_logdevice.h update_log_attrs_extras"
     :: Ptr LogDeviceLogAttributes
     -> Int -> BAArray# Word8 -> BAArray# Word8
     -> IO (Ptr LogDeviceLogAttributes)
+
+foreign import ccall unsafe "hs_logdevice.h exist_log_attrs_extras"
+  c_exist_log_attrs_extras
+    :: Ptr LogDeviceLogAttributes
+    -> BA# Word8
+    -> IO Bool
 
 foreign import ccall unsafe "hs_logdevice.h get_log_attrs_extra"
   c_get_log_attrs_extra
@@ -176,7 +183,7 @@ foreign import ccall unsafe "hs_logdevice.h &free_logdevice_tail_attributes"
 -------------------------------------------------------------------------------
 -- * Directory
 
-getLogDirectory :: LDClient -> CBytes -> IO LDDirectory
+getLogDirectory :: HasCallStack => LDClient -> CBytes -> IO LDDirectory
 getLogDirectory client path =
   CBytes.withCBytesUnsafe path $ \path' ->
     withForeignPtr client $ \client' -> do
@@ -468,12 +475,13 @@ logGroupGetAttrs group =
   withForeignPtr group $ \group' -> c_ld_loggroup_get_attrs group'
 {-# INLINE logGroupGetAttrs #-}
 
-logGroupGetExtraAttr :: LDLogGroup -> CBytes -> IO CBytes
-logGroupGetExtraAttr group key =
-  withForeignPtr group $ \group' ->
+logGroupGetExtraAttr :: LDLogGroup -> CBytes -> IO (Maybe CBytes)
+logGroupGetExtraAttr group key = withForeignPtr group $ \group' ->
   CBytes.withCBytesUnsafe key $ \key' -> do
-    attrs_ptr <- c_ld_loggroup_get_attrs group'
-    CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs_ptr key')
+    attrs' <- c_ld_loggroup_get_attrs group'
+    et <- c_exist_log_attrs_extras attrs' key'
+    if et then Just . CBytes.fromBytes <$> Z.fromStdString (c_get_log_attrs_extra attrs' key')
+          else return Nothing
 {-# INLINE logGroupGetExtraAttr #-}
 
 logGroupUpdateExtraAttrs
