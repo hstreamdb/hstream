@@ -92,7 +92,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
       let resp = genErrorQueryResponse "inconsistent method called"
       return (ServerNormalResponse resp [] StatusUnknown "")
     Right (CreatePlan stream repFactor)                     -> do
-      e' <- try $ createStream scLDClient (textToCBytes stream) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
+      e' <- try $ createStream scLDClient (transToStreamName stream) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating stream"
@@ -101,7 +101,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
     Right (CreateBySelectPlan sources sink taskBuilder repFactor) -> do
-      e' <- try $ createStream scLDClient (textToCBytes sink) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
+      e' <- try $ createStream scLDClient (transToStreamName sink) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
       case e' of
         Left (e :: SomeException) -> do
           let resp = genErrorQueryResponse "error when creating stream"
@@ -129,9 +129,9 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
     Right (DropPlan checkIfExist stream) -> do
-      streamExists <- doesStreamExists scLDClient (textToCBytes stream)
+      streamExists <- doesStreamExists scLDClient (transToStreamName stream)
       if streamExists then do
-        remove' <- try $ removeStream scLDClient (textToCBytes stream)
+        remove' <- try $ removeStream scLDClient (transToStreamName stream)
         case remove' of
           Left (e :: SomeException) -> do
             let resp = genErrorQueryResponse "error removing stream"
@@ -156,10 +156,10 @@ executePushQueryHandler ServerContext{..} (ServerWriterRequest meta CommandPushQ
   case plan' of
     Left (e :: SomeSQLException)         -> returnRes "exception on parsing or codegen"
     Right (SelectPlan sources sink taskBuilder) -> do
-      exists <- mapM (doesStreamExists scLDClient) (CB.pack . T.unpack <$> sources)
+      exists <- mapM (doesStreamExists scLDClient . transToStreamName) sources
       if (not . and) exists then returnRes "some source stream do not exist"
       else do
-        e' <- try $ createStream scLDClient (textToCBytes sink) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
+        e' <- try $ createStream scLDClient (transToStreamName sink) (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         case e' of
           Left (e :: SomeException) -> returnRes "error when creating sink stream"
           Right _                   -> do

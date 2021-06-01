@@ -13,7 +13,7 @@ license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Bin Wang
 maintainer:         wangbin@emqx.io
-tested-with:        GHC == 8.10.4, GHC == 8.8.4
+tested-with:        GHC ==8.8.4 || ==8.10.4
 category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
@@ -23,8 +23,8 @@ library
   exposed-modules:
     HStream.Server.Handler
     HStream.Server.HStoreConnector
-    HStream.Server.Utils
     HStream.Server.HStreamApi
+    HStream.Server.Utils
     ThirdParty.Google.Protobuf.Struct
 
   other-modules:
@@ -50,6 +50,7 @@ library
     , unordered-containers
     , vector
     , Z-Data
+    , Z-IO
 
   hs-source-dirs:   app generated-src
   default-language: Haskell2010
