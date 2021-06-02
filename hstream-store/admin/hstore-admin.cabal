@@ -30,6 +30,7 @@ executable hstore-admin
   build-depends:
     , base                  >=4.13    && <5
     , hstore-admin
+    , hstream-store
     , network               ^>=3.1.2.1
     , optparse-applicative  ^>=0.16
     , text                  ^>=1.2.3.0
@@ -85,6 +86,7 @@ library
     HStream.Store.Admin.Command.Connect
     HStream.Store.Admin.Command.NodesConfig
     HStream.Store.Admin.Command.Status
+    HStream.Store.Admin.Command.Logs
     Logtree.Types
     Maintenance.Types
     Membership.Types

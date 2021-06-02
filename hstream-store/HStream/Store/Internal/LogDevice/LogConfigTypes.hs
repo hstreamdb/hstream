@@ -147,15 +147,15 @@ getLogTailAttrs client logid = withForeignPtr client $ \client' -> do
   newForeignPtr c_free_log_tail_attributes_fun tailAttributes
 
 getLogTailAttrsLSN :: LDLogTailAttrs -> IO LSN
-getLogTailAttrsLSN tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_lsn;
+getLogTailAttrsLSN tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_lsn
 
 -- | Return  the estimated timestamp of record with last_released_real_lsn sequence number. It may be
 -- slightly larger than real timestamp of a record with last_released_real_lsn lsn.
 getLogTailAttrsLastTimeStamp :: LDLogTailAttrs -> IO C_Timestamp
-getLogTailAttrsLastTimeStamp tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_last_timestamp;
+getLogTailAttrsLastTimeStamp tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_last_timestamp
 
 getLogTailAttrsBytesOffset :: LDLogTailAttrs -> IO Word64
-getLogTailAttrsBytesOffset tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_bytes_offset;
+getLogTailAttrsBytesOffset tailAttrs = withForeignPtr tailAttrs c_ld_client_get_tail_attributes_bytes_offset
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_attributes"
   c_ld_client_get_tail_attributes
