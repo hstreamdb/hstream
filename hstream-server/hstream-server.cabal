@@ -26,6 +26,8 @@ library
     HStream.Server.HStreamApi
     HStream.Server.Persistence
     HStream.Server.Utils
+    HStream.Server.ClickHouseConnector
+    HStream.Server.Converter
     ThirdParty.Google.Protobuf.Struct
 
   other-modules:
