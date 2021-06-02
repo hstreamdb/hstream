@@ -17,6 +17,6 @@ sql:: sql-deps
 	(cd hstream-sql/gen-sql && mv HStream/SQL/Lex.x.new HStream/SQL/Lex.x && make)
 
 sql-deps::
-	(cd ~ && command -v bnfc || cabal install BNFC --constraint 'BNFC >= 2.9')
-	(cd ~ && command -v alex || cabal install alex)
-	(cd ~ && command -v happy || cabal install happy)
+	(command -v bnfc || cabal install BNFC --constraint 'BNFC >= 2.9')
+	(command -v alex || cabal install alex)
+	(command -v happy || cabal install happy)

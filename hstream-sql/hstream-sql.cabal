@@ -1,74 +1,90 @@
 cabal-version:      2.2
 name:               hstream-sql
 version:            0.1.0.0
-synopsis:           High performance stream processing platform for IoT data written in Haskell.
-description:        Please see the README on Github at
-                    <https://github.com/hstream-io/hstream#readme>
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on Github at
+  <https://github.com/hstream-io/hstream#readme>
+
 license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Feng Lee <feng@emqx.io>
 maintainer:         maosics@gmail.com
-tested-with:        GHC == 8.10.4, GHC == 8.8.4
+tested-with:        GHC ==8.8.4 || ==8.10.4
 category:           Language
 homepage:           https://github.com/hstream-io/hstream
 bug-reports:        https://github.com/hstream-io/hstream/issues
 build-type:         Simple
-extra-source-files: ChangeLog.md
-                    README.md
+extra-source-files:
+  ChangeLog.md
+  README.md
 
 source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
 library
-  exposed-modules:  HStream.SQL
-                    HStream.SQL.AST
-                    HStream.SQL.Abs
-                    HStream.SQL.Exception
-                    HStream.SQL.Parse
-                    HStream.SQL.Codegen
-  other-modules:    HStream.SQL.ErrM
-                    HStream.SQL.Extra
-                    HStream.SQL.Lex
-                    HStream.SQL.Par
-                    HStream.SQL.Preprocess
-                    HStream.SQL.Print
-                    HStream.SQL.Validate
-                    HStream.SQL.Validate.Utils
-                    HStream.SQL.Codegen.Boilerplate
-                    HStream.SQL.Codegen.Utils
-  hs-source-dirs:   src gen-sql
-  build-depends:    base       >= 4.11 && < 5
-                  , aeson
-                  , array
-                  , binary
-                  , bytestring ^>= 0.10
-                  , extra
-                  , text       ^>= 1.2
-                  , time       >= 1.9.1 && < 2
-                  , scientific
-                  , string-random
-                  , hstream-processing
-                  , rio
-                  , unordered-containers
-  default-language: Haskell2010
-  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates
-                    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+  exposed-modules:
+    HStream.SQL
+    HStream.SQL.Abs
+    HStream.SQL.AST
+    HStream.SQL.Codegen
+    HStream.SQL.Exception
+    HStream.SQL.Parse
+
+  other-modules:
+    HStream.SQL.Codegen.Boilerplate
+    HStream.SQL.Codegen.Utils
+    HStream.SQL.ErrM
+    HStream.SQL.Extra
+    HStream.SQL.Lex
+    HStream.SQL.Par
+    HStream.SQL.Preprocess
+    HStream.SQL.Print
+    HStream.SQL.Validate
+    HStream.SQL.Validate.Utils
+
+  hs-source-dirs:     src gen-sql
+  build-depends:
+    , aeson
+    , array
+    , base                  >=4.11  && <5
+    , binary
+    , bytestring            ^>=0.10
+    , extra
+    , hstream-processing
+    , rio
+    , scientific
+    , string-random
+    , text                  ^>=1.2
+    , time                  >=1.9.1 && <2
+    , unordered-containers
+
+  -- Note: build on osx require this
+  build-tool-depends: alex:alex -any
+  default-language:   Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
 
 executable sql-example-mock
   main-is:          Example.hs
   hs-source-dirs:   sql-example-mock
-  build-depends:    base
-                  , aeson
-                  , hstream-processing
-                  , hstream-sql
-                  , random
-                  , rio
-                  , scientific
-                  , text
-                  , unordered-containers
-  default-language: Haskell2010
-  ghc-options:      -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
-                    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+  build-depends:
+    , aeson
+    , base
+    , hstream-processing
+    , hstream-sql
+    , random
+    , rio
+    , scientific
+    , text
+    , unordered-containers
 
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
