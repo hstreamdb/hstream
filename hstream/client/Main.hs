@@ -15,9 +15,8 @@ import qualified Data.List                        as L
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           HStream.Format                   (formatCommandQueryResponse,
-                                                   formatSomeSQLException,
-                                                   renderJSONObjectToTable,
-                                                   renderTable)
+                                                   formatResult,
+                                                   formatSomeSQLException)
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.HStreamApi
@@ -37,9 +36,6 @@ helpInfo =
     [ "Command ",
       "  :h                        help command",
       "  :q                        quit cli",
-      "  show queries              list all queries",
-      "  terminate query <taskid>  terminate query by id",
-      "  terminate query all       terminate all queries",
       "  <sql>                     run sql"
     ]
 
@@ -51,10 +47,7 @@ compE = H.completeWord Nothing [] compword
 
 wordTable :: [[String]]
 wordTable =
-  [ ["show", "queries"],
-    ["terminate", "query"],
-    ["terminate", "query", "all"],
-    [":h"],
+  [ [":h"],
     [":q"]
   ]
 
@@ -127,6 +120,7 @@ app clientConfig = do
                   Left (e :: SomeSQLException) -> liftIO . putStr . formatSomeSQLException $ e
                   Right rsql                -> case rsql of
                     RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
+                    RQShow   _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
                     _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
               [] -> return ()
             loop
@@ -144,10 +138,9 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
             msg <- withInterrupt (clientCallCancel call) recv
             case msg of
               Left err            -> print err
-              Right Nothing       -> putStrLn "terminated"
+              Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
               Right (Just result) -> do
-                let object = structToJsonObject result
-                putStr (unlines $ renderTable $ renderJSONObjectToTable object)
+                putStr $ formatResult result
                 go
       in go
 

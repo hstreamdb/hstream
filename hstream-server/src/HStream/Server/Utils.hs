@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module HStream.Server.Utils
   ( jsonObjectToStruct
   , jsonValueToValue
@@ -7,6 +8,9 @@ module HStream.Server.Utils
   , textToCBytes
   , lazyByteStringToCbytes
   , cbytesToLazyByteString
+  , cbytesToValue
+  , listToStruct
+  , structToStruct
   ) where
 
 import qualified Data.Aeson                        as Aeson
@@ -15,6 +19,7 @@ import qualified Data.Map                          as M
 import qualified Data.Map.Strict                   as Map
 import           Data.Scientific
 import qualified Data.Text.Lazy                    as TL
+import           Data.Vector                       (fromList)
 import           Proto3.Suite
 import qualified RIO.ByteString.Lazy               as BL
 import qualified RIO.Text                          as T
@@ -66,3 +71,11 @@ cbytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
 lazyByteStringToCbytes :: BL.ByteString -> ZCB.CBytes
 lazyByteStringToCbytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
 
+listToStruct :: TL.Text -> [Value] -> Struct
+listToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindListValue . ListValue . fromList
+
+structToStruct :: TL.Text -> Struct -> Struct
+structToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindStructValue
+
+cbytesToValue :: ZCB.CBytes -> Value
+cbytesToValue = Value . Just . ValueKindStringValue . TL.fromStrict . cbytesToText
