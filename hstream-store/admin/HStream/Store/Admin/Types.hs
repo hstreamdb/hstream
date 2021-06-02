@@ -103,19 +103,23 @@ nodesConfigParser = hsubparser
 
 -------------------------------------------------------------------------------
 
-parseShard :: String -> Either P.ParseError AA.ShardID
-parseShard = parseShard' . V.packASCII
-
-parseShard' :: Bytes -> Either P.ParseError AA.ShardID
-parseShard' = P.parse' $ do
-  P.skipSpaces
-  P.char8 'N' <|> P.charUTF8 'n'
-  n <- P.int
-  P.char8 ':'
-  P.char8 'S' <|> P.charUTF8 's'
-  s <- P.int
-  P.skipSpaces
-  return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
+parseShard :: ReadM AA.ShardID
+parseShard = eitherReader $ parse . V.packASCII
+  where
+    parse :: Bytes -> Either String AA.ShardID
+    parse bs =
+      case P.parse' parser bs of
+        Left er -> Left $ "cannot parse value: " <> show er
+        Right i -> Right i
+    parser = do
+      P.skipSpaces
+      P.char8 'N' <|> P.char8 'n'
+      n <- P.int
+      P.char8 ':'
+      P.char8 'S' <|> P.char8 's'
+      s <- P.int
+      P.skipSpaces
+      return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
 
 socketConfigParser :: Parser (AA.SocketConfig AA.AdminAPI)
 socketConfigParser = AA.SocketConfig
@@ -216,7 +220,6 @@ instance Read AA.LocationScope where
     i <- Read.lexP
     case i of
       Read.Ident "node"       -> return AA.LocationScope_NODE
-      Read.Ident "rack"       -> return AA.LocationScope_RACK
       Read.Ident "rack"       -> return AA.LocationScope_RACK
       Read.Ident "row"        -> return AA.LocationScope_ROW
       Read.Ident "cluster"    -> return AA.LocationScope_CLUSTER
