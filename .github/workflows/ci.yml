@@ -46,6 +46,11 @@ jobs:
       matrix:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
     steps:
+      - name: CPU info
+        run: |
+            sudo apt-get install cpuid
+            cpuid
+
       - uses: actions/checkout@v2
         with:
           submodules: 'recursive'
@@ -62,8 +67,8 @@ jobs:
             ${{ runner.os }}-${{ matrix.ghc }}-v1
 
       # We remove these caches because there is an unknown reason that will cause ci to fail without any error message.
-      - name: remove all Z related builds
-        run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
+      #- name: remove all Z related builds
+      #  run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
 
       - name: build
         run: |
@@ -71,10 +76,10 @@ jobs:
 
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} update
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} make
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --enable-tests --enable-benchmarks all
+          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --constraint='"Z-Data +no-avx"' --enable-tests --enable-benchmarks all
 
       - name: test
-        run: python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
+        run: python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --constraint='"Z-Data +no-avx"' --test-show-details=direct all
 
       - name: check
         run: |
@@ -89,8 +94,8 @@ jobs:
             python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
           done
 
-      - name: remove all Z related builds
-        run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
+      #- name: remove all Z related builds
+      #  run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
 
       # TODO
       #- name: haddock
