@@ -24,6 +24,7 @@ library
     HStream.Server.Handler
     HStream.Server.HStoreConnector
     HStream.Server.HStreamApi
+    HStream.Server.Persistence
     HStream.Server.Utils
     ThirdParty.Google.Protobuf.Struct
 
@@ -51,6 +52,7 @@ library
     , vector
     , Z-Data
     , Z-IO
+    , zoovisitor
 
   default-language: Haskell2010
   ghc-options:
