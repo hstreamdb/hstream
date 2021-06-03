@@ -28,6 +28,7 @@ runCli s (StatusCmd statusOpts) = printTime $ putStrLn =<< runStatus s statusOpt
 runCli s (NodesConfigCmd (NodesConfigShow c)) = printTime $ TIO.putStrLn =<< showConfig s c
 runCli s (NodesConfigCmd (NodesConfigBootstrap ps)) = printTime $ bootstrap s ps
 runCli s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
+runCli s (LogsCmd cmd) = printTime $ runLogsCmd s cmd
 
 printTime :: IO a -> IO a
 printTime f = do
@@ -41,6 +42,7 @@ data Command
   = StatusCmd StatusOpts
   | NodesConfigCmd NodesConfigOpts
   | ConfigCmd ConfigCmdOpts
+  | LogsCmd LogsConfigCmd
   deriving (Show)
 
 commandParser :: O.Parser Command
@@ -48,4 +50,5 @@ commandParser = O.hsubparser
   ( O.command "status" (O.info (StatusCmd <$> statusParser) (O.progDesc "Cluster status"))
  <> O.command "nodes-config" (O.info (NodesConfigCmd <$> nodesConfigParser) (O.progDesc "Manipulates the cluster's NodesConfig"))
  <> O.command "config" (O.info (ConfigCmd <$> configCmdParser) (O.progDesc "Commands about logdevice config"))
+ <> O.command "logs" (O.info (LogsCmd <$> logsSubCmdParser) (O.progDesc "Control the logs config of logdevice dynamically"))
   )

@@ -9,6 +9,7 @@ import qualified Z.Data.Parser           as P
 import           Z.Data.Vector           (Bytes)
 import qualified Z.Data.Vector           as V
 
+import qualified HStream.Store           as S
 import qualified HStream.Store.Admin.API as AA
 
 -------------------------------------------------------------------------------
@@ -247,3 +248,18 @@ data ConfigCmdOpts = ConfigDump
 configCmdParser :: Parser ConfigCmdOpts
 configCmdParser = hsubparser
   ( command "dump" (info (pure ConfigDump) (progDesc "Prints the server config in json format")))
+
+-------------------------------------------------------------------------------
+
+data LogsConfigCmd
+  = InfoCmd S.C_LogID
+  | ShowCmd
+  deriving (Show)
+
+logsSubCmdParser :: Parser LogsConfigCmd
+logsSubCmdParser = hsubparser
+  ( command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
+ <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier ")))
+
+logIDParser :: Parser S.C_LogID
+logIDParser = option auto (long "id")
