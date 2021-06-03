@@ -82,6 +82,7 @@ buildLDClientRes
   -> Map.Map CBytes CBytes
   -> Resource S.LDClient
 buildLDClientRes conf settings = do
+  liftIO $ S.setLogDeviceDbgLevel S.C_DBG_CRITICAL
   d <- liftIO Env.getTempDir
   (path, file) <- FS.mkstemp d "ld_conf_" False
   liftIO $ do
