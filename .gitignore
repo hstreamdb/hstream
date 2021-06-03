@@ -30,4 +30,6 @@ Local*
 .vscode/
 gen-hs2/
 gen-sql/
+generated-src/
+gen-src/
 .DS_Store

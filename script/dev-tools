@@ -145,7 +145,7 @@ if __name__ == '__main__':
         'cluster-start', help='Start logdevice dev cluster')
     parser_cluster_start.add_argument(
         '--image', '-i', help='logdevice docker images',
-        default=DEFAULT_LD_IMAGE)
+        default=DEFAULT_DB_IMAGE)
     parser_cluster_start.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_cluster_start.add_argument('--container-bin', default='docker')
