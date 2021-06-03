@@ -1,9 +1,9 @@
-module HStream.Server.Converter 
+module HStream.Server.Converter
 where
 
 import           Data.Aeson
-import qualified Data.HashMap.Strict                             as HM
-import  Data.Text
+import qualified Data.HashMap.Strict as HM
+import           Data.Text
 
 delimit :: Text
 delimit = pack "."

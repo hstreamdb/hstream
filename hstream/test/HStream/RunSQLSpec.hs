@@ -1,28 +1,31 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.RunSQLSpec (spec) where
 
-import           Control.Monad                  (replicateM)
+import           Control.Monad                      (replicateM)
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Type
-import           HStream.Processing.Util        (getCurrentTimestamp)
+import           HStream.Processing.Util            (getCurrentTimestamp)
 import           HStream.SQL.Codegen
 import           HStream.Server.HStoreConnector
 import           HStream.Server.Handler
 import           HStream.Server.Utils
 import           HStream.Store
 import           RIO
-import qualified RIO.ByteString.Lazy            as BL
-import qualified RIO.Map                        as Map
-import qualified RIO.Text                       as Text
-import           System.IO.Unsafe               (unsafePerformIO)
+import qualified RIO.ByteString.Lazy                as BL
+import qualified RIO.Map                            as Map
+import qualified RIO.Text                           as Text
+import           System.IO.Unsafe                   (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
-import           Text.Printf                    (printf)
+import           Text.Printf                        (printf)
 
+import qualified Data.ByteString.Char8              as C
+import           Database.ClickHouseDriver.Client
+import           Database.ClickHouseDriver.Types
 import           HStream.SQL.AST
 import           HStream.Server.ClickHouseConnector
 
@@ -60,10 +63,10 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "create connectors" $
     (do
       handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"clickhouse\", streamname = \""<> source1 <>"\");"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (12, 80);"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (32, 80);"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (42, 80);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (12, 84);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 83);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (32, 82);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (42, 81);"
       threadDelay 5000000
     ) `shouldReturn` ()
 
@@ -123,48 +126,57 @@ handleCreateConnectorSQL sql = do
     plan <- streamCodegen sql
     case plan of
       CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
-          let cMap = parseOptions cOptions Map.empty
           ldreader <- newLDFileCkpReader ldclient (textToCBytes (Text.append cName "_reader")) checkpointRootPath 1000 Nothing 3
           let sc = hstoreSourceConnector ldclient ldreader
-          let streamM = Map.lookup "streamname" cMap
-          let typeM = Map.lookup "type" cMap
+          let streamM = lookup "streamname" cOptions
+          let typeM = lookup "type" cOptions
           let resp = genSuccessQueryResponse
-          -- TODO: deal with types in addition to clickhouse
-          let sk = clickHouseSinkConnector defaultCKClient
-          case streamM of
-            Just stream -> do
-              subscribeToStream sc (Text.pack stream) Latest
-              _ <- async $
-                  forever $
-                    do
-                      records <- readRecords sc
-                      forM_ records $ \SourceRecord {..} ->
-                        writeRecord
-                          sk
-                          SinkRecord
-                            { snkStream = (Text.pack stream),
-                              snkKey = srcKey,
-                              snkValue = srcValue,
-                              snkTimestamp = srcTimestamp
-                            }
-              print $ "subscription started... " ++ (show stream)
-            _ -> print "streamname is nothing..."
+          let fromCOptionString m = case m of
+                Just (ConstantString s) -> Just $ C.pack s
+                _                       -> Nothing
+          let sk = case typeM of
+                Just (ConstantString cType) ->
+                  do
+                    case cType of
+                        "clickhouse" -> do
+                          let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
+                          let host = fromMaybe "host.docker.internal" $ fromCOptionString (lookup "host" cOptions)
+                          let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
+                          let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
+                          let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
+                          let cli = clickHouseSinkConnector $ createClient ConnParams{
+                              username'     = username
+                              ,host'        = host
+                              ,port'        = port
+                              ,password'    = password
+                              ,compression' = False
+                              ,database'    = database
+                          }
+                          Right cli
+                        _ -> Left "unsupported sink connector"
+                _ -> Left "Invalid type in connector options"
+          case sk of
+            Left err -> print err
+            Right sk -> do
+              case streamM of
+                Just (ConstantString stream) -> do
+                  subscribeToStream sc (Text.pack stream) Latest
+                  _ <- async $
+                      forever $
+                        do
+                          records <- readRecords sc
+                          forM_ records $ \SourceRecord {..} ->
+                            writeRecord
+                              sk
+                              SinkRecord
+                                { snkStream = (Text.pack stream),
+                                  snkKey = srcKey,
+                                  snkValue = srcValue,
+                                  snkTimestamp = srcTimestamp
+                                }
+                  print $ "subscription started... " ++ stream
+                _ -> print "streamname is nothing..."
       _ -> error "Execution plan type mismatched"
-  where
-        parseOptions :: [(Text.Text, Constant)] -> Map.Map String String -> Map.Map String String
-        parseOptions cOptions cMap = do
-          case cOptions of
-            [] -> cMap
-            (x:xs) -> do
-              case x of
-                ("type", ConstantString t) -> do
-                  let cMap' = Map.insert "type" t cMap
-                  parseOptions xs cMap'
-                ("streamname", ConstantString s) -> do
-                  let cMap' = Map.insert "streamname" s cMap
-                  parseOptions xs cMap'
-                _ -> parseOptions xs cMap
-
 
 handleDropStreamSQL :: Text -> IO ()
 handleDropStreamSQL sql = do

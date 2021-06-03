@@ -9,21 +9,27 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                 (SomeException, catch, try)
-import           Control.Monad                     (when)
-import qualified Data.Aeson                        as Aeson
-import qualified Data.List                         as L
-import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromJust, isJust)
-import           Data.String                       (fromString)
-import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
-import qualified Data.Vector                       as V
+
+import           Control.Exception                  (SomeException, catch, try)
+import           Control.Monad                      (when)
+import qualified Data.Aeson                         as Aeson
+import qualified Data.ByteString                    as B
+import qualified Data.ByteString.Lazy               as BL
+import qualified Data.HashMap.Strict                as HM
+import qualified Data.List                          as L
+import qualified Data.Map                           as M
+import qualified Data.Map.Strict                    as Map
+import           Data.Maybe                         (fromJust, fromMaybe,
+                                                     isJust)
+import           Data.String                        (fromString)
+import qualified Data.Text                          as T
+import qualified Data.Text.Lazy                     as TL
+import qualified Data.Vector                        as V
 import           HStream.Processing.Connector
-import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
-                                                    runTask)
+import           HStream.Processing.Processor       (TaskBuilder, getTaskName,
+                                                     runTask)
 import           HStream.Processing.Type
-import           HStream.Processing.Util           (getCurrentTimestamp)
+import           HStream.Processing.Util            (getCurrentTimestamp)
 import           HStream.SQL.Codegen
 import           HStream.SQL.Exception
 import           HStream.Server.HStoreConnector
@@ -47,6 +53,10 @@ import qualified Z.Data.Vector                     as ZV
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
 import           ZooKeeper.Types
+import qualified Data.ByteString.Char8              as C
+import           Database.ClickHouseDriver.Client
+import           Database.ClickHouseDriver.Types
+
 import           HStream.SQL.AST
 import           HStream.Server.ClickHouseConnector
 
@@ -128,47 +138,61 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let resp = genSuccessQueryResponse
           return (ServerNormalResponse resp [] StatusOk "")
     Right (CreateConnectorPlan cName (RConnectorOptions cOptions)) -> do
-        let cMap = parseOptions cOptions Map.empty
-        ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
-        let sc = hstoreSourceConnector scLDClient ldreader
-        let streamM = Map.lookup "stream" cMap
-        let typeM = Map.lookup "type" cMap
-        let resp = genSuccessQueryResponse
-        -- TODO: deal with types in addition to clickhouse
-        let sk = clickHouseSinkConnector defaultCKClient
-        case streamM of
-          Just stream -> do
-            subscribeToStream sc (T.pack stream) Latest
-            _ <- async $
-                forever $
+          ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
+          let sc = hstoreSourceConnector scLDClient ldreader
+          let streamM = lookup "streamname" cOptions
+          let typeM = lookup "type" cOptions
+          let fromCOptionString m = case m of
+                Just (ConstantString s) -> Just $ C.pack s
+                _                       -> Nothing
+          -- build sink connector by type
+          let sk = case typeM of
+                Just (ConstantString cType) ->
                   do
-                    records <- readRecords sc
-                    forM_ records $ \SourceRecord {..} ->
-                      writeRecord
-                        sk
-                        SinkRecord
-                          { snkStream = (T.pack stream),
-                            snkKey = srcKey,
-                            snkValue = srcValue,
-                            snkTimestamp = srcTimestamp
+                    case cType of
+                        "clickhouse" -> do
+                          let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
+                          let host = fromMaybe "host.docker.internal" $ fromCOptionString (lookup "host" cOptions)
+                          let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
+                          let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
+                          let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
+                          let cli = clickHouseSinkConnector $ createClient ConnParams{
+                              username'     = username
+                              ,host'        = host
+                              ,port'        = port
+                              ,password'    = password
+                              ,compression' = False
+                              ,database'    = database
                           }
-            return (ServerNormalResponse resp [] StatusOk "")
-          Nothing -> return (ServerNormalResponse resp [] StatusUnknown "")
-      where
-        parseOptions :: [(T.Text, Constant)] -> Map.Map String String -> Map.Map String String
-        parseOptions cOptions cMap = do
-          case cOptions of
-            [] -> cMap
-            (x:xs) -> do
-              case x of
-                ("type", ConstantString t) -> do
-                  let cMap' = Map.insert "type" t cMap
-                  parseOptions xs cMap'
-                ("stream", ConstantString s) -> do
-                  let cMap' = Map.insert "stream" s cMap
-                  parseOptions xs cMap'
-                _ -> parseOptions xs cMap
-
+                          Right cli
+                        _ -> Left "unsupported sink connector type"
+                _ -> Left "invalid type in connector options"
+          case sk of
+            Left err -> do
+                let resp = genErrorQueryResponse err
+                return (ServerNormalResponse resp [] StatusUnknown "")
+            Right sk -> do
+              case streamM of
+                Just (ConstantString stream) -> do
+                  subscribeToStream sc (T.pack stream) Latest
+                  _ <- async $
+                      forever $
+                        do
+                          records <- readRecords sc
+                          forM_ records $ \SourceRecord {..} ->
+                            writeRecord
+                              sk
+                              SinkRecord
+                                { snkStream = (T.pack stream),
+                                  snkKey = srcKey,
+                                  snkValue = srcValue,
+                                  snkTimestamp = srcTimestamp
+                                }
+                  let resp = genSuccessQueryResponse
+                  return (ServerNormalResponse resp [] StatusOk "")
+                _ ->  do
+                  let resp = genErrorQueryResponse "stream name missed in connector options"
+                  return (ServerNormalResponse resp [] StatusUnknown "")
     Right (InsertPlan stream payload)             -> do
       timestamp <- getCurrentTimestamp
       e' <-  try $
