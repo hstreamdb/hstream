@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms   #-}
+{-# LANGUAGE RecordWildCards     #-}
 
 module HStream.RunSQLSpec (spec) where
 
@@ -22,6 +23,9 @@ import           System.Random
 import           Test.Hspec
 import           Text.Printf                    (printf)
 
+import           HStream.SQL.AST
+import           HStream.Server.ClickHouseConnector
+
 ldclient :: LDClient
 ldclient = unsafePerformIO $ newLDClient  "/data/store/logdevice.conf"
 {-# NOINLINE ldclient #-}
@@ -33,9 +37,13 @@ spec = describe "HStream.RunSQLSpec" $ do
   sink1 <- runIO $ newRandomText 10
   sink2 <- runIO $ newRandomText 10
 
+  let source1 = "source3"
+
   it "create streams" $
     (do
         setLogDeviceDbgLevel C_DBG_ERROR
+        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source1 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source2 <> " ;"
         handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
         handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> ";"
         handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
@@ -46,6 +54,17 @@ spec = describe "HStream.RunSQLSpec" $ do
     (do
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);"
       handleInsertSQL $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (15, 10);"
+    ) `shouldReturn` ()
+
+
+  it "create connectors" $
+    (do
+      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"clickhouse\", streamname = \""<> source1 <>"\");"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (12, 80);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (32, 80);"
+      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (42, 80);"
+      threadDelay 5000000
     ) `shouldReturn` ()
 
   it "drop streams" $
@@ -98,6 +117,54 @@ handleCreateStreamSQL sql = do
     CreatePlan streamName _ ->
       createStream ldclient (transToStreamName streamName) (LogAttrs $ HsLogAttrs{logReplicationFactor = 3, logExtraAttrs=Map.empty})
     _ -> error "Execution plan type mismatched"
+
+handleCreateConnectorSQL :: Text -> IO ()
+handleCreateConnectorSQL sql = do
+    plan <- streamCodegen sql
+    case plan of
+      CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
+          let cMap = parseOptions cOptions Map.empty
+          ldreader <- newLDFileCkpReader ldclient (textToCBytes (Text.append cName "_reader")) checkpointRootPath 1000 Nothing 3
+          let sc = hstoreSourceConnector ldclient ldreader
+          let streamM = Map.lookup "streamname" cMap
+          let typeM = Map.lookup "type" cMap
+          let resp = genSuccessQueryResponse
+          -- TODO: deal with types in addition to clickhouse
+          let sk = clickHouseSinkConnector defaultCKClient
+          case streamM of
+            Just stream -> do
+              subscribeToStream sc (Text.pack stream) Latest
+              _ <- async $
+                  forever $
+                    do
+                      records <- readRecords sc
+                      forM_ records $ \SourceRecord {..} ->
+                        writeRecord
+                          sk
+                          SinkRecord
+                            { snkStream = (Text.pack stream),
+                              snkKey = srcKey,
+                              snkValue = srcValue,
+                              snkTimestamp = srcTimestamp
+                            }
+              print $ "subscription started... " ++ (show stream)
+            _ -> print "streamname is nothing..."
+      _ -> error "Execution plan type mismatched"
+  where
+        parseOptions :: [(Text.Text, Constant)] -> Map.Map String String -> Map.Map String String
+        parseOptions cOptions cMap = do
+          case cOptions of
+            [] -> cMap
+            (x:xs) -> do
+              case x of
+                ("type", ConstantString t) -> do
+                  let cMap' = Map.insert "type" t cMap
+                  parseOptions xs cMap'
+                ("streamname", ConstantString s) -> do
+                  let cMap' = Map.insert "streamname" s cMap
+                  parseOptions xs cMap'
+                _ -> parseOptions xs cMap
+
 
 handleDropStreamSQL :: Text -> IO ()
 handleDropStreamSQL sql = do
