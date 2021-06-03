@@ -251,12 +251,12 @@ configCmdParser = hsubparser
 
 -------------------------------------------------------------------------------
 
-data LogsSubCmd
+data LogsConfigCmd
   = InfoCmd S.C_LogID
   | ShowCmd
   deriving (Show)
 
-logsSubCmdParser :: Parser LogsSubCmd
+logsSubCmdParser :: Parser LogsConfigCmd
 logsSubCmdParser = hsubparser
   ( command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
  <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier ")))

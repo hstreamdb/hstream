@@ -30,7 +30,6 @@ executable hstore-admin
   build-depends:
     , base                  >=4.13    && <5
     , hstore-admin
-    , hstream-store
     , network               ^>=3.1.2.1
     , optparse-applicative  ^>=0.16
     , text                  ^>=1.2.3.0
