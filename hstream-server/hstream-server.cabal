@@ -28,7 +28,7 @@ library
     ThirdParty.Google.Protobuf.Struct
 
   other-modules:
-  hs-source-dirs:   src generated-src
+  hs-source-dirs:   src gen-src
   build-depends:
     , aeson
     , base
@@ -52,7 +52,6 @@ library
     , Z-Data
     , Z-IO
 
-  hs-source-dirs:   app generated-src
   default-language: Haskell2010
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
