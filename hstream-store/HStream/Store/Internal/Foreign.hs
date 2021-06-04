@@ -61,17 +61,25 @@ withAsyncPrimUnsafe2
   :: (Prim a, Prim b)
   => a -> b -> (StablePtr PrimMVar -> Int -> MBA# Word8 -> MBA# Word8 -> IO c)
   -> IO (a, b, c)
-withAsyncPrimUnsafe2 a b f = mask_ $ do
+withAsyncPrimUnsafe2 a b f = withAsyncPrimUnsafe2' a b f pure
+{-# INLINE withAsyncPrimUnsafe2 #-}
+
+withAsyncPrimUnsafe2'
+  :: (Prim a, Prim b)
+  => a -> b -> (StablePtr PrimMVar -> Int -> MBA# Word8 -> MBA# Word8 -> IO c)
+  -> (c -> IO d)
+  -> IO (a, b, d)
+withAsyncPrimUnsafe2' a b f g = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
-  (a_, (b_, c_)) <- withPrimSafe' a $ \a' -> do
+  (a_, (b_, d_)) <- withPrimSafe' a $ \a' -> do
     withPrimSafe' b $ \b' -> do
       (cap, _) <- threadCapability =<< myThreadId
-      c <- f sp cap a' b'
+      d <- g =<< f sp cap a' b'
       takeMVar mvar `onException` forkIO (do takeMVar mvar; primitive_ (touch# a'); primitive_ (touch# b'))
-      return c
-  return (a_, b_, c_)
-{-# INLINE withAsyncPrimUnsafe2 #-}
+      return d
+  return (a_, b_, d_)
+{-# INLINE withAsyncPrimUnsafe2' #-}
 
 withAsync :: HasCallStack
           => Int -> (Ptr a -> IO a)

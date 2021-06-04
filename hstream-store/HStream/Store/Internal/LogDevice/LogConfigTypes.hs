@@ -33,7 +33,8 @@ import qualified Z.Foreign                      as Z
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign (peekStdStringToCBytesN,
                                                  withAsync,
-                                                 withAsyncPrimUnsafe2)
+                                                 withAsyncPrimUnsafe2,
+                                                 withAsyncPrimUnsafe2')
 import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
@@ -188,7 +189,8 @@ getLogDirectory client path =
   CBytes.withCBytesUnsafe path $ \path' ->
     withForeignPtr client $ \client' -> do
       let cfun = c_ld_client_get_directory client' path'
-      (errno, dir, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr cfun
+      (errno, dir, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode)
+          nullPtr cfun (E.throwSubmitIfNotOK . fromIntegral)
       _ <- E.throwStreamErrorIfNotOK' errno
       newForeignPtr c_free_logdevice_logdirectory_fun dir
 

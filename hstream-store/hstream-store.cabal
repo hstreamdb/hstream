@@ -142,6 +142,7 @@ test-suite hstream-store-test
     , hstream-store
     , random         ^>=1.2
     , Z-Data
+    , Z-IO
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
