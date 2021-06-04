@@ -27,10 +27,13 @@ source-repository head
 library
   build-depends:
     , aeson
+    , aeson-pretty
+    , ansi-terminal
     , base
     , containers
     , hstream-server
     , hstream-sql
+    , table-layout
     , text
     , unordered-containers
     , vector
@@ -42,6 +45,7 @@ executable hstream-client
   main-is:          Main.hs
   hs-source-dirs:   client
   build-depends:
+    , ansi-terminal
     , base
     , bytestring
     , grpc-haskell

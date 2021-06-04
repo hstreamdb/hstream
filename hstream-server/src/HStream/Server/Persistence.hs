@@ -1,24 +1,41 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
-module HStream.Server.Persistence where
-
-import           Control.Exception
-import           Control.Monad     (void)
-import           Data.Int          (Int64)
-import           GHC.Generics      (Generic)
-import           Z.Data.CBytes     (CBytes)
-import           Z.Data.JSON       (JSON, decode, encode)
-import           Z.Data.Text       (Text)
-import           Z.Data.Vector     (Bytes)
-import           Z.IO.Exception    (HasCallStack)
-import           Z.IO.Time         (SystemTime (..), getSystemTime')
+module HStream.Server.Persistence
+  ( Query(..)
+  , QueryInfo(..)
+  , QueryStatus(..)
+  , QStatus(..)
+  , queriesPath
+  , defaultHandle
+  , insertQuery
+  , setStatus
+  , getQueries
+  , initializeAncestors
+  ) where
+import           Control.Monad       (void)
+import           Data.Int            (Int64)
+import           GHC.Generics        (Generic)
+import           Z.Data.CBytes       (CBytes (..))
+import           Z.Data.JSON         (JSON, decode, encode)
+import           Z.Data.Text         (Text)
+import           Z.Data.Vector       (Bytes)
+import           Z.IO.Exception      (HasCallStack, catch)
+import           Z.IO.Time           (SystemTime (..), getSystemTime')
 import           ZooKeeper
+import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
 type SqlStatement = Text
 type QueryId      = CBytes
 type TimeStamp    = Int64
+
+data Query = Query {
+    _QueryId     :: QueryId
+  , _QueryInfo   :: QueryInfo
+  , _QueryStatus :: QueryStatus
+} deriving (Generic, Show)
+instance JSON Query
 
 data QueryInfo = QueryInfo {
     sqlStatement :: SqlStatement
@@ -41,8 +58,8 @@ instance JSON QStatus
 queriesPath :: CBytes
 queriesPath = "/hstreamdb/hstream/queries"
 
-defaultHandle :: HasCallStack => Resource ZHandle
-defaultHandle = zookeeperResInit "0.0.0.0:2182" 2500 Nothing 0
+defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
+defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 insertQuery :: HasCallStack => ZHandle -> QueryId -> QueryInfo -> IO ()
 insertQuery zk qid info@(QueryInfo _ timestamp) = do
@@ -53,20 +70,19 @@ insertQuery zk qid info@(QueryInfo _ timestamp) = do
 setStatus :: HasCallStack => ZHandle -> QueryId -> QStatus -> IO ()
 setStatus zk qid status = do
     MkSystemTime timestamp _ <- getSystemTime'
-    setQuery zk (qid <> "/status") (encode $ QueryStatus status timestamp)
+    setQuery zk (mkPath qid <> "/status") (encode $ QueryStatus status timestamp)
 
-getQueries :: HasCallStack => ZHandle -> IO [(QueryInfo, QueryStatus)]
+getQueries :: HasCallStack => ZHandle -> IO [Query]
 getQueries zk = do
   StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
   details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkPath) qids
   status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkPath) qids
-  return $ zip details status
-
---------------------------------------------------------------------------------
+  return $ zipWith ($) (zipWith ($) (Query <$> qids) details) status
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
-initializeAncestors zk = createPath zk "/hstreamdb"
-  >> createPath zk "/hstreamdb/hstream" >> createPath zk queriesPath
+initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath]
+
+--------------------------------------------------------------------------------
 
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents =
@@ -74,9 +90,12 @@ createInsert zk path contents =
 
 setQuery :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 setQuery zk path contents =
-  void $ zooSet zk (queriesPath <> path) (Just contents) Nothing
+  void $ zooSet zk path (Just contents) Nothing
 
 --------------------------------------------------------------------------------
+
+tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
+tryCreate zk path = catch (createPath zk path) (\e -> return $ const () (e :: ZNODEEXISTS))
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path =

@@ -76,6 +76,7 @@ executable hstream-server
     , vector
     , Z-Data
     , Z-IO
+    , zoovisitor
 
   hs-source-dirs:   app
   ghc-options:

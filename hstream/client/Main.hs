@@ -20,16 +20,15 @@ import           HStream.Format                   (formatCommandQueryResponse,
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Utils             (structToJsonObject)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
-import           Options.Applicative
+import qualified Options.Applicative              as O
+import           System.Console.ANSI              (getTerminalSize)
 import qualified System.Console.Haskeline         as H
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
-
 helpInfo :: String
 helpInfo =
   unlines
@@ -76,15 +75,15 @@ data UserConfig = UserConfig
   , _serverPort :: Int
   }
 
-parseConfig :: Parser UserConfig
+parseConfig :: O.Parser UserConfig
 parseConfig =
   UserConfig
-    <$> strOption (long "host" <> metavar "HOST" <> showDefault <> value "127.0.0.1" <> help "server host value")
-    <*> option auto (long "port" <> metavar "INT" <> showDefault <> value 6570 <> short 'p' <> help "server port value")
+    <$> O.strOption (O.long "host" <> O.metavar "HOST" <> O.showDefault <> O.value "127.0.0.1" <> O.help "server host value")
+    <*> O.option O.auto (O.long "port" <> O.metavar "INT" <> O.showDefault <> O.value 6570 <> O.short 'p' <> O.help "server port value")
 
 main :: IO ()
 main = do
-  UserConfig{..} <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "HStream-Client")
+  UserConfig{..} <- O.execParser $ O.info (parseConfig O.<**> O.helper) (O.fullDesc <> O.progDesc "HStream-Client")
   putStrLn [r|
       __  _________________  _________    __  ___
      / / / / ___/_  __/ __ \/ ____/   |  /  |/  /
@@ -117,7 +116,7 @@ app clientConfig = do
               val@(_ : _)                       -> do
                 let sql = T.pack (unwords val)
                 (liftIO . try . parseAndRefine $ sql) >>= \case
-                  Left (e :: SomeSQLException) -> liftIO . putStr . formatSomeSQLException $ e
+                  Left (e :: SomeSQLException) -> liftIO . putStrLn . formatSomeSQLException $ e
                   Right rsql                -> case rsql of
                     RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
                     RQShow   _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
@@ -140,7 +139,8 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
               Left err            -> print err
               Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
               Right (Just result) -> do
-                putStr $ formatResult result
+                width <- getTerminalSize
+                putStrLn $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
                 go
       in go
 
@@ -150,8 +150,8 @@ sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
   case resp of
-    ClientNormalResponse x@CommandQueryResponse{..} _meta1 _meta2 _status _details -> do
-      putStr $ formatCommandQueryResponse x
+    ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details -> do
+      putStrLn $ formatCommandQueryResponse x
     ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a

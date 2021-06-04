@@ -62,6 +62,8 @@ library
     , text                  ^>=1.2
     , time                  >=1.9.1 && <2
     , unordered-containers
+    , uuid
+    , Z-IO
 
   -- Note: build on osx require this
   build-tool-depends: alex:alex -any

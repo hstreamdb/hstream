@@ -248,7 +248,7 @@ instance Refine From where
                    cond
                   ]) =
     case refine cond of
-      (RCondOp RCompOpEQ (RExprCol _ (Just s1) f1) (RExprCol _ (Just s2) f2)) ->
+      (RCondOp RCompOpEQ (RExprCol _ (Just s1) f1) (RExprCol _ (Just _) f2)) ->
         case t1 == s1 of
           True  -> RFromJoin (t1,f1) (t2,f2) (refine joinType) (refine win)
           False -> RFromJoin (t1,f2) (t2,f1) (refine joinType) (refine win)
@@ -317,6 +317,7 @@ instance Refine GroupBy where
       ColNameSimple _ (Ident f)           -> RGroupBy Nothing f (Just $ refine win)
       ColNameStream _ (Ident s) (Ident f) -> RGroupBy (Just s) f (Just $ refine win)
       _                                   -> throwSQLException RefineException Nothing "Impossible happened" -- Index and Inner is not supportede
+  refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
 ---- Hav
 data RHaving = RHavingEmpty
@@ -426,5 +427,10 @@ instance Refine SQL where
   refine (QSelect _ select) = RQSelect (refine select)
   refine (QCreate _ create) = RQCreate (refine create)
   refine (QInsert _ insert) = RQInsert (refine insert)
-  refine (QShow   _ show)   = RQShow   (refine show)
-  refine (QDrop   _ drop)   = RQDrop   (refine drop)
+  refine (QShow   _ show_)  = RQShow   (refine show_)
+  refine (QDrop   _ drop_)  = RQDrop   (refine drop_)
+
+--------------------------------------------------------------------------------
+
+throwImpossible :: a
+throwImpossible = throwSQLException RefineException Nothing "Impossible happened"

@@ -24,7 +24,6 @@ import           Data.Time             (DiffTime, diffTimeToPicoseconds)
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
-import           Prelude               (read)
 import           RIO
 import           Text.StringRandom     (stringRandomIO)
 
