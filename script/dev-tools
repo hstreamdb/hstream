@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+import time
 import subprocess
 import re
 
@@ -55,7 +56,7 @@ def is_cluster_started(container_bin):
     return False
 
 
-def cluster_start(image, data_dir, container_bin):
+def cluster_start(image, data_dir, container_bin, retries=20):
     if is_cluster_started(container_bin):
         return logerr("Already started!")
 
@@ -68,27 +69,58 @@ def cluster_start(image, data_dir, container_bin):
     ])
     run_sh(cmd)
 
+    while True:
+        if retries < 0:
+            logerr("Fail to start dev cluster!")
+            cluster_stop(container_bin)
+            return None
+        time.sleep(1)
+        port = get_ldadmin_server_port(container_bin)
+        if port:
+            break
+        else:
+            loginfo("Starting dev cluster...")
+        retries = retries - 1
+    run_ldshell(image=DEFAULT_LD_IMAGE, container_bin='docker', command='ldshell',
+                data_dir=DEFAULT_LOGDEVICE_DIR, cmd_args=["status"])
+
+    loginfo("Done")
+
+
+def get_ldadmin_server_port(container_bin):
+    result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
+    if result and result.stdout:
+        rs = set(re.findall(r'--admin-server-port=(\d*)', result.stdout.decode()))
+        if len(rs) == 0:
+            return None
+        elif len(rs) == 1:
+            port = rs.pop()
+            return port
+        else:
+            logerr("Get admin-server-port error!")
+
 
 def cluster_stop(container_bin):
     run_sh(f"{container_bin} kill {LOGDEVICE_CONTAINER_NAME}", check=False)
 
 
-def run_ldshell(image, container_bin, data_dir):
+def run_ldshell(image, container_bin, command, data_dir, cmd_args):
     if not is_cluster_started(container_bin):
         return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
-    result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
-    if result and result.stdout:
-        rs = set(re.findall(r'--admin-server-port=(\d*)', result.stdout.decode()))
-        if len(rs) != 1:
-            return logerr("Get admin-server-port error!")
-        host = '127.0.0.1'
-        port = rs.pop()
-        cmd = ' '.join([
-            f'{container_bin} run -it --rm --network host {image}',
-            f'/usr/local/bin/ldshell --admin-server-host={host} --admin-server-port={port}'
-        ])
-        run_sh(cmd, check=False)
+    host = '127.0.0.1'
+    port = get_ldadmin_server_port(container_bin)
+    container_opts = "-it"
+    if command == "ldshell":
+        user_command = f'{command} --admin-server-host={host} --admin-server-port={port}'
+        if cmd_args:
+            user_command = user_command + " " + " ".join(cmd_args)
+            container_opts = ""
+    else:
+        user_command = command
+
+    cmd = f'{container_bin} run --rm {container_opts} --network host {image} {user_command}'
+    run_sh(cmd, check=False)
 
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
@@ -162,8 +194,10 @@ if __name__ == '__main__':
         '--image', '-i', help='logdevice docker images',
         default=DEFAULT_LD_IMAGE)
     parser_cluster_ldshell.add_argument('--container-bin', default='docker')
+    parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
     parser_cluster_ldshell.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_cluster_ldshell.add_argument('cmd_args', nargs='*')
 
     # shell
     parser_haskell = subparsers.add_parser(
