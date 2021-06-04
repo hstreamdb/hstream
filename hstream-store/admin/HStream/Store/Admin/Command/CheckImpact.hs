@@ -3,7 +3,7 @@ module HStream.Store.Admin.Command.CheckImpact
   ) where
 
 import qualified Data.Int                  as Int
-import           Data.List                 (union)
+import           Data.List                 (intercalate, union)
 import qualified Data.Map.Strict           as Map
 import           Data.Maybe                (fromJust, mapMaybe)
 import           Data.Set                  (Set)
@@ -32,7 +32,7 @@ getNodeProperties conf = do
         { nodeIndex = AA.nodeConfig_node_index c
         , nodeRoles = AA.nodeConfig_roles c
         , nodeName = AA.nodeConfig_name c
-        , numShards = fromJust $ AA.storageConfig_num_shards <$> (AA.nodeConfig_storage c)
+        , numShards = fromJust $ AA.storageConfig_num_shards <$> AA.nodeConfig_storage c
         }
 
 getNodeIdxMap :: [NodeProperties] -> NodeIdxMap
@@ -44,21 +44,19 @@ getNodeNameToIdxMap = Map.fromList . map (\node -> (nodeName node, nodeIndex nod
 getNodesShardNum :: [AA.NodeIndex] -> NodeIdxMap -> [Int.Int32]
 getNodesShardNum idxs dict = map (numShards . fromJust . flip Map.lookup dict) idxs
 
+-- TODO: code refactoring
 combine :: CheckImpactOpts -> [NodeProperties] -> AA.ShardSet
-combine impactOpts prop = do
-  let shardSets = shards impactOpts
-  let nameToIdxMap = getNodeNameToIdxMap prop
-  let nodeIdxMap = getNodeIdxMap prop
-  let nodesIdsSelectByName = mapMaybe (\n -> Map.lookup n nameToIdxMap) $ nodeNames impactOpts
-  let nodesList = nodesIdsSelectByName `union` (nodeIndexes impactOpts)
-  let shards = getNodesShardNum nodesList nodeIdxMap
-  let nodesSelectById = [AA.ShardID (AA.NodeID (Just n) Nothing Nothing) (fromIntegral s) | n <- nodesList
-                                                                                          , k <- shards
+combine CheckImpactOpts{..} prop =
+  let shardSets = shards
+      nameToIdxMap = getNodeNameToIdxMap prop
+      nodeIdxMap = getNodeIdxMap prop
+      nodesIdsSelectByName = mapMaybe (`Map.lookup` nameToIdxMap) nodeNames
+      nodesList = nodesIdsSelectByName `union` nodeIndexes
+      shards' = getNodesShardNum nodesList nodeIdxMap
+      nodesSelectById = [AA.ShardID (AA.NodeID (Just n) Nothing Nothing) (fromIntegral s) | n <- nodesList
+                                                                                          , k <- shards'
                                                                                           , s <- take (fromIntegral k) [0..]]
-  let sets = shardSets `union` nodesSelectById
-  case null sets of
-    True -> errorWithoutStackTrace $ "Should specific shardSet using --shards, --nodeIndex or --nodeNames."
-    False -> sets
+   in shardSets `union` nodesSelectById
 
 buildCheckImpactRequest :: CheckImpactOpts -> AA.ShardSet -> AA.CheckImpactRequest
 buildCheckImpactRequest opts shardSet = AA.CheckImpactRequest
@@ -86,7 +84,7 @@ buildCheckImpactRequest opts shardSet = AA.CheckImpactRequest
        in if null logIds
              then Nothing
              else Just logIds
-    skipCapacity = if skipCapacityChecks opts then True else False
+    skipCapacity = skipCapacityChecks opts
     maxUnavailableStorageCapacity = if skipCapacity then 100 else maxUnavailableStorageCapacityPct opts
     maxUnavailableSequencingCapacity = if skipCapacity then 100 else maxUnavailableSequencingCapacityPct opts
 
@@ -101,7 +99,6 @@ checkImpact conf checkImpactOpts = do
   let totalLogsChecked = fromJust $ AA.checkImpactResponse_total_logs_checked response
   let responseImpact = AA.checkImpactResponse_impact response
   case responseImpact of
-    [] -> putStrLn $ "ALL GOOD.\n Total logs checked (" <> show totalLogsChecked <> ") in " <> show delta <> "s"
-    impact -> putStrLn $ "UNSAFE. Impact: " <> (foldr (\x y -> show x <> ", " <> y) "" impact)
-              <> "\n Total logs checked (" <> show totalLogsChecked <> ") in " <> show delta <> "s"
-
+    [] -> putStrLn $ "ALL GOOD.\n  Total logs checked (" <> show totalLogsChecked <> ") in " <> show delta <> "s"
+    impact -> putStrLn $ "UNSAFE. Impact: " <> intercalate ", " (map show impact)
+                      <> "\n Total logs checked (" <> show totalLogsChecked <> ") in " <> show delta <> "s"
