@@ -190,7 +190,7 @@ getLogDirectory client path =
     withForeignPtr client $ \client' -> do
       let cfun = c_ld_client_get_directory client' path'
       (errno, dir, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode)
-          nullPtr cfun (E.throwSubmitIfNotOK' . fromIntegral)
+          nullPtr cfun (E.throwSubmitIfNotOK . fromIntegral)
       _ <- E.throwStreamErrorIfNotOK' errno
       newForeignPtr c_free_logdevice_logdirectory_fun dir
 

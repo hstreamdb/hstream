@@ -17,7 +17,6 @@ module HStream.Store.Exception
   , SubmitError (..)
   , throwSubmitError
   , throwSubmitIfNotOK
-  , throwSubmitIfNotOK'
 
     -- * General Store Exception
   , StoreError               (..)
@@ -569,11 +568,8 @@ instance Exception SubmitError where
 throwSubmitError :: CallStack -> IO a
 throwSubmitError = E.throwIO . SubmitError "submit error"
 
-throwSubmitIfNotOK :: CallStack -> Int  -> IO Int
-throwSubmitIfNotOK stack ret = if ret == 0 then return 0 else throwSubmitError stack
-
-throwSubmitIfNotOK' :: HasCallStack => Int  -> IO Int
-throwSubmitIfNotOK' = throwSubmitIfNotOK callStack
+throwSubmitIfNotOK :: HasCallStack => Int -> IO Int
+throwSubmitIfNotOK ret = if ret == 0 then return 0 else throwSubmitError callStack
 
 throwStoreError :: T.Text -> CallStack -> IO a
 throwStoreError desc stack =

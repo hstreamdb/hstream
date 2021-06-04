@@ -43,8 +43,8 @@ spec = describe "HStoreSpec" $ do
     ms1 <- toMillisecond <$> getSystemTime'
     sn1 <- S.appendCbLSN <$> S.append client logid "world" Nothing
 
-    S.findTime' client logid ms0 `shouldReturn` sn0
-    S.findTime' client logid ms1 `shouldReturn` sn1
+    S.findTime client logid ms0 S.FindKeyStrict `shouldReturn` sn0
+    S.findTime client logid ms1 S.FindKeyStrict `shouldReturn` sn1
       where
         toMillisecond :: SystemTime -> Int64
         toMillisecond (MkSystemTime s ns) = s * 1000 + fromIntegral (ns `div` 1000000)

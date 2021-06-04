@@ -9,7 +9,6 @@ module HStream.Store.Internal.LogDevice
   , getClientSetting
   , trim
   , findTime
-  , findTime'
 
   , module HStream.Store.Internal.LogDevice.Checkpoint
   , module HStream.Store.Internal.LogDevice.LogConfigTypes
@@ -121,22 +120,64 @@ getClientSetting client key =
   CBytes.withCBytesUnsafe key $ \key' ->
     Z.fromStdString $ c_ld_client_get_settings client' key'
 
-trim :: LDClient -> C_LogID -> LSN -> IO ()
+-- | Ask LogDevice cluster to trim the log up to and including the specified
+-- LSN. After the operation successfully completes records with LSNs up to
+-- 'lsn' are no longer accessible to LogDevice clients.
+trim :: LDClient
+  -> C_LogID
+  -- ^ logid ID of log to trim
+  -> LSN
+  -- ^ Trim the log up to this LSN (inclusive), should not be larger than
+  -- the LSN of the most recent record available to readers
+  -> IO ()
 trim client logid lsn =
   withForeignPtr client $ \client' -> do
     void $ E.throwStreamErrorIfNotOK' . fst =<<
       withAsyncPrimUnsafe' (0 :: ErrorCode)
                            (c_ld_client_trim client' logid lsn)
-                           (E.throwSubmitIfNotOK callStack)
+                           E.throwSubmitIfNotOK
 
-findTime' :: HasCallStack => LDClient -> C_LogID -> C_Timestamp -> IO LSN
-findTime' client logid ts = findTime client logid ts c_accuracy_strict
-
-findTime :: HasCallStack => LDClient -> C_LogID -> C_Timestamp -> C_ACCURACY -> IO LSN
+-- | Looks for the sequence number that the log was at at the given time.  The
+--   most common use case is to read all records since that time, by
+--   subsequently calling startReading(result_lsn).
+--
+-- The result lsn can be smaller than biggest lsn which timestamp is <= given
+-- timestamp. With accuracy parameter set to APPROXIMATE this error can be
+-- several minutes.
+-- Note that even in that case startReading(result_lsn) will read
+-- all records at the given timestamp or later, but it may also read some
+-- earlier records.
+--
+-- If the given timestamp is earlier than all records in the log, this returns
+-- the LSN after the point to which the log was trimmed.
+--
+-- If the given timestamp is later than all records in the log, this returns
+-- the next sequence number to be issued.  Calling startReading(result_lsn)
+-- will read newly written records.
+--
+-- If the log is empty, this returns LSN_OLDEST.
+--
+-- All of the above assumes that records in the log have increasing
+-- timestamps.  If timestamps are not monotonic, the accuracy of this API
+-- may be affected.  This may be the case if the sequencer's system clock is
+-- changed, or if the sequencer moves and the clocks are not in sync.
+--
+-- The delivery of a signal does not interrupt the wait.
+findTime :: HasCallStack => LDClient
+  -> C_LogID
+  -- ^ ID of log to query
+  -> C_Timestamp
+  -- ^ select the oldest record in this log whose timestamp is
+  -- greater or equal to _ts_.
+  -> FindKeyAccuracy
+  -- ^ Accuracy option specify how accurate the result of
+  -- findTime has to be. It allows to choose best
+  -- accuracy-speed trade off for each specific use case.
+  -> IO LSN
 findTime client logid ts accuracy =
   withForeignPtr client $ \client' -> do
     (errno, lsn, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode) LSN_INVALID
-      (c_ld_client_find_time client' logid ts accuracy) E.throwSubmitIfNotOK'
+      (c_ld_client_find_time client' logid ts $ toCAccuracy accuracy) E.throwSubmitIfNotOK
     void $ E.throwStreamErrorIfNotOK' errno
     return lsn
 

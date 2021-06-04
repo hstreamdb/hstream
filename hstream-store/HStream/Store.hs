@@ -7,6 +7,7 @@ module HStream.Store
   , pattern LSN_MAX
   , pattern LSN_MIN
   , pattern LSN_INVALID
+  , FindKeyAccuracy (..)
 
   , newLDClient
   , getMaxPayloadSize
@@ -15,7 +16,7 @@ module HStream.Store
   , getClientSetting
   , getTailLSN
   , trim
-  , findTime'
+  , findTime
 
     -- * Stream
   , module HStream.Store.Stream
