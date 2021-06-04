@@ -15,6 +15,7 @@ module HStream.Store
   , getClientSetting
   , getTailLSN
   , trim
+  , findTime'
 
     -- * Stream
   , module HStream.Store.Stream

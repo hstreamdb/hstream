@@ -87,5 +87,23 @@ HsInt ld_client_trim(logdevice_client_t* client, c_logid_t logid, c_lsn_t lsn,
   return client->rep->trim(logid_t(logid), lsn, cb);
 }
 
+HsInt ld_client_find_time(logdevice_client_t* client, c_logid_t logid,
+                          c_timestamp_t timestamp, c_accuracy_t accuracy,
+                          HsStablePtr mvar, HsInt cap, c_error_code_t* st_out,
+                          c_lsn_t* lsn_out) {
+  auto cb = [st_out, lsn_out, cap, mvar](facebook::logdevice::Status st,
+                                         c_lsn_t lsn) {
+    if (st_out && lsn_out) {
+      *st_out = static_cast<c_error_code_t>(st);
+      *lsn_out = lsn;
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  return client->rep->findTime(logid_t(logid),
+      std::chrono::milliseconds(timestamp), cb,
+      static_cast<facebook::logdevice::FindKeyAccuracy>(accuracy));
+}
+
 // ----------------------------------------------------------------------------
 } // end extern "C"

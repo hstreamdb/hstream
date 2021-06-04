@@ -8,6 +8,8 @@ module HStream.Store.Internal.LogDevice
   , setClientSetting
   , getClientSetting
   , trim
+  , findTime
+  , findTime'
 
   , module HStream.Store.Internal.LogDevice.Checkpoint
   , module HStream.Store.Internal.LogDevice.LogConfigTypes
@@ -127,6 +129,17 @@ trim client logid lsn =
                            (c_ld_client_trim client' logid lsn)
                            (E.throwSubmitIfNotOK callStack)
 
+findTime' :: LDClient -> C_LogID -> C_Timestamp -> IO LSN
+findTime' client logid ts = findTime client logid ts c_accuracy_strict
+
+findTime :: LDClient -> C_LogID -> C_Timestamp -> C_ACCURACY -> IO LSN
+findTime client logid ts accuracy =
+  withForeignPtr client $ \client' -> do
+    (errno, lsn, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) LSN_INVALID
+      (c_ld_client_find_time client' logid ts accuracy)
+    void $ E.throwStreamErrorIfNotOK' errno
+    return lsn
+
 foreign import ccall unsafe "hs_logdevice.h new_logdevice_client"
   c_new_logdevice_client :: Z.BA# Word8
                          -> Z.MBA# (Ptr LogDeviceClient)
@@ -156,3 +169,13 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
                    -> StablePtr PrimMVar -> Int
                    -> MBA# ErrorCode
                    -> IO Int
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_find_time"
+  c_ld_client_find_time :: Ptr LogDeviceClient
+                        -> C_LogID
+                        -> C_Timestamp
+                        -> C_ACCURACY
+                        -> StablePtr PrimMVar -> Int
+                        -> MBA# ErrorCode
+                        -> MBA# LSN
+                        -> IO Int
