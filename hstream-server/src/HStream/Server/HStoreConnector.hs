@@ -6,7 +6,6 @@
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE StrictData         #-}
 
-
 module HStream.Server.HStoreConnector
   ( hstoreSourceConnector
   , hstoreSinkConnector
@@ -94,8 +93,8 @@ writeRecordToHStore ldclient SinkRecord{..} = do
   let payload =
         Payload {
           pTimestamp = snkTimestamp,
-          pKey = fmap lazyByteStringToCbytes snkKey,
-          pValue = lazyByteStringToCbytes snkValue
+          pKey = fmap lazyByteStringToCBytes snkKey,
+          pValue = lazyByteStringToCBytes snkValue
         }
   -- FIXME: for some unknown reasons, github action will exit failure without
   -- any information out if we evaluate the payload. So we here always print the

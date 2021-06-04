@@ -616,5 +616,5 @@ instance Validate SQL where
   validate sql@(QSelect _ select) = validate select >> return sql
   validate sql@(QCreate _ create) = validate create >> return sql
   validate sql@(QInsert _ insert) = validate insert >> return sql
-  validate sql@(QShow   _ show)   = validate show   >> return sql
-  validate sql@(QDrop   _ drop)   = validate drop   >> return sql
+  validate sql@(QShow   _ show_)  = validate show_   >> return sql
+  validate sql@(QDrop   _ drop_)  = validate drop_   >> return sql

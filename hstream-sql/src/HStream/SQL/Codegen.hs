@@ -51,10 +51,14 @@ import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Parse
+import           Numeric                                         (showHex)
 import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
+import           Z.IO.Time
+
 --------------------------------------------------------------------------------
+
 type StreamName     = HPT.StreamName
 type SourceStream   = [StreamName]
 type SinkStream     = StreamName
@@ -68,37 +72,43 @@ data ExecutionPlan = SelectPlan         SourceStream SinkStream TaskBuilder
                    | InsertPlan         StreamName BL.ByteString
                    | DropPlan           CheckIfExist StreamName
                    | ShowPlan           ShowObject
+
 --------------------------------------------------------------------------------
+
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
 streamCodegen input = do
   rsql <- parseAndRefine input
   case rsql of
     RQSelect select                     -> do
-      (builder, source, sink) <- genStreamBuilderWithStream "demo" Nothing select
+      tName <- genTaskName
+      (builder, source, sink) <- genStreamBuilderWithStream tName Nothing select
       return $ SelectPlan source sink (HS.build builder)
     RQCreate (RCreate stream rOptions)   -> return $ CreatePlan stream (rRepFactor rOptions)
     RQCreate (RCreateAs stream select rOptions) -> do
-      (builder, source, sink) <- genStreamBuilderWithStream "demo" (Just stream) select
+      tName <- genTaskName
+      (builder, source, sink) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
-    RQCreate x@(RCreateConnector s ifNotExist cOptions) -> print x >> throwIO NotSupported
+    RQCreate x@(RCreateConnector _ ifNotExist cOptions) -> print x >> throwIO NotSupported
     RQInsert (RInsert stream tuples)     -> do
-      let object = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
-      return $ InsertPlan stream (encode object)
+      let object_ = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
+      return $ InsertPlan stream (encode object_)
     RQInsert (RInsertBinary stream bs)   -> do
       let k = "unknown_binary_data" :: Text
           v = String (decodeUtf8 bs)
-      let object = HM.fromList [(k,v)]
-      return $ InsertPlan stream (encode object)
+      let object_ = HM.fromList [(k,v)]
+      return $ InsertPlan stream (encode object_)
     RQInsert (RInsertJSON stream bs) -> do
       return $ InsertPlan stream (BSL.fromStrict bs)
     RQShow (RShow RShowStreams) -> return $ ShowPlan Streams
-    RQShow (RShow RShowQueries) -> print RShowQueries >> throwIO NotSupported
+    RQShow (RShow RShowQueries) -> return $ ShowPlan Queries
     RQDrop (RDrop x)   -> return $ DropPlan False x
     RQDrop (RDropIf x) -> return $ DropPlan True x
 
 data NotSupported = NotSupported deriving Show
 instance Exception NotSupported
+
 --------------------------------------------------------------------------------
+
 type SourceConfigType = HS.StreamSourceConfig Object Object
 genStreamSourceConfig :: RFrom -> (SourceConfigType, Maybe SourceConfigType)
 genStreamSourceConfig frm =
@@ -168,7 +178,7 @@ genStreamWithSourceStream taskName frm = do
   let (srcConfig1, srcConfig2') = genStreamSourceConfig frm
   baseStream <- HS.mkStreamBuilder taskName >>= HS.stream srcConfig1
   case frm of
-    RFromSingle s                     -> return (baseStream, [sscStreamName srcConfig1])
+    RFromSingle _                     -> return (baseStream, [sscStreamName srcConfig1])
     RFromJoin (s1,f1) (s2,f2) typ win ->
       case srcConfig2' of
         Nothing         ->
@@ -186,6 +196,10 @@ genStreamWithSourceStream taskName frm = do
             _          ->
               throwSQLException CodegenException Nothing "Impossible happened"
 
+genTaskName :: IO Text
+genTaskName = do
+  MkSystemTime time _ <- getSystemTime'
+  return $ pack $ showHex time ""
 ----
 constantToValue :: Constant -> Value
 constantToValue (ConstantInt n)         = Number (scientific (toInteger n) 0)
