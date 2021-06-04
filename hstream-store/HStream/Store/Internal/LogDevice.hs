@@ -129,14 +129,14 @@ trim client logid lsn =
                            (c_ld_client_trim client' logid lsn)
                            (E.throwSubmitIfNotOK callStack)
 
-findTime' :: LDClient -> C_LogID -> C_Timestamp -> IO LSN
+findTime' :: HasCallStack => LDClient -> C_LogID -> C_Timestamp -> IO LSN
 findTime' client logid ts = findTime client logid ts c_accuracy_strict
 
-findTime :: LDClient -> C_LogID -> C_Timestamp -> C_ACCURACY -> IO LSN
+findTime :: HasCallStack => LDClient -> C_LogID -> C_Timestamp -> C_ACCURACY -> IO LSN
 findTime client logid ts accuracy =
   withForeignPtr client $ \client' -> do
-    (errno, lsn, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) LSN_INVALID
-      (c_ld_client_find_time client' logid ts accuracy)
+    (errno, lsn, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode) LSN_INVALID
+      (c_ld_client_find_time client' logid ts accuracy) E.throwSubmitIfNotOK'
     void $ E.throwStreamErrorIfNotOK' errno
     return lsn
 
