@@ -256,8 +256,8 @@ data LogsConfigCmd
   | ShowCmd
   deriving (Show)
 
-logsSubCmdParser :: Parser LogsConfigCmd
-logsSubCmdParser = hsubparser
+logsConfigCmdParser :: Parser LogsConfigCmd
+logsConfigCmdParser = hsubparser
   ( command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
  <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier ")))
 
@@ -266,13 +266,13 @@ logIDParser = option auto (long "id")
 
 -------------------------------------------------------------------------------
 
--- For now we only parse two state of AA.ShardStorageState
+-- FIXME: For now we only parse two state of AA.ShardStorageState
 instance Read AA.ShardStorageState where
   readPrec = do
     i <- Read.lexP
     case i of
       Read.Ident "disabled"       -> return AA.ShardStorageState_DISABLED
-      Read.Ident "readOnly"       -> return AA.ShardStorageState_READ_ONLY
+      Read.Ident "readonly"       -> return AA.ShardStorageState_READ_ONLY
       x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
 data CheckImpactOpts = CheckImpactOpts
@@ -284,7 +284,7 @@ data CheckImpactOpts = CheckImpactOpts
   , skipMetaDataLogs                    :: Bool
   , skipInternalLogs                    :: Bool
   , logs                                :: [AA.Unsigned64]
-  , shorts                              :: Bool  --  currently doesn't support
+  -- TODO : shorts :: Bool
   , maxUnavailableStorageCapacityPct    :: Int32
   , maxUnavailableSequencingCapacityPct :: Int32
   , skipCapacityChecks                  :: Bool
@@ -294,38 +294,38 @@ data CheckImpactOpts = CheckImpactOpts
 checkImpactOptsParser :: Parser CheckImpactOpts
 checkImpactOptsParser = CheckImpactOpts
   <$> many (option parseShard ( long "shards"
-                             <> metavar "NX[:SY]"
-                             <> help ("List of strings in the format NX[:SY] where X is the "
+                             <> metavar "NX:SY"
+                             <> help ("List of strings in the format NX:SY where X is the "
                                    <> "node id and Y is the shard id")
                               ))
-  <*> many (option auto ( long "nodeIndex"
+  <*> many (option auto ( long "node-index"
                        <> metavar "INT"
-                       <> help ("List of node indexes")
+                       <> help "List of node indexes (TODO)"
                         ))
-  <*> many (strOption ( long "nodeName"
+  <*> many (strOption ( long "node-name"
                      <> metavar "STRING"
-                     <> help ("List of node names either hosts or tw tasks")
+                     <> help "List of node names either hosts or tw tasks (TODO)"
                       ))
-  <*> option auto ( long "targetState"
-                 <> metavar "[readOnly|disabled]"
+  <*> option auto ( long "target-state"
+                 <> metavar "[readonly|disabled]"
                  <> showDefault
                  <> value AA.ShardStorageState_DISABLED
                  <> help ("The storage state that we want to set the storage to. If you "
                        <> "would like to disable writes, then the target-state is readOnly. If you "
                        <> "would like to disable reads, then the target-state should be disabled")
                   )
-  <*> many (option auto ( long "safetyMargin"
+  <*> many (option auto ( long "safety-margin"
                        <> metavar "STRING:INT"
                        <> help ("Extra domains which should be available. Format <scope><replication> "
-                             <> "e.g. --safetyMargin rack:0 --safetyMargin node:1")
+                       <> "e.g. --safety-margin rack:0 --safety-margin node:1")
                         ))
-  <*> option auto ( long "skipMetadataLogs"
+  <*> option auto ( long "skip-metadata-logs"
                  <> metavar "BOOL"
                  <> showDefault
                  <> value False
                  <> help "Whether to check the metadata logs or not"
                   )
-  <*> option auto ( long "skipInternalLogs"
+  <*> option auto ( long "skip-internal-logs"
                  <> metavar "BOOL"
                  <> showDefault
                  <> value False
@@ -335,33 +335,27 @@ checkImpactOptsParser = CheckImpactOpts
                        <> metavar "INT"
                        <> help "If None, checks all logs, but you can specify the log-ids"
                         ))
-  <*> option auto ( long "shorts"
-                 <> metavar "BOOL"
-                 <> showDefault
-                 <> value False
-                 <> help "Disables the long detailed description of the output"
-                  )
-  <*> option auto ( long "maxUnavailableStorageCapacityPct"
+  <*> option auto ( long "max-unavailable-storage-capacity-pct"
                  <> metavar "INT"
                  <> showDefault
                  <> value 25
                  <> help "The maximum percentage of storage capacity that can be unavailable"
                   )
-  <*> option auto ( long "maxUnavailableSequencingCapacityPct"
+  <*> option auto ( long "max-unavailable-sequencing-capacity-pct"
                  <> metavar "INT"
                  <> showDefault
                  <> value 25
                  <> help "The maximum percentage of sequencing capacity that can be unavailable"
                   )
-  <*> option auto ( long "skipCapacityChecks"
+  <*> option auto ( long "skip-capacity-checks"
                  <> metavar "BOOL"
                  <> showDefault
                  <> value False
                  <> help "Disable capacity checking altogether"
                   )
-  <*> option auto ( long "disableSequencers"
+  <*> option auto ( long "disable-sequencers"
                  <> metavar "BOOL"
                  <> showDefault
                  <> value False
-                 <> help "Disable Sequencers"
+                 <> help "Do we want to validate if sequencers will be disabled on these nodes as well?"
                   )
