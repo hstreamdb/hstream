@@ -86,6 +86,7 @@ library
     HStream.Store.Admin.Command.NodesConfig
     HStream.Store.Admin.Command.Status
     HStream.Store.Admin.Command.Logs
+    HStream.Store.Admin.Command.CheckImpact
     Logtree.Types
     Maintenance.Types
     Membership.Types
