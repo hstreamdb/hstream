@@ -4,18 +4,14 @@
 
 module Main where
 
-import           Options.Applicative           (Parser, auto, execParser,
-                                                fullDesc, help, helper, info,
-                                                long, metavar, option, progDesc,
-                                                short, showDefault, strOption,
-                                                value, (<**>))
-import           Text.RawString.QQ             (r)
-import           Z.Data.CBytes                 (CBytes)
-import           Z.IO.Network                  (PortNumber,
-                                                defaultTCPServerConfig, ipv4,
-                                                tcpListenAddr)
-
-import qualified HStream.Store.RPC.MessagePack as RPC
+import           Options.Applicative (Parser, auto, execParser, fullDesc, help,
+                                      helper, info, long, metavar, option,
+                                      progDesc, short, showDefault, strOption,
+                                      value, (<**>))
+import           Text.RawString.QQ   (r)
+import           Z.Data.CBytes       (CBytes)
+import           Z.IO.Network        (PortNumber, defaultTCPServerConfig, ipv4,
+                                      tcpListenAddr)
 
 data ServerConfig = ServerConfig
   { serverHost :: CBytes
@@ -42,8 +38,6 @@ main = do
     |]
   app config
 
+-- TODO
 app :: ServerConfig -> IO ()
-app ServerConfig{..} = do
-  let listenAddr = ipv4 serverHost serverPort
-  putStrLn $ "Listening " <> show listenAddr
-  RPC.serve defaultTCPServerConfig{tcpListenAddr=listenAddr}
+app ServerConfig{..} = undefined
