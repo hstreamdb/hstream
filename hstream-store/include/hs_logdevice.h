@@ -255,13 +255,6 @@ const c_logdevice_dbg_level C_DBG_SPEW =
 void set_dbg_level(c_logdevice_dbg_level level);
 int dbg_use_fd(int fd);
 
-// Accuracy of findTime or findKey
-typedef uint32_t c_accuracy_t;
-const c_accuracy_t C_ACCURACY_STRICT = static_cast<c_accuracy_t>(
-    facebook::logdevice::FindKeyAccuracy::STRICT);
-const c_accuracy_t C_ACCURACY_APPROXIMATE = static_cast<c_accuracy_t>(
-    facebook::logdevice::FindKeyAccuracy::APPROXIMATE);
-
 // ----------------------------------------------------------------------------
 // callbacks
 
@@ -342,7 +335,7 @@ HsInt ld_client_trim(logdevice_client_t* client, c_logid_t logid, c_lsn_t lsn,
                      HsStablePtr mvar, HsInt cap, c_error_code_t* st_out);
 
 HsInt ld_client_find_time(logdevice_client_t* client, c_logid_t logid,
-                          c_timestamp_t timestamp, c_accuracy_t accuracy,
+                          c_timestamp_t timestamp, HsInt accuracy,
                           HsStablePtr mvar, HsInt cap, c_error_code_t* st_out,
                           c_lsn_t* lsn_out);
 

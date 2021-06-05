@@ -18,6 +18,7 @@ module HStream.Store.Internal.LogDevice
   ) where
 
 import           Control.Monad
+import           Data.Int
 import           Data.Primitive
 import           Data.Word
 import           Foreign.ForeignPtr
@@ -166,9 +167,9 @@ trim client logid lsn =
 findTime :: HasCallStack => LDClient
   -> C_LogID
   -- ^ ID of log to query
-  -> C_Timestamp
-  -- ^ select the oldest record in this log whose timestamp is
-  -- greater or equal to _ts_.
+  -> Int64
+  -- ^ timestamp in milliseconds, select the oldest record in this log whose
+  -- timestamp is greater or equal to this.
   -> FindKeyAccuracy
   -- ^ Accuracy option specify how accurate the result of
   -- findTime has to be. It allows to choose best
@@ -177,7 +178,7 @@ findTime :: HasCallStack => LDClient
 findTime client logid ts accuracy =
   withForeignPtr client $ \client' -> do
     (errno, lsn, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode) LSN_INVALID
-      (c_ld_client_find_time client' logid ts $ toCAccuracy accuracy) E.throwSubmitIfNotOK
+      (c_ld_client_find_time client' logid ts $ unFindKeyAccuracy accuracy) E.throwSubmitIfNotOK
     void $ E.throwStreamErrorIfNotOK' errno
     return lsn
 
@@ -214,8 +215,8 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
 foreign import ccall unsafe "hs_logdevice.h ld_client_find_time"
   c_ld_client_find_time :: Ptr LogDeviceClient
                         -> C_LogID
-                        -> C_Timestamp
-                        -> C_ACCURACY
+                        -> Int64
+                        -> Int
                         -> StablePtr PrimMVar -> Int
                         -> MBA# ErrorCode
                         -> MBA# LSN
