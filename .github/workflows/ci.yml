@@ -61,6 +61,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-v1
 
+      # We remove these caches because there is an unknown reason that will cause ci to fail without any error message.
+      - name: remove all Z related builds
+        run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
+
       - name: build
         run: |
           python3 script/dev-tools cluster-start
@@ -85,6 +89,9 @@ jobs:
             python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
           done
 
+      - name: remove all Z related builds
+        run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
+
       # TODO
       #- name: haddock
-      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock --enable-tests --enable-benchmarks all
+      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock haddock --enable-documentation --haddock-for-hackage all
