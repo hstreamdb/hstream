@@ -654,17 +654,17 @@ pattern FB_STATUS_WARNING = (#const static_cast<int>(fb_status::WARNING))
 
 -------------------------------------------------------------------------------
 
-type C_ACCURACY = CInt
+pattern C_ACCURACY_STRICT :: Int
+pattern C_ACCURACY_STRICT = (#const static_cast<HsInt>(facebook::logdevice::FindKeyAccuracy::STRICT))
 
-c_accuracy_strict :: C_ACCURACY
-c_accuracy_strict = (#const C_ACCURACY_STRICT)
-c_accuracy_approximate :: C_ACCURACY
-c_accuracy_approximate = (#const C_ACCURACY_APPROXIMATE)
+pattern C_ACCURACY_APPROXIMATE :: Int
+pattern C_ACCURACY_APPROXIMATE = (#const static_cast<HsInt>(facebook::logdevice::FindKeyAccuracy::APPROXIMATE))
 
 data FindKeyAccuracy
   = FindKeyStrict
   | FindKeyApproximate
+  deriving (Show)
 
-toCAccuracy :: FindKeyAccuracy -> C_ACCURACY
-toCAccuracy FindKeyStrict = c_accuracy_strict
-toCAccuracy FindKeyApproximate = c_accuracy_approximate
+unFindKeyAccuracy :: FindKeyAccuracy -> Int
+unFindKeyAccuracy FindKeyStrict = C_ACCURACY_STRICT
+unFindKeyAccuracy FindKeyApproximate = C_ACCURACY_APPROXIMATE
