@@ -2,10 +2,12 @@ module HStream.Store.Admin.Types where
 
 import           Control.Monad
 import           Data.Int
+import qualified Data.Map.Strict         as Map
 import           Data.Text               (Text)
 import           Options.Applicative
 import qualified Text.Read               as Read
-import           Z.Data.CBytes           (CBytes)
+import           Z.Data.ASCII            (c2w)
+import           Z.Data.CBytes           (CBytes, fromBytes)
 import qualified Z.Data.Parser           as P
 import           Z.Data.Vector           (Bytes)
 import qualified Z.Data.Vector           as V
@@ -256,24 +258,90 @@ data LogsConfigCmd
   = InfoCmd S.C_LogID
   | ShowCmd
   | RenameCmd CBytes CBytes Bool
+  | CreateCmd CreateLogsOpts
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
-logsConfigCmdParser = hsubparser
-    (command "info"
-     (info (InfoCmd <$> logIDParser)
-       (progDesc "Get current attributes of the tail/head of the log"))
-  <> command "show"
-     (info (pure ShowCmd)
-      (progDesc "Print the full logsconfig for this tier "))
-  <> command "rename"
-     (info (RenameCmd <$> strOption (long "old-name" <> metavar "PATH")
-                      <*> strOption (long "new-name" <> metavar "PATH")
-                      <*> flag True False (long "warning"))
-        (progDesc "Renames a path in logs config to a new path")))
+logsConfigCmdParser = hsubparser $
+    command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
+ <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier "))
+ <> command "create" (info (CreateCmd <$> createLogsParser)
+                           (progDesc ("Creates a log group under a specific directory"
+                                   <> " path in the LogsConfig tree. This only works"
+                                   <> " if the tier has LogsConfigManager enabled."))
+                     )
+ <> command "rename" (info (RenameCmd <$> strOption (long "old-name" <> metavar "PATH")
+                                      <*> strOption (long "new-name" <> metavar "PATH")
+                                      <*> flag True False (long "warning"))
+                           (progDesc "Renames a path in logs config to a new path"))
 
 logIDParser :: Parser S.C_LogID
 logIDParser = option auto (long "id")
+
+parseLogExtraAttr :: ReadM (CBytes, CBytes)
+parseLogExtraAttr = eitherReader $ parse . V.packASCII
+  where
+    parse :: Bytes -> Either String (CBytes, CBytes)
+    parse bs =
+      case P.parse' parser bs of
+        Left er -> Left $ "cannot parse value: " <> show er
+        Right i -> Right i
+    parser = do
+      P.skipSpaces
+      n <- P.takeTill (== c2w ':')
+      P.char8 ':'
+      s <- P.takeRemaining
+      P.skipSpaces
+      return (fromBytes n, fromBytes s)
+
+logsAttrsParser :: Parser S.HsLogAttrs
+logsAttrsParser = S.HsLogAttrs
+  <$> option auto ( long "replication-factor"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 3
+                 -- TODO: fix here if `replicate_across` field added
+                 <> help "Number of nodes on which to persist a record. Default number is 3"
+                  )
+  <*> fmap Map.fromList (many (option parseLogExtraAttr ( long "extra-attributes"
+                                                       <> metavar "STRING:STRING"
+                                                       <> help "Arbitrary fields that logdevice does not recognize."
+                                                        )
+                              ))
+
+data CreateLogsOpts = CreateLogsOpts
+  { path           :: CBytes
+  , fromId         :: Maybe S.C_LogID
+  , toId           :: Maybe S.C_LogID
+  , isDirectory    :: Bool
+  -- TODO
+  -- , showVersion    :: Bool
+  , logsAttributes :: S.HsLogAttrs
+  } deriving (Show)
+
+createLogsParser :: Parser CreateLogsOpts
+createLogsParser = CreateLogsOpts
+  <$> strOption ( long "path"
+               <> metavar "STRING"
+               <> help "Path of the log group to be created."
+                )
+  <*> optional (option auto ( long "from"
+                           <> metavar "INT"
+                           <> help "The beginning of the logid range"
+                            ))
+  <*> optional (option auto ( long "to"
+                           <> metavar "INT"
+                           <> help "The end of the logid range"
+                            ))
+  <*> switch ( long "directory"
+            <> help "Whether we should create a directory instead"
+             )
+  -- TODO
+  -- <*> flag True False ( long "no-show-version"
+  --                    <> help ("Should we show the version of the config tree after "
+  --                    <> "the operation or not.")
+  --                     )
+  <*> logsAttrsParser
 
 -------------------------------------------------------------------------------
 

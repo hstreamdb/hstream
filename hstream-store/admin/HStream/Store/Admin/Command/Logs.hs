@@ -6,6 +6,7 @@ import           Control.Monad                    (unless, when)
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromJust, isJust, isNothing)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes, unpack)
 import           Z.IO.Time                        (SystemTime (..),
@@ -19,8 +20,9 @@ import qualified HStream.Store.Internal.LogDevice as S
 
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()
 runLogsCmd conf (InfoCmd logid)          = runLogsInfo conf logid
-runLogsCmd conf ShowCmd                  = error "not implemented yet"
+runLogsCmd conf (CreateCmd createOpt)    = createLogs conf createOpt
 runLogsCmd conf (RenameCmd old new warn) = runLogsRename conf old new warn
+runLogsCmd conf ShowCmd                  = error "not implemented yet"
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
@@ -67,3 +69,19 @@ runLogsRename conf old new warn = do
   where
     comparePath x y = getPath x == getPath y
     getPath x = if '/' `elem` unpack x then dropWhile (/= '/') . reverse . unpack $ x else ""
+
+createLogs :: HeaderConfig AdminAPI -> CreateLogsOpts -> IO ()
+createLogs conf CreateLogsOpts{..} = do
+  when (isDirectory && (isJust fromId || isJust toId)) $ errorWithoutStackTrace
+    "Cannot create a directory and set from/to log range at same time."
+  when (not isDirectory && (isNothing fromId || isNothing toId)) $ errorWithoutStackTrace $
+    "If you are trying to create log-groups, use --from and --to, " <>
+    "otherwise use --directory to create a directory."
+
+  withResource (buildLDClientRes conf Map.empty) $ \client -> do
+    let attrs = S.LogAttrs logsAttributes
+    if isDirectory
+       then S.makeLogDirectory client path attrs True >> putStrLn "Create log directory successfully!" >> return ()
+       else let start = fromJust fromId
+                end = fromJust toId
+             in S.makeLogGroup client path start end attrs True >> putStrLn "Create log group successfully!" >> return ()
