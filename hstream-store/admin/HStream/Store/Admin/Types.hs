@@ -5,6 +5,8 @@ import           Data.Int
 import           Data.Text               (Text)
 import           Options.Applicative
 import qualified Text.Read               as Read
+import           Z.Data.ASCII
+import           Z.Data.CBytes           (CBytes, fromBytes)
 import qualified Z.Data.Parser           as P
 import           Z.Data.Vector           (Bytes)
 import qualified Z.Data.Vector           as V
@@ -254,15 +256,96 @@ configCmdParser = hsubparser
 data LogsConfigCmd
   = InfoCmd S.C_LogID
   | ShowCmd
+  | CreateCmd CreateLogsOpts
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
 logsConfigCmdParser = hsubparser
   ( command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
- <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier ")))
+ <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier "))
+ <> command "create" (info (CreateCmd <$> createLogsParser) (progDesc ("Creates a log group under a specific directory"
+    <> " path in the LogsConfig tree. This only works if the tier has LogsConfigManager enabled.")))
+  )
 
 logIDParser :: Parser S.C_LogID
 logIDParser = option auto (long "id")
+
+newtype LogsExtraAttributesPair = LogsExtraAttributesPair
+  { unLogsExtraAttributesPair :: (CBytes, CBytes) }
+  deriving (Show)
+
+parseLogsExtraAttributesPair :: ReadM LogsExtraAttributesPair
+parseLogsExtraAttributesPair = eitherReader $ parse . V.packASCII
+  where
+    parse :: Bytes -> Either String LogsExtraAttributesPair
+    parse bs =
+      case P.parse' parser bs of
+        Left er -> Left $ "cannot parse value: " <> show er
+        Right i -> Right i
+    parser = do
+      P.skipSpaces
+      n <- P.takeTill (== c2w(':'))
+      P.char8 ':'
+      s <- P.takeRemaining
+      P.skipSpaces
+      return $ LogsExtraAttributesPair (fromBytes n, fromBytes s)
+
+data LogsAttributes = LogsAttributes
+  { replicationFactor :: Int
+  , extraAttributes   :: [LogsExtraAttributesPair]
+  } deriving (Show)
+
+logsAttrsParser :: Parser LogsAttributes
+logsAttrsParser = LogsAttributes
+  <$> option auto ( long "replication-factor"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 3
+                 -- TODO: fix here if `replicate_across` field added
+                 <> help "Number of nodes on which to persist a record. Default number is 3"
+                  )
+  <*> many (option parseLogsExtraAttributesPair ( long "extra-attributes"
+                                               <> metavar "STRING:STRING"
+                                               <> help "Arbitrary fields that logdevice does not recognize."
+                                                ))
+
+data CreateLogsOpts = CreateLogsOpts
+  { path           :: CBytes
+  , fromId         :: Maybe S.C_LogID
+  , toId           :: Maybe S.C_LogID
+  , isDirectory    :: Bool
+  , showVersion    :: Bool
+  , logsAttributes :: Maybe LogsAttributes
+  } deriving (Show)
+
+createLogsParser :: Parser CreateLogsOpts
+createLogsParser = CreateLogsOpts
+  <$> strOption ( long "path"
+               <> metavar "STRING"
+               <> help "Path of the log group to be created."
+                )
+  <*> optional (option auto ( long "from"
+                           <> metavar "INT"
+                           <> help "The beginning of the logid range"
+                            ))
+  <*> optional (option auto ( long "to"
+                           <> metavar "INT"
+                           <> help "The end of the logid range"
+                            ))
+  <*> option auto ( long "directory"
+                 <> metavar "BOOL"
+                 <> showDefault
+                 <> value False
+                 <> help "Whether we should create a directory instead"
+                  )
+  <*> option auto ( long "show-version"
+                 <> metavar "BOOL"
+                 <> showDefault
+                 <> value False
+                 <> help ("Should we show the version of the config tree after "
+                       <> "the operation or not.")
+                  )
+  <*> optional logsAttrsParser
 
 -------------------------------------------------------------------------------
 
