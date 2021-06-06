@@ -26,14 +26,14 @@ source-repository head
 
 library
   build-depends:
-    , base
     , aeson
+    , base
+    , containers
+    , hstream-server
+    , hstream-sql
     , text
     , unordered-containers
     , vector
-    , hstream-server
-    , hstream-sql
-    , containers
 
   default-language: Haskell2010
   exposed-modules:  HStream.Format
@@ -45,6 +45,7 @@ executable hstream-client
     , base
     , bytestring
     , grpc-haskell
+    , grpc-haskell-core
     , haskeline
     , hstream
     , hstream-server
@@ -53,7 +54,6 @@ executable hstream-client
     , random
     , raw-strings-qq
     , text
-    , grpc-haskell-core
     , unix
 
   default-language: Haskell2010
@@ -71,9 +71,9 @@ test-suite hstream-test
     , base                >=4.11 && <5
     , hspec
     , hstream-processing
+    , hstream-server
     , hstream-sql
     , hstream-store
-    , hstream-server
     , random              ^>=1.2
     , rio
     , scientific
