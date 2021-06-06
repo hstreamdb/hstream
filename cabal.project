@@ -1,6 +1,5 @@
 packages:
   hstream
-  hstream-hesp
   hstream-store
   hstream-store/admin/hstore-admin.cabal
   hstream-processing
