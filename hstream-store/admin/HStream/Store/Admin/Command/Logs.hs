@@ -1,9 +1,13 @@
+{-# LANGUAGE OverloadedStrings #-}
 module HStream.Store.Admin.Command.Logs
   ( runLogsCmd
   ) where
+import           Control.Monad                    (unless, when)
 import           Data.Bits                        (shiftR, (.&.))
+import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
 import           System.IO.Unsafe                 (unsafePerformIO)
+import           Z.Data.CBytes                    (CBytes, unpack)
 import           Z.IO.Time                        (SystemTime (..),
                                                    formatSystemTime,
                                                    simpleDateFormat)
@@ -14,8 +18,9 @@ import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
 
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()
-runLogsCmd conf (InfoCmd logid) = runLogsInfo conf logid
-runLogsCmd conf ShowCmd         = error "not implemented yet"
+runLogsCmd conf (InfoCmd logid)          = runLogsInfo conf logid
+runLogsCmd conf ShowCmd                  = error "not implemented yet"
+runLogsCmd conf (RenameCmd old new warn) = runLogsRename conf old new warn
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
@@ -48,3 +53,17 @@ runLogsInfo conf logid = do
     prettyPrintTimeStamp ts = unsafePerformIO $ do
       time <- formatSystemTime simpleDateFormat (MkSystemTime (ts `div` 1000) 0)
       return $ show ts ++ " -> " ++ show time
+
+runLogsRename :: HeaderConfig AdminAPI -> CBytes -> CBytes -> Bool -> IO ()
+runLogsRename conf old new warn = do
+  c <- if warn then putStrLn "Are you sure you want to rename? [y/n]" >> getChar else return 'Y'
+  when (toUpper c == 'Y') $ do
+    unless (comparePath old new) $ error "You can only rename node, but not move node"
+    let client' = buildLDClientRes conf Map.empty
+    withResource client' $ \client -> do
+      version <- S.renameLogGroup client old new
+      putStr . unpack $ "Path \'" <> old <> "\' has been renamed to \'" <> new <> "\' in version "
+      print version
+  where
+    comparePath x y = getPath x == getPath y
+    getPath x = if '/' `elem` unpack x then dropWhile (/= '/') . reverse . unpack $ x else ""

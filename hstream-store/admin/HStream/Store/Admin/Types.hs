@@ -5,6 +5,7 @@ import           Data.Int
 import           Data.Text               (Text)
 import           Options.Applicative
 import qualified Text.Read               as Read
+import           Z.Data.CBytes           (CBytes)
 import qualified Z.Data.Parser           as P
 import           Z.Data.Vector           (Bytes)
 import qualified Z.Data.Vector           as V
@@ -72,7 +73,7 @@ statusParser = StatusOpts
                  <> help "Possible output formats"
                   )
   <*> switch ( long "force"
-            <> help "Sets the force flag in the Admin API call"
+            <> help "Sets the force in the Admin API call"
              )
   <*> simpleNodesFilterParser
   <*> strOption ( long "sort"
@@ -254,12 +255,22 @@ configCmdParser = hsubparser
 data LogsConfigCmd
   = InfoCmd S.C_LogID
   | ShowCmd
+  | RenameCmd CBytes CBytes Bool
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
 logsConfigCmdParser = hsubparser
-  ( command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
- <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier ")))
+    (command "info"
+     (info (InfoCmd <$> logIDParser)
+       (progDesc "Get current attributes of the tail/head of the log"))
+  <> command "show"
+     (info (pure ShowCmd)
+      (progDesc "Print the full logsconfig for this tier "))
+  <> command "rename"
+     (info (RenameCmd <$> strOption (long "old-name" <> metavar "PATH")
+                      <*> strOption (long "new-name" <> metavar "PATH")
+                      <*> flag True False (long "warning"))
+        (progDesc "Renames a path in logs config to a new path")))
 
 logIDParser :: Parser S.C_LogID
 logIDParser = option auto (long "id")

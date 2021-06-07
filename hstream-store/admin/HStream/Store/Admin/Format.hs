@@ -5,7 +5,6 @@ module HStream.Store.Admin.Format
 import           Data.Default      (def)
 import qualified Text.Layout.Table as Table
 
-
 simpleShowTable :: [(String, Int, Table.Position Table.H)] -> [[String]] -> String
 simpleShowTable _ [] = ""
 simpleShowTable colconfs rols =
