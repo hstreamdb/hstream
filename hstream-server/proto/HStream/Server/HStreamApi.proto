@@ -12,6 +12,18 @@ service HStreamApi {
   // for execute any sql stmt except push query,
   // e.g., insert, create, show/list, select(without emit changes) ...
   rpc ExecuteQuery(CommandQuery) returns (CommandQueryResponse);
+
+  // TODO
+  // rpc Append(AppendRequest) returns (AppendResponse) {}
+
+  // rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
+
+  // rpc Fetch(FetchRequest) returns (FetchResponse) {}
+
+  // rpc CommitOffset(CommitOffsetRequest) returns (CommitOffsetResponse) {}
+
+  // rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
+
 }
 
 message CommandStreamTask{
@@ -52,4 +64,93 @@ message CommandQueryResultSet {
 }
 
 message CommandSuccess {
+}
+
+// add more error
+enum HStreamServerError {
+  NoError = 0;
+  UnknownError = 1; 
+}
+
+message AppendRequest {
+  repeated AppendSingleRequest requests = 1;
+}
+
+message AppendResponse {
+  repeated AppendSingleResponse responses = 1;
+}
+
+message AppendSingleRequest {
+  string streamName = 1;
+  bytes payload = 2;
+}
+
+message AppendSingleResponse {
+  string streamName = 1;
+  HStreamServerError error = 2;
+}
+
+message SubscribeRequest {
+  string subscriptionId = 1;
+  repeated StreamSubscription subscriptions = 2;
+}
+
+message SubscribeResponse {
+  string subscriptionId = 1;
+  HStreamServerError error = 2;
+}
+
+message StreamSubscription {
+  string streamName = 1;
+  uint64 startOffset = 2;
+}
+
+message FetchRequest {
+  string subscriptionId = 1; 
+}
+
+message FetchResponse {
+  repeated FetchedRecord records = 1;
+}
+
+message FetchedRecord {
+  string streamName = 1;
+  repeated bytes records = 2;
+}
+
+message CommitOffsetRequest {
+  string subscriptionId = 1;
+  repeated StreamOffset streamOffsets = 2;
+}
+
+message StreamOffset {
+  string streamName = 1;
+  uint64 offset = 2;
+}
+
+message CommitOffsetResponse {
+  repeated StreamCommitOffsetResponse responses = 1; 
+}
+
+message StreamCommitOffsetResponse {
+  string streamName = 1; 
+  HStreamServerError error = 2;
+}
+
+message CreateStreamsRequest {
+  repeated CreateStreamRequest requests = 1;
+}
+
+message CreateStreamRequest {
+  string streamName = 1;
+  uint32 replicationFactor = 2;
+}
+
+message CreateStreamsResponse {
+  repeated CreateStreamResponse responses = 1;
+}
+
+message CreateStreamResponse {
+  string streamName = 1;
+  HStreamServerError error = 2;
 }
