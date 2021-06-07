@@ -42,3 +42,4 @@ constraints:
   , Z-Data == 0.8.2.0
   , proto3-suite == 0.4.1
   , proto3-wire == 1.2.1
+  , Z-Data +no_avx
