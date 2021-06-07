@@ -89,8 +89,8 @@ jobs:
             python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
           done
 
-      - name: remove all Z related builds
-        run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
+      #- name: remove all Z related builds
+          #run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
 
       # TODO
       #- name: haddock
