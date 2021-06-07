@@ -30,7 +30,7 @@ executable hstore-admin
   build-depends:
     , base                  >=4.13    && <5
     , hstore-admin
-    , network               ^>=3.1.1
+    , network               ^>=3.1.0
     , optparse-applicative  ^>=0.16
     , text                  ^>=1.2.3.0
     , Z-IO
@@ -105,7 +105,7 @@ library
     , fb-util
     , hashable              >=1.2.7.0  && <1.4
     , hstream-store
-    , network               ^>=3.1.1
+    , network               ^>=3.1.0
     , hstream-store
     , optparse-applicative  ^>=0.16
     , STMonadTrans

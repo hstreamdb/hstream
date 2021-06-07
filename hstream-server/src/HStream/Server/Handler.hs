@@ -14,6 +14,7 @@ import           Control.Exception                  (SomeException, catch, try)
 import           Control.Monad                      (when)
 import qualified Data.Aeson                         as Aeson
 import qualified Data.ByteString                    as B
+import qualified Data.ByteString.Char8              as C
 import qualified Data.ByteString.Lazy               as BL
 import qualified Data.HashMap.Strict                as HM
 import qualified Data.List                          as L
@@ -25,6 +26,8 @@ import           Data.String                        (fromString)
 import qualified Data.Text                          as T
 import qualified Data.Text.Lazy                     as TL
 import qualified Data.Vector                        as V
+import           Database.ClickHouseDriver.Client
+import           Database.ClickHouseDriver.Types
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor       (TaskBuilder, getTaskName,
                                                      runTask)
@@ -38,24 +41,22 @@ import           HStream.Server.Persistence
 import           HStream.Server.Utils
 import           HStream.Store
 import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
-                                                    OpRecvResult (OpRecvCloseOnServerResult),
-                                                    runOps)
-import           RIO                               (logOptionsHandle, stderr,
-                                                    withLogFunc, async, forever, forM_)
-import           System.IO.Unsafe                  (unsafePerformIO)
-import           System.Random                     (newStdGen, randomRs)
+import           Network.GRPC.LowLevel.Op           (Op (OpRecvCloseOnServer),
+                                                     OpRecvResult (OpRecvCloseOnServerResult),
+                                                     runOps)
+import           RIO                                (async, forM_, forever,
+                                                     logOptionsHandle, stderr,
+                                                     withLogFunc)
+import           System.IO.Unsafe                   (unsafePerformIO)
+import           System.Random                      (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Struct
-import qualified Z.Data.CBytes                     as CB
-import qualified Z.Data.JSON                       as ZJ
-import qualified Z.Data.Text                       as ZT
-import qualified Z.Data.Vector                     as ZV
-import           Z.IO.Time                         (SystemTime (..),
-                                                    getSystemTime')
+import qualified Z.Data.CBytes                      as CB
+import qualified Z.Data.JSON                        as ZJ
+import qualified Z.Data.Text                        as ZT
+import qualified Z.Data.Vector                      as ZV
+import           Z.IO.Time                          (SystemTime (..),
+                                                     getSystemTime')
 import           ZooKeeper.Types
-import qualified Data.ByteString.Char8              as C
-import           Database.ClickHouseDriver.Client
-import           Database.ClickHouseDriver.Types
 
 import           HStream.SQL.AST
 import           HStream.Server.ClickHouseConnector
@@ -252,7 +253,7 @@ executePushQueryHandler ServerContext{..}
             -- create persistent query
             MkSystemTime timestamp _ <- getSystemTime'
             let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
-                qinfo = QueryInfo (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
+                qinfo = HStream.Server.Persistence.QueryInfo (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
             catchZkException (insertQuery zkHandle qid qinfo) "Failed to record query"
             -- run task
             tid <- forkIO $ catchZkException (setStatus zkHandle qid QRunning) "Failed to change query status"
