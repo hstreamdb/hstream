@@ -73,6 +73,8 @@ test-suite hstream-test
   build-depends:
     , aeson
     , base                >=4.11 && <5
+    , bytestring
+    , clickhouse-haskell
     , hspec
     , hstream-processing
     , hstream-server

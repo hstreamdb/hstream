@@ -340,6 +340,11 @@ data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
   } deriving (Eq, Show)
 
+-- Example:
+-- "type"="clickhouse",
+-- "connection.url"="localhost:5432/my.db",
+-- "mode"="bulk",
+-- "stream"="demo"
 data RConnectorOptions = RConnectorOptions [(Text, Constant)]
   deriving (Eq, Show)
 
