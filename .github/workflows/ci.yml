@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: CPU info
+        run: |
+            sudo apt-get install cpuid
+            cpuid
+
       - id: parser
         run: |
           pkgcabal="hstream/hstream.cabal"
