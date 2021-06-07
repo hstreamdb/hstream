@@ -53,9 +53,6 @@ library
     , rio
     , template-haskell
     , time
-    , aeson
-    , random
-    , text
 
   -- hstream-store
   default-language: Haskell2010
