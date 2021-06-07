@@ -16,8 +16,10 @@ module HStream.Server.Utils
   , cbytesToValue
   , listToStruct
   , structToStruct
+  , getKeyWordFromException
   ) where
 
+import           Control.Exception                 (Exception (..))
 import qualified Data.Aeson                        as Aeson
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.Map                          as M
@@ -119,3 +121,6 @@ structToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindStr
 
 cbytesToValue :: ZCB.CBytes -> Value
 cbytesToValue = Value . Just . ValueKindStringValue . TL.fromStrict . cbytesToText
+
+getKeyWordFromException :: Exception a => a -> TL.Text
+getKeyWordFromException =  TL.pack . takeWhile (/='{') . show

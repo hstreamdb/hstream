@@ -119,7 +119,6 @@ app clientConfig = do
                   Left (e :: SomeSQLException) -> liftIO . putStrLn . formatSomeSQLException $ e
                   Right rsql                -> case rsql of
                     RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
-                    RQShow   _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
                     _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
               [] -> return ()
             loop
@@ -140,7 +139,7 @@ sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
               Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
               Right (Just result) -> do
                 width <- getTerminalSize
-                putStrLn $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
+                putStr $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
                 go
       in go
 
@@ -151,7 +150,8 @@ sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
   case resp of
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details -> do
-      putStrLn $ formatCommandQueryResponse x
+      width <- getTerminalSize
+      putStr $ formatCommandQueryResponse (case width of Nothing -> 80; Just (_, w) -> w) x
     ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a

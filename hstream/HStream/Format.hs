@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 module HStream.Format where
@@ -31,6 +32,7 @@ formatResult width struct@(P.Struct kv) =
    --   unlines $ map (TL.unpack . toLazyText . encodePrettyToTextBuilder' defConfig {confIndent = Spaces 1} . valueToJsonValue) $ V.toList xs
     [("SELECT", Just (P.Value (Just (P.ValueKindStructValue struct))))] ->
       renderJSONObjectToTable width $ structToJsonObject struct
+    [("Error Message:", Just v)] ->"Error Message: " ++  formatValue v ++ "\n"
     x -> show x
 
 formatSomeSQLException :: E.SomeSQLException -> String
@@ -49,12 +51,12 @@ formatParseExceptionInfo E.SomeSQLExceptionInfo{..} =
       Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"
       Nothing    -> ""
 
-formatCommandQueryResponse :: HA.CommandQueryResponse -> String
-formatCommandQueryResponse (HA.CommandQueryResponse (Just x)) = case x of
+formatCommandQueryResponse :: Width -> HA.CommandQueryResponse -> String
+formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
   HA.CommandQueryResponseKindSuccess _ ->
-    "Command successfully executed."
-  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet y) ->
-    (unlines . map ( (++ ".") .formatStruct) . V.toList) y
+    "Command successfully executed.\n"
+  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet [y]) ->
+    formatResult w y
 
 --------------------------------------------------------------------------------
 
@@ -80,10 +82,10 @@ renderJSONObjectToTable :: Width -> A.Object -> String
 renderJSONObjectToTable w os = renderJSONObjectsToTable w [os]
 
 renderJSONObjectsToTable :: Width -> [A.Object] -> String
-renderJSONObjectsToTable _ [] = ""
+renderJSONObjectsToTable _ [] = "\n"
 renderJSONObjectsToTable l os@(o:_) =
-  tableString colout unicodeRoundS (titlesH keys) $
-  map (colsAllG center . renderContents (l `div` (size + 2))) elems
+  tableString colout unicodeRoundS (titlesH keys)
+  (map (colsAllG center . renderContents (l `div` (size + 2))) elems) ++ "\n"
   where
     keys  = map T.unpack (HM.keys o)
     elems = map HM.elems os
