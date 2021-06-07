@@ -158,12 +158,12 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                           let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
                           let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
                           let cli = clickHouseSinkConnector $ createClient ConnParams{
-                              username'     = username
-                              ,host'        = host
-                              ,port'        = port
-                              ,password'    = password
-                              ,compression' = False
-                              ,database'    = database
+                            username'     = username
+                            ,host'        = host
+                            ,port'        = port
+                            ,password'    = password
+                            ,compression' = False
+                            ,database'    = database
                           }
                           Right cli
                         _ -> Left "unsupported sink connector type"
