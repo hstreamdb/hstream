@@ -56,7 +56,7 @@ def is_cluster_started(container_bin):
     return False
 
 
-def cluster_start(image, data_dir, container_bin, retries=20):
+def cluster_start(image, data_dir, container_bin, retries=60):
     if is_cluster_started(container_bin):
         return logerr("Already started!")
 
