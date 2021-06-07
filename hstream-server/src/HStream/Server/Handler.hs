@@ -9,7 +9,6 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-
 import           Control.Exception                  (SomeException, catch, try)
 import           Control.Monad                      (when)
 import qualified Data.Aeson                         as Aeson
@@ -92,13 +91,15 @@ genErrorStruct =
   Struct . Map.singleton "Error Message:" . Just . Value . Just . ValueKindStringValue
 
 genErrorQueryResponse :: TL.Text -> CommandQueryResponse
-genErrorQueryResponse = CommandQueryResponse .
-  Just . CommandQueryResponseKindResultSet . CommandQueryResultSet .
-  V.singleton . genErrorStruct
+genErrorQueryResponse = genQueryResultResponse . V.singleton . genErrorStruct
 
 genSuccessQueryResponse :: CommandQueryResponse
 genSuccessQueryResponse = CommandQueryResponse $
   Just . CommandQueryResponseKindSuccess $ CommandSuccess
+
+genQueryResultResponse :: V.Vector Struct -> CommandQueryResponse
+genQueryResultResponse = CommandQueryResponse .
+  Just . CommandQueryResponseKindResultSet . CommandQueryResultSet
 
 executeQueryHandler
   :: ServerContext
@@ -107,37 +108,22 @@ executeQueryHandler
 executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = do
   plan' <- try $ streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
-    Left (_ :: SomeSQLException) -> do
-      let resp = genErrorQueryResponse "error on parsing or codegen"
-      return (ServerNormalResponse resp [] StatusUnknown "")
-    Right SelectPlan{}           -> do
-      let resp = genErrorQueryResponse "inconsistent method called"
-      return (ServerNormalResponse resp [] StatusUnknown "")
-    Right ShowPlan{}           -> do
-      let resp = genErrorQueryResponse "inconsistent method called"
-      return (ServerNormalResponse resp [] StatusUnknown "")
+    Left (e :: SomeSQLException) -> returnErrRes ("error on parsing or codegen, " <> getKeyWordFromException e)
+    Right SelectPlan{}           -> returnErrRes "inconsistent method called"
     -- execute plans that can be executed with this method
     Right (CreatePlan stream _repFactor)                     -> do
-      e' <- try $ createStream scLDClient (transToStreamName stream)
-        (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
-      case e' of
-        Left (_ :: SomeException) -> do
-          let resp = genErrorQueryResponse "error when creating stream"
-          return (ServerNormalResponse resp [] StatusUnknown "")
-        Right ()                  -> do
-          let resp = genSuccessQueryResponse
-          return (ServerNormalResponse resp [] StatusOk "")
-    Right (CreateBySelectPlan _sources sink taskBuilder _repFactor) -> do
-      e' <- try $ createStream scLDClient (transToStreamName sink)
-        (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
-      case e' of
-        Left (_ :: SomeException) -> do
-          let resp = genErrorQueryResponse "error when creating stream"
-          return (ServerNormalResponse resp [] StatusUnknown "")
-        Right ()                  -> do
-          _ <- forkIO $ runTaskWrapper taskBuilder scLDClient
-          let resp = genSuccessQueryResponse
-          return (ServerNormalResponse resp [] StatusOk "")
+      try (createStream scLDClient (transToStreamName stream)
+          (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty))
+      >>= \case
+        Left (e :: SomeException) -> returnErrRes ("error when creating stream, " <> getKeyWordFromException e)
+        Right ()                  -> returnOkRes
+    Right (CreateBySelectPlan _sources sink taskBuilder _repFactor) ->
+      try (createStream scLDClient (transToStreamName sink)
+            (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty))
+      >>= \case
+        Left (e :: SomeException) -> returnErrRes ("error when creating stream, " <> getKeyWordFromException e)
+        Right ()                  -> forkIO (runTaskWrapper taskBuilder scLDClient)
+          >> returnOkRes
     Right (CreateConnectorPlan cName (RConnectorOptions cOptions)) -> do
           ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
           let sc = hstoreSourceConnector scLDClient ldreader
@@ -196,40 +182,35 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                   return (ServerNormalResponse resp [] StatusUnknown "")
     Right (InsertPlan stream payload)             -> do
       timestamp <- getCurrentTimestamp
-      e' <-  try $
-        writeRecord
-          (hstoreSinkConnector scLDClient)
-          SinkRecord
-            { snkStream = stream,
-              snkKey = Nothing,
-              snkValue = payload,
-              snkTimestamp = timestamp
-            }
-      case e' of
-        Left (_ :: SomeException) -> do
-          let resp = genErrorQueryResponse "error when inserting msg"
-          return (ServerNormalResponse resp [] StatusUnknown "")
-        Right ()                  -> do
-          let resp = genSuccessQueryResponse
-          return (ServerNormalResponse resp [] StatusOk "")
+      try (writeRecord (hstoreSinkConnector scLDClient)
+          (SinkRecord stream Nothing payload timestamp))
+      >>= \case
+        Left (e :: SomeException) -> returnErrRes ("error when inserting msg, " <> getKeyWordFromException e)
+        Right ()                  -> returnOkRes
     Right (DropPlan checkIfExist stream) -> do
       streamExists <- doesStreamExists scLDClient (transToStreamName stream)
-      if streamExists then do
-        remove' <- try $ removeStream scLDClient (transToStreamName stream)
-        case remove' of
-          Left (_ :: SomeException) -> do
-            let resp = genErrorQueryResponse "error removing stream"
-            return (ServerNormalResponse resp [] StatusUnknown "")
-          Right ()                  -> do
-            let resp = genSuccessQueryResponse
+      if streamExists then try (removeStream scLDClient (transToStreamName stream))
+        >>= \case
+          Left (e :: SomeException) -> returnErrRes ("error removing stream, " <> getKeyWordFromException e)
+          Right ()                  -> returnOkRes
+      else if checkIfExist then returnOkRes
+      else returnErrRes "stream does not exist"
+    Right (ShowPlan showObject) ->
+      case showObject of
+        Streams -> try (findStreams scLDClient True) >>= \case
+          Left (e :: SomeException) -> returnErrRes ("failed to get log names from directory" <> getKeyWordFromException e)
+          Right names -> do
+            let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
             return (ServerNormalResponse resp [] StatusOk "")
-      else do
-        if checkIfExist then do
-          let resp = genSuccessQueryResponse
-          return (ServerNormalResponse resp [] StatusOk  "")
-        else do
-          let resp = genErrorQueryResponse "stream does not exist"
-          return (ServerNormalResponse resp [] StatusUnknown "")
+        Queries -> try (getQueries zkHandle) >>= \case
+          Left (e :: SomeException) -> returnErrRes ("failed to get queries from zookeeper, " <> getKeyWordFromException e)
+          Right queries -> do
+            let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
+            return (ServerNormalResponse resp [] StatusOk "")
+        _ -> returnErrRes "not Supported"
+  where
+    returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
+    returnOkRes    = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
 
 executePushQueryHandler
   :: ServerContext
@@ -248,7 +229,7 @@ executePushQueryHandler ServerContext{..}
         e' <- try $ createStream scLDClient (transToStreamName sink)
           (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         case e' of
-          Left (_ :: SomeException) -> returnRes "error when creating sink stream"
+          Left (_ :: SomeException) -> returnRes "error when creating sink stream."
           Right _                   -> do
             -- create persistent query
             MkSystemTime timestamp _ <- getSystemTime'
@@ -267,26 +248,6 @@ executePushQueryHandler ServerContext{..}
             let sc = hstoreSourceConnector scLDClient ldreader'
             subscribeToStream sc sink Latest
             sendToClient isCancelled sc streamSend
-    Right (ShowPlan showObject) ->
-      case showObject of
-        Streams -> try (findStreams scLDClient True) >>= \case
-          Left (_ :: SomeException) -> returnRes "failed to get log names from directory"
-          Right names ->
-            streamSend (listToStruct "SHOWSTREAMS" $ cbytesToValue . getStreamName <$> L.sort names)
-              >>= \case
-                Left err ->
-                  print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
-                Right _  ->
-                  return (ServerWriterResponse [] StatusOk "names of streams are returned")
-        Queries -> try (getQueries zkHandle) >>= \case
-          Left (_ :: SomeException) -> returnRes "failed to get queries from zookeeper"
-          Right queries -> (streamSend . zJsonObjectToStruct . ZV.pack) [("SHOWQUERIES", ZJ.toValue queries)]
-            >>= \case
-              Left err ->
-                print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
-              Right _  ->
-                return (ServerWriterResponse [] StatusOk "queries are returned")
-        _ -> returnRes "not Supported"
     Right _ -> returnRes "inconsistent method called"
 
 sendToClient :: MVar Bool -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
