@@ -194,7 +194,7 @@ writeCheckpoints reader sns =
     Z.withPrimArrayUnsafe ka $ \ks' len ->
       Z.withPrimArrayUnsafe va $ \vs' _ -> do
         let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_checkpoints reader' ks' vs' (fromIntegral len)
-        retryWhileAgain f 10
+        retryWhileAgain f 20
 
 writeLastCheckpoints :: LDSyncCkpReader -> [C_LogID] -> IO ()
 writeLastCheckpoints reader xs =
@@ -202,7 +202,7 @@ writeLastCheckpoints reader xs =
     let topicIDs = Z.primArrayFromList xs
     Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
       let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_last_read_checkpoints reader' id' (fromIntegral len)
-      retryWhileAgain f 10
+      retryWhileAgain f 20
 
 {-# DEPRECATED writeCheckpointsSync "Don't use these, use writeCheckpoints instead" #-}
 writeCheckpointsSync :: LDSyncCkpReader
