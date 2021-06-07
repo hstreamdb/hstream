@@ -73,7 +73,7 @@ statusParser = StatusOpts
                  <> help "Possible output formats"
                   )
   <*> switch ( long "force"
-            <> help "Sets the force in the Admin API call"
+            <> help "Sets the force flag in the Admin API call"
              )
   <*> simpleNodesFilterParser
   <*> strOption ( long "sort"
