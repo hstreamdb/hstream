@@ -140,7 +140,7 @@ handleCreateConnectorSQL sql = do
                     case cType of
                         "clickhouse" -> do
                           let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                          let host = fromMaybe "host.docker.internal" $ fromCOptionString (lookup "host" cOptions)
+                          let host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
                           let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
                           let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
                           let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
@@ -156,7 +156,7 @@ handleCreateConnectorSQL sql = do
                         _ -> Left "unsupported sink connector"
                 _ -> Left "Invalid type in connector options"
           case sk of
-            Left err -> print err
+            Left err -> error err
             Right sk -> do
               case streamM of
                 Just (ConstantString stream) -> do
@@ -174,8 +174,8 @@ handleCreateConnectorSQL sql = do
                                   snkValue = srcValue,
                                   snkTimestamp = srcTimestamp
                                 }
-                  print $ "subscription started... " ++ stream
-                _ -> print "streamname is nothing..."
+                  return ()
+                _ -> error "streamname is nothing..."
       _ -> error "Execution plan type mismatched"
 
 handleDropStreamSQL :: Text -> IO ()

@@ -22,6 +22,7 @@ import           RIO
 import qualified RIO.Map                          as M
 import qualified Z.Data.CBytes                    as ZCB
 import qualified Z.Data.JSON                      as JSON
+import qualified Z.IO.Logger                      as Log
 
 import           HStream.Processing.Util
 import           HStream.SQL.Codegen
@@ -58,17 +59,15 @@ writeRecordToClickHouse ckClient SinkRecord{..} = do
     conn <- ckClient
     ping conn
     let insertMap = (decode snkValue) :: Maybe (HM.HashMap T.Text Value)
-    print insertMap
     case insertMap of
       Just l -> do
-        let flatterned = flattern l
-        print flatterned
-        print $ HM.keys flatterned
-        let keys = HM.keys flatterned
-        let elems = HM.elems flatterned
+        let flattened = flatten l
+        let keys = HM.keys flattened
+        let elems = HM.elems flattened
         insertOneRow conn ("INSERT INTO " ++ show snkStream ++ " " ++ keysAsSql (map T.unpack keys) ++" VALUES ") (valueToCKType <$> elems)
-      _ -> do return "Invalid SinK Value"
-    return ()
+        return ()
+      _ -> do
+        Log.warning "Invalid SinK Value"
   where
     keysAsSql :: [String] -> String
     keysAsSql ss = '(' : helper' ss

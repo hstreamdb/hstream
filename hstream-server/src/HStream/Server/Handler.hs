@@ -153,7 +153,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                     case cType of
                         "clickhouse" -> do
                           let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                          let host = fromMaybe "host.docker.internal" $ fromCOptionString (lookup "host" cOptions)
+                          let host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
                           let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
                           let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
                           let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
