@@ -67,7 +67,7 @@ updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
       c_update_log_attrs_extras attrs' l ks' vs'
 
 -------------------------------------------------------------------------------
--- LogHeadAttrs
+-- LogHeadAttributes
 
 -- | Return current attributes of the head of the log.
 getLogHeadAttrs :: LDClient -> C_LogID -> IO LDLogHeadAttrs
