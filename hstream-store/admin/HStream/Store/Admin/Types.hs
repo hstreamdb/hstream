@@ -259,12 +259,15 @@ data LogsConfigCmd
   | ShowCmd
   | RenameCmd CBytes CBytes Bool
   | CreateCmd CreateLogsOpts
+  | RemoveCmd RemoveLogsOpts
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
 logsConfigCmdParser = hsubparser $
-    command "info" (info (InfoCmd <$> logIDParser) (progDesc "Get current attributes of the tail/head of the log"))
- <> command "show" (info (pure ShowCmd) (progDesc "Print the full logsconfig for this tier "))
+    command "info" (info (InfoCmd <$> logIDParser)
+                         (progDesc "Get current attributes of the tail/head of the log"))
+ <> command "show" (info (pure ShowCmd)
+                         (progDesc "Print the full logsconfig for this tier "))
  <> command "create" (info (CreateCmd <$> createLogsParser)
                            (progDesc ("Creates a log group under a specific directory"
                                    <> " path in the LogsConfig tree. This only works"
@@ -274,6 +277,28 @@ logsConfigCmdParser = hsubparser $
                                       <*> strOption (long "new-name" <> metavar "PATH")
                                       <*> flag True False (long "warning"))
                            (progDesc "Renames a path in logs config to a new path"))
+ <> command "remove" (info (RemoveCmd <$> removeLogsOptsParser)
+                           (progDesc ("Removes a directory or a log-group under"
+                            <> " a specific directory path in the LogsConfig tree."
+                            <> " This will NOT delete the directory if it is not"
+                            <> " empty by default, you need to use --recursive."))
+                     )
+
+data RemoveLogsOpts = RemoveLogsOpts
+  { rmPath      :: CBytes
+  , rmRecursive :: Bool
+  } deriving (Show)
+
+removeLogsOptsParser :: Parser RemoveLogsOpts
+removeLogsOptsParser = RemoveLogsOpts
+    <$> strOption ( long "path"
+                  <> metavar "PATH"
+                  <> help "Path of the directory to be removed."
+                  )
+    <*> switch ( long "recursive"
+               <> short 'r'
+               <> help "Whether to remove the contents of the directory if it is not empty or not."
+               )
 
 logIDParser :: Parser S.C_LogID
 logIDParser = option auto (long "id")

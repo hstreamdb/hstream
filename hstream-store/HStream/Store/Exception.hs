@@ -234,6 +234,9 @@ module HStream.Store.Exception
   , pattern C_WRITE_STREAM_UNKNOWN
   , pattern C_WRITE_STREAM_BROKEN
   , pattern C_WRITE_STREAM_IGNORED
+
+  -- * Auxiliary functions
+  , isNotFound
   ) where
 
 import           Control.Exception            (Exception (..))
@@ -574,3 +577,6 @@ throwSubmitIfNotOK ret = if ret == 0 then return 0 else throwSubmitError callSta
 throwStoreError :: T.Text -> CallStack -> IO a
 throwStoreError desc stack =
   E.throwIO $ StoreError (SSEInfo "1000" desc stack)
+
+isNotFound :: NOTFOUND -> Bool
+isNotFound = const True

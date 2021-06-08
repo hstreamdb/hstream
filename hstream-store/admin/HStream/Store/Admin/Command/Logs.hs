@@ -2,13 +2,14 @@
 module HStream.Store.Admin.Command.Logs
   ( runLogsCmd
   ) where
-import           Control.Monad                    (unless, when)
+import           Control.Monad                    (guard, unless, when)
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust, isNothing)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes, unpack)
+import           Z.IO.Exception                   (tryJust)
 import           Z.IO.Time                        (SystemTime (..),
                                                    formatSystemTime,
                                                    simpleDateFormat)
@@ -18,11 +19,28 @@ import           HStream.Store.Admin.API
 import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
 
+
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()
 runLogsCmd conf (InfoCmd logid)          = runLogsInfo conf logid
 runLogsCmd conf (CreateCmd createOpt)    = createLogs conf createOpt
 runLogsCmd conf (RenameCmd old new warn) = runLogsRename conf old new warn
+runLogsCmd conf (RemoveCmd removeOpt)    = runLogsRemove conf removeOpt
 runLogsCmd conf ShowCmd                  = error "not implemented yet"
+
+runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
+runLogsRemove conf RemoveLogsOpts{..} = do
+  putStrLn $ "Are you sure you want to rename " <> show rmPath <> "? [y/n]"
+  c <- getChar
+  when (toUpper c == 'Y') $ do
+    let client' = buildLDClientRes conf Map.empty
+    withResource client' $ \client -> do
+      res <- tryJust (guard . S.isNotFound) $ S.removeLogDirectory client rmPath rmRecursive
+      case res of
+        Right version ->
+          putStrLn $ "directory " <> show rmPath <> " has been removed in version " <> show version
+        Left _ -> do
+          version <- S.removeLogGroup client rmPath
+          putStrLn $ "log group " <> show rmPath <> " has been removed in version " <> show version
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
