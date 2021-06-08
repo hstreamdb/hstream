@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE GADTs             #-}
-{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -21,6 +20,7 @@ import           ZooKeeper.Types
 data ServerConfig = ServerConfig
   { _serverHost          :: CBytes
   , _serverPort          :: PortNumber
+  , _persistent          :: Bool
   , _zkHost              :: CBytes
   , _zkPort              :: CBytes
   , _logdeviceConfigPath :: CBytes
@@ -32,14 +32,20 @@ parseConfig =
   ServerConfig
     <$> strOption   (long "host"             <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "server host value")
     <*> option auto (long "port"             <> metavar "INT"  <> showDefault <> value 6570 <> short 'p'            <> help "server port value")
-    <*> strOption   (long "zkhost"           <> metavar "HOST" <> showDefault <> value "0.0.0.0"                    <> help "zookeeper host value")
-    <*> strOption   (long "zkport"           <> metavar "INT"  <> showDefault <> value "2181" <> short 'p'          <> help "zookeeper port value")
+    <*> flag False True (long "persistent"                                                                          <> help "set flag to store queries in zookeeper")
+    <*> strOption   (long "zkhost"           <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "zookeeper host value, only meaningful when persistent flag is set")
+    <*> strOption   (long "zkport"           <> metavar "INT"  <> showDefault <> value "2181"                       <> help "zookeeper port value, only meaningful when persistent flag is set")
     <*> strOption   (long "config-path"      <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
     <*> option auto (long "replicate-factor" <> metavar "INT"  <> showDefault <> value 3 <> short 'f'               <> help "topic replicate factor")
 
 app :: ServerConfig -> IO ()
-app ServerConfig{..} = withResource (defaultHandle (_zkHost <> ":" <> _zkPort)) $ \zk -> do
-  initZooKeeper zk
+app config@ServerConfig{..} = if _persistent
+  then withResource (defaultHandle (_zkHost <> ":" <> _zkPort)) $
+    \zk -> initZooKeeper zk >> app' config (Just zk)
+  else app' config Nothing
+
+app' :: ServerConfig -> Maybe ZHandle ->  IO ()
+app' ServerConfig{..} zk = do
   let options = defaultServiceOptions
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort

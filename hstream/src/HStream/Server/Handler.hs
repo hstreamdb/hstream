@@ -65,12 +65,12 @@ newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 data ServerContext = ServerContext {
     scLDClient               :: LDClient
   , scDefaultStreamRepFactor :: Int
-  , zkHandle                 :: ZHandle
+  , zkHandle                 :: Maybe ZHandle
 }
 
 --------------------------------------------------------------------------------
 
-handlers :: CB.CBytes -> ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
+handlers :: CB.CBytes -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
 handlers logDeviceConfigPath handle = do
   ldclient <- newLDClient logDeviceConfigPath
   let serverContext = ServerContext {
@@ -199,7 +199,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           Right names -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
             return (ServerNormalResponse resp [] StatusOk "")
-        Queries -> try (getQueries zkHandle) >>= \case
+        Queries -> try (withMaybeZHandle zkHandle getQueries) >>= \case
           Left (e :: SomeException) -> returnErrRes ("failed to get queries from zookeeper, " <> getKeyWordFromException e)
           Right queries -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
@@ -232,13 +232,13 @@ executePushQueryHandler ServerContext{..}
             MkSystemTime timestamp _ <- getSystemTime'
             let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
                 qinfo = HStream.Server.Persistence.QueryInfo (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
-            catchZkException (insertQuery zkHandle qid qinfo) "Failed to record query"
+            catchZkException (withMaybeZHandle zkHandle $ insertQuery qid qinfo) "Failed to record query"
             -- run task
-            tid <- forkIO $ catchZkException (setStatus zkHandle qid QRunning) "Failed to change query status"
+            tid <- forkIO $ catchZkException (withMaybeZHandle zkHandle $ setStatus qid QRunning) "Failed to change query status"
               >> runTaskWrapper taskBuilder scLDClient
             isCancelled <- newMVar False
             _ <- forkIO $ handlePushQueryCanceled meta isCancelled
-              (killThread tid >> catchZkException (setStatus zkHandle qid QTerminated) "Failed to change query status")
+              (killThread tid >> catchZkException (withMaybeZHandle zkHandle $ setStatus qid QTerminated) "Failed to change query status")
             ldreader' <- newLDFileCkpReader scLDClient
               (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
               checkpointRootPath 1 Nothing 3

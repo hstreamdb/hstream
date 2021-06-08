@@ -1,6 +1,9 @@
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
+
 module HStream.Server.Persistence
   ( Query(..)
   , QueryInfo(..)
@@ -8,14 +11,17 @@ module HStream.Server.Persistence
   , QStatus(..)
   , queriesPath
   , defaultHandle
-  , insertQuery
-  , setStatus
-  , getQueries
+  , Persistence (..)
   , initializeAncestors
+  , withMaybeZHandle
   ) where
+
 import           Control.Monad       (void)
+import qualified Data.HashMap.Strict as HM
+import           Data.IORef
 import           Data.Int            (Int64)
 import           GHC.Generics        (Generic)
+import           System.IO.Unsafe    (unsafePerformIO)
 import           Z.Data.CBytes       (CBytes (..))
 import           Z.Data.JSON         (JSON, decode, encode)
 import           Z.Data.Text         (Text)
@@ -58,26 +64,54 @@ instance JSON QStatus
 queriesPath :: CBytes
 queriesPath = "/hstreamdb/hstream/queries"
 
+class Persistence handle where
+  insertQuery :: HasCallStack => QueryId -> QueryInfo -> handle -> IO ()
+  setStatus   :: HasCallStack => QueryId -> QStatus -> handle -> IO ()
+  getQueries  :: HasCallStack => handle -> IO [Query]
+
+withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
+withMaybeZHandle (Just zk) f = f zk
+withMaybeZHandle Nothing   f = f queryCollection
+
+--------------------------------------------------------------------------------
+
+type QueriesM = IORef (HM.HashMap CBytes Query)
+
+queryCollection :: QueriesM
+queryCollection = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE queryCollection #-}
+
+instance Persistence QueriesM where
+  insertQuery qid info ref = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    modifyIORef ref $ HM.insert (mkPath qid) $ Query qid info (QueryStatus QCreated timestamp)
+
+  setStatus qid status ref = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    let f s query = query {_QueryStatus = QueryStatus s timestamp}
+    modifyIORef ref $ HM.adjust (f status) (mkPath qid)
+
+  getQueries = (HM.elems <$>) . readIORef
+
+--------------------------------------------------------------------------------
 defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
 defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
-insertQuery :: HasCallStack => ZHandle -> QueryId -> QueryInfo -> IO ()
-insertQuery zk qid info@(QueryInfo _ timestamp) = do
-  createPath   zk (mkPath qid)
-  createInsert zk (mkPath qid <> "/details") (encode info)
-  createInsert zk (mkPath qid <> "/status")  (encode $ QueryStatus QCreated timestamp)
+instance Persistence ZHandle where
+  insertQuery qid info@(QueryInfo _ timestamp) zk = do
+    createPath   zk (mkPath qid)
+    createInsert zk (mkPath qid <> "/details") (encode info)
+    createInsert zk (mkPath qid <> "/status")  (encode $ QueryStatus QCreated timestamp)
 
-setStatus :: HasCallStack => ZHandle -> QueryId -> QStatus -> IO ()
-setStatus zk qid status = do
+  setStatus qid status zk = do
     MkSystemTime timestamp _ <- getSystemTime'
     setQuery zk (mkPath qid <> "/status") (encode $ QueryStatus status timestamp)
 
-getQueries :: HasCallStack => ZHandle -> IO [Query]
-getQueries zk = do
-  StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
-  details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkPath) qids
-  status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkPath) qids
-  return $ zipWith ($) (zipWith ($) (Query <$> qids) details) status
+  getQueries zk = do
+    StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
+    details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkPath) qids
+    status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkPath) qids
+    return $ zipWith ($) (zipWith ($) (Query <$> qids) details) status
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath]
@@ -91,8 +125,6 @@ createInsert zk path contents =
 setQuery :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 setQuery zk path contents =
   void $ zooSet zk path (Just contents) Nothing
-
---------------------------------------------------------------------------------
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) (\e -> return $ const () (e :: ZNODEEXISTS))
