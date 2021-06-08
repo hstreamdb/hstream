@@ -12,12 +12,12 @@ import           Control.Concurrent
 import           Control.Exception                 (SomeException, catch, try)
 import           Control.Monad                     (when)
 import qualified Data.Aeson                        as Aeson
-import qualified Data.ByteString                   as B
 import qualified Data.ByteString.Char8             as C
-import qualified Data.ByteString.Lazy              as BL
+import qualified Data.ByteString.Lazy              as BSL
+import           Data.Either                       (fromRight, isRight)
 import qualified Data.HashMap.Strict               as HM
+import           Data.IORef
 import qualified Data.List                         as L
-import qualified Data.Map                          as M
 import qualified Data.Map.Strict                   as Map
 import           Data.Maybe                        (fromJust, fromMaybe, isJust)
 import           Data.String                       (fromString)
@@ -30,9 +30,6 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
                                                     runOps)
-import           RIO                               (async, forM_, forever,
-                                                    logOptionsHandle, stderr,
-                                                    withLogFunc)
 import           System.Random                     (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as CB
@@ -56,6 +53,9 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence
 import           HStream.Store
 import           HStream.Utils
+import           Proto3.Suite                      (Enumerated (..))
+import           RIO                               (async, forM_, forever)
+import           System.IO.Unsafe                  (unsafePerformIO)
 
 --------------------------------------------------------------------------------
 
@@ -67,6 +67,10 @@ data ServerContext = ServerContext {
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
 }
+
+subscribedConnectors :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text,SourceConnector)))
+subscribedConnectors = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE subscribedConnectors #-}
 
 --------------------------------------------------------------------------------
 
@@ -81,6 +85,11 @@ handlers logDeviceConfigPath handle = do
   return HStreamApi {
       hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
+    , hstreamApiAppend           = appendHandler serverContext
+    , hstreamApiCreateStreams    = createStreamsHandler serverContext
+    , hstreamApiSubscribe        = subscribeHandler serverContext
+    , hstreamApiFetch            = fetchHandler serverContext
+    , hstreamApiCommitOffset     = commitOffsetHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -292,3 +301,135 @@ checkpointRootPath = "/tmp/checkpoint"
 
 catchZkException :: IO () -> String -> IO ()
 catchZkException action str = catch action (\e -> return (e::SomeException) >> putStrLn str)
+
+--------------------------------------------------------------------------------
+appendHandler :: ServerContext
+              -> ServerRequest 'Normal AppendRequest AppendResponse
+              -> IO (ServerResponse 'Normal AppendResponse)
+appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) = do
+  singleResps <- mapM (fmap eitherToResponse . handleSingleRequest) appendRequestRequests
+  let resp = AppendResponse singleResps
+  return (ServerNormalResponse resp [] StatusOk "")
+  where
+    handleSingleRequest :: AppendSingleRequest -> IO (TL.Text, Either SomeException ())
+    handleSingleRequest AppendSingleRequest{..} = do
+      timestamp <- getCurrentTimestamp
+      e' <- try $
+        writeRecord
+          (hstoreSinkConnector scLDClient)
+          SinkRecord
+            { snkStream = TL.toStrict appendSingleRequestStreamName,
+              snkKey = Nothing,
+              snkValue = BSL.fromStrict appendSingleRequestPayload,
+              snkTimestamp = timestamp
+            }
+      return (appendSingleRequestStreamName, e')
+    eitherToResponse :: (TL.Text, Either SomeException ()) -> AppendSingleResponse
+    eitherToResponse (stream, e') =
+      let serverError = case e' of
+            Left _  -> HStreamServerErrorUnknownError
+            Right _ -> HStreamServerErrorNoError
+      in AppendSingleResponse stream (Enumerated $ Right serverError)
+
+createStreamsHandler :: ServerContext
+                     -> ServerRequest 'Normal CreateStreamsRequest CreateStreamsResponse
+                     -> IO (ServerResponse 'Normal CreateStreamsResponse)
+createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata CreateStreamsRequest{..}) = do
+  singleResps <- mapM (fmap eitherToResponse . handleSingleRequest) createStreamsRequestRequests
+  let resp = CreateStreamsResponse singleResps
+  return (ServerNormalResponse resp [] StatusOk "")
+  where
+    handleSingleRequest :: CreateStreamRequest -> IO (TL.Text, Either SomeException ())
+    handleSingleRequest CreateStreamRequest{..} = do
+      e' <- try $ createStream scLDClient (transToStreamName $ TL.toStrict createStreamRequestStreamName)
+        (LogAttrs $ HsLogAttrs (fromIntegral createStreamRequestReplicationFactor) Map.empty)
+      return (createStreamRequestStreamName, e')
+    eitherToResponse :: (TL.Text, Either SomeException ()) -> CreateStreamResponse
+    eitherToResponse (stream, e') =
+      let serverError = case e' of
+            Left _  -> HStreamServerErrorUnknownError
+            Right _ -> HStreamServerErrorNoError
+       in CreateStreamResponse stream (Enumerated $ Right serverError)
+
+subscribeHandler :: ServerContext
+                 -> ServerRequest 'Normal SubscribeRequest SubscribeResponse
+                 -> IO (ServerResponse 'Normal SubscribeResponse)
+subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeRequest{..}) = do
+  es' <- mapM getSourceConnector subscribeRequestSubscriptions
+  case V.all isRight es' of
+    False -> do
+      let resp = SubscribeResponse subscribeRequestSubscriptionId (Enumerated $ Right HStreamServerErrorUnknownError)
+      return (ServerNormalResponse resp [] StatusUnknown "")
+    True  -> do
+      let connectorsWithStreamName = fromRight undefined <$> es'
+      atomicModifyIORef' subscribedConnectors (\hm -> (HM.insert subscribeRequestSubscriptionId connectorsWithStreamName hm, ()))
+      let resp = SubscribeResponse subscribeRequestSubscriptionId (Enumerated $ Right HStreamServerErrorNoError)
+      return (ServerNormalResponse resp [] StatusOk "")
+  where
+    getSourceConnector :: StreamSubscription -> IO (Either SomeException (TL.Text,SourceConnector))
+    getSourceConnector StreamSubscription{..} = do
+      e' <- try $ do
+        newLDFileCkpReader scLDClient (textToCBytes $ TL.toStrict streamSubscriptionStreamName)
+          checkpointRootPath 1 Nothing 3
+      case e' of
+        Left err       -> return (Left err)
+        Right ldreader -> do
+          let sc = hstoreSourceConnector scLDClient ldreader
+          a' <- try $ subscribeToStream sc (TL.toStrict streamSubscriptionStreamName) (Offset streamSubscriptionStartOffset)
+          case a' of
+            Left a  -> return (Left a)
+            Right _ -> return (Right (streamSubscriptionStreamName, sc))
+
+fetchHandler :: ServerContext
+             -> ServerRequest 'Normal FetchRequest FetchResponse
+             -> IO (ServerResponse 'Normal FetchResponse)
+fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) = do
+  hm <- readIORef subscribedConnectors
+  case HM.lookup fetchRequestSubscriptionId hm of
+    Nothing                       -> do
+      let resp = FetchResponse V.empty
+      return (ServerNormalResponse resp [] StatusOk "")
+    Just connectorsWithStreamName -> do
+      payloads <- mapM fetchSingleConnector (snd <$> connectorsWithStreamName)
+      let records = V.map payloadToFetchedRecord $ V.zip (fst <$> connectorsWithStreamName) payloads
+      let resp = FetchResponse records
+      return (ServerNormalResponse resp [] StatusOk "")
+  where
+    fetchSingleConnector :: SourceConnector -> IO [BSL.ByteString]
+    fetchSingleConnector SourceConnector{..} = do
+      records <- readRecords
+      return $ srcValue <$> records
+
+    payloadToFetchedRecord :: (TL.Text, [BSL.ByteString]) -> FetchedRecord
+    payloadToFetchedRecord (streamName, payloads) =
+      FetchedRecord streamName (V.fromList $ BSL.toStrict <$> payloads)
+
+commitOffsetHandler :: ServerContext
+                    -> ServerRequest 'Normal CommitOffsetRequest CommitOffsetResponse
+                    -> IO (ServerResponse 'Normal CommitOffsetResponse)
+commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata CommitOffsetRequest{..}) = do
+  hm <- readIORef subscribedConnectors
+  case HM.lookup commitOffsetRequestSubscriptionId hm of
+    Nothing -> do
+      let resp = CommitOffsetResponse V.empty
+      return (ServerNormalResponse resp [] StatusOk "")
+    Just connectorsWithStreamName -> do
+      singleResps <- mapM (fmap eitherToResponse . commitSingle connectorsWithStreamName) commitOffsetRequestStreamOffsets
+      let resp = CommitOffsetResponse singleResps
+      return (ServerNormalResponse resp [] StatusOk "")
+  where
+    commitSingle :: V.Vector (TL.Text, SourceConnector) -> StreamOffset -> IO (TL.Text, Either SomeException ())
+    commitSingle v StreamOffset{..} = do
+      case V.find (\(stream,_) -> stream == streamOffsetStreamName) v of
+        Nothing                  -> return (streamOffsetStreamName, Left undefined)
+        Just (stream, connector) -> do
+          e' <- try $ commitCheckpoint connector (TL.toStrict stream) (Offset streamOffsetOffset)
+          case e' of
+            Left e  -> return (stream, Left e)
+            Right _ -> return (stream, Right ())
+    eitherToResponse :: (TL.Text, Either SomeException ()) -> StreamCommitOffsetResponse
+    eitherToResponse (stream, e') =
+      let serverError = case e' of
+            Left _  -> HStreamServerErrorUnknownError
+            Right _ -> HStreamServerErrorNoError
+       in StreamCommitOffsetResponse stream (Enumerated $ Right serverError)
