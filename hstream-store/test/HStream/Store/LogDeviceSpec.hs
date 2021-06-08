@@ -21,7 +21,8 @@ configType = describe "LogConfigType" $ do
     dirname <- ("/" `FS.join`) =<< newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
     _ <- I.makeLogDirectory client (dirname <> "/A") attrs False
-    _ <- I.makeLogDirectory client (dirname <> "/B") attrs False
+    version <- I.logDirectoryGetVersion =<< I.makeLogDirectory client (dirname <> "/B") attrs False
+    I.syncLogsConfigVersion client version
     dir <- I.getLogDirectory client dirname
     names <- I.logDirChildrenNames dir
     sort names `shouldBe` ["A", "B"]
