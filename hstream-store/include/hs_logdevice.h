@@ -338,6 +338,10 @@ size_t ld_client_get_max_payload_size(logdevice_client_t* client);
 
 c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client, uint64_t logid);
 
+HsInt ld_client_get_tail_lsn(logdevice_client_t* client, c_logid_t logid,
+                             HsStablePtr mvar, HsInt cap,
+                             c_error_code_t* st_out, c_lsn_t* lsn_out);
+
 const std::string* ld_client_get_settings(logdevice_client_t* client,
                                           const char* name);
 

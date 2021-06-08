@@ -75,6 +75,21 @@ c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client,
   return client->rep->getTailLSNSync(facebook::logdevice::logid_t(logid));
 }
 
+HsInt ld_client_get_tail_lsn(logdevice_client_t* client, c_logid_t logid,
+                             HsStablePtr mvar, HsInt cap,
+                             c_error_code_t* st_out, c_lsn_t* lsn_out) {
+  auto cb = [st_out, lsn_out, cap, mvar](facebook::logdevice::Status st,
+                                         c_lsn_t lsn) {
+    if (st_out && lsn_out) {
+      *st_out = static_cast<c_error_code_t>(st);
+      *lsn_out = lsn;
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  return client->rep->getTailLSN(logid_t(logid), cb);
+}
+
 HsInt ld_client_trim(logdevice_client_t* client, c_logid_t logid, c_lsn_t lsn,
                      HsStablePtr mvar, HsInt cap, c_error_code_t* st_out) {
   auto cb = [st_out, cap, mvar](facebook::logdevice::Status st) {
