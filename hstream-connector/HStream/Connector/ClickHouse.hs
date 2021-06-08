@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module HStream.Server.ClickHouseConnector
+module HStream.Connector.ClickHouse
   ( clickHouseSinkConnector
   ) where
 

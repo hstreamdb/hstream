@@ -13,12 +13,13 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import           Data.Text.Lazy.Builder            (toLazyText)
 import qualified Data.Vector                       as V
+import           Text.Layout.Table
+
 import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
-import           HStream.Server.Utils              (structToJsonObject,
+import           HStream.Utils.Converter           (structToJsonObject,
                                                     structToZJsonObject,
                                                     valueToJsonValue)
-import           Text.Layout.Table
 import qualified ThirdParty.Google.Protobuf.Struct as P
 
 type Width = Int

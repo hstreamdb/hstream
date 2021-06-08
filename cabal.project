@@ -1,9 +1,11 @@
 packages:
   hstream
+  hstream/common/hstream-common.cabal
   hstream-store
   hstream-store/admin/hstore-admin.cabal
   hstream-processing
   hstream-sql
+  hstream-connector
 
   external/gRPC-haskell
   external/gRPC-haskell/core
