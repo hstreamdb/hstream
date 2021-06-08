@@ -90,6 +90,7 @@ handlers logDeviceConfigPath handle = do
     , hstreamApiSubscribe        = subscribeHandler serverContext
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
+    , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -433,3 +434,23 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata CommitOffse
             Left _  -> HStreamServerErrorUnknownError
             Right _ -> HStreamServerErrorNoError
        in StreamCommitOffsetResponse stream (Enumerated $ Right serverError)
+
+removeStreamsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal RemoveStreamsRequest RemoveStreamsResponse
+  -> IO (ServerResponse 'Normal RemoveStreamsResponse)
+removeStreamsHandler ServerContext{..} (ServerNormalRequest _metadata RemoveStreamsRequest{..}) = do
+  singleResps <- mapM (fmap eitherToResponse . handleSingleRequest) removeStreamsRequestRequests
+  let resp = RemoveStreamsResponse singleResps
+  return (ServerNormalResponse resp [] StatusOk "")
+  where
+    handleSingleRequest :: RemoveStreamRequest -> IO (TL.Text, Either SomeException ())
+    handleSingleRequest RemoveStreamRequest{..} = do
+      e' <- try $ removeStream scLDClient (transToStreamName $ TL.toStrict removeStreamRequestStreamName)
+      return (removeStreamRequestStreamName, e')
+    eitherToResponse :: (TL.Text, Either SomeException ()) -> RemoveStreamResponse
+    eitherToResponse (stream, e') =
+      let serverError = case e' of
+            Left _  -> HStreamServerErrorUnknownError
+            Right _ -> HStreamServerErrorNoError
+       in RemoveStreamResponse stream (Enumerated $ Right serverError)
