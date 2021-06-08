@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE StrictData         #-}
 
-module HStream.Server.HStoreConnector
+module HStream.Connector.HStore
   ( hstoreSourceConnector
   , hstoreSinkConnector
   , transToStreamName
@@ -16,15 +16,16 @@ where
 import           Control.Monad                (void)
 import qualified Data.Map.Strict              as M
 import           GHC.Generics                 (Generic)
-import           HStream.Processing.Connector
-import           HStream.Processing.Type      as HPT
-import           HStream.Server.Utils
-import qualified HStream.Store                as S
 import qualified Z.Data.Builder               as B
 import qualified Z.Data.CBytes                as ZCB
 import qualified Z.Data.JSON                  as JSON
 import           Z.Data.Text                  (validate)
 import qualified Z.IO.Logger                  as Log
+
+import           HStream.Processing.Connector
+import           HStream.Processing.Type      as HPT
+import qualified HStream.Store                as S
+import           HStream.Utils
 
 hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> SourceConnector
 hstoreSourceConnector ldclient reader = SourceConnector {

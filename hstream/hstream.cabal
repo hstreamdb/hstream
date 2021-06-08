@@ -26,17 +26,10 @@ source-repository head
 
 library
   exposed-modules:
-    HStream.Server.ClickHouseConnector
-    HStream.Server.Converter
     HStream.Server.Handler
-    HStream.Server.HStoreConnector
-    HStream.Server.HStreamApi
     HStream.Server.Persistence
-    HStream.Server.Utils
-    HStream.Utils.Format
-    ThirdParty.Google.Protobuf.Struct
 
-  hs-source-dirs:   src gen-src
+  hs-source-dirs:   src
   build-depends:
     , aeson
     , aeson-pretty
@@ -49,6 +42,8 @@ library
     , grpc-haskell
     , grpc-haskell-core
     , haxl
+    , hstream-common
+    , hstream-connector
     , hstream-processing
     , hstream-sql
     , hstream-store
@@ -81,6 +76,7 @@ executable hstream-server
     , grpc-haskell
     , grpc-haskell-core
     , hstream
+    , hstream-common
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -106,6 +102,7 @@ executable hstream-client
     , grpc-haskell-core
     , haskeline
     , hstream
+    , hstream-common
     , hstream-sql
     , optparse-applicative
     , random
@@ -131,6 +128,8 @@ test-suite hstream-test
     , clickhouse-haskell
     , hspec
     , hstream
+    , hstream-common
+    , hstream-connector
     , hstream-processing
     , hstream-sql
     , hstream-store

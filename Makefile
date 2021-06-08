@@ -11,8 +11,8 @@ thrift::
 	(cd hstream-store/admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
 grpc:: grpc-deps
-	 (cd hstream/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/struct.proto --out ../gen-src)
-	 (cd hstream/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamApi.proto --out ../gen-src)
+	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/struct.proto --out ../gen-src)
+	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamApi.proto --out ../gen-src)
 
 grpc-deps:
 	(cd ~ && command -v $(PROTO_COMPILE) || cabal install proto3-suite --constraint 'proto3-suite == 0.4.1')
@@ -30,6 +30,6 @@ sql-deps::
 	(cd ~ && command -v happy || cabal install happy)
 
 clean:
-	(rm -rf hstream-store/admin/gen-hs2)
-	(rm -rf hstream-sql/gen-sql)
-	(rm -rf hstream/gen-src)
+	(find . -type d -name "gen-hs2"|xargs rm -rf)
+	(find . -type d -name "gen-sql"|xargs rm -rf)
+	(find . -type d -name "gen-src"|xargs rm -rf)

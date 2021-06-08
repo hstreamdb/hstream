@@ -4,30 +4,30 @@
 
 module HStream.RunSQLSpec (spec) where
 
-import           Control.Monad                      (replicateM)
+import           Control.Monad                    (replicateM)
+import qualified Data.ByteString.Char8            as C
+import           Database.ClickHouseDriver.Client
+import           Database.ClickHouseDriver.Types
+import           RIO
+import qualified RIO.ByteString.Lazy              as BL
+import qualified RIO.Map                          as Map
+import qualified RIO.Text                         as Text
+import           System.IO.Unsafe                 (unsafePerformIO)
+import           System.Random
+import           Test.Hspec
+import           Text.Printf                      (printf)
+
+import           HStream.Connector.ClickHouse
+import           HStream.Connector.HStore
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Type
-import           HStream.Processing.Util            (getCurrentTimestamp)
-import           HStream.SQL.Codegen
-import           HStream.Server.HStoreConnector
-import           HStream.Server.Handler
-import           HStream.Server.Utils
-import           HStream.Store
-import           RIO
-import qualified RIO.ByteString.Lazy                as BL
-import qualified RIO.Map                            as Map
-import qualified RIO.Text                           as Text
-import           System.IO.Unsafe                   (unsafePerformIO)
-import           System.Random
-import           Test.Hspec
-import           Text.Printf                        (printf)
-
-import qualified Data.ByteString.Char8              as C
-import           Database.ClickHouseDriver.Client
-import           Database.ClickHouseDriver.Types
+import           HStream.Processing.Util          (getCurrentTimestamp)
 import           HStream.SQL.AST
-import           HStream.Server.ClickHouseConnector
+import           HStream.SQL.Codegen
+import           HStream.Server.Handler
+import           HStream.Store
+import           HStream.Utils
 
 ldclient :: LDClient
 ldclient = unsafePerformIO $ newLDClient  "/data/store/logdevice.conf"

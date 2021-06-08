@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms   #-}
-module HStream.Server.Utils
+
+module HStream.Utils.Converter
   ( jsonObjectToStruct
   , jsonValueToValue
   , structToJsonObject
@@ -16,7 +17,6 @@ module HStream.Server.Utils
   , cbytesToValue
   , listToStruct
   , structToStruct
-  , getKeyWordFromException
   ) where
 
 import           Control.Exception                 (Exception (..))
@@ -28,9 +28,9 @@ import           Data.Scientific
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 
+import qualified Data.ByteString.Lazy              as BL
+import qualified Data.Text                         as T
 import           Proto3.Suite
-import qualified RIO.ByteString.Lazy               as BL
-import qualified RIO.Text                          as T
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as ZCB
 import qualified Z.Data.JSON                       as Z
