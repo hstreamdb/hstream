@@ -48,7 +48,7 @@ subscribeToHStoreStream ldclient reader stream startOffset = do
   startLSN <-
         case startOffset of
           Earlist    -> return S.LSN_MIN
-          Latest     -> S.getTailLSN ldclient logId
+          Latest     -> fmap (+1) (S.getTailLSN ldclient logId)
           Offset lsn -> return lsn
   S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
 
