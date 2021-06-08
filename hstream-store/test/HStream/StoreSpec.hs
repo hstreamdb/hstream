@@ -4,12 +4,10 @@
 
 module HStream.StoreSpec where
 
-import           Data.Int                (Int64)
 import           Test.Hspec
 import qualified Z.Data.Builder          as B
 import qualified Z.Data.CBytes           as CBytes
 import           Z.Data.Vector           (packASCII)
-import           Z.IO.Time               (SystemTime (..), getSystemTime')
 
 import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
@@ -42,14 +40,18 @@ spec = describe "HStoreSpec" $ do
     readPayload' logid (Just sn0) `shouldReturn` []
     readPayload logid (Just sn1) `shouldReturn` "world"
 
-  -- TODO: findKey by timestamp is not so accurate.
-  --
-  -- it "find time" $ do
-  --   let toMillisecond (MkSystemTime s ns) = s * 1000 + fromIntegral (ns `div` 1000000)
-  --   ms0 <- toMillisecond <$> getSystemTime'
-  --   sn0 <- S.appendCbLSN <$> S.append client logid "hello" Nothing
-  --   ms1 <- toMillisecond <$> getSystemTime'
-  --   sn1 <- S.appendCbLSN <$> S.append client logid "world" Nothing
+  it "find time with a timestamp of 0" $ do
+    headSn <- S.findTime client logid 0 S.FindKeyStrict
+    S.trim client logid headSn
+    sn <- S.findTime client logid 0 S.FindKeyStrict
+    sn `shouldBe` headSn + 1
 
-  --   S.findTime client logid ms0 S.FindKeyStrict `shouldReturn` sn0
-  --   S.findTime client logid ms1 S.FindKeyStrict `shouldReturn` sn1
+  it "find time with maximal timestamp" $ do
+    sn0 <- S.appendCbLSN <$> S.append client logid "test" Nothing
+    sn1 <- S.findTime client logid maxBound S.FindKeyStrict
+    sn1 `shouldBe` sn0 + 1
+    -- findTime(max) respects the trim point but there was an off-by-one in the
+    -- code when the entire log was trimmed.
+    S.trim client logid sn0
+    sn2 <- S.findTime client logid maxBound S.FindKeyStrict
+    sn2 `shouldBe` sn0 + 1
