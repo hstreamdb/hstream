@@ -281,15 +281,17 @@ void ld_loggroup_get_range(logdevice_loggroup_t* group, c_logid_t* start,
   *end = range.second.val();
 }
 
-// FIXME: Does this copy of string needed?
-char* ld_loggroup_get_name(logdevice_loggroup_t* group) {
-  return copyString(group->rep->name());
+// FIXME: Do we need to copy the returned string?
+const char* ld_loggroup_get_name(logdevice_loggroup_t* group) {
+  return group->rep->name().c_str();
 }
 
-char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group) {
-  return copyString(group->rep->getFullyQualifiedName());
+// FIXME: Do we need to copy the returned string?
+const char* ld_loggroup_get_fully_qualified_name(logdevice_loggroup_t* group) {
+  return group->rep->getFullyQualifiedName().c_str();
 }
 
+// FIXME: Do we need to copy the returned attrs?
 const LogAttributes* ld_loggroup_get_attrs(logdevice_loggroup_t* group) {
   const LogAttributes& attrs = group->rep->attrs();
   return &attrs;
@@ -412,25 +414,19 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
 
 void free_logdevice_logdirectory(logdevice_logdirectory_t* dir) { delete dir; }
 
+#define DIR_MAP_ATTR_KEYS(FUN_NAME, ATTR_NAME)                                 \
+  std::string* FUN_NAME(logdevice_logdirectory_t* dir, HsInt* ret_len,         \
+                        const std::vector<std::string>** ret_raw_keys) {       \
+    auto& valmap = dir->rep->ATTR_NAME();                                      \
+    std::vector<std::string>* keys = getKeys(valmap);                          \
+    *ret_len = keys->size();                                                   \
+    *ret_raw_keys = keys;                                                      \
+    return keys->data();                                                       \
+  }
 // LogDirectory attrs : children keys
-std::string*
-ld_logdir_children_keys(logdevice_logdirectory_t* dir, HsInt* ret_len,
-                        const std::vector<std::string>** ret_raw_keys) {
-  auto& dirMap = dir->rep->children();
-  std::vector<std::string>* keys = getKeys(dirMap);
-  *ret_len = keys->size();
-  *ret_raw_keys = keys;
-  //printf("=> %d %p %p\n", *ret_len, keys, keys + 1);
-  //printf("-> %s %s\n", (*keys).c_str(), (*(keys + 1)).c_str());
-  return keys->data();
-}
+DIR_MAP_ATTR_KEYS(ld_logdir_children_keys, children)
 // LogDirectory attrs : logs keys
-void ld_logdir_logs(logdevice_logdirectory_t* dir, HsInt* len,
-                    std::string* key) {
-  // auto& logMap = dir->rep->logs();
-  // HsInt len_ = getKeys(logMap, key);
-  //*len = len_;
-}
+DIR_MAP_ATTR_KEYS(ld_logdir_logs_keys, logs)
 
 // LogDirectory attrs : name
 const char* ld_logdirectory_name(logdevice_logdirectory_t* dir) {
@@ -458,23 +454,26 @@ uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
       return NOT_FUN;                                                          \
     }                                                                          \
   }
+
 // children name
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_name, children, char*,
-                         copyString(value->second->name()), NULL)
+// FIXME: Do we need to copy the returned string?
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_name, children, const char*,
+                         value->second->name().c_str(), NULL)
 // children fully qualified name
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_full_name, children, char*,
-                         copyString(value->second->getFullyQualifiedName()),
-                         NULL)
+// FIXME: Do we need to copy the returned string?
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_full_name, children, const char*,
+                         value->second->getFullyQualifiedName().c_str(), NULL)
 // children verison
 LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_version, children, uint64_t,
                          (value->second->version()), 0)
 // dir log name
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_name, logs, char*,
-                         copyString(value->second->name()), NULL)
+// FIXME: Do we need to copy the returned string?
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_name, logs, const char*,
+                         value->second->name().c_str(), NULL)
 // dir log fully qualified name
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_full_name, logs, char*,
-                         copyString(value->second->getFullyQualifiedName()),
-                         NULL)
+// FIXME: Do we need to copy the returned string?
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_full_name, logs, const char*,
+                         value->second->getFullyQualifiedName().c_str(), NULL)
 // dir log verison
 LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_version, logs, uint64_t,
                          (value->second->version()), 0)

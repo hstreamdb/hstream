@@ -6,6 +6,11 @@ std::string* new_hs_std_string(std::string&& str) {
   return value;
 }
 
+// Copy string contents.
+//
+// Note that
+// 1. this will not append the "\0" to the end of the memory.
+// 2. you need to free the result manually.
 char* copyString(const std::string& str) {
   char* result = reinterpret_cast<char*>(malloc(sizeof(char) * str.size()));
   memcpy(result, str.data(), sizeof(char) * str.size());
