@@ -6,44 +6,98 @@ synopsis:
 
 description:
   Please see the README on Github at
-  <https://github.com/hstream-io/hstream#readme>
+  <https://github.com/hstreamdb/hstream#readme>
 
 license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Feng Lee <feng@emqx.io>
-maintainer:         lambda@emqx.io
+maintainer:         lambda@emqx.io, wangbin@emqx.io
 tested-with:        GHC ==8.8.4 || ==8.10.4
 category:           Database
-homepage:           https://github.com/hstream-io/hstream
-bug-reports:        https://github.com/hstream-io/hstream/issues
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Simple
 extra-source-files: ChangeLog.md
 
 source-repository head
   type:     git
-  location: https://github.com/hstream-io/hstream
+  location: https://github.com/hstreamdb/hstream
 
 library
+  exposed-modules:
+    HStream.Server.ClickHouseConnector
+    HStream.Server.Converter
+    HStream.Server.Handler
+    HStream.Server.HStoreConnector
+    HStream.Server.HStreamApi
+    HStream.Server.Persistence
+    HStream.Server.Utils
+    HStream.Utils.Format
+    ThirdParty.Google.Protobuf.Struct
+
+  hs-source-dirs:   src gen-src
   build-depends:
     , aeson
     , aeson-pretty
     , ansi-terminal
     , base
+    , bytestring
+    , clickhouse-haskell
     , containers
-    , hstream-server
+    , deepseq
+    , grpc-haskell
+    , grpc-haskell-core
+    , haxl
+    , hstream-processing
     , hstream-sql
+    , hstream-store
+    , proto3-suite
+    , proto3-wire
+    , random
+    , rio
+    , scientific
     , table-layout
     , text
+    , time
     , unordered-containers
     , vector
+    , Z-Data
+    , Z-IO
+    , zoovisitor
 
   default-language: Haskell2010
-  exposed-modules:  HStream.Format
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+executable hstream-server
+  main-is:          app/server.hs
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , deepseq
+    , grpc-haskell
+    , grpc-haskell-core
+    , hstream
+    , optparse-applicative
+    , proto3-suite
+    , proto3-wire
+    , text
+    , vector
+    , Z-Data
+    , Z-IO
+    , zoovisitor
+
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
 
 executable hstream-client
-  main-is:          Main.hs
-  hs-source-dirs:   client
+  main-is:          app/client.hs
   build-depends:
     , ansi-terminal
     , base
@@ -52,7 +106,6 @@ executable hstream-client
     , grpc-haskell-core
     , haskeline
     , hstream
-    , hstream-server
     , hstream-sql
     , optparse-applicative
     , random
@@ -62,8 +115,9 @@ executable hstream-client
 
   default-language: Haskell2010
   ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
 
 test-suite hstream-test
   type:               exitcode-stdio-1.0
@@ -76,8 +130,8 @@ test-suite hstream-test
     , bytestring
     , clickhouse-haskell
     , hspec
+    , hstream
     , hstream-processing
-    , hstream-server
     , hstream-sql
     , hstream-store
     , random              ^>=1.2

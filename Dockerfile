@@ -13,7 +13,7 @@ RUN rm -rf /srv/*
 WORKDIR /srv
 COPY . /srv
 RUN make && \
-    cabal build all && cabal install hstream hstream-server
+    cabal build all && cabal install hstream
 
 # ------------------------------------------------------------------------------
 

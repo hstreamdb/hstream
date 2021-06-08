@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module HStream.Format where
+module HStream.Utils.Format where
 
 import qualified Data.Aeson                        as A
 import           Data.Aeson.Encode.Pretty
