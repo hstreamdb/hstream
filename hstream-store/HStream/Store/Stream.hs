@@ -70,8 +70,8 @@ module HStream.Store.Stream
   , stopCkpReader
   ) where
 
-import           Control.Exception                (try)
-import           Control.Monad                    (forM, unless)
+import           Control.Exception                (finally, try)
+import           Control.Monad                    (forM, forM_, unless)
 import           Data.Bits                        (shiftL, shiftR, (.&.), (.|.))
 import qualified Data.Cache                       as Cache
 import           Data.IORef                       (IORef, atomicModifyIORef',
@@ -167,21 +167,16 @@ renameStream
 renameStream client from to = do
   from' <- streamNameToLogPath from
   to'   <- streamNameToLogPath to
-  LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to'
-  -- FIXME
-  -- Do NOT combine these operations to a atomically one, since we need
-  -- delete the old stream name even the new one is insert failed.
+  finally (LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to')
+          (Cache.delete logPathCache from')
   m_v <- Cache.lookup' logPathCache from'
-  case m_v of
-    Just x -> do Cache.delete logPathCache from'
-                 Cache.insert logPathCache to' x
-    Nothing -> return ()
+  forM_ m_v $ Cache.insert logPathCache to'
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamName -> IO ()
 removeStream client stream = do
   path <- streamNameToLogPath stream
-  LD.syncLogsConfigVersion client =<< LD.removeLogGroup client path
-  Cache.delete logPathCache path
+  finally (LD.syncLogsConfigVersion client =<< LD.removeLogGroup client path)
+          (Cache.delete logPathCache path)
 
 findStreams :: HasCallStack => FFI.LDClient -> Bool -> IO [StreamName]
 findStreams client recursive = do
