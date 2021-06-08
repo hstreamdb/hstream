@@ -14,12 +14,6 @@ import           Data.ByteString                  (ByteString)
 import qualified Data.List                        as L
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
-import           HStream.Format                   (formatCommandQueryResponse,
-                                                   formatResult,
-                                                   formatSomeSQLException)
-import           HStream.SQL
-import           HStream.SQL.Exception            (SomeSQLException)
-import           HStream.Server.HStreamApi
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified Options.Applicative              as O
@@ -29,6 +23,14 @@ import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
+
+import           HStream.SQL
+import           HStream.SQL.Exception            (SomeSQLException)
+import           HStream.Server.HStreamApi
+import           HStream.Utils.Format             (formatCommandQueryResponse,
+                                                   formatResult,
+                                                   formatSomeSQLException)
+
 helpInfo :: String
 helpInfo =
   unlines

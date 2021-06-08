@@ -4,7 +4,6 @@ packages:
   hstream-store/admin/hstore-admin.cabal
   hstream-processing
   hstream-sql
-  hstream-server
 
   external/gRPC-haskell
   external/gRPC-haskell/core

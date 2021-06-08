@@ -1,19 +1,15 @@
 cradle:
   cabal:
-    - path: "hstream/client/Main.hs"
+    - path: "hstream/src"
+      component: "lib:hstream"
+    - path: "hstream/gen-src"
+      component: "lib:hstream"
+    - path: "hstream/app/client.hs"
       component: "hstream:exe:hstream-client"
-
+    - path: "hstream/app/server.hs"
+      component: "hstream:exe:hstream-server"
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
-
-    - path: "hstream-hesp/src"
-      component: "lib:hesp"
-
-    - path: "hstream-hesp/test"
-      component: "hesp:test:hesp-test"
-
-    - path: "hstream-hesp/benchmark/Benchmark.hs"
-      component: "hesp:bench:hesp-benchmark"
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"
@@ -44,21 +40,6 @@ cradle:
 
     - path: "hstream-processing/example/LogDeviceExample0.hs"
       component: "hstream-processing:exe:logdevice-example0"
-
-    - path: "hstream-server/src"
-      component: "lib:hstream-server"
-
-    - path: "hstream-server/generated-src"
-      component: "lib:hstream-server"
-
-    - path: "hstream-server/app"
-      component: "lib:hstream-server"
-
-    - path: "hstream-server/generated-src"
-      component: "lib:hstream-server"
-
-    - path: "hstream-server/app/Server.hs"
-      component: "hstream-server:exe:hstream-server"
 
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"
