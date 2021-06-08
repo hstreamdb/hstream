@@ -4,6 +4,7 @@
 module HStream.Store.Internal.LogDevice
   ( newLDClient
   , getTailLSN
+  , getTailLSNSync
   , getMaxPayloadSize
   , setClientSetting
   , getClientSetting
@@ -52,8 +53,33 @@ newLDClient config = CBytes.withCBytesUnsafe config $ \config' -> do
     E.throwStreamErrorIfNotOK $ c_new_logdevice_client config' client''
   newForeignPtr c_free_logdevice_client_fun client'
 
-getTailLSN :: LDClient -> C_LogID -> IO LSN
-getTailLSN client logid = withForeignPtr client $ flip c_ld_client_get_tail_lsn logid
+getTailLSNSync :: LDClient -> C_LogID -> IO LSN
+getTailLSNSync client logid =
+  withForeignPtr client $ flip c_ld_client_get_tail_lsn_sync logid
+
+
+-- | Return the sequence number that points to the tail of log `logid`. The
+-- returned LSN is guaranteed to be higher or equal than the LSN of any record
+-- that was successfully acknowledged as appended prior to this call.
+--
+-- Note that there can be benign gaps in the numbering sequence of a log. As
+-- such, it is not guaranteed that a record was assigned the returned
+-- sequencer number.
+--
+-- One can read the full content of a log by creating a reader to read from
+-- LSN_OLDEST until the LSN returned by this method. Note that it is not
+-- guaranteed that the full content of the log is immediately available for
+-- reading.
+getTailLSN :: HasCallStack => LDClient
+  -> C_LogID
+  -- ^ the ID of the log for which to get the tail LSN
+  -> IO LSN
+getTailLSN client logid =
+  withForeignPtr client $ \client' -> do
+    (errno, lsn, _) <- withAsyncPrimUnsafe2' (0 :: ErrorCode) LSN_INVALID
+      (c_ld_client_get_tail_lsn client' logid) E.throwSubmitIfNotOK
+    void $ E.throwStreamErrorIfNotOK' errno
+    return lsn
 
 -- | Returns the maximum permitted payload size for this client.
 --
@@ -202,7 +228,15 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_set_settings"
     :: Ptr LogDeviceClient -> Z.BA# Word8 -> Z.BA# Word8 -> IO ErrorCode
 
 foreign import ccall safe "hs_logdevice.h ld_client_get_tail_lsn_sync"
-  c_ld_client_get_tail_lsn :: Ptr LogDeviceClient -> C_LogID -> IO LSN
+  c_ld_client_get_tail_lsn_sync :: Ptr LogDeviceClient -> C_LogID -> IO LSN
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_lsn"
+  c_ld_client_get_tail_lsn :: Ptr LogDeviceClient
+                           -> C_LogID
+                           -> StablePtr PrimMVar -> Int
+                           -> MBA# ErrorCode
+                           -> MBA# LSN
+                           -> IO Int
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
   c_ld_client_trim :: Ptr LogDeviceClient

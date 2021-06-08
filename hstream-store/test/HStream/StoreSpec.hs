@@ -33,6 +33,8 @@ spec = describe "HStoreSpec" $ do
     seqNum0 <- S.appendCbLSN <$> S.append client logid "hello" Nothing
     seqNum1 <- S.getTailLSN client logid
     seqNum0 `shouldBe` seqNum1
+    let logid' = 101 -- an unknown logid
+    S.getTailLSN client logid' `shouldThrow` anyException
 
   it "trim record" $ do
     sn0 <- S.appendCbLSN <$> S.append client logid "hello" Nothing
