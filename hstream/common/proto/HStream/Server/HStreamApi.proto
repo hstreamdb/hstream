@@ -13,16 +13,15 @@ service HStreamApi {
   // e.g., insert, create, show/list, select(without emit changes) ...
   rpc ExecuteQuery(CommandQuery) returns (CommandQueryResponse);
 
-  // TODO
-  // rpc Append(AppendRequest) returns (AppendResponse) {}
+  rpc Append(AppendRequest) returns (AppendResponse) {}
 
-  // rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
 
-  // rpc Fetch(FetchRequest) returns (FetchResponse) {}
+  rpc Fetch(FetchRequest) returns (FetchResponse) {}
 
-  // rpc CommitOffset(CommitOffsetRequest) returns (CommitOffsetResponse) {}
+  rpc CommitOffset(CommitOffsetRequest) returns (CommitOffsetResponse) {}
 
-  // rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
+  rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
 
 }
 
@@ -69,7 +68,7 @@ message CommandSuccess {
 // add more error
 enum HStreamServerError {
   NoError = 0;
-  UnknownError = 1; 
+  UnknownError = 1;
 }
 
 message AppendRequest {
@@ -106,7 +105,7 @@ message StreamSubscription {
 }
 
 message FetchRequest {
-  string subscriptionId = 1; 
+  string subscriptionId = 1;
 }
 
 message FetchResponse {
@@ -129,11 +128,11 @@ message StreamOffset {
 }
 
 message CommitOffsetResponse {
-  repeated StreamCommitOffsetResponse responses = 1; 
+  repeated StreamCommitOffsetResponse responses = 1;
 }
 
 message StreamCommitOffsetResponse {
-  string streamName = 1; 
+  string streamName = 1;
   HStreamServerError error = 2;
 }
 
