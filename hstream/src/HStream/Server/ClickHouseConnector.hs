@@ -1,84 +1,63 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NoImplicitPrelude  #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE StrictData         #-}
-
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.ClickHouseConnector
-  (
-    clickHouseSinkConnector,
-  )
-where
+  ( clickHouseSinkConnector
+  ) where
 
-import           HStream.Processing.Connector
-import           HStream.Processing.Type          as HPT
-import           HStream.Server.Utils
-import           HStream.Store
-import           HStream.Store.Internal.LogDevice
-import           RIO
-import qualified RIO.Map                          as M
-import qualified Z.Data.CBytes                    as ZCB
-import qualified Z.Data.JSON                      as JSON
-import qualified Z.IO.Logger                      as Log
+import           Control.Monad                   (join, void)
+import qualified Data.Aeson                      as Aeson
+import           Data.Bifunctor                  (first)
+import qualified Data.ByteString.Char8           as DBC
+import qualified Data.HashMap.Strict             as HM
+import           Data.List                       (intercalate)
+import           Data.Scientific                 (floatingOrInteger)
+import           Data.Text                       (Text)
+import qualified Data.Text                       as Text
+import qualified Database.ClickHouseDriver       as CK
+import qualified Database.ClickHouseDriver.Types as CK
+import           Haxl.Core                       (Env)
+import qualified Z.IO.Logger                     as Log
 
-import           HStream.Processing.Util
-import           HStream.SQL.Codegen
-import           System.IO
-import           System.IO.Unsafe
+import           HStream.Processing.Connector    (SinkConnector (..))
+import           HStream.Processing.Type         (SinkRecord (..))
 
-import           Data.Aeson
-import           Data.Aeson.Types
-import qualified Data.ByteString.Char8            as DBC
-import qualified Data.HashMap.Strict              as HM
-import           Data.Scientific
-import qualified Data.Text                        as T
-import           Database.ClickHouseDriver
-import           Database.ClickHouseDriver.Types
-import           HStream.SQL.AST
-import           HStream.Server.Converter
-import           Haxl.Core                        (Env (states))
+clickHouseSinkConnector :: IO (Env () w) -> SinkConnector
+clickHouseSinkConnector ckClient =
+  SinkConnector { writeRecord = writeRecordToClickHouse ckClient }
 
-clickHouseSinkConnector :: IO(Env () w) -> SinkConnector
-clickHouseSinkConnector ckClient = SinkConnector {
-  writeRecord = writeRecordToClickHouse ckClient
-}
+valueToCKType :: Aeson.Value -> CK.ClickhouseType
+valueToCKType (Aeson.String s) = CK.CKString (DBC.pack $ show s)
+valueToCKType (Aeson.Bool b) = if b then CK.CKInt8 1 else CK.CKInt8 0
+valueToCKType (Aeson.Number sci) = either CK.CKDecimal64 CK.CKInt64 (floatingOrInteger sci)
+valueToCKType _ = error "Not implemented"
 
-valueToCKType :: Value -> ClickhouseType
-valueToCKType (String s) = CKString (DBC.pack $ show s)
-valueToCKType (Bool b) = if b then CKInt8 1 else CKInt8 0
-valueToCKType (Number sci) = do
-  case floatingOrInteger sci of
-    Left r  -> CKDecimal64 r
-    Right i -> CKInt64 i
-
-writeRecordToClickHouse :: IO(Env () w) -> SinkRecord -> IO ()
+writeRecordToClickHouse :: IO (Env () w) -> SinkRecord -> IO ()
 writeRecordToClickHouse ckClient SinkRecord{..} = do
-    conn <- ckClient
-    ping conn
-    let insertMap = (decode snkValue) :: Maybe (HM.HashMap T.Text Value)
-    case insertMap of
-      Just l -> do
-        let flattened = flatten l
-        let keys = HM.keys flattened
-        let elems = HM.elems flattened
-        insertOneRow conn ("INSERT INTO " ++ show snkStream ++ " " ++ keysAsSql (map T.unpack keys) ++" VALUES ") (valueToCKType <$> elems)
-        return ()
-      _ -> do
-        Log.warning "Invalid SinK Value"
-  where
-    keysAsSql :: [String] -> String
-    keysAsSql ss = '(' : helper' ss
-      where
-        helper' (a:b:ss) = a ++ (',':helper' (b:ss))
-        helper' (a:ss)   = a ++ (helper' ss)
-        helper' []       = ")"
+  conn <- ckClient
+  let insertMap = Aeson.decode snkValue :: Maybe (HM.HashMap Text.Text Aeson.Value)
+  case insertMap of
+    Just l -> do
+      let !flattened = flatten l
+      let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
+          elems = map valueToCKType $ HM.elems flattened
+      void $ CK.insertOneRow conn ("INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES ") elems
+    _ -> do
+      Log.warning "Invalid Sink Value"
 
-data Payload = Payload {
-  pTimestamp :: Timestamp,
-  pKey       :: Maybe ZCB.CBytes,
-  pValue     :: ZCB.CBytes
-} deriving (Show, Generic, JSON.JSON)
+-- | Flatten all JSON structures.
+--
+-- >>> flatten (HM.fromList [("a", Aeson.Object $ HM.fromList [("b", Aeson.Number 1)])])
+-- fromList [("a.b",Number 1.0)]
+flatten :: HM.HashMap Text Aeson.Value -> HM.HashMap Text Aeson.Value
+flatten jsonMap =
+  let flattened = join $ map (flatten' "." Text.empty) (HM.toList jsonMap)
+   in HM.fromList $ map (first Text.tail) flattened
 
+flatten' :: Text -> Text -> (Text, Aeson.Value) -> [(Text, Aeson.Value)]
+flatten' splitor prefix (k, v) = do
+  -- TODO: we will not support array?
+  case v of
+    Aeson.Object o -> join $ map (flatten' splitor (prefix <> splitor <> k)) (HM.toList o)
+    _              -> [(prefix <> splitor <> k, v)]
