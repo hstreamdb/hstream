@@ -435,7 +435,7 @@ const char* ld_logdirectory_name(logdevice_logdirectory_t* dir) {
 
 // LogDirectory attrs : fullyQualifiedName
 const char*
-ld_logdirectory_getFullyQualifiedName(logdevice_logdirectory_t* dir) {
+ld_logdirectory_full_name(logdevice_logdirectory_t* dir) {
   return dir->rep->getFullyQualifiedName().c_str();
 }
 

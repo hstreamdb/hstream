@@ -48,3 +48,22 @@ configType = describe "LogConfigType" $ do
     I.logDirChildrenNames dir `shouldReturn` []
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
+
+  it "get log group and child directory" $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
+                                        }
+        logid = 101
+    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    _ <- I.makeLogDirectory client dirname attrs False
+    _ <- I.makeLogDirectory client (dirname <> "/A") attrs False
+    version <- I.logGroupGetVersion =<<
+      I.makeLogGroup client (dirname <> "/B") logid logid attrs False
+    I.syncLogsConfigVersion client version
+    dir <- I.getLogDirectory client dirname
+    nameA <- I.logDirectoryGetFullName =<< I.getLogDirectory client =<< I.logDirChildFullName dir "A"
+    nameA `shouldBe` dirname <> "/A/"
+    nameB <- I.logGroupGetFullName =<< I.getLogGroup client =<< I.logDirLogFullName dir "B"
+    nameB `shouldBe` dirname <> "/B"
+    I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
+    I.getLogDirectory client dirname `shouldThrow` anyException
