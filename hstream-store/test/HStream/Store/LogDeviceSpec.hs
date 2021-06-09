@@ -26,5 +26,25 @@ configType = describe "LogConfigType" $ do
     dir <- I.getLogDirectory client dirname
     names <- I.logDirChildrenNames dir
     sort names `shouldBe` ["A", "B"]
+    I.logDirLogsNames dir `shouldReturn` []
+    I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
+    I.getLogDirectory client dirname `shouldThrow` anyException
+
+  it "get log groups in directory" $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
+                                        }
+        logid1 = 101
+        logid2 = 102
+    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    _ <- I.makeLogDirectory client dirname attrs False
+    _ <- I.makeLogGroup client (dirname <> "/A") logid1 logid1 attrs False
+    version <- I.logGroupGetVersion =<<
+      I.makeLogGroup client (dirname <> "/B") logid2 logid2 attrs False
+    I.syncLogsConfigVersion client version
+    dir <- I.getLogDirectory client dirname
+    names <- I.logDirLogsNames dir
+    sort names `shouldBe` ["A", "B"]
+    I.logDirChildrenNames dir `shouldReturn` []
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException

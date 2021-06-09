@@ -468,17 +468,17 @@ LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_child_version, children, uint64_t,
                          (value->second->version()), 0)
 // dir log name
 // FIXME: Do we need to copy the returned string?
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_name, logs, const char*,
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_log_name, logs, const char*,
                          value->second->name().c_str(), NULL)
 // dir log fully qualified name
 // FIXME: Do we need to copy the returned string?
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_full_name, logs, const char*,
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_log_full_name, logs, const char*,
                          value->second->getFullyQualifiedName().c_str(), NULL)
 // dir log verison
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_version, logs, uint64_t,
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_log_version, logs, uint64_t,
                          (value->second->version()), 0)
 // dir log attrs
-LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_logs_attrs, logs, const LogAttributes*,
+LD_LOGDIRECTORY_MAP_ATTR(ld_logdir_log_attrs, logs, const LogAttributes*,
                          (&(value->second->attrs())), NULL)
 // dir log range
 void ld_logdir_logs_range(logdevice_logdirectory_t* dir, const char* key,
