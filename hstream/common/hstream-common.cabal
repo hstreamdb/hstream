@@ -18,7 +18,6 @@ category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Simple
-extra-source-files: ChangeLog.md
 
 source-repository head
   type:     git
