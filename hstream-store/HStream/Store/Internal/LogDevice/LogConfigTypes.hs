@@ -247,8 +247,22 @@ logDirChildrenNames dir = withForeignPtr dir $ \dir' -> do
       c_ld_logdir_children_keys dir' len' names'
   finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string raw_ptr)
 
+logDirLogsNames :: LDDirectory -> IO [CBytes]
+logDirLogsNames dir = withForeignPtr dir $ \dir' -> do
+  (len, (raw_ptr, names_ptr)) <-
+    Z.withPrimUnsafe @Int 0 $ \len' ->
+    Z.withPrimUnsafe nullPtr $ \names' ->
+      c_ld_logdir_logs_keys dir' len' names'
+  finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string raw_ptr)
+
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_children_keys"
   c_ld_logdir_children_keys
+    :: Ptr LogDeviceLogDirectory
+    -> MBA# CSize -> MBA# (Ptr (StdVector Z.StdString))
+    -> IO (Ptr Z.StdString)
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdir_logs_keys"
+  c_ld_logdir_logs_keys
     :: Ptr LogDeviceLogDirectory
     -> MBA# CSize -> MBA# (Ptr (StdVector Z.StdString))
     -> IO (Ptr Z.StdString)
@@ -512,7 +526,6 @@ logGroupUpdateExtraAttrs client group extraAttrs =
         LogsConfigStatusCbData errno version _failure_reason <- withAsync size peek_data cfun
         void $ E.throwStreamErrorIfNotOK' errno
         syncLogsConfigVersion client version
-
 {-# INLINE logGroupUpdateExtraAttrs #-}
 
 logGroupGetVersion :: LDLogGroup -> IO C_LogsConfigVersion
