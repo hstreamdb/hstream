@@ -26,6 +26,7 @@ import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           Database.ClickHouseDriver.Client
 import           Database.ClickHouseDriver.Types
+import qualified Database.MySQL.Base               as My
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
@@ -41,6 +42,7 @@ import           ZooKeeper.Types
 
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
+import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
                                                     runTask)
@@ -139,18 +141,23 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let fromCOptionString m = case m of
                 Just (ConstantString s) -> Just $ C.pack s
                 _                       -> Nothing
-          -- build sink connector by type
-          let sk = case typeM of
+          let fromCOptionStringToString m = case m of
+                Just (ConstantString s) -> Just s
+                _                       -> Nothing
+          let fromCOptionIntToPortNumber m = case m of
+                Just (ConstantInt s) -> Just $ fromIntegral s
+                _                    -> Nothing
+          let sk' = case typeM of
                 Just (ConstantString cType) ->
                   do
                     case cType of
                         "clickhouse" -> do
                           let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                          let host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
-                          let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
-                          let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
-                          let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          let cli = clickHouseSinkConnector $ createClient ConnParams{
+                              host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
+                              port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
+                              password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
+                              database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
+                          cli <- createClient ConnParams{
                             username'     = username
                             ,host'        = host
                             ,port'        = port
@@ -158,9 +165,27 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                             ,compression' = False
                             ,database'    = database
                           }
-                          Right cli
-                        _ -> Left "unsupported sink connector type"
-                _ -> Left "invalid type in connector options"
+                          let connector = clickHouseSinkConnector cli
+                          return $ Right connector
+                        "mysql" -> do
+                          let username = fromMaybe "root" $ fromCOptionString (lookup "username" cOptions)
+                              host = fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions)
+                              port = fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions)
+                              password = fromMaybe "password" $ fromCOptionString (lookup "password" cOptions)
+                              database = fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions)
+                          conn <- My.connect My.ConnectInfo {
+                            ciUser = username,
+                            ciPassword = password,
+                            ciPort = 3306,
+                            ciHost = host,
+                            ciDatabase = database,
+                            ciCharset = 33
+                          }
+                          let cli = mysqlSinkConnector conn
+                          return $ Right cli
+                        _ -> return $ Left "unsupported sink connector type"
+                _ -> return $ Left "invalid type in connector options"
+          sk <- sk'
           case sk of
             Left err -> do
                 let resp = genErrorQueryResponse err

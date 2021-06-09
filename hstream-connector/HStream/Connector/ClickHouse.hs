@@ -23,7 +23,7 @@ import qualified Z.IO.Logger                     as Log
 import           HStream.Processing.Connector    (SinkConnector (..))
 import           HStream.Processing.Type         (SinkRecord (..))
 
-clickHouseSinkConnector :: IO (Env () w) -> SinkConnector
+clickHouseSinkConnector :: Env () w -> SinkConnector
 clickHouseSinkConnector ckClient =
   SinkConnector { writeRecord = writeRecordToClickHouse ckClient }
 
@@ -33,16 +33,15 @@ valueToCKType (Aeson.Bool b) = if b then CK.CKInt8 1 else CK.CKInt8 0
 valueToCKType (Aeson.Number sci) = either CK.CKDecimal64 CK.CKInt64 (floatingOrInteger sci)
 valueToCKType _ = error "Not implemented"
 
-writeRecordToClickHouse :: IO (Env () w) -> SinkRecord -> IO ()
+writeRecordToClickHouse :: Env () w -> SinkRecord -> IO ()
 writeRecordToClickHouse ckClient SinkRecord{..} = do
-  conn <- ckClient
   let insertMap = Aeson.decode snkValue :: Maybe (HM.HashMap Text.Text Aeson.Value)
   case insertMap of
     Just l -> do
       let !flattened = flatten l
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = map valueToCKType $ HM.elems flattened
-      void $ CK.insertOneRow conn ("INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES ") elems
+      void $ CK.insertOneRow ckClient ("INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES ") elems
     _ -> do
       Log.warning "Invalid Sink Value"
 

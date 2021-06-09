@@ -27,7 +27,7 @@ library
   exposed-modules:
     HStream.Connector.ClickHouse
     HStream.Connector.HStore
-    HStream.Connector.Mysql
+    HStream.Connector.MySQL
 
   build-depends:
     , aeson

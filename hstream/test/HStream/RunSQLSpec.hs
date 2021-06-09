@@ -8,6 +8,7 @@ import           Control.Monad                    (replicateM)
 import qualified Data.ByteString.Char8            as C
 import           Database.ClickHouseDriver.Client
 import           Database.ClickHouseDriver.Types
+import qualified Database.MySQL.Base              as My
 import           RIO
 import qualified RIO.ByteString.Lazy              as BL
 import qualified RIO.Map                          as Map
@@ -19,6 +20,7 @@ import           Text.Printf                      (printf)
 
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
+import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor
 import           HStream.Processing.Type
@@ -62,7 +64,7 @@ spec = describe "HStream.RunSQLSpec" $ do
 
   it "create connectors" $
     (do
-      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"clickhouse\", streamname = \""<> source1 <>"\");"
+      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"mysql\", host = \"host.docker.internal\", streamname = \""<> source1 <>"\");"
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (12, 84);"
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 83);"
       handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (32, 82);"
@@ -134,17 +136,23 @@ handleCreateConnectorSQL sql = do
           let fromCOptionString m = case m of
                 Just (ConstantString s) -> Just $ C.pack s
                 _                       -> Nothing
-          let sk = case typeM of
+          let fromCOptionStringToString m = case m of
+                Just (ConstantString s) -> Just s
+                _                       -> Nothing
+          let fromCOptionIntToPortNumber m = case m of
+                Just (ConstantInt s) -> Just $ fromIntegral s
+                _                    -> Nothing
+          let sk' = case typeM of
                 Just (ConstantString cType) ->
                   do
                     case cType of
                         "clickhouse" -> do
                           let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                          let host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
-                          let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
-                          let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
-                          let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          let cli = clickHouseSinkConnector $ createClient ConnParams{
+                              host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
+                              port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
+                              password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
+                              database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
+                          cli <- createClient ConnParams{
                               username'     = username
                               ,host'        = host
                               ,port'        = port
@@ -152,9 +160,27 @@ handleCreateConnectorSQL sql = do
                               ,compression' = False
                               ,database'    = database
                           }
-                          Right cli
-                        _ -> Left "unsupported sink connector"
-                _ -> Left "Invalid type in connector options"
+                          let connector = clickHouseSinkConnector cli
+                          return $ Right connector
+                        "mysql" -> do
+                          let username = fromMaybe "root" $ fromCOptionString (lookup "username" cOptions)
+                              host = fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions)
+                              port = fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions)
+                              password = fromMaybe "password" $ fromCOptionString (lookup "password" cOptions)
+                              database = fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions)
+                          conn <- My.connect My.ConnectInfo {
+                            ciUser = username,
+                            ciPassword = password,
+                            ciPort = 3306,
+                            ciHost = host,
+                            ciDatabase = database,
+                            ciCharset = 33
+                          }
+                          let cli = mysqlSinkConnector conn
+                          return $ Right cli
+                        _ -> return $ Left "unsupported sink connector"
+                _ -> return $ Left "Invalid type in connector options"
+          sk <- sk'
           case sk of
             Left err -> error err
             Right sk -> do
