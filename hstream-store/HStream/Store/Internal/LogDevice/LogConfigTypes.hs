@@ -525,7 +525,7 @@ logGroupGetFullName group =
   withForeignPtr group $ CBytes.fromCString <=< c_ld_loggroup_get_fully_qualified_name
 {-# INLINE logGroupGetFullName #-}
 
--- Note that this pointer only valiad if LogGroup is valiad.
+-- Note that this pointer **may** only valiad if LogGroup is valiad.
 logGroupGetAttrs :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
 logGroupGetAttrs group =
   withForeignPtr group $ \group' -> c_ld_loggroup_get_attrs group'
