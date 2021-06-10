@@ -68,7 +68,7 @@ spec = describe "HStream.RunSQLSpec" $ do
 
   it "create connectors" $
     (do
-      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"mysql\", host = \"host.docker.internal\", streamname = \""<> source3 <>"\");"
+      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"mysql\", host = \"127.0.0.1\", streamname = \""<> source3 <>"\");"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (12, 84);"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (22, 83);"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (32, 82);"
@@ -250,7 +250,7 @@ handleCleanMysql source = do
     ciUser = "root",
     ciPassword = "password",
     ciPort = 3306,
-    ciHost = "host.docker.internal",
+    ciHost = "127.0.0.1",
     ciDatabase = "mysql",
     ciCharset = 33
   }
