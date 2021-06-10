@@ -82,11 +82,14 @@ void get_attribute_extras(LogAttributes* attrs, size_t* len,
                           std::vector<std::string>** values_) {
   std::vector<std::string>* keys = new std::vector<std::string>;
   std::vector<std::string>* values = new std::vector<std::string>;
-  auto& extras = attrs->extras().value();
 
-  for (const auto& [key, value] : extras) {
-    keys->push_back(key);
-    values->push_back(value);
+  if (attrs->extras().hasValue()) {
+    auto& extras = attrs->extras().value();
+
+    for (const auto& [key, value] : extras) {
+      keys->push_back(key);
+      values->push_back(value);
+    }
   }
 
   *len = keys->size();
@@ -462,6 +465,11 @@ ld_logdirectory_full_name(logdevice_logdirectory_t* dir) {
 // LogDirectory attrs : version
 uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
   return dir->rep->version();
+}
+
+const LogAttributes* ld_logdirectory_get_attrs(logdevice_logdirectory_t* dir) {
+  const LogAttributes& attrs = dir->rep->attrs();
+  return &attrs;
 }
 
 #define LD_LOGDIRECTORY_MAP_ATTR(NAME, ATTR_NAME, RET_TYPE, FIND_FUN, NOT_FUN) \

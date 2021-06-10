@@ -19,7 +19,6 @@ import           HStream.Store.Admin.API
 import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
 
-
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()
 runLogsCmd conf (InfoCmd logid)          = runLogsInfo conf logid
 runLogsCmd conf (CreateCmd createOpt)    = createLogs conf createOpt
@@ -135,7 +134,10 @@ printLogGroup' level verbose logGroup = do
   emit $ "* " <> unpack fullName <> " (" <> show lo <> ".." <> show hi <> ")"
   when verbose $ do
     version <- S.logGroupGetVersion logGroup
-    emit $ "  version: " <> show version
+    emit $ "  Version: " <> show version
+    extraAttrs <- S.logGroupGetHsLogAttrs logGroup
+    emit "  Attributes:"
+    printExtraAttributes level extraAttrs
 
 printLogDirectory :: S.LDClient -> Int -> Bool -> S.LDDirectory -> IO ()
 printLogDirectory = flip printLogDirectory' 0
@@ -147,13 +149,24 @@ printLogDirectory' client level maxDepth verbose logDirectory = do
   emit $ "- " <> unpack fullName
   when verbose $ do
     version <- S.logDirectoryGetVersion logDirectory
-    emit $ "  version: " <> show version
+    emit $ "  Version: " <> show version
+    -- TODO: fix the issue when the rep factor of a directory is empty
+    -- extraAttrs <- S.logDirectoryGetHsLogAttrs logDirectory
+    -- emit "Attributes:"
+    -- printExtraAttributes level extraAttrs
   when (level < maxDepth) $ do
     logGroupNames <- S.logDirLogsNames logDirectory
     forM_ logGroupNames $ \logGroupName ->
       S.logDirLogFullName logDirectory logGroupName >>= S.getLogGroup client >>=
-      printLogGroup' (level + 1) verbose
+        printLogGroup' (level + 1) verbose
     subDirNames <- S.logDirChildrenNames logDirectory
     forM_ subDirNames $ \subDirName ->
       S.logDirChildFullName logDirectory subDirName >>= S.getLogDirectory client >>=
-      printLogDirectory' client (level + 1) maxDepth verbose
+        printLogDirectory' client (level + 1) maxDepth verbose
+
+printExtraAttributes :: Int -> S.HsLogAttrs -> IO ()
+printExtraAttributes level S.HsLogAttrs{..} = do
+  let emit s = putStrLn $ replicate ((level + 1) * shift) ' ' <> "- " <> s
+  emit $ "replication factor: " <> show logReplicationFactor
+  forM_ (Map.toList logExtraAttrs) $ \(k, v) ->
+    emit $ unpack k <> ": " <> unpack v

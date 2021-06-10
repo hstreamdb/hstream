@@ -2,7 +2,6 @@ module HStream.Store.LogDeviceSpec where
 
 import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as Map
-import           Foreign                          (newForeignPtr_)
 import qualified HStream.Store                    as S
 import qualified HStream.Store.Internal.LogDevice as I
 import           HStream.Store.SpecUtils
@@ -76,7 +75,7 @@ configType = describe "LogConfigType" $ do
         logid = 101
     lg <- I.makeLogGroup client "lg" logid logid attrs False
     _ <- I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
-    attrs' <- I.ldLogAttrsToHsLogAttrs =<< newForeignPtr_ =<< I.logGroupGetAttrs lg
+    attrs' <- I.logGroupGetHsLogAttrs lg
     _ <- I.removeLogGroup client "lg"
     S.logReplicationFactor attrs' `shouldBe` 1
     Map.lookup "A" (S.logExtraAttrs attrs') `shouldBe` Just "B"

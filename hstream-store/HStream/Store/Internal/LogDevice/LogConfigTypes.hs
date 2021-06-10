@@ -71,6 +71,16 @@ ldLogAttrsToHsLogAttrs :: LDLogAttrs -> IO HsLogAttrs
 ldLogAttrsToHsLogAttrs attrs =
   liftA2 HsLogAttrs (getAttributeReplicationFactor attrs) (getAttributeExtras attrs)
 
+logGroupGetHsLogAttrs :: LDLogGroup -> IO HsLogAttrs
+logGroupGetHsLogAttrs group =
+  withForeignPtr group $ \group' ->
+    c_ld_loggroup_get_attrs group' >>= newForeignPtr_ >>= ldLogAttrsToHsLogAttrs
+
+logDirectoryGetHsLogAttrs :: LDDirectory -> IO HsLogAttrs
+logDirectoryGetHsLogAttrs dir =
+  withForeignPtr dir $ \dir' ->
+    c_ld_logdirectory_get_attrs dir' >>= newForeignPtr_ >>= ldLogAttrsToHsLogAttrs
+
 getAttributeExtras :: LDLogAttrs -> IO (Map.Map CBytes CBytes)
 getAttributeExtras attrs =
   withForeignPtr attrs $ \attrs' -> do
@@ -312,6 +322,11 @@ logDirLogFullName dir name =
     CBytes.withCBytesUnsafe name $ \name' ->
       CBytes.fromCString =<< c_ld_logdir_log_full_name dir' name'
 
+-- Note that this pointer is only valiad if LogDirectory is valiad.
+logDirectorypGetAttrs :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
+logDirectorypGetAttrs dir =
+  withForeignPtr dir $ \dir' -> c_ld_logdirectory_get_attrs dir'
+
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_child_full_name"
   c_ld_logdir_child_full_name
     :: Ptr LogDeviceLogDirectory
@@ -392,6 +407,9 @@ foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_full_name"
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
   c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_attrs"
+  c_ld_logdirectory_get_attrs :: Ptr LogDeviceLogDirectory -> IO (Ptr LogDeviceLogAttributes)
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_get_directory"
   c_ld_client_get_directory :: Ptr LogDeviceClient

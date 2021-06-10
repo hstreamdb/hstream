@@ -389,6 +389,8 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
                         facebook::logdevice::Status* st_out,
                         logdevice_logdirectory_t** logdir_result);
 
+const LogAttributes* ld_logdirectory_get_attrs(logdevice_logdirectory_t* dir);
+
 // LogGroup
 facebook::logdevice::Status ld_client_make_loggroup_sync(
     logdevice_client_t* client, const char* path, const c_logid_t start_logid,
