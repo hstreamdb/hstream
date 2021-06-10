@@ -26,7 +26,6 @@ source-repository head
 library
   exposed-modules:
     HStream.Connector.ClickHouse
-    HStream.Connector.Converter
     HStream.Connector.HStore
     HStream.Connector.MySQL
 

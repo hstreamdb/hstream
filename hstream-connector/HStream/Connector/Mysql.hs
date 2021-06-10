@@ -13,15 +13,15 @@ import qualified Data.HashMap.Strict          as HM
 import           Data.List                    (intercalate)
 import           Data.Scientific              (floatingOrInteger)
 import qualified Data.Text                    as Text
-import           Database.MySQL.Base          as MY
-import           HStream.Connector.Converter
+import           Database.MySQL.Base          as MySQL
+import           HStream.Utils                (flattenJSON)
 
 import qualified Z.IO.Logger                  as Log
 
 import           HStream.Processing.Connector (SinkConnector (..))
 import           HStream.Processing.Type      (SinkRecord (..))
 
-mysqlSinkConnector :: MY.MySQLConn -> SinkConnector
+mysqlSinkConnector :: MySQL.MySQLConn -> SinkConnector
 mysqlSinkConnector myClient =
   SinkConnector { writeRecord = writeRecordToMySQL myClient }
 
@@ -34,12 +34,12 @@ toMySQLValue (Aeson.Number sci) = do
     Right i -> show (i :: Int)
 toMySQLValue _ = error "Not implemented"
 
-writeRecordToMySQL :: MY.MySQLConn -> SinkRecord -> IO ()
+writeRecordToMySQL :: MySQL.MySQLConn -> SinkRecord -> IO ()
 writeRecordToMySQL myClient SinkRecord{..} = do
   let insertMap = Aeson.decode snkValue :: Maybe (HM.HashMap Text.Text Aeson.Value)
   case insertMap of
     Just l -> do
-      let !flattened = flatten l
+      let !flattened = flattenJSON l
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = "(" <> (intercalate "," . map toMySQLValue $ HM.elems flattened) <> ")"
       void $ execute_ myClient $ Query $ DBCL.pack ("INSERT INTO " ++ Text.unpack snkStream ++ " " ++ keys ++ " VALUES " ++ elems)

@@ -152,7 +152,7 @@ handleCreateConnectorSQL sql = do
                               port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
                               password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
                               database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          cli <- createClient ConnParams{
+                          cli <- createClient ConnParams {
                               username'     = username
                               ,host'        = host
                               ,port'        = port

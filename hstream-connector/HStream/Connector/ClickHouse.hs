@@ -15,7 +15,7 @@ import           Data.Scientific                 (floatingOrInteger)
 import qualified Data.Text                       as Text
 import qualified Database.ClickHouseDriver       as CK
 import qualified Database.ClickHouseDriver.Types as CK
-import           HStream.Connector.Converter
+import           HStream.Utils                   (flattenJSON)
 import           Haxl.Core                       (Env)
 import qualified Z.IO.Logger                     as Log
 
@@ -37,7 +37,7 @@ writeRecordToClickHouse ckClient SinkRecord{..} = do
   let insertMap = Aeson.decode snkValue :: Maybe (HM.HashMap Text.Text Aeson.Value)
   case insertMap of
     Just l -> do
-      let !flattened = flatten l
+      let !flattened = flattenJSON l
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = map valueToCKType $ HM.elems flattened
       void $ CK.insertOneRow ckClient ("INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES ") elems

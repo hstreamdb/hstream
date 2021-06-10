@@ -26,7 +26,7 @@ import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           Database.ClickHouseDriver.Client
 import           Database.ClickHouseDriver.Types
-import qualified Database.MySQL.Base               as My
+import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
@@ -157,7 +157,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                               port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
                               password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
                               database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          cli <- createClient ConnParams{
+                          cli <- createClient ConnParams {
                             username'     = username
                             ,host'        = host
                             ,port'        = port
@@ -173,7 +173,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                               port = fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions)
                               password = fromMaybe "password" $ fromCOptionString (lookup "password" cOptions)
                               database = fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions)
-                          conn <- My.connect My.ConnectInfo {
+                          conn <- MySQL.connect MySQL.ConnectInfo {
                             ciUser = username,
                             ciPassword = password,
                             ciPort = 3306,
