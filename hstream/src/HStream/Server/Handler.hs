@@ -181,8 +181,8 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                             ciDatabase = database,
                             ciCharset = 33
                           }
-                          let cli = mysqlSinkConnector conn
-                          return $ Right cli
+                          let connector = mysqlSinkConnector conn
+                          return $ Right connector
                         _ -> return $ Left "unsupported sink connector type"
                 _ -> return $ Left "invalid type in connector options"
           sk <- sk'
@@ -190,7 +190,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
             Left err -> do
                 let resp = genErrorQueryResponse err
                 return (ServerNormalResponse resp [] StatusUnknown "")
-            Right sk -> do
+            Right connector -> do
               case streamM of
                 Just (ConstantString stream) -> do
                   subscribeToStream sc (T.pack stream) Latest
@@ -200,7 +200,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                           records <- readRecords sc
                           forM_ records $ \SourceRecord {..} ->
                             writeRecord
-                              sk
+                              connector
                               SinkRecord
                                 { snkStream = T.pack stream,
                                   snkKey = srcKey,

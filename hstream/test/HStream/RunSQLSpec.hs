@@ -41,16 +41,17 @@ spec = describe "HStream.RunSQLSpec" $ do
   source2 <- runIO $ newRandomText 10
   sink1 <- runIO $ newRandomText 10
   sink2 <- runIO $ newRandomText 10
-
-  let source1 = "source3"
+  let source3 = "source3"
 
   it "create streams" $
     (do
         setLogDeviceDbgLevel C_DBG_ERROR
         handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source1 <> " ;"
         handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source2 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source3 <> " ;"
         handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
         handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> ";"
+        handleCreateStreamSQL $ "CREATE STREAM " <> source3 <> " WITH (REPLICATE = 3);"
         handleCreateStreamSQL $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
         handleCreateStreamSQL $ "CREATE STREAM " <> sink2   <> " ;"
     ) `shouldReturn` ()
@@ -64,11 +65,11 @@ spec = describe "HStream.RunSQLSpec" $ do
 
   it "create connectors" $
     (do
-      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"mysql\", host = \"host.docker.internal\", streamname = \""<> source1 <>"\");"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (12, 84);"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 83);"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (32, 82);"
-      handleInsertSQL $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (42, 81);"
+      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"mysql\", host = \"host.docker.internal\", streamname = \""<> source3 <>"\");"
+      handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (12, 84);"
+      handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (22, 83);"
+      handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (32, 82);"
+      handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (42, 81);"
       threadDelay 5000000
     ) `shouldReturn` ()
 
@@ -132,7 +133,6 @@ handleCreateConnectorSQL sql = do
           let sc = hstoreSourceConnector ldclient ldreader
           let streamM = lookup "streamname" cOptions
           let typeM = lookup "type" cOptions
-          let resp = genSuccessQueryResponse
           let fromCOptionString m = case m of
                 Just (ConstantString s) -> Just $ C.pack s
                 _                       -> Nothing
@@ -171,19 +171,19 @@ handleCreateConnectorSQL sql = do
                           conn <- My.connect My.ConnectInfo {
                             ciUser = username,
                             ciPassword = password,
-                            ciPort = 3306,
+                            ciPort = port,
                             ciHost = host,
                             ciDatabase = database,
                             ciCharset = 33
                           }
-                          let cli = mysqlSinkConnector conn
-                          return $ Right cli
+                          let connector = mysqlSinkConnector conn
+                          return $ Right connector
                         _ -> return $ Left "unsupported sink connector"
                 _ -> return $ Left "Invalid type in connector options"
           sk <- sk'
           case sk of
             Left err -> error err
-            Right sk -> do
+            Right conn -> do
               case streamM of
                 Just (ConstantString stream) -> do
                   subscribeToStream sc (Text.pack stream) Latest
@@ -193,7 +193,7 @@ handleCreateConnectorSQL sql = do
                           records <- readRecords sc
                           forM_ records $ \SourceRecord {..} ->
                             writeRecord
-                              sk
+                              conn
                               SinkRecord
                                 { snkStream = (Text.pack stream),
                                   snkKey = srcKey,
