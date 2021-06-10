@@ -13,7 +13,9 @@ RUN rm -rf /srv/*
 WORKDIR /srv
 COPY . /srv
 RUN make && \
-    cabal build all && cabal install hstream
+    cabal build all && \
+    cabal install hstream && \
+    cabal install hstore-admin
 
 # ------------------------------------------------------------------------------
 
@@ -64,7 +66,9 @@ COPY --from=hstreamdb/logdevice /logdevice/common/test/ssl_certs/ /logdevice/com
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
+                    /root/.cabal/bin/hstore-admin \
                     /usr/local/bin/
+RUN /usr/local/bin/hstore-admin --bash-completion-script /usr/local/bin/hstore-admin > /etc/bash_completion.d/hstore-admin
 
 EXPOSE 6560 6570
 CMD ["/usr/local/bin/hstream-server", "-p", "6570"]
