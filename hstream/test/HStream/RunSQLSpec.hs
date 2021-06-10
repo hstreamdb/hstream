@@ -1,18 +1,21 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Monad                    (replicateM)
 import qualified Data.ByteString.Char8            as C
+import qualified Data.ByteString.Lazy.Char8       as DBCL
 import           Database.ClickHouseDriver.Client
 import           Database.ClickHouseDriver.Types
-import qualified Database.MySQL.Base              as My
+import qualified Database.MySQL.Base              as MySQL
 import           RIO
 import qualified RIO.ByteString.Lazy              as BL
 import qualified RIO.Map                          as Map
 import qualified RIO.Text                         as Text
+import           System.IO.Streams                as SIS hiding (take)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
@@ -71,6 +74,7 @@ spec = describe "HStream.RunSQLSpec" $ do
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (32, 82);"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (42, 81);"
       threadDelay 5000000
+      handleCleanMysql source3
     ) `shouldReturn` ()
 
   it "drop streams" $
@@ -147,35 +151,23 @@ handleCreateConnectorSQL sql = do
                   do
                     case cType of
                         "clickhouse" -> do
-                          let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                              host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
-                              port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
-                              password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
-                              database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          cli <- createClient ConnParams {
-                              username'     = username
-                              ,host'        = host
-                              ,port'        = port
-                              ,password'    = password
-                              ,compression' = False
-                              ,database'    = database
-                          }
+                          cli <- createClient $ ConnParams
+                              (fromMaybe "default" $ fromCOptionString (lookup "username" cOptions))
+                              (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions))
+                              (fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions))
+                              (fromMaybe "" $ fromCOptionString (lookup "password" cOptions))
+                              False
+                              (fromMaybe "default" $ fromCOptionString (lookup "database" cOptions))
                           let connector = clickHouseSinkConnector cli
                           return $ Right connector
                         "mysql" -> do
-                          let username = fromMaybe "root" $ fromCOptionString (lookup "username" cOptions)
-                              host = fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions)
-                              port = fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions)
-                              password = fromMaybe "password" $ fromCOptionString (lookup "password" cOptions)
-                              database = fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions)
-                          conn <- My.connect My.ConnectInfo {
-                            ciUser = username,
-                            ciPassword = password,
-                            ciPort = port,
-                            ciHost = host,
-                            ciDatabase = database,
-                            ciCharset = 33
-                          }
+                          conn <- MySQL.connect $ MySQL.ConnectInfo
+                              (fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions))
+                              (fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions))
+                              (fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions))
+                              (fromMaybe "root" $ fromCOptionString (lookup "username" cOptions))
+                              (fromMaybe "password" $ fromCOptionString (lookup "password" cOptions))
+                              33
                           let connector = mysqlSinkConnector conn
                           return $ Right connector
                         _ -> return $ Left "unsupported sink connector"
@@ -250,3 +242,25 @@ handleCreateBySelectSQL sql = do
 
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
+
+-- clean mysql data and check insert rows are correct
+handleCleanMysql :: Text -> IO ()
+handleCleanMysql source = do
+  conn <- MySQL.connect MySQL.ConnectInfo {
+    ciUser = "root",
+    ciPassword = "password",
+    ciPort = 3306,
+    ciHost = "host.docker.internal",
+    ciDatabase = "mysql",
+    ciCharset = 33
+  }
+
+  (_, is) <- MySQL.query_ conn $ MySQL.Query . DBCL.pack $ "SELECT * FROM " <> Text.unpack source
+  (rowCount :: Int) <- SIS.fold (\s _ -> s+1) 0 is
+
+  _ <- MySQL.execute_ conn $ MySQL.Query . DBCL.pack $ "DELETE FROM " <> Text.unpack source
+  MySQL.close conn
+
+  if rowCount == 4
+    then return ()
+    else error "Sink connector sync data failed"

@@ -152,35 +152,23 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                   do
                     case cType of
                         "clickhouse" -> do
-                          let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                              host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
-                              port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
-                              password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
-                              database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          cli <- createClient ConnParams {
-                            username'     = username
-                            ,host'        = host
-                            ,port'        = port
-                            ,password'    = password
-                            ,compression' = False
-                            ,database'    = database
-                          }
+                          cli <- createClient $ ConnParams
+                              (fromMaybe "default" $ fromCOptionString (lookup "username" cOptions))
+                              (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions))
+                              (fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions))
+                              (fromMaybe "" $ fromCOptionString (lookup "password" cOptions))
+                              False
+                              (fromMaybe "default" $ fromCOptionString (lookup "database" cOptions))
                           let connector = clickHouseSinkConnector cli
                           return $ Right connector
                         "mysql" -> do
-                          let username = fromMaybe "root" $ fromCOptionString (lookup "username" cOptions)
-                              host = fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions)
-                              port = fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions)
-                              password = fromMaybe "password" $ fromCOptionString (lookup "password" cOptions)
-                              database = fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions)
-                          conn <- MySQL.connect MySQL.ConnectInfo {
-                            ciUser = username,
-                            ciPassword = password,
-                            ciPort = 3306,
-                            ciHost = host,
-                            ciDatabase = database,
-                            ciCharset = 33
-                          }
+                          conn <- MySQL.connect $ MySQL.ConnectInfo
+                              (fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions))
+                              (fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions))
+                              (fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions))
+                              (fromMaybe "root" $ fromCOptionString (lookup "username" cOptions))
+                              (fromMaybe "password" $ fromCOptionString (lookup "password" cOptions))
+                              33
                           let connector = mysqlSinkConnector conn
                           return $ Right connector
                         _ -> return $ Left "unsupported sink connector type"

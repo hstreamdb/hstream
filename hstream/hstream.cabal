@@ -134,6 +134,7 @@ test-suite hstream-test
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , io-streams
     , mysql-haskell
     , random              ^>=1.2
     , rio
