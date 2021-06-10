@@ -2,7 +2,7 @@
 module HStream.Store.Admin.Command.Logs
   ( runLogsCmd
   ) where
-import           Control.Monad                    (guard, unless, when)
+import           Control.Monad                    (forM_, guard, unless, when)
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
@@ -25,22 +25,7 @@ runLogsCmd conf (InfoCmd logid)          = runLogsInfo conf logid
 runLogsCmd conf (CreateCmd createOpt)    = createLogs conf createOpt
 runLogsCmd conf (RenameCmd old new warn) = runLogsRename conf old new warn
 runLogsCmd conf (RemoveCmd removeOpt)    = runLogsRemove conf removeOpt
-runLogsCmd conf ShowCmd                  = error "not implemented yet"
-
-runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
-runLogsRemove conf RemoveLogsOpts{..} = do
-  putStrLn $ "Are you sure you want to rename " <> show rmPath <> "? [y/n]"
-  c <- getChar
-  when (toUpper c == 'Y') $ do
-    let client' = buildLDClientRes conf Map.empty
-    withResource client' $ \client -> do
-      res <- tryJust (guard . S.isNotFound) $ S.removeLogDirectory client rmPath rmRecursive
-      case res of
-        Right version ->
-          putStrLn $ "directory " <> show rmPath <> " has been removed in version " <> show version
-        Left _ -> do
-          version <- S.removeLogGroup client rmPath
-          putStrLn $ "log group " <> show rmPath <> " has been removed in version " <> show version
+runLogsCmd conf (ShowCmd showOpt)        = runLogsShow conf showOpt
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
@@ -103,3 +88,72 @@ createLogs conf CreateLogsOpts{..} = do
        else let start = fromJust fromId
                 end = fromJust toId
              in S.makeLogGroup client path start end attrs True >> putStrLn "Create log group successfully!" >> return ()
+
+runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
+runLogsRemove conf RemoveLogsOpts{..} = do
+  putStrLn $ "Are you sure you want to rename " <> show rmPath <> "? [y/n]"
+  c <- getChar
+  when (toUpper c == 'Y') $ do
+    let client' = buildLDClientRes conf Map.empty
+    withResource client' $ \client -> do
+      res <- tryJust (guard . S.isNotFound) $ S.removeLogDirectory client rmPath rmRecursive
+      case res of
+        Right version ->
+          putStrLn $ "directory " <> show rmPath <> " has been removed in version " <> show version
+        Left _ -> do
+          version <- S.removeLogGroup client rmPath
+          putStrLn $ "log group " <> show rmPath <> " has been removed in version " <> show version
+
+runLogsShow :: HeaderConfig AdminAPI -> ShowLogsOpts -> IO ()
+runLogsShow conf ShowLogsOpts{..} = do
+  let client' = buildLDClientRes conf Map.empty
+  withResource client' $ \client -> do
+    let printLogDir = printLogDirectory client showMaxDepth showVerbose
+    case (showLogID, showPath) of
+      -- if the log ID is present, the path is ignored
+      (Just logid, _) -> S.getLogGroupByID client logid >>= printLogGroup showVerbose
+      -- otherwise, look for a log group or directory according to the path
+      (_, Just path)  -> do
+        tryJust (guard . S.isNotFound) (S.getLogGroup client path) >>=
+          (\case
+              Right loggroup -> printLogGroup showVerbose loggroup
+              Left _         -> S.getLogDirectory client path >>= printLogDir)
+      -- when both are missing, print the full tree
+      _               -> S.getLogDirectory client "/" >>= printLogDir
+
+shift :: Int
+shift = 2
+
+printLogGroup :: Bool -> S.LDLogGroup -> IO ()
+printLogGroup = printLogGroup' 0
+
+printLogGroup' :: Int -> Bool -> S.LDLogGroup -> IO ()
+printLogGroup' level verbose logGroup = do
+  let emit s = putStrLn $ replicate (level * shift) ' ' <> s
+  fullName <- S.logGroupGetFullName logGroup
+  (lo, hi) <- S.logGroupGetRange logGroup
+  emit $ "* " <> unpack fullName <> " (" <> show lo <> ".." <> show hi <> ")"
+  when verbose $ do
+    version <- S.logGroupGetVersion logGroup
+    emit $ "  version: " <> show version
+
+printLogDirectory :: S.LDClient -> Int -> Bool -> S.LDDirectory -> IO ()
+printLogDirectory = flip printLogDirectory' 0
+
+printLogDirectory' :: S.LDClient -> Int -> Int -> Bool -> S.LDDirectory -> IO ()
+printLogDirectory' client level maxDepth verbose logDirectory = do
+  let emit s = putStrLn $ replicate (level * shift) ' ' <> s
+  fullName <- S.logDirectoryGetFullName logDirectory
+  emit $ "- " <> unpack fullName
+  when verbose $ do
+    version <- S.logDirectoryGetVersion logDirectory
+    emit $ "  version: " <> show version
+  when (level < maxDepth) $ do
+    logGroupNames <- S.logDirLogsNames logDirectory
+    forM_ logGroupNames $ \logGroupName ->
+      S.logDirLogFullName logDirectory logGroupName >>= S.getLogGroup client >>=
+      printLogGroup' (level + 1) verbose
+    subDirNames <- S.logDirChildrenNames logDirectory
+    forM_ subDirNames $ \subDirName ->
+      S.logDirChildFullName logDirectory subDirName >>= S.getLogDirectory client >>=
+      printLogDirectory' client (level + 1) maxDepth verbose

@@ -22,6 +22,8 @@ module HStream.Store.Stream
     -- * Internal Log
   , FFI.LogID (..)
   , FFI.C_LogID
+  , FFI.LDLogGroup
+  , FFI.LDDirectory
   , LD.getLogGroup
   , LD.getLogGroupByID
   , LD.logGroupGetName
