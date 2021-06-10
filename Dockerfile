@@ -48,9 +48,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libsnappy1v5                   \
       libsodium-dev                  \
       libzstd-dev                    \
+      libmysqlclient-dev             \
       python3                        \
       libpython3.8                   \
       python3-pip                    \
+      bash-completion                \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 COPY --from=hstreamdb/haskell:latest /usr/local/lib/ /usr/local/lib/
@@ -68,7 +70,9 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
                     /root/.cabal/bin/hstore-admin \
                     /usr/local/bin/
-RUN /usr/local/bin/hstore-admin --bash-completion-script /usr/local/bin/hstore-admin > /etc/bash_completion.d/hstore-admin
+RUN mkdir -p /etc/bash_completion.d && \
+    grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
+    /usr/local/bin/hstore-admin --bash-completion-script /usr/local/bin/hstore-admin > /etc/bash_completion.d/hstore-admin
 
 EXPOSE 6560 6570
 CMD ["/usr/local/bin/hstream-server", "-p", "6570"]
