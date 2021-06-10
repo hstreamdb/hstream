@@ -198,6 +198,10 @@ logDirectoryGetName :: LDDirectory -> IO CBytes
 logDirectoryGetName dir = withForeignPtr dir $
    CBytes.fromCString <=< c_ld_logdirectory_name
 
+logDirectoryGetFullName :: LDDirectory -> IO CBytes
+logDirectoryGetFullName dir = withForeignPtr dir $
+   CBytes.fromCString <=< c_ld_logdirectory_full_name
+
 logDirectoryGetLogsName :: Bool -> LDDirectory -> IO [CBytes]
 logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
   (len, (names_ptr, stdvec_ptr)) <-
@@ -254,6 +258,30 @@ logDirLogsNames dir = withForeignPtr dir $ \dir' -> do
     Z.withPrimUnsafe nullPtr $ \names' ->
       c_ld_logdir_logs_keys dir' len' names'
   finally (peekStdStringToCBytesN len names_ptr) (delete_vector_of_string raw_ptr)
+
+logDirChildFullName :: LDDirectory -> CBytes -> IO CBytes
+logDirChildFullName dir name =
+  withForeignPtr dir $ \dir' ->
+    CBytes.withCBytesUnsafe name $ \name' ->
+      CBytes.fromCString =<< c_ld_logdir_child_full_name dir' name'
+
+logDirLogFullName :: LDDirectory -> CBytes -> IO CBytes
+logDirLogFullName dir name =
+  withForeignPtr dir $ \dir' ->
+    CBytes.withCBytesUnsafe name $ \name' ->
+      CBytes.fromCString =<< c_ld_logdir_log_full_name dir' name'
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdir_child_full_name"
+  c_ld_logdir_child_full_name
+    :: Ptr LogDeviceLogDirectory
+    -> BA# Word8
+    -> IO CString
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdir_log_full_name"
+  c_ld_logdir_log_full_name
+    :: Ptr LogDeviceLogDirectory
+    -> BA# Word8
+    -> IO CString
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_children_keys"
   c_ld_logdir_children_keys
@@ -317,6 +345,9 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_remove_directory"
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_name"
   c_ld_logdirectory_name :: Ptr LogDeviceLogDirectory -> IO CString
+
+foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_full_name"
+  c_ld_logdirectory_full_name :: Ptr LogDeviceLogDirectory -> IO CString
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdirectory_get_version"
   c_ld_logdirectory_get_version :: Ptr LogDeviceLogDirectory -> IO Word64
@@ -489,10 +520,10 @@ logGroupGetName group =
   withForeignPtr group $ CBytes.fromCString <=< c_ld_loggroup_get_name
 {-# INLINE logGroupGetName #-}
 
-logGroupGetFullyQualifiedName :: LDLogGroup -> IO CBytes
-logGroupGetFullyQualifiedName group =
+logGroupGetFullName :: LDLogGroup -> IO CBytes
+logGroupGetFullName group =
   withForeignPtr group $ CBytes.fromCString <=< c_ld_loggroup_get_fully_qualified_name
-{-# INLINE logGroupGetFullyQualifiedName #-}
+{-# INLINE logGroupGetFullName #-}
 
 -- Note that this pointer only valiad if LogGroup is valiad.
 logGroupGetAttrs :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)

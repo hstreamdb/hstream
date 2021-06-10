@@ -32,9 +32,9 @@ base = describe "HStream.Store.Stream" $ do
     S.doesStreamExists client streamName `shouldReturn` True
 
   it "get full path of loggroup by name or id shoule be equal" $ do
-    logpath <- S.logGroupGetFullyQualifiedName =<< S.getLogGroup client logPath
+    logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
     logid <- S.getCLogIDByStreamName client streamName
-    logpath' <- S.logGroupGetFullyQualifiedName =<< S.getLogGroupByID client logid
+    logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
     logpath `shouldBe` logpath'
 
   it "rename stream" $ do

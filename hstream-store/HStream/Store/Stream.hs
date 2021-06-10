@@ -25,7 +25,7 @@ module HStream.Store.Stream
   , LD.getLogGroup
   , LD.getLogGroupByID
   , LD.logGroupGetName
-  , LD.logGroupGetFullyQualifiedName
+  , LD.logGroupGetFullName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
 
