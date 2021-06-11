@@ -68,7 +68,8 @@ spec = describe "HStream.RunSQLSpec" $ do
 
   it "create connectors" $
     (do
-      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR clickhouse1 WITH (type = \"mysql\", host = \"127.0.0.1\", streamname = \""<> source3 <>"\");"
+      handleCreateMysqlTable source3
+      handleCreateConnectorSQL $ "CREATE SOURCE | SINK CONNECTOR mysql WITH (type = \"mysql\", host = \"127.0.0.1\", streamname = \""<> source3 <>"\");"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (12, 84);"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (22, 83);"
       handleInsertSQL $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (32, 82);"
@@ -243,6 +244,21 @@ handleCreateBySelectSQL sql = do
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
+-- create mysql table for testing
+handleCreateMysqlTable :: Text -> IO ()
+handleCreateMysqlTable source = do
+  conn <- MySQL.connect MySQL.ConnectInfo {
+    ciUser = "root",
+    ciPassword = "password",
+    ciPort = 3306,
+    ciHost = "127.0.0.1",
+    ciDatabase = "mysql",
+    ciCharset = 33
+  }
+
+  _ <- MySQL.execute_ conn $ MySQL.Query . DBCL.pack $ "CREATE TABLE IF NOT EXISTS "<> Text.unpack source <>"(temperature INT, humidity INT) CHARACTER SET utf8"
+  MySQL.close conn
+
 -- clean mysql data and check insert rows are correct
 handleCleanMysql :: Text -> IO ()
 handleCleanMysql source = do
@@ -258,7 +274,8 @@ handleCleanMysql source = do
   (_, is) <- MySQL.query_ conn $ MySQL.Query . DBCL.pack $ "SELECT * FROM " <> Text.unpack source
   (rowCount :: Int) <- SIS.fold (\s _ -> s+1) 0 is
 
-  _ <- MySQL.execute_ conn $ MySQL.Query . DBCL.pack $ "DELETE FROM " <> Text.unpack source
+  _ <- MySQL.execute_ conn $ MySQL.Query . DBCL.pack $ "DROP TABLE IF EXISTS " <> Text.unpack source
+
   MySQL.close conn
 
   if rowCount == 4
