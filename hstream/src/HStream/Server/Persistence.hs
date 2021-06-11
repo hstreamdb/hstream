@@ -6,10 +6,12 @@
 
 module HStream.Server.Persistence
   ( Query(..)
-  , QueryInfo(..)
-  , QueryStatus(..)
-  , QStatus(..)
+  , Connector
+  , Info(..)
+  , Status(..)
+  , PStatus(..)
   , queriesPath
+  , connectorsPath
   , defaultHandle
   , Persistence (..)
   , initializeAncestors
@@ -32,98 +34,146 @@ import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
-type SqlStatement = Text
-type QueryId      = CBytes
+type Id = CBytes
 type TimeStamp    = Int64
+type SqlStatement = Text
 
 data Query = Query {
-    _QueryId     :: QueryId
-  , _QueryInfo   :: QueryInfo
-  , _QueryStatus :: QueryStatus
+    queryId     :: Id
+  , queryInfo   :: Info
+  , queryStatus :: Status
 } deriving (Generic, Show)
 instance JSON Query
 
-data QueryInfo = QueryInfo {
+data Connector = Connector {
+    connectorId     :: Id
+  , connectorInfo   :: Info
+  , connectorStatus :: Status
+} deriving (Generic, Show)
+instance JSON Connector
+
+data Info = Info {
     sqlStatement :: SqlStatement
   , createdTime  :: TimeStamp
 } deriving (Generic, Show)
-instance JSON QueryInfo
+instance JSON Info
 
-data QueryStatus = QueryStatus {
-    queryStatus         :: QStatus
-  , queryTimeCheckpoint :: TimeStamp
+data Status = Status {
+    status         :: PStatus
+  , timeCheckpoint :: TimeStamp
 } deriving (Generic, Show)
-instance JSON QueryStatus
+instance JSON Status
 
-data QStatus = QCreated
-  | QRunning
-  | QTerminated
+data PStatus = Created
+  | Running
+  | Terminated
   deriving (Show, Eq, Generic)
-instance JSON QStatus
+instance JSON PStatus
+
+data PType = PQuery
+  | PConnector
 
 queriesPath :: CBytes
 queriesPath = "/hstreamdb/hstream/queries"
 
+connectorsPath :: CBytes
+connectorsPath = "/hstreamdb/hstream/connectors"
+
 class Persistence handle where
-  insertQuery :: HasCallStack => QueryId -> QueryInfo -> handle -> IO ()
-  setStatus   :: HasCallStack => QueryId -> QStatus -> handle -> IO ()
-  getQueries  :: HasCallStack => handle -> IO [Query]
+  insertQuery        :: HasCallStack => Id -> Info -> handle -> IO ()
+  insertConnector    :: HasCallStack => Id -> Info -> handle -> IO ()
+  setQueryStatus     :: HasCallStack => Id -> PStatus -> handle -> IO ()
+  setConnectorStatus :: HasCallStack => Id -> PStatus -> handle -> IO ()
+  getQueries         :: HasCallStack => handle -> IO [Query]
+  getConnectors      :: HasCallStack => handle -> IO [Connector]
 
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
-withMaybeZHandle Nothing   f = f queryCollection
+withMaybeZHandle Nothing   f = f (queryCollection, connectorsCollection)
 
 --------------------------------------------------------------------------------
 
-type QueriesM = IORef (HM.HashMap CBytes Query)
+type PStoreMem   = (QueriesM, ConnectorsM)
+type ConnectorsM = IORef (HM.HashMap CBytes Connector)
+type QueriesM    = IORef (HM.HashMap CBytes Query)
 
 queryCollection :: QueriesM
 queryCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE queryCollection #-}
 
-instance Persistence QueriesM where
+connectorsCollection :: ConnectorsM
+connectorsCollection = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE connectorsCollection #-}
+
+instance Persistence PStoreMem where
   insertQuery qid info ref = do
     MkSystemTime timestamp _ <- getSystemTime'
-    modifyIORef ref $ HM.insert (mkPath qid) $ Query qid info (QueryStatus QCreated timestamp)
+    modifyIORef (fst ref) $ HM.insert (mkQueryPath qid) $ Query qid info (Status Created timestamp)
 
-  setStatus qid status ref = do
+  insertConnector cid info ref = do
     MkSystemTime timestamp _ <- getSystemTime'
-    let f s query = query {_QueryStatus = QueryStatus s timestamp}
-    modifyIORef ref $ HM.adjust (f status) (mkPath qid)
+    modifyIORef (snd ref) $ HM.insert (mkConnectorPath cid) $ Connector cid info (Status Created timestamp)
 
-  getQueries = (HM.elems <$>) . readIORef
+  setQueryStatus qid status ref = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    let f s query = query {queryStatus = Status s timestamp}
+    modifyIORef (fst ref) $ HM.adjust (f status) (mkQueryPath qid)
+
+  setConnectorStatus qid status ref = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    let f s connector = connector {connectorStatus = Status s timestamp}
+    modifyIORef (snd ref) $ HM.adjust (f status) (mkConnectorPath qid)
+
+  getQueries = (HM.elems <$>) . readIORef . fst
+
+  getConnectors = (HM.elems <$>) . readIORef . snd
 
 --------------------------------------------------------------------------------
+
 defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
 defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 instance Persistence ZHandle where
-  insertQuery qid info@(QueryInfo _ timestamp) zk = do
-    createPath   zk (mkPath qid)
-    createInsert zk (mkPath qid <> "/details") (encode info)
-    createInsert zk (mkPath qid <> "/status")  (encode $ QueryStatus QCreated timestamp)
+  insertQuery qid info@(Info _ timestamp) zk = do
+    createPath   zk (mkQueryPath qid)
+    createInsert zk (mkQueryPath qid <> "/details") (encode info)
+    createInsert zk (mkQueryPath qid <> "/status")  (encode $ Status Created timestamp)
 
-  setStatus qid status zk = do
+  setQueryStatus qid status zk = do
     MkSystemTime timestamp _ <- getSystemTime'
-    setQuery zk (mkPath qid <> "/status") (encode $ QueryStatus status timestamp)
+    setZkData zk (mkQueryPath qid <> "/status") (encode $ Status status timestamp)
 
   getQueries zk = do
     StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
-    details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkPath) qids
-    status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkPath) qids
+    details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkQueryPath) qids
+    status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkQueryPath) qids
     return $ zipWith ($) (zipWith ($) (Query <$> qids) details) status
 
+  insertConnector cid info@(Info _ timestamp) zk = do
+    createPath   zk (mkConnectorPath cid)
+    createInsert zk (mkConnectorPath cid <> "/details") (encode info)
+    createInsert zk (mkConnectorPath cid <> "/status")  (encode $ Status Created timestamp)
+
+  setConnectorStatus cid status zk = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    setZkData zk (mkConnectorPath cid <> "/status") (encode $ Status status timestamp)
+
+  getConnectors zk = do
+    StringsCompletion (StringVector cids) <- zooGetChildren zk connectorsPath
+    details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkConnectorPath) cids
+    status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cids
+    return $ zipWith ($) (zipWith ($) (Connector <$> cids) details) status
+
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
-initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath]
+initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath]
 
 --------------------------------------------------------------------------------
-
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents =
   void $ zooCreate zk path (Just contents) zooOpenAclUnsafe ZooPersistent
 
-setQuery :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
-setQuery zk path contents =
+setZkData :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
+setZkData zk path contents =
   void $ zooSet zk path (Just contents) Nothing
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
@@ -137,5 +187,8 @@ decodeQ :: JSON a => DataCompletion -> a
 decodeQ = (\case { Right x -> x ; _ -> error "decoding failed"}) . snd . decode
         . (\case { Nothing -> ""; Just x -> x}) . dataCompletionValue
 
-mkPath :: QueryId -> CBytes
-mkPath x = queriesPath <> "/" <> x
+mkQueryPath :: Id -> CBytes
+mkQueryPath x = queriesPath <> "/" <> x
+
+mkConnectorPath :: Id -> CBytes
+mkConnectorPath x = connectorsPath <> "/" <> x

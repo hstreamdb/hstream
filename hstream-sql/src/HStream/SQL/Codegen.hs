@@ -104,6 +104,7 @@ streamCodegen input = do
       return $ InsertPlan stream (BSL.fromStrict bs)
     RQShow (RShow RShowStreams) -> return $ ShowPlan Streams
     RQShow (RShow RShowQueries) -> return $ ShowPlan Queries
+    RQShow (RShow RShowConnectors) -> return $ ShowPlan Connectors
     RQDrop (RDrop x)   -> return $ DropPlan False x
     RQDrop (RDropIf x) -> return $ DropPlan True x
 

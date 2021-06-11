@@ -52,9 +52,10 @@ import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import           HStream.SQL.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence
+import qualified HStream.Server.Persistence        as P
 import           HStream.Store
 import           HStream.Utils
+import           Numeric                           (showHex)
 import           Proto3.Suite                      (Enumerated (..))
 import           RIO                               (async, forM_, forever)
 import           System.IO.Unsafe                  (unsafePerformIO)
@@ -134,72 +135,53 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
         Right ()                  -> forkIO (runTaskWrapper taskBuilder scLDClient)
           >> returnOkRes
     Right (CreateConnectorPlan cName (RConnectorOptions cOptions)) -> do
-          ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
-          let sc = hstoreSourceConnector scLDClient ldreader
-          let streamM = lookup "streamname" cOptions
-          let typeM = lookup "type" cOptions
-          let fromCOptionString m = case m of
-                Just (ConstantString s) -> Just $ C.pack s
-                _                       -> Nothing
-          let fromCOptionStringToString m = case m of
-                Just (ConstantString s) -> Just s
-                _                       -> Nothing
-          let fromCOptionIntToPortNumber m = case m of
-                Just (ConstantInt s) -> Just $ fromIntegral s
-                _                    -> Nothing
-          let sk' = case typeM of
-                Just (ConstantString cType) ->
-                  do
-                    case cType of
-                        "clickhouse" -> do
-                          cli <- createClient $ ConnParams
-                              (fromMaybe "default" $ fromCOptionString (lookup "username" cOptions))
-                              (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions))
-                              (fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions))
-                              (fromMaybe "" $ fromCOptionString (lookup "password" cOptions))
-                              False
-                              (fromMaybe "default" $ fromCOptionString (lookup "database" cOptions))
-                          let connector = clickHouseSinkConnector cli
-                          return $ Right connector
-                        "mysql" -> do
-                          conn <- MySQL.connect $ MySQL.ConnectInfo
-                              (fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions))
-                              (fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions))
-                              (fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions))
-                              (fromMaybe "root" $ fromCOptionString (lookup "username" cOptions))
-                              (fromMaybe "password" $ fromCOptionString (lookup "password" cOptions))
-                              33
-                          let connector = mysqlSinkConnector conn
-                          return $ Right connector
-                        _ -> return $ Left "unsupported sink connector type"
-                _ -> return $ Left "invalid type in connector options"
-          sk <- sk'
-          case sk of
-            Left err -> do
-                let resp = genErrorQueryResponse err
-                return (ServerNormalResponse resp [] StatusUnknown "")
-            Right connector -> do
-              case streamM of
-                Just (ConstantString stream) -> do
-                  subscribeToStream sc (T.pack stream) Latest
-                  _ <- async $
-                      forever $
-                        do
-                          records <- readRecords sc
-                          forM_ records $ \SourceRecord {..} ->
-                            writeRecord
-                              connector
-                              SinkRecord
-                                { snkStream = T.pack stream,
-                                  snkKey = srcKey,
-                                  snkValue = srcValue,
-                                  snkTimestamp = srcTimestamp
-                                }
-                  let resp = genSuccessQueryResponse
-                  return (ServerNormalResponse resp [] StatusOk "")
-                _ ->  do
-                  let resp = genErrorQueryResponse "stream name missed in connector options"
-                  return (ServerNormalResponse resp [] StatusUnknown "")
+      ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
+      let sc = hstoreSourceConnector scLDClient ldreader
+          streamM = lookup "streamname" cOptions
+          typeM   = lookup "type" cOptions
+          fromCOptionString          = \case Just (ConstantString s) -> Just $ C.pack s;    _ -> Nothing
+          fromCOptionStringToString  = \case Just (ConstantString s) -> Just s;             _ -> Nothing
+          fromCOptionIntToPortNumber = \case Just (ConstantInt s) -> Just $ fromIntegral s; _ -> Nothing
+      sk <- case typeM of
+        Just (ConstantString cType) -> do
+          case cType of
+            "clickhouse" -> do
+              cli <- createClient $ ConnParams
+                (fromMaybe "default"   $ fromCOptionString (lookup "username" cOptions))
+                (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host"     cOptions))
+                (fromMaybe "9000"      $ fromCOptionString (lookup "port"     cOptions))
+                (fromMaybe ""          $ fromCOptionString (lookup "password" cOptions))
+                False
+                (fromMaybe "default"   $ fromCOptionString (lookup "database" cOptions))
+              return $ Right $ clickHouseSinkConnector cli
+            "mysql" -> do
+              conn <- MySQL.connect $ MySQL.ConnectInfo
+                (fromMaybe "127.0.0.1" $ fromCOptionStringToString   (lookup "host" cOptions))
+                (fromMaybe 3306        $ fromCOptionIntToPortNumber  (lookup "port" cOptions))
+                (fromMaybe "mysql"     $ fromCOptionString       (lookup "database" cOptions))
+                (fromMaybe "root"      $ fromCOptionString       (lookup "username" cOptions))
+                (fromMaybe "password"  $ fromCOptionString       (lookup "password" cOptions))
+                33
+              return $ Right $ mysqlSinkConnector conn
+            _ -> return $ Left "unsupported sink connector type"
+        _ -> return $ Left "invalid type in connector options"
+      MkSystemTime timestamp _ <- getSystemTime'
+      let cid = CB.pack $ showHex timestamp (T.unpack cName)
+          cinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandQueryStmtText) timestamp
+      case sk of
+        Left err -> returnErrRes err
+        Right connector -> case streamM of
+          Just (ConstantString stream) -> do
+            catchZkException (P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo) "Fail to record connector"
+            subscribeToStream sc (T.pack stream) Latest
+            _ <- async $ do
+              catchZkException (P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running) "Failed to change connector status"
+              forever $ do
+                records <- readRecords sc
+                forM_ records $ \SourceRecord {..} ->
+                  writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
+            returnOkRes
+          _ -> returnErrRes "stream name missed in connector options"
     Right (InsertPlan stream payload)             -> do
       timestamp <- getCurrentTimestamp
       try (writeRecord (hstoreSinkConnector scLDClient)
@@ -222,10 +204,15 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           Right names -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
             return (ServerNormalResponse resp [] StatusOk "")
-        Queries -> try (withMaybeZHandle zkHandle getQueries) >>= \case
+        Queries -> try (P.withMaybeZHandle zkHandle P.getQueries) >>= \case
           Left (e :: SomeException) -> returnErrRes ("failed to get queries from zookeeper, " <> getKeyWordFromException e)
           Right queries -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
+            return (ServerNormalResponse resp [] StatusOk "")
+        Connectors -> try (P.withMaybeZHandle zkHandle P.getConnectors) >>= \case
+          Left (e :: SomeException) -> returnErrRes ("failed to get connectors from zookeeper, " <> getKeyWordFromException e)
+          Right connectors -> do
+            let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
             return (ServerNormalResponse resp [] StatusOk "")
         _ -> returnErrRes "not Supported"
   where
@@ -254,14 +241,14 @@ executePushQueryHandler ServerContext{..}
             -- create persistent query
             MkSystemTime timestamp _ <- getSystemTime'
             let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
-                qinfo = HStream.Server.Persistence.QueryInfo (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
-            catchZkException (withMaybeZHandle zkHandle $ insertQuery qid qinfo) "Failed to record query"
+                qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
+            catchZkException (P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo) "Failed to record query"
             -- run task
-            tid <- forkIO $ catchZkException (withMaybeZHandle zkHandle $ setStatus qid QRunning) "Failed to change query status"
+            tid <- forkIO $ catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Running) "Failed to change query status"
               >> runTaskWrapper taskBuilder scLDClient
             isCancelled <- newMVar False
             _ <- forkIO $ handlePushQueryCanceled meta isCancelled
-              (killThread tid >> catchZkException (withMaybeZHandle zkHandle $ setStatus qid QTerminated) "Failed to change query status")
+              (killThread tid >> catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) "Failed to change query status")
             ldreader' <- newLDFileCkpReader scLDClient
               (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
               checkpointRootPath 1 Nothing 3

@@ -15,6 +15,7 @@ import           Data.Text.Lazy.Builder            (toLazyText)
 import qualified Data.Vector                       as V
 import           Text.Layout.Table
 
+import           Data.List                         (sort)
 import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
 import           HStream.Utils.Converter           (structToJsonObject,
@@ -30,7 +31,8 @@ formatResult width struct@(P.Struct kv) =
     [("SHOWSTREAMS", Just v)] -> unlines .  words . formatValue $ v
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
-   --   unlines $ map (TL.unpack . toLazyText . encodePrettyToTextBuilder' defConfig {confIndent = Spaces 1} . valueToJsonValue) $ V.toList xs
+    [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
+      renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
     [("SELECT", Just (P.Value (Just (P.ValueKindStructValue struct))))] ->
       renderJSONObjectToTable width $ structToJsonObject struct
     [("Error Message:", Just v)] ->"Error Message: " ++  formatValue v ++ "\n"
@@ -86,16 +88,16 @@ renderJSONObjectsToTable :: Width -> [A.Object] -> String
 renderJSONObjectsToTable _ [] = "\n"
 renderJSONObjectsToTable l os@(o:_) =
   tableString colout unicodeRoundS (titlesH keys)
-  (map (colsAllG center . renderContents (l `div` (size + 2))) elems) ++ "\n"
+  (map (colsAllG center . renderContents (l `div` (size + 1))) elems) ++ "\n"
   where
-    keys  = map T.unpack (HM.keys o)
-    elems = map HM.elems os
-    size  = length keys
+    keys  = sort $ map T.unpack (HM.keys o)
+    elems = map (map snd . sort . HM.toList) os
+    size  = length o
     colout = replicate size
-      $ column (expandUntil $ l `div` (size + 1)) left noAlign (singleCutMark "...")
+      $ column (expandUntil $ l `div` size) left noAlign (singleCutMark "...")
 
 renderContents :: Width -> [A.Value] -> [[String]]
-renderContents width = map $ concatMap (justifyText width) . lines . TL.unpack . toLazyText
+renderContents width = map $ concatMap (justifyText width) . lines . removePunc . TL.unpack . toLazyText
                            . encodePrettyToTextBuilder' defConfig {confIndent = Spaces 1}
 
 renderJSONToTable :: Width -> A.Value -> String
@@ -103,6 +105,8 @@ renderJSONToTable width (A.Object hmap) = renderJSONObjectToTable width hmap
 renderJSONToTable _ x                   = show x
 
 --------------------------------------------------------------------------------
+removePunc :: String -> String
+removePunc xs = [ x | x <- xs, x `notElem` (['}','{','\"','\''] :: [Char])]
 
 getObjects vs = [ object | A.Object object <- vs ]
 getObjects :: [A.Value] -> [A.Object]

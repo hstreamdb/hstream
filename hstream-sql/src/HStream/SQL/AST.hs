@@ -404,10 +404,12 @@ type instance RefinedType ShowQ = RShow
 data RShowOption
   = RShowStreams
   | RShowQueries
+  | RShowConnectors
   deriving (Eq, Show)
 instance Refine ShowOption where
-  refine (ShowStreams _) = RShowStreams
-  refine (ShowQueries _) = RShowQueries
+  refine (ShowStreams _)    = RShowStreams
+  refine (ShowQueries _)    = RShowQueries
+  refine (ShowConnectors _) = RShowConnectors
 type instance RefinedType ShowOption = RShowOption
 
 ---- DROP
