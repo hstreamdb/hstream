@@ -20,6 +20,7 @@ bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
   ChangeLog.md
+  include/ghc_ext.h
   include/hs_logdevice.h
   README.md
 
