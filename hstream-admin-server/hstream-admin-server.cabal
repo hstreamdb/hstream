@@ -28,10 +28,11 @@ executable hstream-admin-server
     , servant-server
     , warp    
     , hstream-admin-server
+    , hstream
     , hstream-store
     , hstream-processing
     , Z-Data
-
+    , zoovisitor
 
   hs-source-dirs:   app
   default-language: Haskell2010
@@ -40,8 +41,10 @@ library
   hs-source-dirs:   src
   exposed-modules:
     HStream.Admin.Server.Stream
+    , HStream.Admin.Server.Query
   build-depends:
     , base              >=4.11 && <5
+    , containers
     , servant
     , servant-server
     , warp    
@@ -50,5 +53,5 @@ library
     , hstream-connector
     , aeson
     , Z-Data
-    , containers
     , text
+    , zoovisitor
