@@ -17,6 +17,11 @@ HOOGLE_HOME = os.getenv("HOOGLE_HOME", f'{HOME}/.hoogle')
 DEFAULT_HS_IMAGE = 'docker.io/hstreamdb/haskell'
 DEFAULT_LD_IMAGE = 'docker.io/hstreamdb/logdevice'
 DEFAULT_DB_IMAGE = 'docker.io/hstreamdb/hstream'
+# TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
+DEFAULT_MYSQL_IMAGE = 'mysql:5.6'
+
+MYSQL_CONTAINER_NAME = 'hstream-mysql'
+DEFAULT_MYSQL_PASSWORD = 'password'
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(os.path.abspath(__file__))))
 CUID, CGID = os.getuid(), os.getgid()
@@ -37,12 +42,23 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
 
 
 def update_images(images=None):
-    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE]
+    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE, DEFAULT_MYSQL_IMAGE]
     for i in images:
         cmd = f"docker pull {i}"
         loginfo(f"Run {cmd}...")
         run_sh(cmd)
 
+def mysql_start(container_bin):
+    cmd = ' '.join([
+        f'{container_bin} run -td -p 3306:3306 --name {MYSQL_CONTAINER_NAME} --rm',
+        f'-e MYSQL_ROOT_PASSWORD={DEFAULT_MYSQL_PASSWORD}',
+        DEFAULT_MYSQL_IMAGE
+    ])
+    run_sh(cmd)
+    loginfo("done")
+
+def mysql_stop(container_bin):
+    run_sh(f"{container_bin} kill {MYSQL_CONTAINER_NAME}", check=False)
 
 def is_cluster_started(container_bin):
     result = run_sh(
@@ -187,6 +203,16 @@ if __name__ == '__main__':
         'cluster-stop', help='Stop logdevice dev cluster')
     parser_cluster_stop.add_argument('--container-bin', default='docker')
 
+    # mysql-start
+    parser_mysql_start = subparsers.add_parser(
+        'mysql-start', help='Start mysql service for testing')
+    parser_mysql_start.add_argument('--container-bin', default='docker')
+
+    # mysql-stop
+    parser_mysql_stop = subparsers.add_parser(
+        'mysql-stop', help='Stop mysql service')
+    parser_mysql_stop.add_argument('--container-bin', default='docker')
+
     # ldshell
     parser_cluster_ldshell = subparsers.add_parser(
         'ldshell', help='')
@@ -238,6 +264,10 @@ if __name__ == '__main__':
         cluster_start(**args)
     elif sub_command == 'cluster-stop':
         cluster_stop(**args)
+    if sub_command == 'mysql-start':
+        mysql_start(**args)
+    if sub_command == 'mysql-stop':
+        mysql_stop(**args)
     elif sub_command == 'ldshell':
         run_ldshell(**args)
     elif sub_command == 'shell':

@@ -27,6 +27,7 @@ library
   exposed-modules:
     HStream.Connector.ClickHouse
     HStream.Connector.HStore
+    HStream.Connector.MySQL
 
   build-depends:
     , aeson
@@ -44,6 +45,7 @@ library
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , mysql-haskell
     , proto3-suite
     , proto3-wire
     , random
