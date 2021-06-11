@@ -67,30 +67,27 @@ updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
       c_update_log_attrs_extras attrs' l ks' vs'
 
-ldLogAttrsToHsLogAttrs :: LDLogAttrs -> IO HsLogAttrs
-ldLogAttrsToHsLogAttrs attrs =
-  liftA2 HsLogAttrs (getAttributeReplicationFactor attrs) (getAttributeExtras attrs)
+hsLogAttrsFromPtr :: Ptr LogDeviceLogAttributes -> IO HsLogAttrs
+hsLogAttrsFromPtr attrs =
+  liftA2 HsLogAttrs (getAttrsReplicationFactorFromPtr attrs) (getAttrsExtrasFromPtr attrs)
 
 logGroupGetHsLogAttrs :: LDLogGroup -> IO HsLogAttrs
 logGroupGetHsLogAttrs group =
-  withForeignPtr group $ \group' ->
-    c_ld_loggroup_get_attrs group' >>= newForeignPtr_ >>= ldLogAttrsToHsLogAttrs
+  withForeignPtr group $ hsLogAttrsFromPtr <=< c_ld_loggroup_get_attrs
 
 logDirectoryGetHsLogAttrs :: LDDirectory -> IO HsLogAttrs
 logDirectoryGetHsLogAttrs dir =
-  withForeignPtr dir $ \dir' ->
-    c_ld_logdirectory_get_attrs dir' >>= newForeignPtr_ >>= ldLogAttrsToHsLogAttrs
+  withForeignPtr dir $ hsLogAttrsFromPtr <=< c_ld_logdirectory_get_attrs
 
-getAttributeExtras :: LDLogAttrs -> IO (Map.Map CBytes CBytes)
-getAttributeExtras attrs =
-  withForeignPtr attrs $ \attrs' -> do
+getAttrsExtrasFromPtr :: Ptr LogDeviceLogAttributes -> IO (Map.Map CBytes CBytes)
+getAttrsExtrasFromPtr attrs = do
   (len, (keys_ptr, (values_ptr, (keys_vec, (values_vec, _))))) <-
     Z.withPrimUnsafe (0 :: Int) $ \len ->
     Z.withPrimUnsafe nullPtr $ \keys ->
     Z.withPrimUnsafe nullPtr $ \values ->
     Z.withPrimUnsafe nullPtr $ \keys_vec ->
     Z.withPrimUnsafe nullPtr $ \values_vec ->
-      c_get_attribute_extras attrs' len keys values keys_vec values_vec
+      c_get_attribute_extras attrs len keys values keys_vec values_vec
   finally
     (buildExtras len keys_ptr values_ptr)
     (delete_vector_of_string keys_vec <> delete_vector_of_string values_vec)
@@ -100,9 +97,8 @@ getAttributeExtras attrs =
       values <- peekStdStringToCBytesN len values_ptr
       return . Map.fromList $ zip keys values
 
-getAttributeReplicationFactor :: LDLogAttrs -> IO Int
-getAttributeReplicationFactor attrs =
-  withForeignPtr attrs (fmap fromIntegral <$> c_get_replication_factor)
+getAttrsReplicationFactorFromPtr :: Ptr LogDeviceLogAttributes -> IO Int
+getAttrsReplicationFactorFromPtr attrs = fromIntegral <$> c_get_replication_factor attrs
 
 foreign import ccall unsafe "hs_logdevice.h get_attribute_extras"
   c_get_attribute_extras :: Ptr LogDeviceLogAttributes
@@ -114,8 +110,7 @@ foreign import ccall unsafe "hs_logdevice.h get_attribute_extras"
                          -> IO ()
 
 foreign import ccall unsafe "hs_logdevice.h get_replication_factor"
-  c_get_replication_factor :: Ptr LogDeviceLogAttributes
-                           -> IO CInt
+  c_get_replication_factor :: Ptr LogDeviceLogAttributes -> IO CInt
 
 -------------------------------------------------------------------------------
 -- LogHeadAttributes
@@ -322,10 +317,9 @@ logDirLogFullName dir name =
     CBytes.withCBytesUnsafe name $ \name' ->
       CBytes.fromCString =<< c_ld_logdir_log_full_name dir' name'
 
--- Note that this pointer is only valiad if LogDirectory is valiad.
+-- Note that this pointer is only valid if LogDirectory is valid.
 logDirectorypGetAttrs :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
-logDirectorypGetAttrs dir =
-  withForeignPtr dir $ \dir' -> c_ld_logdirectory_get_attrs dir'
+logDirectorypGetAttrs dir = withForeignPtr dir c_ld_logdirectory_get_attrs
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_child_full_name"
   c_ld_logdir_child_full_name
@@ -584,10 +578,9 @@ logGroupGetFullName group =
   withForeignPtr group $ CBytes.fromCString <=< c_ld_loggroup_get_fully_qualified_name
 {-# INLINE logGroupGetFullName #-}
 
--- Note that this pointer only valiad if LogGroup is valiad.
+-- Note that this pointer only valid if LogGroup is valid.
 logGroupGetAttrs :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
-logGroupGetAttrs group =
-  withForeignPtr group $ \group' -> c_ld_loggroup_get_attrs group'
+logGroupGetAttrs group = withForeignPtr group c_ld_loggroup_get_attrs
 {-# INLINE logGroupGetAttrs #-}
 
 logGroupGetExtraAttr :: LDLogGroup -> CBytes -> IO (Maybe CBytes)
