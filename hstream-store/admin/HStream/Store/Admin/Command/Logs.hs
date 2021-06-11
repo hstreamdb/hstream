@@ -2,7 +2,9 @@
 module HStream.Store.Admin.Command.Logs
   ( runLogsCmd
   ) where
-import           Control.Monad                    (forM_, guard, unless, when)
+import           Colourista                       (formatWith, green, yellow)
+import           Control.Monad                    (forM_, guard, unless, when,
+                                                   (>=>))
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
@@ -126,12 +128,19 @@ shift = 2
 printLogGroup :: Bool -> S.LDLogGroup -> IO ()
 printLogGroup = printLogGroup' 0
 
-printLogGroup' :: Int -> Bool -> S.LDLogGroup -> IO ()
+printLogGroup'
+  :: Int
+  -- ^ level of indentation
+  -> Bool
+  -- ^ whether to print all the attributes
+  -> S.LDLogGroup
+  -- ^ the log group to print
+  -> IO ()
 printLogGroup' level verbose logGroup = do
   let emit s = putStrLn $ replicate (level * shift) ' ' <> s
   fullName <- S.logGroupGetFullName logGroup
   (lo, hi) <- S.logGroupGetRange logGroup
-  emit $ "* " <> unpack fullName <> " (" <> show lo <> ".." <> show hi <> ")"
+  emit . formatWith [yellow] $ "\9678 " <> unpack fullName <> " (" <> show lo <> ".." <> show hi <> ")"
   when verbose $ do
     version <- S.logGroupGetVersion logGroup
     emit $ "  Version: " <> show version
@@ -142,11 +151,20 @@ printLogGroup' level verbose logGroup = do
 printLogDirectory :: S.LDClient -> Int -> Bool -> S.LDDirectory -> IO ()
 printLogDirectory = flip printLogDirectory' 0
 
-printLogDirectory' :: S.LDClient -> Int -> Int -> Bool -> S.LDDirectory -> IO ()
+printLogDirectory' :: S.LDClient
+  -> Int
+  -- ^ level of indentation
+  -> Int
+  -- ^ maximum depth of the tree to print
+  -> Bool
+  -- ^ whether to print all the attributes
+  -> S.LDDirectory
+  -- ^ the directory to print
+  -> IO ()
 printLogDirectory' client level maxDepth verbose logDirectory = do
   let emit s = putStrLn $ replicate (level * shift) ' ' <> s
   fullName <- S.logDirectoryGetFullName logDirectory
-  emit $ "- " <> unpack fullName
+  emit . formatWith [green] $ "\9660 " <> unpack fullName
   when verbose $ do
     version <- S.logDirectoryGetVersion logDirectory
     emit $ "  Version: " <> show version
@@ -156,13 +174,13 @@ printLogDirectory' client level maxDepth verbose logDirectory = do
     -- printExtraAttributes level extraAttrs
   when (level < maxDepth) $ do
     logGroupNames <- S.logDirLogsNames logDirectory
-    forM_ logGroupNames $ \logGroupName ->
-      S.logDirLogFullName logDirectory logGroupName >>= S.getLogGroup client >>=
-        printLogGroup' (level + 1) verbose
+    forM_ logGroupNames $
+      S.logDirLogFullName logDirectory >=> S.getLogGroup client >=>
+      printLogGroup' (level + 1) verbose
     subDirNames <- S.logDirChildrenNames logDirectory
-    forM_ subDirNames $ \subDirName ->
-      S.logDirChildFullName logDirectory subDirName >>= S.getLogDirectory client >>=
-        printLogDirectory' client (level + 1) maxDepth verbose
+    forM_ subDirNames $
+      S.logDirChildFullName logDirectory >=> S.getLogDirectory client >=>
+      printLogDirectory' client (level + 1) maxDepth verbose
 
 printExtraAttributes :: Int -> S.HsLogAttrs -> IO ()
 printExtraAttributes level S.HsLogAttrs{..} = do
