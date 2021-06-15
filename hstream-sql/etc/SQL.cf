@@ -71,6 +71,7 @@ InsertJson.   Insert ::= "INSERT" "INTO" Ident "VALUES" SString ;
 DShow. ShowQ ::= "SHOW" ShowOption ;
 ShowQueries. ShowOption ::= "QUERIES" ;
 ShowStreams. ShowOption ::= "STREAMS" ;
+ShowConnectors. ShowOption ::= "CONNECTORS" ;
 
 --- Drop Query
 DDrop.  Drop ::= "DROP" "STREAM" Ident ;
