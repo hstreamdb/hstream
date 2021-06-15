@@ -10,14 +10,14 @@ module HStream.Store.Stream
   , getStreamName
   , FFI.LogAttrs (LogAttrs)
   , FFI.HsLogAttrs (..)
+    -- **
   , createStream
   , renameStream
   , removeStream
   , findStreams
+  , getStreamReplicaFactor
+  , getStreamHeadTimestamp
   , doesStreamExists
-  , streamNameToLogPath
-  , logPathToStreamName
-  , getCLogIDByStreamName
 
     -- * Internal Log
   , FFI.LogID (..)
@@ -30,6 +30,10 @@ module HStream.Store.Stream
   , LD.logGroupGetFullName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
+    -- ** helpers
+  , streamNameToLogPath
+  , logPathToStreamName
+  , getCLogIDByStreamName
 
     -- * Writer
   , LD.append
@@ -189,6 +193,23 @@ findStreams client recursive = do
     Right dir -> do
       ps <- LD.logDirectoryGetLogsName recursive dir
       forM ps logPathToStreamName
+
+getStreamReplicaFactor :: FFI.LDClient -> StreamName -> IO Int
+getStreamReplicaFactor client name = do
+  logid <- getCLogIDByStreamName client name
+  loggroup <- LD.getLogGroupByID client logid
+  LD.getAttrsReplicationFactorFromPtr =<< LD.logGroupGetAttrs loggroup
+
+-- | Approximate milliseconds timestamp of the next record after trim point.
+--
+-- Set to Nothing if there is no records bigger than trim point.
+getStreamHeadTimestamp :: FFI.LDClient -> StreamName -> IO (Maybe Int64)
+getStreamHeadTimestamp client name = do
+  headAttrs <- LD.getLogHeadAttrs client =<< getCLogIDByStreamName client name
+  ts <- LD.getLogHeadAttrsTrimPointTimestamp headAttrs
+  case ts of
+    FFI.C_MAX_MILLISECONDS -> return Nothing
+    _                      -> return $ Just ts
 
 doesStreamExists :: HasCallStack => FFI.LDClient -> StreamName -> IO Bool
 doesStreamExists client stream = do
