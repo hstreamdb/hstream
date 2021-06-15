@@ -260,13 +260,13 @@ if __name__ == '__main__':
 
     if sub_command == 'update-images':
         update_images()
-    if sub_command == 'cluster-start':
+    elif sub_command == 'cluster-start':
         cluster_start(**args)
     elif sub_command == 'cluster-stop':
         cluster_stop(**args)
-    if sub_command == 'mysql-start':
+    elif sub_command == 'mysql-start':
         mysql_start(**args)
-    if sub_command == 'mysql-stop':
+    elif sub_command == 'mysql-stop':
         mysql_stop(**args)
     elif sub_command == 'ldshell':
         run_ldshell(**args)
