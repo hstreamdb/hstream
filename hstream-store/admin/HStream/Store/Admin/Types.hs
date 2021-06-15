@@ -256,7 +256,7 @@ configCmdParser = hsubparser
 
 data LogsConfigCmd
   = InfoCmd S.C_LogID
-  | ShowCmd
+  | ShowCmd ShowLogsOpts
   | RenameCmd CBytes CBytes Bool
   | CreateCmd CreateLogsOpts
   | RemoveCmd RemoveLogsOpts
@@ -266,7 +266,7 @@ logsConfigCmdParser :: Parser LogsConfigCmd
 logsConfigCmdParser = hsubparser $
     command "info" (info (InfoCmd <$> logIDParser)
                          (progDesc "Get current attributes of the tail/head of the log"))
- <> command "show" (info (pure ShowCmd)
+ <> command "show" (info (ShowCmd <$> showLogsOptsParser)
                          (progDesc "Print the full logsconfig for this tier "))
  <> command "create" (info (CreateCmd <$> createLogsParser)
                            (progDesc ("Creates a log group under a specific directory"
@@ -300,8 +300,39 @@ removeLogsOptsParser = RemoveLogsOpts
                <> help "Whether to remove the contents of the directory if it is not empty or not."
                )
 
+data ShowLogsOpts = ShowLogsOpts
+  { showPath     :: Maybe CBytes
+  , showLogID    :: Maybe S.C_LogID
+  , showMaxDepth :: Int
+  , showVerbose  :: Bool
+  } deriving (Show)
+
+showLogsOptsParser :: Parser ShowLogsOpts
+showLogsOptsParser = ShowLogsOpts
+  <$> optional (strOption ( long "path"
+                            <> metavar "PATH"
+                            <> help "The path you want to print, if missing this prints the full tree"
+                          ))
+  <*> optional (option auto ( long "id"
+                              <> metavar "LOGID"
+                              <> help "Only the log-group that has this ID"
+                            ))
+  <*> option auto ( long "max-depth"
+                  <> metavar "INT"
+                  <> value 1000
+                  <> showDefault
+                  <> help "How many levels in the tree you want to see?"
+                  )
+  <*> switch ( long "verbose"
+             <> short 'v'
+             <> help "whether to print all the attributes or not"
+             )
+
 logIDParser :: Parser S.C_LogID
-logIDParser = option auto (long "id")
+logIDParser = option auto ( long "id"
+                          <> metavar "LOGID"
+                          <> help "the log ID to query"
+                          )
 
 parseLogExtraAttr :: ReadM (CBytes, CBytes)
 parseLogExtraAttr = eitherReader $ parse . V.packASCII

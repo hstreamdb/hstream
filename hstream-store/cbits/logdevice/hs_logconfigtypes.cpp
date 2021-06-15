@@ -68,13 +68,36 @@ LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
 }
 
 // TODO: macro
-int get_replicationFactor(LogAttributes* attrs) {
+int get_replication_factor(LogAttributes* attrs) {
   return attrs->replicationFactor().value();
 }
 
 std::string* describe_log_maxWritesInFlight(LogAttributes* attrs) {
   return new_hs_std_string(attrs->maxWritesInFlight().describe());
 }
+
+void get_attribute_extras(LogAttributes* attrs, size_t* len,
+                          std::string** keys_ptr, std::string** values_ptr,
+                          std::vector<std::string>** keys_,
+                          std::vector<std::string>** values_) {
+  std::vector<std::string>* keys = new std::vector<std::string>;
+  std::vector<std::string>* values = new std::vector<std::string>;
+
+  if (attrs->extras().hasValue()) {
+    auto& extras = attrs->extras().value();
+
+    for (const auto& [key, value] : extras) {
+      keys->push_back(key);
+      values->push_back(value);
+    }
+  }
+
+  *len = keys->size();
+  *keys_ptr = keys->data();
+  *values_ptr = values->data();
+  *keys_ = keys;
+  *values_ = values;
+ }
 
 // ----------------------------------------------------------------------------
 // LogHeadAttributes
@@ -442,6 +465,11 @@ ld_logdirectory_full_name(logdevice_logdirectory_t* dir) {
 // LogDirectory attrs : version
 uint64_t ld_logdirectory_get_version(logdevice_logdirectory_t* dir) {
   return dir->rep->version();
+}
+
+const LogAttributes* ld_logdirectory_get_attrs(logdevice_logdirectory_t* dir) {
+  const LogAttributes& attrs = dir->rep->attrs();
+  return &attrs;
 }
 
 #define LD_LOGDIRECTORY_MAP_ATTR(NAME, ATTR_NAME, RET_TYPE, FIND_FUN, NOT_FUN) \

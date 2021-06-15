@@ -170,6 +170,10 @@ LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
 void free_log_attributes(LogAttributes* attrs);
 bool exist_log_attrs_extras(LogAttributes* attrs, char* key);
 std::string* get_log_attrs_extra(LogAttributes* attrs, char* key);
+void get_attribute_extras(LogAttributes* attrs, size_t* len,
+                          std::string** keys_ptr, std::string** values_ptr,
+                          std::vector<std::string>** keys_,
+                          std::vector<std::string>** values_);
 
 // LogSequenceNumber
 typedef uint64_t c_lsn_t;
@@ -382,6 +386,8 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
                         HsStablePtr mvar, HsInt cap,
                         facebook::logdevice::Status* st_out,
                         logdevice_logdirectory_t** logdir_result);
+
+const LogAttributes* ld_logdirectory_get_attrs(logdevice_logdirectory_t* dir);
 
 // LogGroup
 facebook::logdevice::Status ld_client_make_loggroup_sync(

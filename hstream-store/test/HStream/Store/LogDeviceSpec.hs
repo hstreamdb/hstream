@@ -67,3 +67,15 @@ configType = describe "LogConfigType" $ do
     nameB `shouldBe` dirname <> "/B"
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
+
+  it "log group get attrs" $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
+                                        }
+        logid = 101
+    lg <- I.makeLogGroup client "lg" logid logid attrs False
+    _ <- I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
+    attrs' <- I.logGroupGetHsLogAttrs lg
+    _ <- I.removeLogGroup client "lg"
+    S.logReplicationFactor attrs' `shouldBe` 1
+    Map.lookup "A" (S.logExtraAttrs attrs') `shouldBe` Just "B"
