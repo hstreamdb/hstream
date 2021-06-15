@@ -3,6 +3,7 @@
 
 module HStream.Store.StreamSpec (spec) where
 
+import           Data.Int
 import qualified Data.Map.Strict         as Map
 import           Test.Hspec
 
@@ -43,6 +44,19 @@ base = describe "HStream.Store.Stream" $ do
     S.doesStreamExists client streamName `shouldReturn` False
     S.doesStreamExists client newStreamName `shouldReturn` True
 
+  it "stream replication factor" $ do
+    S.getStreamReplicaFactor client newStreamName `shouldReturn` 1
+
+  it "stream head record timestamp" $ do
+    -- since there is no records in this stream
+    S.getStreamHeadTimestamp client newStreamName `shouldReturn` Nothing
+    logid <- S.getCLogIDByStreamName client newStreamName
+    _ <- S.append client logid "hello" Nothing
+    let cond mv = case mv of
+                    Just v  -> v > 0 && v < (maxBound :: Int64)
+                    Nothing -> error "predicate failed"
+    S.getStreamHeadTimestamp client newStreamName >>= (`shouldSatisfy` cond)
+
   it "get/set extra-attrs" $ do
     logGroup <- S.getLogGroup client newLogPath
     S.logGroupGetExtraAttr logGroup "greet" `shouldReturn` Just "hi"
@@ -55,6 +69,6 @@ base = describe "HStream.Store.Stream" $ do
     S.logGroupGetExtraAttr logGroup_ "A" `shouldReturn` Just "B"
     S.logGroupGetExtraAttr logGroup_ "Alice" `shouldReturn` Just "Bob"
 
-  it "remove stream" $ do
+  it "remove the stream" $ do
     S.removeStream client newStreamName
     S.doesStreamExists client newStreamName `shouldReturn` False

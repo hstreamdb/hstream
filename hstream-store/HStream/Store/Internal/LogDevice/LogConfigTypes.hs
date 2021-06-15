@@ -112,26 +112,6 @@ foreign import ccall unsafe "hs_logdevice.h get_attribute_extras"
 foreign import ccall unsafe "hs_logdevice.h get_replication_factor"
   c_get_replication_factor :: Ptr LogDeviceLogAttributes -> IO CInt
 
--------------------------------------------------------------------------------
--- LogHeadAttributes
-
--- | Return current attributes of the head of the log.
-getLogHeadAttrs :: LDClient -> C_LogID -> IO LDLogHeadAttrs
-getLogHeadAttrs client logid = withForeignPtr client $ \client' -> do
-  let cfun = c_get_head_attributes client' logid
-  LogHeadAttrsCbData errno attributes <-
-    withAsync logHeadAttrsCbDataSize peekLogHeadAttrsCbData cfun
-  void $ E.throwStreamErrorIfNotOK' errno
-  newForeignPtr c_free_log_head_attributes_fun attributes
-
--- | Trim point of the log. Set to LSN_INVALID if log was never trimmed.
-getLogHeadAttrsTrimPoint :: LDLogHeadAttrs -> IO LSN
-getLogHeadAttrsTrimPoint = flip withForeignPtr c_get_trim_point
-
--- | Approximate timestamp of the next record after trim point. Return timestamp in millisecond
-getLogHeadAttrsTrimPointTimestamp :: LDLogHeadAttrs -> IO C_Timestamp
-getLogHeadAttrsTrimPointTimestamp = flip withForeignPtr c_get_trim_point_timestamp
-
 foreign import ccall unsafe "hs_logdevice.h new_log_attributes"
   c_new_log_attributes
     :: CInt
@@ -161,6 +141,26 @@ foreign import ccall unsafe "hs_logdevice.h free_log_attributes"
 
 foreign import ccall unsafe "hs_logdevice.h &free_log_attributes"
   c_free_log_attributes_fun :: FunPtr (Ptr LogDeviceLogAttributes -> IO ())
+
+-------------------------------------------------------------------------------
+-- LogHeadAttributes
+
+-- | Return current attributes of the head of the log.
+getLogHeadAttrs :: LDClient -> C_LogID -> IO LDLogHeadAttrs
+getLogHeadAttrs client logid = withForeignPtr client $ \client' -> do
+  let cfun = c_get_head_attributes client' logid
+  LogHeadAttrsCbData errno attributes <-
+    withAsync logHeadAttrsCbDataSize peekLogHeadAttrsCbData cfun
+  void $ E.throwStreamErrorIfNotOK' errno
+  newForeignPtr c_free_log_head_attributes_fun attributes
+
+-- | Trim point of the log. Set to LSN_INVALID if log was never trimmed.
+getLogHeadAttrsTrimPoint :: LDLogHeadAttrs -> IO LSN
+getLogHeadAttrsTrimPoint = flip withForeignPtr c_get_trim_point
+
+-- | Approximate timestamp of the next record after trim point. Return timestamp in millisecond
+getLogHeadAttrsTrimPointTimestamp :: LDLogHeadAttrs -> IO C_Timestamp
+getLogHeadAttrsTrimPointTimestamp = flip withForeignPtr c_get_trim_point_timestamp
 
 foreign import ccall unsafe "hs_logdevice.h get_head_attributes"
  c_get_head_attributes

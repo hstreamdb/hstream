@@ -337,6 +337,9 @@ data ThriftRpcOptions
 
 type C_Timestamp = Int64
 
+pattern C_MAX_MILLISECONDS :: C_Timestamp
+pattern C_MAX_MILLISECONDS = (#const MAX_MILLISECONDS)
+
 newtype KeyType = KeyType Word8
   deriving (Eq, Ord)
 

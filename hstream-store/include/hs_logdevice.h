@@ -100,6 +100,8 @@ void delete_vector_of_string(std::vector<std::string>* ss);
 void init_logdevice(void);
 
 typedef int64_t c_timestamp_t;
+const c_timestamp_t MAX_MILLISECONDS = std::chrono::milliseconds::max().count();
+
 typedef uint16_t c_error_code_t;
 typedef uint8_t c_keytype_t;
 typedef uint64_t c_vcs_config_version_t;
