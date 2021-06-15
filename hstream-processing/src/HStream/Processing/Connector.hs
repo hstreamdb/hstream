@@ -5,6 +5,7 @@
 
 module HStream.Processing.Connector
   ( SourceConnector (..),
+    SourceConnectorWithoutCkp (..),
     SinkConnector (..),
   )
 where
@@ -25,6 +26,12 @@ data SourceConnector = SourceConnector
     unSubscribeToStream :: StreamName -> IO (),
     readRecords :: IO [SourceRecord],
     commitCheckpoint :: StreamName -> Offset -> IO ()
+  }
+
+data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
+  { subscribeToStreamWithoutCkp :: StreamName -> Offset -> IO (),
+    unSubscribeToStreamWithoutCkp :: StreamName -> IO (),
+    readRecordsWithoutCkp :: IO [SourceRecord]
   }
 
 data SinkConnector = SinkConnector

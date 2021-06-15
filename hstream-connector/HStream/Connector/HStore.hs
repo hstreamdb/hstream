@@ -8,6 +8,7 @@
 
 module HStream.Connector.HStore
   ( hstoreSourceConnector
+  , hstoreSourceConnectorWithoutCkp
   , hstoreSinkConnector
   , transToStreamName
   )
@@ -35,6 +36,13 @@ hstoreSourceConnector ldclient reader = SourceConnector {
   commitCheckpoint = commitCheckpointToHStore ldclient reader
 }
 
+hstoreSourceConnectorWithoutCkp :: S.LDClient -> S.LDReader -> SourceConnectorWithoutCkp
+hstoreSourceConnectorWithoutCkp ldclient reader = SourceConnectorWithoutCkp {
+  subscribeToStreamWithoutCkp = subscribeToHStoreStream' ldclient reader,
+  unSubscribeToStreamWithoutCkp = unSubscribeToHStoreStream' ldclient reader,
+  readRecordsWithoutCkp = readRecordsFromHStore' ldclient reader 100
+}
+
 hstoreSinkConnector :: S.LDClient -> SinkConnector
 hstoreSinkConnector ldclient = SinkConnector {
   writeRecord = writeRecordToHStore ldclient
@@ -53,31 +61,51 @@ subscribeToHStoreStream ldclient reader stream startOffset = do
           Offset lsn -> return lsn
   S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
 
+subscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> Offset -> IO ()
+subscribeToHStoreStream' ldclient reader stream startOffset = do
+  logId <- S.getCLogIDByStreamName ldclient (transToStreamName stream)
+  startLSN <-
+        case startOffset of
+          Earlist    -> return S.LSN_MIN
+          Latest     -> fmap (+1) (S.getTailLSN ldclient logId)
+          Offset lsn -> return lsn
+  S.readerStartReading reader logId startLSN S.LSN_MAX
+
 unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> IO ()
 unSubscribeToHStoreStream ldclient reader streamName =
   S.stopCkpReader ldclient reader (transToStreamName streamName)
+
+unSubscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> IO ()
+unSubscribeToHStoreStream' ldclient reader streamName =
+  S.stopReader ldclient reader (transToStreamName streamName)
+
+dataRecordToSourceRecord :: S.LDClient -> S.DataRecord -> IO SourceRecord
+dataRecordToSourceRecord ldclient S.DataRecord {..} = do
+  logGroup <- S.getLogGroupByID ldclient recordLogID
+  groupName <- S.logGroupGetName logGroup
+  case JSON.decode' recordPayload of
+    Left _ -> error "payload decode error!"
+    Right Payload {..} ->
+      return
+        SourceRecord {
+          srcStream = cbytesToText groupName,
+          srcKey = fmap cbytesToLazyByteString pKey,
+          srcValue = cbytesToLazyByteString pValue,
+          srcTimestamp = pTimestamp,
+          srcOffset = recordLSN
+        }
 
 readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore ldclient reader maxlen = do
   void $ S.ckpReaderSetTimeout reader 1000
   dataRecords <- S.ckpReaderRead reader maxlen
-  mapM dataRecordToSourceRecord dataRecords
-  where
-    dataRecordToSourceRecord :: S.DataRecord -> IO SourceRecord
-    dataRecordToSourceRecord S.DataRecord {..} = do
-      logGroup <- S.getLogGroupByID ldclient recordLogID
-      groupName <- S.logGroupGetName logGroup
-      case JSON.decode' recordPayload of
-        Left _ -> error "payload decode error!"
-        Right Payload {..} ->
-          return
-            SourceRecord {
-              srcStream = cbytesToText groupName,
-              srcKey = fmap cbytesToLazyByteString pKey,
-              srcValue = cbytesToLazyByteString pValue,
-              srcTimestamp = pTimestamp,
-              srcOffset = recordLSN
-            }
+  mapM (dataRecordToSourceRecord ldclient) dataRecords
+
+readRecordsFromHStore' :: S.LDClient -> S.LDReader -> Int -> IO [SourceRecord]
+readRecordsFromHStore' ldclient reader maxlen = do
+  void $ S.readerSetTimeout reader 1000
+  dataRecords <- S.readerRead reader maxlen
+  mapM (dataRecordToSourceRecord ldclient) dataRecords
 
 commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 commitCheckpointToHStore ldclient reader streamName offset = do
