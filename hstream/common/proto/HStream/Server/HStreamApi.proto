@@ -23,6 +23,7 @@ service HStreamApi {
 
   rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
 
+  rpc RemoveStreams(RemoveStreamsRequest) returns (RemoveStreamsResponse) {}
 }
 
 message CommandStreamTask{
@@ -150,6 +151,23 @@ message CreateStreamsResponse {
 }
 
 message CreateStreamResponse {
+  string streamName = 1;
+  HStreamServerError error = 2;
+}
+
+message RemoveStreamsRequest {
+  repeated RemoveStreamRequest requests = 1;
+}
+
+message RemoveStreamRequest {
+  string streamName = 1;
+}
+
+message RemoveStreamsResponse {
+  repeated RemoveStreamResponse responses = 1;
+}
+
+message RemoveStreamResponse {
   string streamName = 1;
   HStreamServerError error = 2;
 }

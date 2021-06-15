@@ -1,7 +1,8 @@
-#include <HsFFI.h>
-#include <rts/Types.h>
-#include <rts/prof/CCS.h>
-#include <rts/storage/Closures.h>
+#pragma once
+
+// * --------------------------------------------------------------------------
+
+#include "ghc_ext.h"
 
 #include <iostream>
 #include <limits.h>
@@ -43,9 +44,6 @@
 
 #include <thrift/lib/cpp/async/TAsyncSSLSocket.h>
 #include <thrift/lib/cpp2/async/HeaderClientChannel.h>
-
-#ifndef HS_LOGDEVICE
-#define HS_LOGDEVICE
 
 using facebook::logdevice::AppendAttributes;
 using facebook::logdevice::CheckpointedReaderBase;
@@ -609,7 +607,4 @@ int64_t ld_admin_sync_getPid(logdevice_admin_async_client_t* client,
 
 #ifdef __cplusplus
 } /* end extern "C" */
-#endif
-
-// End define HS_LOGDEVICE
 #endif

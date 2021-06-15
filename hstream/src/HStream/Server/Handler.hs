@@ -26,6 +26,7 @@ import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           Database.ClickHouseDriver.Client
 import           Database.ClickHouseDriver.Types
+import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
@@ -41,6 +42,7 @@ import           ZooKeeper.Types
 
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
+import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
                                                     runTask)
@@ -90,6 +92,7 @@ handlers logDeviceConfigPath handle = do
     , hstreamApiSubscribe        = subscribeHandler serverContext
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
+    , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -138,33 +141,44 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
           let fromCOptionString m = case m of
                 Just (ConstantString s) -> Just $ C.pack s
                 _                       -> Nothing
-          -- build sink connector by type
-          let sk = case typeM of
+          let fromCOptionStringToString m = case m of
+                Just (ConstantString s) -> Just s
+                _                       -> Nothing
+          let fromCOptionIntToPortNumber m = case m of
+                Just (ConstantInt s) -> Just $ fromIntegral s
+                _                    -> Nothing
+          let sk' = case typeM of
                 Just (ConstantString cType) ->
                   do
                     case cType of
                         "clickhouse" -> do
-                          let username = fromMaybe "default" $ fromCOptionString (lookup "username" cOptions)
-                          let host = fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions)
-                          let port = fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions)
-                          let password = fromMaybe "" $ fromCOptionString (lookup "password" cOptions)
-                          let database = fromMaybe "default" $ fromCOptionString (lookup "database" cOptions)
-                          let cli = clickHouseSinkConnector $ createClient ConnParams{
-                            username'     = username
-                            ,host'        = host
-                            ,port'        = port
-                            ,password'    = password
-                            ,compression' = False
-                            ,database'    = database
-                          }
-                          Right cli
-                        _ -> Left "unsupported sink connector type"
-                _ -> Left "invalid type in connector options"
+                          cli <- createClient $ ConnParams
+                              (fromMaybe "default" $ fromCOptionString (lookup "username" cOptions))
+                              (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host" cOptions))
+                              (fromMaybe "9000" $ fromCOptionString (lookup "port" cOptions))
+                              (fromMaybe "" $ fromCOptionString (lookup "password" cOptions))
+                              False
+                              (fromMaybe "default" $ fromCOptionString (lookup "database" cOptions))
+                          let connector = clickHouseSinkConnector cli
+                          return $ Right connector
+                        "mysql" -> do
+                          conn <- MySQL.connect $ MySQL.ConnectInfo
+                              (fromMaybe "127.0.0.1" $ fromCOptionStringToString (lookup "host" cOptions))
+                              (fromMaybe 3306 $ fromCOptionIntToPortNumber (lookup "port" cOptions))
+                              (fromMaybe "mysql" $ fromCOptionString (lookup "database" cOptions))
+                              (fromMaybe "root" $ fromCOptionString (lookup "username" cOptions))
+                              (fromMaybe "password" $ fromCOptionString (lookup "password" cOptions))
+                              33
+                          let connector = mysqlSinkConnector conn
+                          return $ Right connector
+                        _ -> return $ Left "unsupported sink connector type"
+                _ -> return $ Left "invalid type in connector options"
+          sk <- sk'
           case sk of
             Left err -> do
                 let resp = genErrorQueryResponse err
                 return (ServerNormalResponse resp [] StatusUnknown "")
-            Right sk -> do
+            Right connector -> do
               case streamM of
                 Just (ConstantString stream) -> do
                   subscribeToStream sc (T.pack stream) Latest
@@ -174,7 +188,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
                           records <- readRecords sc
                           forM_ records $ \SourceRecord {..} ->
                             writeRecord
-                              sk
+                              connector
                               SinkRecord
                                 { snkStream = T.pack stream,
                                   snkKey = srcKey,
@@ -433,3 +447,23 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata CommitOffse
             Left _  -> HStreamServerErrorUnknownError
             Right _ -> HStreamServerErrorNoError
        in StreamCommitOffsetResponse stream (Enumerated $ Right serverError)
+
+removeStreamsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal RemoveStreamsRequest RemoveStreamsResponse
+  -> IO (ServerResponse 'Normal RemoveStreamsResponse)
+removeStreamsHandler ServerContext{..} (ServerNormalRequest _metadata RemoveStreamsRequest{..}) = do
+  singleResps <- mapM (fmap eitherToResponse . handleSingleRequest) removeStreamsRequestRequests
+  let resp = RemoveStreamsResponse singleResps
+  return (ServerNormalResponse resp [] StatusOk "")
+  where
+    handleSingleRequest :: RemoveStreamRequest -> IO (TL.Text, Either SomeException ())
+    handleSingleRequest RemoveStreamRequest{..} = do
+      e' <- try $ removeStream scLDClient (transToStreamName $ TL.toStrict removeStreamRequestStreamName)
+      return (removeStreamRequestStreamName, e')
+    eitherToResponse :: (TL.Text, Either SomeException ()) -> RemoveStreamResponse
+    eitherToResponse (stream, e') =
+      let serverError = case e' of
+            Left _  -> HStreamServerErrorUnknownError
+            Right _ -> HStreamServerErrorNoError
+       in RemoveStreamResponse stream (Enumerated $ Right serverError)
