@@ -2,6 +2,7 @@
 
 module HStream.Store
   ( LDClient
+  , LDReader
   , LDSyncCkpReader
   , LSN
   , pattern LSN_MAX
