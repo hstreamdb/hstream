@@ -26,6 +26,7 @@ import qualified Z.Foreign                    as Z
 
 import qualified HStream.Store.Exception      as E
 import           HStream.Store.Internal.Types
+import qualified HStream.Store.Logger         as Log
 
 cbool2bool :: CBool -> Bool
 cbool2bool = (/= 0)
@@ -113,7 +114,7 @@ retryWhileAgain f retries = do
   case errno of
     C_OK -> return r
     C_AGAIN
-      | retries == 0 -> E.throwStreamError errno callStack
+      | retries == 0 -> Log.w "Run out of retries!" >> E.throwStreamError errno callStack
       | retries < 0 -> threadDelay 5000 >> (retryWhileAgain f $! (-1))
       | retries > 0 -> threadDelay 5000 >> (retryWhileAgain f $! retries - 1)
     _ -> E.throwStreamError errno callStack

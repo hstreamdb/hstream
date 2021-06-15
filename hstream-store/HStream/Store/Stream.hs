@@ -74,7 +74,7 @@ module HStream.Store.Stream
   , LD.ckpReaderSetIncludeByteOffset
   , LD.ckpReaderSetWaitOnlyWhenNoData
   , stopCkpReader
-  , checkpointStoreLogID
+  , initCheckpointStoreLogID
   ) where
 
 import           Control.Exception                (finally, try)
@@ -260,13 +260,20 @@ genRandomLogID = do
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
 
--- | Get the logid for checkpoint store.
+-- | Try to set logid for checkpoint store.
 --
 -- idx: 63...56...0
 --      |    |    |
 -- bit: 00...1...00
-checkpointStoreLogID :: FFI.C_LogID
-checkpointStoreLogID = bit 56
+initCheckpointStoreLogID :: FFI.LDClient -> FFI.LogAttrs -> IO FFI.C_LogID
+initCheckpointStoreLogID client attrs = do
+  let logid = bit 56
+  r <- try $ LD.getLogGroupByID client logid
+  case r of
+    Left (_ :: E.NOTFOUND) -> do
+      _ <- LD.makeLogGroup client "/internal/checkpoint" logid logid attrs True
+      return logid
+    Right _ -> return logid
 
 -------------------------------------------------------------------------------
 
