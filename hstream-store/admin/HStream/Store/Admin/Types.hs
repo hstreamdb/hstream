@@ -154,6 +154,8 @@ headerConfigParser = AA.HeaderConfig
                 )
   <*> option auto ( long "port"
                  <> metavar "INT"
+                 <> showDefault
+                 <> value 6440
                  <> help "Admin server port"
                   )
   <*> option auto ( long "protocol"
