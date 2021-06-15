@@ -74,11 +74,13 @@ module HStream.Store.Stream
   , LD.ckpReaderSetIncludeByteOffset
   , LD.ckpReaderSetWaitOnlyWhenNoData
   , stopCkpReader
+  , checkpointStoreLogID
   ) where
 
 import           Control.Exception                (finally, try)
 import           Control.Monad                    (forM, forM_, unless)
-import           Data.Bits                        (shiftL, shiftR, (.&.), (.|.))
+import           Data.Bits                        (bit, shiftL, shiftR, (.&.),
+                                                   (.|.))
 import qualified Data.Cache                       as Cache
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
@@ -238,6 +240,10 @@ getCLogIDByStreamName client stream = do
       return logid
 
 -- | Generate a random logid through a simplify version of snowflake algorithm.
+--
+-- idx: 63...56 55...0
+--      |    |  |    |
+-- bit: 0....0  xx....
 genRandomLogID :: IO FFI.C_LogID
 genRandomLogID = do
   let startTS = 1577808000  -- 2020-01-01
@@ -253,6 +259,14 @@ genRandomLogID = do
   return $ fromIntegral (shiftL tsBit 24)
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
+
+-- | Get the logid for checkpoint store.
+--
+-- idx: 63...56...0
+--      |    |    |
+-- bit: 00...1...00
+checkpointStoreLogID :: FFI.C_LogID
+checkpointStoreLogID = bit 56
 
 -------------------------------------------------------------------------------
 
