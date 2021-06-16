@@ -3,6 +3,7 @@
 module HStream.Store.ReaderSpec (spec) where
 
 import           Control.Monad           (void)
+import           Data.Bits               (shiftL)
 import qualified Data.Map.Strict         as Map
 import qualified HStream.Store           as S
 import           System.Timeout          (timeout)
@@ -13,7 +14,7 @@ import           HStream.Store.SpecUtils
 spec :: Spec
 spec = describe "Stream Reader" $ do
   fileBased
-  rsmBased
+  preRsmBased >> rsmBased
   misc
 
 fileBased :: Spec
@@ -23,9 +24,9 @@ fileBased = context "FileBasedCheckpointedReader" $ do
   let logid = 1
 
   ckpReader <- runIO $ S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10
-  checkpointStore <- runIO $ S.newFileBasedCheckpointStore ckpPath
 
   it "the checkpoint of writing/reading shoule be equal" $ do
+    checkpointStore <- S.newFileBasedCheckpointStore ckpPath
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
     S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
@@ -51,19 +52,25 @@ fileBased = context "FileBasedCheckpointedReader" $ do
     [record'] <- S.ckpReaderRead ckpReader 1
     S.recordPayload record' `shouldBe` "2"
 
+preRsmBased :: Spec
+preRsmBased = context "Pre-RSMBasedCheckpointedReader" $ do
+  it "get the logid for checkpointStore" $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.empty
+                                        }
+    S.initCheckpointStoreLogID client attrs `shouldReturn` (1 `shiftL` 56)
+
 rsmBased :: Spec
 rsmBased = context "RSMBasedCheckpointedReader" $ do
   let readerName = "reader_name_ckp_2"
-  let ckpLogID = 90
   let logid = 1
-
-  ckpReader <- runIO $ S.newLDRsmCkpReader client readerName ckpLogID 5000 1 Nothing 10
-  checkpointStore <- runIO $ S.newRSMBasedCheckpointStore client ckpLogID 5000
+  ckpReader <- runIO $ S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing 10
 
   it "the checkpoint of writing/reading shoule be equal" $ do
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
     S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
+    checkpointStore <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
 
   it "read with checkpoint" $ do
