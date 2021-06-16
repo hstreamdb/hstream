@@ -75,6 +75,7 @@ module HStream.Store.Stream
   , LD.ckpReaderSetWaitOnlyWhenNoData
   , stopCkpReader
   , initCheckpointStoreLogID
+  , checkpointStoreLogID
   ) where
 
 import           Control.Exception                (finally, try)
@@ -267,13 +268,15 @@ genRandomLogID = do
 -- bit: 00...1...00
 initCheckpointStoreLogID :: FFI.LDClient -> FFI.LogAttrs -> IO FFI.C_LogID
 initCheckpointStoreLogID client attrs = do
-  let logid = bit 56
-  r <- try $ LD.getLogGroupByID client logid
+  r <- try $ LD.getLogGroupByID client checkpointStoreLogID
   case r of
     Left (_ :: E.NOTFOUND) -> do
-      _ <- LD.makeLogGroup client "/internal/checkpoint" logid logid attrs True
-      return logid
-    Right _ -> return logid
+      _ <- LD.makeLogGroup client "/internal/checkpoint" checkpointStoreLogID checkpointStoreLogID attrs True
+      return checkpointStoreLogID
+    Right _ -> return checkpointStoreLogID
+
+checkpointStoreLogID :: FFI.C_LogID
+checkpointStoreLogID = bit 56
 
 -------------------------------------------------------------------------------
 
@@ -302,7 +305,7 @@ newLDRsmCkpReader
   -> CBytes
   -- ^ CheckpointedReader name
   -> FFI.C_LogID
-  -- ^ checkpointStore logid
+  -- ^ checkpointStore logid, this should be 'checkpointStoreLogID'.
   -> Int64
   -- ^ Timeout for the RSM to stop after calling shutdown, in milliseconds.
   -> CSize
