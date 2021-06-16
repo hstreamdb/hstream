@@ -21,37 +21,79 @@ extra-source-files: README.md
 
 executable hstream-admin-server
   main-is:          Main.hs
-
+  
+  include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+  
+  -- FIXME: we need this extra lib for old fbthrift builds.
+  --
+  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
+  extra-libraries:    protocol
+  
   build-depends:
     , base              >=4.11 && <5
+    , bytestring
+    , clickhouse-haskell
+    , containers
+    , hstore-admin
+    , hstream
+    , hstream-common
+    , hstream-admin-server
+    , hstream-store
+    , hstream-processing
+    , mysql-haskell
+    , optparse-applicative
+    , rio
     , servant
     , servant-server
     , warp    
-    , hstream-admin-server
-    , hstream
-    , hstream-store
-    , hstream-processing
     , Z-Data
     , zoovisitor
 
   hs-source-dirs:   app
   default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
 
 library
   hs-source-dirs:   src
   exposed-modules:
     HStream.Admin.Server.Stream
-    , HStream.Admin.Server.Query
+    HStream.Admin.Server.Query
+    HStream.Admin.Server.Node
+    HStream.Admin.Server.Connector
+    HStream.Admin.Server.Overview
+    
+  include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+
   build-depends:
+    , aeson
     , base              >=4.11 && <5
+    , bytestring
+    , clickhouse-haskell
     , containers
+    , hstore-admin
+    , hstream
+    , hstream-connector
+    , hstream-common
+    , hstream-processing
+    , hstream-store
+    , hstream-sql
+    , lens
+    , lens-aeson
+    , mysql-haskell
+    , optparse-applicative
+    , rio
+    , scientific
     , servant
     , servant-server
+    , unordered-containers
+    , vector
     , warp    
-    , hstream
-    , hstream-store
-    , hstream-connector
-    , aeson
     , Z-Data
+    , Z-IO
     , text
     , zoovisitor

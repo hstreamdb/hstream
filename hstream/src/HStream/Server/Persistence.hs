@@ -7,7 +7,7 @@
 
 module HStream.Server.Persistence
   ( Query(..)
-  , Connector
+  , Connector(..)
   , Info(..)
   , Status(..)
   , PStatus(..)
@@ -72,7 +72,7 @@ instance JSON Status
 data PStatus = Created
   | Running
   | Terminated
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Generic, Enum)
 instance JSON PStatus
 
 data PType = PQuery
