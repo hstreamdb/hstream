@@ -39,7 +39,7 @@ package grpc-haskell-core
   tests: false
 
 constraints:
-    Z-IO == 0.8.1.0
-  , Z-Data == 0.8.2.0
+    Z-IO == 0.8.1.1
+  , Z-Data == 0.8.8.0
   , proto3-suite == 0.4.1
   , proto3-wire == 1.2.1
