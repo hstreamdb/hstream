@@ -186,7 +186,11 @@ ckpReaderSetWaitOnlyWhenNoData reader = withForeignPtr reader c_ld_ckp_reader_wa
 -------------------------------------------------------------------------------
 
 writeCheckpoints :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> IO ()
-writeCheckpoints reader sns =
+writeCheckpoints reader sns = writeCheckpoints' reader sns (-1)
+
+writeCheckpoints'
+  :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> Int -> IO ()
+writeCheckpoints' reader sns retries =
   withForeignPtr reader $ \reader' -> do
     let xs = Map.toList sns
     let ka = Z.primArrayFromList $ map fst xs
@@ -194,15 +198,20 @@ writeCheckpoints reader sns =
     Z.withPrimArrayUnsafe ka $ \ks' len ->
       Z.withPrimArrayUnsafe va $ \vs' _ -> do
         let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_checkpoints reader' ks' vs' (fromIntegral len)
-        retryWhileAgain f 20
+        retryWhileAgain f retries
+{-# INLINABLE writeCheckpoints' #-}
 
 writeLastCheckpoints :: LDSyncCkpReader -> [C_LogID] -> IO ()
-writeLastCheckpoints reader xs =
+writeLastCheckpoints reader xs = writeLastCheckpoints' reader xs (-1)
+
+writeLastCheckpoints' :: LDSyncCkpReader -> [C_LogID] -> Int -> IO ()
+writeLastCheckpoints' reader xs retries =
   withForeignPtr reader $ \reader' -> do
     let topicIDs = Z.primArrayFromList xs
     Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
       let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_last_read_checkpoints reader' id' (fromIntegral len)
-      retryWhileAgain f 20
+      retryWhileAgain f retries
+{-# INLINABLE writeLastCheckpoints' #-}
 
 {-# DEPRECATED writeCheckpointsSync "Don't use these, use writeCheckpoints instead" #-}
 writeCheckpointsSync :: LDSyncCkpReader
