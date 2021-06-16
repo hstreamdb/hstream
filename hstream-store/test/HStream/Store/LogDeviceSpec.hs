@@ -72,10 +72,24 @@ configType = describe "LogConfigType" $ do
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [("A", "B")]
                                         }
-        logid = 101
+        logid = 104
     lg <- I.makeLogGroup client "lg" logid logid attrs False
     _ <- I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
     attrs' <- I.logGroupGetHsLogAttrs lg
     _ <- I.removeLogGroup client "lg"
     S.logReplicationFactor attrs' `shouldBe` 1
     Map.lookup "A" (S.logExtraAttrs attrs') `shouldBe` Just "B"
+
+  it "log group get and set range" $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
+                                        }
+        logid = 105
+        logid' = 106
+    lg <- I.makeLogGroup client "lg" logid logid attrs False
+    range <- I.logGroupGetRange lg
+    range `shouldBe` (logid, logid)
+    _ <- I.logGroupSetRange client "lg" (logid',logid')
+    range' <- I.logGroupGetRange =<< I.getLogGroup client "lg"
+    _ <- I.removeLogGroup client "lg"
+    range' `shouldBe` (logid', logid')
