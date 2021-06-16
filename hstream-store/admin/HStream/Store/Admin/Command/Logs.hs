@@ -2,7 +2,8 @@
 module HStream.Store.Admin.Command.Logs
   ( runLogsCmd
   ) where
-import           Colourista                       (formatWith, green, yellow)
+import           Colourista                       (formatWith, green, red,
+                                                   yellow)
 import           Control.Monad                    (forM_, guard, unless, when,
                                                    (>=>))
 import           Data.Bits                        (shiftR, (.&.))
@@ -11,7 +12,7 @@ import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust, isNothing)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes, unpack)
-import           Z.IO.Exception                   (tryJust)
+import           Z.IO.Exception                   (try, tryJust)
 import           Z.IO.Time                        (SystemTime (..),
                                                    formatSystemTime,
                                                    simpleDateFormat)
@@ -22,11 +23,12 @@ import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
 
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()
-runLogsCmd conf (InfoCmd logid)          = runLogsInfo conf logid
-runLogsCmd conf (CreateCmd createOpt)    = createLogs conf createOpt
-runLogsCmd conf (RenameCmd old new warn) = runLogsRename conf old new warn
-runLogsCmd conf (RemoveCmd removeOpt)    = runLogsRemove conf removeOpt
-runLogsCmd conf (ShowCmd showOpt)        = runLogsShow conf showOpt
+runLogsCmd conf (InfoCmd logid)           = runLogsInfo conf logid
+runLogsCmd conf (CreateCmd createOpt)     = createLogs conf createOpt
+runLogsCmd conf (RenameCmd old new warn)  = runLogsRename conf old new warn
+runLogsCmd conf (RemoveCmd removeOpt)     = runLogsRemove conf removeOpt
+runLogsCmd conf (ShowCmd showOpt)         = runLogsShow conf showOpt
+runLogsCmd conf (SetRangeCmd setRangeOpt) = runLogsSetRange conf setRangeOpt
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
@@ -188,3 +190,27 @@ printExtraAttributes level S.HsLogAttrs{..} = do
   emit $ "replication factor: " <> show logReplicationFactor
   forM_ (Map.toList logExtraAttrs) $ \(k, v) ->
     emit $ unpack k <> ": " <> unpack v
+
+runLogsSetRange :: HeaderConfig AdminAPI -> SetRangeOpts -> IO ()
+runLogsSetRange conf SetRangeOpts{..} = do
+  let client' = buildLDClientRes conf Map.empty
+  withResource client' $ \client -> do
+    res <- try $ do
+      oldRange <- S.logGroupGetRange =<< S.getLogGroup client setRangePath
+      let
+        printRange :: (S.C_LogID, S.C_LogID) -> String
+        printRange (s, e) = "(" <> show s <> ".." <> show e <> ")"
+        warn = "Are you sure you want to set the log range at "
+          <> unpack setRangePath <> " to be "
+          <> printRange (setRangeStartId, setRangeEndId)
+          <> " instead of " <> printRange oldRange <> "? (y/n)"
+      c <- putStrLn warn >> getChar
+      guard (toUpper c == 'Y')
+      S.logGroupSetRange client setRangePath (setRangeStartId, setRangeEndId)
+    case res of
+      Left (e :: S.NOTFOUND) ->
+        putStrLn . formatWith [red] $ "Cannot update range for "
+          <> unpack setRangePath <> ": " <> show e
+      Right version ->
+        putStrLn $ "Log group " <> unpack setRangePath
+          <> " has been updated in the version " <> show version
