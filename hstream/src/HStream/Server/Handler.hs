@@ -183,9 +183,10 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
             returnOkRes
           _ -> returnErrRes "stream name missed in connector options"
     Right (InsertPlan stream payload)             -> do
+      let key = Aeson.encode $ Aeson.Object $ HM.fromList [("key", "demokey")]
       timestamp <- getCurrentTimestamp
       try (writeRecord (hstoreSinkConnector scLDClient)
-          (SinkRecord stream Nothing payload timestamp))
+          (SinkRecord stream (Just key) payload timestamp))
       >>= \case
         Left (e :: SomeException) -> returnErrRes ("error when inserting msg, " <> getKeyWordFromException e)
         Right ()                  -> returnOkRes
