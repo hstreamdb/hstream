@@ -18,7 +18,8 @@ import           Text.Layout.Table
 import           Data.List                         (sort)
 import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
-import           HStream.Utils.Converter           (structToJsonObject,
+import           HStream.Utils.Converter           (jsonValueToValue,
+                                                    structToJsonObject,
                                                     structToZJsonObject,
                                                     valueToJsonValue)
 import qualified ThirdParty.Google.Protobuf.Struct as P
@@ -33,8 +34,7 @@ formatResult width struct@(P.Struct kv) =
       renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
-    [("SELECT", Just (P.Value (Just (P.ValueKindStructValue struct))))] ->
-      renderJSONObjectToTable width $ structToJsonObject struct
+    [("SELECT", Just x)] -> unwords (lines $ formatValue x) <> "\n"
     [("Error Message:", Just v)] ->"Error Message: " ++  formatValue v ++ "\n"
     x -> show x
 
@@ -64,7 +64,7 @@ formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
 --------------------------------------------------------------------------------
 
 formatStruct :: P.Struct -> String
-formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (':' : (concat . maybeToList) y))
+formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y <> ";"))
                                            . M.toList . fmap (fmap formatValue) $ kv
 
 formatValue :: P.Value -> String
@@ -74,7 +74,7 @@ formatValue (P.Value (Just x)) = formatValueKind x
 formatValueKind :: P.ValueKind -> String
 formatValueKind (P.ValueKindNullValue _)   = "NULL"
 formatValueKind (P.ValueKindNumberValue n) = show n
-formatValueKind (P.ValueKindStringValue s) = TL.unpack s
+formatValueKind (P.ValueKindStringValue s) = show s
 formatValueKind (P.ValueKindBoolValue   b) = show b
 formatValueKind (P.ValueKindStructValue s) = formatStruct s
 formatValueKind (P.ValueKindListValue (P.ListValue vs)) = unwords . map formatValue . V.toList $ vs
@@ -97,8 +97,8 @@ renderJSONObjectsToTable l os@(o:_) =
       $ column (expandUntil $ l `div` size) left noAlign (singleCutMark "...")
 
 renderContents :: Width -> [A.Value] -> [[String]]
-renderContents width = map $ concatMap (justifyText width) . lines . removePunc . TL.unpack . toLazyText
-                           . encodePrettyToTextBuilder' defConfig {confIndent = Spaces 1}
+renderContents width = map $ concatMap (justifyText width) . lines . formatValue . jsonValueToValue
+-- lines . removePunc . TL.unpack . toLazyText . encodePrettyToTextBuilder' defConfig {confIndent = Spaces 1}
 
 renderJSONToTable :: Width -> A.Value -> String
 renderJSONToTable width (A.Object hmap) = renderJSONObjectToTable width hmap
