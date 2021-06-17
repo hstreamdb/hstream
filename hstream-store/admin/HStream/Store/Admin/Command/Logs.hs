@@ -2,6 +2,7 @@
 module HStream.Store.Admin.Command.Logs
   ( runLogsCmd
   ) where
+
 import           Colourista                       (formatWith, green, red,
                                                    yellow)
 import           Control.Monad                    (forM_, guard, unless, when,
@@ -10,6 +11,7 @@ import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust, isNothing)
+import           System.IO                        (hFlush, stdout)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes, unpack)
 import           Z.IO.Exception                   (try, tryJust)
@@ -34,28 +36,33 @@ runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
   let client' = buildLDClientRes conf Map.empty
   withResource client' $ \client -> do
-    putStrLn "Tail Info:"
-    lsn <- S.getTailLSN client logid
-    putStrLn $ "  Tail lsn: " ++ prettyPrintLSN lsn
-    tail_attr <- S.getLogTailAttrs client logid
-    tail_lsn <- S.getLogTailAttrsLSN tail_attr
-    putStrLn $ "  Last released real (record) lsn: "
-      ++ prettyPrintLSN tail_lsn
-    tail_time_stamp <- S.getLogTailAttrsLastTimeStamp tail_attr
-    putStrLn $ "  Approximate timestamp of last released real lsn: "
-      ++ prettyPrintTimeStamp tail_time_stamp
-    tail_offset <- S.getLogTailAttrsBytesOffset tail_attr
-    putStrLn $ "  Approximate byte offset of the tail of the log: "
-      ++ show tail_offset
-
-    putStrLn "Head Info:"
-    head_attr <- S.getLogHeadAttrs client logid
-    head_lsn <- S.getLogHeadAttrsTrimPoint head_attr
-    putStrLn $ "  Trim point: " ++ prettyPrintLSN head_lsn
-    head_time_stamp <- S.getLogHeadAttrsTrimPointTimestamp head_attr
-    putStrLn $ "  Approximate timestamp of trim point (ms): "
-      ++ prettyPrintTimeStamp head_time_stamp
+    isExist <- S.doesLogIdHasGroup client logid
+    if isExist then info client
+               else putStrLn "No log-group has this ID!"
   where
+    info client = do
+      putStrLn "Tail Info:"
+      lsn <- S.getTailLSN client logid
+      putStrLn $ "  Tail lsn: " ++ prettyPrintLSN lsn
+      tail_attr <- S.getLogTailAttrs client logid
+      tail_lsn <- S.getLogTailAttrsLSN tail_attr
+      putStrLn $ "  Last released real (record) lsn: "
+        ++ prettyPrintLSN tail_lsn
+      tail_time_stamp <- S.getLogTailAttrsLastTimeStamp tail_attr
+      putStrLn $ "  Approximate timestamp of last released real lsn: "
+        ++ prettyPrintTimeStamp tail_time_stamp
+      tail_offset <- S.getLogTailAttrsBytesOffset tail_attr
+      putStrLn $ "  Approximate byte offset of the tail of the log: "
+        ++ show tail_offset
+
+      putStrLn "Head Info:"
+      head_attr <- S.getLogHeadAttrs client logid
+      head_lsn <- S.getLogHeadAttrsTrimPoint head_attr
+      putStrLn $ "  Trim point: " ++ prettyPrintLSN head_lsn
+      head_time_stamp <- S.getLogHeadAttrsTrimPointTimestamp head_attr
+      putStrLn $ "  Approximate timestamp of trim point (ms): "
+        ++ prettyPrintTimeStamp head_time_stamp
+
     prettyPrintLSN lsn =
       "e" ++ show (lsn `shiftR` 32) ++ "n" ++ show (lsn .&. 0xFFFFFFFF)
     prettyPrintTimeStamp ts = unsafePerformIO $ do
@@ -94,18 +101,21 @@ createLogs conf CreateLogsOpts{..} = do
 
 runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
 runLogsRemove conf RemoveLogsOpts{..} = do
-  putStrLn $ "Are you sure you want to rename " <> show rmPath <> "? [y/n]"
+  putStr $ "Are you sure you want to rename " <> show rmPath <> "? [y/n] "
+  hFlush stdout
   c <- getChar
-  when (toUpper c == 'Y') $ do
-    let client' = buildLDClientRes conf Map.empty
-    withResource client' $ \client -> do
-      res <- tryJust (guard . S.isNotFound) $ S.removeLogDirectory client rmPath rmRecursive
-      case res of
-        Right version ->
-          putStrLn $ "directory " <> show rmPath <> " has been removed in version " <> show version
-        Left _ -> do
-          version <- S.removeLogGroup client rmPath
-          putStrLn $ "log group " <> show rmPath <> " has been removed in version " <> show version
+  if toUpper c == 'Y'
+     then do
+       let client' = buildLDClientRes conf Map.empty
+       withResource client' $ \client -> do
+         res <- tryJust (guard . S.isNotFound) $ S.removeLogDirectory client rmPath rmRecursive
+         case res of
+           Right version ->
+             putStrLn $ "directory " <> show rmPath <> " has been removed in version " <> show version
+           Left _ -> do
+             version <- S.removeLogGroup client rmPath
+             putStrLn $ "log group " <> show rmPath <> " has been removed in version " <> show version
+     else putStrLn "Ignoring"
 
 runLogsShow :: HeaderConfig AdminAPI -> ShowLogsOpts -> IO ()
 runLogsShow conf ShowLogsOpts{..} = do

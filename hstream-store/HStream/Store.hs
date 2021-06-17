@@ -18,6 +18,7 @@ module HStream.Store
   , getTailLSN
   , trim
   , findTime
+  , doesLogIdHasGroup
 
     -- * Stream
   , module HStream.Store.Stream
