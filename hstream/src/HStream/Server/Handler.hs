@@ -135,9 +135,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
         Right ()                  -> forkIO (runTaskWrapper taskBuilder scLDClient)
           >> returnOkRes
     Right (CreateConnectorPlan cName (RConnectorOptions cOptions)) -> do
-      ldreader <- newLDFileCkpReader scLDClient (textToCBytes (T.append cName "_reader")) checkpointRootPath 1000 Nothing 3
-      let sc = hstoreSourceConnector scLDClient ldreader
-          streamM = lookup "streamname" cOptions
+      let streamM = lookup "streamname" cOptions
           typeM   = lookup "type" cOptions
           fromCOptionString          = \case Just (ConstantString s) -> Just $ C.pack s;    _ -> Nothing
           fromCOptionStringToString  = \case Just (ConstantString s) -> Just s;             _ -> Nothing
@@ -172,15 +170,21 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
         Left err -> returnErrRes err
         Right connector -> case streamM of
           Just (ConstantString stream) -> do
-            catchZkException (P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo) "Fail to record connector"
-            subscribeToStream sc (T.pack stream) Latest
-            _ <- async $ do
-              catchZkException (P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running) "Failed to change connector status"
-              forever $ do
-                records <- readRecords sc
-                forM_ records $ \SourceRecord {..} ->
-                  writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
-            returnOkRes
+            streamExists <- doesStreamExists scLDClient (transToStreamName $ T.pack stream)
+            case streamExists of
+              False -> returnErrRes $ "Stream " <> TL.pack stream <> " doesn't exist"
+              True -> do
+                ldreader <- newLDReader scLDClient 1000 Nothing
+                let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+                catchZkException (P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo) "Fail to record connector"
+                subscribeToStreamWithoutCkp sc (T.pack stream) Latest
+                _ <- async $ do
+                  catchZkException (P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running) "Failed to change connector status"
+                  forever $ do
+                    records <- readRecordsWithoutCkp sc
+                    forM_ records $ \SourceRecord {..} ->
+                      writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
+                returnOkRes
           _ -> returnErrRes "stream name missed in connector options"
     Right (InsertPlan stream payload)             -> do
       let key = Aeson.encode $ Aeson.Object $ HM.fromList [("key", "demokey")]
