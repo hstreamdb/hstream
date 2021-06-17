@@ -89,7 +89,7 @@ configType = describe "LogConfigType" $ do
     lg <- I.makeLogGroup client "lg" logid logid attrs False
     range <- I.logGroupGetRange lg
     range `shouldBe` (logid, logid)
-    _ <- I.logGroupSetRange client "lg" (logid',logid')
+    I.syncLogsConfigVersion client =<< I.logGroupSetRange client "lg" (logid',logid')
     range' <- I.logGroupGetRange =<< I.getLogGroup client "lg"
-    _ <- I.removeLogGroup client "lg"
+    I.syncLogsConfigVersion client =<< I.removeLogGroup client "lg"
     range' `shouldBe` (logid', logid')

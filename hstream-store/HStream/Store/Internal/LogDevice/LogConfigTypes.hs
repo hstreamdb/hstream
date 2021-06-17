@@ -624,7 +624,9 @@ logGroupGetVersion group = withForeignPtr group c_ld_loggroup_get_version
 -- * E::INVALID_ATTRIBUTES the range you supplied is invalid or reserved for system-logs.
 -- * E::TIMEDOUT Operation timed out.
 -- * E::ACCESS you don't have permissions to mutate the logs configuration.
-logGroupSetRange :: LDClient
+logGroupSetRange
+  :: HasCallStack
+  => LDClient
   -> CBytes
   -- ^ The path to the log group
   -> C_LogRange
