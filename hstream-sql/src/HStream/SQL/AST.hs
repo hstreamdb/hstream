@@ -422,20 +422,32 @@ instance Refine Drop where
   refine (DropIf _ (Ident x)) = RDropIf x
 type instance RefinedType Drop = RDrop
 
+---- Terminate
+data RTerminate
+  = RTerminateQuery String
+  | RTerminateAll
+  deriving (Eq, Show)
+instance Refine Terminate where
+  refine (TerminateQuery _ x) = RTerminateQuery x
+  refine (TerminateAll   _  ) = RTerminateAll
+type instance RefinedType Terminate = RTerminate
+
 ---- SQL
 data RSQL = RQSelect RSelect
           | RQCreate RCreate
           | RQInsert RInsert
           | RQShow   RShow
           | RQDrop   RDrop
+          | RQTerminate RTerminate
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
-  refine (QSelect _ select) = RQSelect (refine select)
-  refine (QCreate _ create) = RQCreate (refine create)
-  refine (QInsert _ insert) = RQInsert (refine insert)
-  refine (QShow   _ show_)  = RQShow   (refine show_)
-  refine (QDrop   _ drop_)  = RQDrop   (refine drop_)
+  refine (QSelect _  select) = RQSelect (refine select)
+  refine (QCreate _  create) = RQCreate (refine create)
+  refine (QInsert _  insert) = RQInsert (refine insert)
+  refine (QShow   _   show_) = RQShow   (refine show_)
+  refine (QDrop   _   drop_) = RQDrop   (refine drop_)
+  refine (QTerminate _ term) = RQTerminate (refine term)
 
 --------------------------------------------------------------------------------
 

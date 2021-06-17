@@ -595,7 +595,7 @@ instance Validate Insert where
     mapM_ validate exprs
     mapM_ isConstExpr exprs
     return insert
-  validate insert@(InsertBinary _ _ _) = return insert
+  validate insert@InsertBinary {} = return insert
   validate insert@(InsertJson pos _ (SString text)) = do
     let serialized = BSL.fromStrict . encodeUtf8 . Text.init . Text.tail $ text
     let (o' :: Maybe Aeson.Object) = Aeson.decode serialized
@@ -611,10 +611,15 @@ instance Validate ShowQ where
 instance Validate Drop where
   validate = return
 
+------------------------------------- Terminate -------------------------------------
+instance Validate Terminate where
+  validate = return
+
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where
-  validate sql@(QSelect _ select) = validate select >> return sql
-  validate sql@(QCreate _ create) = validate create >> return sql
-  validate sql@(QInsert _ insert) = validate insert >> return sql
-  validate sql@(QShow   _ show_)  = validate show_   >> return sql
-  validate sql@(QDrop   _ drop_)  = validate drop_   >> return sql
+  validate sql@(QSelect  _ select) = validate select >> return sql
+  validate sql@(QCreate  _ create) = validate create >> return sql
+  validate sql@(QInsert  _ insert) = validate insert >> return sql
+  validate sql@(QShow    _  show_) = validate show_  >> return sql
+  validate sql@(QDrop    _  drop_) = validate drop_  >> return sql
+  validate sql@(QTerminate _ term) = validate term   >> return sql

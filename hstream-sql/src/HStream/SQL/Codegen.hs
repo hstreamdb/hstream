@@ -56,6 +56,7 @@ import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 import qualified RIO.Text                                        as T
+import qualified Z.Data.CBytes                                   as CB
 import           Z.IO.Time
 
 --------------------------------------------------------------------------------
@@ -67,15 +68,17 @@ type SinkStream     = StreamName
 type CheckIfExist  = Bool
 
 data ShowObject = Streams | Queries | Connectors
+data TerminationSelection = AllQuery | OneQuery CB.CBytes
 
-
-data ExecutionPlan = SelectPlan          SourceStream SinkStream TaskBuilder
-                   | CreatePlan          StreamName Int
-                   | CreateConnectorPlan ConnectorName RConnectorOptions
-                   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
-                   | InsertPlan          StreamName BL.ByteString
-                   | DropPlan            CheckIfExist StreamName
-                   | ShowPlan            ShowObject
+data ExecutionPlan
+  = SelectPlan          SourceStream SinkStream TaskBuilder
+  | CreatePlan          StreamName Int
+  | CreateConnectorPlan ConnectorName RConnectorOptions
+  | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
+  | InsertPlan          StreamName BL.ByteString
+  | DropPlan            CheckIfExist StreamName
+  | ShowPlan            ShowObject
+  | TerminatePlan       TerminationSelection
 --------------------------------------------------------------------------------
 
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
@@ -107,6 +110,8 @@ streamCodegen input = do
     RQShow (RShow RShowConnectors) -> return $ ShowPlan Connectors
     RQDrop (RDrop x)   -> return $ DropPlan False x
     RQDrop (RDropIf x) -> return $ DropPlan True x
+    RQTerminate (RTerminateQuery qid) -> return $ TerminatePlan (OneQuery $ CB.pack qid)
+    RQTerminate RTerminateAll         -> return $ TerminatePlan AllQuery
 
 data NotSupported = NotSupported deriving Show
 instance Exception NotSupported

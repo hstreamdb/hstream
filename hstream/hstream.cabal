@@ -28,6 +28,7 @@ library
   exposed-modules:
     HStream.Server.Handler
     HStream.Server.Persistence
+    HStream.Server.Exception
 
   hs-source-dirs:   src
   build-depends:

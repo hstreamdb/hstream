@@ -9,7 +9,9 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                 (SomeException, catch, try)
+import           Control.Exception                 (Exception (..),
+                                                    SomeException, catch,
+                                                    handle, throwIO, try)
 import           Control.Monad                     (when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
@@ -31,6 +33,8 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
                                                     runOps)
+import           Numeric                           (showHex)
+import           System.IO.Unsafe                  (unsafePerformIO)
 import           System.Random                     (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as CB
@@ -51,15 +55,13 @@ import           HStream.Processing.Util           (getCurrentTimestamp)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import           HStream.SQL.Exception
+import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
 import           HStream.Store
 import           HStream.Utils
-import           Numeric                           (showHex)
 import           Proto3.Suite                      (Enumerated (..))
 import           RIO                               (async, forM_, forever)
-import           System.IO.Unsafe                  (unsafePerformIO)
-
 --------------------------------------------------------------------------------
 
 newRandomName :: Int -> IO CB.CBytes
@@ -69,6 +71,7 @@ data ServerContext = ServerContext {
     scLDClient               :: LDClient
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
+  , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
 }
 
 subscribedConnectors :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text,SourceConnector)))
@@ -80,10 +83,12 @@ subscribedConnectors = unsafePerformIO $ newIORef HM.empty
 handlers :: CB.CBytes -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
 handlers logDeviceConfigPath handle = do
   ldclient <- newLDClient logDeviceConfigPath
+  runningQs <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
       , scDefaultStreamRepFactor = 3
       , zkHandle                 = handle
+      , runningQueries           = runningQs
       }
   return HStreamApi {
       hstreamApiExecuteQuery     = executeQueryHandler serverContext
@@ -115,7 +120,8 @@ executeQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal CommandQuery CommandQueryResponse
   -> IO (ServerResponse 'Normal CommandQueryResponse)
-executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = do
+executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = handle
+  (\(e :: ServerHandlerException) -> returnErrRes $ fromString (show e)) $ do
   plan' <- try $ streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
     Left (e :: SomeSQLException) -> returnErrRes ("error on parsing or codegen, " <> getKeyWordFromException e)
@@ -176,10 +182,10 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
               True -> do
                 ldreader <- newLDReader scLDClient 1000 Nothing
                 let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
-                catchZkException (P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo) "Fail to record connector"
+                catchZkException (P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo) FailedToRecordInfo
                 subscribeToStreamWithoutCkp sc (T.pack stream) Latest
                 _ <- async $ do
-                  catchZkException (P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running) "Failed to change connector status"
+                  catchZkException (P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running) FailedToSetStatus
                   forever $ do
                     records <- readRecordsWithoutCkp sc
                     forM_ records $ \SourceRecord {..} ->
@@ -220,6 +226,7 @@ executeQueryHandler ServerContext{..} (ServerNormalRequest _metadata CommandQuer
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
             return (ServerNormalResponse resp [] StatusOk "")
         _ -> returnErrRes "not Supported"
+    Right (TerminatePlan terminationSelection) -> handleTerminatePlan sc terminationSelection
   where
     returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
     returnOkRes    = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
@@ -229,9 +236,9 @@ executePushQueryHandler
   -> ServerRequest 'ServerStreaming CommandPushQuery Struct
   -> IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler ServerContext{..}
-  (ServerWriterRequest meta CommandPushQuery{..} streamSend) = do
+  (ServerWriterRequest meta CommandPushQuery{..} streamSend) = handle
+  (\(e :: ServerHandlerException) -> returnRes $ fromString (show e)) $ do
   plan' <- try $ streamCodegen (TL.toStrict commandPushQueryQueryText)
-  let returnRes = return . ServerWriterResponse [] StatusAborted
   case plan' of
     Left  (_ :: SomeSQLException) -> returnRes "exception on parsing or codegen"
     Right (SelectPlan sources sink taskBuilder) -> do
@@ -247,53 +254,81 @@ executePushQueryHandler ServerContext{..}
             MkSystemTime timestamp _ <- getSystemTime'
             let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
                 qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
-            catchZkException (P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo) "Failed to record query"
+            catchZkException (P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo) FailedToRecordInfo
             -- run task
-            tid <- forkIO $ catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Running) "Failed to change query status"
+            tid <- forkIO $ catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Running) FailedToSetStatus
               >> runTaskWrapper taskBuilder scLDClient
-            isCancelled <- newMVar False
-            _ <- forkIO $ handlePushQueryCanceled meta isCancelled
-              (killThread tid >> catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) "Failed to change query status")
+            takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+            -- isCancelled <- newMVar False
+            _ <- forkIO $ handlePushQueryCanceled meta
+              (killThread tid >> catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) FailedToSetStatus)
             ldreader' <- newLDFileCkpReader scLDClient
               (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
               checkpointRootPath 1 Nothing 3
             let sc = hstoreSourceConnector scLDClient ldreader'
             subscribeToStream sc sink Latest
-            sendToClient isCancelled sc streamSend
+            -- sendToClient isCancelled sc streamSend
+            sendToClient zkHandle qid sc streamSend
     Right _ -> returnRes "inconsistent method called"
+  where
+    returnRes = return . ServerWriterResponse [] StatusAborted
 
-sendToClient :: MVar Bool -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
+handleTerminatePlan :: ServerContext -> TerminationSelection
+  -> IO (ServerResponse 'Normal CommandQueryResponse)
+handleTerminatePlan ServerContext{..} (OneQuery qid) = handle
+  (\(e :: SomeException) -> return (ServerNormalResponse (genErrorQueryResponse $ fromString (show e)) [] StatusUnknown "")) $ do
+  hmapQ <- readMVar runningQueries
+  killThread (hmapQ HM.! qid)
+  catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) FailedToSetStatus
+  swapMVar runningQueries (HM.delete qid hmapQ)
+  return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+handleTerminatePlan ServerContext{..} AllQuery = handle
+  (\(e :: SomeException) -> return (ServerNormalResponse (genErrorQueryResponse $ fromString (show e)) [] StatusUnknown "")) $ do
+  hmapQ <- readMVar runningQueries
+  mapM_ killThread $ HM.elems hmapQ
+  let f qid = catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) FailedToSetStatus
+  mapM_ f $ HM.keys hmapQ
+  swapMVar runningQueries HM.empty
+  return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+
+--------------------------------------------------------------------------------
+
+-- sendToClient :: MVar Bool -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
+sendToClient :: Maybe ZHandle -> CB.CBytes -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
              -> IO (ServerResponse 'ServerStreaming Struct)
-sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
-  cancelled <- readMVar isCancelled
-  if cancelled
-  then return (ServerWriterResponse [] StatusUnknown "")
-  else do
-    sourceRecords <- readRecords
-    let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
-        structs                            = jsonObjectToStruct . fromJust <$> filter isJust objects'
-    streamSendMany structs
+-- sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
+sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = handle
+  (\(e :: P.ZooException) -> return $ ServerWriterResponse [] StatusAborted "failed to get status") $ do
+  P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
+  >>= \case
+    P.Terminated -> return (ServerWriterResponse [] StatusUnknown "")
+    P.Created    -> return (ServerWriterResponse [] StatusUnknown "")
+    P.Running    -> do
+      sourceRecords <- readRecords
+      let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+          structs                            = jsonObjectToStruct . fromJust <$> filter isJust objects'
+      streamSendMany structs
   where
     streamSendMany xs = case xs of
-      []      -> sendToClient isCancelled sc ss
+      []      -> sendToClient zkHandle qid sc ss
       (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
         Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
 
-handlePushQueryCanceled :: ServerCall () -> MVar Bool -> IO () -> IO ()
-handlePushQueryCanceled ServerCall{..} isCancelled handle = do
+handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
+handlePushQueryCanceled ServerCall{..} handle = do
   x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
   case x of
     Left err   -> print err
-    Right [] -> putStrLn "GRPCIOInternalUnexpectedRecv"
+    Right []   -> putStrLn "GRPCIOInternalUnexpectedRecv"
     Right [OpRecvCloseOnServerResult b]
-      -> when b $ swapMVar isCancelled True >> handle
+      -> when b handle
     _ -> putStrLn "impossible happened"
 
 runTaskWrapper :: TaskBuilder -> LDClient -> IO ()
 runTaskWrapper taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
-  let readerName = textToCBytes (getTaskName taskBuilder )
+  let readerName = textToCBytes (getTaskName taskBuilder)
   ldreader <- newLDFileCkpReader ldclient readerName checkpointRootPath 1000 Nothing 3
   -- create a new sourceConnector
   let sourceConnector = hstoreSourceConnector ldclient ldreader
@@ -305,8 +340,8 @@ runTaskWrapper taskBuilder ldclient = do
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
 
-catchZkException :: IO () -> String -> IO ()
-catchZkException action str = catch action (\e -> return (e::SomeException) >> putStrLn str)
+catchZkException :: Exception e => IO a -> e -> IO a
+catchZkException action str = catch action (\(e::SomeException) -> throwIO e)
 
 --------------------------------------------------------------------------------
 appendHandler :: ServerContext
