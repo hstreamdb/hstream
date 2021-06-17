@@ -119,7 +119,6 @@ get_head_attributes(logdevice_client_t* client, c_logid_t logid,
       }
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret =
       client->rep->getHeadAttributes(facebook::logdevice::logid_t(logid), cb);
@@ -171,7 +170,6 @@ ld_client_get_tail_attributes(logdevice_client_t* client, c_logid_t logid,
       }
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
 
   int ret = client->rep->getTailAttributes(logid_t(logid), cb);
@@ -225,7 +223,6 @@ facebook::logdevice::Status ld_client_make_loggroup(
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->makeLogGroup(path_, std::make_pair(start, end), *attrs,
                                       mk_intermediate_dirs, cb);
@@ -250,7 +247,6 @@ void ld_client_get_loggroup(logdevice_client_t* client, const char* path,
       *loggroup_result = NULL;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   client->rep->getLogGroup(path_, cb);
 }
@@ -270,7 +266,6 @@ void ld_client_get_loggroup_by_id(logdevice_client_t* client, c_logid_t logid,
       *loggroup_result = NULL;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   client->rep->getLogGroupById(logid_t(logid), cb);
 }
@@ -288,7 +283,6 @@ ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->removeLogGroup(path, cb);
   if (ret == 0)
@@ -380,7 +374,6 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->makeDirectory(path_, mk_intermediate_dirs, *attrs, cb);
   if (ret == 0)
@@ -401,7 +394,6 @@ ld_client_remove_directory(logdevice_client_t* client, const char* path,
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->removeDirectory(path_, recursive, cb);
   if (ret == 0)
@@ -427,7 +419,6 @@ ld_client_get_directory(logdevice_client_t* client, const char* path,
       }
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->getDirectory(path_, cb);
   if (ret == 0)
@@ -576,7 +567,6 @@ ld_client_rename(logdevice_client_t* client, const char* from_path,
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->rename(from_path_, to_path_, cb);
   if (ret == 0)
@@ -613,7 +603,6 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->setAttributes(path, *attrs, cb);
   if (ret == 0)
@@ -634,7 +623,6 @@ HsInt ld_client_set_log_group_range(logdevice_client_t* client,
       data->failure_reason = strdup(failure_reason.c_str());
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   return client->rep->setLogGroupRange(path_, std::make_pair(logid_t(start), logid_t(end)), cb);
 }

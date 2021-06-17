@@ -66,7 +66,6 @@ void checkpoint_store_get_lsn(logdevice_checkpoint_store_t* store,
       *value_out = lsn;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   store->rep->getLSN(customer_id_, logid_t(logid), cb);
 }
@@ -81,7 +80,6 @@ void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
       *st_out = st;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   store->rep->updateLSN(customer_id_, logid_t(logid), lsn, cb);
 }

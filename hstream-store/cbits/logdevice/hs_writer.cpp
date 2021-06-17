@@ -42,7 +42,6 @@ facebook::logdevice::Status _append_payload_async(
       cb_data->timestamp = r.attrs.timestamp.count();
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   int ret = client->rep->append(logid, Payload(payload + offset, length),
                                 std::move(cb), attrs);
