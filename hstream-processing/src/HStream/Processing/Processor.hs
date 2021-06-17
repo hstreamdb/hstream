@@ -1,7 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData          #-}
 
 module HStream.Processing.Processor
   ( buildTask,
@@ -126,7 +127,10 @@ runTask SourceConnector {..} sinkConnector taskBuilder@TaskTopologyConfig {..} =
                 let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
                 let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
                 liftIO $ updateTimestampInTaskContext ctx srcTimestamp
-                runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+                e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+                case e' of
+                  Left (e :: SomeException) -> logWarn $ display e
+                  Right _                   -> return ()
             )
 
 validateTopology :: TaskTopologyConfig -> ()

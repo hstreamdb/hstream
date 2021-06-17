@@ -16,20 +16,30 @@ module HStream.SQL.Codegen.Utils
   , genJoiner
   ) where
 
+import           Control.Exception     (throw)
 import           Data.Aeson
 import qualified Data.HashMap.Strict   as HM
 import           Data.Scientific
 import qualified Data.Text             as T
 import           Data.Time             (DiffTime, diffTimeToPicoseconds)
+import           GHC.Stack             (callStack)
 import           HStream.SQL.AST
-import           HStream.SQL.Exception (SomeSQLException (..),
+import           HStream.SQL.Exception (SomeRuntimeException (..),
+                                        SomeSQLException (..),
                                         throwSQLException)
 import           RIO
 import           Text.StringRandom     (stringRandomIO)
 
 --------------------------------------------------------------------------------
-getFieldByName :: Object -> Text -> Value
-getFieldByName = (HM.!)
+getFieldByName :: HasCallStack => Object -> Text -> Value
+getFieldByName o k =
+  case HM.lookup k o of
+    Nothing -> throw
+      SomeRuntimeException
+      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o
+      , runtimeExceptionCallStack = callStack
+      }
+    Just v  -> v
 
 getFieldByName' :: Object -> Text -> Maybe Value
 getFieldByName' = flip HM.lookup
