@@ -10,8 +10,10 @@ import           Control.Monad                    (forM_, guard, unless, when,
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, isJust, isNothing)
 import           System.IO                        (hFlush, stdout)
+import           Data.Maybe                       (fromJust, fromMaybe, isJust,
+                                                   isNothing)
+import           Foreign.ForeignPtr               (withForeignPtr)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes, unpack)
 import           Z.IO.Exception                   (try, tryJust)
@@ -31,6 +33,34 @@ runLogsCmd conf (RenameCmd old new warn)  = runLogsRename conf old new warn
 runLogsCmd conf (RemoveCmd removeOpt)     = runLogsRemove conf removeOpt
 runLogsCmd conf (ShowCmd showOpt)         = runLogsShow conf showOpt
 runLogsCmd conf (SetRangeCmd setRangeOpt) = runLogsSetRange conf setRangeOpt
+runLogsCmd conf (UpdateCmd updateOpt)     = runLogsUpdate conf updateOpt
+
+runLogsUpdate :: HeaderConfig AdminAPI -> UpdateLogsOpts -> IO ()
+runLogsUpdate conf UpdateLogsOpts{..} = do
+  let client' = buildLDClientRes conf Map.empty
+  withResource client' $ \client -> do
+    res <- try $ do
+      let warn = "Are you sure you want to update the attributes at "
+                 <> show updatePath <> "? (y/n)"
+      c <- putStrLn warn >> getChar
+      guard (toUpper c == 'Y')
+      res <- try $ S.getLogGroup client updatePath
+      attrs <- case res of
+                 Right loggroup         -> S.logGroupGetHsLogAttrs loggroup
+                 Left (_ :: S.NOTFOUND) ->
+                   S.logDirectoryGetHsLogAttrs =<< S.getLogDirectory client updatePath
+      let attrs' = S.HsLogAttrs
+                   (fromMaybe (S.logReplicationFactor attrs) updateReplicationFactor)
+                   (updateExtras `Map.union` S.logExtraAttrs attrs)
+      attrsPtr <- S.hsLogAttrsToLDLogAttrs attrs'
+      withForeignPtr attrsPtr $ S.ldWriteAttributes client updatePath
+    case res of
+      Right version                     ->
+        putStrLn $ "Attributes for " <> show updatePath
+        <> " has been updated in version " <> show version
+      Left (e :: S.SomeHStoreException) ->
+        putStrLn . formatWith [red] $ "Cannot update attributes for "
+        <> show updatePath <> " for reason: " <> show e
 
 runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do

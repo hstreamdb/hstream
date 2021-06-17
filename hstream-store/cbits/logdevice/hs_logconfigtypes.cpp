@@ -2,11 +2,6 @@
 
 extern "C" {
 
-facebook::logdevice::Status
-ld_client_set_attributes(logdevice_client_t* client, const char* path,
-                         LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
-                         logsconfig_status_cb_data_t* data);
-
 // ----------------------------------------------------------------------------
 // LogAttributes
 
@@ -319,7 +314,7 @@ uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group) {
 }
 
 #if __GLASGOW_HASKELL__ < 810
-facebook::logdevice::Status ld_loggroup_update_extra_attrs(
+HsInt ld_loggroup_update_extra_attrs(
     logdevice_client_t* client, logdevice_loggroup_t* group,
     //
     HsInt extras_len, StgMutArrPtrs* keys_, StgMutArrPtrs* vals_,
@@ -328,7 +323,7 @@ facebook::logdevice::Status ld_loggroup_update_extra_attrs(
   StgArrBytes** keys = (StgArrBytes**)keys_->payload;
   StgArrBytes** vals = (StgArrBytes**)vals_->payload;
 #else
-facebook::logdevice::Status ld_loggroup_update_extra_attrs(
+HsInt ld_loggroup_update_extra_attrs(
     logdevice_client_t* client, logdevice_loggroup_t* group,
     //
     HsInt extras_len, StgArrBytes** keys, StgArrBytes** vals,
@@ -589,10 +584,9 @@ ld_client_rename(logdevice_client_t* client, const char* from_path,
  *                        E::ACCESS you don't have permissions to
  *                                  mutate the logs configuration.
  */
-facebook::logdevice::Status
-ld_client_set_attributes(logdevice_client_t* client, const char* path,
-                         LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
-                         logsconfig_status_cb_data_t* data) {
+HsInt ld_client_set_attributes(logdevice_client_t* client, const char* path,
+                               LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
+                               logsconfig_status_cb_data_t* data) {
   std::string path_ = path;
   auto cb = [data, cap, mvar](facebook::logdevice::Status st, uint64_t version,
                               const std::string& failure_reason) {
@@ -603,10 +597,7 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
     }
     hs_try_putmvar(cap, mvar);
   };
-  int ret = client->rep->setAttributes(path, *attrs, cb);
-  if (ret == 0)
-    return facebook::logdevice::E::OK;
-  return facebook::logdevice::err;
+  return client->rep->setAttributes(path, *attrs, cb);
 }
 
 facebook::logdevice::Status

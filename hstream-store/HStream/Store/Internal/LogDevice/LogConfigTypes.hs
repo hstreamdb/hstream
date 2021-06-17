@@ -602,7 +602,7 @@ logGroupGetExtraAttr group key = withForeignPtr group $ \group' ->
 
 logGroupUpdateExtraAttrs
   :: HasCallStack
-  => LDClient -> LDLogGroup -> Map.Map CBytes CBytes -> IO ()
+  => LDClient -> LDLogGroup -> Map.Map CBytes CBytes -> IO C_LogsConfigVersion
 logGroupUpdateExtraAttrs client group extraAttrs =
   withForeignPtr client $ \client' ->
   withForeignPtr group $ \group' -> do
@@ -614,9 +614,10 @@ logGroupUpdateExtraAttrs client group extraAttrs =
         let size = logsConfigStatusCbDataSize
             peek_data = peekLogsConfigStatusCbData
             cfun = c_ld_loggroup_update_extra_attrs client' group' l ks' vs'
-        LogsConfigStatusCbData errno version _failure_reason <- withAsync size peek_data cfun
+        (LogsConfigStatusCbData errno version _failure_reason, _) <-
+          withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
         void $ E.throwStreamErrorIfNotOK' errno
-        syncLogsConfigVersion client version
+        return version
 {-# INLINE logGroupUpdateExtraAttrs #-}
 
 logGroupGetVersion :: LDLogGroup -> IO C_LogsConfigVersion
@@ -751,7 +752,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_loggroup_update_extra_attrs"
     -> Ptr LogDeviceLogGroup
     -> Int -> BAArray# Word8 -> BAArray# Word8
     -> StablePtr PrimMVar -> Int -> Ptr LogsConfigStatusCbData
-    -> IO ErrorCode
+    -> IO CInt
 
 foreign import ccall safe "hs_logdevice.h free_logdevice_loggroup"
   c_free_logdevice_loggroup :: Ptr LogDeviceLogGroup -> IO ()
@@ -783,15 +784,20 @@ syncLogsConfigVersion client version =
 
 ldWriteAttributes
   :: HasCallStack
-  => LDClient -> CBytes -> Ptr LogDeviceLogAttributes -> IO ()
+  => LDClient
+  -> CBytes
+  -> Ptr LogDeviceLogAttributes
+  -> IO C_LogsConfigVersion
 ldWriteAttributes client path attrs' =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe path $ \path' -> do
     let size = logsConfigStatusCbDataSize
         peek_data = peekLogsConfigStatusCbData
         cfun = c_ld_client_set_attributes client' path' attrs'
-    LogsConfigStatusCbData errno _ _ <- withAsync size peek_data cfun
+    (LogsConfigStatusCbData errno version _, _) <-
+      withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
     void $ E.throwStreamErrorIfNotOK' errno
+    return version
 {-# INLINE ldWriteAttributes #-}
 
 foreign import ccall safe "hs_logdevice.h ld_client_sync_logsconfig_version"
@@ -809,7 +815,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_set_attributes"
     -> Ptr LogDeviceLogAttributes
     -> StablePtr PrimMVar -> Int
     -> Ptr LogsConfigStatusCbData
-    -> IO ErrorCode
+    -> IO CInt
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_rename"
   c_ld_client_rename :: Ptr LogDeviceClient
