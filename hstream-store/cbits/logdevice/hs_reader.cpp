@@ -215,7 +215,6 @@ void write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
       *st_out = st;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   reader->rep->asyncWriteCheckpoints(checkpoints, cb);
 }
@@ -236,7 +235,6 @@ void write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
       *st_out = st;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   reader->rep->asyncWriteCheckpoints(
       cb, std::vector<logid_t>(logids, logids + len));

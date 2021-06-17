@@ -85,7 +85,6 @@ HsInt ld_client_get_tail_lsn(logdevice_client_t* client, c_logid_t logid,
       *lsn_out = lsn;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   return client->rep->getTailLSN(logid_t(logid), cb);
 }
@@ -97,7 +96,6 @@ HsInt ld_client_trim(logdevice_client_t* client, c_logid_t logid, c_lsn_t lsn,
       *st_out = static_cast<c_error_code_t>(st);
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   return client->rep->trim(logid_t(logid), lsn, cb);
 }
@@ -113,7 +111,6 @@ HsInt ld_client_find_time(logdevice_client_t* client, c_logid_t logid,
       *lsn_out = lsn;
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   return client->rep->findTime(logid_t(logid),
                                std::chrono::milliseconds(timestamp), cb,

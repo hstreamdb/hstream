@@ -171,6 +171,14 @@ readerSetWithoutPayload reader = withForeignPtr reader c_ld_reader_without_paylo
 ckpReaderSetWithoutPayload :: LDSyncCkpReader -> IO ()
 ckpReaderSetWithoutPayload reader = withForeignPtr reader c_ld_ckp_reader_without_payload
 
+-- If called, data records read by this Reader will start including
+-- approximate amount of data written to given log up to current record
+-- once it become available to Reader.
+--
+-- The value itself stored in 'DataRecord.recordByteOffset. Set as
+-- 'RecordByteOffsetInvalid' if unavailable to Reader yet.
+--
+-- Only affects subsequent startReading() calls.
 readerSetIncludeByteOffset :: LDReader -> IO ()
 readerSetIncludeByteOffset reader = withForeignPtr reader c_ld_reader_include_byteoffset
 

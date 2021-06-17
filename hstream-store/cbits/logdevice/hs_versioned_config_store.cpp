@@ -66,7 +66,6 @@ void logdevice_vcs_get_config(logdevice_vcs_t* vcs, const char* key,
       }
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
 
   if (base_version_) {
@@ -93,7 +92,6 @@ void logdevice_vcs_get_latest_config(logdevice_vcs_t* vcs, const char* key,
       }
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
 
   vcs->rep->getLatestConfig(std::string(key), value_cb);
@@ -155,7 +153,6 @@ void logdevice_vcs_update_config(
       }
     }
     hs_try_putmvar(cap, mvar);
-    hs_thread_done();
   };
   if (condition_mode == 2) {
     vcs->rep->updateConfig(std::string(key),
