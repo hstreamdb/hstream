@@ -621,6 +621,24 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
+HsInt ld_client_set_log_group_range(logdevice_client_t* client,
+                                    const char* path, c_logid_t start,
+                                    c_logid_t end, HsStablePtr mvar, HsInt cap,
+                                    logsconfig_status_cb_data_t* data) {
+  std::string path_ = path;
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st, uint64_t version,
+                              const std::string& failure_reason) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->version = version;
+      data->failure_reason = strdup(failure_reason.c_str());
+    }
+    hs_try_putmvar(cap, mvar);
+    hs_thread_done();
+  };
+  return client->rep->setLogGroupRange(path_, std::make_pair(logid_t(start), logid_t(end)), cb);
+}
+
 // ----------------------------------------------------------------------------
 
 [[deprecated]] facebook::logdevice::Status ld_client_make_loggroup_sync(

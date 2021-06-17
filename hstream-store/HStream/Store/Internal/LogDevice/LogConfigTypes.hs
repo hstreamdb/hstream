@@ -615,6 +615,45 @@ logGroupGetVersion :: LDLogGroup -> IO C_LogsConfigVersion
 logGroupGetVersion group = withForeignPtr group c_ld_loggroup_get_version
 {-# INLINE logGroupGetVersion #-}
 
+-- | This sets the log group range to the supplied new range.
+--
+-- Throw one of the following exceptions on failure:
+--
+-- * E::ID_CLASH - the ID range clashes with existing log group.
+-- * E::NOTFOUND if the path doesn't exist or it's pointing to a directory
+-- * E::INVALID_ATTRIBUTES the range you supplied is invalid or reserved for system-logs.
+-- * E::TIMEDOUT Operation timed out.
+-- * E::ACCESS you don't have permissions to mutate the logs configuration.
+logGroupSetRange
+  :: HasCallStack
+  => LDClient
+  -> CBytes
+  -- ^ The path to the log group
+  -> C_LogRange
+  -- ^ The new range to be set
+  -> IO C_LogsConfigVersion
+  -- ^ Return the version of the logsconfig at which the range got updated
+logGroupSetRange client path (start, end) =
+  withForeignPtr client $ \client' ->
+    CBytes.withCBytesUnsafe path $ \path' -> do
+    let size = logsConfigStatusCbDataSize
+        peek_data = peekLogsConfigStatusCbData
+        cfun = c_ld_client_set_log_group_range client' path' start end
+    (LogsConfigStatusCbData errno version _, _) <-
+      withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
+    void $ E.throwStreamErrorIfNotOK' errno
+    return version
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_set_log_group_range"
+  c_ld_client_set_log_group_range
+    :: Ptr LogDeviceClient
+    -> BA# Word8
+    -> C_LogID
+    -> C_LogID
+    -> StablePtr PrimMVar -> Int
+    -> Ptr LogsConfigStatusCbData
+    -> IO CInt
+
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup"
   c_ld_client_make_loggroup
     :: Ptr LogDeviceClient

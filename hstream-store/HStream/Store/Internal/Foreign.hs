@@ -93,9 +93,9 @@ withAsync size peek_data f = fst <$> withAsync' size peek_data E.throwStreamErro
 withAsync'
   :: HasCallStack
   => Int -> (Ptr a -> IO a)
-  -> (HasCallStack => b -> IO b)
+  -> (HasCallStack => b -> IO c)
   -> (StablePtr PrimMVar -> Int -> Ptr a -> IO b)
-  -> IO (a, b)
+  -> IO (a, c)
 withAsync' size peek_data g f = mask_ $ do
   mvar <- newEmptyMVar
   sp <- newStablePtrPrimMVar mvar
