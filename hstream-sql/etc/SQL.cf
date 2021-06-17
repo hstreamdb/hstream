@@ -42,6 +42,7 @@ QCreate. SQL ::= Create ";" ;
 QInsert. SQL ::= Insert ";" ;
 QShow.   SQL ::= ShowQ  ";" ;
 QDrop.   SQL ::= Drop   ";" ;
+QTerminate. SQL ::= Terminate ";";
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident ;
@@ -76,6 +77,10 @@ ShowConnectors. ShowOption ::= "CONNECTORS" ;
 --- Drop Query
 DDrop.  Drop ::= "DROP" "STREAM" Ident ;
 DropIf. Drop ::= "DROP" "STREAM" "IF" "EXIST" Ident ;
+
+-- Terminate Query
+TerminateQuery. Terminate ::= "TERMINATE" "QUERY" String ;
+TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;

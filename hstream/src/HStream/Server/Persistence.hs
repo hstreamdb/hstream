@@ -16,6 +16,7 @@ module HStream.Server.Persistence
   , Persistence (..)
   , initializeAncestors
   , withMaybeZHandle
+  , ZooException
   ) where
 
 import           Control.Monad       (void)
@@ -86,6 +87,7 @@ class Persistence handle where
   setConnectorStatus :: HasCallStack => Id -> PStatus -> handle -> IO ()
   getQueries         :: HasCallStack => handle -> IO [Query]
   getConnectors      :: HasCallStack => handle -> IO [Connector]
+  getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
 
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
@@ -128,6 +130,11 @@ instance Persistence PStoreMem where
 
   getConnectors = (HM.elems <$>) . readIORef . snd
 
+  getQueryStatus qid (refQ, refC)= do
+    hmapQ <- readIORef refQ
+    case HM.lookup (mkQueryPath qid) hmapQ of
+      Nothing                       -> error "query does not exist"
+      Just (Query _ _ (Status x _)) -> return x
 --------------------------------------------------------------------------------
 
 defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
@@ -163,6 +170,8 @@ instance Persistence ZHandle where
     details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkConnectorPath) cids
     status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cids
     return $ zipWith ($) (zipWith ($) (Connector <$> cids) details) status
+
+  getQueryStatus qid zk = status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath]

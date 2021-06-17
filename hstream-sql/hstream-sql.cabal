@@ -63,6 +63,7 @@ library
     , time                  >=1.9.1 && <2
     , unordered-containers
     , uuid
+    , Z-Data
     , Z-IO
 
   -- Note: build on osx require this
