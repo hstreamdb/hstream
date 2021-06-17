@@ -68,11 +68,11 @@ COPY --from=hstreamdb/logdevice /logdevice/common/test/ssl_certs/ /logdevice/com
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
-                    /root/.cabal/bin/hstore-admin \
+                    /root/.cabal/bin/hadmin \
                     /usr/local/bin/
 RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
-    /usr/local/bin/hstore-admin --bash-completion-script /usr/local/bin/hstore-admin > /etc/bash_completion.d/hstore-admin
+    /usr/local/bin/hadmin --bash-completion-script /usr/local/bin/hadmin > /etc/bash_completion.d/hadmin
 
 EXPOSE 6560 6570
 CMD ["/usr/local/bin/hstream-server", "-p", "6570"]
