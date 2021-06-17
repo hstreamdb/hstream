@@ -24,7 +24,7 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
-executable hstore-admin
+executable hadmin
   main-is:            cli.hs
   hs-source-dirs:     app
   build-depends:
