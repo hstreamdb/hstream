@@ -262,6 +262,7 @@ data LogsConfigCmd
   | RenameCmd CBytes CBytes Bool
   | CreateCmd CreateLogsOpts
   | RemoveCmd RemoveLogsOpts
+  | SetRangeCmd SetRangeOpts
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
@@ -285,6 +286,32 @@ logsConfigCmdParser = hsubparser $
                             <> " This will NOT delete the directory if it is not"
                             <> " empty by default, you need to use --recursive."))
                      )
+ <> command "set-range" (info (SetRangeCmd <$> setRangeOptsParser)
+                              (progDesc ("This updates the log id range for the"
+                               <> " LogGroup under a specific directory path in"
+                               <> " the LogsConfig tree."))
+                        )
+
+data SetRangeOpts = SetRangeOpts
+  { setRangePath    :: CBytes
+  , setRangeStartId :: S.C_LogID
+  , setRangeEndId   :: S.C_LogID
+  } deriving (Show)
+
+setRangeOptsParser :: Parser SetRangeOpts
+setRangeOptsParser = SetRangeOpts
+  <$> strOption ( long "path"
+                <> metavar "PATH"
+                <> help "Path of the the log group."
+                )
+  <*> option auto ( long "from"
+                  <> metavar "INT"
+                  <> help "The beginning of the logid range"
+                  )
+  <*> option auto ( long "to"
+                  <> metavar "INT"
+                  <> help "The end of the logid range"
+                  )
 
 data RemoveLogsOpts = RemoveLogsOpts
   { rmPath      :: CBytes
