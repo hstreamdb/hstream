@@ -103,6 +103,19 @@ def cluster_start(image, data_dir, container_bin, retries=60):
     loginfo("Done")
 
 
+def get_ldadmin_server_host(container_bin):
+    result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
+    if result and result.stdout:
+        rs = set(re.findall(r'--admin-server-host=([\d\.]*)', result.stdout.decode()))
+        if len(rs) == 0:
+            return None
+        elif len(rs) == 1:
+            host = rs.pop()
+            return host
+        else:
+            logerr("Get admin-server-host error!")
+
+
 def get_ldadmin_server_port(container_bin):
     result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
     if result and result.stdout:
@@ -114,6 +127,13 @@ def get_ldadmin_server_port(container_bin):
             return port
         else:
             logerr("Get admin-server-port error!")
+
+
+def admin_addr(container_bin):
+    host = get_ldadmin_server_host(container_bin)
+    port = get_ldadmin_server_port(container_bin)
+    if host and port:
+        loginfo(f"Host: {host}, port: {port}")
 
 
 def cluster_stop(container_bin):
@@ -198,6 +218,11 @@ if __name__ == '__main__':
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_cluster_start.add_argument('--container-bin', default='docker')
 
+    # admin-addr
+    parser_admin_addr = subparsers.add_parser(
+        'admin-addr', help='Get address of admin server.')
+    parser_admin_addr.add_argument('--container-bin', default='docker')
+
     # cluster-stop
     parser_cluster_stop = subparsers.add_parser(
         'cluster-stop', help='Stop logdevice dev cluster')
@@ -217,7 +242,7 @@ if __name__ == '__main__':
     parser_cluster_ldshell = subparsers.add_parser(
         'ldshell', help='')
     parser_cluster_ldshell.add_argument(
-        '--image', '-i', help='logdevice docker images',
+        '--image', '-i', help='ldshell docker images',
         default=DEFAULT_LD_IMAGE)
     parser_cluster_ldshell.add_argument('--container-bin', default='docker')
     parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
@@ -229,7 +254,7 @@ if __name__ == '__main__':
     parser_haskell = subparsers.add_parser(
         'shell', help='Enter in a shell with all haskell dev dependencies')
     parser_haskell.add_argument(
-        '--image', '-i', help='logdevice docker images', default=DEFAULT_HS_IMAGE)
+        '--image', '-i', help='haskell docker images', default=DEFAULT_HS_IMAGE)
     parser_haskell.add_argument('--container-bin', default='docker')
     parser_haskell.add_argument('--no-interactive', action='store_true')
     parser_haskell.add_argument('--no-tty', action='store_true')
@@ -243,7 +268,7 @@ if __name__ == '__main__':
     # cabal
     parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
     parser_haskell_cabal.add_argument(
-        '--image', '-i', help='logdevice docker images', default=DEFAULT_HS_IMAGE)
+        '--image', '-i', help='haskell docker images', default=DEFAULT_HS_IMAGE)
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
     parser_haskell_cabal.add_argument('--no-tty', action='store_true')
@@ -264,6 +289,8 @@ if __name__ == '__main__':
         cluster_start(**args)
     elif sub_command == 'cluster-stop':
         cluster_stop(**args)
+    elif sub_command == 'admin-addr':
+        admin_addr(**args)
     elif sub_command == 'mysql-start':
         mysql_start(**args)
     elif sub_command == 'mysql-stop':
