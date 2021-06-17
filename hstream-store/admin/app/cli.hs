@@ -34,9 +34,11 @@ runCli s (CheckImpactCmd checkImpactOpts) = printTime $ checkImpact s checkImpac
 printTime :: IO a -> IO a
 printTime f = do
   MkSystemTime sec nano <- getSystemTime'
+  let !start = fromIntegral sec + fromIntegral nano * 1e-9
   !x <- f
   MkSystemTime sec' nano' <- getSystemTime'
-  putStrLn $ "Took " <> showFFloat @Double (Just 3) (fromIntegral (sec' - sec) + fromIntegral (nano' - nano) * 10e-9) "s"
+  let !end = fromIntegral sec' + fromIntegral nano' * 1e-9
+  putStrLn $ "Took " <> showFFloat @Double (Just 3) (end - start) "s"
   return x
 
 data Command
