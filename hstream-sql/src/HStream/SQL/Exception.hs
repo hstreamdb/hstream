@@ -6,6 +6,7 @@ module HStream.SQL.Exception
   ( Position
   , SomeSQLException (..)
   , SomeSQLExceptionInfo (..)
+  , SomeRuntimeException (..)
   , buildSQLException
   , throwSQLException
   ) where
@@ -65,3 +66,12 @@ throwSQLException :: (SomeSQLExceptionInfo -> SomeSQLException)
                   -> a
 throwSQLException exceptionType exceptionPos exceptionMsg =
   throw $ buildSQLException exceptionType exceptionPos exceptionMsg
+
+--------------------------------------------------------------------------------
+data SomeRuntimeException = SomeRuntimeException
+  { runtimeExceptionMessage   :: String
+  , runtimeExceptionCallStack :: CallStack
+  }
+instance Show SomeRuntimeException where
+  show SomeRuntimeException{..} = runtimeExceptionMessage
+instance Exception SomeRuntimeException
