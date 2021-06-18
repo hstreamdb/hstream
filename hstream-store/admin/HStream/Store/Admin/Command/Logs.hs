@@ -36,7 +36,7 @@ runLogsInfo :: HeaderConfig AdminAPI -> S.C_LogID -> IO ()
 runLogsInfo conf logid = do
   let client' = buildLDClientRes conf Map.empty
   withResource client' $ \client -> do
-    isExist <- S.doesLogIdHasGroup client logid
+    isExist <- S.logIdHasGroup client logid
     if isExist then info client
                else putStrLn "No log-group has this ID!"
   where
@@ -62,6 +62,8 @@ runLogsInfo conf logid = do
       head_time_stamp <- S.getLogHeadAttrsTrimPointTimestamp head_attr
       putStrLn $ "  Approximate timestamp of trim point (ms): "
         ++ prettyPrintTimeStamp head_time_stamp
+      empty <- S.isLogEmpty client logid
+      putStrLn $ "Log Empty?: " <> show empty
 
     prettyPrintLSN lsn =
       "e" ++ show (lsn `shiftR` 32) ++ "n" ++ show (lsn .&. 0xFFFFFFFF)

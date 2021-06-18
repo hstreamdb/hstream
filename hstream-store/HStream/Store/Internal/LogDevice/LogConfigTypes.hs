@@ -497,8 +497,8 @@ getLogGroupByID client logid = withForeignPtr client $ \client' -> do
   void $ E.throwStreamErrorIfNotOK' errno
   newForeignPtr c_free_logdevice_loggroup_fun group_ptr
 
-doesLogIdHasGroup :: HasCallStack => LDClient -> C_LogID -> IO Bool
-doesLogIdHasGroup client logid = withForeignPtr client $ \client' -> do
+logIdHasGroup :: HasCallStack => LDClient -> C_LogID -> IO Bool
+logIdHasGroup client logid = withForeignPtr client $ \client' -> do
   (errno, _, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) nullPtr (c_ld_client_get_loggroup_by_id client' logid)
   case errno of
     C_OK       -> return True

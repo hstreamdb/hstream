@@ -10,6 +10,7 @@ module HStream.Store.Internal.LogDevice
   , getClientSetting
   , trim
   , findTime
+  , isLogEmpty
 
   , module HStream.Store.Internal.LogDevice.Checkpoint
   , module HStream.Store.Internal.LogDevice.LogConfigTypes
@@ -30,7 +31,8 @@ import           GHC.Stack
 import           Z.Data.CBytes                                         (CBytes)
 import qualified Z.Data.CBytes                                         as CBytes
 import           Z.Data.Vector                                         (Bytes)
-import           Z.Foreign                                             (MBA#)
+import           Z.Foreign                                             (CInt,
+                                                                        MBA#)
 import qualified Z.Foreign                                             as Z
 
 import qualified HStream.Store.Exception                               as E
@@ -190,7 +192,9 @@ trim client logid lsn =
 -- changed, or if the sequencer moves and the clocks are not in sync.
 --
 -- The delivery of a signal does not interrupt the wait.
-findTime :: HasCallStack => LDClient
+findTime
+  :: HasCallStack
+  => LDClient
   -> C_LogID
   -- ^ ID of log to query
   -> Int64
@@ -207,6 +211,24 @@ findTime client logid ts accuracy =
       (c_ld_client_find_time client' logid ts $ unFindKeyAccuracy accuracy) E.throwSubmitIfNotOK
     void $ E.throwStreamErrorIfNotOK' errno
     return lsn
+
+-- | Checks wether a particular log is empty. This method is blocking until the
+--   state can be determined or an error occurred.
+isLogEmpty
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -- ^ the ID of the log to check
+  -> IO Bool
+isLogEmpty client logid =
+  withForeignPtr client $ \client' -> do
+    let size = isLogEmptyCbDataSize
+        peek_data = peekIsLogEmptyCbData
+        cfun = c_ld_client_is_log_empty client' logid
+    (IsLogEmptyCbData errno empty, _) <-
+      withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
+    void $ E.throwStreamErrorIfNotOK' errno
+    return . cbool2bool $ empty
 
 foreign import ccall unsafe "hs_logdevice.h new_logdevice_client"
   c_new_logdevice_client :: Z.BA# Word8
@@ -237,6 +259,13 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_get_tail_lsn"
                            -> MBA# ErrorCode
                            -> MBA# LSN
                            -> IO Int
+
+foreign import ccall unsafe "hs_logdevice.h ld_client_is_log_empty"
+  c_ld_client_is_log_empty :: Ptr LogDeviceClient
+                           -> C_LogID
+                           -> StablePtr PrimMVar -> Int
+                           -> Ptr IsLogEmptyCbData
+                           -> IO CInt
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
   c_ld_client_trim :: Ptr LogDeviceClient

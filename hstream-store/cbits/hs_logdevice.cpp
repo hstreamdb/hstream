@@ -75,6 +75,20 @@ c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client,
   return client->rep->getTailLSNSync(facebook::logdevice::logid_t(logid));
 }
 
+HsInt ld_client_is_log_empty(logdevice_client_t* client, c_logid_t logid,
+                             HsStablePtr mvar, HsInt cap,
+                             is_log_empty_cb_data_t* data) {
+  auto cb = [data, cap, mvar](facebook::logdevice::Status st,
+                              bool empty) {
+    if (data) {
+      data->st = static_cast<c_error_code_t>(st);
+      data->empty = empty;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+  return client->rep->isLogEmpty(logid_t(logid), cb);
+}
+
 HsInt ld_client_get_tail_lsn(logdevice_client_t* client, c_logid_t logid,
                              HsStablePtr mvar, HsInt cap,
                              c_error_code_t* st_out, c_lsn_t* lsn_out) {
