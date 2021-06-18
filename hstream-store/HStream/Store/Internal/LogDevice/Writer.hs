@@ -1,5 +1,6 @@
-{-# LANGUAGE CPP       #-}
-{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE CPP           #-}
+{-# LANGUAGE MagicHash     #-}
+{-# LANGUAGE UnboxedTuples #-}
 
 module HStream.Store.Internal.LogDevice.Writer where
 

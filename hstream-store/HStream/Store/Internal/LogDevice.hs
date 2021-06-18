@@ -31,8 +31,7 @@ import           GHC.Stack
 import           Z.Data.CBytes                                         (CBytes)
 import qualified Z.Data.CBytes                                         as CBytes
 import           Z.Data.Vector                                         (Bytes)
-import           Z.Foreign                                             (CInt,
-                                                                        MBA#)
+import           Z.Foreign                                             (MBA#)
 import qualified Z.Foreign                                             as Z
 
 import qualified HStream.Store.Exception                               as E

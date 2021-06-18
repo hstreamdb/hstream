@@ -97,7 +97,25 @@ ckpReaderStopReading reader logid =
 
 -- | Read a batch of records synchronously until there is some data received.
 --
--- NOTE that if read timeouts, you will get an empty list.
+-- If read timeouts, you will get an empty list.
+--
+-- The call returns when any of this is true:
+--
+-- * `nrecords` records have been delivered
+-- * there are no more records to deliver at the moment and the timeout
+--   specified by 'readerSetTimeout' has been reached
+-- * there are no more records to deliver at the moment and
+--   'readerSetWaitOnlyWhenNoData' was called
+-- * a gap in sequence numbers is encountered
+-- * `until` LSN for some log was reached
+-- * not reading any logs, possibly because the ends of all logs have been
+--   reached (returns 0 quickly)
+--
+-- Note that even in the case of an infinite timeout, the call may deliver
+-- less than `nrecords` data records when a gap is encountered.  The next
+-- call to read() will deliver the gap.
+--
+-- Waiting will not be interrupted if a signal is delivered to the thread.
 readerRead :: LDReader -> Int -> IO [DataRecord]
 readerRead reader maxlen =
   withForeignPtr reader $ \reader' ->
