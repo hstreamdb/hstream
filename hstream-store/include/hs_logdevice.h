@@ -330,6 +330,12 @@ typedef struct log_tail_attributes_cb_data_t {
   c_error_code_t st;
   logdevice_log_tail_attributes_t* tail_attributes;
 } log_tail_attributes_cb_data_t;
+
+typedef struct is_log_empty_cb_data_t {
+  c_error_code_t st;
+  bool empty;
+} is_log_empty_cb_data_t;
+
 // ----------------------------------------------------------------------------
 // Client
 
@@ -339,6 +345,10 @@ new_logdevice_client(char* config_path, logdevice_client_t** client_ret);
 void free_logdevice_client(logdevice_client_t* client);
 
 size_t ld_client_get_max_payload_size(logdevice_client_t* client);
+
+HsInt ld_client_is_log_empty(logdevice_client_t* client, c_logid_t logid,
+                             HsStablePtr mvar, HsInt cap,
+                             is_log_empty_cb_data_t* data);
 
 c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client, uint64_t logid);
 

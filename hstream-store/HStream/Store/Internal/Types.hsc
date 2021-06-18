@@ -320,6 +320,20 @@ peekLogTailAttrsCbData ptr = do
   tail_attributes_ptr <- (#peek log_tail_attributes_cb_data_t, tail_attributes) ptr
   return $ LogTailAttrsCbData retcode tail_attributes_ptr
 
+data IsLogEmptyCbData = IsLogEmptyCbData
+  { isLogEmptyCbRetCode :: !ErrorCode
+  , isLogEmptyCbAttrPtr :: !CBool
+  }
+
+isLogEmptyCbDataSize :: Int
+isLogEmptyCbDataSize = (#size is_log_empty_cb_data_t)
+
+peekIsLogEmptyCbData :: Ptr IsLogEmptyCbData -> IO IsLogEmptyCbData
+peekIsLogEmptyCbData ptr = do
+  retcode <- (#peek is_log_empty_cb_data_t, st) ptr
+  empty <- (#peek is_log_empty_cb_data_t, empty) ptr
+  return $ IsLogEmptyCbData retcode empty
+
 -------------------------------------------------------------------------------
 
 data LogDeviceClient
