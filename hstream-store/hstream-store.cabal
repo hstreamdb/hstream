@@ -50,6 +50,24 @@ executable hstore-server
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
     -threaded -rtsopts -with-rtsopts=-N
 
+executable hstore-bench-writter
+  main-is:          hstoreWriteBenchTool.hs
+  hs-source-dirs:   app
+  build-depends:
+    , base
+    , optparse-applicative  ^>=0.16
+    , data-default
+    , containers
+    , hstream-store
+    , Z-Data
+    , Z-IO
+    , random
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
 library
   exposed-modules:
     HStream.Store
