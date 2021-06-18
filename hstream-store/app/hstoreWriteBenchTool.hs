@@ -3,30 +3,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-import           Control.Exception      (SomeException, try)
 import           Control.Monad
-import           Control.Monad.IO.Class (liftIO)
-import           Data.Int               (Int64)
+import           Data.Int            (Int64)
 import           Data.List
-import qualified Data.Map.Strict        as Map
+import qualified Data.Map.Strict     as Map
 import           Data.String
-import           GHC.Stack              (HasCallStack)
+import           GHC.Stack           (HasCallStack)
 import           Options.Applicative
 import           System.Random
 import           Text.Printf
-import           Z.Data.CBytes          (CBytes, pack)
-import           Z.IO.Time              (SystemTime (..), getSystemTime')
+import           Z.Data.CBytes       (CBytes, pack)
+import           Z.IO.Time           (SystemTime (..), getSystemTime')
 
-import           HStream.Store          hiding (info)
-
-logDeviceConfigPath :: CBytes
-logDeviceConfigPath = "/data/store/logdevice.conf"
+import qualified HStream.Store       as HS
 
 type Timestamp = Int64
 
-reportInterval :: Timestamp
-reportInterval = 5000
-
+-- | Use CountWindow to count the results in a specified time window
 data CountWindow = CountWindow
   { windowStart        :: Timestamp
   , windowCount        :: Int64
@@ -35,8 +28,8 @@ data CountWindow = CountWindow
   , windowBytes        :: Int64
   } deriving (Show)
 
-newWindow :: IO CountWindow
-newWindow = do
+newCountWindow :: IO CountWindow
+newCountWindow = do
   start <- getCurrentTimestamp
   let window = CountWindow
        { windowStart = start
@@ -47,100 +40,96 @@ newWindow = do
        }
   return window
 
-updateWindow :: CountWindow -> Int -> Int64 -> CountWindow
-updateWindow win latency totalBytes
-  = win { windowCount = windowCount win + 1
-        , windowMaxLatency = max (windowMaxLatency win) latency
-        , windowTotalLatency = windowTotalLatency win + (fromIntegral latency)
-        , windowBytes = windowBytes win + totalBytes
+updateCountWindow :: CountWindow -> Int -> Int64 -> CountWindow
+updateCountWindow win@CountWindow{..} latency totalBytes
+  = win { windowCount = windowCount + 1
+        , windowMaxLatency = max windowMaxLatency latency
+        , windowTotalLatency = windowTotalLatency + (fromIntegral latency)
+        , windowBytes = windowBytes + totalBytes
         }
 
-data Stats = Stats
-  { start             :: Timestamp
-  , latencies         :: [Int]
-  , sampling          :: Int
-  , iteration         :: Int
-  , sampleIndex       :: Int
-  , count             :: Int64
-  , bytes             :: Int64
-  , maxLatency        :: Int
-  , totalLatency      :: Int64
-  , countWindow       :: CountWindow
-  , reportingInterval :: Timestamp
+data WriteStats = WriteStats
+  { writeStart             :: !Timestamp
+  , writeLatencies         :: ![Int]
+  , writeSampling          :: !Int
+  , writeIteration         :: !Int
+  , writeSampleIndex       :: !Int
+  , writeCount             :: !Int64
+  , writeBytes             :: !Int64
+  , writeMaxLatency        :: !Int
+  , writeTotalLatency      :: !Int64
+  , writeCountWindow       :: !CountWindow
+  , writeReportingInterval :: !Timestamp
   } deriving (Show)
 
-initStats :: Int64 -> IO Stats
-initStats numRecords = do
+initWriteStats :: Timestamp -> Int64 -> IO WriteStats
+initWriteStats reportInterval numRecords = do
   msTimeStamp <- getCurrentTimestamp
-  window <- newWindow
-  return $ Stats
-    { start = msTimeStamp
-    , iteration = 0
-    , sampling = fromIntegral (numRecords `div` (min numRecords 500000))
-    , latencies = []
-    , sampleIndex = 0
-    , count = 0
-    , bytes = 0
-    , maxLatency = 0
-    , totalLatency = 0
-    , countWindow = window
-    , reportingInterval = reportInterval
+  window <- newCountWindow
+  return $ WriteStats
+    { writeStart = msTimeStamp
+    , writeIteration = 0
+    , writeSampling = fromIntegral (numRecords `div` (min numRecords 500000))
+    , writeLatencies = []
+    , writeSampleIndex = 0
+    , writeCount = 0
+    , writeBytes = 0
+    , writeMaxLatency = 0
+    , writeTotalLatency = 0
+    , writeCountWindow = window
+    , writeReportingInterval = reportInterval
     }
 
 perfWrite :: HasCallStack => ParseArgument -> IO ()
 perfWrite ParseArgument{..} = do
-  ldClient <- liftIO $ newLDClient logDeviceConfigPath
-  oldStats <- initStats numRecords
-  let name = mkStreamName $ pack streamName
-  isExist <- liftIO $ doesStreamExists ldClient name
+  ldClient <- HS.newLDClient configPath
+  oldStats <- initWriteStats reportInterval numRecords
+  let name = HS.mkStreamName $ pack streamName
+  isExist <- HS.doesStreamExists ldClient name
   when isExist $ do
     putStrLn $ "-----remove exist stream----"
-    removeStream ldClient name
-  createStream ldClient name (LogAttrs $ HsLogAttrs 3 Map.empty)
-  logId <- liftIO $ getCLogIDByStreamName ldClient name
+    HS.removeStream ldClient name
+  HS.createStream ldClient name (HS.LogAttrs $ HS.HsLogAttrs 3 Map.empty)
+  logId <- HS.getCLogIDByStreamName ldClient name
+  putStrLn $ "-----PERF START----"
   loop ldClient logId oldStats numRecords
   where
-    stats = initStats numRecords
-    loop :: LDClient -> C_LogID -> Stats -> Int64 -> IO ()
-    loop client logId stats@Stats{..} n
+    loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> Int64 -> IO ()
+    loop client logId stats@WriteStats{..} n
       | n <= 0 = do
         putStrLn $ "Total: "
         printTotal stats
       | otherwise = do
          payload <- fromString <$> replicateM recordSize (randomRIO ('a', 'z'))
          startStamp <- getCurrentTimestamp
-         void $ append client logId payload Nothing
+         void $ HS.append client logId payload Nothing
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
-         newStats <- record stats iteration (fromIntegral latency) (fromIntegral recordSize) endStamp
+         newStats <- record stats writeIteration (fromIntegral latency) (fromIntegral recordSize) endStamp
          loop client logId newStats (n - 1)
 
-record :: Stats
+record :: WriteStats
        -> Int -> Int -> Int64 -> Int64
-       -> IO Stats
-record stats iter latency newBytes time = do
+       -> IO WriteStats
+record stats@WriteStats{..} iter latency newBytes time = do
+  let newWindow = updateCountWindow writeCountWindow latency newBytes
   let newStats = stats
-       { latencies = if (iter `rem` sample) == 0 then oldLatencies ++ [latency] else oldLatencies
-       , sampleIndex = if (iter `rem` sample) == 0 then oldSampleIndex + 1 else oldSampleIndex
-       , iteration = iteration stats + 1
-       , count = count stats + 1
-       , bytes = bytes stats + newBytes
-       , maxLatency = max (maxLatency stats) latency
-       , totalLatency = totalLatency stats + (fromIntegral latency)
-       , countWindow = updateWindow (countWindow stats) latency newBytes
+       { writeLatencies = if (iter `rem` writeSampling) == 0 then writeLatencies ++ [latency] else writeLatencies
+       , writeSampleIndex = if (iter `rem` writeSampling) == 0 then writeSampleIndex + 1 else writeSampleIndex
+       , writeIteration = writeIteration + 1
+       , writeCount = writeCount + 1
+       , writeBytes = writeBytes + newBytes
+       , writeMaxLatency = max writeMaxLatency latency
+       , writeTotalLatency = writeTotalLatency + (fromIntegral latency)
+       , writeCountWindow = newWindow
        }
-  if time - (windowStart $ countWindow newStats) >= reportingInterval newStats
+  if time - (windowStart writeCountWindow) >= writeReportingInterval
      then do
-       printWindow $ countWindow newStats
-       win <- newWindow
-       let finalStats = newStats { countWindow = win }
-       return finalStats
+       printWindow $ newWindow
+       win <- newCountWindow
+       return $ newStats { writeCountWindow = win }
      else do
        return newStats
-  where
-    oldLatencies = latencies stats
-    oldSampleIndex = sampleIndex stats
-    sample = sampling stats
 
 printWindow :: CountWindow -> IO ()
 printWindow CountWindow{..} = do
@@ -152,16 +141,16 @@ printWindow CountWindow{..} = do
   printf "%d records sent, %.1f records/sec (%.2f MB/sec), %.1f ms avg latency, %.1d ms max latency \n"
     windowCount recsPerSec mbPerSec ((fromIntegral windowTotalLatency :: Double) / (fromIntegral windowCount)) windowMaxLatency
 
-printTotal :: Stats -> IO ()
-printTotal Stats{..} = do
+printTotal :: WriteStats -> IO ()
+printTotal WriteStats{..} = do
   current <- getCurrentTimestamp
-  let elapsed = current - start
-  putStrLn $ "elapsed = " ++ show elapsed ++ " count = " ++ show count
-  let recsPerSec = 1000 * (fromIntegral count :: Double) / (fromIntegral elapsed)
-  let mbPerSec = 1000 * (fromIntegral bytes :: Double) / (fromIntegral elapsed) / (1024 * 1024)
-  let percs = getPercentiles latencies [0.5, 0.95, 0.99, 0.999]
+  let elapsed = current - writeStart
+  putStrLn $ "elapsed = " ++ show elapsed ++ " count = " ++ show writeCount
+  let recsPerSec = 1000 * (fromIntegral writeCount :: Double) / (fromIntegral elapsed)
+  let mbPerSec = 1000 * (fromIntegral writeBytes :: Double) / (fromIntegral elapsed) / (1024 * 1024)
+  let percs = getPercentiles writeLatencies [0.5, 0.95, 0.99, 0.999]
   printf "%d records sent, %.2f records/sec (%.2f MB/sec), %.2f ms avg latency. \n %.2d ms max latency, %d ms 50th, %d ms 95th, %d ms 99th, %d ms 99.9th \n"
-    count recsPerSec mbPerSec ((fromIntegral totalLatency :: Double) / (fromIntegral count)) maxLatency (percs !! 0) (percs !! 1) (percs !! 2) (percs !! 3)
+    writeCount recsPerSec mbPerSec ((fromIntegral writeTotalLatency :: Double) / (fromIntegral writeCount)) writeMaxLatency (percs !! 0) (percs !! 1) (percs !! 2) (percs !! 3)
 
 getPercentiles :: [Int] -> [Double] -> [Int]
 getPercentiles latencies percentiles =
@@ -175,17 +164,39 @@ getCurrentTimestamp = do
   return $ floor (fromIntegral (sec * 10^3) + (fromIntegral nano / 10^6))
 
 data ParseArgument = ParseArgument
-  { streamName :: String
-  , numRecords :: Int64
-  , recordSize :: Int
+  { streamName     :: String
+  , numRecords     :: Int64
+  , recordSize     :: Int
+  , configPath     :: CBytes
+  , reportInterval :: Int64
   } deriving (Show)
 
 parseConfig :: Parser ParseArgument
-parseConfig =
-  ParseArgument
-    <$> strOption   (long "stream"      <> metavar "STRING" <> help "Produce message to this stream")
-    <*> option auto (long "num-records" <> metavar "INT"    <> help "Number of messages to produce")
-    <*> option auto (long "record-size" <> metavar "INT"    <> help "Message size in bytes.")
+parseConfig = ParseArgument
+  <$> strOption ( long "stream"
+               <> metavar "STRING"
+               <> help "Produce message to this stream"
+                )
+  <*> option auto ( long "num-records"
+                 <> metavar "INT"
+                 <> help "Number of messages to produce"
+                  )
+  <*> option auto ( long "record-size"
+                 <> metavar "INT"
+                 <> help "Message size in bytes."
+                  )
+  <*> option auto ( long "path"
+                 <> metavar "PATH"
+                 <> showDefault
+                 <> value "/data/store/logdevice.conf"
+                 <> help "Specify the path of LogDevice configuration file."
+                  )
+  <*> option auto ( long "interval"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 5000
+                 <> help "Display period of statistical information in milliseconds."
+                  )
 
 main :: IO ()
 main = do
