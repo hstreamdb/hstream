@@ -15,14 +15,19 @@
 #include <folly/Optional.h>
 #include <folly/Singleton.h>
 #include <folly/String.h>
+#include <folly/io/IOBuf.h>
 #include <folly/io/async/AsyncSocket.h>
 
 #include <logdevice/admin/if/gen-cpp2/AdminAPI.h>
+#include <logdevice/common/PayloadHolder.h>
 #include <logdevice/common/Processor.h>
 #include <logdevice/common/RSMBasedVersionedConfigStore.h>
 #include <logdevice/common/VersionedConfigStore.h>
+#include <logdevice/common/buffered_writer/BufferedWriteCodec.h>
 #include <logdevice/common/checks.h>
 #include <logdevice/common/debug.h>
+#include <logdevice/common/types_internal.h>
+#include <logdevice/include/BufferedWriter.h>
 #include <logdevice/include/CheckpointStore.h>
 #include <logdevice/include/CheckpointStoreFactory.h>
 #include <logdevice/include/CheckpointedReaderBase.h>
@@ -46,6 +51,8 @@
 #include <thrift/lib/cpp2/async/HeaderClientChannel.h>
 
 using facebook::logdevice::AppendAttributes;
+using facebook::logdevice::BufferedWriteCodec;
+using facebook::logdevice::BufferedWriteSinglePayloadsCodec;
 using facebook::logdevice::CheckpointedReaderBase;
 using facebook::logdevice::CheckpointedReaderFactory;
 using facebook::logdevice::CheckpointStore;
@@ -54,6 +61,7 @@ using facebook::logdevice::Client;
 using facebook::logdevice::ClientFactory;
 using facebook::logdevice::ClientImpl;
 using facebook::logdevice::ClientSettings;
+using facebook::logdevice::Compression;
 using facebook::logdevice::DataRecord;
 using facebook::logdevice::KeyType;
 using facebook::logdevice::LogHeadAttributes;
@@ -61,6 +69,7 @@ using facebook::logdevice::logid_t;
 using facebook::logdevice::LogTailAttributes;
 using facebook::logdevice::lsn_t;
 using facebook::logdevice::Payload;
+using facebook::logdevice::PayloadHolder;
 using facebook::logdevice::Processor;
 using facebook::logdevice::Reader;
 using facebook::logdevice::RecordOffset;
@@ -68,6 +77,7 @@ using facebook::logdevice::RSMBasedVersionedConfigStore;
 using facebook::logdevice::SyncCheckpointedReader;
 using facebook::logdevice::vcs_config_version_t;
 using facebook::logdevice::VersionedConfigStore;
+using facebook::logdevice::worker_id_t;
 using facebook::logdevice::client::LogAttributes;
 using facebook::logdevice::client::LogGroup;
 using LogDirectory = facebook::logdevice::client::Directory;
@@ -104,6 +114,7 @@ const c_timestamp_t MAX_MILLISECONDS = std::chrono::milliseconds::max().count();
 
 typedef uint16_t c_error_code_t;
 typedef uint8_t c_keytype_t;
+typedef uint8_t c_compression_t;
 typedef uint64_t c_vcs_config_version_t;
 
 struct logdevice_loggroup_t {

@@ -375,6 +375,25 @@ c_keytype_findkey = (#const C_KeyType_FINDKEY)
 c_keytype_filterable :: Word8
 c_keytype_filterable = (#const C_KeyType_FILTERABLE)
 
+pattern KeyTypeUndefined :: KeyType
+pattern KeyTypeUndefined = KeyType (#const static_cast<HsInt>(KeyType::UNDEFINED))
+
+-- (compression_enum, zstd_level)
+type C_Compression = (Int, Int)
+
+data Compression
+  = CompressionNone
+  | CompressionZSTD Int
+  | CompressionLZ4
+  | CompressionLZ4HC
+  deriving (Eq, Ord, Show)
+
+fromCompression :: Compression -> C_Compression
+fromCompression CompressionNone = ((#const static_cast<HsInt>(Compression::NONE)), 0)
+fromCompression (CompressionZSTD lvl) = ((#const static_cast<HsWord8>(Compression::ZSTD)), lvl)
+fromCompression CompressionLZ4 = ((#const static_cast<HsInt>(Compression::LZ4)), 0)
+fromCompression CompressionLZ4HC = ((#const static_cast<HsInt>(Compression::LZ4_HC)), 0)
+
 -------------------------------------------------------------------------------
 
 type VcsConfigVersion = Word64

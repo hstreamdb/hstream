@@ -4,6 +4,7 @@
 module HStream.Store.Internal.LogDevice.Writer where
 
 import           Data.Int
+import           Data.Maybe                     (fromMaybe)
 import           Data.Primitive
 import           Data.Word
 import           Foreign.ForeignPtr
@@ -14,6 +15,7 @@ import           GHC.Stack
 import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.Vector                  (Bytes)
+import qualified Z.Data.Vector                  as V
 import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
@@ -35,6 +37,26 @@ append client logid payload m_key_attr = withForeignPtr client $ \client' -> do
                 return $ c_logdevice_append_with_attrs_async client' logid payload' 0 len keytype keyval'
     withAsync appendCallBackDataSize peekAppendCallBackData cfun
 {-# INLINABLE append #-}
+
+appendBatch
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> [Bytes]
+  -> Compression
+  -> Maybe (KeyType, CBytes)
+  -> IO AppendCallBackData
+appendBatch client logid payloads compression m_key_attr = withForeignPtr client $ \client' -> do
+  let pa = Z.primArrayFromList (map V.length payloads)
+  Z.withPrimArrayListUnsafe (map V.arrVec payloads) $ \payloads' totalLen -> do
+    let (comp, lvl) = fromCompression compression
+    let (keyType, keyVal) = fromMaybe (KeyTypeUndefined, "") m_key_attr
+    CBytes.withCBytes keyVal $ \keyVal' ->
+      case pa of
+        Z.PrimArray ba# ->
+          withAsync appendCallBackDataSize peekAppendCallBackData
+                    (c_logdevice_append_batch client' logid payloads' ba# totalLen comp lvl keyType keyVal')
+{-# INLINABLE appendBatch #-}
 
 appendSync
   :: HasCallStack
@@ -91,6 +113,16 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_with_attrs_async"
     :: Ptr LogDeviceClient
     -> C_LogID
     -> Ptr Word8 -> Int -> Int    -- ^ Payload pointer,offset,length
+    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
+    -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
+    -> IO ErrorCode
+
+foreign import ccall unsafe "hs_logdevice.h logdevice_append_batch"
+  c_logdevice_append_batch
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Z.BAArray# Word8 -> Z.BA# Int -> Int
+    -> Int -> Int
     -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
     -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
     -> IO ErrorCode
