@@ -225,8 +225,7 @@ isLogEmpty client logid =
     let size = isLogEmptyCbDataSize
         peek_data = peekIsLogEmptyCbData
         cfun = c_ld_client_is_log_empty client' logid
-    (IsLogEmptyCbData errno empty, _) <-
-      withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
+    IsLogEmptyCbData errno empty <- withAsync size peek_data cfun
     void $ E.throwStreamErrorIfNotOK' errno
     return . cbool2bool $ empty
 
@@ -265,7 +264,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_is_log_empty"
                            -> C_LogID
                            -> StablePtr PrimMVar -> Int
                            -> Ptr IsLogEmptyCbData
-                           -> IO CInt
+                           -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_trim"
   c_ld_client_trim :: Ptr LogDeviceClient

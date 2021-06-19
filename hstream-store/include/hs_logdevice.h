@@ -346,9 +346,10 @@ void free_logdevice_client(logdevice_client_t* client);
 
 size_t ld_client_get_max_payload_size(logdevice_client_t* client);
 
-HsInt ld_client_is_log_empty(logdevice_client_t* client, c_logid_t logid,
-                             HsStablePtr mvar, HsInt cap,
-                             is_log_empty_cb_data_t* data);
+facebook::logdevice::Status
+ld_client_is_log_empty(logdevice_client_t* client, c_logid_t logid,
+                       HsStablePtr mvar, HsInt cap,
+                       is_log_empty_cb_data_t* data);
 
 c_lsn_t ld_client_get_tail_lsn_sync(logdevice_client_t* client, uint64_t logid);
 
@@ -434,10 +435,10 @@ ld_client_remove_loggroup(logdevice_client_t* client, const char* path,
                           HsStablePtr mvar, HsInt cap,
                           logsconfig_status_cb_data_t* data);
 
-HsInt ld_client_set_log_group_range(logdevice_client_t* client,
-                                    const char* path, c_logid_t start,
-                                    c_logid_t end, HsStablePtr mvar, HsInt cap,
-                                    logsconfig_status_cb_data_t* data);
+facebook::logdevice::Status
+ld_client_set_log_group_range(logdevice_client_t* client, const char* path,
+                              c_logid_t start, c_logid_t end, HsStablePtr mvar,
+                              HsInt cap, logsconfig_status_cb_data_t* data);
 
 //-----------------------------------------------------------------------------
 // Log Head Attributes

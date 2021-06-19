@@ -97,7 +97,7 @@ void get_attribute_extras(LogAttributes* attrs, size_t* len,
   *values_ptr = values->data();
   *keys_ = keys;
   *values_ = values;
- }
+}
 
 // ----------------------------------------------------------------------------
 // LogHeadAttributes
@@ -448,8 +448,7 @@ const char* ld_logdirectory_name(logdevice_logdirectory_t* dir) {
 }
 
 // LogDirectory attrs : fullyQualifiedName
-const char*
-ld_logdirectory_full_name(logdevice_logdirectory_t* dir) {
+const char* ld_logdirectory_full_name(logdevice_logdirectory_t* dir) {
   return dir->rep->getFullyQualifiedName().c_str();
 }
 
@@ -610,10 +609,10 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
   return facebook::logdevice::err;
 }
 
-HsInt ld_client_set_log_group_range(logdevice_client_t* client,
-                                    const char* path, c_logid_t start,
-                                    c_logid_t end, HsStablePtr mvar, HsInt cap,
-                                    logsconfig_status_cb_data_t* data) {
+facebook::logdevice::Status
+ld_client_set_log_group_range(logdevice_client_t* client, const char* path,
+                              c_logid_t start, c_logid_t end, HsStablePtr mvar,
+                              HsInt cap, logsconfig_status_cb_data_t* data) {
   std::string path_ = path;
   auto cb = [data, cap, mvar](facebook::logdevice::Status st, uint64_t version,
                               const std::string& failure_reason) {
@@ -624,7 +623,11 @@ HsInt ld_client_set_log_group_range(logdevice_client_t* client,
     }
     hs_try_putmvar(cap, mvar);
   };
-  return client->rep->setLogGroupRange(path_, std::make_pair(logid_t(start), logid_t(end)), cb);
+  int rv = client->rep->setLogGroupRange(
+      path_, std::make_pair(logid_t(start), logid_t(end)), cb);
+  if (rv == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
 }
 
 // ----------------------------------------------------------------------------
