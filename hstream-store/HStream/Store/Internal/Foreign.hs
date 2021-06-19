@@ -90,23 +90,13 @@ withAsync :: HasCallStack
 withAsync size peek_data f = fst <$> withAsync' size peek_data E.throwStreamErrorIfNotOK' f
 {-# INLINE withAsync #-}
 
-withAsync'
+withAsyncVoid
   :: HasCallStack
   => Int -> (Ptr a -> IO a)
-  -> (HasCallStack => b -> IO c)
   -> (StablePtr PrimMVar -> Int -> Ptr a -> IO b)
-  -> IO (a, c)
-withAsync' size peek_data g f = mask_ $ do
-  mvar <- newEmptyMVar
-  sp <- newStablePtrPrimMVar mvar
-  fp <- mallocForeignPtrBytes size
-  withForeignPtr fp $ \data' -> do
-    (cap, _) <- threadCapability =<< myThreadId
-    b <- g =<< f sp cap data'
-    takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
-    a <- peek_data data'
-    return (a, b)
-{-# INLINE withAsync' #-}
+  -> IO a
+withAsyncVoid size peek_data f = fst <$> withAsync' size peek_data pure f
+{-# INLINE withAsyncVoid #-}
 
 retryWhileAgain :: HasCallStack => IO (ErrorCode, a) -> Int -> IO a
 retryWhileAgain f retries = do
@@ -154,3 +144,26 @@ data StdVector a
 
 foreign import ccall unsafe "hs_logdevice.h delete_vector_of_string"
   delete_vector_of_string :: Ptr (StdVector Z.StdString) -> IO ()
+
+-------------------------------------------------------------------------------
+-- Internal helpers
+
+-- Do NOT use this function unless you really know what you are doing.
+-- Use 'withAsync' instead.
+withAsync'
+  :: HasCallStack
+  => Int -> (Ptr a -> IO a)
+  -> (HasCallStack => b -> IO c)
+  -> (StablePtr PrimMVar -> Int -> Ptr a -> IO b)
+  -> IO (a, c)
+withAsync' size peek_data g f = mask_ $ do
+  mvar <- newEmptyMVar
+  sp <- newStablePtrPrimMVar mvar
+  fp <- mallocForeignPtrBytes size
+  withForeignPtr fp $ \data' -> do
+    (cap, _) <- threadCapability =<< myThreadId
+    b <- g =<< f sp cap data'
+    takeMVar mvar `onException` forkIO (do takeMVar mvar; touchForeignPtr fp)
+    a <- peek_data data'
+    return (a, b)
+{-# INLINE withAsync' #-}

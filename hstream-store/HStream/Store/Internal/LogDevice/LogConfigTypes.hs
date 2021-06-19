@@ -647,8 +647,7 @@ logGroupSetRange client path (start, end) =
     let size = logsConfigStatusCbDataSize
         peek_data = peekLogsConfigStatusCbData
         cfun = c_ld_client_set_log_group_range client' path' start end
-    (LogsConfigStatusCbData errno version _, _) <-
-      withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
+    LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
     void $ E.throwStreamErrorIfNotOK' errno
     return version
 
@@ -660,7 +659,7 @@ foreign import ccall unsafe "hs_logdevice.h ld_client_set_log_group_range"
     -> C_LogID
     -> StablePtr PrimMVar -> Int
     -> Ptr LogsConfigStatusCbData
-    -> IO CInt
+    -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_client_make_loggroup"
   c_ld_client_make_loggroup

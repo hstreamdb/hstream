@@ -70,9 +70,10 @@ vcsGetConfig vcs key m_base_version auto_retries =
         _ -> E.throwStreamError st callStack
     run vcs' key' =
       case m_base_version of
-        Just bv -> snd <$> (Z.withPrimUnsafe bv $ \ver_ -> fst <$> f (c_logdevice_vcs_get_config vcs' key' (unsafeFreezeBA# ver_)))
-        Nothing -> fst <$> f (c_logdevice_vcs_get_config' vcs' key' nullPtr)
-    f = withAsync' vcsValueCallbackDataSize peekVcsValueCallbackData pure
+        Just bv -> fmap snd $ Z.withPrimUnsafe bv $ \ver_ ->
+          f $ c_logdevice_vcs_get_config vcs' key' (unsafeFreezeBA# ver_)
+        Nothing -> f $ c_logdevice_vcs_get_config' vcs' key' nullPtr
+    f = withAsyncVoid vcsValueCallbackDataSize peekVcsValueCallbackData
 
 vcsGetConfig'
   :: HasCallStack
@@ -93,8 +94,8 @@ ldVcsGetLatestConfig vcs key auto_retries =
     go vcs' key' auto_retries
   where
     go vcs' key' retries = do
-      (cbData, _) <- withAsync' vcsValueCallbackDataSize peekVcsValueCallbackData pure
-                                (c_logdevice_vcs_get_latest_config vcs' key')
+      cbData <- withAsyncVoid vcsValueCallbackDataSize peekVcsValueCallbackData
+                              (c_logdevice_vcs_get_latest_config vcs' key')
       let st = vcsValCallbackSt cbData
       case st of
         C_OK -> return $ vcsValCallbackVal cbData
@@ -151,8 +152,8 @@ ldVcsUpdateConfig vcs key val cond auto_retries =
       go vcs' key' val' offset len auto_retries
   where
     go vcs' key' val' offset len retries = do
-      (cbData, _) <- withAsync' vcsWriteCallbackDataSize peekVcsWriteCallbackData pure
-                                (c_logdevice_vcs_update_config vcs' key' val' offset len cond_mode cond_ver_)
+      cbData <- withAsyncVoid vcsWriteCallbackDataSize peekVcsWriteCallbackData
+                              (c_logdevice_vcs_update_config vcs' key' val' offset len cond_mode cond_ver_)
       let st = vcsWriteCallbackSt cbData
       case st of
         C_OK -> return (vcsWriteCallbackVersion cbData, vcsWriteCallbackValue cbData)
