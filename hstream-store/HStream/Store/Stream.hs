@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass  #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module HStream.Store.Stream
   ( -- * Stream
@@ -37,9 +38,12 @@ module HStream.Store.Stream
 
     -- * Writer
   , LD.append
+  , LD.appendBatch
   , FFI.KeyType
   , FFI.keyTypeFindKey
   , FFI.keyTypeFilterable
+  , pattern FFI.KeyTypeUndefined
+  , FFI.Compression (..)
   , FFI.AppendCallBackData (..)
 
     -- * Checkpoint Store
