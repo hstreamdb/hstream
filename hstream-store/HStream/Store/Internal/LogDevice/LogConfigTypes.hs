@@ -617,7 +617,7 @@ logGroupUpdateExtraAttrs client group extraAttrs =
         (LogsConfigStatusCbData errno version _failure_reason, _) <-
           withAsync' size peek_data (E.throwSubmitIfNotOK . fromIntegral) cfun
         void $ E.throwStreamErrorIfNotOK' errno
-        return version
+        syncLogsConfigVersion client version
 {-# INLINE logGroupUpdateExtraAttrs #-}
 
 logGroupGetVersion :: LDLogGroup -> IO C_LogsConfigVersion
