@@ -53,11 +53,12 @@ cradle:
     - path: "hstream-store/app/hstore.hs"
       component: "hstream-store:exe:hstore"
 
-    - path: "hstream-store/./"
+    - path: "hstream-store"
       component: "lib:hstream-store"
-
     - path: "hstream-store/test"
       component: "hstream-store:test:hstream-store-test"
+    - path: "hstream-store/app"
+      component: "hstream-store:exe:hstore-bench-writter"
 
     - path: "hstream-store/admin"
       component: "lib:hstore-admin"

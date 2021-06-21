@@ -1,19 +1,18 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TypeApplications  #-}
 
 import           Control.Monad
 import           Data.Int            (Int64)
-import           Data.List
+import           Data.List           (sort)
 import qualified Data.Map.Strict     as Map
-import           Data.String
 import           GHC.Stack           (HasCallStack)
 import           Options.Applicative
 import           System.Random
 import           Text.Printf
 import           Z.Data.ASCII        (c2w)
-import           Z.Data.CBytes       (CBytes, pack)
+import           Z.Data.CBytes       (CBytes)
 import qualified Z.Data.Vector       as ZV
 import           Z.IO.Time           (SystemTime (..), getSystemTime')
 
@@ -101,9 +100,7 @@ perfWrite ParseArgument{..} = do
   where
     loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> ZV.Bytes -> Int64 -> IO ()
     loop client logId stats@WriteStats{..} payload n
-      | n <= 0 = do
-        putStrLn "Total: "
-        printTotal stats
+      | n <= 0 = putStrLn "Total: " >> printTotal stats
       | otherwise = do
          startStamp <- getCurrentTimestamp
          void $ HS.append client logId payload Nothing
@@ -143,7 +140,7 @@ printWindow CountWindow{..} = do
   let recsPerSec = 1000 * (fromIntegral windowCount :: Double) / fromIntegral elapsed
   let mbPerSec = 1000 * (fromIntegral windowBytes :: Double) / fromIntegral elapsed / (1024 * 1024)
   printf "%d records sent, %.1f records/sec (%.2f MB/sec), %.1f ms avg latency, %.1d ms max latency \n"
-    windowCount recsPerSec mbPerSec ((fromIntegral windowTotalLatency :: Double) / (fromIntegral windowCount)) windowMaxLatency
+    windowCount recsPerSec mbPerSec ((fromIntegral windowTotalLatency :: Double) / fromIntegral windowCount) windowMaxLatency
 
 printTotal :: WriteStats -> IO ()
 printTotal WriteStats{..} = do
@@ -165,7 +162,8 @@ getPercentiles latencies percentiles =
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = do
   MkSystemTime sec nano <- getSystemTime'
-  return $ floor (fromIntegral (sec * 10^3) + (fromIntegral nano / 10^6))
+  let !ts = floor @Double $ (fromIntegral sec * 1e3) + (fromIntegral nano / 1e6)
+  return ts
 
 data ParseArgument = ParseArgument
   { configPath     :: CBytes
