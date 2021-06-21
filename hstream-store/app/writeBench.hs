@@ -95,7 +95,7 @@ perfWrite ParseArgument{..} = do
     HS.removeStream ldClient name
   HS.createStream ldClient name (HS.LogAttrs $ HS.HsLogAttrs 3 Map.empty)
   logId <- HS.getCLogIDByStreamName ldClient name
-  putStrLn $ "-----PERF START----"
+  putStrLn "-----PERF START----"
   payload <- ZV.replicateMVec recordSize (c2w <$> randomRIO ('a', 'z'))
   loop ldClient logId oldStats payload numRecords
   where
@@ -110,7 +110,7 @@ perfWrite ParseArgument{..} = do
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
          newStats <- record stats writeIteration (fromIntegral latency) (fromIntegral recordSize) endStamp
-         loop client logId newStats payload (n - 1)
+         loop client logId newStats payload $! (n - 1)
 
 record :: WriteStats
        -> Int -> Int -> Int64 -> Int64
