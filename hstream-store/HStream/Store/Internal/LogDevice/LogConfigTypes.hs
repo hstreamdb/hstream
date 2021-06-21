@@ -783,15 +783,19 @@ syncLogsConfigVersion client version =
 
 ldWriteAttributes
   :: HasCallStack
-  => LDClient -> CBytes -> Ptr LogDeviceLogAttributes -> IO ()
+  => LDClient
+  -> CBytes
+  -> Ptr LogDeviceLogAttributes
+  -> IO C_LogsConfigVersion
 ldWriteAttributes client path attrs' =
   withForeignPtr client $ \client' ->
   CBytes.withCBytesUnsafe path $ \path' -> do
     let size = logsConfigStatusCbDataSize
         peek_data = peekLogsConfigStatusCbData
         cfun = c_ld_client_set_attributes client' path' attrs'
-    LogsConfigStatusCbData errno _ _ <- withAsync size peek_data cfun
+    LogsConfigStatusCbData errno version _ <- withAsync size peek_data cfun
     void $ E.throwStreamErrorIfNotOK' errno
+    return version
 {-# INLINE ldWriteAttributes #-}
 
 foreign import ccall safe "hs_logdevice.h ld_client_sync_logsconfig_version"

@@ -2,11 +2,6 @@
 
 extern "C" {
 
-facebook::logdevice::Status
-ld_client_set_attributes(logdevice_client_t* client, const char* path,
-                         LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
-                         logsconfig_status_cb_data_t* data);
-
 // ----------------------------------------------------------------------------
 // LogAttributes
 
@@ -345,8 +340,8 @@ facebook::logdevice::Status ld_loggroup_update_extra_attrs(
     }
   }
   auto newLogAttrs = logAttrs.with_extras(new_extras);
-  return ld_client_set_attributes(client, path.c_str(), &newLogAttrs, mvar, cap,
-                                  data);
+  return ld_client_set_attributes(client, path.c_str(), &newLogAttrs, mvar,
+                                  cap, data);
 }
 
 void free_logdevice_loggroup(logdevice_loggroup_t* group) { delete group; }
@@ -603,8 +598,8 @@ ld_client_set_attributes(logdevice_client_t* client, const char* path,
     }
     hs_try_putmvar(cap, mvar);
   };
-  int ret = client->rep->setAttributes(path, *attrs, cb);
-  if (ret == 0)
+  int rv = client->rep->setAttributes(path, *attrs, cb);
+  if (rv == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
 }

@@ -451,6 +451,11 @@ ld_client_set_log_group_range(logdevice_client_t* client, const char* path,
                               c_logid_t start, c_logid_t end, HsStablePtr mvar,
                               HsInt cap, logsconfig_status_cb_data_t* data);
 
+facebook::logdevice::Status
+ld_client_set_attributes(logdevice_client_t* client, const char* path,
+                         LogAttributes* attrs, HsStablePtr mvar, HsInt cap,
+                         logsconfig_status_cb_data_t* data);
+
 //-----------------------------------------------------------------------------
 // Log Head Attributes
 

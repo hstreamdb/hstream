@@ -263,6 +263,7 @@ data LogsConfigCmd
   | CreateCmd CreateLogsOpts
   | RemoveCmd RemoveLogsOpts
   | SetRangeCmd SetRangeOpts
+  | UpdateCmd UpdateLogsOpts
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
@@ -273,9 +274,8 @@ logsConfigCmdParser = hsubparser $
                          (progDesc "Print the full logsconfig for this tier "))
  <> command "create" (info (CreateCmd <$> createLogsParser)
                            (progDesc ("Creates a log group under a specific directory"
-                                   <> " path in the LogsConfig tree. This only works"
-                                   <> " if the tier has LogsConfigManager enabled."))
-                     )
+                            <> " path in the LogsConfig tree. This only works"
+                            <> " if the tier has LogsConfigManager enabled.")))
  <> command "rename" (info (RenameCmd <$> strOption (long "old-name" <> metavar "PATH")
                                       <*> strOption (long "new-name" <> metavar "PATH")
                                       <*> flag True False (long "warning"))
@@ -284,13 +284,16 @@ logsConfigCmdParser = hsubparser $
                            (progDesc ("Removes a directory or a log-group under"
                             <> " a specific directory path in the LogsConfig tree."
                             <> " This will NOT delete the directory if it is not"
-                            <> " empty by default, you need to use --recursive."))
-                     )
+                            <> " empty by default, you need to use --recursive.")))
  <> command "set-range" (info (SetRangeCmd <$> setRangeOptsParser)
                               (progDesc ("This updates the log id range for the"
                                <> " LogGroup under a specific directory path in"
-                               <> " the LogsConfig tree."))
-                        )
+                               <> " the LogsConfig tree.")))
+ <> command "update" (info (UpdateCmd <$> updateLogsOptsParser)
+                           (progDesc (" This updates the LogAttributes for the"
+                            <> " node (can be either a directory or a log group)"
+                            <> " under a specific directory path in the "
+                            <> " LogsConfig tree. ")))
 
 data SetRangeOpts = SetRangeOpts
   { setRangePath    :: CBytes
@@ -312,6 +315,33 @@ setRangeOptsParser = SetRangeOpts
                   <> metavar "INT"
                   <> help "The end of the logid range"
                   )
+
+data UpdateLogsOpts = UpdateLogsOpts
+  { updatePath              :: CBytes
+  , updateUnset             :: [CBytes]
+  , updateReplicationFactor :: Maybe Int
+  , updateExtras            :: Map.Map CBytes CBytes
+  } deriving (Show)
+
+updateLogsOptsParser :: Parser UpdateLogsOpts
+updateLogsOptsParser = UpdateLogsOpts
+  <$> strOption ( long "path"
+                <> metavar "PATH"
+                <> help "Path of the node you want to set attributes for"
+                )
+  <*> many (option str ( long "unset"
+                        <> metavar "KEY"
+                        <> help "The list of attribute names to unset"
+                        ))
+  <*> optional (option auto ( long "replication-factor"
+                            <> metavar "INT"
+                            <> help "number of nodes on which to persist a record"
+                            ))
+  <*> (Map.fromList <$> many (option parseLogExtraAttr
+                              ( long "extra-attributes"
+                              <> metavar "KEY:VALUE"
+                              <> help "arbitrary fields that logdevice does not recognize"
+                              )))
 
 data RemoveLogsOpts = RemoveLogsOpts
   { rmPath      :: CBytes
