@@ -10,10 +10,10 @@ import           Control.Monad                    (forM_, guard, unless, when,
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
-import           System.IO                        (hFlush, stdout)
 import           Data.Maybe                       (fromJust, fromMaybe, isJust,
                                                    isNothing)
 import           Foreign.ForeignPtr               (withForeignPtr)
+import           System.IO                        (hFlush, stdout)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes, unpack)
 import           Z.IO.Exception                   (try, tryJust)
