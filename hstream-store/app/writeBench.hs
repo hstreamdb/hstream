@@ -12,7 +12,9 @@ import           GHC.Stack           (HasCallStack)
 import           Options.Applicative
 import           System.Random
 import           Text.Printf
+import           Z.Data.ASCII        (c2w)
 import           Z.Data.CBytes       (CBytes, pack)
+import qualified Z.Data.Vector       as ZV
 import           Z.IO.Time           (SystemTime (..), getSystemTime')
 
 import qualified HStream.Store       as HS
@@ -94,21 +96,21 @@ perfWrite ParseArgument{..} = do
   HS.createStream ldClient name (HS.LogAttrs $ HS.HsLogAttrs 3 Map.empty)
   logId <- HS.getCLogIDByStreamName ldClient name
   putStrLn "-----PERF START----"
-  loop ldClient logId oldStats numRecords
+  payload <- ZV.replicateMVec recordSize (c2w <$> randomRIO ('a', 'z'))
+  loop ldClient logId oldStats payload numRecords
   where
-    loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> Int64 -> IO ()
-    loop client logId stats@WriteStats{..} n
+    loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> ZV.Bytes -> Int64 -> IO ()
+    loop client logId stats@WriteStats{..} payload n
       | n <= 0 = do
         putStrLn "Total: "
         printTotal stats
       | otherwise = do
-         payload <- fromString <$> replicateM recordSize (randomRIO ('a', 'z'))
          startStamp <- getCurrentTimestamp
          void $ HS.append client logId payload Nothing
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
          newStats <- record stats writeIteration (fromIntegral latency) (fromIntegral recordSize) endStamp
-         loop client logId newStats (n - 1)
+         loop client logId newStats payload $! (n - 1)
 
 record :: WriteStats
        -> Int -> Int -> Int64 -> Int64
@@ -138,8 +140,8 @@ printWindow CountWindow{..} = do
   current <- getCurrentTimestamp
   let elapsed = current - windowStart
   putStrLn $ "\nelapsed = " ++ show elapsed ++ " windowCount = " ++ show windowCount
-  let recsPerSec = 1000 * (fromIntegral windowCount :: Double) / (fromIntegral elapsed)
-  let mbPerSec = 1000 * (fromIntegral windowBytes :: Double) / (fromIntegral elapsed) / (1024 * 1024)
+  let recsPerSec = 1000 * (fromIntegral windowCount :: Double) / fromIntegral elapsed
+  let mbPerSec = 1000 * (fromIntegral windowBytes :: Double) / fromIntegral elapsed / (1024 * 1024)
   printf "%d records sent, %.1f records/sec (%.2f MB/sec), %.1f ms avg latency, %.1d ms max latency \n"
     windowCount recsPerSec mbPerSec ((fromIntegral windowTotalLatency :: Double) / (fromIntegral windowCount)) windowMaxLatency
 
