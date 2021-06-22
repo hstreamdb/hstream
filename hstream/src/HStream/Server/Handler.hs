@@ -121,26 +121,22 @@ executeQueryHandler
   -> ServerRequest 'Normal CommandQuery CommandQueryResponse
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = handle
-  (\(e :: ServerHandlerException) -> returnErrRes $ fromString (show e)) $ do
-  plan' <- try $ streamCodegen (TL.toStrict commandQueryStmtText)
+  (\(e :: ServerHandlerException) -> returnErrRes $ getKeyWordFromException e) $ do
+  plan' <- mark FrontSQLException $ streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
-    Left (e :: SomeSQLException) -> returnErrRes ("error on parsing or codegen, " <> getKeyWordFromException e)
-    Right SelectPlan{}           -> returnErrRes "inconsistent method called"
+    -- Left (e :: SomeSQLException) -> returnErrRes ("error on parsing or codegen, " <> getKeyWordFromException e)
+    SelectPlan{}           -> returnErrRes "inconsistent method called"
     -- execute plans that can be executed with this method
-    Right (CreatePlan stream _repFactor)                     -> do
-      try (createStream scLDClient (transToStreamName stream)
-          (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty))
-      >>= \case
-        Left (e :: SomeException) -> returnErrRes ("error when creating stream, " <> getKeyWordFromException e)
-        Right ()                  -> returnOkRes
-    Right (CreateBySelectPlan _sources sink taskBuilder _repFactor) ->
-      try (createStream scLDClient (transToStreamName sink)
-            (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty))
-      >>= \case
-        Left (e :: SomeException) -> returnErrRes ("error when creating stream, " <> getKeyWordFromException e)
-        Right ()                  -> forkIO (runTaskWrapper taskBuilder scLDClient)
-          >> returnOkRes
-    Right (CreateConnectorPlan cName (RConnectorOptions cOptions)) -> do
+    CreatePlan stream _repFactor                     -> mark LowLevelStoreException $ do
+      createStream scLDClient (transToStreamName stream)
+        (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
+      returnOkRes
+    CreateBySelectPlan _sources sink taskBuilder _repFactor -> mark LowLevelStoreException $ do
+      createStream scLDClient (transToStreamName sink)
+        (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
+      forkIO (runTaskWrapper taskBuilder scLDClient)
+      returnOkRes
+    CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
       let streamM = lookup "streamname" cOptions
           typeM   = lookup "type" cOptions
           fromCOptionString          = \case Just (ConstantString s) -> Just $ C.pack s;    _ -> Nothing
@@ -182,51 +178,43 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
               True -> do
                 ldreader <- newLDReader scLDClient 1000 Nothing
                 let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
-                catchZkException (P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo) FailedToRecordInfo
+                P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo
                 subscribeToStreamWithoutCkp sc (T.pack stream) Latest
                 _ <- async $ do
-                  catchZkException (P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running) FailedToSetStatus
+                  P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
                   forever $ do
                     records <- readRecordsWithoutCkp sc
                     forM_ records $ \SourceRecord {..} ->
                       writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
                 returnOkRes
           _ -> returnErrRes "stream name missed in connector options"
-    Right (InsertPlan stream payload)             -> do
+    InsertPlan stream payload             -> mark LowLevelStoreException $ do
       let key = Aeson.encode $ Aeson.Object $ HM.fromList [("key", "demokey")]
       timestamp <- getCurrentTimestamp
-      try (writeRecord (hstoreSinkConnector scLDClient)
-          (SinkRecord stream (Just key) payload timestamp))
-      >>= \case
-        Left (e :: SomeException) -> returnErrRes ("error when inserting msg, " <> getKeyWordFromException e)
-        Right ()                  -> returnOkRes
-    Right (DropPlan checkIfExist (DStream stream)) -> do
+      writeRecord (hstoreSinkConnector scLDClient)
+        (SinkRecord stream (Just key) payload timestamp)
+      returnOkRes
+    DropPlan checkIfExist (DStream stream) -> mark LowLevelStoreException $ do
       streamExists <- doesStreamExists scLDClient (transToStreamName stream)
-      if streamExists then try (removeStream scLDClient (transToStreamName stream))
-        >>= \case
-          Left (e :: SomeException) -> returnErrRes ("error removing stream, " <> getKeyWordFromException e)
-          Right ()                  -> returnOkRes
+      if streamExists then removeStream scLDClient (transToStreamName stream) >> returnOkRes
       else if checkIfExist then returnOkRes
       else returnErrRes "stream does not exist"
-    Right (ShowPlan showObject) ->
+    ShowPlan showObject ->
       case showObject of
-        SStreams -> try (findStreams scLDClient True) >>= \case
-          Left (e :: SomeException) -> returnErrRes ("failed to get log names from directory" <> getKeyWordFromException e)
-          Right names -> do
-            let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
-            return (ServerNormalResponse resp [] StatusOk "")
-        SQueries -> try (P.withMaybeZHandle zkHandle P.getQueries) >>= \case
-          Left (e :: SomeException) -> returnErrRes ("failed to get queries from zookeeper, " <> getKeyWordFromException e)
-          Right queries -> do
-            let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
-            return (ServerNormalResponse resp [] StatusOk "")
-        SConnectors -> try (P.withMaybeZHandle zkHandle P.getConnectors) >>= \case
-          Left (e :: SomeException) -> returnErrRes ("failed to get connectors from zookeeper, " <> getKeyWordFromException e)
-          Right connectors -> do
-            let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
-            return (ServerNormalResponse resp [] StatusOk "")
+        SStreams -> mark LowLevelStoreException $ do
+          names <- findStreams scLDClient True
+          let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
+          return (ServerNormalResponse resp [] StatusOk "")
+        SQueries -> do
+          queries <- P.withMaybeZHandle zkHandle P.getQueries
+          let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
+          return (ServerNormalResponse resp [] StatusOk "")
+        SConnectors -> do
+          connectors <- P.withMaybeZHandle zkHandle P.getConnectors
+          let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
+          return (ServerNormalResponse resp [] StatusOk "")
         _ -> returnErrRes "not Supported"
-    Right (TerminatePlan terminationSelection) -> handleTerminatePlan sc terminationSelection
+    TerminatePlan terminationSelection -> handleTerminatePlan sc terminationSelection
   where
     returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
     returnOkRes    = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
@@ -238,55 +226,49 @@ executePushQueryHandler
 executePushQueryHandler ServerContext{..}
   (ServerWriterRequest meta CommandPushQuery{..} streamSend) = handle
   (\(e :: ServerHandlerException) -> returnRes $ fromString (show e)) $ do
-  plan' <- try $ streamCodegen (TL.toStrict commandPushQueryQueryText)
+  plan' <-  mark FrontSQLException $ streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
-    Left  (_ :: SomeSQLException) -> returnRes "exception on parsing or codegen"
-    Right (SelectPlan sources sink taskBuilder) -> do
+    SelectPlan sources sink taskBuilder -> do
       exists <- mapM (doesStreamExists scLDClient . transToStreamName) sources
       if (not . and) exists then returnRes "some source stream do not exist"
-      else do
-        e' <- try $ createStream scLDClient (transToStreamName sink)
+      else mark LowLevelStoreException $ do
+        createStream scLDClient (transToStreamName sink)
           (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
-        case e' of
-          Left (_ :: SomeException) -> returnRes "error when creating sink stream."
-          Right _                   -> do
-            -- create persistent query
-            MkSystemTime timestamp _ <- getSystemTime'
-            let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
-                qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
-            catchZkException (P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo) FailedToRecordInfo
-            -- run task
-            tid <- forkIO $ catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Running) FailedToSetStatus
-              >> runTaskWrapper taskBuilder scLDClient
-            takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-            -- isCancelled <- newMVar False
-            _ <- forkIO $ handlePushQueryCanceled meta
-              (killThread tid >> catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) FailedToSetStatus)
-            ldreader' <- newLDFileCkpReader scLDClient
-              (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
-              checkpointRootPath 1 Nothing 3
-            let sc = hstoreSourceConnector scLDClient ldreader'
-            subscribeToStream sc sink Latest
-            -- sendToClient isCancelled sc streamSend
-            sendToClient zkHandle qid sc streamSend
-    Right _ -> returnRes "inconsistent method called"
+        -- create persistent query
+        MkSystemTime timestamp _ <- getSystemTime'
+        let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
+            qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
+        P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo
+        -- run task
+        tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
+          >> runTaskWrapper taskBuilder scLDClient
+        takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+        -- isCancelled <- newMVar False
+        _ <- forkIO $ handlePushQueryCanceled meta
+          (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
+        ldreader' <- newLDFileCkpReader scLDClient
+          (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
+          checkpointRootPath 1 Nothing 3
+        let sc = hstoreSourceConnector scLDClient ldreader'
+        subscribeToStream sc sink Latest
+          -- sendToClient isCancelled sc streamSend
+        sendToClient zkHandle qid sc streamSend
+    _ -> returnRes "inconsistent method called"
   where
     returnRes = return . ServerWriterResponse [] StatusAborted
 
 handleTerminatePlan :: ServerContext -> TerminationSelection
   -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleTerminatePlan ServerContext{..} (OneQuery qid) = handle
-  (\(e :: SomeException) -> return (ServerNormalResponse (genErrorQueryResponse $ fromString (show e)) [] StatusUnknown "")) $ do
+handleTerminatePlan ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
-  killThread (hmapQ HM.! qid)
-  catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) FailedToSetStatus
+  case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> throwIO QueryTerminatedOrNotExist
+  P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   swapMVar runningQueries (HM.delete qid hmapQ)
   return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
-handleTerminatePlan ServerContext{..} AllQuery = handle
-  (\(e :: SomeException) -> return (ServerNormalResponse (genErrorQueryResponse $ fromString (show e)) [] StatusUnknown "")) $ do
+handleTerminatePlan ServerContext{..} AllQuery = do
   hmapQ <- readMVar runningQueries
   mapM_ killThread $ HM.elems hmapQ
-  let f qid = catchZkException (P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated) FailedToSetStatus
+  let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   mapM_ f $ HM.keys hmapQ
   swapMVar runningQueries HM.empty
   return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
@@ -340,8 +322,8 @@ runTaskWrapper taskBuilder ldclient = do
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
 
-catchZkException :: Exception e => IO a -> e -> IO a
-catchZkException action str = catch action (\(e::SomeException) -> throwIO e)
+mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
+mark mke = handle (throwIO . mke)
 
 --------------------------------------------------------------------------------
 appendHandler :: ServerContext
