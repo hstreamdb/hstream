@@ -222,7 +222,7 @@ data AppendCallBackData = AppendCallBackData
   , appendCbLogID     :: !C_LogID
   , appendCbLSN       :: !LSN
   , appendCbTimestamp :: !C_Timestamp
-  }
+  } deriving (Show)
 
 appendCallBackDataSize :: Int
 appendCallBackDataSize = (#size logdevice_append_cb_data_t)

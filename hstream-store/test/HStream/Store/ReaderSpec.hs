@@ -33,9 +33,9 @@ fileBased = context "FileBasedCheckpointedReader" $ do
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
 
   it "read with checkpoint" $ do
-    start_lsn <- S.appendCbLSN <$> S.append client logid "1" Nothing
+    start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing
     _ <- S.append client logid "2" Nothing
-    end_lsn <- S.appendCbLSN <$> S.append client logid "3" Nothing
+    end_lsn <- S.appendCompLSN <$> S.append client logid "3" Nothing
 
     S.ckpReaderStartReading ckpReader logid start_lsn end_lsn
     [record_1] <- S.ckpReaderRead ckpReader 1
@@ -74,9 +74,9 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
 
   it "read with checkpoint" $ do
-    start_lsn <- S.appendCbLSN <$> S.append client logid "1" Nothing
+    start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing
     _ <- S.append client logid "2" Nothing
-    end_lsn <- S.appendCbLSN <$> S.append client logid "3" Nothing
+    end_lsn <- S.appendCompLSN <$> S.append client logid "3" Nothing
 
     S.ckpReaderStartReading ckpReader logid start_lsn end_lsn
     [record_1] <- S.ckpReaderRead ckpReader 1
