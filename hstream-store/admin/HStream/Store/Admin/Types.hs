@@ -90,6 +90,7 @@ statusParser = StatusOpts
 data NodesConfigOpts
   = NodesConfigShow SimpleNodesFilter
   | NodesConfigBootstrap [ReplicationPropertyPair]
+  | NodesConfigRemove SimpleNodesFilter
   deriving (Show)
 
 nodesConfigBootstrapParser :: Parser NodesConfigOpts
@@ -103,6 +104,10 @@ nodesConfigParser :: Parser NodesConfigOpts
 nodesConfigParser = hsubparser
   ( command "show" (info (NodesConfigShow <$> simpleNodesFilterParser) (progDesc "Print tier's NodesConfig to stdout"))
  <> command "bootstrap" (info nodesConfigBootstrapParser (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
+ <> command "shrink"  (info (NodesConfigRemove <$> simpleNodesFilterParser)
+                       (progDesc ("Shrinks the cluster by removing nodes from the"
+                                <> " NodesConfig. This operation requires that the"
+                                <> " removed nodes are empty")))
   )
 
 -------------------------------------------------------------------------------

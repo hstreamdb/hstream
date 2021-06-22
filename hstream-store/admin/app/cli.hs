@@ -25,8 +25,7 @@ cli = liftA2 (,) headerConfigParser commandParser
 
 runCli :: AA.HeaderConfig AA.AdminAPI -> Command -> IO ()
 runCli s (StatusCmd statusOpts) = printTime $ putStrLn =<< runStatus s statusOpts
-runCli s (NodesConfigCmd (NodesConfigShow c)) = printTime $ TIO.putStrLn =<< showConfig s c
-runCli s (NodesConfigCmd (NodesConfigBootstrap ps)) = printTime $ bootstrap s ps
+runCli s (NodesConfigCmd cmd) = printTime $ runNodesConfigCmd s cmd
 runCli s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
 runCli s (LogsCmd cmd) = printTime $ runLogsCmd s cmd
 runCli s (CheckImpactCmd checkImpactOpts) = printTime $ checkImpact s checkImpactOpts
