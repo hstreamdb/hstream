@@ -59,6 +59,8 @@ CreateConnector. Create ::= "CREATE" "SOURCE" "|" "SINK" "CONNECTOR" Ident "WITH
 CreateConnectorIf. Create ::= "CREATE" "SOURCE" "|" "SINK" "CONNECTOR" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 separator ConnectorOption "," ;
 
+CreateView. Create ::= "CREATE" "VIEW" Ident "AS" Select ;
+
 PropertyAny. ConnectorOption ::= Ident "=" ValueExpr ;
 
 ---- Insert Query
@@ -73,10 +75,14 @@ DShow. ShowQ ::= "SHOW" ShowOption ;
 ShowQueries. ShowOption ::= "QUERIES" ;
 ShowStreams. ShowOption ::= "STREAMS" ;
 ShowConnectors. ShowOption ::= "CONNECTORS" ;
+ShowViews. ShowOption ::= "VIEWS" ;
 
 --- Drop Query
-DDrop.  Drop ::= "DROP" "STREAM" Ident ;
-DropIf. Drop ::= "DROP" "STREAM" "IF" "EXIST" Ident ;
+DDrop.  Drop ::= "DROP" DropOption Ident ;
+DropIf. Drop ::= "DROP" DropOption "IF" "EXISTS" Ident ;
+
+DropStream. DropOption ::= "STREAM";
+DropView. DropOption ::= "VIEW";
 
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" String ;

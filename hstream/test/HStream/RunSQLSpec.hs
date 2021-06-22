@@ -19,7 +19,6 @@ import           System.IO.Streams                as SIS hiding (take)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
-import           Text.Printf                      (printf)
 
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
@@ -49,9 +48,9 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "create streams" $
     (do
         setLogDeviceDbgLevel C_DBG_ERROR
-        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source1 <> " ;"
-        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source2 <> " ;"
-        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source3 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXISTS " <> source1 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXISTS " <> source2 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXISTS " <> source3 <> " ;"
         handleCreateStreamSQL $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
         handleCreateStreamSQL $ "CREATE STREAM " <> source2 <> ";"
         handleCreateStreamSQL $ "CREATE STREAM " <> source3 <> " WITH (REPLICATE = 3);"
@@ -85,8 +84,8 @@ spec = describe "HStream.RunSQLSpec" $ do
         handleDropStreamSQL $ "DROP STREAM " <> source2 <> " ;"
         handleDropStreamSQL $ "DROP STREAM " <> sink1   <> " ;"
         handleDropStreamSQL $ "DROP STREAM " <> sink2   <> " ;"
-        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> source1 <> " ;"
-        handleDropStreamSQL $ "DROP STREAM IF EXIST " <> sink1   <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXISTS " <> source1 <> " ;"
+        handleDropStreamSQL $ "DROP STREAM IF EXISTS " <> sink1   <> " ;"
     ) `shouldReturn` ()
 
   it "a simple SQL query" $
@@ -201,7 +200,7 @@ handleDropStreamSQL :: Text -> IO ()
 handleDropStreamSQL sql = do
   plan <- streamCodegen sql
   case plan of
-    DropPlan checkIfExist stream -> do
+    DropPlan checkIfExist (DStream stream) -> do
       streamExists <- doesStreamExists ldclient (transToStreamName stream)
       if streamExists then removeStream ldclient (transToStreamName stream)
       else if checkIfExist then return () else error "stream does not exist"

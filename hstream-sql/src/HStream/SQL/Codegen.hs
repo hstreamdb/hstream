@@ -67,7 +67,8 @@ type SourceStream   = [StreamName]
 type SinkStream     = StreamName
 type CheckIfExist  = Bool
 
-data ShowObject = Streams | Queries | Connectors
+data ShowObject = SStreams | SQueries | SConnectors | SViews
+data DropObject = DStream Text | DView Text
 data TerminationSelection = AllQuery | OneQuery CB.CBytes
 
 data ExecutionPlan
@@ -76,9 +77,10 @@ data ExecutionPlan
   | CreateConnectorPlan ConnectorName RConnectorOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | InsertPlan          StreamName BL.ByteString
-  | DropPlan            CheckIfExist StreamName
+  | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
+
 --------------------------------------------------------------------------------
 
 streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
@@ -95,6 +97,7 @@ streamCodegen input = do
       (builder, source, sink) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
     RQCreate x@(RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
+    RQCreate (RCreateView _ _ ) -> error "not supported"
     RQInsert (RInsert stream tuples)     -> do
       let object_ = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
       return $ InsertPlan stream (encode object_)
@@ -105,11 +108,14 @@ streamCodegen input = do
       return $ InsertPlan stream (encode object_)
     RQInsert (RInsertJSON stream bs) -> do
       return $ InsertPlan stream (BSL.fromStrict bs)
-    RQShow (RShow RShowStreams) -> return $ ShowPlan Streams
-    RQShow (RShow RShowQueries) -> return $ ShowPlan Queries
-    RQShow (RShow RShowConnectors) -> return $ ShowPlan Connectors
-    RQDrop (RDrop x)   -> return $ DropPlan False x
-    RQDrop (RDropIf x) -> return $ DropPlan True x
+    RQShow (RShow RShowStreams) -> return $ ShowPlan SStreams
+    RQShow (RShow RShowQueries) -> return $ ShowPlan SQueries
+    RQShow (RShow RShowConnectors) -> return $ ShowPlan SConnectors
+    RQShow (RShow RShowViews) -> error "not supported" -- return $ ShowPlan SViews
+    RQDrop (RDrop RDropStream x) -> return $ DropPlan False (DStream x)
+    RQDrop (RDrop RDropView x) -> error "not supported" -- return $ DropPlan False (DView x)
+    RQDrop (RDropIf RDropStream x) -> return $ DropPlan True (DStream x)
+    RQDrop (RDropIf RDropView x) -> error "not supported" -- return $ DropPlan True (DView x)
     RQTerminate (RTerminateQuery qid) -> return $ TerminatePlan (OneQuery $ CB.pack qid)
     RQTerminate RTerminateAll         -> return $ TerminatePlan AllQuery
 

@@ -200,7 +200,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       >>= \case
         Left (e :: SomeException) -> returnErrRes ("error when inserting msg, " <> getKeyWordFromException e)
         Right ()                  -> returnOkRes
-    Right (DropPlan checkIfExist stream) -> do
+    Right (DropPlan checkIfExist (DStream stream)) -> do
       streamExists <- doesStreamExists scLDClient (transToStreamName stream)
       if streamExists then try (removeStream scLDClient (transToStreamName stream))
         >>= \case
@@ -210,17 +210,17 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       else returnErrRes "stream does not exist"
     Right (ShowPlan showObject) ->
       case showObject of
-        Streams -> try (findStreams scLDClient True) >>= \case
+        SStreams -> try (findStreams scLDClient True) >>= \case
           Left (e :: SomeException) -> returnErrRes ("failed to get log names from directory" <> getKeyWordFromException e)
           Right names -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
             return (ServerNormalResponse resp [] StatusOk "")
-        Queries -> try (P.withMaybeZHandle zkHandle P.getQueries) >>= \case
+        SQueries -> try (P.withMaybeZHandle zkHandle P.getQueries) >>= \case
           Left (e :: SomeException) -> returnErrRes ("failed to get queries from zookeeper, " <> getKeyWordFromException e)
           Right queries -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
             return (ServerNormalResponse resp [] StatusOk "")
-        Connectors -> try (P.withMaybeZHandle zkHandle P.getConnectors) >>= \case
+        SConnectors -> try (P.withMaybeZHandle zkHandle P.getConnectors) >>= \case
           Left (e :: SomeException) -> returnErrRes ("failed to get connectors from zookeeper, " <> getKeyWordFromException e)
           Right connectors -> do
             let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors

@@ -351,6 +351,7 @@ data RConnectorOptions = RConnectorOptions [(Text, Constant)]
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
              | RCreateConnector Text Bool RConnectorOptions
+             | RCreateView Text RSelect
              deriving (Eq, Show)
 
 type instance RefinedType [StreamOption] = RStreamOptions
@@ -375,6 +376,7 @@ instance Refine Create where
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
   refine (CreateConnector _ (Ident s) options) = RCreateConnector s False (refine options)
   refine (CreateConnectorIf _ (Ident s) options) = RCreateConnector s True (refine options)
+  refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]
@@ -405,22 +407,34 @@ data RShowOption
   = RShowStreams
   | RShowQueries
   | RShowConnectors
+  | RShowViews
   deriving (Eq, Show)
 instance Refine ShowOption where
   refine (ShowStreams _)    = RShowStreams
   refine (ShowQueries _)    = RShowQueries
+  refine (ShowViews   _)    = RShowViews
   refine (ShowConnectors _) = RShowConnectors
 type instance RefinedType ShowOption = RShowOption
 
 ---- DROP
 data RDrop
-  = RDrop Text
-  | RDropIf Text
+  = RDrop   RDropOption Text
+  | RDropIf RDropOption Text
   deriving (Eq, Show)
 instance Refine Drop where
-  refine (DDrop _  (Ident x)) = RDrop x
-  refine (DropIf _ (Ident x)) = RDropIf x
+  refine (DDrop _ dropOp (Ident x))  = RDrop (refine dropOp) x
+  refine (DropIf _ dropOp (Ident x)) = RDropIf (refine dropOp) x
 type instance RefinedType Drop = RDrop
+
+data RDropOption
+  = RDropStream
+  | RDropView
+  deriving (Eq, Show)
+
+instance Refine DropOption where
+  refine (DropStream _ ) = RDropStream
+  refine (DropView   _ ) = RDropView
+type instance RefinedType DropOption = RDropOption
 
 ---- Terminate
 data RTerminate

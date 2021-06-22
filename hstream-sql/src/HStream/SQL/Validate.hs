@@ -561,14 +561,13 @@ instance Validate Select where
 ------------------------------------- CREATE -----------------------------------
 instance Validate Create where
   validate create@(DCreate _ _) = return create
-  validate create@(CreateOp _ _ options) =
-    validate (StreamOptions options) >> return create
-  validate create@(CreateAs _ _ select) =
-    validate select >> return create
+  validate create@(CreateOp _ _ options) = validate (StreamOptions options) >> return create
+  validate create@(CreateAs _ _ select) = validate select >> return create
   validate create@(CreateAsOp _ _ select options) =
     validate select >> validate (StreamOptions options) >> return create
   validate create@(CreateConnector _ _ options) = mapM_ validate options >> return create
   validate create@(CreateConnectorIf _ _ options) = mapM_ validate options >> return create
+  validate create@(CreateView _ _ select) = validate select >> return create
 
 instance Validate StreamOption where
   validate op@(OptionRepFactor pos n') = do
@@ -588,6 +587,7 @@ instance Validate StreamOptions where
 
 instance Validate ConnectorOption where
   validate op@(PropertyAny _ _ expr) = isConstExpr expr >> return op
+
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where
   validate insert@(DInsert pos _ fields exprs) = do
