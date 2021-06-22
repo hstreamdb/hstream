@@ -81,12 +81,12 @@ library
     Fb303.FacebookService.Client
     Fb303.FacebookService.Service
     Fb303.Types
+    HStream.Store.Admin.Command.CheckImpact
     HStream.Store.Admin.Command.Config
     HStream.Store.Admin.Command.Connect
+    HStream.Store.Admin.Command.Logs
     HStream.Store.Admin.Command.NodesConfig
     HStream.Store.Admin.Command.Status
-    HStream.Store.Admin.Command.Logs
-    HStream.Store.Admin.Command.CheckImpact
     Logtree.Types
     Maintenance.Types
     Membership.Types

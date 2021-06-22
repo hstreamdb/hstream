@@ -3,14 +3,9 @@
 
 module HStream.Store.AppenderSpec where
 
-import           Control.Applicative     (liftA2)
-import           Data.Maybe              (fromMaybe)
-import           System.IO.Unsafe        (unsafePerformIO)
-import           Test.Hspec
-import           Z.Data.Vector           (Bytes, packASCII)
-
 import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
+import           Test.Hspec
 
 spec :: Spec
 spec = describe "Stream Writer" $ do

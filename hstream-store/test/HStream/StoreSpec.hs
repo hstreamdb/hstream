@@ -28,15 +28,15 @@ spec = describe "HStoreSpec" $ do
     S.setClientSetting client "max-payload-size" $ CBytes.buildCBytes $ B.int @Int (1024 * 1024)
 
   it "get tail sequence number" $ do
-    seqNum0 <- S.appendCbLSN <$> S.append client logid "hello" Nothing
+    seqNum0 <- S.appendCompLSN <$> S.append client logid "hello" Nothing
     seqNum1 <- S.getTailLSN client logid
     seqNum0 `shouldBe` seqNum1
     let logid' = 101 -- an unknown logid
     S.getTailLSN client logid' `shouldThrow` anyException
 
   it "trim record" $ do
-    sn0 <- S.appendCbLSN <$> S.append client logid "hello" Nothing
-    sn1 <- S.appendCbLSN <$> S.append client logid "world" Nothing
+    sn0 <- S.appendCompLSN <$> S.append client logid "hello" Nothing
+    sn1 <- S.appendCompLSN <$> S.append client logid "world" Nothing
     readPayload logid (Just sn0) `shouldReturn` "hello"
     S.trim client logid sn0
     readPayload' logid (Just sn0) `shouldReturn` []
@@ -51,7 +51,7 @@ spec = describe "HStoreSpec" $ do
   -- FIXME: need to find correct way to test this
   --
   --it "find time with maximal timestamp" $ do
-  --  sn0 <- S.appendCbLSN <$> S.append client logid "test" Nothing
+  --  sn0 <- S.appendCompLSN <$> S.append client logid "test" Nothing
   --  sn1 <- S.findTime client logid maxBound S.FindKeyStrict
   --  sn1 `shouldBe` sn0 + 1
   --  -- findTime(max) respects the trim point but there was an off-by-one in the

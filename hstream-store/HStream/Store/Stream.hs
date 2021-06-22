@@ -39,12 +39,12 @@ module HStream.Store.Stream
     -- * Writer
   , LD.append
   , LD.appendBatch
+  , LD.AppendCompletion (..)
   , FFI.KeyType
   , FFI.keyTypeFindKey
   , FFI.keyTypeFilterable
   , pattern FFI.KeyTypeUndefined
   , FFI.Compression (..)
-  , FFI.AppendCallBackData (..)
 
     -- * Checkpoint Store
   , LD.newFileBasedCheckpointStore
