@@ -145,6 +145,9 @@ data StdVector a
 foreign import ccall unsafe "hs_logdevice.h delete_vector_of_string"
   delete_vector_of_string :: Ptr (StdVector Z.StdString) -> IO ()
 
+foreign import ccall unsafe "hs_logdevice.h setup_sigsegv_handler"
+  setupSigsegvHandler :: IO ()
+
 -------------------------------------------------------------------------------
 -- Internal helpers
 

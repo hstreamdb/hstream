@@ -28,6 +28,9 @@ module HStream.Store
 
     -- * Exception
   , module HStream.Store.Exception
+
+    -- * Helpers
+  , setupSigsegvHandler
   ) where
 
 import           Control.Monad                    (forM_)
@@ -37,6 +40,7 @@ import           GHC.Stack                        (HasCallStack)
 import           Z.Data.CBytes                    (CBytes)
 
 import           HStream.Store.Exception
+import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice
 import           HStream.Store.Internal.Types
 import           HStream.Store.Logger

@@ -1,4 +1,6 @@
 #include "hs_logdevice.h"
+#include <boost/stacktrace.hpp>
+#include <signal.h>
 
 std::string* new_hs_std_string(std::string&& str) {
   auto value = new std::string;
@@ -24,6 +26,16 @@ std::string* hs_cal_std_string_off(std::string* str, HsInt idx) {
 }
 
 void delete_vector_of_string(std::vector<std::string>* ss) { delete ss; }
+
+void handle_fatal_signal(int signum) {
+  ::signal(signum, SIG_DFL);
+  std::cerr << "handle_fatal_signal(): Caught coredump signal " << signum
+            << '\n';
+  std::cerr << "Backtrace:\n" << boost::stacktrace::stacktrace() << '\n';
+  ::raise(SIGTRAP);
+}
+
+void setup_sigsegv_handler() { ::signal(SIGSEGV, &handle_fatal_signal); }
 
 // End
 }
