@@ -80,6 +80,11 @@ jobs:
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} make
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --enable-tests --enable-benchmarks all
 
+      - name: start hstream server
+        run: |
+          python3 script/dev-tools cabal --check --no-interactive --detach -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- run hstream-server
+          sleep 5
+
       - name: test
         run: |
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
