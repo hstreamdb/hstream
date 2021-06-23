@@ -69,6 +69,13 @@ instance Exception FailedToRemove where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
 
+data FailedToDecode = FailedToDecode
+  deriving Show
+
+instance Exception FailedToDecode where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
 data QueryNotFound = QueryNotFound
   deriving Show
 

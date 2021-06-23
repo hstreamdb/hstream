@@ -9,9 +9,8 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                 (Exception (..),
-                                                    SomeException, catch,
-                                                    handle, throwIO, try)
+import           Control.Exception                 (Exception, SomeException,
+                                                    catch, handle, throwIO, try)
 import           Control.Monad                     (when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
@@ -55,11 +54,10 @@ import           HStream.Processing.Type
 import           HStream.Processing.Util           (getCurrentTimestamp)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen
-import           HStream.SQL.Exception
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
-import           HStream.Store
+import           HStream.Store                     hiding (e)
 import           HStream.Utils
 import           Proto3.Suite                      (Enumerated (..))
 import           RIO                               (async, forM_, forever)
@@ -126,14 +124,15 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
   case plan' of
     SelectPlan{}           -> returnErrRes "inconsistent method called"
     -- execute plans that can be executed with this method
-    CreatePlan stream _repFactor                     -> mark LowLevelStoreException $ do
-      createStream scLDClient (transToStreamName stream)
-        (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
-      returnOkRes
+    CreatePlan stream _repFactor -> mark LowLevelStoreException $
+      create stream >> returnOkRes
     CreateBySelectPlan _sources sink taskBuilder _repFactor -> mark LowLevelStoreException $ do
-      createStream scLDClient (transToStreamName sink)
-        (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
-      forkIO (runTaskWrapper False taskBuilder scLDClient)
+      create sink
+      handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.StreamQuery . CB.pack . T.unpack $ sink)
+      returnOkRes
+    CreateViewPlan schema _sources sink taskBuilder _repFactor -> mark LowLevelStoreException $ do
+      create sink
+      handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.ViewQuery (CB.pack . T.unpack $ sink) schema)
       returnOkRes
     CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
       let streamM = lookup "streamname" cOptions
@@ -193,9 +192,13 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       writeRecord (hstoreSinkConnector scLDClient)
         (SinkRecord stream (Just key) payload timestamp)
       returnOkRes
-    DropPlan checkIfExist (DStream stream) -> mark LowLevelStoreException $ handleDropPlan sc checkIfExist stream
+    DropPlan checkIfExist dropObject -> mark LowLevelStoreException $
+      handleDropPlan sc checkIfExist dropObject
     ShowPlan showObject -> handleShowPlan sc showObject
     TerminatePlan terminationSelection -> handleTerminatePlan sc terminationSelection
+  where
+    mkLogAttrs = LogAttrs . HsLogAttrs scDefaultStreamRepFactor
+    create sName = createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
 
 executePushQueryHandler
   :: ServerContext
@@ -213,10 +216,8 @@ executePushQueryHandler ServerContext{..}
         createTempStream scLDClient (transToTempStreamName sink)
           (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
-        MkSystemTime timestamp _ <- getSystemTime'
-        let qid = CB.pack $ T.unpack $ getTaskName taskBuilder
-            qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandPushQueryQueryText) timestamp
-        P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo
+        qid <- createInsertPersistentQuery (getTaskName taskBuilder)
+          commandPushQueryQueryText P.PlainQuery zkHandle
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
           >> runTaskWrapper True taskBuilder scLDClient
@@ -240,13 +241,29 @@ returnOkRes = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  
 returnRes :: StatusDetails -> IO (ServerResponse 'ServerStreaming Struct)
 returnRes = return . ServerWriterResponse [] StatusAborted
 
-handleDropPlan :: ServerContext -> Bool -> T.Text
+handleDropPlan :: ServerContext -> Bool -> DropObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleDropPlan ServerContext{..} checkIfExist stream = do
-  streamExists <- doesStreamExists scLDClient (transToStreamName stream)
-  if streamExists then removeStream scLDClient (transToStreamName stream) >> returnOkRes
-  else if checkIfExist then returnOkRes
-  else returnErrRes "stream does not exist"
+handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
+  case dropObject of
+    DStream stream -> handleDrop "stream_" stream
+    DView view     -> handleDrop "view_" view
+  where
+    terminateQueryAndRemove path = do
+      qids <- P.withMaybeZHandle zkHandle P.getQueryIds
+      case L.find ((== path) . P.getSuffix) qids of
+        Just x -> handle (\(_::QueryTerminatedOrNotExist) -> pure ()) (
+          handleTerminatePlan sc (OneQuery x) >> P.withMaybeZHandle zkHandle (P.removeQuery' x True))
+        Nothing -> pure ()
+
+    handleDrop object name = do
+      streamExists <- doesStreamExists scLDClient (transToStreamName name)
+      if streamExists then
+        terminateQueryAndRemove (T.unpack (object <> name))
+        >> removeStream scLDClient (transToStreamName name)
+        >> returnOkRes
+      else if checkIfExist then returnOkRes
+      else returnErrRes "Object does not exist"
+
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
@@ -263,6 +280,11 @@ handleShowPlan ServerContext{..} showObject =
     SConnectors -> do
       connectors <- P.withMaybeZHandle zkHandle P.getConnectors
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
+      return (ServerNormalResponse resp [] StatusOk "")
+    SViews -> do
+      qids <- P.withMaybeZHandle zkHandle P.getQueryIds
+      let views = filter P.isViewQuery qids
+      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWVIEWS" $ cbytesToValue <$> views
       return (ServerNormalResponse resp [] StatusOk "")
     _ -> returnErrRes "not Supported"
 
@@ -282,12 +304,19 @@ handleTerminatePlan ServerContext{..} AllQuery = do
   swapMVar runningQueries HM.empty
   return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
 
+handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> IO ()
+handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
+  qid <- createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
+              --(P.StreamQuery . CB.pack . T.unpack $ sink)
+  tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
+        >> runTaskWrapper False taskBuilder scLDClient
+  takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
 --------------------------------------------------------------------------------
 
 sendToClient :: Maybe ZHandle -> CB.CBytes -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
              -> IO (ServerResponse 'ServerStreaming Struct)
 sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = handle
-  (\(e :: P.ZooException) -> return $ ServerWriterResponse [] StatusAborted "failed to get status") $ do
+  (\(_ :: P.ZooException) -> return $ ServerWriterResponse [] StatusAborted "failed to get status") $ do
   P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
   >>= \case
     P.Terminated -> return (ServerWriterResponse [] StatusUnknown "")
@@ -326,6 +355,18 @@ runTaskWrapper isTemp taskBuilder ldclient = do
   let sinkConnector = if isTemp then hstoreTempSinkConnector ldclient else hstoreSinkConnector ldclient
   -- RUN TASK
   runTask sourceConnector sinkConnector taskBuilder
+
+createInsertPersistentQuery :: TaskName -> TL.Text -> P.QueryType -> Maybe ZHandle -> IO CB.CBytes
+createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
+  MkSystemTime timestamp _ <- getSystemTime'
+  let qid = case extraInfo of
+        P.PlainQuery             -> ""
+        P.StreamQuery streamName -> "stream_" <> streamName <> "-"
+        P.ViewQuery   viewName _ -> "view_" <> viewName <> "-"
+        <> CB.pack (T.unpack taskName)
+      qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict queryText) timestamp
+  P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo extraInfo
+  return qid
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"

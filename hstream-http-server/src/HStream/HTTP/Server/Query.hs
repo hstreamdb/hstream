@@ -64,11 +64,11 @@ type QueriesAPI =
   :<|> "queries" :> Capture "name" String :> Get '[JSON] (Maybe QueryBO)
 
 hstreamQueryToQueryBO :: HSP.Query -> QueryBO
-hstreamQueryToQueryBO (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HSP.Status status _)) =
+hstreamQueryToQueryBO (HSP.Query queryId (HSP.Info sqlStatement createdTime) _ (HSP.Status status _)) =
   QueryBO (cbytesToText queryId) (Just $ fromEnum status) (Just createdTime) (T.pack $ ZT.unpack sqlStatement)
 
 hstreamQueryNameIs :: T.Text -> HSP.Query -> Bool
-hstreamQueryNameIs name (HSP.Query queryId _ _) = (cbytesToText queryId) == name
+hstreamQueryNameIs name (HSP.Query queryId _ _ _) = (cbytesToText queryId) == name
 
 removeQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
 removeQueryHandler ldClient zkHandle name = liftIO $ catch
@@ -96,7 +96,7 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
               MkSystemTime timestamp _ <- getSystemTime'
               let qid = ZDC.pack $ T.unpack $ getTaskName taskBuilder'
                   qinfo = HSP.Info (ZT.pack $ T.unpack $ queryText query) timestamp
-              HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo
+              HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo HSP.PlainQuery
               -- run task
               _ <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
                 >> runTaskWrapper True taskBuilder' ldClient
