@@ -52,7 +52,6 @@ import           HStream.SQL.Exception                           (SomeSQLExcepti
                                                                   throwSQLException)
 import           HStream.SQL.Parse
 import           Numeric                                         (showHex)
-import           Prelude                                         (print)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 import qualified RIO.Text                                        as T
@@ -147,16 +146,16 @@ genStreamSinkConfig sinkStream' grp = do
     Nothing         -> genRandomSinkStream
     Just sinkStream -> return sinkStream
   case grp of
-    RGroupByEmpty ->
-      return $ SinkConfigType stream HS.StreamSinkConfig
-      { sicStreamName  = stream
-      , sicKeySerde   = objectSerde
-      , sicValueSerde = objectSerde
-      }
-    _ ->
+    RGroupBy _ _ (Just _) ->
       return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
       { sicStreamName = stream
       , sicKeySerde = timeWindowKeySerde objectSerde defaultTimeWindowSize
+      , sicValueSerde = objectSerde
+      }
+    _ ->
+      return $ SinkConfigType stream HS.StreamSinkConfig
+      { sicStreamName  = stream
+      , sicKeySerde   = objectSerde
       , sicValueSerde = objectSerde
       }
 
@@ -380,7 +379,9 @@ genAggregateComponents (RSelAggregate agg alias) =
     _                                         ->
       throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
 
-genGroupByNode :: RSelect -> Stream Object Object -> IO (Stream (TimeWindowKey Object) Object)
+genGroupByNode :: RSelect
+               -> Stream Object Object
+               -> IO (Either (Stream Object Object) (Stream (TimeWindowKey Object) Object))
 genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) s =
   throwSQLException CodegenException Nothing "Impossible happened"
 genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
@@ -389,20 +390,22 @@ genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
                  in HM.singleton col $ getFieldByName (recordValue record) col) s
   materialized <- genMaterialized grp
   let AggregateCompontnts{..} = genAggregateComponents sel
-  table <- case win' of
+  case win' of
     Nothing                       -> do
-      timed <- HG.timeWindowedBy (mkTumblingWindow (maxBound :: Int64)) grped
-      HTW.aggregate aggregateInit aggregateF materialized timed
+      table <- HG.aggregate aggregateInit aggregateF materialized grped
+      Left <$> HT.toStream table
     Just (RTumblingWindow diff)   -> do
       timed <- HG.timeWindowedBy (mkTumblingWindow (diffTimeToMs diff)) grped
-      HTW.aggregate aggregateInit aggregateF materialized timed
+      table <- HTW.aggregate aggregateInit aggregateF materialized timed
+      Right <$> HT.toStream table
     Just (RHoppingWIndow len hop) -> do
       timed <- HG.timeWindowedBy (mkHoppingWindow (diffTimeToMs len) (diffTimeToMs hop)) grped
-      HTW.aggregate aggregateInit aggregateF materialized timed
+      table <- HTW.aggregate aggregateInit aggregateF materialized timed
+      Right <$> HT.toStream table
     Just (RSessionWindow diff)    -> do
       timed <- HG.sessionWindowedBy (mkSessionWindows (diffTimeToMs diff)) grped
-      HSW.aggregate aggregateInit aggregateF aggregateMergeF materialized timed
-  HT.toStream table
+      table <- HSW.aggregate aggregateInit aggregateF aggregateMergeF materialized timed
+      Right <$> HT.toStream table
 
 ----
 genFilterRFromHaving :: RHaving -> Record Object Object -> Bool
@@ -430,11 +433,16 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
           throwSQLException CodegenException Nothing "Impossible happened"
     _ -> do
       s2 <- genGroupByNode select s1
---              >>= genFilteRNodeFromHaving hav
--- WARNING: Having does not work with TimeWindow
       case streamSinkConfig of
         SinkConfigTypeWithWindow sink sinkConfig -> do
-          builder <- HS.to sinkConfig s2
-          return (builder, source, sink)
-        _                                        ->
-          throwSQLException CodegenException Nothing "Impossible happened"
+          case s2 of
+            Right timeStream -> do
+              builder <- HS.to sinkConfig timeStream
+              return (builder, source, sink)
+            Left _ -> throwSQLException CodegenException Nothing "Expected timeStream but got stream"
+        SinkConfigType sink sinkConfig -> do
+          case s2 of
+            Left stream -> do
+              builder <- HS.to sinkConfig stream
+              return (builder, source, sink)
+            Right _ -> throwSQLException CodegenException Nothing "Expected stream but got timeStream"
