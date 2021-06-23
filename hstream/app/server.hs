@@ -19,6 +19,7 @@ import           ZooKeeper.Types
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
+import           HStream.Store                    (setupSigsegvHandler)
 
 data ServerConfig = ServerConfig
   { _serverHost          :: CBytes
@@ -70,4 +71,5 @@ main = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
+  setupSigsegvHandler
   app config
