@@ -1,0 +1,99 @@
+cabal-version:      2.2
+name:               hstream-http-server
+version:            0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on Github at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Qinghao Huang
+maintainer:         huangqinghao@emqx.io
+category:           Streaming
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
+build-type:         Simple
+extra-source-files: README.md
+
+executable hstream-http-server
+  main-is:          Main.hs
+  
+  include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+  
+  -- FIXME: we need this extra lib for old fbthrift builds.
+  --
+  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
+  extra-libraries:    protocol
+  
+  build-depends:
+    , base              >=4.11 && <5
+    , bytestring
+    , clickhouse-haskell
+    , containers
+    , hstore-admin
+    , hstream
+    , hstream-common
+    , hstream-http-server
+    , hstream-store
+    , hstream-processing
+    , mysql-haskell
+    , optparse-applicative
+    , rio
+    , servant
+    , servant-server
+    , warp    
+    , Z-Data
+    , zoovisitor
+
+  hs-source-dirs:   app
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
+library
+  hs-source-dirs:   src
+  exposed-modules:
+    HStream.HTTP.Server.Stream
+    HStream.HTTP.Server.Query
+    HStream.HTTP.Server.Node
+    HStream.HTTP.Server.Connector
+    HStream.HTTP.Server.Overview
+    
+  include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+
+  build-depends:
+    , aeson
+    , base              >=4.11 && <5
+    , bytestring
+    , clickhouse-haskell
+    , containers
+    , hstore-admin
+    , hstream
+    , hstream-connector
+    , hstream-common
+    , hstream-processing
+    , hstream-store
+    , hstream-sql
+    , lens
+    , lens-aeson
+    , mysql-haskell
+    , optparse-applicative
+    , rio
+    , scientific
+    , servant
+    , servant-server
+    , unordered-containers
+    , vector
+    , warp    
+    , Z-Data
+    , Z-IO
+    , text
+    , zoovisitor

@@ -6,6 +6,7 @@
 
 module HStream.Processing.Processor
   ( buildTask,
+    taskBuilderWithName,
     addSource,
     addProcessor,
     addSink,
@@ -84,6 +85,14 @@ buildTask ::
 buildTask taskName =
   mempty
     { ttcName = taskName
+    }
+
+taskBuilderWithName ::
+  TaskBuilder -> T.Text -> TaskBuilder
+taskBuilderWithName builder taskName =
+  builder
+    {
+      ttcName = taskName
     }
 
 runTask ::
