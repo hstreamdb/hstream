@@ -130,19 +130,19 @@ test-suite hstream-test
     , aeson
     , base                >=4.11 && <5
     , bytestring
-    , clickhouse-haskell
+    , containers
+    , grpc-haskell
+    , grpc-haskell-core
     , hspec
     , hstream
     , hstream-common
-    , hstream-connector
-    , hstream-processing
-    , hstream-sql
     , hstream-store
     , io-streams
     , mysql-haskell
     , random              ^>=1.2
-    , rio
     , scientific
+    , text
+    , unordered-containers
     , Z-Data
 
   default-language:   Haskell2010
