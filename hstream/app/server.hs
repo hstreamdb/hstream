@@ -1,21 +1,24 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Exception
-import           Control.Monad
-import           HStream.Server.HStreamApi
-import           HStream.Server.Handler
-import           HStream.Server.Persistence
 import           Network.GRPC.HighLevel.Generated
 import           Options.Applicative
+import           Text.RawString.QQ                (r)
 import           Z.Data.CBytes                    (CBytes, toBytes)
 import           Z.Foreign                        (toByteString)
 import           Z.IO.Network
 import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
+
+import           HStream.Server.HStreamApi
+import           HStream.Server.Handler
+import           HStream.Server.Persistence
 
 data ServerConfig = ServerConfig
   { _serverHost          :: CBytes
@@ -55,10 +58,16 @@ app' ServerConfig{..} zk = do
   hstreamApiServer api options
 
 initZooKeeper :: ZHandle -> IO ()
-initZooKeeper zk = catch (initializeAncestors zk) (\e -> void $ return (e :: ZNODEEXISTS))
+initZooKeeper zk = catch (initializeAncestors zk) (\(_ :: ZNODEEXISTS) -> pure ())
 
 main :: IO ()
 main = do
   config <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "HStream-Server")
-  putStrLn "HStream Server"
+  putStrLn [r|
+   _  _   __ _____ ___ ___  __  __ __
+  | || |/' _/_   _| _ \ __|/  \|  V  |
+  | >< |`._`. | | | v / _|| /\ | \_/ |
+  |_||_||___/ |_| |_|_\___|_||_|_| |_|
+
+  |]
   app config
