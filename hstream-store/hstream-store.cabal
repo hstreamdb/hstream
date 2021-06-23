@@ -176,6 +176,7 @@ executable hstore-bench-writter
     , random
     , Z-Data
     , Z-IO
+    , async
 
   default-language: Haskell2010
   ghc-options:

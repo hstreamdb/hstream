@@ -3,19 +3,25 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeApplications  #-}
 
+import           Control.Concurrent
+import           Control.Concurrent.Async (forConcurrently_)
 import           Control.Monad
-import           Data.Int            (Int64)
-import           Data.List           (sort)
-import           GHC.Stack           (HasCallStack)
+import           Data.Int                 (Int64)
+import           Data.List                (sort)
+import           Data.Map.Strict          (Map)
+import qualified Data.Map.Strict          as Map
+import           Data.Maybe               (fromJust)
+import           GHC.Stack                (HasCallStack)
 import           Options.Applicative
 import           System.Random
 import           Text.Printf
-import           Z.Data.ASCII        (c2w)
-import           Z.Data.CBytes       (CBytes)
-import qualified Z.Data.Vector       as ZV
-import           Z.IO.Time           (SystemTime (..), getSystemTime')
+import           Z.Data.ASCII             (c2w)
+import           Z.Data.CBytes            (CBytes)
+import qualified Z.Data.Parser            as P
+import qualified Z.Data.Vector            as ZV
+import           Z.IO.Time                (SystemTime (..), getSystemTime')
 
-import qualified HStream.Store       as HS
+import qualified HStream.Store            as HS
 
 type Timestamp = Int64
 
@@ -79,6 +85,16 @@ initWriteStats reportInterval numRecords = do
     , writeReportingInterval = reportInterval
     }
 
+mergeStats :: WriteStats -> WriteStats -> WriteStats
+mergeStats stats acc = acc
+  { writeElapse = writeElapse acc + writeElapse stats
+  , writeBytes = writeBytes acc + writeBytes stats
+  , writeCount = writeCount acc + writeCount stats
+  , writeTotalLatency = writeTotalLatency acc + writeTotalLatency stats
+  , writeLatencies = writeLatencies acc ++ writeLatencies stats
+  , writeMaxLatency = max (writeMaxLatency acc) (writeMaxLatency stats)
+  }
+
 perfWrite :: HasCallStack => AppendOpts -> IO ()
 perfWrite (AppendOpts CommonConfig{..}) = do
   ldClient <- HS.newLDClient configPath
@@ -88,18 +104,18 @@ perfWrite (AppendOpts CommonConfig{..}) = do
   loop ldClient targetLogID oldStats payload numRecords
   where
     loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> ZV.Bytes -> Int64 -> IO ()
-    loop client logId stats@WriteStats{..} payload n
-      | n <= 0 = putStrLn "Total: " >> printTotal stats
+    loop client logId stats payload n
+      | n <= 0 = putStrLn ("\nWrite to " ++ show logId ++ " total: ") >> printTotal stats
       | otherwise = do
          startStamp <- getCurrentTimestamp
          void $ HS.append client logId payload Nothing
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
-         newStats <- record stats writeIteration (fromIntegral latency) (fromIntegral recordSize)
+         newStats <- record stats logId (fromIntegral latency) (fromIntegral recordSize)
          loop client logId newStats payload $! (n - 1)
 
 perfBenchWrite :: HasCallStack => BatchOpts -> IO ()
-perfBenchWrite (BatchOpts CommonConfig{..} batchSize compressionOn)  = do
+perfBenchWrite (BatchOpts CommonConfig{..} BatchConfig{..})  = do
   ldClient <- HS.newLDClient configPath
   oldStats <- initWriteStats reportInterval numRecords
   putStrLn "-----PERF START----"
@@ -108,25 +124,80 @@ perfBenchWrite (BatchOpts CommonConfig{..} batchSize compressionOn)  = do
   where
     compression = if compressionOn then HS.CompressionLZ4 else HS.CompressionNone
     loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> [ZV.Bytes] -> Int64 -> IO ()
-    loop client logId stats@WriteStats{..} payloads n
-      | n <= 0 = putStrLn "Total: " >> printTotal stats
+    loop client logId stats payloads n
+      | n <= 0 = putStrLn ("\nWrite to " ++ show logId ++ " total: ") >> printTotal stats
       | otherwise = do
          startStamp <- getCurrentTimestamp
          void $ HS.appendBatch client logId payloads compression Nothing
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
-         newStats <- record stats writeIteration (fromIntegral latency) (fromIntegral (recordSize * batchSize))
+         newStats <- record stats logId (fromIntegral latency) (fromIntegral (recordSize * batchSize))
          loop client logId newStats payloads $! (n - 1)
 
+type StatsMap = Map HS.C_LogID (MVar WriteStats)
+
+parallelBench :: HasCallStack => ParallelOpts -> IO ()
+parallelBench ParallelOpts{..} = do
+  ldClient <- HS.newLDClient pConfigPath
+  oldStats <- initWriteStats pReportInterval pNumRecords
+  payloads <- replicateM pbatchSize $ ZV.replicateMVec pRecordSize (c2w <$> randomRIO ('a', 'z'))
+  ls <- forM logs $ \(logId, _) -> do
+    s <- newMVar oldStats
+    return (logId, s)
+  let mp = Map.fromList ls
+  putStrLn "-----PERF START----"
+  forConcurrently_ targets $ \logId -> do
+    process ldClient mp payloads pNumRecords logId
+  printSingleLogStats mp
+  printTotalLogStats mp
+  where
+    targets = concatMap (\(logId, n) -> replicate n logId) logs
+    BatchConfig pbatchSize pcompression = pBatchConfig
+    compression = if pcompression then HS.CompressionLZ4 else HS.CompressionNone
+
+    process :: HS.LDClient -> StatsMap -> [ZV.Bytes] -> Int64 -> HS.C_LogID -> IO ()
+    process client mp payloads n logId
+      | n <= 0 = return ()
+      | otherwise = do
+         startStamp <- getCurrentTimestamp
+         void $ HS.appendBatch client logId payloads compression Nothing
+         endStamp <- getCurrentTimestamp
+         let latency = endStamp - startStamp
+         updateStats mp logId latency
+         process client mp payloads (n - 1) logId
+
+    updateStats :: StatsMap -> HS.C_LogID -> Int64 -> IO ()
+    updateStats mp logId latency = do
+      let mvar = fromJust $ Map.lookup logId mp
+      stats <- takeMVar mvar
+      newStats <- record stats logId (fromIntegral latency) (fromIntegral (pRecordSize * pbatchSize))
+      putMVar mvar newStats
+
+    printSingleLogStats :: StatsMap -> IO ()
+    printSingleLogStats mp = do
+      forM_ (Map.toList mp) $ \(logId, s) -> do
+        stats <- readMVar s
+        putStrLn ("\n----------Write to " ++ show logId ++ " total: ") >> printTotal stats >> putStrLn "----------"
+
+    printTotalLogStats :: StatsMap -> IO ()
+    printTotalLogStats mp = do
+      basicStats <- initWriteStats pReportInterval pNumRecords
+      sStats <- forM (Map.elems mp) $ \s -> do stats <- readMVar s
+                                               return stats
+      let res = foldr mergeStats basicStats sStats
+      let totalStats = res { writeElapse = writeElapse res `div` fromIntegral (length sStats) }
+      putStrLn "\n============================\nWrite complete: " >>
+        printTotal totalStats >> putStrLn "============================"
+
 record :: WriteStats
-       -> Int -> Int -> Int64
+       -> HS.C_LogID -> Int -> Int64
        -> IO WriteStats
-record stats@WriteStats{..} iter latency newBytes = do
+record stats@WriteStats{..} logId latency newBytes = do
   let newWindow = updateCountWindow writeCountWindow latency newBytes
   let newStats = stats
        { writeElapse = writeElapse + fromIntegral latency
-       , writeLatencies = if (iter `rem` writeSampling) == 0 then writeLatencies ++ [latency] else writeLatencies
-       , writeSampleIndex = if (iter `rem` writeSampling) == 0 then writeSampleIndex + 1 else writeSampleIndex
+       , writeLatencies = if (writeIteration `rem` writeSampling) == 0 then writeLatencies ++ [latency] else writeLatencies
+       , writeSampleIndex = if (writeIteration `rem` writeSampling) == 0 then writeSampleIndex + 1 else writeSampleIndex
        , writeIteration = writeIteration + 1
        , writeCount = writeCount + 1
        , writeBytes = writeBytes + newBytes
@@ -136,15 +207,15 @@ record stats@WriteStats{..} iter latency newBytes = do
        }
   if windowElapse newWindow >= writeReportingInterval
      then do
-       printWindow newWindow
+       printWindow newWindow logId
        win <- newCountWindow
        return $ newStats { writeCountWindow = win }
      else do
        return newStats
 
-printWindow :: CountWindow -> IO ()
-printWindow CountWindow{..} = do
-  putStrLn $ "\nelapsed = " ++ show windowElapse ++ " windowCount = " ++ show windowCount
+printWindow :: CountWindow -> HS.C_LogID -> IO ()
+printWindow CountWindow{..} logId = do
+  putStrLn $ "\nwrite to " ++ show logId ++ ", elapsed = " ++ show windowElapse ++ " windowCount = " ++ show windowCount
   let recsPerSec = 1000 * (fromIntegral windowCount :: Double) / fromIntegral windowElapse
   let mbPerSec = 1000 * (fromIntegral windowBytes :: Double) / fromIntegral windowElapse / (1024 * 1024)
   printf "%d records sent, %.1f records/sec (%.2f MB/sec), %.1f ms avg latency, %.1d ms max latency \n"
@@ -156,8 +227,11 @@ printTotal WriteStats{..} = do
   let recsPerSec = 1000 * (fromIntegral writeCount :: Double) / fromIntegral writeElapse
   let mbPerSec = 1000 * (fromIntegral writeBytes :: Double) / fromIntegral writeElapse / (1024 * 1024)
   let percs = getPercentiles writeLatencies [0.5, 0.95, 0.99, 0.999]
-  printf "%d records sent, %.2f records/sec (%.2f MB/sec), %.2f ms avg latency. \n %.2d ms max latency, %d ms 50th, %d ms 95th, %d ms 99th, %d ms 99.9th \n"
-    writeCount recsPerSec mbPerSec ((fromIntegral writeTotalLatency :: Double) / fromIntegral writeCount) writeMaxLatency (percs !! 0) (percs !! 1) (percs !! 2) (percs !! 3)
+  printf "total write = %.2f MB\n" $ (fromIntegral writeBytes :: Double) / (1024 * 1024)
+  printf ("%d records sent, %.2f records/sec (%.2f MB/sec), %.2f ms avg latency. \n %.2d ms max latency,"
+       <> "%d ms 50th, %d ms 95th, %d ms 99th, %d ms 99.9th \n")
+    writeCount recsPerSec mbPerSec ((fromIntegral writeTotalLatency :: Double) / fromIntegral writeCount)
+    writeMaxLatency (percs !! 0) (percs !! 1) (percs !! 2) (percs !! 3)
 
 getPercentiles :: [Int] -> [Double] -> [Int]
 getPercentiles latencies percentiles =
@@ -206,21 +280,19 @@ commonConfigParser = CommonConfig
                  <> help "Display period of statistical information in milliseconds."
                   )
 
-newtype AppendOpts = AppendOpts { appendOpts :: CommonConfig }
+newtype AppendOpts = AppendOpts CommonConfig
 
 appendOptsParser :: Parser AppendOpts
 appendOptsParser = AppendOpts <$> commonConfigParser
 
-data BatchOpts = BatchOpts
- { commonConfig  :: CommonConfig
- , batchSize     :: Int
- , compressionOn :: Bool
- }
+data BatchConfig = BatchConfig
+  { batchSize     :: Int
+  , compressionOn :: Bool
+  } deriving (Show)
 
-batchOptsParser :: Parser BatchOpts
-batchOptsParser = BatchOpts
-  <$> commonConfigParser
-  <*> option auto ( long "batch-size"
+batchConfigParser :: Parser BatchConfig
+batchConfigParser = BatchConfig
+  <$> option auto ( long "batch-size"
                  <> metavar "INT"
                  <> showDefault
                  <> value 1024
@@ -230,19 +302,92 @@ batchOptsParser = BatchOpts
             <> help "Turn on the compression."
              )
 
+data BatchOpts = BatchOpts
+ { commonConfig :: CommonConfig
+ , batchConfig  :: BatchConfig
+ } deriving (Show)
+
+batchOptsParser :: Parser BatchOpts
+batchOptsParser = BatchOpts
+  <$> commonConfigParser
+  <*> batchConfigParser
+
+type WriteUnit = (HS.C_LogID, Int)
+
+data ParallelOpts = ParallelOpts
+  { pConfigPath     :: CBytes
+  , logs            :: [WriteUnit]
+  , pNumRecords     :: Int64
+  , pRecordSize     :: Int
+  , pReportInterval :: Int64
+  , pBatchConfig    :: BatchConfig
+  } deriving (Show)
+
+parseWriteUnit :: ReadM (HS.C_LogID, Int)
+parseWriteUnit = eitherReader $ parse . ZV.packASCII
+  where
+    parse :: ZV.Bytes -> Either String (HS.C_LogID, Int)
+    parse bs =
+      case P.parse' parser bs of
+        Left er -> Left $ "cannot parse value: " <> show er
+        Right i -> Right i
+    parser = do
+      P.skipSpaces
+      logId <- P.int
+      res <- P.peekMaybe
+      case res of
+        Nothing -> return (logId, 1)
+        Just _ -> do
+          P.char8 ':'
+          num <- P.int
+          P.skipSpaces
+          return (logId, num)
+
+parallelOptsParser :: Parser ParallelOpts
+parallelOptsParser = ParallelOpts
+  <$> strOption ( long "path"
+               <> metavar "PATH"
+               <> showDefault
+               <> value "/data/store/logdevice.conf"
+               <> help "Specify the path of LogDevice configuration file."
+                )
+  <*> many (option parseWriteUnit ( long "logs"
+                                 <> metavar "LOGID:INT"
+                                 <> help ( "Write messages to the specified stream, followed by a number to specify the "
+                                        <> "number of threads using to write concurrently.")
+                                  ))
+  <*> option auto ( long "num-records"
+                 <> metavar "INT"
+                 <> help "Number of messages write to each log."
+                  )
+  <*> option auto ( long "record-size"
+                 <> metavar "INT"
+                 <> help "Single message size in bytes."
+                  )
+  <*> option auto ( long "interval"
+                 <> metavar "INT"
+                 <> showDefault
+                 <> value 1000
+                 <> help "Display period of statistical information in milliseconds."
+                  )
+  <*> batchConfigParser
+
 data WBenchCmd
   = AppendBench AppendOpts
   | AppendBatchBench BatchOpts
+  | ParallelBench ParallelOpts
 
 commandParser :: Parser WBenchCmd
 commandParser = hsubparser
   ( command "append" (info (AppendBench <$> appendOptsParser) (progDesc "Basic write append bench command."))
  <> command "batch-append" (info (AppendBatchBench <$> batchOptsParser) (progDesc "Batch write append bench command."))
+ <> command "parallel-append" (info (ParallelBench <$> parallelOptsParser) (progDesc "Bench write to multi-logs."))
   )
 
 runCommand :: WBenchCmd -> IO ()
 runCommand (AppendBench opts)      = perfWrite opts
 runCommand (AppendBatchBench opts) = perfBenchWrite opts
+runCommand (ParallelBench opts)    = parallelBench opts
 
 main :: IO ()
 main = do
