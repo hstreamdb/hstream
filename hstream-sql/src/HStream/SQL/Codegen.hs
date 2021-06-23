@@ -443,6 +443,7 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
         SinkConfigType sink sinkConfig -> do
           case s2 of
             Left stream -> do
-              builder <- HS.to sinkConfig stream
+              s3 <- genFilteRNodeFromHaving hav stream
+              builder <- HS.to sinkConfig s3
               return (builder, source, sink)
             Right _ -> throwSQLException CodegenException Nothing "Expected stream but got timeStream"
