@@ -6,6 +6,7 @@ import           Data.Typeable         (cast)
 
 import           HStream.SQL.Exception (SomeSQLException)
 import           HStream.Store         (SomeHStoreException)
+
 data ServerHandlerException = forall e . Exception e => ServerHandlerException e
 
 instance Show ServerHandlerException where
@@ -60,6 +61,42 @@ data FailedToGet = FailedToGet
 instance Exception FailedToGet where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
+
+data FailedToRemove = FailedToRemove
+  deriving Show
+
+instance Exception FailedToRemove where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+data QueryNotFound = QueryNotFound
+  deriving Show
+
+instance Exception QueryNotFound where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+data ConnectorNotFound = ConnectorNotFound
+  deriving Show
+
+instance Exception ConnectorNotFound where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+data QueryStillRunning = QueryStillRunning
+  deriving Show
+
+instance Exception QueryStillRunning where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+data ConnectorStillRunning = ConnectorStillRunning
+  deriving Show
+
+instance Exception ConnectorStillRunning where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
 ---------------------------------------------------------------------
 
 data StoreException = forall e . Exception e => StoreException e
