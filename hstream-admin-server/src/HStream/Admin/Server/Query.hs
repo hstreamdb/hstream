@@ -24,12 +24,13 @@ import           Servant                      (Capture, Delete, Get, JSON,
                                                PlainText, Post, ReqBody,
                                                type (:>), (:<|>) (..))
 import           Servant.Server               (Handler, Server)
+import           Z.Data.Builder.Base          (string8)
 import qualified Z.Data.CBytes                as CB
 import qualified Z.Data.CBytes                as ZDC
 import qualified Z.Data.Text                  as ZT
+import qualified Z.IO.Logger                  as Log
 import           Z.IO.Time                    (SystemTime (..), getSystemTime')
 import qualified ZooKeeper.Types              as ZK
-
 
 import qualified HStream.Connector.HStore     as HCH
 import           HStream.Processing.Connector (subscribeToStream)
@@ -108,7 +109,9 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
               return Nothing
       Right _ -> return $ Just "inconsistent method called"
       -- TODO: return error code
-  liftIO $ print err
+  case err of
+    Just err -> liftIO $ Log.fatal . string8 $ err
+    Nothing  -> return ()
   return query
 
 fetchQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> Handler [QueryBO]

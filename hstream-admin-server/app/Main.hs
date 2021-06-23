@@ -26,7 +26,7 @@ import           HStream.Admin.Server.Node      (NodesAPI, nodeServer)
 import           HStream.Admin.Server.Overview  (OverviewAPI, overviewServer)
 import           HStream.Admin.Server.Query     (QueriesAPI, queryServer)
 import           HStream.Admin.Server.Stream    (StreamsAPI, streamServer)
-import           HStream.Server.Persistence     as HSP
+import qualified HStream.Server.Persistence     as HSP
 import qualified HStream.Store                  as HS
 
 data ServerConfig = ServerConfig
@@ -55,7 +55,7 @@ parseConfig =
     <*> option auto (long "logdevice-admin-port" <> metavar "INT"  <> showDefault <> value 39609                        <> help "logdevice admin port value")
 
 initZooKeeper :: ZK.ZHandle -> IO ()
-initZooKeeper zk = catch (initializeAncestors zk) (\e -> void $ return (e :: ZK.ZNODEEXISTS))
+initZooKeeper zk = catch (HSP.initializeAncestors zk) (\e -> void $ return (e :: ZK.ZNODEEXISTS))
 
 type API =
   StreamsAPI

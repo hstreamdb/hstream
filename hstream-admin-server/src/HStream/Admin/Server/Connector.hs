@@ -32,9 +32,11 @@ import           Servant                          (Capture, Delete, Get, JSON,
                                                    PlainText, Post, ReqBody,
                                                    type (:>), (:<|>) (..))
 import           Servant.Server                   (Handler, Server)
+import           Z.Data.Builder.Base              (string8)
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.CBytes                    as ZDC
 import qualified Z.Data.Text                      as ZT
+import qualified Z.IO.Logger                      as Log
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 import qualified ZooKeeper.Types                  as ZK
@@ -151,7 +153,9 @@ createConnectorHandler ldClient zkHandle connector = do
             _ -> return $ Just "stream name missed in connector options"
       Right _ -> return $ Just "inconsistent method called"
       -- TODO: return error code
-  liftIO $ print err
+  case err of
+    Just err -> liftIO $ Log.fatal . string8 $ err
+    Nothing  -> return ()
   return connector
 
 fetchConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> Handler [ConnectorBO]
