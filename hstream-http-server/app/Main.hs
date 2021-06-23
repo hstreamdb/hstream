@@ -4,30 +4,30 @@
 
 module Main where
 
-import           Control.Exception              (catch)
-import           Control.Monad                  (void)
-import           Control.Monad.IO.Class         (liftIO)
-import           Data.ByteString                (ByteString)
-import           Network.Wai.Handler.Warp       (run)
-import           Options.Applicative            (Parser, auto, execParser,
-                                                 fullDesc, help, helper, info,
-                                                 long, metavar, option,
-                                                 progDesc, short, showDefault,
-                                                 strOption, value, (<**>))
-import           Servant                        (Proxy (..), (:<|>) (..))
-import           Servant.Server                 (Server, serve)
-import qualified Z.Data.CBytes                  as ZDC
-import qualified ZooKeeper                      as ZK
-import qualified ZooKeeper.Exception            as ZK
-import qualified ZooKeeper.Types                as ZK
+import           Control.Exception             (catch)
+import           Control.Monad                 (void)
+import           Control.Monad.IO.Class        (liftIO)
+import           Data.ByteString               (ByteString)
+import           Network.Wai.Handler.Warp      (run)
+import           Options.Applicative           (Parser, auto, execParser,
+                                                fullDesc, help, helper, info,
+                                                long, metavar, option, progDesc,
+                                                short, showDefault, strOption,
+                                                value, (<**>))
+import           Servant                       (Proxy (..), (:<|>) (..))
+import           Servant.Server                (Server, serve)
+import qualified Z.Data.CBytes                 as ZDC
+import qualified ZooKeeper                     as ZK
+import qualified ZooKeeper.Exception           as ZK
+import qualified ZooKeeper.Types               as ZK
 
 import           HStream.HTTP.Server.Connector (ConnectorsAPI, connectorServer)
 import           HStream.HTTP.Server.Node      (NodesAPI, nodeServer)
 import           HStream.HTTP.Server.Overview  (OverviewAPI, overviewServer)
 import           HStream.HTTP.Server.Query     (QueriesAPI, queryServer)
 import           HStream.HTTP.Server.Stream    (StreamsAPI, streamServer)
-import qualified HStream.Server.Persistence     as HSP
-import qualified HStream.Store                  as HS
+import qualified HStream.Server.Persistence    as HSP
+import qualified HStream.Store                 as HS
 
 data ServerConfig = ServerConfig
   { _serverHost          :: ZDC.CBytes

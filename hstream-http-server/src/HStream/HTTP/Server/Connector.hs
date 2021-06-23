@@ -54,8 +54,6 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
 import qualified HStream.SQL.AST                  as AST
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException)
-import qualified HStream.Server.Exception         as HSE
-import           HStream.Server.Handler           (catchZkException)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils.Converter          (cbytesToText, textToCBytes)
@@ -141,10 +139,10 @@ createConnectorHandler ldClient zkHandle connector = do
                 True -> do
                   ldreader <- HS.newLDReader ldClient 1000 Nothing
                   let sc = HCH.hstoreSourceConnectorWithoutCkp ldClient ldreader
-                  catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo) HSE.FailedToRecordInfo
+                  HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
                   subscribeToStreamWithoutCkp sc (T.pack stream) Latest
                   _ <- async $ do
-                    catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus cid HSP.Running) HSE.FailedToSetStatus
+                    HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus cid HSP.Running
                     forever $ do
                       records <- readRecordsWithoutCkp sc
                       forM_ records $ \SourceRecord {..} ->
@@ -177,7 +175,7 @@ restartConnectorHandler ldClient zkHandle name = do
     connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
     case find (hstreamConnectorNameIs (T.pack name)) connectors of
       Just connector -> do
-        _ <- forkIO $ catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Running) HSE.FailedToSetStatus
+        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Running)
         return True
       Nothing -> return False
   return res
@@ -188,7 +186,7 @@ cancelConnectorHandler ldClient zkHandle name = do
     connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
     case find (hstreamConnectorNameIs (T.pack name)) connectors of
       Just connector -> do
-        _ <- forkIO $ catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Terminated) HSE.FailedToSetStatus
+        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Terminated)
         return True
       Nothing -> return False
   return res

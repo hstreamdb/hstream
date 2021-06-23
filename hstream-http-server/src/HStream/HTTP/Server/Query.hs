@@ -38,9 +38,7 @@ import           HStream.Processing.Processor (getTaskName, taskBuilderWithName)
 import           HStream.Processing.Type      (Offset (..))
 import qualified HStream.SQL.Codegen          as HSC
 import           HStream.SQL.Exception        (SomeSQLException)
-import qualified HStream.Server.Exception     as HSE
-import           HStream.Server.Handler       (catchZkException,
-                                               runTaskWrapper)
+import           HStream.Server.Handler       (runTaskWrapper)
 import qualified HStream.Server.Persistence   as HSP
 import qualified HStream.Store                as HS
 import           HStream.Utils.Converter      (cbytesToText, textToCBytes)
@@ -97,9 +95,9 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
               MkSystemTime timestamp _ <- getSystemTime'
               let qid = CB.pack $ T.unpack $ getTaskName taskBuilder'
                   qinfo = HSP.Info (ZT.pack $ T.unpack $ queryText query) timestamp
-              catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo) HSE.FailedToRecordInfo
+              HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo
               -- run task
-              _ <- forkIO $ catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus qid HSP.Running) HSE.FailedToSetStatus
+              _ <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
                 >> runTaskWrapper taskBuilder' ldClient
               ldreader' <- HS.newLDFileCkpReader ldClient
                 (textToCBytes (T.append (getTaskName taskBuilder') "-result"))
@@ -134,7 +132,7 @@ restartQueryHandler ldClient zkHandle name = do
     queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
     case find (hstreamQueryNameIs (T.pack name)) queries of
       Just query -> do
-        _ <- forkIO $ catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Running) HSE.FailedToSetStatus
+        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Running)
         return True
       Nothing -> return False
   return res
@@ -145,7 +143,7 @@ cancelQueryHandler ldClient zkHandle name = do
     queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
     case find (hstreamQueryNameIs (T.pack name)) queries of
       Just query -> do
-        _ <- forkIO $ catchZkException (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Terminated) HSE.FailedToSetStatus
+        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Terminated)
         return True
       Nothing -> return False
   return res

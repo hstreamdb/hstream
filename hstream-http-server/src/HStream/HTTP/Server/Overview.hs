@@ -23,8 +23,8 @@ import qualified ZooKeeper                  as ZK
 import qualified ZooKeeper.Exception        as ZK
 import qualified ZooKeeper.Types            as ZK
 
-import           HStream.HTTP.Server.Node  (getNodes)
 import           HStream.Connector.HStore   as HCH
+import           HStream.HTTP.Server.Node   (getNodes)
 import qualified HStream.Server.Persistence as HSP
 import           HStream.Store              as HS
 import qualified HStream.Store.Admin.API    as AA
