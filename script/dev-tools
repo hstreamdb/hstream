@@ -160,7 +160,7 @@ def run_ldshell(image, container_bin, command, data_dir, cmd_args):
 
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
-                tty, interactive, rm, check,
+                tty, interactive, rm, detach, check,
                 network="host", extra_container_options=""):
 
     if not is_cluster_started(container_bin):
@@ -177,6 +177,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
     container_opts = " ".join([
         "-t" if tty else "",
         "-i" if interactive else "",
+        "-d" if detach else "",
         "--rm" if rm else "",
         "-u " + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else ""
     ])
@@ -243,7 +244,7 @@ if __name__ == '__main__':
         'ldshell', help='')
     parser_cluster_ldshell.add_argument(
         '--image', '-i', help='ldshell docker images',
-        default=DEFAULT_LD_IMAGE)
+        default=f'{DEFAULT_LD_IMAGE}:v3.0.0')
     parser_cluster_ldshell.add_argument('--container-bin', default='docker')
     parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
     parser_cluster_ldshell.add_argument(
@@ -258,6 +259,7 @@ if __name__ == '__main__':
     parser_haskell.add_argument('--container-bin', default='docker')
     parser_haskell.add_argument('--no-interactive', action='store_true')
     parser_haskell.add_argument('--no-tty', action='store_true')
+    parser_haskell.add_argument('--detach', action='store_true')
     parser_haskell.add_argument('--check', action='store_true')
     parser_haskell.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
@@ -272,6 +274,7 @@ if __name__ == '__main__':
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
     parser_haskell_cabal.add_argument('--no-tty', action='store_true')
+    parser_haskell_cabal.add_argument('--detach', action='store_true')
     parser_haskell_cabal.add_argument('--check', action='store_true')
     parser_haskell_cabal.add_argument('--container-bin', default='docker')
     parser_haskell_cabal.add_argument(
