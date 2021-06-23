@@ -124,7 +124,6 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
   (\(e :: ServerHandlerException) -> returnErrRes $ getKeyWordFromException e) $ do
   plan' <- mark FrontSQLException $ streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
-    -- Left (e :: SomeSQLException) -> returnErrRes ("error on parsing or codegen, " <> getKeyWordFromException e)
     SelectPlan{}           -> returnErrRes "inconsistent method called"
     -- execute plans that can be executed with this method
     CreatePlan stream _repFactor                     -> mark LowLevelStoreException $ do
@@ -194,30 +193,9 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       writeRecord (hstoreSinkConnector scLDClient)
         (SinkRecord stream (Just key) payload timestamp)
       returnOkRes
-    DropPlan checkIfExist (DStream stream) -> mark LowLevelStoreException $ do
-      streamExists <- doesStreamExists scLDClient (transToStreamName stream)
-      if streamExists then removeStream scLDClient (transToStreamName stream) >> returnOkRes
-      else if checkIfExist then returnOkRes
-      else returnErrRes "stream does not exist"
-    ShowPlan showObject ->
-      case showObject of
-        SStreams -> mark LowLevelStoreException $ do
-          names <- findStreams scLDClient True
-          let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
-          return (ServerNormalResponse resp [] StatusOk "")
-        SQueries -> do
-          queries <- P.withMaybeZHandle zkHandle P.getQueries
-          let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
-          return (ServerNormalResponse resp [] StatusOk "")
-        SConnectors -> do
-          connectors <- P.withMaybeZHandle zkHandle P.getConnectors
-          let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
-          return (ServerNormalResponse resp [] StatusOk "")
-        _ -> returnErrRes "not Supported"
+    DropPlan checkIfExist (DStream stream) -> mark LowLevelStoreException $ handleDropPlan sc checkIfExist stream
+    ShowPlan showObject -> handleShowPlan sc showObject
     TerminatePlan terminationSelection -> handleTerminatePlan sc terminationSelection
-  where
-    returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
-    returnOkRes    = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
 
 executePushQueryHandler
   :: ServerContext
@@ -243,7 +221,6 @@ executePushQueryHandler ServerContext{..}
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
           >> runTaskWrapper taskBuilder scLDClient
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-        -- isCancelled <- newMVar False
         _ <- forkIO $ handlePushQueryCanceled meta
           (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
         ldreader' <- newLDFileCkpReader scLDClient
@@ -251,11 +228,43 @@ executePushQueryHandler ServerContext{..}
           checkpointRootPath 1 Nothing 3
         let sc = hstoreSourceConnector scLDClient ldreader'
         subscribeToStream sc sink Latest
-          -- sendToClient isCancelled sc streamSend
         sendToClient zkHandle qid sc streamSend
     _ -> returnRes "inconsistent method called"
-  where
-    returnRes = return . ServerWriterResponse [] StatusAborted
+
+returnErrRes :: TL.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
+returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
+
+returnOkRes :: IO (ServerResponse 'Normal CommandQueryResponse)
+returnOkRes = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+
+returnRes :: StatusDetails -> IO (ServerResponse 'ServerStreaming Struct)
+returnRes = return . ServerWriterResponse [] StatusAborted
+
+handleDropPlan :: ServerContext -> Bool -> T.Text
+  -> IO (ServerResponse 'Normal CommandQueryResponse)
+handleDropPlan ServerContext{..} checkIfExist stream = do
+  streamExists <- doesStreamExists scLDClient (transToStreamName stream)
+  if streamExists then removeStream scLDClient (transToStreamName stream) >> returnOkRes
+  else if checkIfExist then returnOkRes
+  else returnErrRes "stream does not exist"
+
+handleShowPlan :: ServerContext -> ShowObject
+  -> IO (ServerResponse 'Normal CommandQueryResponse)
+handleShowPlan ServerContext{..} showObject =
+  case showObject of
+    SStreams -> mark LowLevelStoreException $ do
+      names <- findStreams scLDClient True
+      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
+      return (ServerNormalResponse resp [] StatusOk "")
+    SQueries -> do
+      queries <- P.withMaybeZHandle zkHandle P.getQueries
+      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
+      return (ServerNormalResponse resp [] StatusOk "")
+    SConnectors -> do
+      connectors <- P.withMaybeZHandle zkHandle P.getConnectors
+      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
+      return (ServerNormalResponse resp [] StatusOk "")
+    _ -> returnErrRes "not Supported"
 
 handleTerminatePlan :: ServerContext -> TerminationSelection
   -> IO (ServerResponse 'Normal CommandQueryResponse)
@@ -275,10 +284,8 @@ handleTerminatePlan ServerContext{..} AllQuery = do
 
 --------------------------------------------------------------------------------
 
--- sendToClient :: MVar Bool -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
 sendToClient :: Maybe ZHandle -> CB.CBytes -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
              -> IO (ServerResponse 'ServerStreaming Struct)
--- sendToClient isCancelled sc@SourceConnector {..} ss@streamSend = do
 sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = handle
   (\(e :: P.ZooException) -> return $ ServerWriterResponse [] StatusAborted "failed to get status") $ do
   P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
