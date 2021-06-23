@@ -26,9 +26,9 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Persistence
-    HStream.Server.Exception
 
   hs-source-dirs:   src
   build-depends:
@@ -82,6 +82,7 @@ executable hstream-server
     , optparse-applicative
     , proto3-suite
     , proto3-wire
+    , raw-strings-qq
     , text
     , vector
     , Z-Data
