@@ -87,11 +87,17 @@ connectorsPath = "/hstreamdb/hstream/connectors"
 class Persistence handle where
   insertQuery        :: HasCallStack => Id -> Info -> handle -> IO ()
   insertConnector    :: HasCallStack => Id -> Info -> handle -> IO ()
+
   setQueryStatus     :: HasCallStack => Id -> PStatus -> handle -> IO ()
   setConnectorStatus :: HasCallStack => Id -> PStatus -> handle -> IO ()
+
   getQueries         :: HasCallStack => handle -> IO [Query]
   getConnectors      :: HasCallStack => handle -> IO [Connector]
   getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
+  getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
+
+  removeQuery        :: HasCallStack => Id -> handle -> IO ()
+  removeConnector    :: HasCallStack => Id -> handle -> IO ()
 
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
@@ -112,33 +118,52 @@ connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
 
 instance Persistence PStoreMem where
-  insertQuery qid info ref = ifThrow FailedToRecordInfo $ do
+  insertQuery qid info (refQ, _) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    modifyIORef (fst ref) $ HM.insert (mkQueryPath qid) $ Query qid info (Status Created timestamp)
+    modifyIORef refQ $ HM.insert (mkQueryPath qid) $ Query qid info (Status Created timestamp)
 
-  insertConnector cid info ref = ifThrow FailedToRecordInfo $ do
+  insertConnector cid info (_, refC) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    modifyIORef (snd ref) $ HM.insert (mkConnectorPath cid) $ Connector cid info (Status Created timestamp)
+    modifyIORef refC $ HM.insert (mkConnectorPath cid) $ Connector cid info (Status Created timestamp)
 
-  setQueryStatus qid status ref = ifThrow FailedToSetStatus $ do
+  setQueryStatus qid status (refQ, _) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
     let f s query = query {queryStatus = Status s timestamp}
-    modifyIORef (fst ref) $ HM.adjust (f status) (mkQueryPath qid)
+    modifyIORef refQ $ HM.adjust (f status) (mkQueryPath qid)
 
-  setConnectorStatus qid status ref = ifThrow FailedToSetStatus $ do
+  setConnectorStatus qid status (_, refC) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
     let f s connector = connector {connectorStatus = Status s timestamp}
-    modifyIORef (snd ref) $ HM.adjust (f status) (mkConnectorPath qid)
+    modifyIORef refC $ HM.adjust (f status) (mkConnectorPath qid)
 
   getQueries = ifThrow FailedToGet . (HM.elems <$>) . readIORef . fst
 
   getConnectors = ifThrow FailedToGet . (HM.elems <$>) . readIORef . snd
 
-  getQueryStatus qid (refQ, refC) = ifThrow FailedToGet $ do
+  getQueryStatus qid (refQ, _) = ifThrow FailedToGet $ do
     hmapQ <- readIORef refQ
     case HM.lookup (mkQueryPath qid) hmapQ of
-      Nothing                       -> error "query does not exist"
+      Nothing                       -> throwIO QueryNotFound
       Just (Query _ _ (Status x _)) -> return x
+
+  getConnectorStatus cid (_, refC) = ifThrow FailedToGet $ do
+    hmapC <- readIORef refC
+    case HM.lookup (mkConnectorPath cid) hmapC of
+      Nothing                           -> throwIO ConnectorNotFound
+      Just (Connector _ _ (Status x _)) -> return x
+
+  removeQuery qid ref@(refQ, _) = ifThrow FailedToRemove $
+    getQueryStatus qid ref
+    >>= \case
+      Terminated -> modifyIORef refQ $ HM.delete qid
+      _          -> throwIO QueryStillRunning
+
+  removeConnector cid ref@(_, refC) = ifThrow FailedToRemove $
+    getConnectorStatus cid ref
+    >>= \case
+      Terminated -> modifyIORef refC $ HM.delete cid
+      _          -> throwIO ConnectorStillRunning
+
 --------------------------------------------------------------------------------
 
 defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
@@ -176,6 +201,20 @@ instance Persistence ZHandle where
     return $ zipWith ($) (zipWith ($) (Connector <$> cids) details) status
 
   getQueryStatus qid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
+
+  getConnectorStatus cid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkConnectorPath cid <> "/status")
+
+  removeQuery qid zk = ifThrow FailedToRemove $
+    getQueryStatus qid zk
+    >>= \case
+      Terminated -> zooDeleteAll zk (mkQueryPath qid)
+      _          -> throwIO QueryStillRunning
+
+  removeConnector cid zk = ifThrow FailedToRemove $
+    getQueryStatus cid zk
+    >>= \case
+      Terminated -> zooDeleteAll zk (mkConnectorPath cid)
+      _          -> throwIO QueryStillRunning
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath]
