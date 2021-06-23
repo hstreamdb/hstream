@@ -1,9 +1,11 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module HStream.Server.Exception where
 
-import           Control.Exception (Exception (..), SomeException)
-import           Data.Typeable     (cast)
+import           Control.Exception     (Exception (..), SomeException)
+import           Data.Typeable         (cast)
 
+import           HStream.SQL.Exception (SomeSQLException)
+import           HStream.Store         (SomeHStoreException)
 data ServerHandlerException = forall e . Exception e => ServerHandlerException e
 
 instance Show ServerHandlerException where
@@ -38,8 +40,6 @@ persistenceExceptionFromException x = do
   PersistenceException a <- fromException x
   cast a
 
----------------------------------------------------------------------
-
 data FailedToSetStatus = FailedToSetStatus
   deriving Show
 
@@ -53,3 +53,53 @@ data FailedToRecordInfo = FailedToRecordInfo
 instance Exception FailedToRecordInfo where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
+
+data FailedToGet = FailedToGet
+  deriving Show
+
+instance Exception FailedToGet where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+---------------------------------------------------------------------
+
+data StoreException = forall e . Exception e => StoreException e
+
+instance Show StoreException where
+  show (StoreException e) = show e
+
+instance Exception StoreException where
+  toException = serverHandlerExceptionToException
+  fromException = serverHandlerExceptionFromException
+
+storeExceptionToException :: Exception e => e -> SomeException
+storeExceptionToException = toException . StoreException
+
+storeExceptionFromException :: Exception e => SomeException -> Maybe e
+storeExceptionFromException x = do
+  StoreException a <- fromException x
+  cast a
+
+newtype LowLevelStoreException = LowLevelStoreException SomeHStoreException
+  deriving Show
+
+instance Exception LowLevelStoreException where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+---------------------------------------------------------------
+
+newtype FrontSQLException = FrontSQLException SomeSQLException
+  deriving Show
+
+instance Exception FrontSQLException where
+  toException = serverHandlerExceptionToException
+  fromException = serverHandlerExceptionFromException
+
+----------------------------------------------------
+
+data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
+  deriving Show
+
+instance Exception QueryTerminatedOrNotExist where
+  toException = serverHandlerExceptionToException
+  fromException = serverHandlerExceptionFromException
