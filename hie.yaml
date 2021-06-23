@@ -1,9 +1,13 @@
 cradle:
   cabal:
-    - path: "hstream/src"
+    - path: "hstream/src/"
       component: "lib:hstream"
     - path: "hstream/gen-src"
       component: "lib:hstream"
+    - path: "hstream/common/gen-src"
+      component: "lib:hstream-common"
+    - path: "hstream/common/src"
+      component: "lib:hstream-common"
     - path: "hstream/app/client.hs"
       component: "hstream:exe:hstream-client"
     - path: "hstream/app/server.hs"

@@ -4,25 +4,24 @@
 module HStream.Utils.Format where
 
 import qualified Data.Aeson                        as A
-import           Data.Aeson.Encode.Pretty
-import qualified Data.Aeson.Text                   as A
 import qualified Data.HashMap.Strict               as HM
+import           Data.List                         (sort)
 import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (maybeToList)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
-import           Data.Text.Lazy.Builder            (toLazyText)
 import qualified Data.Vector                       as V
-import           Text.Layout.Table
+import           Text.Layout.Table                 (center, colsAllG, column,
+                                                    expandUntil, justify, left,
+                                                    noAlign, singleCutMark,
+                                                    tableString, titlesH,
+                                                    unicodeRoundS)
+import qualified ThirdParty.Google.Protobuf.Struct as P
 
-import           Data.List                         (sort)
 import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
 import           HStream.Utils.Converter           (jsonValueToValue,
-                                                    structToJsonObject,
-                                                    structToZJsonObject,
                                                     valueToJsonValue)
-import qualified ThirdParty.Google.Protobuf.Struct as P
 
 type Width = Int
 
@@ -30,6 +29,7 @@ formatResult :: Width -> P.Struct -> String
 formatResult width struct@(P.Struct kv) =
   case M.toList kv of
     [("SHOWSTREAMS", Just v)] -> unlines .  words . formatValue $ v
+    [("SHOWVIEWS", Just v)] -> unlines .  words . formatValue $ v
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
@@ -88,17 +88,16 @@ renderJSONObjectsToTable :: Width -> [A.Object] -> String
 renderJSONObjectsToTable _ [] = "\n"
 renderJSONObjectsToTable l os@(o:_) =
   tableString colout unicodeRoundS (titlesH keys)
-  (map (colsAllG center . renderContents (l `div` (size + 1))) elems) ++ "\n"
+  (map (colsAllG center . renderContents ((l - size*2 - 6)`div` size)) elems) ++ "\n"
   where
     keys  = sort $ map T.unpack (HM.keys o)
     elems = map (map snd . sort . HM.toList) os
     size  = length o
     colout = replicate size
-      $ column (expandUntil $ l `div` size) left noAlign (singleCutMark "...")
+      $ column (expandUntil $ (l - size*2 - 6) `div` size) left noAlign (singleCutMark "...")
 
 renderContents :: Width -> [A.Value] -> [[String]]
-renderContents width = map $ concatMap (justifyText width) . lines . formatValue . jsonValueToValue
--- lines . removePunc . TL.unpack . toLazyText . encodePrettyToTextBuilder' defConfig {confIndent = Spaces 1}
+renderContents width = map $ concatMap (justify width . words') . lines . formatValue . jsonValueToValue
 
 renderJSONToTable :: Width -> A.Value -> String
 renderJSONToTable width (A.Object hmap) = renderJSONObjectToTable width hmap
@@ -110,3 +109,6 @@ removePunc xs = [ x | x <- xs, x `notElem` (['}','{','\"','\''] :: [Char])]
 
 getObjects vs = [ object | A.Object object <- vs ]
 getObjects :: [A.Value] -> [A.Object]
+
+words' :: String -> [String]
+words' s = let (m, n) = break (== '-') s in words m ++ words n

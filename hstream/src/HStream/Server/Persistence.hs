@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ParallelListComp    #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -11,6 +12,7 @@ module HStream.Server.Persistence
   , Info(..)
   , Status(..)
   , PStatus(..)
+  , QueryType (..)
   , queriesPath
   , connectorsPath
   , defaultHandle
@@ -18,16 +20,19 @@ module HStream.Server.Persistence
   , initializeAncestors
   , withMaybeZHandle
   , ZooException
+  , getSuffix
+  , isViewQuery
+  , isStreamQuery
   ) where
 
-import           Control.Exception        (Exception, handle)
+import           Control.Exception        (Exception, handle, throw)
 import           Control.Monad            (void)
 import qualified Data.HashMap.Strict      as HM
 import           Data.IORef
 import           Data.Int                 (Int64)
 import           GHC.Generics             (Generic)
 import           System.IO.Unsafe         (unsafePerformIO)
-import           Z.Data.CBytes            (CBytes (..))
+import           Z.Data.CBytes            (CBytes (..), unpack)
 import           Z.Data.JSON              (JSON, decode, encode)
 import           Z.Data.Text              (Text)
 import           Z.Data.Vector            (Bytes)
@@ -42,11 +47,15 @@ import           HStream.Server.Exception
 type Id = CBytes
 type TimeStamp    = Int64
 type SqlStatement = Text
+type StreamName = CBytes
+type ViewName = CBytes
+type ViewSchema = [String]
 
 data Query = Query {
-    queryId     :: Id
-  , queryInfo   :: Info
-  , queryStatus :: Status
+    queryId        :: Id
+  , queryInfo      :: Info
+  , queryInfoExtra :: QueryType
+  , queryStatus    :: Status
 } deriving (Generic, Show)
 instance JSON Query
 
@@ -75,8 +84,11 @@ data PStatus = Created
   deriving (Show, Eq, Generic, Enum)
 instance JSON PStatus
 
-data PType = PQuery
-  | PConnector
+data QueryType = PlainQuery
+  | StreamQuery StreamName
+  | ViewQuery ViewName ViewSchema
+  deriving (Show, Eq, Generic)
+instance JSON QueryType
 
 queriesPath :: CBytes
 queriesPath = "/hstreamdb/hstream/queries"
@@ -85,7 +97,7 @@ connectorsPath :: CBytes
 connectorsPath = "/hstreamdb/hstream/connectors"
 
 class Persistence handle where
-  insertQuery        :: HasCallStack => Id -> Info -> handle -> IO ()
+  insertQuery        :: HasCallStack => Id -> Info -> QueryType -> handle -> IO ()
   insertConnector    :: HasCallStack => Id -> Info -> handle -> IO ()
 
   setQueryStatus     :: HasCallStack => Id -> PStatus -> handle -> IO ()
@@ -95,6 +107,7 @@ class Persistence handle where
   getConnectors      :: HasCallStack => handle -> IO [Connector]
   getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
   getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
+  getQueryIds        :: HasCallStack => handle -> IO [CBytes]
 
   removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeQuery        :: HasCallStack => Id -> handle -> IO ()
@@ -125,9 +138,9 @@ connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
 
 instance Persistence PStoreMem where
-  insertQuery qid info (refQ, _) = ifThrow FailedToRecordInfo $ do
+  insertQuery qid info extraInfo (refQ, _) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    modifyIORef refQ $ HM.insert (mkQueryPath qid) $ Query qid info (Status Created timestamp)
+    modifyIORef refQ $ HM.insert (mkQueryPath qid) $ Query qid info extraInfo (Status Created timestamp)
 
   insertConnector cid info (_, refC) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
@@ -150,8 +163,8 @@ instance Persistence PStoreMem where
   getQueryStatus qid (refQ, _) = ifThrow FailedToGet $ do
     hmapQ <- readIORef refQ
     case HM.lookup (mkQueryPath qid) hmapQ of
-      Nothing                       -> throwIO QueryNotFound
-      Just (Query _ _ (Status x _)) -> return x
+      Nothing                         -> throwIO QueryNotFound
+      Just (Query _ _ _ (Status x _)) -> return x
 
   getConnectorStatus cid (_, refC) = ifThrow FailedToGet $ do
     hmapC <- readIORef refC
@@ -159,15 +172,17 @@ instance Persistence PStoreMem where
       Nothing                           -> throwIO ConnectorNotFound
       Just (Connector _ _ (Status x _)) -> return x
 
+  getQueryIds = ifThrow FailedToGet . (map queryId <$>) . getQueries
+
   removeQuery' qid ifCheck ref@(refQ, _) = ifThrow FailedToRemove $
     if ifCheck then getQueryStatus qid ref >>= \case
-      Terminated -> modifyIORef refQ $ HM.delete qid
+      Terminated -> modifyIORef refQ . HM.delete . mkQueryPath $ qid
       _          -> throwIO QueryStillRunning
     else modifyIORef refQ $ HM.delete qid
 
   removeConnector' cid ifCheck ref@(_, refC) = ifThrow FailedToRemove $
     if ifCheck then getConnectorStatus cid ref >>= \case
-      Terminated -> modifyIORef refC $ HM.delete cid
+      Terminated -> modifyIORef refC . HM.delete . mkConnectorPath $ cid
       _          -> throwIO ConnectorStillRunning
     else modifyIORef refC $ HM.delete cid
 
@@ -177,9 +192,10 @@ defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
 defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 instance Persistence ZHandle where
-  insertQuery qid info@(Info _ timestamp) zk = ifThrow FailedToRecordInfo $ do
+  insertQuery qid info@(Info _ timestamp) extraInfo zk = ifThrow FailedToRecordInfo $ do
     createPath   zk (mkQueryPath qid)
     createInsert zk (mkQueryPath qid <> "/details") (encode info)
+    createInsert zk (mkQueryPath qid <> "/details/extra") (encode extraInfo)
     createInsert zk (mkQueryPath qid <> "/status")  (encode $ Status Created timestamp)
 
   setQueryStatus qid status zk = ifThrow FailedToSetStatus $ do
@@ -188,9 +204,16 @@ instance Persistence ZHandle where
 
   getQueries zk = ifThrow FailedToGet $ do
     StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
-    details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkQueryPath) qids
-    status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkQueryPath) qids
-    return $ zipWith ($) (zipWith ($) (Query <$> qids) details) status
+    infos    <- mapM (getThenDecode "/details") qids
+    extras   <- mapM (getThenDecode "/details/extra") qids
+    statuses <- mapM (getThenDecode "/status") qids
+    return [Query qid info extra status
+              | qid    <- qids
+              | info   <- infos
+              | extra  <- extras
+              | status <- statuses]
+    where
+      getThenDecode s = (decodeQ <$>) . zooGet zk . (<> s) . mkQueryPath
 
   insertConnector cid info@(Info _ timestamp) zk = ifThrow FailedToRecordInfo $ do
     createPath   zk (mkConnectorPath cid)
@@ -210,6 +233,8 @@ instance Persistence ZHandle where
   getQueryStatus qid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
 
   getConnectorStatus cid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkConnectorPath cid <> "/status")
+
+  getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
 
   removeQuery' qid ifCheck zk = ifThrow FailedToRemove $
     if ifCheck then getQueryStatus qid zk >>= \case
@@ -243,7 +268,7 @@ createPath zk path =
   void $ zooCreate zk path Nothing zooOpenAclUnsafe ZooPersistent
 
 decodeQ :: JSON a => DataCompletion -> a
-decodeQ = (\case { Right x -> x ; _ -> error "decoding failed"}) . snd . decode
+decodeQ = (\case { Right x -> x ; _ -> throw FailedToDecode}) . snd . decode
         . (\case { Nothing -> ""; Just x -> x}) . dataCompletionValue
 
 mkQueryPath :: Id -> CBytes
@@ -254,3 +279,12 @@ mkConnectorPath x = connectorsPath <> "/" <> x
 
 ifThrow :: Exception e => e -> IO a -> IO a
 ifThrow e = handle (\(_ :: ZooException) -> throwIO e)
+
+getSuffix :: CBytes -> String
+getSuffix = reverse . drop 1 . dropWhile (/= '-') . reverse . unpack
+
+isViewQuery :: CBytes -> Bool
+isViewQuery = (== "view") . take 4 . unpack
+
+isStreamQuery :: CBytes -> Bool
+isStreamQuery = (== "stream") . take 4 . unpack

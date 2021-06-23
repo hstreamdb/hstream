@@ -570,7 +570,9 @@ instance Validate Create where
     validate select >> validate (StreamOptions options) >> return create
   validate create@(CreateConnector _ _ options) = mapM_ validate options >> return create
   validate create@(CreateConnectorIf _ _ options) = mapM_ validate options >> return create
-  validate create@(CreateView _ _ select) = validate select >> return create
+  validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = case grp of
+    DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "CREATE VIEW must have GROUP BY info given "
+    _ -> validate select >> return create
 
 instance Validate StreamOption where
   validate op@(OptionRepFactor pos n') = do

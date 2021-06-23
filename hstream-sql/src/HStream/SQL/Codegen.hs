@@ -62,10 +62,12 @@ import           Z.IO.Time
 --------------------------------------------------------------------------------
 
 type StreamName     = HPT.StreamName
+type ViewName = T.Text
 type ConnectorName  = T.Text
 type SourceStream   = [StreamName]
 type SinkStream     = StreamName
 type CheckIfExist  = Bool
+type ViewSchema = [String]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text
@@ -76,6 +78,7 @@ data ExecutionPlan
   | CreatePlan          StreamName Int
   | CreateConnectorPlan ConnectorName RConnectorOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
+  | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int
   | InsertPlan          StreamName BL.ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
@@ -91,36 +94,36 @@ streamCodegen input = do
       tName <- genTaskName
       (builder, source, sink) <- genStreamBuilderWithStream tName Nothing select
       return $ SelectPlan source sink (HS.build builder)
-    RQCreate (RCreate stream rOptions)   -> return $ CreatePlan stream (rRepFactor rOptions)
     RQCreate (RCreateAs stream select rOptions) -> do
       tName <- genTaskName
       (builder, source, sink) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
-    RQCreate x@(RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
-    RQCreate (RCreateView _ _ ) -> error "not supported"
-    RQInsert (RInsert stream tuples)     -> do
-      let object_ = HM.fromList $ (\(f,c) -> (f,constantToValue c)) <$> tuples
-      return $ InsertPlan stream (encode object_)
-    RQInsert (RInsertBinary stream bs)   -> do
+    RQCreate (RCreateView view select@(RSelect sel frm whr grp hvg)) -> do
+      tName <- genTaskName
+      (builder, source, sink) <- genStreamBuilderWithStream tName (Just view) select
+      let schema = case sel of
+            RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
+            RSelList fields -> map snd fields
+      return $ CreateViewPlan schema source sink (HS.build builder) 1
+    RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
+    RQCreate (RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
+    RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream (encode $ HM.fromList $ second constantToValue <$> tuples)
+    RQInsert (RInsertBinary stream bs) -> do
       let k = "unknown_binary_data" :: Text
           v = String (decodeUtf8 bs)
       let object_ = HM.fromList [(k,v)]
       return $ InsertPlan stream (encode object_)
-    RQInsert (RInsertJSON stream bs) -> do
-      return $ InsertPlan stream (BSL.fromStrict bs)
-    RQShow (RShow RShowStreams) -> return $ ShowPlan SStreams
-    RQShow (RShow RShowQueries) -> return $ ShowPlan SQueries
-    RQShow (RShow RShowConnectors) -> return $ ShowPlan SConnectors
-    RQShow (RShow RShowViews) -> error "not supported" -- return $ ShowPlan SViews
-    RQDrop (RDrop RDropStream x) -> return $ DropPlan False (DStream x)
-    RQDrop (RDrop RDropView x) -> error "not supported" -- return $ DropPlan False (DView x)
-    RQDrop (RDropIf RDropStream x) -> return $ DropPlan True (DStream x)
-    RQDrop (RDropIf RDropView x) -> error "not supported" -- return $ DropPlan True (DView x)
+    RQInsert (RInsertJSON stream bs)  -> return $ InsertPlan stream (BSL.fromStrict bs)
+    RQShow (RShow RShowStreams)       -> return $ ShowPlan SStreams
+    RQShow (RShow RShowQueries)       -> return $ ShowPlan SQueries
+    RQShow (RShow RShowConnectors)    -> return $ ShowPlan SConnectors
+    RQShow (RShow RShowViews)         -> return $ ShowPlan SViews
+    RQDrop (RDrop RDropStream x)      -> return $ DropPlan False (DStream x)
+    RQDrop (RDrop RDropView x)        -> return $ DropPlan False (DView x)
+    RQDrop (RDropIf RDropStream x)    -> return $ DropPlan True (DStream x)
+    RQDrop (RDropIf RDropView x)      -> return $ DropPlan True (DView x)
     RQTerminate (RTerminateQuery qid) -> return $ TerminatePlan (OneQuery $ CB.pack qid)
     RQTerminate RTerminateAll         -> return $ TerminatePlan AllQuery
-
-data NotSupported = NotSupported deriving Show
-instance Exception NotSupported
 
 --------------------------------------------------------------------------------
 
