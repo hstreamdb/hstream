@@ -52,7 +52,7 @@ parseConfig =
     <*> strOption   (long "checkpoint-path"      <> metavar "PATH" <> showDefault <> value "/tmp/checkpoint"            <> help "checkpoint root path")
     <*> option auto (long "replicate-factor"     <> metavar "INT"  <> showDefault <> value 3 <> short 'f'               <> help "topic replicate factor")
     <*> strOption   (long "logdevice-admin-host" <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "logdevice admin host value")
-    <*> option auto (long "logdevice-admin-port" <> metavar "INT"  <> showDefault <> value 39609                        <> help "logdevice admin port value")
+    <*> option auto (long "logdevice-admin-port" <> metavar "INT"  <> showDefault <> value 6440                         <> help "logdevice admin port value")
 
 initZooKeeper :: ZK.ZHandle -> IO ()
 initZooKeeper zk = catch (HSP.initializeAncestors zk) (\e -> void $ return (e :: ZK.ZNODEEXISTS))

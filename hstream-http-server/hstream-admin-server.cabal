@@ -1,5 +1,5 @@
 cabal-version:      2.2
-name:               hstream-admin-server
+name:               hstream-http-server
 version:            0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
@@ -19,7 +19,7 @@ bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Simple
 extra-source-files: README.md
 
-executable hstream-admin-server
+executable hstream-http-server
   main-is:          Main.hs
   
   include-dirs:       /usr/local/include
@@ -38,7 +38,7 @@ executable hstream-admin-server
     , hstore-admin
     , hstream
     , hstream-common
-    , hstream-admin-server
+    , hstream-http-server
     , hstream-store
     , hstream-processing
     , mysql-haskell
