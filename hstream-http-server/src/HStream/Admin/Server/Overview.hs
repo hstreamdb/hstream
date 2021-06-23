@@ -30,15 +30,15 @@ import           HStream.Store              as HS
 import qualified HStream.Store.Admin.API    as AA
 import           HStream.Store.Admin.Types  (SimpleNodesFilter (..),
                                              StatusFormat (..), StatusOpts (..))
-
+-- BO is short for Business Object
 data OverviewBO = OverviewBO
-  {
-    streams    :: Int,
-    queries    :: Int,
-    views      :: Int,
-    connectors :: Int,
-    nodes      :: Int
+  { streams    :: Int
+  , queries    :: Int
+  , views      :: Int
+  , connectors :: Int
+  , nodes      :: Int
   } deriving (Eq, Show, Generic)
+
 instance ToJSON OverviewBO
 instance FromJSON OverviewBO
 

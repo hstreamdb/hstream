@@ -46,13 +46,14 @@ import qualified HStream.Server.Persistence   as HSP
 import qualified HStream.Store                as HS
 import           HStream.Utils.Converter      (cbytesToText, textToCBytes)
 
+-- BO is short for Business Object
 data QueryBO = QueryBO
-  {
-    id          :: T.Text,
-    status      :: Maybe Int,
-    createdTime :: Maybe Int64,
-    queryText   :: T.Text
+  { id          :: T.Text
+  , status      :: Maybe Int
+  , createdTime :: Maybe Int64
+  , queryText   :: T.Text
   } deriving (Eq, Show, Generic)
+
 instance ToJSON QueryBO
 instance FromJSON QueryBO
 

@@ -25,12 +25,13 @@ import           HStream.Connector.HStore as HCH
 import qualified HStream.Store            as HS
 import           HStream.Utils.Converter  (cbytesToText)
 
+-- BO is short for Business Object
 data StreamBO = StreamBO
-  {
-    name              :: Text,
-    replicationFactor :: Int,
-    beginTimestamp    :: Maybe Int64
+  { name              :: Text
+  , replicationFactor :: Int
+  , beginTimestamp    :: Maybe Int64
   } deriving (Eq, Show, Generic)
+
 instance ToJSON StreamBO
 instance FromJSON StreamBO
 

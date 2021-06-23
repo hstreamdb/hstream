@@ -42,13 +42,14 @@ import           HStream.Store.Admin.Types   (SimpleNodesFilter (..),
                                               StatusOpts (..),
                                               fromSimpleNodesFilter)
 
+-- BO is short for Business Object
 data NodeBO = NodeBO
-  {
-    id      :: Maybe Int,
-    roles   :: Maybe [Int],
-    address :: Maybe String,
-    status  :: Maybe String
+  { id      :: Maybe Int
+  , roles   :: Maybe [Int]
+  , address :: Maybe String
+  , status  :: Maybe String
   } deriving (Eq, Show, Generic)
+
 instance ToJSON NodeBO
 
 extractProperty :: [Text] -> Value -> Maybe Value
