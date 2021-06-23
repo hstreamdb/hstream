@@ -27,6 +27,7 @@ import           Text.RawString.QQ                (r)
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.HStreamApi
+import           HStream.Store                    (setupSigsegvHandler)
 import           HStream.Utils.Format             (formatCommandQueryResponse,
                                                    formatResult,
                                                    formatSomeSQLException)
@@ -93,6 +94,7 @@ main = do
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
+  setupSigsegvHandler
   let clientConfig = ClientConfig { clientServerHost = Host _serverHost
                                   , clientServerPort = Port _serverPort
                                   , clientArgs = []

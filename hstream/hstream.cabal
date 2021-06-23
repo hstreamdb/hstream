@@ -79,6 +79,7 @@ executable hstream-server
     , grpc-haskell-core
     , hstream
     , hstream-common
+    , hstream-store
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -107,6 +108,7 @@ executable hstream-client
     , hstream
     , hstream-common
     , hstream-sql
+    , hstream-store
     , optparse-applicative
     , random
     , raw-strings-qq

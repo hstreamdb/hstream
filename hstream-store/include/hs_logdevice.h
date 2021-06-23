@@ -104,6 +104,7 @@ extern "C" {
 
 std::string* hs_cal_std_string_off(std::string* str, HsInt idx);
 void delete_vector_of_string(std::vector<std::string>* ss);
+void setup_sigsegv_handler();
 
 // ----------------------------------------------------------------------------
 
