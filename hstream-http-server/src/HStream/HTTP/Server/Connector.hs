@@ -8,7 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module HStream.Admin.Server.Connector (
+module HStream.HTTP.Server.Connector (
   ConnectorsAPI, connectorServer
 ) where
 
@@ -55,8 +55,7 @@ import qualified HStream.SQL.AST                  as AST
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException)
 import qualified HStream.Server.Exception         as HSE
-import           HStream.Server.Handler           (catchZkException,
-                                                   runTaskWrapper)
+import           HStream.Server.Handler           (catchZkException)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils.Converter          (cbytesToText, textToCBytes)

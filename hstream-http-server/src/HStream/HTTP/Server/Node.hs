@@ -4,7 +4,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.Admin.Server.Node (
+module HStream.HTTP.Server.Node (
   NodesAPI, nodeServer, getNodes
 ) where
 

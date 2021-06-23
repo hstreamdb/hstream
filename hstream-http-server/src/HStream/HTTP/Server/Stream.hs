@@ -4,7 +4,7 @@
 {-# LANGUAGE ParallelListComp  #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.Admin.Server.Stream (
+module HStream.HTTP.Server.Stream (
   StreamsAPI, streamServer
 ) where
 

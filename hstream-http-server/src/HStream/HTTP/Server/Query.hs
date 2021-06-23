@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module HStream.Admin.Server.Query (
+module HStream.HTTP.Server.Query (
   QueriesAPI, queryServer
 ) where
 
@@ -40,7 +40,6 @@ import qualified HStream.SQL.Codegen          as HSC
 import           HStream.SQL.Exception        (SomeSQLException)
 import qualified HStream.Server.Exception     as HSE
 import           HStream.Server.Handler       (catchZkException,
-                                               handlePushQueryCanceled,
                                                runTaskWrapper)
 import qualified HStream.Server.Persistence   as HSP
 import qualified HStream.Store                as HS
@@ -85,7 +84,7 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
     case plan' of
       Left  (_ :: SomeSQLException) -> return $ Just "exception on parsing or codegen"
       Right (HSC.SelectPlan sources sink taskBuilder) -> do
-        let taskBuilder' = taskBuilderWithName taskBuilder $ HStream.Admin.Server.Query.id query
+        let taskBuilder' = taskBuilderWithName taskBuilder $ HStream.HTTP.Server.Query.id query
         exists <- mapM (HS.doesStreamExists ldClient . HCH.transToStreamName) sources
         if (not . and) exists then return $ Just "some source stream do not exist"
         else do

@@ -60,11 +60,11 @@ executable hstream-http-server
 library
   hs-source-dirs:   src
   exposed-modules:
-    HStream.Admin.Server.Stream
-    HStream.Admin.Server.Query
-    HStream.Admin.Server.Node
-    HStream.Admin.Server.Connector
-    HStream.Admin.Server.Overview
+    HStream.HTTP.Server.Stream
+    HStream.HTTP.Server.Query
+    HStream.HTTP.Server.Node
+    HStream.HTTP.Server.Connector
+    HStream.HTTP.Server.Overview
     
   include-dirs:       /usr/local/include
   extra-lib-dirs:     /usr/local/lib

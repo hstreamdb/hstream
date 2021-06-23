@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.Admin.Server.Overview (
+module HStream.HTTP.Server.Overview (
   OverviewAPI, overviewServer
 ) where
 
@@ -23,7 +23,7 @@ import qualified ZooKeeper                  as ZK
 import qualified ZooKeeper.Exception        as ZK
 import qualified ZooKeeper.Types            as ZK
 
-import           HStream.Admin.Server.Node  (getNodes)
+import           HStream.HTTP.Server.Node  (getNodes)
 import           HStream.Connector.HStore   as HCH
 import qualified HStream.Server.Persistence as HSP
 import           HStream.Store              as HS

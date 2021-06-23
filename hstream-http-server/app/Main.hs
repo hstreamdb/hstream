@@ -21,11 +21,11 @@ import qualified ZooKeeper                      as ZK
 import qualified ZooKeeper.Exception            as ZK
 import qualified ZooKeeper.Types                as ZK
 
-import           HStream.Admin.Server.Connector (ConnectorsAPI, connectorServer)
-import           HStream.Admin.Server.Node      (NodesAPI, nodeServer)
-import           HStream.Admin.Server.Overview  (OverviewAPI, overviewServer)
-import           HStream.Admin.Server.Query     (QueriesAPI, queryServer)
-import           HStream.Admin.Server.Stream    (StreamsAPI, streamServer)
+import           HStream.HTTP.Server.Connector (ConnectorsAPI, connectorServer)
+import           HStream.HTTP.Server.Node      (NodesAPI, nodeServer)
+import           HStream.HTTP.Server.Overview  (OverviewAPI, overviewServer)
+import           HStream.HTTP.Server.Query     (QueriesAPI, queryServer)
+import           HStream.HTTP.Server.Stream    (StreamsAPI, streamServer)
 import qualified HStream.Server.Persistence     as HSP
 import qualified HStream.Store                  as HS
 
