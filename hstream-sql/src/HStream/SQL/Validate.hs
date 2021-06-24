@@ -370,15 +370,13 @@ instance Validate SelList where
     where
       validateCol (DerivedColSimpl _ e) = validate e
       validateCol (DerivedColAs _ e _)  = validate e
-      isAggCol (DerivedColSimpl _ (ExprSetFunc _ _)) = True
-      isAggCol (DerivedColAs _ (ExprSetFunc _ _) _)  = True
-      isAggCol _                                     = False
+      anyAgg = anyAggInSelList l
       extractAlias []                                   = []
       extractAlias ((DerivedColSimpl _ _) : xs)         = extractAlias xs
       extractAlias ((DerivedColAs _ _ (Ident as)) : xs) = as : extractAlias xs
-      aggCondition []   = True
-      aggCondition [_]  = True
-      aggCondition cols = not (any isAggCol cols)
+      aggCondition []  = True
+      aggCondition [_] = True
+      aggCondition _   = not anyAgg
 
 -- From
 -- 1. FROM only supports:
@@ -522,7 +520,7 @@ instance Validate Having where
 
 ---- Select
 instance Validate Select where
-  validate select@(DSelect _ sel@(DSel _ selList) frm@(DFrom _ refs) whr grp hav) = do
+  validate select@(DSelect _ sel@(DSel selPos selList) frm@(DFrom _ refs) whr grp hav) = do
     void $ validate sel
     void $ validate frm
     void $ validate whr
@@ -530,6 +528,7 @@ instance Validate Select where
     void $ validate hav
     matchSelWithFrom
     matchWhrWithFrom
+    matchSelWithGrp
     return select
       where
       matchSelWithFrom =
@@ -555,6 +554,15 @@ instance Validate Select where
               (Left $ buildSQLException ParseException pos' "All stream names in WHERE clause have to be explicitly specified in FROM clause")
             return ()
       -- TODO: groupby has to match aggregate function
+      matchSelWithGrp =
+        let anyAgg = anyAggInSelList selList
+         in case grp of
+              DGroupByEmpty _ -> case anyAgg of
+                True  -> Left $ buildSQLException ParseException selPos "An aggregate function has to be with an GROUP BY clause"
+                False -> Right ()
+              DGroupBy pos  _ -> case anyAgg of
+                True  -> Right ()
+                False -> Left $ buildSQLException ParseException pos "There should be an aggregate function in the SELECT clause when GROUP BY clause exists"
       -- TODO: matchHavWithSel
 
 
