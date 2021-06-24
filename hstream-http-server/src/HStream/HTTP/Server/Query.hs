@@ -11,7 +11,7 @@ module HStream.HTTP.Server.Query (
 ) where
 
 import           Control.Concurrent           (forkIO, killThread)
-import           Control.Exception            (SomeException, try)
+import           Control.Exception            (SomeException, catch, try)
 import           Control.Monad                (void)
 import           Control.Monad.IO.Class       (liftIO)
 import           Data.Aeson                   (FromJSON, ToJSON)
@@ -25,7 +25,6 @@ import           Servant                      (Capture, Delete, Get, JSON,
                                                type (:>), (:<|>) (..))
 import           Servant.Server               (Handler, Server)
 import           Z.Data.Builder.Base          (string8)
-import qualified Z.Data.CBytes                as CB
 import qualified Z.Data.CBytes                as ZDC
 import qualified Z.Data.Text                  as ZT
 import qualified Z.IO.Logger                  as Log
@@ -59,7 +58,7 @@ type QueriesAPI =
   :<|> "queries" :> "restart" :> Capture "name" String :> Post '[JSON] Bool
   :<|> "queries" :> "cancel" :> Capture "name" String :> Post '[JSON] Bool
   :<|> "queries" :> ReqBody '[JSON] QueryBO :> Post '[JSON] QueryBO
-  -- :<|> "queries" :> Capture "name" String :> Delete '[JSON] Bool
+  :<|> "queries" :> Capture "name" String :> Delete '[JSON] Bool
   :<|> "queries" :> Capture "name" String :> Get '[JSON] (Maybe QueryBO)
 
 hstreamQueryToQueryBO :: HSP.Query -> QueryBO
@@ -69,13 +68,13 @@ hstreamQueryToQueryBO (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HS
 hstreamQueryNameIs :: T.Text -> HSP.Query -> Bool
 hstreamQueryNameIs name (HSP.Query queryId _ _) = (cbytesToText queryId) == name
 
--- removeQueryHandler :: HS.LDClient -> String -> Handler Bool
--- removeQueryHandler ldClient name = do
---   liftIO $ removeQuery ldClient (mkQueryName $ ZDC.pack name)
---   return True
+removeQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
+removeQueryHandler ldClient zkHandle name = liftIO $ catch
+  ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery (ZDC.pack name)) >> return True)
+  (\(e :: SomeException) -> return False)
 
 -- TODO: we should remove the duplicate code in HStream/Admin/Server/Query.hs and HStream/Server/Handler.hs
-createQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> (Int, CB.CBytes) -> QueryBO -> Handler QueryBO
+createQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> (Int, ZDC.CBytes) -> QueryBO -> Handler QueryBO
 createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query = do
   err <- liftIO $ do
     plan' <- try $ HSC.streamCodegen $ queryText query
@@ -93,7 +92,7 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
             Right _                   -> do
               -- create persistent query
               MkSystemTime timestamp _ <- getSystemTime'
-              let qid = CB.pack $ T.unpack $ getTaskName taskBuilder'
+              let qid = ZDC.pack $ T.unpack $ getTaskName taskBuilder'
                   qinfo = HSP.Info (ZT.pack $ T.unpack $ queryText query) timestamp
               HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo
               -- run task
@@ -148,11 +147,11 @@ cancelQueryHandler ldClient zkHandle name = do
       Nothing -> return False
   return res
 
-queryServer :: HS.LDClient -> Maybe ZK.ZHandle -> (Int, CB.CBytes) -> Server QueriesAPI
+queryServer :: HS.LDClient -> Maybe ZK.ZHandle -> (Int, ZDC.CBytes) -> Server QueriesAPI
 queryServer ldClient zkHandle (streamRepFactor, checkpointRootPath) =
   (fetchQueryHandler ldClient zkHandle)
   :<|> (restartQueryHandler ldClient zkHandle)
   :<|> (cancelQueryHandler ldClient zkHandle)
   :<|> (createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath))
-  -- :<|> (removeQueryHandler ldClient)
+  :<|> (removeQueryHandler ldClient zkHandle)
   :<|> (getQueryHandler zkHandle)
