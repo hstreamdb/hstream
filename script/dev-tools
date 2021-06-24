@@ -103,6 +103,8 @@ def cluster_start(image, data_dir, container_bin, retries=60):
         else:
             loginfo("Starting dev cluster...")
         retries = retries - 1
+    loginfo("Cluster admin info: ")
+    admin_addr(container_bin)
     run_ldshell(image=DEFAULT_LD_IMAGE, container_bin='docker', command='ldshell',
                 data_dir=DEFAULT_LOGDEVICE_DIR, cmd_args=["status"])
 
