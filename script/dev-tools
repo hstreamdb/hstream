@@ -17,11 +17,14 @@ CABAL_HOME = os.getenv("CABAL_HOME", f"{HOME}/.cabal")
 STACK_HOME = os.getenv("STACK_HOME", f"{HOME}/.stack")
 HOOGLE_HOME = os.getenv("HOOGLE_HOME", f'{HOME}/.hoogle')
 
-DEFAULT_HS_IMAGE = 'docker.io/hstreamdb/haskell'
-DEFAULT_LD_IMAGE = 'docker.io/hstreamdb/logdevice'
-DEFAULT_DB_IMAGE = 'docker.io/hstreamdb/hstream'
+DEFAULT_HS_IMAGE      = 'docker.io/hstreamdb/haskell'
+DEFAULT_LD_IMAGE      = 'docker.io/hstreamdb/logdevice'
+DEFAULT_DB_IMAGE      = 'docker.io/hstreamdb/hstream'
+DEFAULT_SWAGGER_IMAGE = 'swaggerapi/swagger-ui'
 # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
-DEFAULT_MYSQL_IMAGE = 'mysql:5.6'
+DEFAULT_MYSQL_IMAGE   = 'mysql:5.6'
+
+SWAGGER_CONTAINER_NAME = 'hstream-swagger'
 
 MYSQL_CONTAINER_NAME = 'hstream-mysql'
 DEFAULT_MYSQL_PASSWORD = 'password'
@@ -48,11 +51,12 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
 
 
 def update_images(images=None):
-    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE, DEFAULT_MYSQL_IMAGE]
+    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE, DEFAULT_SWAGGER_IMAGE, DEFAULT_MYSQL_IMAGE]
     for i in images:
         cmd = f"docker pull {i}"
         loginfo(f"Run {cmd}...")
         run_sh(cmd)
+
 
 def mysql_start(container_bin):
     cmd = ' '.join([
@@ -63,8 +67,26 @@ def mysql_start(container_bin):
     run_sh(cmd)
     loginfo("done")
 
+
 def mysql_stop(container_bin):
     run_sh(f"{container_bin} kill {MYSQL_CONTAINER_NAME}", check=False)
+
+
+def swagger_ui_start(container_bin):
+    cmd = ' '.join([
+        f'{container_bin} run -td -p 8080:8080 --name {SWAGGER_CONTAINER_NAME} --rm',
+        f'-e SWAGGER_JSON=/swagger.json',
+        f'-v {PROJECT_ROOT}/swagger.json:/swagger.json',
+        DEFAULT_SWAGGER_IMAGE
+    ])
+    run_sh(cmd)
+    loginfo("done")
+
+
+def swagger_ui_stop(container_bin):
+    run_sh(f"{container_bin} kill {SWAGGER_CONTAINER_NAME}", check=False)
+    loginfo("done")
+
 
 def is_cluster_started(container_bin):
     result = run_sh(
@@ -250,6 +272,16 @@ if __name__ == '__main__':
         'mysql-stop', help='Stop mysql service')
     parser_mysql_stop.add_argument('--container-bin', default='docker')
 
+    # swagger-start
+    parser_swagger_start = subparsers.add_parser(
+        'swagger-start', help='Start swagger ui')
+    parser_swagger_start.add_argument('--container-bin', default='docker')
+
+    # swagger-stop
+    parser_swagger_stop = subparsers.add_parser(
+        'swagger-stop', help='Stop swagger ui')
+    parser_swagger_stop.add_argument('--container-bin', default='docker')
+
     # ldshell
     parser_cluster_ldshell = subparsers.add_parser(
         'ldshell', help='')
@@ -309,6 +341,10 @@ if __name__ == '__main__':
         mysql_start(**args)
     elif sub_command == 'mysql-stop':
         mysql_stop(**args)
+    elif sub_command == 'swagger-start':
+        swagger_ui_start(**args)
+    elif sub_command == 'swagger-stop':
+        swagger_ui_stop(**args)
     elif sub_command == 'ldshell':
         run_ldshell(**args)
     elif sub_command == 'shell':
