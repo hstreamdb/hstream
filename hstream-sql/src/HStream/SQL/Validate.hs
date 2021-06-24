@@ -370,15 +370,13 @@ instance Validate SelList where
     where
       validateCol (DerivedColSimpl _ e) = validate e
       validateCol (DerivedColAs _ e _)  = validate e
-      isAggCol (DerivedColSimpl _ (ExprSetFunc _ _)) = True
-      isAggCol (DerivedColAs _ (ExprSetFunc _ _) _)  = True
-      isAggCol _                                     = False
+      anyAgg = anyAggInSelList l
       extractAlias []                                   = []
       extractAlias ((DerivedColSimpl _ _) : xs)         = extractAlias xs
       extractAlias ((DerivedColAs _ _ (Ident as)) : xs) = as : extractAlias xs
-      aggCondition []   = True
-      aggCondition [_]  = True
-      aggCondition cols = not (any isAggCol cols)
+      aggCondition []  = True
+      aggCondition [_] = True
+      aggCondition _   = not anyAgg
 
 -- From
 -- 1. FROM only supports:
