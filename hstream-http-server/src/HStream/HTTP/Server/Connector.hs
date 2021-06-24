@@ -13,7 +13,7 @@ module HStream.HTTP.Server.Connector (
 ) where
 
 import           Control.Concurrent               (forkIO)
-import           Control.Exception                (SomeException, try)
+import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       (FromJSON, ToJSON)
@@ -33,7 +33,6 @@ import           Servant                          (Capture, Delete, Get, JSON,
                                                    type (:>), (:<|>) (..))
 import           Servant.Server                   (Handler, Server)
 import           Z.Data.Builder.Base              (string8)
-import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.CBytes                    as ZDC
 import qualified Z.Data.Text                      as ZT
 import qualified Z.IO.Logger                      as Log
@@ -85,21 +84,9 @@ hstreamConnectorNameIs :: T.Text -> HSP.Connector -> Bool
 hstreamConnectorNameIs name (HSP.Connector connectorId _ _) = (cbytesToText connectorId) == name
 
 removeConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
-removeConnectorHandler ldClient zkHandle name = do
-  res <- liftIO $ do
-    connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
-    case find (hstreamConnectorNameIs (T.pack name)) connectors of
-      Just (HSP.Connector connectorId _ (HSP.Status status _)) -> do
-        if HSP.Terminated == status
-          then
-            do
-              HSP.withMaybeZHandle zkHandle $ HSP.removeConnector connectorId
-              return True
-          else
-            -- TODO: should return detailed reason
-            return False
-      Nothing -> return False
-  return res
+removeConnectorHandler ldClient zkHandle name = liftIO $ catch
+  ((HSP.withMaybeZHandle zkHandle $ HSP.removeConnector (ZDC.pack name)) >> return True)
+  (\(e :: SomeException) -> return False)
 
 -- TODO: we should remove the duplicate code in HStream/Admin/Server/Connector.hs and HStream/Server/Handler.hs
 createConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> ConnectorBO -> Handler ConnectorBO
@@ -138,7 +125,7 @@ createConnectorHandler ldClient zkHandle connector = do
               _ -> return $ Left "unsupported sink connector type"
           _ -> return $ Left "invalid type in connector options"
         MkSystemTime timestamp _ <- getSystemTime'
-        let cid = CB.pack $ T.unpack $ cName
+        let cid = ZDC.pack $ T.unpack $ cName
             cinfo = HSP.Info (ZT.pack $ T.unpack $ sql connector) timestamp
         case sk of
           Left err -> return $ Just err
