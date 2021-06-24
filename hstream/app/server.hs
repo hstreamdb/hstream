@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Exception
+import qualified Data.Map.Strict                  as Map
 import           Network.GRPC.HighLevel.Generated
 import           Options.Applicative
 import           Text.RawString.QQ                (r)
@@ -19,7 +20,11 @@ import           ZooKeeper.Types
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
-import           HStream.Store                    (setupSigsegvHandler)
+import           HStream.Store                    (HsLogAttrs (..),
+                                                   LogAttrs (..),
+                                                   initCheckpointStoreLogID,
+                                                   newLDClient,
+                                                   setupSigsegvHandler)
 
 data ServerConfig = ServerConfig
   { _serverHost          :: CBytes
@@ -29,6 +34,7 @@ data ServerConfig = ServerConfig
   , _zkPort              :: CBytes
   , _logdeviceConfigPath :: CBytes
   , _topicRepFactor      :: Int
+  , _ckpRepFactor        :: Int
   } deriving (Show)
 
 parseConfig :: Parser ServerConfig
@@ -40,11 +46,15 @@ parseConfig =
     <*> strOption   (long "zkhost"           <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "zookeeper host value, only meaningful when persistent flag is set")
     <*> strOption   (long "zkport"           <> metavar "INT"  <> showDefault <> value "2181"                       <> help "zookeeper port value, only meaningful when persistent flag is set")
     <*> strOption   (long "config-path"      <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
-    <*> option auto (long "replicate-factor" <> metavar "INT"  <> showDefault <> value 3 <> short 'f'               <> help "topic replicate factor")
+    <*> option auto (long "replicate-factor" <> metavar "INT"  <> showDefault <> value 3                            <> help "topic replicate factor")
+    <*> option auto (long "ckp-replicate-factor" <> metavar "INT"  <> showDefault <> value 1                        <> help "checkpoint replicate factor")
 
 app :: ServerConfig -> IO ()
-app config@ServerConfig{..} = if _persistent
-  then withResource (defaultHandle (_zkHost <> ":" <> _zkPort)) $
+app config@ServerConfig{..} = do
+  setupSigsegvHandler
+  ldclient <- newLDClient _logdeviceConfigPath
+  _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
+  if _persistent then withResource (defaultHandle (_zkHost <> ":" <> _zkPort)) $
     \zk -> initZooKeeper zk >> app' config (Just zk)
   else app' config Nothing
 
@@ -54,7 +64,7 @@ app' ServerConfig{..} zk = do
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
-  api <- handlers _logdeviceConfigPath zk
+  api <- handlers _logdeviceConfigPath _topicRepFactor zk
   print _logdeviceConfigPath
   hstreamApiServer api options
 
@@ -71,5 +81,4 @@ main = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
-  setupSigsegvHandler
   app config

@@ -25,7 +25,7 @@ fileBased = context "FileBasedCheckpointedReader" $ do
 
   ckpReader <- runIO $ S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10
 
-  it "the checkpoint of writing/reading shoule be equal" $ do
+  it "the checkpoint of writing/reading should be equal" $ do
     checkpointStore <- S.newFileBasedCheckpointStore ckpPath
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
@@ -66,7 +66,7 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
   let logid = 1
   ckpReader <- runIO $ S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing 10
 
-  it "the checkpoint of writing/reading shoule be equal" $ do
+  it "the checkpoint of writing/reading should be equal" $ do
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
     S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])

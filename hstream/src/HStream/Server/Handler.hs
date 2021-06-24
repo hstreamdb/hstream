@@ -80,13 +80,13 @@ subscribedConnectors = unsafePerformIO $ newIORef HM.empty
 
 --------------------------------------------------------------------------------
 
-handlers :: CB.CBytes -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
-handlers logDeviceConfigPath handle = do
+handlers :: CB.CBytes -> Int -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
+handlers logDeviceConfigPath repFactor handle = do
   ldclient <- newLDClient logDeviceConfigPath
   runningQs <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
-      , scDefaultStreamRepFactor = 3
+      , scDefaultStreamRepFactor = repFactor
       , zkHandle                 = handle
       , runningQueries           = runningQs
       }
@@ -223,9 +223,9 @@ executePushQueryHandler ServerContext{..}
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
         _ <- forkIO $ handlePushQueryCanceled meta
           (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
-        ldreader' <- newLDFileCkpReader scLDClient
+        ldreader' <- newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
-          checkpointRootPath 1 Nothing 3
+          checkpointStoreLogID 5000 1 Nothing 10
         let sc = hstoreSourceConnector scLDClient ldreader'
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
@@ -318,7 +318,8 @@ runTaskWrapper :: TaskBuilder -> LDClient -> IO ()
 runTaskWrapper taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
   let readerName = textToCBytes (getTaskName taskBuilder)
-  ldreader <- newLDFileCkpReader ldclient readerName checkpointRootPath 1000 Nothing 3
+  -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
+  ldreader <- newLDRsmCkpReader ldclient readerName checkpointStoreLogID 5000 1000 Nothing 10
   -- create a new sourceConnector
   let sourceConnector = hstoreSourceConnector ldclient ldreader
   -- create a new sinkConnector
@@ -399,8 +400,8 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeReque
     getSourceConnector :: StreamSubscription -> IO (Either SomeException (TL.Text,SourceConnector))
     getSourceConnector StreamSubscription{..} = do
       e' <- try $ do
-        newLDFileCkpReader scLDClient (textToCBytes $ TL.toStrict streamSubscriptionStreamName)
-          checkpointRootPath 1 Nothing 3
+        newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict streamSubscriptionStreamName)
+          checkpointStoreLogID 5000 1 Nothing 10
       case e' of
         Left err       -> return (Left err)
         Right ldreader -> do
