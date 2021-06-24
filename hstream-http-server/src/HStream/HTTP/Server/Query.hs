@@ -59,7 +59,7 @@ type QueriesAPI =
   :<|> "queries" :> "restart" :> Capture "name" String :> Post '[JSON] Bool
   :<|> "queries" :> "cancel" :> Capture "name" String :> Post '[JSON] Bool
   :<|> "queries" :> ReqBody '[JSON] QueryBO :> Post '[JSON] QueryBO
-  -- :<|> "queries" :> Capture "name" String :> Delete '[JSON] Bool
+  :<|> "queries" :> Capture "name" String :> Delete '[JSON] Bool
   :<|> "queries" :> Capture "name" String :> Get '[JSON] (Maybe QueryBO)
 
 hstreamQueryToQueryBO :: HSP.Query -> QueryBO
@@ -69,10 +69,22 @@ hstreamQueryToQueryBO (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HS
 hstreamQueryNameIs :: T.Text -> HSP.Query -> Bool
 hstreamQueryNameIs name (HSP.Query queryId _ _) = (cbytesToText queryId) == name
 
--- removeQueryHandler :: HS.LDClient -> String -> Handler Bool
--- removeQueryHandler ldClient name = do
---   liftIO $ removeQuery ldClient (mkQueryName $ ZDC.pack name)
---   return True
+removeQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
+removeQueryHandler ldClient zkHandle name = do
+  res <- liftIO $ do
+    queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
+    case find (hstreamQueryNameIs (T.pack name)) queries of
+      Just (HSP.Query queryId _ (HSP.Status status _)) -> do
+        if HSP.Terminated == status
+          then
+            do
+              _ <- forkIO $ HSP.withMaybeZHandle zkHandle $ HSP.removeQuery queryId
+              return True
+          else
+            -- TODO: should return detailed reason
+            return False
+      Nothing -> return False
+  return res
 
 -- TODO: we should remove the duplicate code in HStream/Admin/Server/Query.hs and HStream/Server/Handler.hs
 createQueryHandler :: HS.LDClient -> Maybe ZK.ZHandle -> (Int, CB.CBytes) -> QueryBO -> Handler QueryBO
@@ -154,5 +166,5 @@ queryServer ldClient zkHandle (streamRepFactor, checkpointRootPath) =
   :<|> (restartQueryHandler ldClient zkHandle)
   :<|> (cancelQueryHandler ldClient zkHandle)
   :<|> (createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath))
-  -- :<|> (removeQueryHandler ldClient)
+  :<|> (removeQueryHandler ldClient zkHandle)
   :<|> (getQueryHandler zkHandle)

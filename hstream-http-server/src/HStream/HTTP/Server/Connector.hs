@@ -74,7 +74,7 @@ type ConnectorsAPI =
   :<|> "connectors" :> "restart" :> Capture "name" String :> Post '[JSON] Bool
   :<|> "connectors" :> "cancel" :> Capture "name" String :> Post '[JSON] Bool
   :<|> "connectors" :> ReqBody '[JSON] ConnectorBO :> Post '[JSON] ConnectorBO
-  -- :<|> "connectors" :> Capture "name" String :> Delete '[JSON] Bool
+  :<|> "connectors" :> Capture "name" String :> Delete '[JSON] Bool
   :<|> "connectors" :> Capture "name" String :> Get '[JSON] (Maybe ConnectorBO)
 
 hstreamConnectorToConnectorBO :: HSP.Connector -> ConnectorBO
@@ -84,10 +84,22 @@ hstreamConnectorToConnectorBO (HSP.Connector connectorId (HSP.Info sqlStatement 
 hstreamConnectorNameIs :: T.Text -> HSP.Connector -> Bool
 hstreamConnectorNameIs name (HSP.Connector connectorId _ _) = (cbytesToText connectorId) == name
 
--- removeConnectorHandler :: HS.LDClient -> String -> Handler Bool
--- removeConnectorHandler ldClient name = do
---   liftIO $ removeConnector ldClient (mkConnectorName $ ZDC.pack name)
---   return True
+removeConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
+removeConnectorHandler ldClient zkHandle name = do
+  res <- liftIO $ do
+    connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
+    case find (hstreamConnectorNameIs (T.pack name)) connectors of
+      Just (HSP.Connector connectorId _ (HSP.Status status _)) -> do
+        if HSP.Terminated == status
+          then
+            do
+              HSP.withMaybeZHandle zkHandle $ HSP.removeConnector connectorId
+              return True
+          else
+            -- TODO: should return detailed reason
+            return False
+      Nothing -> return False
+  return res
 
 -- TODO: we should remove the duplicate code in HStream/Admin/Server/Connector.hs and HStream/Server/Handler.hs
 createConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> ConnectorBO -> Handler ConnectorBO
@@ -197,5 +209,5 @@ connectorServer ldClient zkHandle =
   :<|> (restartConnectorHandler ldClient zkHandle)
   :<|> (cancelConnectorHandler ldClient zkHandle)
   :<|> (createConnectorHandler ldClient zkHandle)
-  -- :<|> (removeConnectorHandler ldClient)
+  :<|> (removeConnectorHandler ldClient zkHandle)
   :<|> (getConnectorHandler zkHandle)
