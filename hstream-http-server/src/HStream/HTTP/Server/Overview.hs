@@ -12,6 +12,7 @@ import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.ByteString            (ByteString)
 import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (fromMaybe)
+import           Data.Swagger               (ToSchema)
 import           Data.Text                  (Text)
 import           GHC.Generics               (Generic)
 import           Servant                    (Capture, Delete, Get, JSON,
@@ -41,6 +42,7 @@ data OverviewBO = OverviewBO
 
 instance ToJSON OverviewBO
 instance FromJSON OverviewBO
+instance ToSchema OverviewBO
 
 type OverviewAPI =
   "overview" :> Get '[JSON] OverviewBO

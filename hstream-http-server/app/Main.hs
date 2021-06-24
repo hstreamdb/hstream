@@ -7,7 +7,10 @@ module Main where
 import           Control.Exception             (catch)
 import           Control.Monad                 (void)
 import           Control.Monad.IO.Class        (liftIO)
+import           Data.Aeson.Encode.Pretty      (encodePretty)
 import           Data.ByteString               (ByteString)
+import qualified Data.ByteString.Lazy.Char8    as BL8
+import           Data.Swagger                  (Swagger)
 import           Network.Wai.Handler.Warp      (run)
 import           Options.Applicative           (Parser, auto, execParser,
                                                 fullDesc, help, helper, info,
@@ -16,6 +19,7 @@ import           Options.Applicative           (Parser, auto, execParser,
                                                 value, (<**>))
 import           Servant                       (Proxy (..), (:<|>) (..))
 import           Servant.Server                (Server, serve)
+import           Servant.Swagger               (toSwagger)
 import qualified Z.Data.CBytes                 as ZDC
 import qualified ZooKeeper                     as ZK
 import qualified ZooKeeper.Exception           as ZK
@@ -82,6 +86,13 @@ app config@ServerConfig{..} =
       initZooKeeper zk
       ldClient <- liftIO (HS.newLDClient _logdeviceConfigPath)
       run _serverPort $ serve api $ apiServer ldClient (Just zk) config
+
+apiSwagger :: Swagger
+apiSwagger = toSwagger api
+
+-- TODO: regenerate swagger.json everytime we build it
+writeSwaggerJSON :: IO ()
+writeSwaggerJSON = BL8.writeFile "./swagger.json" (encodePretty apiSwagger)
 
 main :: IO ()
 main = do

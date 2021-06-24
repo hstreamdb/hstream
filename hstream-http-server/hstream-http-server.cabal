@@ -31,6 +31,7 @@ executable hstream-http-server
   extra-libraries:    protocol
   
   build-depends:
+    , aeson-pretty
     , base              >=4.11 && <5
     , bytestring
     , clickhouse-haskell
@@ -46,6 +47,8 @@ executable hstream-http-server
     , rio
     , servant
     , servant-server
+    , servant-swagger
+    , swagger2
     , warp    
     , Z-Data
     , zoovisitor
@@ -71,6 +74,7 @@ library
 
   build-depends:
     , aeson
+    , aeson-pretty
     , base              >=4.11 && <5
     , bytestring
     , clickhouse-haskell
@@ -90,6 +94,8 @@ library
     , scientific
     , servant
     , servant-server
+    , servant-swagger
+    , swagger2
     , unordered-containers
     , vector
     , warp    

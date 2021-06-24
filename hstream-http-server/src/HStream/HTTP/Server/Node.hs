@@ -21,6 +21,7 @@ import           Data.List                   (find)
 import qualified Data.Map.Strict             as Map
 import           Data.Maybe                  (fromMaybe)
 import           Data.Scientific             (floatingOrInteger)
+import           Data.Swagger                (ToSchema)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Data.Text.Encoding          (encodeUtf8)
@@ -32,6 +33,7 @@ import           Servant                     (Capture, Delete, Get, JSON,
 import           Servant.Server              (Handler, Server)
 import qualified Z.Data.CBytes               as ZDC
 import qualified Z.IO.Logger                 as Log
+
 
 import           HStream.Connector.HStore    as HCH
 import           HStream.Store               as HS
@@ -51,6 +53,7 @@ data NodeBO = NodeBO
   } deriving (Eq, Show, Generic)
 
 instance ToJSON NodeBO
+instance ToSchema NodeBO
 
 extractProperty :: [Text] -> Value -> Maybe Value
 extractProperty []     v          = Just v
