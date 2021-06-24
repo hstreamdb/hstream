@@ -103,6 +103,22 @@ spec = describe "HStream.RunSQLSpec" $ do
                      , [MySQLInt32 42, MySQLInt32 81]
                      ]
 
+  it "GROUP BY without timewindow" $
+    (do
+        _ <- forkIO $ do
+          threadDelay 1000000
+          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (1, 2);"
+          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (2, 2);"
+          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (3, 2);"
+          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (4, 3);"
+          return ()
+        executeCommandPushQuery $ "SELECT SUM(a) AS result FROM " <> source1 <> " GROUP BY b EMIT CHANGES;"
+        ) `shouldReturn` [ mkStruct [("result", Aeson.Number 1)]
+                         , mkStruct [("result", Aeson.Number 3)]
+                         , mkStruct [("result", Aeson.Number 6)]
+                         , mkStruct [("result", Aeson.Number 4)]
+                         ]
+
 --------------------------------------------------------------------------------
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
