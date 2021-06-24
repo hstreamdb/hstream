@@ -658,38 +658,6 @@ foreign import ccall unsafe "hs_logdevice.h dbg_use_fd"
 
 -------------------------------------------------------------------------------
 
-newtype FB_STATUS = FB_STATUS { unFB_STATUS :: CInt}
-  deriving newtype (Eq, Num)
-
-instance Show FB_STATUS where
-  show FB_STATUS_STARTING = "FB_STATUS_STARTING"
-  show FB_STATUS_ALIVE    = "FB_STATUS_ALIVE"
-  show FB_STATUS_DEAD     = "FB_STATUS_DEAD"
-  show FB_STATUS_STOPPING = "FB_STATUS_STOPPING"
-  show FB_STATUS_STOPPED  = "FB_STATUS_STOPPED"
-  show FB_STATUS_WARNING  = "FB_STATUS_WARNING"
-  show _                  = "UNDEFINED_FB_STATUS"
-
-pattern FB_STATUS_STARTING :: FB_STATUS
-pattern FB_STATUS_STARTING = (#const static_cast<int>(fb_status::STARTING))
-
-pattern FB_STATUS_ALIVE :: FB_STATUS
-pattern FB_STATUS_ALIVE = (#const static_cast<int>(fb_status::ALIVE))
-
-pattern FB_STATUS_DEAD :: FB_STATUS
-pattern FB_STATUS_DEAD = (#const static_cast<int>(fb_status::DEAD))
-
-pattern FB_STATUS_STOPPING :: FB_STATUS
-pattern FB_STATUS_STOPPING = (#const static_cast<int>(fb_status::STOPPING))
-
-pattern FB_STATUS_STOPPED :: FB_STATUS
-pattern FB_STATUS_STOPPED = (#const static_cast<int>(fb_status::STOPPED))
-
-pattern FB_STATUS_WARNING :: FB_STATUS
-pattern FB_STATUS_WARNING = (#const static_cast<int>(fb_status::WARNING))
-
--------------------------------------------------------------------------------
-
 pattern C_ACCURACY_STRICT :: Int
 pattern C_ACCURACY_STRICT = (#const static_cast<HsInt>(facebook::logdevice::FindKeyAccuracy::STRICT))
 

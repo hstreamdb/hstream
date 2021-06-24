@@ -80,7 +80,6 @@ library
     stdc++
     folly
     logdevice
-    logdevice_admin_clients
     thriftcpp2
     thriftprotocol
     glog
@@ -90,7 +89,6 @@ library
   cpp-options:        -std=c++17
   cxx-sources:
     cbits/hs_logdevice.cpp
-    cbits/hs_logdevice_admin.cpp
     cbits/logdevice/hs_checkpoint.cpp
     cbits/logdevice/hs_logconfigtypes.cpp
     cbits/logdevice/hs_reader.cpp

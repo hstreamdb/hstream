@@ -3,10 +3,13 @@
 import argparse
 import os
 import sys
+import getpass
 from pathlib import Path
 import time
 import subprocess
 import re
+import string
+import random
 
 
 HOME = os.getenv("HOME")
@@ -25,6 +28,7 @@ DEFAULT_MYSQL_PASSWORD = 'password'
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(os.path.abspath(__file__))))
 CUID, CGID = os.getuid(), os.getgid()
+CUSERNAME = getpass.getuser()
 LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
 DEFAULT_LOGDEVICE_DIR = os.path.join(PROJECT_ROOT, "local-data/logdevice")
 
@@ -33,6 +37,8 @@ Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
 loginfo = lambda s: print(f"\033[96m{s}\033[0m")
+
+gen_randoms = lambda n: ''.join(random.choices(string.ascii_letters + string.digits, k=n))
 
 
 def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
@@ -155,7 +161,8 @@ def run_ldshell(image, container_bin, command, data_dir, cmd_args):
     else:
         user_command = command
 
-    cmd = f'{container_bin} run --rm {container_opts} --network host {image} {user_command}'
+    name = f'{CUSERNAME}_{CUID}_ldshell_{gen_randoms(10)}'
+    cmd = f'{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}'
     run_sh(cmd, check=False)
 
 
@@ -174,6 +181,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
     user_path = f"/opt/ghc/bin:/opt/cabal/bin:/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
+    name = f'{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}'
     container_opts = " ".join([
         "-t" if tty else "",
         "-i" if interactive else "",
@@ -182,6 +190,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
         "-u " + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else ""
     ])
     cmd = f'''{container_bin} run {container_opts} \
+                --name {name} \
                 -e HOME={HOME} \
                 -e LC_ALL=C.UTF-8 \
                 -e PATH={user_path} \
