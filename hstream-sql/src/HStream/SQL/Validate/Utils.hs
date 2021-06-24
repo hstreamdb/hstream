@@ -103,7 +103,6 @@ instance HavePos ScalarFunc where
     (ScalarFuncStrlen  pos _) -> pos
 
 --------------------------------------------------------------------------------
-
 -- mask
 -- 0b    *      *      *     *           *   *    *    *
 --    Unused   Any  String Bool         Ord Num Float Int
@@ -205,3 +204,11 @@ isTypeNum    n = n .&. numMask    /= 0
 isTypeOrd    n = n .&. ordMask    /= 0
 isTypeBool   n = n .&. boolMask   /= 0
 isTypeString n = n .&. stringMask /= 0
+
+--------------------------------------------------------------------------------
+anyAggInSelList :: SelList -> Bool
+anyAggInSelList (SelListAsterisk _)      = False
+anyAggInSelList (SelListSublist _ dcols) = or $ isAggDCol <$> dcols
+  where isAggDCol (DerivedColSimpl _ (ExprSetFunc _ _)) = True
+        isAggDCol (DerivedColAs _ (ExprSetFunc _ _) _)  = True
+        isAggDCol _                                     = False
