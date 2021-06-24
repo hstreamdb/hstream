@@ -18,6 +18,7 @@ import           Data.Aeson                   (FromJSON, ToJSON)
 import           Data.Int                     (Int64)
 import           Data.List                    (find)
 import qualified Data.Map.Strict              as Map
+import           Data.Swagger                 (ToSchema)
 import qualified Data.Text                    as T
 import           GHC.Generics                 (Generic)
 import           Servant                      (Capture, Delete, Get, JSON,
@@ -53,6 +54,7 @@ data QueryBO = QueryBO
 
 instance ToJSON QueryBO
 instance FromJSON QueryBO
+instance ToSchema QueryBO
 
 type QueriesAPI =
   "queries" :> Get '[JSON] [QueryBO]

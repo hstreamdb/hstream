@@ -22,6 +22,7 @@ import           Data.Int                         (Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
+import           Data.Swagger                     (ToSchema)
 import qualified Data.Text                        as T
 import qualified Database.ClickHouseDriver.Client as ClickHouse
 import qualified Database.ClickHouseDriver.Types  as ClickHouse
@@ -68,6 +69,7 @@ data ConnectorBO = ConnectorBO
 
 instance ToJSON ConnectorBO
 instance FromJSON ConnectorBO
+instance ToSchema ConnectorBO
 
 type ConnectorsAPI =
   "connectors" :> Get '[JSON] [ConnectorBO]

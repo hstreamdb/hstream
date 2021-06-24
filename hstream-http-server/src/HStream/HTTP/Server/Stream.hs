@@ -11,6 +11,7 @@ module HStream.HTTP.Server.Stream (
 import           Control.Monad.IO.Class   (liftIO)
 import           Data.Aeson               (FromJSON, ToJSON)
 import qualified Data.Map.Strict          as Map
+import           Data.Swagger             (ToSchema)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           GHC.Generics             (Generic)
@@ -34,6 +35,7 @@ data StreamBO = StreamBO
 
 instance ToJSON StreamBO
 instance FromJSON StreamBO
+instance ToSchema StreamBO
 
 type StreamsAPI =
   "streams" :> Get '[JSON] [StreamBO]
