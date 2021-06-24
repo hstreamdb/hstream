@@ -96,8 +96,15 @@ class Persistence handle where
   getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
   getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
 
+  removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeQuery        :: HasCallStack => Id -> handle -> IO ()
+  removeQuery cid = removeQuery' cid True
+  {-# INLINE removeQuery #-}
+
+  removeConnector'   :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeConnector    :: HasCallStack => Id -> handle -> IO ()
+  removeConnector cid = removeConnector' cid True
+  {-# INLINE removeConnector #-}
 
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
@@ -152,17 +159,17 @@ instance Persistence PStoreMem where
       Nothing                           -> throwIO ConnectorNotFound
       Just (Connector _ _ (Status x _)) -> return x
 
-  removeQuery qid ref@(refQ, _) = ifThrow FailedToRemove $
-    getQueryStatus qid ref
-    >>= \case
+  removeQuery' qid ifCheck ref@(refQ, _) = ifThrow FailedToRemove $
+    if ifCheck then getQueryStatus qid ref >>= \case
       Terminated -> modifyIORef refQ $ HM.delete qid
       _          -> throwIO QueryStillRunning
+    else modifyIORef refQ $ HM.delete qid
 
-  removeConnector cid ref@(_, refC) = ifThrow FailedToRemove $
-    getConnectorStatus cid ref
-    >>= \case
+  removeConnector' cid ifCheck ref@(_, refC) = ifThrow FailedToRemove $
+    if ifCheck then getConnectorStatus cid ref >>= \case
       Terminated -> modifyIORef refC $ HM.delete cid
       _          -> throwIO ConnectorStillRunning
+    else modifyIORef refC $ HM.delete cid
 
 --------------------------------------------------------------------------------
 
@@ -204,17 +211,17 @@ instance Persistence ZHandle where
 
   getConnectorStatus cid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkConnectorPath cid <> "/status")
 
-  removeQuery qid zk = ifThrow FailedToRemove $
-    getQueryStatus qid zk
-    >>= \case
+  removeQuery' qid ifCheck zk = ifThrow FailedToRemove $
+    if ifCheck then getQueryStatus qid zk >>= \case
       Terminated -> zooDeleteAll zk (mkQueryPath qid)
       _          -> throwIO QueryStillRunning
+    else zooDeleteAll zk (mkQueryPath qid)
 
-  removeConnector cid zk = ifThrow FailedToRemove $
-    getQueryStatus cid zk
-    >>= \case
+  removeConnector' cid ifCheck zk = ifThrow FailedToRemove $
+    if ifCheck then getConnectorStatus cid zk >>= \case
       Terminated -> zooDeleteAll zk (mkConnectorPath cid)
-      _          -> throwIO QueryStillRunning
+      _          -> throwIO ConnectorStillRunning
+    else zooDeleteAll zk (mkConnectorPath cid)
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath]
