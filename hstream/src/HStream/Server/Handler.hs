@@ -80,9 +80,8 @@ subscribedConnectors = unsafePerformIO $ newIORef HM.empty
 
 --------------------------------------------------------------------------------
 
-handlers :: CB.CBytes -> Int -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
-handlers logDeviceConfigPath repFactor handle = do
-  ldclient <- newLDClient logDeviceConfigPath
+handlers :: LDClient -> Int -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
+handlers ldclient repFactor handle = do
   runningQs <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient

@@ -20,7 +20,7 @@ import           ZooKeeper.Types
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
-import           HStream.Store                    (HsLogAttrs (..),
+import           HStream.Store                    (HsLogAttrs (..), LDClient,
                                                    LogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient,
@@ -55,16 +55,16 @@ app config@ServerConfig{..} = do
   ldclient <- newLDClient _logdeviceConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
   if _persistent then withResource (defaultHandle (_zkHost <> ":" <> _zkPort)) $
-    \zk -> initZooKeeper zk >> app' config (Just zk)
-  else app' config Nothing
+    \zk -> initZooKeeper zk >> app' config ldclient (Just zk)
+  else app' config ldclient Nothing
 
-app' :: ServerConfig -> Maybe ZHandle ->  IO ()
-app' ServerConfig{..} zk = do
+app' :: ServerConfig -> LDClient -> Maybe ZHandle -> IO ()
+app' ServerConfig{..} ldclient zk = do
   let options = defaultServiceOptions
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
-  api <- handlers _logdeviceConfigPath _topicRepFactor zk
+  api <- handlers ldclient _topicRepFactor zk
   print _logdeviceConfigPath
   hstreamApiServer api options
 
