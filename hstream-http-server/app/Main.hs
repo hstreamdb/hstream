@@ -4,46 +4,24 @@
 
 module Main where
 
-import           Control.Exception             (catch)
-import           Control.Monad                 (void)
-import           Control.Monad.IO.Class        (liftIO)
-import           Data.Aeson.Encode.Pretty      (encodePretty)
-import           Data.ByteString               (ByteString)
-import qualified Data.ByteString.Lazy.Char8    as BL8
-import           Data.Swagger                  (Swagger)
-import           Network.Wai.Handler.Warp      (run)
-import           Options.Applicative           (Parser, auto, execParser,
-                                                fullDesc, help, helper, info,
-                                                long, metavar, option, progDesc,
-                                                short, showDefault, strOption,
-                                                value, (<**>))
-import           Servant                       (Proxy (..), (:<|>) (..))
-import           Servant.Server                (Server, serve)
-import           Servant.Swagger               (toSwagger)
-import qualified Z.Data.CBytes                 as ZDC
-import qualified ZooKeeper                     as ZK
-import qualified ZooKeeper.Exception           as ZK
-import qualified ZooKeeper.Types               as ZK
+import           Control.Exception          (catch)
+import           Control.Monad              (void)
+import           Control.Monad.IO.Class     (liftIO)
+import           Network.Wai.Handler.Warp   (run)
+import           Options.Applicative        (Parser, auto, execParser, fullDesc,
+                                             help, helper, info, long, metavar,
+                                             option, progDesc, short,
+                                             showDefault, strOption, value,
+                                             (<**>))
+import           Servant.Server             (serve)
+import qualified ZooKeeper                  as ZK
+import qualified ZooKeeper.Exception        as ZK
+import qualified ZooKeeper.Types            as ZK
 
-import           HStream.HTTP.Server.Connector (ConnectorsAPI, connectorServer)
-import           HStream.HTTP.Server.Node      (NodesAPI, nodeServer)
-import           HStream.HTTP.Server.Overview  (OverviewAPI, overviewServer)
-import           HStream.HTTP.Server.Query     (QueriesAPI, queryServer)
-import           HStream.HTTP.Server.Stream    (StreamsAPI, streamServer)
-import qualified HStream.Server.Persistence    as HSP
-import qualified HStream.Store                 as HS
-
-data ServerConfig = ServerConfig
-  { _serverHost          :: ZDC.CBytes
-  , _serverPort          :: Int
-  , _zkHost              :: ZDC.CBytes
-  , _zkPort              :: ZDC.CBytes
-  , _logdeviceConfigPath :: ZDC.CBytes
-  , _checkpointRootPath  :: ZDC.CBytes
-  , _streamRepFactor     :: Int
-  , _ldAdminHost         :: ByteString
-  , _ldAdminPort         :: Int
-  } deriving (Show)
+import           HStream.HTTP.Server.API    (API, ServerConfig (..), api,
+                                             apiServer)
+import qualified HStream.Server.Persistence as HSP
+import qualified HStream.Store              as HS
 
 parseConfig :: Parser ServerConfig
 parseConfig =
@@ -61,24 +39,6 @@ parseConfig =
 initZooKeeper :: ZK.ZHandle -> IO ()
 initZooKeeper zk = catch (HSP.initializeAncestors zk) (\e -> void $ return (e :: ZK.ZNODEEXISTS))
 
-type API =
-  StreamsAPI
-  :<|> QueriesAPI
-  :<|> NodesAPI
-  :<|> ConnectorsAPI
-  :<|> OverviewAPI
-
-api :: Proxy API
-api = Proxy
-
-apiServer :: HS.LDClient -> Maybe ZK.ZHandle -> ServerConfig -> Server API
-apiServer ldClient zk ServerConfig{..} = do
-  (streamServer ldClient)
-  :<|> (queryServer ldClient zk (_streamRepFactor, _checkpointRootPath))
-  :<|> (nodeServer _ldAdminHost _ldAdminPort)
-  :<|> (connectorServer ldClient zk)
-  :<|> (overviewServer ldClient zk _ldAdminHost _ldAdminPort)
-
 app :: ServerConfig -> IO ()
 app config@ServerConfig{..} =
   ZK.withResource (HSP.defaultHandle (_zkHost <> ":" <> _zkPort)) $
@@ -86,13 +46,6 @@ app config@ServerConfig{..} =
       initZooKeeper zk
       ldClient <- liftIO (HS.newLDClient _logdeviceConfigPath)
       run _serverPort $ serve api $ apiServer ldClient (Just zk) config
-
-apiSwagger :: Swagger
-apiSwagger = toSwagger api
-
--- TODO: regenerate swagger.json everytime we build it
-writeSwaggerJSON :: IO ()
-writeSwaggerJSON = BL8.writeFile "./swagger.json" (encodePretty apiSwagger)
 
 main :: IO ()
 main = do
