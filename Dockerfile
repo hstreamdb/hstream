@@ -69,6 +69,7 @@ COPY --from=hstreamdb/logdevice /logdevice/common/test/ssl_certs/ /logdevice/com
 COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
                     /root/.cabal/bin/hadmin \
+                    /root/.cabal/bin/hstore-bench-writter \
                     /usr/local/bin/
 RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
