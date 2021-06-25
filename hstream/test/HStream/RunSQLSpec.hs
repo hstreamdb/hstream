@@ -16,6 +16,9 @@ import qualified Data.Map.Strict                   as Map
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Text.Lazy                    as TL
+import qualified Data.Vector as V
+import qualified Database.ClickHouseDriver.Client  as ClickHouse
+import qualified Database.ClickHouseDriver.Types   as ClickHouse
 import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
 import qualified Database.MySQL.Base               as MySQL
 import qualified System.IO.Streams                 as Streams
@@ -46,6 +49,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   sink1   <- runIO $ TL.fromStrict <$> newRandomText 20
   sink2   <- runIO $ TL.fromStrict <$> newRandomText 20
   let source3 = "source3"
+      source4 = "source4"
 
   it "clean streams" $
     ( do
@@ -53,20 +57,22 @@ spec = describe "HStream.RunSQLSpec" $ do
         res1 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source1 <> " ;"
         res2 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source2 <> " ;"
         res3 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source3 <> " ;"
-        res4 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> sink1 <> " ;"
-        res5 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> sink2 <> " ;"
-        return [res1, res2, res3, res4, res5]
-    ) `shouldReturn` L.replicate 5 (Just successResp)
+        res4 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source4 <> " ;"
+        res5 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> sink1 <> " ;"
+        res6 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> sink2 <> " ;"
+        return [res1, res2, res3, res4, res5, res6]
+    ) `shouldReturn` L.replicate 6 (Just successResp)
 
   it "create streams" $
     (do
         res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
         res2 <- executeCommandQuery $ "CREATE STREAM " <> source2 <> ";"
         res3 <- executeCommandQuery $ "CREATE STREAM " <> source3 <> " WITH (REPLICATE = 3);"
-        res4 <- executeCommandQuery $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
-        res5 <- executeCommandQuery $ "CREATE STREAM " <> sink2   <> " ;"
-        return [res1, res2, res3, res4, res5]
-    ) `shouldReturn` L.replicate 5 (Just successResp)
+        res4 <- executeCommandQuery $ "CREATE STREAM " <> source4 <> " WITH (REPLICATE = 3);"
+        res5 <- executeCommandQuery $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
+        res6 <- executeCommandQuery $ "CREATE STREAM " <> sink2   <> " ;"
+        return [res1, res2, res3, res4, res5, res6]
+    ) `shouldReturn` L.replicate 6 (Just successResp)
 
   it "insert data to source streams" $
     (do
@@ -101,6 +107,22 @@ spec = describe "HStream.RunSQLSpec" $ do
                      , [MySQLInt32 22, MySQLInt32 83]
                      , [MySQLInt32 32, MySQLInt32 82]
                      , [MySQLInt32 42, MySQLInt32 81]
+                     ]
+
+  it "clickhouse connector" $
+    (do
+       createClickHouseTable $ TL.toStrict source4
+       _ <- executeCommandQuery $ "CREATE SOURCE | SINK CONNECTOR clickhouse WITH (type = \"clickhouse\", host = \"127.0.0.1\", streamname = \""<> source4 <>"\");"
+       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (12, 84);"
+       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (22, 83);"
+       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (32, 82);"
+       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (42, 81);"
+       threadDelay 5000000
+       fetchClickHouse $ TL.toStrict source4
+    ) `shouldReturn` V.fromList [ V.fromList [ClickHouse.CKInt64 12,ClickHouse.CKInt64 84]
+                     , V.fromList [ClickHouse.CKInt64 22,ClickHouse.CKInt64 83]
+                     , V.fromList [ClickHouse.CKInt64 32,ClickHouse.CKInt64 82]
+                     , V.fromList [ClickHouse.CKInt64 42,ClickHouse.CKInt64 81]
                      ]
 
   it "GROUP BY without timewindow" $
@@ -199,3 +221,29 @@ fetchMysql source = do
   _ <- MySQL.execute_ conn $ MySQL.Query . DBCL.pack $ "DROP TABLE IF EXISTS " <> Text.unpack source
   MySQL.close conn
   return datas
+
+clickHouseConnectInfo :: ClickHouse.ConnParams
+clickHouseConnectInfo = ClickHouse.ConnParams {
+  username'    = "default",
+  host'        = "127.0.0.1",
+  port'        = "9000",
+  password'    = "",
+  compression' = False,
+  database'    = "default"
+}
+
+createClickHouseTable :: Text -> IO ()
+createClickHouseTable source = do
+  conn <- ClickHouse.createClient clickHouseConnectInfo
+  ClickHouse.query conn ("CREATE TABLE IF NOT EXISTS " ++ Text.unpack source ++
+        " (temperature Int64, humidity Int64) " ++ "ENGINE = Memory")
+  ClickHouse.closeClient conn
+
+fetchClickHouse :: Text -> IO (V.Vector (V.Vector ClickHouse.ClickhouseType))
+fetchClickHouse source = do
+  conn <- ClickHouse.createClient clickHouseConnectInfo
+  q <- ClickHouse.query conn $ "SELECT * FROM " <> Text.unpack source
+  ClickHouse.closeClient conn
+  case q of
+    Right res -> return res
+    _ -> return V.empty
