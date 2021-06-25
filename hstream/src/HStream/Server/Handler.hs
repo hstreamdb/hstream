@@ -132,7 +132,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     CreateBySelectPlan _sources sink taskBuilder _repFactor -> mark LowLevelStoreException $ do
       createStream scLDClient (transToStreamName sink)
         (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
-      forkIO (runTaskWrapper taskBuilder scLDClient)
+      forkIO (runTaskWrapper False taskBuilder scLDClient)
       returnOkRes
     CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
       let streamM = lookup "streamname" cOptions
@@ -209,7 +209,7 @@ executePushQueryHandler ServerContext{..}
       exists <- mapM (doesStreamExists scLDClient . transToStreamName) sources
       if (not . and) exists then returnRes "some source stream do not exist"
       else mark LowLevelStoreException $ do
-        createStream scLDClient (transToStreamName sink)
+        createTempStream scLDClient (transToTempStreamName sink)
           (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
         MkSystemTime timestamp _ <- getSystemTime'
@@ -218,14 +218,14 @@ executePushQueryHandler ServerContext{..}
         P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
-          >> runTaskWrapper taskBuilder scLDClient
+          >> runTaskWrapper True taskBuilder scLDClient
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
         _ <- forkIO $ handlePushQueryCanceled meta
           (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
         ldreader' <- newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
           checkpointStoreLogID 5000 1 Nothing 10
-        let sc = hstoreSourceConnector scLDClient ldreader'
+        let sc = hstoreTempSourceConnector scLDClient ldreader'
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
     _ -> returnRes "inconsistent method called"
@@ -313,8 +313,8 @@ handlePushQueryCanceled ServerCall{..} handle = do
       -> when b handle
     _ -> putStrLn "impossible happened"
 
-runTaskWrapper :: TaskBuilder -> LDClient -> IO ()
-runTaskWrapper taskBuilder ldclient = do
+runTaskWrapper :: Bool -> TaskBuilder -> LDClient -> IO ()
+runTaskWrapper isTemp taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
   let readerName = textToCBytes (getTaskName taskBuilder)
   -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
@@ -322,7 +322,7 @@ runTaskWrapper taskBuilder ldclient = do
   -- create a new sourceConnector
   let sourceConnector = hstoreSourceConnector ldclient ldreader
   -- create a new sinkConnector
-  let sinkConnector = hstoreSinkConnector ldclient
+  let sinkConnector = if isTemp then hstoreTempSinkConnector ldclient else hstoreSinkConnector ldclient
   -- RUN TASK
   runTask sourceConnector sinkConnector taskBuilder
 

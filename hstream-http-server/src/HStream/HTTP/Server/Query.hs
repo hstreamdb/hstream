@@ -85,7 +85,7 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
         exists <- mapM (HS.doesStreamExists ldClient . HCH.transToStreamName) sources
         if (not . and) exists then return $ Just "some source stream do not exist"
         else do
-          e' <- try $ HS.createStream ldClient (HCH.transToStreamName sink)
+          e' <- try $ HS.createTempStream ldClient (HCH.transToTempStreamName sink)
             (HS.LogAttrs $ HS.HsLogAttrs streamRepFactor Map.empty)
           case e' of
             Left (_ :: SomeException) -> return $ Just "error when creating sink stream."
@@ -97,11 +97,11 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
               HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo
               -- run task
               _ <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
-                >> runTaskWrapper taskBuilder' ldClient
+                >> runTaskWrapper True taskBuilder' ldClient
               ldreader' <- HS.newLDFileCkpReader ldClient
                 (textToCBytes (T.append (getTaskName taskBuilder') "-result"))
                 checkpointRootPath 1 Nothing 3
-              let sc = HCH.hstoreSourceConnector ldClient ldreader'
+              let sc = HCH.hstoreTempSourceConnector ldClient ldreader'
               subscribeToStream sc sink Latest
               return Nothing
       Right _ -> return $ Just "inconsistent method called"
