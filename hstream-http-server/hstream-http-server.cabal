@@ -19,98 +19,28 @@ bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Simple
 extra-source-files: README.md
 
-executable hstream-swagger-server
-  main-is:          Swagger.hs
-  
-  include-dirs:       /usr/local/include
-  extra-lib-dirs:     /usr/local/lib
-  
-  build-depends:
-    , aeson-pretty
-    , base              >=4.11 && <5
-    , servant
-    , servant-server
-    , servant-swagger
-    , swagger2
-    , servant-swagger-ui
-    , servant-swagger-ui-core
-
-  hs-source-dirs:   app
-  default-language: Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
-
-
-executable hstream-http-server
-  main-is:          Main.hs
-  
-  include-dirs:       /usr/local/include
-  extra-lib-dirs:     /usr/local/lib
-  
-  -- FIXME: we need this extra lib for old fbthrift builds.
-  --
-  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
-  extra-libraries:    protocol
-  
-  build-depends:
-    , aeson-pretty
-    , base              >=4.11 && <5
-    , bytestring
-    , clickhouse-haskell
-    , containers
-    , hstore-admin
-    , hstream
-    , hstream-common
-    , hstream-http-server
-    , hstream-store
-    , hstream-processing
-    , mysql-haskell
-    , optparse-applicative
-    , rio
-    , servant
-    , servant-server
-    , servant-swagger
-    , swagger2
-    , warp    
-    , Z-Data
-    , zoovisitor
-
-  hs-source-dirs:   app
-  default-language: Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
-
 library
-  hs-source-dirs:   src
   exposed-modules:
-    HStream.HTTP.Server.Stream
-    HStream.HTTP.Server.Query
-    HStream.HTTP.Server.Node
-    HStream.HTTP.Server.Connector
-    HStream.HTTP.Server.Overview
     HStream.HTTP.Server.API
-    
-  include-dirs:       /usr/local/include
-  extra-lib-dirs:     /usr/local/lib
+    HStream.HTTP.Server.Connector
+    HStream.HTTP.Server.Node
+    HStream.HTTP.Server.Overview
+    HStream.HTTP.Server.Query
+    HStream.HTTP.Server.Stream
 
   build-depends:
     , aeson
-    , aeson-pretty
-    , base              >=4.11 && <5
+    , base                  >=4.11 && <5
     , bytestring
     , clickhouse-haskell
     , containers
     , hstore-admin
     , hstream
-    , hstream-connector
     , hstream-common
+    , hstream-connector
     , hstream-processing
-    , hstream-store
     , hstream-sql
+    , hstream-store
     , lens
     , lens-aeson
     , mysql-haskell
@@ -121,10 +51,65 @@ library
     , servant-server
     , servant-swagger
     , swagger2
+    , text
     , unordered-containers
     , vector
-    , warp    
+    , warp
     , Z-Data
     , Z-IO
-    , text
     , zoovisitor
+
+  hs-source-dirs:   src
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+executable hstream-http-server
+  main-is:          Main.hs
+  build-depends:
+    , base                  >=4.11 && <5
+    , hstream
+    , hstream-common
+    , hstream-http-server
+    , hstream-store
+    , optparse-applicative
+    , servant
+    , servant-server
+    , warp
+    , zoovisitor
+
+  hs-source-dirs:   app
+
+  -- FIXME: we need this extra lib for old fbthrift builds.
+  --
+  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
+  extra-libraries:  protocol
+  extra-lib-dirs:   /usr/local/lib
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
+executable hstream-swagger-json
+  main-is:          Swagger.hs
+  build-depends:
+    , aeson-pretty
+    , base                 >=4.11 && <5
+    , bytestring
+    , filepath             ^>=1.4
+    , hstream-http-server
+
+  hs-source-dirs:   app
+
+  -- FIXME: we need this extra lib for old fbthrift builds.
+  --
+  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
+  extra-libraries:  protocol
+  extra-lib-dirs:   /usr/local/lib
+  default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N

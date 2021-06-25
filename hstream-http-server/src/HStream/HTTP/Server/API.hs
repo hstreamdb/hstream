@@ -5,7 +5,6 @@ module HStream.HTTP.Server.API (
   API, api, apiServer, ServerConfig(..), apiSwagger
 ) where
 
-import           Data.Aeson.Encode.Pretty      (encodePretty)
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString.Lazy.Char8    as BL8
 import           Data.Swagger                  (Swagger)
@@ -56,7 +55,3 @@ apiServer ldClient zk ServerConfig{..} = do
 
 apiSwagger :: Swagger
 apiSwagger = toSwagger api
-
--- TODO: regenerate swagger.json everytime we build it
-writeSwaggerJSON :: IO ()
-writeSwaggerJSON = BL8.writeFile "./swagger.json" (encodePretty apiSwagger)
