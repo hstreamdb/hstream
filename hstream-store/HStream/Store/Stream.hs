@@ -8,11 +8,14 @@ module HStream.Store.Stream
     -- ** StreamName
   , StreamName
   , mkStreamName
+  , TempStreamName
+  , mkTempStreamName
   , getStreamName
   , FFI.LogAttrs (LogAttrs)
   , FFI.HsLogAttrs (..)
     -- **
   , createStream
+  , createTempStream
   , renameStream
   , removeStream
   , findStreams
@@ -35,6 +38,7 @@ module HStream.Store.Stream
   , streamNameToLogPath
   , logPathToStreamName
   , getCLogIDByStreamName
+  , getCLogIDByTempStreamName
 
     -- * Writer
   , LD.append
@@ -63,7 +67,7 @@ module HStream.Store.Stream
   , LD.readerSetWithoutPayload
   , LD.readerSetIncludeByteOffset
   , LD.readerSetWaitOnlyWhenNoData
-  , stopReader
+  , LD.readerStopReading
     -- ** Checkpointed Reader
   , newLDFileCkpReader
   , newLDRsmCkpReader
@@ -77,7 +81,9 @@ module HStream.Store.Stream
   , LD.ckpReaderSetWithoutPayload
   , LD.ckpReaderSetIncludeByteOffset
   , LD.ckpReaderSetWaitOnlyWhenNoData
-  , stopCkpReader
+  , LD.ckpReaderStopReading
+
+    -- * Checkpoint Store
   , initCheckpointStoreLogID
   , checkpointStoreLogID
   ) where
@@ -114,19 +120,29 @@ import qualified HStream.Store.Logger             as Log
 newtype StreamName = StreamName CBytes
   deriving newtype (Show, Eq, Ord, Semigroup, Monoid, IsString)
 
+newtype TempStreamName = TempStreamName CBytes
+  deriving newtype (Show, Eq, Ord, Semigroup, Monoid, IsString)
+
 -- TODO: validation
 mkStreamName :: CBytes -> StreamName
 mkStreamName = StreamName
 
+mkTempStreamName :: CBytes -> TempStreamName
+mkTempStreamName = TempStreamName
+
 getStreamName :: StreamName -> CBytes
 getStreamName (StreamName name) = name
 
-newtype StreamSettings = StreamSettings
+data StreamSettings = StreamSettings
   { streamNamePrefix :: CBytes
+  , streamTempLogDir :: CBytes
   }
 
 gloStreamSettings :: IORef StreamSettings
-gloStreamSettings = unsafePerformIO $ newIORef (StreamSettings "/hstream")
+gloStreamSettings = unsafePerformIO . newIORef $
+  StreamSettings { streamNamePrefix = "/hstream"
+                 , streamTempLogDir = "/tmp/hstream"
+                 }
 {-# NOINLINE gloStreamSettings #-}
 
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
@@ -137,10 +153,15 @@ streamNameToLogPath (StreamName stream) = do
   s <- readIORef gloStreamSettings
   streamNamePrefix s `FS.join` stream
 
+tempStreamNameToLogPath :: TempStreamName -> IO CBytes
+tempStreamNameToLogPath (TempStreamName stream) = do
+  s <- readIORef gloStreamSettings
+  streamTempLogDir s `FS.join` stream
+
 logPathToStreamName :: CBytes -> IO StreamName
 logPathToStreamName path = do
   prefix <- streamNamePrefix <$> readIORef gloStreamSettings
-  StreamName <$>FS.relative prefix path
+  StreamName <$> FS.relative prefix path
 
 -- | Global loggroup path to logid cache
 logPathCache :: Cache.Cache CBytes FFI.C_LogID
@@ -151,23 +172,17 @@ logPathCache = unsafePerformIO $ Cache.newCache Nothing
 --
 -- Currently a Stream is a loggroup which only contains one random logid.
 createStream :: HasCallStack => FFI.LDClient -> StreamName -> FFI.LogAttrs -> IO ()
-createStream client stream attrs = Log.withDefaultLogger $ go 10
-  where
-    go :: Int -> IO ()
-    go maxTries =
-      if maxTries <= 0
-         then E.throwStoreError "Ran out all retries, but still failed :(" callStack
-         else do
-           logid <- genRandomLogID
-           logPath <- streamNameToLogPath stream
-           result <- try $ LD.makeLogGroup client logPath logid logid attrs True
-           case result of
-             Right group -> do
-               LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
-               Cache.insert logPathCache logPath logid
-             Left (_ :: E.ID_CLASH) -> do
-               Log.warning "LogDevice ID_CLASH!"
-               go $! maxTries - 1
+createStream client stream attrs = do
+  path <- streamNameToLogPath stream
+  createRandomLogGroup client path attrs
+
+-- | Create a temporary stream
+--
+-- TODO: trim logs when unused.
+createTempStream :: HasCallStack => FFI.LDClient -> TempStreamName -> FFI.LogAttrs -> IO ()
+createTempStream client stream attrs = do
+  path <- tempStreamNameToLogPath stream
+  createRandomLogGroup client path attrs
 
 renameStream
   :: HasCallStack
@@ -234,8 +249,13 @@ doesStreamExists client stream = do
           return True
 
 getCLogIDByStreamName :: FFI.LDClient -> StreamName -> IO FFI.C_LogID
-getCLogIDByStreamName client stream = do
-  path <- streamNameToLogPath stream
+getCLogIDByStreamName client stream = streamNameToLogPath stream >>= getCLogIDByLogGroup client
+
+getCLogIDByTempStreamName :: FFI.LDClient -> TempStreamName -> IO FFI.C_LogID
+getCLogIDByTempStreamName client stream = tempStreamNameToLogPath stream >>= getCLogIDByLogGroup client
+
+getCLogIDByLogGroup :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+getCLogIDByLogGroup client path = do
   m_v <- Cache.lookup logPathCache path
   case m_v of
     Just v -> return v
@@ -243,6 +263,25 @@ getCLogIDByStreamName client stream = do
       logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client path)
       Cache.insert logPathCache path logid
       return logid
+
+createRandomLogGroup :: HasCallStack => FFI.LDClient -> CBytes -> FFI.LogAttrs -> IO ()
+createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
+  where
+    go :: Int -> IO ()
+    go maxTries =
+      if maxTries <= 0
+         then E.throwStoreError "Ran out all retries, but still failed :(" callStack
+         else do
+           logid <- genRandomLogID
+           result <- try $ LD.makeLogGroup client logPath logid logid attrs True
+           case result of
+             Right group -> do
+               LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
+               Cache.insert logPathCache logPath logid
+             Left (_ :: E.ID_CLASH) -> do
+               Log.warning "LogDevice ID_CLASH!"
+               go $! maxTries - 1
+{-# INLINABLE createRandomLogGroup #-}
 
 -- | Generate a random logid through a simplify version of snowflake algorithm.
 --
@@ -343,13 +382,3 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
   store <- LD.newZookeeperBasedCheckpointStore client
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store retries
-
-stopReader :: FFI.LDClient -> FFI.LDReader -> StreamName -> IO ()
-stopReader client reader name = do
-  logid <- getCLogIDByStreamName client name
-  LD.readerStopReading reader logid
-
-stopCkpReader :: FFI.LDClient -> FFI.LDSyncCkpReader -> StreamName -> IO ()
-stopCkpReader client reader name = do
-  logid <- getCLogIDByStreamName client name
-  LD.ckpReaderStopReading reader logid

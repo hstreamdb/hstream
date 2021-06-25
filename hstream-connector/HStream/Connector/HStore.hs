@@ -72,12 +72,14 @@ subscribeToHStoreStream' ldclient reader stream startOffset = do
   S.readerStartReading reader logId startLSN S.LSN_MAX
 
 unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> IO ()
-unSubscribeToHStoreStream ldclient reader streamName =
-  S.stopCkpReader ldclient reader (transToStreamName streamName)
+unSubscribeToHStoreStream ldclient reader streamName = do
+  logId <- S.getCLogIDByStreamName ldclient (transToStreamName streamName)
+  S.ckpReaderStopReading reader logId
 
 unSubscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> IO ()
-unSubscribeToHStoreStream' ldclient reader streamName =
-  S.stopReader ldclient reader (transToStreamName streamName)
+unSubscribeToHStoreStream' ldclient reader streamName = do
+  logId <- S.getCLogIDByStreamName ldclient (transToStreamName streamName)
+  S.readerStopReading reader logId
 
 dataRecordToSourceRecord :: S.LDClient -> S.DataRecord -> IO SourceRecord
 dataRecordToSourceRecord ldclient S.DataRecord {..} = do

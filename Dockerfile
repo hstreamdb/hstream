@@ -14,8 +14,7 @@ WORKDIR /srv
 COPY . /srv
 RUN make && \
     cabal build all && \
-    cabal install hstream && \
-    cabal install hstore-admin
+    cabal install hstream hstore-admin hstream-store
 
 # ------------------------------------------------------------------------------
 
