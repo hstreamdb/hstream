@@ -16,7 +16,7 @@ import qualified Data.Map.Strict                   as Map
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Text.Lazy                    as TL
-import qualified Data.Vector as V
+import qualified Data.Vector                       as V
 import qualified Database.ClickHouseDriver.Client  as ClickHouse
 import qualified Database.ClickHouseDriver.Types   as ClickHouse
 import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
@@ -246,4 +246,4 @@ fetchClickHouse source = do
   ClickHouse.closeClient conn
   case q of
     Right res -> return res
-    _ -> return V.empty
+    _         -> return V.empty
