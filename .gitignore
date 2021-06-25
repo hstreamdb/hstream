@@ -33,3 +33,4 @@ gen-sql/
 generated-src/
 gen-src/
 .DS_Store
+swagger.json
