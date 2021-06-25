@@ -78,7 +78,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "a simple SQL query" $
     (do
        _ <- forkIO $ do
-         threadDelay 1000000
+         threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (31, 26);"
          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (15, 10);"
          return ()
@@ -106,7 +106,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "GROUP BY without timewindow" $
     (do
         _ <- forkIO $ do
-          threadDelay 1000000
+          threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
           _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (1, 2);"
           _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (2, 2);"
           _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (3, 2);"
@@ -150,8 +150,9 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ref <- newIORef []
   ClientReaderResponse _meta _status _details <-
-    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10
-                                (MetadataMap Map.empty) (action (5.0 :: Double) ref))
+    hstreamApiExecutePushQuery $
+      ClientReaderRequest commandPushQuery 15
+                          (MetadataMap Map.empty) (action (15.0 :: Double) ref)
   readIORef ref
   where
     action timeout ref call _meta recv
