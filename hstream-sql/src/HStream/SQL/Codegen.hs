@@ -8,9 +8,11 @@ module HStream.SQL.Codegen where
 import           Data.Aeson
 import qualified Data.ByteString.Lazy                            as BSL
 import qualified Data.HashMap.Strict                             as HM
+import qualified Data.List                                       as L
 import           Data.Scientific                                 (fromFloatDigits,
                                                                   scientific)
 import           Data.Text                                       (pack)
+import qualified Data.Text                                       as T
 import           Data.Text.Encoding                              (decodeUtf8)
 import           Data.Time                                       (diffTimeToPicoseconds,
                                                                   showGregorian)
@@ -31,7 +33,7 @@ import           HStream.Processing.Stream.JoinWindows           (JoinWindows (.
 import qualified HStream.Processing.Stream.SessionWindowedStream as HSW
 import           HStream.Processing.Stream.SessionWindows        (mkSessionWindows)
 import qualified HStream.Processing.Stream.TimeWindowedStream    as HTW
-import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey,
+import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey (..),
                                                                   mkHoppingWindow,
                                                                   mkTumblingWindow,
                                                                   timeWindowKeySerde)
@@ -54,7 +56,6 @@ import           HStream.SQL.Parse
 import           Numeric                                         (showHex)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
-import qualified RIO.Text                                        as T
 import qualified Z.Data.CBytes                                   as CB
 import           Z.IO.Time
 
@@ -285,13 +286,24 @@ genFilterNode = HS.filter . genFilterR
 genMapR :: RSel -> Record Object Object -> Record Object Object
 genMapR RSelAsterisk record = record
 genMapR (RSelList exprsWithAlias) record@Record{..} =
-  let newValue = HM.fromList $
-        (\(expr,alias) -> let (_,v) = genRExprValue expr recordValue in (pack alias,v)) <$> exprsWithAlias
-   in record { recordValue = newValue }
-genMapR (RSelAggregate _ _) record = record
+  record { recordValue = HM.filterWithKey (\k _ -> k `L.elem` aliases) recordValue }
+  where aliases = pack <$> (snd <$> exprsWithAlias)
+
+genTimeWindowKeyMapR :: RSel
+                     -> Record (TimeWindowKey Object) Object
+                     -> Record (TimeWindowKey Object) Object
+genTimeWindowKeyMapR RSelAsterisk record = record
+genTimeWindowKeyMapR (RSelList exprsWithAlias) record@Record{..} =
+  record { recordValue = HM.filterWithKey (\k _ -> k `L.elem` aliases) recordValue }
+  where aliases = pack <$> (snd <$> exprsWithAlias)
 
 genMapNode :: RSel -> Stream Object Object -> IO (Stream Object Object)
 genMapNode = HS.map . genMapR
+
+genTimeWindowKeyMapNode :: RSel
+                        -> Stream (TimeWindowKey Object) Object
+                        -> IO (Stream (TimeWindowKey Object) Object)
+genTimeWindowKeyMapNode rsel stream = HS.map (genTimeWindowKeyMapR rsel) stream
 
 ----
 genMaterialized :: HasCallStack => RGroupBy -> IO (HS.Materialized Object Object)
@@ -316,7 +328,15 @@ data AggregateComponents = AggregateCompontnts
   }
 
 genAggregateComponents :: HasCallStack => RSel -> AggregateComponents
-genAggregateComponents (RSelAggregate agg alias) =
+genAggregateComponents RSelAsterisk =
+  throwSQLException CodegenException Nothing "SELECT * does not support GROUP BY clause"
+genAggregateComponents (RSelList dcols) =
+  fuseAggregateComponents $ genAggregateComponentsFromDerivedCol <$> dcols
+
+genAggregateComponentsFromDerivedCol :: HasCallStack
+                       => (Either RValueExpr Aggregate, FieldAlias)
+                       -> AggregateComponents
+genAggregateComponentsFromDerivedCol (Right agg, alias) =
   case agg of
     Nullary AggCountAll ->
       AggregateCompontnts
@@ -378,6 +398,20 @@ genAggregateComponents (RSelAggregate agg alias) =
       }
     _                                         ->
       throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
+genAggregateComponentsFromDerivedCol (Left rexpr, alias) =
+  AggregateCompontnts
+  { aggregateInit = HM.singleton (pack alias) (Number 0)
+  , aggregateF = \old Record{..} -> HM.adjust (\_ -> (HM.!) recordValue (pack alias)) (pack alias) old
+  , aggregateMergeF = \_ _ o2 -> o2
+  }
+
+fuseAggregateComponents :: [AggregateComponents] -> AggregateComponents
+fuseAggregateComponents components =
+  AggregateCompontnts
+  { aggregateInit = HM.unions (aggregateInit <$> components)
+  , aggregateF = \old record -> L.foldr (\f acc -> f acc record) old (aggregateF <$> components)
+  , aggregateMergeF = \o o1 o2 -> HM.unions $ [ f o o1 o2 | f <- aggregateMergeF <$> components]
+  }
 
 genGroupByNode :: RSelect
                -> Stream Object Object
@@ -421,7 +455,7 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
   streamSinkConfig <- genStreamSinkConfig sinkStream' grp
   (s0, source)     <- genStreamWithSourceStream taskName frm
   s1               <- genFilterNode whr s0
-                      >>= genMapNode sel
+                      -- >>= genMapNode sel
   case grp of
     RGroupByEmpty -> do
       s2 <- genFilteRNodeFromHaving hav s1
@@ -437,7 +471,8 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
         SinkConfigTypeWithWindow sink sinkConfig -> do
           case s2 of
             Right timeStream -> do
-              builder <- HS.to sinkConfig timeStream
+              s3 <- genTimeWindowKeyMapNode sel timeStream
+              builder <- HS.to sinkConfig s3
               return (builder, source, sink)
             Left _ -> throwSQLException CodegenException Nothing "Expected timeStream but got stream"
         SinkConfigType sink sinkConfig -> do

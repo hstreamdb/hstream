@@ -362,8 +362,6 @@ instance Validate SelList where
   validate l@(SelListAsterisk _) = Right l
   validate l@(SelListSublist pos dcols) = do
     mapM_ validateCol dcols
-    unless (aggCondition dcols)
-      (Left $ buildSQLException ParseException pos "If a SELECT clause contains a aggregate expression, it can not contain any other fields")
     when (anySame $ extractAlias dcols)
       (Left $ buildSQLException ParseException pos "An SELECT clause can not contain the same column aliases")
     return l
@@ -374,9 +372,6 @@ instance Validate SelList where
       extractAlias []                                   = []
       extractAlias ((DerivedColSimpl _ _) : xs)         = extractAlias xs
       extractAlias ((DerivedColAs _ _ (Ident as)) : xs) = as : extractAlias xs
-      aggCondition []  = True
-      aggCondition [_] = True
-      aggCondition _   = not anyAgg
 
 -- From
 -- 1. FROM only supports:
