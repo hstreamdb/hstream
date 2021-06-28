@@ -69,7 +69,7 @@ sendAdminApiRequest
   -> IO a
 sendAdminApiRequest conf m =
   FBUtil.withEventBaseDataplane $ \evb ->
-    withHeaderChannel evb conf m
+    withHeaderChannel' evb conf True m
 
 getNodesAdminAddr :: HeaderConfig AdminAPI -> NodesFilter -> IO [SocketAddress]
 getNodesAdminAddr conf nodesFilter = do

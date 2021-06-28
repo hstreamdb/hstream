@@ -130,32 +130,13 @@ parseShard = eitherReader $ parse . V.packASCII
       P.skipSpaces
       return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
 
-socketConfigParser :: Parser (AA.SocketConfig AA.AdminAPI)
-socketConfigParser = AA.SocketConfig
-  <$> strOption ( long "host"
-               <> metavar "HOST"
-               <> showDefault
-               <> value "127.0.0.1"
-               <> help "Admin server host, e.g. ::1"
-                )
-  <*> option auto ( long "port"
-                 <> metavar "PORT"
-                 <> help "Admin server port"
-                  )
-  <*> option auto ( long "protocol"
-                 <> metavar "INT"
-                 <> showDefault
-                 <> value AA.binaryProtocolId
-                 <> help "Protocol id, 0 for binary, 2 for compact"
-                  )
-
 headerConfigParser :: Parser (AA.HeaderConfig AA.AdminAPI)
 headerConfigParser = AA.HeaderConfig
   <$> strOption ( long "host"
                <> metavar "STRING"
                <> showDefault
                <> value "127.0.0.1"
-               <> help "Admin server host, e.g. ::1"
+               <> help "Admin server host, e.g. logdevice-admin-server-service"
                 )
   <*> option auto ( long "port"
                  <> metavar "INT"
