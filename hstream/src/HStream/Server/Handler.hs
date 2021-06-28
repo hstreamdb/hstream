@@ -12,7 +12,7 @@ import           Control.Concurrent
 import           Control.Exception                 (Exception (..),
                                                     SomeException, catch,
                                                     handle, throwIO, try)
-import           Control.Monad                     (when, void)
+import           Control.Monad                     (void, when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
 import qualified Data.ByteString.Lazy              as BSL
