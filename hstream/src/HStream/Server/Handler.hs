@@ -9,9 +9,10 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                 (Exception, SomeException,
-                                                    catch, handle, throwIO, try)
-import           Control.Monad                     (when)
+import           Control.Exception                 (Exception (..),
+                                                    SomeException, catch,
+                                                    handle, throwIO, try)
+import           Control.Monad                     (when, void)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
 import qualified Data.ByteString.Lazy              as BSL
@@ -97,6 +98,7 @@ handlers ldclient repFactor handle = do
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
     , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
+    , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -288,20 +290,24 @@ handleShowPlan ServerContext{..} showObject =
       return (ServerNormalResponse resp [] StatusOk "")
     _ -> returnErrRes "not Supported"
 
-handleTerminatePlan :: ServerContext -> TerminationSelection
-  -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleTerminatePlan ServerContext{..} (OneQuery qid) = do
+handleTerminate :: ServerContext -> TerminationSelection
+  -> IO ()
+handleTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> throwIO QueryTerminatedOrNotExist
   P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
-  swapMVar runningQueries (HM.delete qid hmapQ)
-  return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
-handleTerminatePlan ServerContext{..} AllQuery = do
+  void $ swapMVar runningQueries (HM.delete qid hmapQ)
+handleTerminate ServerContext{..} AllQuery = do
   hmapQ <- readMVar runningQueries
   mapM_ killThread $ HM.elems hmapQ
   let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   mapM_ f $ HM.keys hmapQ
-  swapMVar runningQueries HM.empty
+  void $ swapMVar runningQueries HM.empty
+
+handleTerminatePlan :: ServerContext -> TerminationSelection
+  -> IO (ServerResponse 'Normal CommandQueryResponse)
+handleTerminatePlan sc ts = do
+  handleTerminate sc ts
   return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
 
 handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> IO ()
@@ -518,3 +524,12 @@ removeStreamsHandler ServerContext{..} (ServerNormalRequest _metadata RemoveStre
             Left _  -> HStreamServerErrorUnknownError
             Right _ -> HStreamServerErrorNoError
        in RemoveStreamResponse stream (Enumerated $ Right serverError)
+
+terminateQueryHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TerminateQueryRequest TerminateQueryResponse
+  -> IO (ServerResponse 'Normal TerminateQueryResponse)
+terminateQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueryRequest{..}) = do
+  let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
+  handleTerminate sc (OneQuery queryName)
+  return (ServerNormalResponse (TerminateQueryResponse terminateQueryRequestQueryName) [] StatusOk  "")

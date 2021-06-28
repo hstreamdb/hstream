@@ -25,6 +25,8 @@ service HStreamApi {
   rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
 
   rpc RemoveStreams(RemoveStreamsRequest) returns (RemoveStreamsResponse) {}
+
+  rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
 }
 
 message CommandStreamTask{
@@ -201,4 +203,12 @@ message HStreamRecordHeader {
   // Optional. 
   // key for the message.  
   string key = 4;
+}
+
+message TerminateQueryRequest {
+  string queryName = 1;
+}
+
+message TerminateQueryResponse {
+  string queryName = 1;
 }
