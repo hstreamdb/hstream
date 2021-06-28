@@ -66,6 +66,7 @@ jobs:
       - name: Start required services
         run: |
           python3 script/dev-tools mysql-start
+          python3 script/dev-tools clickhouse-start
           python3 script/dev-tools cluster-start
 
       # Since we use the upgraded version of z-data and z-io, this should resolve the problem.

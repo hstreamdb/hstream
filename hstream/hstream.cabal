@@ -130,6 +130,7 @@ test-suite hstream-test
     , aeson
     , base                >=4.11 && <5
     , bytestring
+    , clickhouse-haskell
     , containers
     , grpc-haskell
     , grpc-haskell-core
@@ -143,6 +144,7 @@ test-suite hstream-test
     , scientific
     , text
     , unordered-containers
+    , vector
     , Z-Data
 
   default-language:   Haskell2010

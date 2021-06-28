@@ -31,11 +31,13 @@ DEFAULT_DB_IMAGE      = 'docker.io/hstreamdb/hstream'
 DEFAULT_SWAGGER_IMAGE = 'swaggerapi/swagger-ui'
 # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
 DEFAULT_MYSQL_IMAGE   = 'mysql:5.6'
+DEFAULT_CLICKHOUSE_IMAGE = 'yandex/clickhouse-server'
 
 SWAGGER_CONTAINER_NAME   = 'hstream-swagger'
 MYSQL_CONTAINER_NAME     = 'hstream-mysql'
 DEFAULT_MYSQL_PASSWORD   = 'password'
 LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
+CLICKHOUSE_CONTAINER_NAME = 'hstream-clickhouse'
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
@@ -51,7 +53,7 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
 
 
 def update_images(images=None):
-    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE, DEFAULT_SWAGGER_IMAGE, DEFAULT_MYSQL_IMAGE]
+    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE, DEFAULT_SWAGGER_IMAGE, DEFAULT_MYSQL_IMAGE, DEFAULT_CLICKHOUSE_IMAGE]
     for i in images:
         cmd = f"docker pull {i}"
         loginfo(f"Run {cmd}...")
@@ -91,6 +93,17 @@ def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
     print(cmd)
     run_sh(cmd)
 
+def clickhouse_start(container_bin):
+    cmd = ' '.join([
+        f'{container_bin} run -td -p 9000:9000 --name {CLICKHOUSE_CONTAINER_NAME} --rm',
+        f'--ulimit nofile=262144:262144',
+        DEFAULT_CLICKHOUSE_IMAGE
+    ])
+    run_sh(cmd)
+    loginfo("done")
+
+def clickhouse_stop(container_bin):
+    run_sh(f"{container_bin} kill {CLICKHOUSE_CONTAINER_NAME}", check=False)
 
 def is_cluster_started(container_bin):
     result = run_sh(
@@ -284,6 +297,16 @@ if __name__ == '__main__':
     parser_swagger_start.add_argument('--swagger-path', default=f'{CWD}/swagger.json')
     parser_swagger_start.add_argument('--gen-from-image', action='store_true')
 
+    # clickhouse-start
+    parser_clickhouse_start = subparsers.add_parser(
+        'clickhouse-start', help='Start clickhouse service for testing')
+    parser_clickhouse_start.add_argument('--container-bin', default='docker')
+
+    # clickhouse-stop
+    parser_clickhouse_stop = subparsers.add_parser(
+        'clickhouse-stop', help='Stop clickhouse service')
+    parser_clickhouse_stop.add_argument('--container-bin', default='docker')
+
     # ldshell
     parser_cluster_ldshell = subparsers.add_parser(
         'ldshell', help='')
@@ -345,6 +368,10 @@ if __name__ == '__main__':
         mysql_stop(**args)
     elif sub_command == 'swagger-start':
         swagger_ui_start(**args)
+    elif sub_command == 'clickhouse-start':
+        clickhouse_start(**args)
+    elif sub_command == 'clickhouse-stop':
+        clickhouse_stop(**args)
     elif sub_command == 'ldshell':
         run_ldshell(**args)
     elif sub_command == 'shell':
