@@ -6,9 +6,7 @@ module HStream.SQL.AST where
 
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
-import           Data.Either           (isRight, lefts)
 import           Data.Kind             (Type)
-import qualified Data.List             as L
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
 import           Data.Text.Encoding    (encodeUtf8)
@@ -182,32 +180,25 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
 ---- Sel
 type FieldAlias = String
 data RSel = RSelAsterisk
-          | RSelList [(RValueExpr, FieldAlias)]
-          | RSelAggregate Aggregate FieldAlias -- FIXME: Not that natural?
+          | RSelList [(Either RValueExpr Aggregate, FieldAlias)]
           deriving (Eq, Show)
 
-type instance RefinedType DerivedCol = Either (RValueExpr, FieldAlias) (Aggregate, FieldAlias)
+type instance RefinedType DerivedCol = (Either RValueExpr Aggregate, FieldAlias)
 instance Refine DerivedCol where
   refine (DerivedColSimpl _ expr) = case refine expr of
-    RExprAggregate    exprName agg    -> Right (agg, exprName)
-    rexpr@(RExprCol   exprName _ _  ) -> Left  (rexpr, exprName)
-    rexpr@(RExprConst exprName _    ) -> Left  (rexpr, exprName)
-    rexpr@(RExprBinOp exprName _ _ _) -> Left  (rexpr, exprName)
-    rexpr@(RExprUnaryOp exprName _ _) -> Left  (rexpr, exprName)
+    RExprAggregate    exprName agg    -> (Right agg,   exprName)
+    rexpr@(RExprCol   exprName _ _  ) -> (Left  rexpr, exprName)
+    rexpr@(RExprConst exprName _    ) -> (Left  rexpr, exprName)
+    rexpr@(RExprBinOp exprName _ _ _) -> (Left  rexpr, exprName)
+    rexpr@(RExprUnaryOp exprName _ _) -> (Left  rexpr, exprName)
   refine (DerivedColAs pos expr (Ident t)) = case refine (DerivedColSimpl pos expr) of
-    Left  (rexpr, _) -> Left  (rexpr, Text.unpack t)
-    Right (agg, _)   -> Right (agg, Text.unpack t)
+    (Left  rexpr, _) -> (Left  rexpr, Text.unpack t)
+    (Right agg,   _) -> (Right agg,   Text.unpack t)
 
 type instance RefinedType Sel = RSel
 instance Refine Sel where
-  refine (DSel _ (SelListAsterisk _)) = RSelAsterisk
-  refine (DSel _ (SelListSublist pos cols))
-    | anyAgg = case L.head rcols of -- NOTE: Ensured by Validate: if there is agg, there is only one
-                 Right (agg, alias) -> RSelAggregate agg alias
-                 Left _             -> throwSQLException RefineException pos "Impossible happened"
-    | otherwise  = RSelList (lefts rcols)
-    where rcols  = refine <$> cols
-          anyAgg = L.any isRight rcols
+  refine (DSel _ (SelListAsterisk _))     = RSelAsterisk
+  refine (DSel _ (SelListSublist _ cols)) = RSelList $ refine <$> cols
 
 ---- Frm
 data RJoinType = RJoinInner | RJoinLeft | RJoinOuter deriving (Eq, Show)
