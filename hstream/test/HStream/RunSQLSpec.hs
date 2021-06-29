@@ -120,10 +120,12 @@ spec = describe "HStream.RunSQLSpec" $ do
        threadDelay 5000000
        fetchClickHouse $ TL.toStrict source4
     ) `shouldReturn` V.fromList [ V.fromList [ClickHouse.CKInt64 12,ClickHouse.CKInt64 84]
-                     , V.fromList [ClickHouse.CKInt64 22,ClickHouse.CKInt64 83]
-                     , V.fromList [ClickHouse.CKInt64 32,ClickHouse.CKInt64 82]
-                     , V.fromList [ClickHouse.CKInt64 42,ClickHouse.CKInt64 81]
+                                , V.fromList [ClickHouse.CKInt64 22,ClickHouse.CKInt64 83]
+                                , V.fromList [ClickHouse.CKInt64 32,ClickHouse.CKInt64 82]
+                                , V.fromList [ClickHouse.CKInt64 42,ClickHouse.CKInt64 81]
                      ]
+    -- Note: ClickHouse does not return data in deterministic order by default,
+    --       see [this answer](https://stackoverflow.com/questions/54786494/clickhouse-query-row-order-behaviour).
 
   it "GROUP BY without timewindow" $
     (do
@@ -242,7 +244,7 @@ createClickHouseTable source = do
 fetchClickHouse :: Text -> IO (V.Vector (V.Vector ClickHouse.ClickhouseType))
 fetchClickHouse source = do
   conn <- ClickHouse.createClient clickHouseConnectInfo
-  q <- ClickHouse.query conn $ "SELECT * FROM " <> Text.unpack source
+  q <- ClickHouse.query conn $ "SELECT * FROM " <> Text.unpack source <> " ORDER BY temperature"
   ClickHouse.closeClient conn
   case q of
     Right res -> return res
