@@ -12,6 +12,7 @@ thrift::
 
 grpc:: grpc-deps
 	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/struct.proto --out ../gen-src)
+	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/timestamp.proto --out ../gen-src)
 	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamApi.proto --out ../gen-src)
 
 grpc-deps:

@@ -3,6 +3,7 @@ syntax = "proto3";
 package hstream.server;
 
 import "third_party/google/protobuf/struct.proto";
+import "third_party/google/protobuf/timestamp.proto";
 
 service HStreamApi {
   // only for push query
@@ -170,4 +171,34 @@ message RemoveStreamsResponse {
 message RemoveStreamResponse {
   string streamName = 1;
   HStreamServerError error = 2;
+}
+
+message HStreamRecord {
+  // Required.
+  HStreamRecordHeader header = 1;
+
+  // Optional.
+  // Payload may be empty.
+  bytes payload = 2;
+}
+
+message HStreamRecordHeader {
+  // Required.
+  // Flag for payload. 
+  // - JSON: 0x01 << 24  
+  // - RAW:  0x02 << 24
+  uint32 flag = 1;
+
+  // Optional. 
+  // Attributes attached to this record.
+  map<string, string> attributes = 2;
+
+  // Required.
+  // The time at which the message was published,
+  // populated by the server.
+  Timestamp publish_time = 3;
+
+  // Optional. 
+  // key for the message.  
+  string key = 4;
 }
