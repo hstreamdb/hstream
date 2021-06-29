@@ -80,11 +80,6 @@ executable hstream-http-server
     , zoovisitor
 
   hs-source-dirs:   app
-
-  -- FIXME: we need this extra lib for old fbthrift builds.
-  --
-  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
-  extra-libraries:  protocol
   extra-lib-dirs:   /usr/local/lib
   default-language: Haskell2010
   ghc-options:
@@ -102,11 +97,6 @@ executable hstream-swagger-json
     , hstream-http-server
 
   hs-source-dirs:   app
-
-  -- FIXME: we need this extra lib for old fbthrift builds.
-  --
-  -- See: https://github.com/facebook/fbthrift/commit/54dc36c450a09d5f41c0bc31b59247063ed30ed2
-  extra-libraries:  protocol
   extra-lib-dirs:   /usr/local/lib
   default-language: Haskell2010
   ghc-options:
