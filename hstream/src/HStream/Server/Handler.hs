@@ -40,6 +40,7 @@ import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as CB
 import qualified Z.Data.JSON                       as ZJ
 import qualified Z.Data.Text                       as ZT
+import           Z.Foreign                         (fromByteString)
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
 import           ZooKeeper.Types
@@ -341,20 +342,13 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   let resp = AppendResponse singleResps
   return (ServerNormalResponse resp [] StatusOk "")
   where
-    handleSingleRequest :: AppendSingleRequest -> IO (TL.Text, Either SomeException ())
+    handleSingleRequest :: AppendSingleRequest -> IO (TL.Text, Either SomeException AppendCompletion)
     handleSingleRequest AppendSingleRequest{..} = do
-      timestamp <- getCurrentTimestamp
-      e' <- try $
-        writeRecord
-          (hstoreSinkConnector scLDClient)
-          SinkRecord
-            { snkStream = TL.toStrict appendSingleRequestStreamName,
-              snkKey = Nothing,
-              snkValue = BSL.fromStrict appendSingleRequestPayload,
-              snkTimestamp = timestamp
-            }
+      logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict appendSingleRequestStreamName
+      let payloads = map fromByteString $ V.toList appendSingleRequestPayload
+      e' <- try $ appendBatch scLDClient logId payloads CompressionNone Nothing
       return (appendSingleRequestStreamName, e')
-    eitherToResponse :: (TL.Text, Either SomeException ()) -> AppendSingleResponse
+    eitherToResponse :: (TL.Text, Either SomeException AppendCompletion) -> AppendSingleResponse
     eitherToResponse (stream, e') =
       let serverError = case e' of
             Left _  -> HStreamServerErrorUnknownError
