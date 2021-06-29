@@ -82,7 +82,7 @@ message AppendResponse {
 
 message AppendSingleRequest {
   string streamName = 1;
-  bytes payload = 2;
+  repeated bytes payload = 2;
 }
 
 message AppendSingleResponse {
