@@ -30,6 +30,7 @@ library
     HStream.Utils.Converter
     HStream.Utils.Format
     ThirdParty.Google.Protobuf.Struct
+    ThirdParty.Google.Protobuf.Timestamp
 
   hs-source-dirs:   src gen-src
   build-depends:
