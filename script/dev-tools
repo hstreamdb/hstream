@@ -144,9 +144,7 @@ def cluster_start(image, data_dir, container_bin, retries=60):
         retries = retries - 1
     loginfo("Cluster admin info: ")
     admin_addr(container_bin)
-    run_ldshell(image=DEFAULT_LD_IMAGE, container_bin='docker', command='ldshell',
-                data_dir=DEFAULT_LOGDEVICE_DIR, cmd_args=["status"])
-
+    run_hadmin(image=DEFAULT_DB_IMAGE, container_bin='docker', command='hadmin', cmd_args=["status"])
     loginfo("Done")
 
 
@@ -187,7 +185,27 @@ def cluster_stop(container_bin):
     run_sh(f"{container_bin} kill {LOGDEVICE_CONTAINER_NAME}", check=False)
 
 
-def run_ldshell(image, container_bin, command, data_dir, cmd_args):
+def run_hadmin(image, container_bin, command, cmd_args):
+    if not is_cluster_started(container_bin):
+        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+
+    host = '127.0.0.1'
+    port = get_ldadmin_server_port(container_bin)
+    container_opts = "-it"
+    if command == "hadmin":
+        user_command = f'{command} --host={host} --port={port}'
+        if cmd_args:
+            user_command = user_command + " " + " ".join(cmd_args)
+            container_opts = ""
+    else:
+        user_command = command
+
+    name = f'{CUSERNAME}_{CUID}_hadmin_{gen_randoms(10)}'
+    cmd = f'{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}'
+    run_sh(cmd, check=False)
+
+
+def run_ldshell(image, container_bin, command, cmd_args):
     if not is_cluster_started(container_bin):
         return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
@@ -315,8 +333,6 @@ if __name__ == '__main__':
         default=f'{DEFAULT_LD_IMAGE}:v3.0.0')
     parser_cluster_ldshell.add_argument('--container-bin', default='docker')
     parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
-    parser_cluster_ldshell.add_argument(
-        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_cluster_ldshell.add_argument('cmd_args', nargs='*')
 
     # shell
