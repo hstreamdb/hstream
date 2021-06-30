@@ -76,7 +76,7 @@ data TerminationSelection = AllQuery | OneQuery CB.CBytes
 data ExecutionPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
   | CreatePlan          StreamName Int
-  | CreateConnectorPlan ConnectorName RConnectorOptions
+  | CreateConnectorPlan ConnectorName Bool RConnectorOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int
   | InsertPlan          StreamName BL.ByteString
@@ -106,7 +106,7 @@ streamCodegen input = do
             RSelList fields -> map snd fields
       return $ CreateViewPlan schema source sink (HS.build builder) 1
     RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
-    RQCreate (RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
+    RQCreate (RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s ifNotExist cOptions
     RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream (encode $ HM.fromList $ second constantToValue <$> tuples)
     RQInsert (RInsertBinary stream bs) -> do
       let k = "unknown_binary_data" :: Text

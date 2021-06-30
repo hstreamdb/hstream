@@ -97,7 +97,7 @@ createConnectorHandler ldClient zkHandle connector = do
     plan' <- try $ HSC.streamCodegen $ sql connector
     case plan' of
       Left  (_ :: SomeSQLException) -> return $ Just "exception on parsing or codegen"
-      Right (HSC.CreateConnectorPlan cName (AST.RConnectorOptions cOptions)) -> do
+      Right (HSC.CreateConnectorPlan cName ifNotExist (AST.RConnectorOptions cOptions)) -> do
         let streamM = lookup "streamname" cOptions
             typeM   = lookup "type" cOptions
             fromCOptionString          = \case Just (AST.ConstantString s) -> Just $ C.pack s;    _ -> Nothing

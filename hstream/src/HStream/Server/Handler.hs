@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -134,58 +135,69 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       create sink
       handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.ViewQuery (CB.pack . T.unpack $ sink) schema)
       returnOkRes
-    CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
+    CreateConnectorPlan cName ifNotExist (RConnectorOptions cOptions) -> do
       let streamM = lookup "streamname" cOptions
           typeM   = lookup "type" cOptions
           fromCOptionString          = \case Just (ConstantString s) -> Just $ C.pack s;    _ -> Nothing
           fromCOptionStringToString  = \case Just (ConstantString s) -> Just s;             _ -> Nothing
           fromCOptionIntToPortNumber = \case Just (ConstantInt s) -> Just $ fromIntegral s; _ -> Nothing
-      sk <- case typeM of
-        Just (ConstantString cType) -> do
-          case cType of
-            "clickhouse" -> do
-              cli <- createClient $ ConnParams
-                (fromMaybe "default"   $ fromCOptionString (lookup "username" cOptions))
-                (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host"     cOptions))
-                (fromMaybe "9000"      $ fromCOptionString (lookup "port"     cOptions))
-                (fromMaybe ""          $ fromCOptionString (lookup "password" cOptions))
-                False
-                (fromMaybe "default"   $ fromCOptionString (lookup "database" cOptions))
-              return $ Right $ clickHouseSinkConnector cli
-            "mysql" -> do
-              conn <- MySQL.connect $ MySQL.ConnectInfo
-                (fromMaybe "127.0.0.1" $ fromCOptionStringToString   (lookup "host" cOptions))
-                (fromMaybe 3306        $ fromCOptionIntToPortNumber  (lookup "port" cOptions))
-                (fromMaybe "mysql"     $ fromCOptionString       (lookup "database" cOptions))
-                (fromMaybe "root"      $ fromCOptionString       (lookup "username" cOptions))
-                (fromMaybe "password"  $ fromCOptionString       (lookup "password" cOptions))
-                33
-              return $ Right $ mysqlSinkConnector conn
-            _ -> return $ Left "unsupported sink connector type"
-        _ -> return $ Left "invalid type in connector options"
       MkSystemTime timestamp _ <- getSystemTime'
-      let cid = CB.pack $ showHex timestamp (T.unpack cName)
+      let cid = CB.pack $ T.unpack cName
           cinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandQueryStmtText) timestamp
-      case sk of
-        Left err -> returnErrRes err
-        Right connector -> case streamM of
-          Just (ConstantString stream) -> do
-            streamExists <- doesStreamExists scLDClient (transToStreamName $ T.pack stream)
-            case streamExists of
-              False -> returnErrRes $ "Stream " <> TL.pack stream <> " doesn't exist"
-              True -> do
-                ldreader <- newLDReader scLDClient 1000 Nothing
-                let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
-                P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo
-                subscribeToStreamWithoutCkp sc (T.pack stream) Latest
-                _ <- async $ do
-                  P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
-                  forever $ do
-                    records <- readRecordsWithoutCkp sc
-                    forM_ records $ \SourceRecord {..} ->
-                      writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
-                returnOkRes
-          _ -> returnErrRes "stream name missed in connector options"
+      shouldCreate <- case ifNotExist of
+          True -> do
+              s <- try $ P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
+              case s of
+                Left FailedToGet -> return True -- Not Exists
+                Right _          -> return False -- Exists
+          False -> return True -- Doesn't care
+      case shouldCreate of
+        False -> returnErrRes "connector already exists"
+        True -> do
+          sk <- case typeM of
+            Just (ConstantString cType) -> do
+              case cType of
+                "clickhouse" -> do
+                  cli <- createClient $ ConnParams
+                    (fromMaybe "default"   $ fromCOptionString (lookup "username" cOptions))
+                    (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host"     cOptions))
+                    (fromMaybe "9000"      $ fromCOptionString (lookup "port"     cOptions))
+                    (fromMaybe ""          $ fromCOptionString (lookup "password" cOptions))
+                    False
+                    (fromMaybe "default"   $ fromCOptionString (lookup "database" cOptions))
+                  return $ Right $ clickHouseSinkConnector cli
+                "mysql" -> do
+                  conn <- MySQL.connect $ MySQL.ConnectInfo
+                    (fromMaybe "127.0.0.1" $ fromCOptionStringToString   (lookup "host" cOptions))
+                    (fromMaybe 3306        $ fromCOptionIntToPortNumber  (lookup "port" cOptions))
+                    (fromMaybe "mysql"     $ fromCOptionString       (lookup "database" cOptions))
+                    (fromMaybe "root"      $ fromCOptionString       (lookup "username" cOptions))
+                    (fromMaybe "password"  $ fromCOptionString       (lookup "password" cOptions))
+                    33
+                  return $ Right $ mysqlSinkConnector conn
+                _ -> return $ Left "unsupported sink connector type"
+            _ -> return $ Left "invalid type in connector options"
+          case sk of
+            Left err -> returnErrRes err
+            Right connector -> case streamM of
+              Just (ConstantString stream) -> do
+                streamExists <- doesStreamExists scLDClient (transToStreamName $ T.pack stream)
+                case streamExists of
+                  False -> returnErrRes $ "Stream " <> TL.pack stream <> " doesn't exist"
+                  True -> do
+                    ldreader <- newLDReader scLDClient 1000 Nothing
+                    let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+                    P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo
+                    subscribeToStreamWithoutCkp sc (T.pack stream) Latest
+                    _ <- async $ do
+                      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
+                      forever $ do
+                        records <- readRecordsWithoutCkp sc
+                        forM_ records $ \SourceRecord {..} ->
+                          writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
+                    returnOkRes
+              _ -> returnErrRes "stream name missed in connector options"
+
     InsertPlan stream payload             -> mark LowLevelStoreException $ do
       let key = Aeson.encode $ Aeson.Object $ HM.fromList [("key", "demokey")]
       timestamp <- getCurrentTimestamp

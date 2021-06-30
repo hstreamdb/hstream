@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -26,10 +27,9 @@ import           System.Random
 import           Test.Hspec
 import           ThirdParty.Google.Protobuf.Struct
 
+import           HStream.Server.HStreamApi
 import           HStream.Store
 import           HStream.Utils
-
-import           HStream.Server.HStreamApi
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call        (clientCallCancel)
 
@@ -108,6 +108,20 @@ spec = describe "HStream.RunSQLSpec" $ do
                      , [MySQLInt32 32, MySQLInt32 82]
                      , [MySQLInt32 42, MySQLInt32 81]
                      ]
+
+  it "create duplicate mysql connector" $
+    (do
+       res <- executeCommandQuery $ "CREATE SOURCE | SINK CONNECTOR mysql IF NOT EXIST WITH (type = \"mysql\", host = \"127.0.0.1\", streamname = \""<> source3 <>"\");"
+       case res of
+         Just (CommandQueryResponse x) ->
+           case x of
+            Just (CommandQueryResponseKindResultSet (CommandQueryResultSet [Struct kv])) -> do
+                case Map.toList kv of
+                  [("Error Message:", Just (Value {valueKind = Just (ValueKindStringValue "connector already exists")}))] -> return True
+                  _ -> return False
+            _ -> return False
+         _ -> return False
+    ) `shouldReturn` True
 
   it "clickhouse connector" $
     (do
