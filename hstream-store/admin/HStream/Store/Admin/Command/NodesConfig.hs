@@ -23,18 +23,18 @@ import           HStream.Store.Admin.Types
 import           Thrift.Protocol.JSON      (deserializeJSON)
 
 runNodesConfigCmd :: AA.HeaderConfig AA.AdminAPI -> NodesConfigOpts -> IO ()
-runNodesConfigCmd s (NodesConfigShow c)       =
-  case nodesShowFile c of
-    Just f  -> ZFS.writeFile f . fromByteString . encodeUtf8 =<< showConfig s c
-    Nothing -> TIO.putStrLn =<< showConfig s c
+runNodesConfigCmd s (NodesConfigShow NodesShowOpts{..})       =
+  case nodesShowFile of
+    Just f  -> ZFS.writeFile f . fromByteString . encodeUtf8 =<< showConfig s nodesShowNodes
+    Nothing -> TIO.putStrLn =<< showConfig s nodesShowNodes
 runNodesConfigCmd s (NodesConfigBootstrap ps) = bootstrap s ps
 runNodesConfigCmd s (NodesConfigRemove c)     = removeConfig s c
 runNodesConfigCmd s (NodesConfigEdit c)       = editConfig s c
 
-showConfig :: AA.HeaderConfig AA.AdminAPI -> NodesShowOpts -> IO Text
-showConfig conf NodesShowOpts{..} = do
+showConfig :: AA.HeaderConfig AA.AdminAPI -> SimpleNodesFilter -> IO Text
+showConfig conf s = do
   config <- AA.sendAdminApiRequest conf $
-    runSimpleNodesFilter nodesShowNodes $ \case
+    runSimpleNodesFilter s $ \case
       Nothing -> AA.getNodesConfig (AA.NodesFilter Nothing Nothing Nothing)
       Just nf -> AA.getNodesConfig nf
 
