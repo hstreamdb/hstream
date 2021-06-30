@@ -27,6 +27,7 @@ class Refine a where
 --------------------------------------------------------------------------------
 type StreamName = Text
 type FieldName  = Text
+type ConnectorType = Text
 
 type instance RefinedType PNInteger = Integer
 instance Refine PNInteger where
@@ -331,17 +332,12 @@ data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
   } deriving (Eq, Show)
 
--- Example:
--- "type"="clickhouse",
--- "connection.url"="localhost:5432/my.db",
--- "mode"="bulk",
--- "stream"="demo"
 data RConnectorOptions = RConnectorOptions [(Text, Constant)]
   deriving (Eq, Show)
 
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
-             | RCreateConnector Text Bool RConnectorOptions
+             | RCreateConnector Text Bool Text Text RConnectorOptions
              | RCreateView Text RSelect
              deriving (Eq, Show)
 
@@ -351,13 +347,25 @@ instance Refine [StreamOption] where
   refine [] = RStreamOptions 3
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
-type instance RefinedType [ConnectorOption] = RConnectorOptions
+type instance RefinedType [ConnectorOption] = (StreamName, ConnectorType, RConnectorOptions)
 instance Refine [ConnectorOption] where
-  refine (PropertyAny _ (Ident x) expr : opts) = RConnectorOptions ((x, constant):opts')
-    where
-      RExprConst _ constant = refine expr
-      RConnectorOptions opts' = refine opts
-  refine [] = RConnectorOptions []
+  refine = refineConnectorOps ("", "", RConnectorOptions [])
+
+-- Extract StreamName and ConnectorType from ConnectorOptions
+-- | Input: ("","",R []) [("STREAM", "demo"),("host","127.0.0.1"),("TYPE","mysql)"]
+-- | Result: ("demo","mysql", R [("host","127.0.0.1")])
+-- | Stream name and connector type's existence are ensured by validate
+refineConnectorOps :: (StreamName, ConnectorType, RConnectorOptions) -> [ConnectorOption] -> (StreamName, ConnectorType, RConnectorOptions)
+refineConnectorOps tuple (op : ops) =
+  case op of
+    PropertyAny _ (Ident x) expr ->
+      let RExprConst _ constant = refine expr in
+        (sName, cType, RConnectorOptions ((x, constant) : xs))
+    PropertyStreamName _ (Ident x) -> (x, cType, ops')
+    PropertyConnector  _ (Ident x) -> (sName, x, ops')
+  where
+    (sName, cType, ops'@(RConnectorOptions xs)) = refineConnectorOps tuple ops
+refineConnectorOps tuple [] = tuple
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
@@ -365,8 +373,10 @@ instance Refine Create where
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateConnector _ (Ident s) options) = RCreateConnector s False (refine options)
-  refine (CreateConnectorIf _ (Ident s) options) = RCreateConnector s True (refine options)
+  refine (CreateConnector _ (Ident s) options) =
+    let (sName, cType, ops) = refine options in RCreateConnector s False sName cType ops
+  refine (CreateConnectorIf _ (Ident s) options) =
+    let (sName, cType, ops) = refine options in RCreateConnector s True sName cType ops
   refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT

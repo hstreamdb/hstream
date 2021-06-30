@@ -54,8 +54,10 @@ library
     , base                  >=4.11  && <5
     , binary
     , bytestring            ^>=0.10
+    , clickhouse-haskell
     , extra
     , hstream-processing
+    , mysql-haskell
     , rio
     , scientific
     , string-random

@@ -10,32 +10,35 @@ module HStream.Server.Handler where
 
 import           Control.Concurrent
 import           Control.Exception                 (Exception, SomeException,
-                                                    catch, handle, throwIO, try)
+                                                    handle, throwIO, try)
 import           Control.Monad                     (void, when)
 import qualified Data.Aeson                        as Aeson
-import qualified Data.ByteString.Char8             as C
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Either                       (fromRight, isRight)
 import qualified Data.HashMap.Strict               as HM
-import           Data.IORef
+import           Data.IORef                        (IORef, atomicModifyIORef',
+                                                    newIORef, readIORef)
 import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromJust, fromMaybe, isJust)
+import           Data.Maybe                        (fromJust, isJust)
 import           Data.String                       (fromString)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
-import           Database.ClickHouseDriver.Client
-import           Database.ClickHouseDriver.Types
+import           Database.ClickHouseDriver.Client  (createClient)
 import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
                                                     OpRecvResult (OpRecvCloseOnServerResult),
                                                     runOps)
 import           Numeric                           (showHex)
+import           Proto3.Suite                      (Enumerated (..))
+import           RIO                               (async, forever)
 import           System.IO.Unsafe                  (unsafePerformIO)
 import           System.Random                     (newStdGen, randomRs)
-import           ThirdParty.Google.Protobuf.Struct
+import           ThirdParty.Google.Protobuf.Struct (Struct (Struct),
+                                                    Value (Value),
+                                                    ValueKind (ValueKindStringValue))
 import qualified Z.Data.CBytes                     as CB
 import qualified Z.Data.JSON                       as ZJ
 import qualified Z.Data.Text                       as ZT
@@ -43,7 +46,7 @@ import           Z.Data.Vector                     (Bytes)
 import           Z.Foreign                         (fromByteString)
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
-import           ZooKeeper.Types
+import           ZooKeeper.Types                   (ZHandle)
 
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
@@ -52,15 +55,12 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
                                                     runTask)
 import           HStream.Processing.Type
-import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
 import           HStream.Store                     hiding (e)
 import           HStream.Utils
-import           Proto3.Suite                      (Enumerated (..))
-import           RIO                               (async, forM_, forever)
 --------------------------------------------------------------------------------
 
 newRandomName :: Int -> IO CB.CBytes
@@ -141,58 +141,14 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       create sink
       handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.ViewQuery (CB.pack . T.unpack $ sink) schema)
       returnOkRes
-    CreateConnectorPlan cName (RConnectorOptions cOptions) -> do
-      let streamM = lookup "streamname" cOptions
-          typeM   = lookup "type" cOptions
-          fromCOptionString          = \case Just (ConstantString s) -> Just $ C.pack s;    _ -> Nothing
-          fromCOptionStringToString  = \case Just (ConstantString s) -> Just s;             _ -> Nothing
-          fromCOptionIntToPortNumber = \case Just (ConstantInt s) -> Just $ fromIntegral s; _ -> Nothing
-      sk <- case typeM of
-        Just (ConstantString cType) -> do
-          case cType of
-            "clickhouse" -> do
-              cli <- createClient $ ConnParams
-                (fromMaybe "default"   $ fromCOptionString (lookup "username" cOptions))
-                (fromMaybe "127.0.0.1" $ fromCOptionString (lookup "host"     cOptions))
-                (fromMaybe "9000"      $ fromCOptionString (lookup "port"     cOptions))
-                (fromMaybe ""          $ fromCOptionString (lookup "password" cOptions))
-                False
-                (fromMaybe "default"   $ fromCOptionString (lookup "database" cOptions))
-              return $ Right $ clickHouseSinkConnector cli
-            "mysql" -> do
-              conn <- MySQL.connect $ MySQL.ConnectInfo
-                (fromMaybe "127.0.0.1" $ fromCOptionStringToString   (lookup "host" cOptions))
-                (fromMaybe 3306        $ fromCOptionIntToPortNumber  (lookup "port" cOptions))
-                (fromMaybe "mysql"     $ fromCOptionString       (lookup "database" cOptions))
-                (fromMaybe "root"      $ fromCOptionString       (lookup "username" cOptions))
-                (fromMaybe "password"  $ fromCOptionString       (lookup "password" cOptions))
-                33
-              return $ Right $ mysqlSinkConnector conn
-            _ -> return $ Left "unsupported sink connector type"
-        _ -> return $ Left "invalid type in connector options"
-      MkSystemTime timestamp _ <- getSystemTime'
-      let cid = CB.pack $ showHex timestamp (T.unpack cName)
-          cinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandQueryStmtText) timestamp
-      case sk of
-        Left err -> returnErrRes err
-        Right connector -> case streamM of
-          Just (ConstantString stream) -> do
-            streamExists <- doesStreamExists scLDClient (transToStreamName $ T.pack stream)
-            case streamExists of
-              False -> returnErrRes $ "Stream " <> TL.pack stream <> " doesn't exist"
-              True -> do
-                ldreader <- newLDReader scLDClient 1000 Nothing
-                let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
-                P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo
-                subscribeToStreamWithoutCkp sc (T.pack stream) Latest
-                _ <- async $ do
-                  P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
-                  forever $ do
-                    records <- readRecordsWithoutCkp sc
-                    forM_ records $ \SourceRecord {..} ->
-                      writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
-                returnOkRes
-          _ -> returnErrRes "stream name missed in connector options"
+    CreateConnectorPlan cName ifNotExist sName cConfig _ -> do
+      streamExists <- doesStreamExists scLDClient (transToStreamName sName)
+      connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
+      let connectorExists = elem (T.unpack cName) $ map P.getSuffix connectorIds
+      if streamExists then
+        if connectorExists then if ifNotExist then returnOkRes else returnErrRes "connector exists"
+        else handleCreateConnector sc commandQueryStmtText cName sName cConfig >> returnOkRes
+      else returnErrRes "stream does not exist"
     InsertPlan stream insertType payload             -> mark LowLevelStoreException $ do
       timestamp <- getProtoTimestamp
       let header = case insertType of
@@ -273,7 +229,6 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
       else if checkIfExist then returnOkRes
       else returnErrRes "Object does not exist"
 
-
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 handleShowPlan ServerContext{..} showObject =
@@ -316,10 +271,31 @@ handleTerminatePlan ServerContext{..} AllQuery = do
 handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> IO ()
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
   qid <- createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
-              --(P.StreamQuery . CB.pack . T.unpack $ sink)
   tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
         >> runTaskWrapper False taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+
+handleCreateConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
+handleCreateConnector ServerContext{..} commandQueryStmtText cName sName cConfig = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    let cid = CB.pack $ showHex timestamp (T.unpack (cName <> "-"))
+        cinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandQueryStmtText) timestamp
+    P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo
+
+    ldreader <- newLDReader scLDClient 1000 Nothing
+    let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+    subscribeToStreamWithoutCkp sc sName Latest
+
+    connector <- case cConfig of
+      ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
+      MySqlConnector config -> mysqlSinkConnector <$> MySQL.connect config
+    void . async $ do
+      P.withMaybeZHandle zkHandle (P.setConnectorStatus cid P.Running)
+      forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
+
+  where
+    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+
 --------------------------------------------------------------------------------
 
 sendToClient :: Maybe ZHandle -> CB.CBytes -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))

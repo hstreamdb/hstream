@@ -62,6 +62,8 @@ separator ConnectorOption "," ;
 CreateView. Create ::= "CREATE" "VIEW" Ident "AS" Select ;
 
 PropertyAny. ConnectorOption ::= Ident "=" ValueExpr ;
+PropertyStreamName. ConnectorOption ::= "STREAM" "=" Ident ;
+PropertyConnector. ConnectorOption ::= "TYPE" "=" Ident ;
 
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
