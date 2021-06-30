@@ -245,6 +245,7 @@ fetchClickHouse :: Text -> IO (V.Vector (V.Vector ClickHouse.ClickhouseType))
 fetchClickHouse source = do
   conn <- ClickHouse.createClient clickHouseConnectInfo
   q <- ClickHouse.query conn $ "SELECT * FROM " <> Text.unpack source <> " ORDER BY temperature"
+  _ <- ClickHouse.query conn $ "DROP TABLE IF EXISTS " <> Text.unpack source
   ClickHouse.closeClient conn
   case q of
     Right res -> return res

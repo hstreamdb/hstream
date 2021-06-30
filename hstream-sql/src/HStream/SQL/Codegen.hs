@@ -72,6 +72,7 @@ type ViewSchema = [String]
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text
 data TerminationSelection = AllQuery | OneQuery CB.CBytes
+data InsertType = JsonFormat | RawFormat
 
 data ExecutionPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
@@ -79,7 +80,7 @@ data ExecutionPlan
   | CreateConnectorPlan ConnectorName RConnectorOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int
-  | InsertPlan          StreamName BL.ByteString
+  | InsertPlan          StreamName InsertType BL.ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
@@ -107,23 +108,19 @@ streamCodegen input = do
       return $ CreateViewPlan schema source sink (HS.build builder) 1
     RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
     RQCreate (RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
-    RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream (encode $ HM.fromList $ second constantToValue <$> tuples)
-    RQInsert (RInsertBinary stream bs) -> do
-      let k = "unknown_binary_data" :: Text
-          v = String (decodeUtf8 bs)
-      let object_ = HM.fromList [(k,v)]
-      return $ InsertPlan stream (encode object_)
-    RQInsert (RInsertJSON stream bs)  -> return $ InsertPlan stream (BSL.fromStrict bs)
-    RQShow (RShow RShowStreams)       -> return $ ShowPlan SStreams
-    RQShow (RShow RShowQueries)       -> return $ ShowPlan SQueries
-    RQShow (RShow RShowConnectors)    -> return $ ShowPlan SConnectors
-    RQShow (RShow RShowViews)         -> return $ ShowPlan SViews
-    RQDrop (RDrop RDropStream x)      -> return $ DropPlan False (DStream x)
-    RQDrop (RDrop RDropView x)        -> return $ DropPlan False (DView x)
-    RQDrop (RDropIf RDropStream x)    -> return $ DropPlan True (DStream x)
-    RQDrop (RDropIf RDropView x)      -> return $ DropPlan True (DView x)
-    RQTerminate (RTerminateQuery qid) -> return $ TerminatePlan (OneQuery $ CB.pack qid)
-    RQTerminate RTerminateAll         -> return $ TerminatePlan AllQuery
+    RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (encode $ HM.fromList $ second constantToValue <$> tuples)
+    RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat $ (BSL.fromStrict bs)
+    RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BSL.fromStrict bs)
+    RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
+    RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
+    RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
+    RQShow (RShow RShowViews)          -> return $ ShowPlan SViews
+    RQDrop (RDrop RDropStream x)       -> return $ DropPlan False (DStream x)
+    RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
+    RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
+    RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
+    RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
+    RQTerminate RTerminateAll          -> return $ TerminatePlan AllQuery
 
 --------------------------------------------------------------------------------
 

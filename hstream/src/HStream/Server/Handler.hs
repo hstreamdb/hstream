@@ -11,7 +11,7 @@ module HStream.Server.Handler where
 import           Control.Concurrent
 import           Control.Exception                 (Exception, SomeException,
                                                     catch, handle, throwIO, try)
-import           Control.Monad                     (when)
+import           Control.Monad                     (void, when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
 import qualified Data.ByteString.Lazy              as BSL
@@ -39,6 +39,7 @@ import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as CB
 import qualified Z.Data.JSON                       as ZJ
 import qualified Z.Data.Text                       as ZT
+import           Z.Data.Vector                     (Bytes)
 import           Z.Foreign                         (fromByteString)
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
@@ -51,7 +52,6 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
                                                     runTask)
 import           HStream.Processing.Type
-import           HStream.Processing.Util           (getCurrentTimestamp)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
@@ -71,6 +71,7 @@ data ServerContext = ServerContext {
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
+  , cmpStrategy              :: Compression
 }
 
 subscribedConnectors :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text,SourceConnector)))
@@ -79,14 +80,15 @@ subscribedConnectors = unsafePerformIO $ newIORef HM.empty
 
 --------------------------------------------------------------------------------
 
-handlers :: LDClient -> Int -> Maybe ZHandle -> IO (HStreamApi ServerRequest ServerResponse)
-handlers ldclient repFactor handle = do
+handlers :: LDClient -> Int -> Maybe ZHandle -> Compression -> IO (HStreamApi ServerRequest ServerResponse)
+handlers ldclient repFactor handle compression = do
   runningQs <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
       , scDefaultStreamRepFactor = repFactor
       , zkHandle                 = handle
       , runningQueries           = runningQs
+      , cmpStrategy              = compression
       }
   return HStreamApi {
       hstreamApiExecuteQuery     = executeQueryHandler serverContext
@@ -113,6 +115,11 @@ genSuccessQueryResponse = CommandQueryResponse $
 genQueryResultResponse :: V.Vector Struct -> CommandQueryResponse
 genQueryResultResponse = CommandQueryResponse .
   Just . CommandQueryResponseKindResultSet . CommandQueryResultSet
+
+batchAppend :: LDClient -> TL.Text -> [Bytes] -> Compression -> IO (Either SomeException AppendCompletion)
+batchAppend client streamName payloads strategy = do
+  logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
+  try $ appendBatch client logId payloads strategy Nothing
 
 executeQueryHandler
   :: ServerContext
@@ -186,11 +193,13 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
                       writeRecord connector $ SinkRecord (T.pack stream) srcKey srcValue srcTimestamp
                 returnOkRes
           _ -> returnErrRes "stream name missed in connector options"
-    InsertPlan stream payload             -> mark LowLevelStoreException $ do
-      let key = Aeson.encode $ Aeson.Object $ HM.fromList [("key", "demokey")]
-      timestamp <- getCurrentTimestamp
-      writeRecord (hstoreSinkConnector scLDClient)
-        (SinkRecord stream (Just key) payload timestamp)
+    InsertPlan stream insertType payload             -> mark LowLevelStoreException $ do
+      timestamp <- getProtoTimestamp
+      let header = case insertType of
+            JsonFormat -> buildRecordHeader jsonPayloadFlag Map.empty timestamp TL.empty
+            RawFormat  -> buildRecordHeader rawPayloadFlag Map.empty timestamp TL.empty
+      let record = encodeRecord $ buildRecord header payload
+      void $ batchAppend scLDClient (TL.fromStrict stream) [record] cmpStrategy
       returnOkRes
     DropPlan checkIfExist dropObject -> mark LowLevelStoreException $
       handleDropPlan sc checkIfExist dropObject
@@ -385,9 +394,8 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   where
     handleSingleRequest :: AppendSingleRequest -> IO (TL.Text, Either SomeException AppendCompletion)
     handleSingleRequest AppendSingleRequest{..} = do
-      logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict appendSingleRequestStreamName
       let payloads = map fromByteString $ V.toList appendSingleRequestPayload
-      e' <- try $ appendBatch scLDClient logId payloads CompressionNone Nothing
+      e' <- batchAppend scLDClient appendSingleRequestStreamName payloads cmpStrategy
       return (appendSingleRequestStreamName, e')
     eitherToResponse :: (TL.Text, Either SomeException AppendCompletion) -> AppendSingleResponse
     eitherToResponse (stream, e') =
