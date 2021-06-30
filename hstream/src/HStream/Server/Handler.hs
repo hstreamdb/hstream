@@ -150,7 +150,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
               case s of
                 Left FailedToGet -> return True -- Not Exists
                 Right _          -> return False -- Exists
-          False -> return True -- Doesn't care
+          False -> return True -- Don't care
       case shouldCreate of
         False -> returnErrRes "connector already exists"
         True -> do
