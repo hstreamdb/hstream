@@ -34,6 +34,9 @@ package mangle
 package thrift-cpp-channel
   tests: false
 
+package thrift-server
+  tests: false
+
 package grpc-haskell
   tests: false
 
