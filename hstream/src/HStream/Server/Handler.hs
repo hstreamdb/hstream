@@ -197,7 +197,9 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     DropPlan checkIfExist dropObject -> mark LowLevelStoreException $
       handleDropPlan sc checkIfExist dropObject
     ShowPlan showObject -> handleShowPlan sc showObject
-    TerminatePlan terminationSelection -> handleTerminatePlan sc terminationSelection
+    TerminatePlan terminationSelection -> do
+      handleTerminate sc terminationSelection
+      return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
   where
     mkLogAttrs = LogAttrs . HsLogAttrs scDefaultStreamRepFactor
     create sName = createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
@@ -254,7 +256,7 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
       qids <- P.withMaybeZHandle zkHandle P.getQueryIds
       case L.find ((== path) . P.getSuffix) qids of
         Just x -> handle (\(_::QueryTerminatedOrNotExist) -> pure ()) (
-          handleTerminatePlan sc (OneQuery x) >> P.withMaybeZHandle zkHandle (P.removeQuery' x True))
+          handleTerminate sc (OneQuery x) >> P.withMaybeZHandle zkHandle (P.removeQuery' x True))
         Nothing -> pure ()
 
     handleDrop object name = do
@@ -303,12 +305,6 @@ handleTerminate ServerContext{..} AllQuery = do
   let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   mapM_ f $ HM.keys hmapQ
   void $ swapMVar runningQueries HM.empty
-
-handleTerminatePlan :: ServerContext -> TerminationSelection
-  -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleTerminatePlan sc ts = do
-  handleTerminate sc ts
-  return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
 
 handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> IO ()
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
