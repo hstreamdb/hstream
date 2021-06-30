@@ -37,7 +37,6 @@ executable hadmin
 
   include-dirs:       /usr/local/include
   extra-lib-dirs:     /usr/local/lib
-
   default-language:   Haskell2010
   default-extensions:
     DeriveGeneric
@@ -109,6 +108,7 @@ library
     , text                  ^>=1.2.3.0
     , thrift-cpp-channel
     , thrift-lib
+    , thrift-server
     , transformers          ^>=0.5.5.0
     , unordered-containers  ^>=0.2.9.0
     , vector                ^>=0.12.0.1
