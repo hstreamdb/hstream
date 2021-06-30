@@ -277,6 +277,7 @@ data LogsConfigCmd
   | RemoveCmd RemoveLogsOpts
   | SetRangeCmd SetRangeOpts
   | UpdateCmd UpdateLogsOpts
+  | LogsTrimCmd S.C_LogID S.LSN
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
@@ -298,6 +299,9 @@ logsConfigCmdParser = hsubparser $
                             <> " a specific directory path in the LogsConfig tree."
                             <> " This will NOT delete the directory if it is not"
                             <> " empty by default, you need to use --recursive.")))
+ <> command "trim" (info (LogsTrimCmd <$> option auto (long "id" <> metavar "INT" <> help "which log to trim")
+                                      <*> option auto (long "lsn" <> metavar "INT" <> help "LSN"))
+                         (progDesc "Trim the log up to and including the specified LSN"))
  <> command "set-range" (info (SetRangeCmd <$> setRangeOptsParser)
                               (progDesc ("This updates the log id range for the"
                                <> " LogGroup under a specific directory path in"

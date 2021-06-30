@@ -34,6 +34,7 @@ runLogsCmd conf (RemoveCmd removeOpt)     = runLogsRemove conf removeOpt
 runLogsCmd conf (ShowCmd showOpt)         = runLogsShow conf showOpt
 runLogsCmd conf (SetRangeCmd setRangeOpt) = runLogsSetRange conf setRangeOpt
 runLogsCmd conf (UpdateCmd updateOpt)     = runLogsUpdate conf updateOpt
+runLogsCmd conf (LogsTrimCmd logid lsn )  = trimLog conf logid lsn
 
 runLogsUpdate :: HeaderConfig AdminAPI -> UpdateLogsOpts -> IO ()
 runLogsUpdate conf UpdateLogsOpts{..} = do
@@ -259,3 +260,13 @@ runLogsSetRange conf SetRangeOpts{..} = do
       Right version ->
         putStrLn $ "Log group " <> unpack setRangePath
           <> " has been updated in the version " <> show version
+
+trimLog :: HeaderConfig AdminAPI -> S.C_LogID -> S.LSN -> IO ()
+trimLog conf logid lsn = do
+  let client' = buildLDClientRes conf Map.empty
+  withResource client' $ \client -> do
+    putStr $ "Are you sure you want to trim log " <> show logid <> "?\n"
+          <> "Type \"YES\" for triming other for cancelling: "
+    hFlush stdout
+    str <- getLine
+    if str == "YES" then S.trim client logid lsn else putStrLn "ingoring"
