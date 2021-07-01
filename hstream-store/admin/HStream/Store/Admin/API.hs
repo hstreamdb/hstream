@@ -11,7 +11,6 @@ module HStream.Store.Admin.API
   , module Thrift.Channel.HeaderChannel
   , module Thrift.Channel.SocketChannel
   , module Thrift.Monad
-  , module Thrift.Server.CppServer
   , FBUtil.withEventBaseDataplane
 
   , module Admin.AdminAPI.Client
@@ -50,7 +49,6 @@ import           Thrift.Monad
 import           Thrift.Protocol
 import           Thrift.Protocol.ApplicationException.Types
 import           Thrift.Protocol.Id
-import           Thrift.Server.CppServer
 
 import qualified Data.Map.Strict                            as Map
 import           Data.Maybe                                 (fromJust)

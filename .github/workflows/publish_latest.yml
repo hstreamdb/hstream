@@ -6,6 +6,7 @@ on:
 
 env:
   IMAGE_NAME: "hstreamdb/hstream"
+  DEPS_IMAGE_NAME: "hstreamdb/hstream-builder"
 
 jobs:
   build:
@@ -17,9 +18,24 @@ jobs:
 
       - name: Push image to dockerhub
         run: |
-          echo "Login dockerhub..."
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-
           echo "Build & Push ${IMAGE_NAME}..."
-          docker build . -t ${IMAGE_NAME}:latest
-          docker push ${IMAGE_NAME}:latest
+          docker build . --build-arg BUILDER_IMAGE=${DEPS_IMAGE_NAME} -t ${IMAGE_NAME}:latest
+
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" -a -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "Login dockerhub..."
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+            docker push ${IMAGE_NAME}:latest
+          else
+            echo "Empty dockerhub user info..."
+          fi
+
+      - name: Build & Push builder image
+        run: |
+          docker build . -f Dockerfile.deps -t ${DEPS_IMAGE_NAME}:latest
+
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" -a -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            docker pull ${DEPS_IMAGE_NAME}:latest
+          else
+            echo "Empty dockerhub user info..."
+          fi
