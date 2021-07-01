@@ -1,6 +1,6 @@
-{-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -568,8 +568,8 @@ instance Validate Create where
   validate create@(CreateAs _ _ select) = validate select >> return create
   validate create@(CreateAsOp _ _ select options) =
     validate select >> validate (StreamOptions options) >> return create
-  validate create@(CreateConnector _ _ options) = mapM_ validate options >> return create
-  validate create@(CreateConnectorIf _ _ options) = mapM_ validate options >> return create
+  validate create@(CreateConnector _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = case grp of
     DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "CREATE VIEW must have GROUP BY info given "
     _ -> validate select >> return create
@@ -590,8 +590,17 @@ instance Validate StreamOptions where
       _                                   ->
         Left $ buildSQLException ParseException Nothing "There should be one and only one REPLICATE option"
 
+newtype ConnectorOptions = ConnectorOptions [ConnectorOption]
+
+instance Validate ConnectorOptions where
+  validate ops@(ConnectorOptions options) = do
+    if any (\case PropertyConnector _ _ -> True; _ -> False) options && any (\case PropertyStreamName _ _ -> True; _ -> False) options
+    then mapM_ validate options >> return ops
+    else Left $ buildSQLException ParseException Nothing "Options STREAM (name) or TYPE (of Connector) missing"
+
 instance Validate ConnectorOption where
   validate op@(PropertyAny _ _ expr) = isConstExpr expr >> return op
+  validate op                        = return op
 
 ------------------------------------- INSERT -----------------------------------
 instance Validate Insert where

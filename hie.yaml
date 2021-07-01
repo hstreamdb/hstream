@@ -69,3 +69,6 @@ cradle:
 
     - path: "hstream-store/admin/app/cli.hs"
       component: "hstore-admin:exe:hstore-admin"
+
+    - path: "hstream-http-server/src"
+      component: "lib:hstream-http-server"

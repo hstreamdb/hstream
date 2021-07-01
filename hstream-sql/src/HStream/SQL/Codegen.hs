@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -5,7 +6,10 @@
 
 module HStream.SQL.Codegen where
 
-import           Data.Aeson
+import           Data.Aeson                                      (Object,
+                                                                  Value (Bool, Number, String),
+                                                                  encode)
+import qualified Data.ByteString.Char8                           as BS
 import qualified Data.ByteString.Lazy                            as BSL
 import qualified Data.HashMap.Strict                             as HM
 import qualified Data.List                                       as L
@@ -13,9 +17,17 @@ import           Data.Scientific                                 (fromFloatDigit
                                                                   scientific)
 import           Data.Text                                       (pack)
 import qualified Data.Text                                       as T
-import           Data.Text.Encoding                              (decodeUtf8)
 import           Data.Time                                       (diffTimeToPicoseconds,
                                                                   showGregorian)
+import qualified Database.ClickHouseDriver.Types                 as Clickhouse
+import qualified Database.MySQL.Base                             as MySQL
+import           Numeric                                         (showHex)
+import           RIO
+import qualified RIO.ByteString.Lazy                             as BL
+import qualified Z.Data.CBytes                                   as CB
+import           Z.IO.Time                                       (SystemTime (MkSystemTime),
+                                                                  getSystemTime')
+
 import           HStream.Processing.Processor                    (Record (..),
                                                                   TaskBuilder)
 import           HStream.Processing.Store                        (mkInMemoryStateKVStore,
@@ -52,12 +64,7 @@ import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
                                                                   unaryOpOnValue)
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
-import           HStream.SQL.Parse
-import           Numeric                                         (showHex)
-import           RIO
-import qualified RIO.ByteString.Lazy                             as BL
-import qualified Z.Data.CBytes                                   as CB
-import           Z.IO.Time
+import           HStream.SQL.Parse                               (parseAndRefine)
 
 --------------------------------------------------------------------------------
 
@@ -68,16 +75,21 @@ type SourceStream   = [StreamName]
 type SinkStream     = StreamName
 type CheckIfExist  = Bool
 type ViewSchema = [String]
+type OtherOptions = [(Text,Constant)]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text
 data TerminationSelection = AllQuery | OneQuery CB.CBytes
 data InsertType = JsonFormat | RawFormat
 
+data ConnectorConfig
+  = ClickhouseConnector Clickhouse.ConnParams
+  | MySqlConnector MySQL.ConnectInfo
+
 data ExecutionPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
   | CreatePlan          StreamName Int
-  | CreateConnectorPlan ConnectorName RConnectorOptions
+  | CreateConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int
   | InsertPlan          StreamName InsertType BL.ByteString
@@ -99,7 +111,7 @@ streamCodegen input = do
       tName <- genTaskName
       (builder, source, sink) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
-    RQCreate (RCreateView view select@(RSelect sel frm whr grp hvg)) -> do
+    RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
       tName <- genTaskName
       (builder, source, sink) <- genStreamBuilderWithStream tName (Just view) select
       let schema = case sel of
@@ -107,9 +119,9 @@ streamCodegen input = do
             RSelList fields -> map snd fields
       return $ CreateViewPlan schema source sink (HS.build builder) 1
     RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
-    RQCreate (RCreateConnector s ifNotExist cOptions) -> return $ CreateConnectorPlan s cOptions
+    RQCreate rCreateConnector -> return $ genCreateConnectorPlan rCreateConnector
     RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (encode $ HM.fromList $ second constantToValue <$> tuples)
-    RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat $ (BSL.fromStrict bs)
+    RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  (BSL.fromStrict bs)
     RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BSL.fromStrict bs)
     RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
     RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
@@ -124,6 +136,33 @@ streamCodegen input = do
 
 --------------------------------------------------------------------------------
 
+genCreateConnectorPlan :: RCreate -> ExecutionPlan
+genCreateConnectorPlan (RCreateConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
+  case connectorType of
+    "clickhouse" -> CreateConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []
+    "mysql" -> CreateConnectorPlan cName ifNotExist sName (MySqlConnector createMysqlSinkConnector) []
+    _ -> throwSQLException CodegenException Nothing "Connector type not supported"
+  where
+    extractInt = \case Just (ConstantInt s) -> Just s; _ -> Nothing
+    extractString = \case Just (ConstantString s) -> Just s; _ -> Nothing
+    getStringValue field value = fromMaybe value $ extractString (lookup field cOptions)
+    getByteStringValue = (BS.pack .) . getStringValue
+    createClickhouseSinkConnector = Clickhouse.ConnParams
+      (getByteStringValue "username" "default")
+      (getByteStringValue "host" "127.0.0.1")
+      (getByteStringValue "port" "9000")
+      (getByteStringValue "password" "")
+      False (getByteStringValue "database" "default")
+    createMysqlSinkConnector = MySQL.ConnectInfo
+      (getStringValue "host" "127.0.0.1")
+      (fromIntegral . fromMaybe 3306 . extractInt $ lookup "port" cOptions)
+      (getByteStringValue "database" "mysql")
+      (getByteStringValue "username" "root")
+      (getByteStringValue "password" "password") 33
+genCreateConnectorPlan _ =
+  throwSQLException CodegenException Nothing "Implementation: Wrong function called"
+
+----
 type SourceConfigType = HS.StreamSourceConfig Object Object
 genStreamSourceConfig :: RFrom -> (SourceConfigType, Maybe SourceConfigType)
 genStreamSourceConfig frm =
@@ -143,9 +182,7 @@ data SinkConfigType = SinkConfigType SinkStream (HS.StreamSinkConfig Object Obje
 
 genStreamSinkConfig :: Maybe StreamName -> RGroupBy -> IO SinkConfigType
 genStreamSinkConfig sinkStream' grp = do
-  stream <- case sinkStream' of
-    Nothing         -> genRandomSinkStream
-    Just sinkStream -> return sinkStream
+  stream <- maybe genRandomSinkStream return sinkStream'
   case grp of
     RGroupBy _ _ (Just _) ->
       return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
@@ -303,7 +340,7 @@ genMapNode = HS.map . genMapR
 genTimeWindowKeyMapNode :: RSel
                         -> Stream (TimeWindowKey Object) Object
                         -> IO (Stream (TimeWindowKey Object) Object)
-genTimeWindowKeyMapNode rsel stream = HS.map (genTimeWindowKeyMapR rsel) stream
+genTimeWindowKeyMapNode rsel = HS.map (genTimeWindowKeyMapR rsel)
 
 ----
 genMaterialized :: HasCallStack => RGroupBy -> IO (HS.Materialized Object Object)
