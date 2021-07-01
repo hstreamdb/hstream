@@ -15,7 +15,6 @@ packages:
   external/hsthrift/common/mangle/mangle.cabal
   external/hsthrift/lib/thrift-lib.cabal
   external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
-  external/hsthrift/server/thrift-server.cabal
 
 -- https://github.com/haskell/cabal/issues/4271
 package thrift-lib
@@ -32,9 +31,6 @@ package mangle
   tests: false
 
 package thrift-cpp-channel
-  tests: false
-
-package thrift-server
   tests: false
 
 package grpc-haskell
