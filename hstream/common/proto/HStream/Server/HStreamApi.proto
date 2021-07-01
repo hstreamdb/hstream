@@ -27,6 +27,41 @@ service HStreamApi {
   rpc RemoveStreams(RemoveStreamsRequest) returns (RemoveStreamsResponse) {}
 
   rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
+
+  // query related apis
+  rpc CreateQuery(CreateQueryRequest) returns (CreateQueryResponse) {}
+  rpc FetchQuery(FetchQueryRequest) returns (FetchQueryResponse) {}
+  rpc GetQuery(GetQueryRequest) returns (GetQueryResponse) {}
+  // rpc DeleteQuery(DeleteQueryRequest) returns (DeleteQueryResponse) {}
+  // rpc RestartQuery(RestartQueryRequest) returns (RestartQueryResponse) {}
+  // rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse) {}
+
+  // connector related apis
+  // rpc CreateConnector(CreateConnectorRequest) returns (CreateConnectorResponse) {}
+  // rpc FetchConnector(FetchConnectorRequest) returns (FetchConnectorResponse) {}
+  // rpc GetConnector(GetConnectorRequest) returns (GetConnectorResponse) {}
+  // rpc DeleteConnector(DeleteConnectorRequest) returns (DeleteConnectorResponse) {}
+  // rpc RestartConnector(RestartConnectorRequest) returns (RestartConnectorResponse) {}
+  // rpc CancelConnector(CancelConnectorRequest) returns (CancelConnectorResponse) {}
+
+  // stream related apis
+  // rpc CreateStream(CreateStreamRequest) returns (CreateStreamResponse) {}
+  // rpc FetchStream(FetchStreamRequest) returns (FetchStreamResponse) {}
+  // rpc GetStream(GetStreamRequest) returns (GetStreamResponse) {}
+  // rpc DeleteStream(DeleteStreamRequest) returns (DeleteStreamResponse) {}
+
+  // view related apis
+  // rpc CreateView(CreateViewRequest) returns (CreateViewResponse) {}
+  // rpc FetchView(FetchViewRequest) returns (FetchViewResponse) {}
+  // rpc GetView(GetViewRequest) returns (GetViewResponse) {}
+  // rpc DeleteView(DeleteViewRequest) returns (DeleteViewResponse) {}
+
+  // overvew related apis
+  // rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse) {}
+
+  // node related apis
+  // rpc FetchNode(FetchNodeRequest) returns (FetchNodeResponse) {}
+  // rpc GetNode(GetNodeRequest) returns (GetNodeResponse) {}
 }
 
 message CommandStreamTask{
@@ -207,4 +242,31 @@ message RecordId {
   uint64 batchId = 1;
   // Offset of each record in the batch
   uint32 batchIndex = 2;
+}
+
+message CreateQueryRequest {
+  string id = 1;
+  string queryText = 4;
+}
+
+message CreateQueryResponse {
+  bool success = 1;
+}
+
+message FetchQueryRequest {}
+
+message FetchQueryResponse {
+  repeated GetQueryResponse responses = 1;
+}
+
+message GetQueryRequest {
+  string id = 1;
+}
+
+message GetQueryResponse {
+  string id = 1;
+  int32 status = 2;
+  int64 createdTime = 3;
+  string queryText = 4;
+  HStreamServerError error = 5;
 }
