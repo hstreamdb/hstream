@@ -29,7 +29,7 @@ runNodesConfigCmd s (NodesConfigShow NodesShowOpts{..})       =
     Nothing -> TIO.putStrLn =<< showConfig s nodesShowNodes
 runNodesConfigCmd s (NodesConfigBootstrap ps) = bootstrap s ps
 runNodesConfigCmd s (NodesConfigRemove c)     = removeConfig s c
-runNodesConfigCmd s (NodesConfigEdit c)       = editConfig s c
+runNodesConfigCmd s (NodesConfigApply c)      = applyConfig s c
 
 showConfig :: AA.HeaderConfig AA.AdminAPI -> SimpleNodesFilter -> IO Text
 showConfig conf s = do
@@ -61,8 +61,8 @@ removeConfig conf s = do
   putStrLn $ "Successfully removed the node, new nodes configuration version "
     <> show (AA.removeNodesResponse_new_nodes_configuration_version resp)
 
-editConfig :: AA.HeaderConfig AA.AdminAPI -> CBytes -> IO ()
-editConfig conf path = do
+applyConfig :: AA.HeaderConfig AA.AdminAPI -> CBytes -> IO ()
+applyConfig conf path = do
   config <- toByteString . getUTF8Bytes <$> ZFS.readTextFile path
   case deserializeJSON config of
     Left _ -> error "JSON file error"

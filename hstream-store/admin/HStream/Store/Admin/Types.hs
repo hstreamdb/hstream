@@ -91,7 +91,7 @@ data NodesConfigOpts
   = NodesConfigShow NodesShowOpts
   | NodesConfigBootstrap [ReplicationPropertyPair]
   | NodesConfigRemove SimpleNodesFilter
-  | NodesConfigEdit CBytes
+  | NodesConfigApply CBytes
   deriving (Show)
 
 data NodesShowOpts = NodesShowOpts
@@ -129,12 +129,14 @@ nodesConfigParser = hsubparser
                      (progDesc "Print tier's NodesConfig to stdout"))
  <> command "bootstrap" (info nodesConfigBootstrapParser
                           (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
- <> command "shrink"  (info (NodesConfigRemove <$> simpleNodesFilterParser)
-                        (progDesc ("Shrinks the cluster by removing nodes from the"
-                                  <> " NodesConfig. This operation requires that the"
-                                  <> " removed nodes are empty")))
- <> command "edit" (info (NodesConfigEdit <$> nodesEditFileParser)
-                     (progDesc "Edit the node configuration"))
+ <> command "shrink" (info (NodesConfigRemove <$> simpleNodesFilterParser)
+                       (progDesc $ "Shrinks the cluster by removing nodes from"
+                                <> "the NodesConfig. This operation requires"
+                                <> "that the removed nodes are empty"))
+ <> command "apply" (info (NodesConfigApply <$> nodesEditFileParser)
+                      (progDesc $ "Apply the node configuration, The passed node "
+                               <> "configs should describe the desired final state"
+                               <> "of the node (not the diff)"))
   )
 
 -------------------------------------------------------------------------------
