@@ -20,7 +20,8 @@ import           ZooKeeper.Types
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
-import           HStream.Store                    (HsLogAttrs (..), LDClient,
+import           HStream.Store                    (Compression (..),
+                                                   HsLogAttrs (..), LDClient,
                                                    LogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient,
@@ -35,6 +36,7 @@ data ServerConfig = ServerConfig
   , _logdeviceConfigPath :: CBytes
   , _topicRepFactor      :: Int
   , _ckpRepFactor        :: Int
+  , _compression         :: Compression
   } deriving (Show)
 
 parseConfig :: Parser ServerConfig
@@ -48,6 +50,7 @@ parseConfig =
     <*> strOption   (long "config-path"      <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
     <*> option auto (long "replicate-factor" <> metavar "INT"  <> showDefault <> value 3                            <> help "topic replicate factor")
     <*> option auto (long "ckp-replicate-factor" <> metavar "INT"  <> showDefault <> value 1                        <> help "checkpoint replicate factor")
+    <*> option auto (long "compression"      <> metavar "none|lz4|lz4hc" <> showDefault <> value CompressionLZ4     <> help "Specify the compression policy for gdevice")
 
 app :: ServerConfig -> IO ()
 app config@ServerConfig{..} = do
@@ -64,7 +67,7 @@ app' ServerConfig{..} ldclient zk = do
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
-  api <- handlers ldclient _topicRepFactor zk
+  api <- handlers ldclient _topicRepFactor zk _compression
   print _logdeviceConfigPath
   hstreamApiServer api options
 
