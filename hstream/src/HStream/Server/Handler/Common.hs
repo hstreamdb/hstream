@@ -9,24 +9,33 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Exception                (SomeException,
                                                    displayException)
-import           Control.Monad                    (when)
+import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
+import           RIO                              (async, forever)
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 import           ZooKeeper.Types
 
+import           Database.ClickHouseDriver.Client (createClient)
+import           HStream.Connector.ClickHouse
+import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCS
+import           HStream.Connector.MySQL
+import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
+import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
+                                                   SourceRecord (..))
 import           HStream.SQL.Codegen
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
@@ -83,3 +92,24 @@ eitherToResponse :: Either SomeException () -> a -> IO (ServerResponse 'Normal a
 eitherToResponse (Left err) resp = return $
   ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
 eitherToResponse (Right _) resp = return $ ServerNormalResponse resp [] StatusOk ""
+
+handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
+handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
+    MkSystemTime timestamp _ <- getSystemTime'
+    let cid = CB.pack $ T.unpack cName
+        cinfo = HSP.Info (ZT.pack $ T.unpack $ TL.toStrict sql) timestamp
+    HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
+
+    ldreader <- HS.newLDReader scLDClient 1000 Nothing
+    let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+    subscribeToStreamWithoutCkp sc sName Latest
+
+    connector <- case cConfig of
+      ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
+      MySqlConnector config -> mysqlSinkConnector <$> MySQL.connect config
+    void . async $ do
+      HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Running)
+      forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
+
+  where
+    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp

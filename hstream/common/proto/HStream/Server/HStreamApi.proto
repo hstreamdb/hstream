@@ -44,12 +44,12 @@ service HStreamApi {
   rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse) {}
 
   // connector related apis
-  // rpc CreateConnector(CreateConnectorRequest) returns (CreateConnectorResponse) {}
-  // rpc FetchConnector(FetchConnectorRequest) returns (FetchConnectorResponse) {}
-  // rpc GetConnector(GetConnectorRequest) returns (GetConnectorResponse) {}
-  // rpc DeleteConnector(DeleteConnectorRequest) returns (DeleteConnectorResponse) {}
-  // rpc RestartConnector(RestartConnectorRequest) returns (RestartConnectorResponse) {}
-  // rpc CancelConnector(CancelConnectorRequest) returns (CancelConnectorResponse) {}
+  rpc CreateSinkConnector(CreateSinkConnectorRequest) returns (CreateSinkConnectorResponse) {}
+  rpc ListConnector(ListConnectorRequest) returns (ListConnectorResponse) {}
+  rpc GetConnector(GetConnectorRequest) returns (GetConnectorResponse) {}
+  rpc DeleteConnector(DeleteConnectorRequest) returns (DeleteConnectorResponse) {}
+  rpc RestartConnector(RestartConnectorRequest) returns (RestartConnectorResponse) {}
+  rpc CancelConnector(CancelConnectorRequest) returns (CancelConnectorResponse) {}
 
   // stream related apis
   // rpc CreateStream(CreateStreamRequest) returns (CreateStreamResponse) {}
@@ -214,6 +214,13 @@ message HStreamRecordHeader {
   string key = 4;
 }
 
+message RecordId {
+  // LSN of the total batch records
+  uint64 batchId = 1;
+  // Offset of each record in the batch
+  uint32 batchIndex = 2;
+}
+
 message TerminateQueryRequest {
   string queryName = 1;
 }
@@ -222,13 +229,7 @@ message TerminateQueryResponse {
   string queryName = 1;
 }
 
-message RecordId {
-  // LSN of the total batch records
-  uint64 batchId = 1;
-  // Offset of each record in the batch
-  uint32 batchIndex = 2;
-}
-
+// Query realated Request and Response
 message CreateQueryRequest {
   string id = 1;
   string queryText = 4;
@@ -278,4 +279,63 @@ message CancelQueryRequest {
 
 message CancelQueryResponse {
   bool success = 1;
+}
+
+// Connector Related Request and Response
+message CreateSinkConnectorRequest {
+  string sql = 4;
+}
+
+message CreateSinkConnectorResponse {
+  bool success = 1;
+}
+
+message ListConnectorRequest {}
+
+message ListConnectorResponse {
+  repeated GetConnectorResponse responses = 1;
+}
+
+message GetConnectorRequest {
+  string id = 1;
+}
+
+message GetConnectorResponse {
+  string id = 1;
+  int32 status = 2;
+  int64 createdTime = 3;
+  string sql = 4;
+  HStreamServerError error = 5;
+}
+
+message DeleteConnectorRequest {
+  string id = 1;
+}
+
+message DeleteConnectorResponse {
+  bool success = 1;
+}
+
+message RestartConnectorRequest {
+  string id = 1;
+}
+
+message RestartConnectorResponse {
+  bool success = 1;
+}
+
+message CancelConnectorRequest {
+  string id = 1;
+}
+
+message CancelConnectorResponse {
+  bool success = 1;
+}
+
+message TerminateConnectorRequest {
+  string connectorId = 1;
+}
+
+message TerminateConnectorResponse {
+  string connectorId = 1;
 }

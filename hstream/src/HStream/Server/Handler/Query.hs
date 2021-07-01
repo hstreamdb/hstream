@@ -8,8 +8,7 @@
 
 module HStream.Server.Handler.Query where
 
-import           Control.Concurrent               (forkIO, killThread, putMVar,
-                                                   takeMVar)
+import           Control.Concurrent               (forkIO, putMVar, takeMVar)
 import           Control.Exception                (SomeException, catch, try)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find)
@@ -23,8 +22,6 @@ import           Z.Data.Builder.Base              (string8)
 import qualified Z.Data.CBytes                    as ZDC
 import qualified Z.Data.Text                      as ZT
 import qualified Z.IO.Logger                      as Log
-import           Z.IO.Time                        (SystemTime (..),
-                                                   getSystemTime')
 
 import qualified HStream.Connector.HStore         as HCH
 import           HStream.Processing.Connector     (subscribeToStream)
