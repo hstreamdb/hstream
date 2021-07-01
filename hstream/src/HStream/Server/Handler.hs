@@ -58,6 +58,10 @@ import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
                                                     runTask)
 import           HStream.Processing.Type
 import           HStream.SQL.Codegen
+import           HStream.Server.API.Query          (createQueryHandler,
+                                                    fetchQueryHandler,
+                                                    getQueryHandler)
+import           HStream.Server.Common
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
@@ -67,14 +71,6 @@ import           HStream.Utils
 
 newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
-
-data ServerContext = ServerContext {
-    scLDClient               :: LDClient
-  , scDefaultStreamRepFactor :: Int
-  , zkHandle                 :: Maybe ZHandle
-  , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , cmpStrategy              :: Compression
-}
 
 subscribedConnectors :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text,SourceConnector)))
 subscribedConnectors = unsafePerformIO $ newIORef HM.empty
@@ -102,6 +98,9 @@ handlers ldclient repFactor handle compression = do
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
     , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
     , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
+    , hstreamApiCreateQuery      = createQueryHandler serverContext
+    , hstreamApiGetQuery         = getQueryHandler serverContext
+    , hstreamApiFetchQuery       = fetchQueryHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -320,44 +319,6 @@ sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = handle
       (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
         Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
-
-handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
-handlePushQueryCanceled ServerCall{..} handle = do
-  x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
-  case x of
-    Left err   -> print err
-    Right []   -> putStrLn "GRPCIOInternalUnexpectedRecv"
-    Right [OpRecvCloseOnServerResult b]
-      -> when b handle
-    _ -> putStrLn "impossible happened"
-
-runTaskWrapper :: Bool -> TaskBuilder -> LDClient -> IO ()
-runTaskWrapper isTemp taskBuilder ldclient = do
-  -- create a new ckpReader from ldclient
-  let readerName = textToCBytes (getTaskName taskBuilder)
-  -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
-  ldreader <- newLDRsmCkpReader ldclient readerName checkpointStoreLogID 5000 1000 Nothing 10
-  -- create a new sourceConnector
-  let sourceConnector = hstoreSourceConnector ldclient ldreader
-  -- create a new sinkConnector
-  let sinkConnector = if isTemp then hstoreTempSinkConnector ldclient else hstoreSinkConnector ldclient
-  -- RUN TASK
-  runTask sourceConnector sinkConnector taskBuilder
-
-createInsertPersistentQuery :: TaskName -> TL.Text -> P.QueryType -> Maybe ZHandle -> IO CB.CBytes
-createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
-  MkSystemTime timestamp _ <- getSystemTime'
-  let qid = case extraInfo of
-        P.PlainQuery             -> ""
-        P.StreamQuery streamName -> "stream_" <> streamName <> "-"
-        P.ViewQuery   viewName _ -> "view_" <> viewName <> "-"
-        <> CB.pack (T.unpack taskName)
-      qinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict queryText) timestamp
-  P.withMaybeZHandle zkHandle $ P.insertQuery qid qinfo extraInfo
-  return qid
-
-checkpointRootPath :: CB.CBytes
-checkpointRootPath = "/tmp/checkpoint"
 
 mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
 mark mke = handle (throwIO . mke)

@@ -38,7 +38,7 @@ import           HStream.Processing.Processor (getTaskName, taskBuilderWithName)
 import           HStream.Processing.Type      (Offset (..))
 import qualified HStream.SQL.Codegen          as HSC
 import           HStream.SQL.Exception        (SomeSQLException)
-import           HStream.Server.Handler       (runTaskWrapper)
+import           HStream.Server.Common        (runTaskWrapper)
 import qualified HStream.Server.Persistence   as HSP
 import qualified HStream.Store                as HS
 import           HStream.Utils.Converter      (cbytesToText, textToCBytes)
