@@ -40,6 +40,6 @@ runStatus conf StatusOpts{..} = do
     Just sortIdx -> do
       let stats = sortBy (\xs ys -> compare (xs!!sortIdx) (ys!!sortIdx)) allStates
       case statusFormat of
-        TabularFormat -> return $ simpleShowTable (map (, 10, Table.left) titles) stats
+        TabularFormat -> return $ simpleShowTable (map (, 20, Table.left) titles) stats
         JSONFormat    -> errorWithoutStackTrace "NotImplemented"
     Nothing -> errorWithoutStackTrace $ "No such sort key: " <> Text.unpack statusSortField
