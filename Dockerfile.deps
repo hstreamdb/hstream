@@ -1,0 +1,19 @@
+FROM hstreamdb/haskell
+
+ARG CABAL_MIRROR_NAME="hackage.haskell.org"
+ARG CABAL_MIRROR_URL="http://hackage.haskell.org/"
+
+RUN cabal user-config init && echo "\
+repository $CABAL_MIRROR_NAME \n\
+  url: $CABAL_MIRROR_URL \n\
+" > /root/.cabal/config && cabal user-config update && \
+    cabal update
+
+COPY . /hstream
+RUN find /hstream \! -name "*.cabal" \! -name "cabal.project" -type f -print | xargs rm -rf && \
+    find /hstream -empty -type d -delete && \
+    cd /hstream && cabal build --only-dependencies --enable-tests --enable-benchmarks all && \
+    rm -rf /hstream
+
+
+# vim: set ft=dockerfile:

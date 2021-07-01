@@ -1,20 +1,12 @@
-FROM hstreamdb/haskell as builder
+ARG BUILDER_IMAGE="hstreamdb/haskell"
+FROM ${BUILDER_IMAGE} as builder
 
-ARG CABAL_MIRROR_NAME="hackage.haskell.org"
-ARG CABAL_MIRROR_URL="http://hackage.haskell.org/"
-
-RUN cabal user-config init && echo "\
-repository $CABAL_MIRROR_NAME \n\
-  url: $CABAL_MIRROR_URL \n\
-" > /root/.cabal/config && cabal user-config update && \
-    cabal update
-
-RUN rm -rf /srv/*
-WORKDIR /srv
-COPY . /srv
-RUN make && \
+COPY . /hstream
+RUN cabal update && \
+    cd /hstream && make && \
     cabal build all && \
-    cabal install hstream hstore-admin hstream-store hstream-http-server
+    cabal install hstream hstore-admin hstream-store hstream-http-server && \
+    rm -rf /hstream
 
 # ------------------------------------------------------------------------------
 
