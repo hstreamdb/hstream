@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: logdevice
-        image: "hstreamdb/logdevice"
+        image: "hstreamdb/hstream"
         command:
           - "/usr/local/bin/logdeviced"
           - "--config-path"
@@ -80,6 +80,6 @@ spec:
       accessModes: [ "ReadWriteOnce" ]
       resources:
         requests:
-          storage: 20Gi
+          storage: 40Gi
       # change this to fit your storageClass
       storageClassName: hstream-store

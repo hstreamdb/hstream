@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: admin-server
-        image: "hstreamdb/logdevice"
+        image: "hstreamdb/hstream"
         command:
           - "/usr/local/bin/ld-admin-server"
           - "--config-path"
