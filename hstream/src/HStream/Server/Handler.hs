@@ -26,10 +26,7 @@ import           Data.String                       (fromString)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
-import           Database.ClickHouseDriver.Client  (createClient)
-import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
-import           Numeric                           (showHex)
 import           Proto3.Suite                      (Enumerated (..))
 import           RIO                               (async, forever)
 import           System.IO.Unsafe                  (unsafePerformIO)
@@ -50,7 +47,6 @@ import           ZooKeeper.Types                   (ZHandle)
 
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
-import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor      (TaskBuilder, getTaskName)
 import           HStream.Processing.Type           hiding (StreamName)
@@ -58,6 +54,12 @@ import           HStream.SQL.Codegen               hiding (StreamName)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Connector  (cancelConnectorHandler,
+                                                    createSinkConnectorHandler,
+                                                    deleteConnectorHandler,
+                                                    getConnectorHandler,
+                                                    listConnectorHandler,
+                                                    restartConnectorHandler)
 import           HStream.Server.Handler.Query      (cancelQueryHandler,
                                                     createQueryHandler,
                                                     deleteQueryHandler,
@@ -100,12 +102,20 @@ handlers ldclient repFactor handle compression = do
     , hstreamApiDeleteStream     = deleteStreamsHandler serverContext
     , hstreamApiListStreams      = listStreamsHandler serverContext
     , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
+
     , hstreamApiCreateQuery      = createQueryHandler serverContext
     , hstreamApiGetQuery         = getQueryHandler serverContext
     , hstreamApiFetchQuery       = fetchQueryHandler serverContext
     , hstreamApiDeleteQuery      = deleteQueryHandler serverContext
     , hstreamApiCancelQuery      = cancelQueryHandler serverContext
     , hstreamApiRestartQuery     = restartQueryHandler serverContext
+
+    , hstreamApiCreateSinkConnector  = createSinkConnectorHandler serverContext
+    , hstreamApiGetConnector     = getConnectorHandler serverContext
+    , hstreamApiListConnector    = listConnectorHandler serverContext
+    , hstreamApiDeleteConnector  = deleteConnectorHandler serverContext
+    , hstreamApiCancelConnector  = cancelConnectorHandler serverContext
+    , hstreamApiRestartConnector = restartConnectorHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -281,27 +291,6 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = 
   tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
         >> runTaskWrapper False taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-
-handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
-handleCreateSinkConnector ServerContext{..} commandQueryStmtText cName sName cConfig = do
-    MkSystemTime timestamp _ <- getSystemTime'
-    let cid = CB.pack $ showHex timestamp (T.unpack (cName <> "-"))
-        cinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandQueryStmtText) timestamp
-    P.withMaybeZHandle zkHandle $ P.insertConnector cid cinfo
-
-    ldreader <- newLDReader scLDClient 1000 Nothing
-    let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
-    subscribeToStreamWithoutCkp sc sName Latest
-
-    connector <- case cConfig of
-      ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
-      MySqlConnector config -> mysqlSinkConnector <$> MySQL.connect config
-    void . async $ do
-      P.withMaybeZHandle zkHandle (P.setConnectorStatus cid P.Running)
-      forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
-
-  where
-    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
 
 --------------------------------------------------------------------------------
 

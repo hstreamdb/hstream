@@ -28,6 +28,7 @@ library
   exposed-modules:
     HStream.Server.Handler.Common
     HStream.Server.Handler.Query
+    HStream.Server.Handler.Connector
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Persistence
@@ -127,6 +128,7 @@ test-suite hstream-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:      
+    HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
   hs-source-dirs:     test

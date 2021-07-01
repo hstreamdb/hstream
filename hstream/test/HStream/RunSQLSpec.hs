@@ -6,14 +6,12 @@
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
-import qualified Data.Aeson                       as Aeson
-import qualified Data.List                        as L
-import qualified Data.Text.Lazy                   as TL
-import qualified Data.Vector                      as V
-import qualified Database.ClickHouseDriver.Client as ClickHouse
-import qualified Database.ClickHouseDriver.Types  as ClickHouse
-import           Database.MySQL.Base              (MySQLValue (MySQLInt32))
-import qualified Database.MySQL.Base              as MySQL
+import qualified Data.Aeson                      as Aeson
+import qualified Data.List                       as L
+import qualified Data.Text.Lazy                  as TL
+import qualified Data.Vector                     as V
+import qualified Database.ClickHouseDriver.Types as ClickHouse
+import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
 import           Test.Hspec
 
 import           HStream.Common

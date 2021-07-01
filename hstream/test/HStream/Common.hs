@@ -11,7 +11,6 @@ import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Lazy.Char8        as DBCL
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef
-import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as Map
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
@@ -19,17 +18,14 @@ import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import qualified Database.ClickHouseDriver.Client  as ClickHouse
 import qualified Database.ClickHouseDriver.Types   as ClickHouse
-import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
 import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call        (clientCallCancel)
 import qualified System.IO.Streams                 as Streams
 import           System.Random
-import           Test.Hspec
 import           ThirdParty.Google.Protobuf.Struct
 
 import           HStream.Server.HStreamApi
-import           HStream.Store
 import           HStream.Utils
 
 clientConfig :: ClientConfig
@@ -146,7 +142,7 @@ clickHouseConnectInfo = ClickHouse.ConnParams {
 createClickHouseTable :: Text -> IO ()
 createClickHouseTable source = do
   conn <- ClickHouse.createClient clickHouseConnectInfo
-  ClickHouse.query conn ("CREATE TABLE IF NOT EXISTS " ++ Text.unpack source ++
+  _ <- ClickHouse.query conn ("CREATE TABLE IF NOT EXISTS " ++ Text.unpack source ++
         " (temperature Int64, humidity Int64) " ++ "ENGINE = Memory")
   ClickHouse.closeClient conn
 
