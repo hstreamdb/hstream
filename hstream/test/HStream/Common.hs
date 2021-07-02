@@ -51,46 +51,6 @@ successResp = CommandQueryResponse
 mkStruct :: [(Text, Aeson.Value)] -> Struct
 mkStruct = jsonObjectToStruct . HM.fromList
 
-createQuery :: TL.Text -> TL.Text -> IO (Maybe CreateQueryResponse)
-createQuery qid sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let createQueryRequest = CreateQueryRequest { createQueryRequestId = qid
-                                              , createQueryRequestQueryText = sql
-                                              }
-  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x@CreateQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
-
-successCreateQueryResp :: CreateQueryResponse
-successCreateQueryResp = CreateQueryResponse
-  { createQueryResponseSuccess = True
-  }
-
-fetchQuery :: IO (Maybe FetchQueryResponse)
-fetchQuery = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let fetchQueryRequest = FetchQueryRequest {}
-  resp <- hstreamApiFetchQuery (ClientNormalRequest fetchQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x@FetchQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
-
-getQuery :: TL.Text -> IO (Maybe GetQueryResponse)
-getQuery qid = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let getQueryRequest = GetQueryRequest { getQueryRequestId = qid}
-  resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x@GetQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
-
 executeCommandQuery :: TL.Text
                     -> IO (Maybe CommandQueryResponse)
 executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do

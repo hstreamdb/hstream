@@ -144,6 +144,7 @@ test-suite hstream-test
     , hstream-store
     , io-streams
     , mysql-haskell
+    , proto3-suite
     , random              ^>=1.2
     , scientific
     , text

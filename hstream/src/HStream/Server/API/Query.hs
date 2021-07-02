@@ -48,7 +48,7 @@ hstreamQueryToGetQueryResponse (HSP.Query queryId (HSP.Info sqlStatement created
   GetQueryResponse (TL.pack $ ZDC.unpack queryId) (fromIntegral $ fromEnum status) createdTime (TL.pack $ ZT.unpack sqlStatement) (Enumerated $ Right HStreamServerErrorNoError)
 
 emptyGetQueryResponse :: GetQueryResponse
-emptyGetQueryResponse = GetQueryResponse "" 0 0 "" (Enumerated $ Right HStreamServerErrorUnknownError)
+emptyGetQueryResponse = GetQueryResponse "" 0 0 "" (Enumerated $ Right HStreamServerErrorNotExistError)
 
 hstreamQueryNameIs :: T.Text -> HSP.Query -> Bool
 hstreamQueryNameIs name (HSP.Query queryId _ _ _) = (cbytesToText queryId) == name
@@ -99,7 +99,6 @@ fetchQueryHandler
   -> IO (ServerResponse 'Normal FetchQueryResponse)
 fetchQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata _) = do
   queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
-  print queries
   let records = map hstreamQueryToGetQueryResponse queries
   let resp = FetchQueryResponse . V.fromList $ records
   return (ServerNormalResponse resp [] StatusOk "")
@@ -116,3 +115,41 @@ getQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata GetQueryRequ
         Just q -> hstreamQueryToGetQueryResponse q
         _      ->  emptyGetQueryResponse
   return (ServerNormalResponse resp [] StatusOk "")
+
+deleteQueryHandler
+  :: ServerContext
+  -> ServerRequest 'Normal DeleteQueryRequest DeleteQueryResponse
+  -> IO (ServerResponse 'Normal DeleteQueryResponse)
+deleteQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) = do 
+  res <- catch
+    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery (ZDC.pack $ TL.unpack deleteQueryRequestId)) >> return True)
+    (\(e :: SomeException) -> return False)
+  return (ServerNormalResponse (DeleteQueryResponse res) [] StatusOk "")
+
+restartQueryHandler
+  :: ServerContext
+  -> ServerRequest 'Normal RestartQueryRequest RestartQueryResponse
+  -> IO (ServerResponse 'Normal RestartQueryResponse)
+restartQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
+  res <- do
+    queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
+    case find (hstreamQueryNameIs (T.pack $ TL.unpack restartQueryRequestId)) queries of
+      Just query -> do
+        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Running)
+        return True
+      Nothing -> return False
+  return (ServerNormalResponse (RestartQueryResponse res) [] StatusOk "")
+
+cancelQueryHandler
+  :: ServerContext
+  -> ServerRequest 'Normal CancelQueryRequest CancelQueryResponse
+  -> IO (ServerResponse 'Normal CancelQueryResponse)
+cancelQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CancelQueryRequest{..}) = do
+  res <- do
+    queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
+    case find (hstreamQueryNameIs (T.pack $ TL.unpack cancelQueryRequestId)) queries of
+      Just query -> do
+        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Terminated)
+        return True
+      Nothing -> return False
+  return (ServerNormalResponse (CancelQueryResponse res) [] StatusOk "")
