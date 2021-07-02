@@ -69,6 +69,18 @@ import           HStream.Utils
 newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
+data ServerContext = ServerContext {
+    scLDClient               :: LDClient
+  , scDefaultStreamRepFactor :: Int
+  , zkHandle                 :: Maybe ZHandle
+  , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
+  , cmpStrategy              :: Compression
+}
+
+subscribedReaders :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text, LDSyncCkpReader)))
+subscribedReaders = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE subscribedReaders #-}
+
 subscribedConnectors :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text,SourceConnector)))
 subscribedConnectors = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE subscribedConnectors #-}
@@ -357,30 +369,52 @@ subscribeHandler :: ServerContext
                  -> ServerRequest 'Normal SubscribeRequest SubscribeResponse
                  -> IO (ServerResponse 'Normal SubscribeResponse)
 subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeRequest{..}) = do
-  es' <- mapM getSourceConnector subscribeRequestSubscriptions
-  case V.all isRight es' of
-    False -> do
-      let resp = SubscribeResponse subscribeRequestSubscriptionId (Enumerated $ Right HStreamServerErrorUnknownError)
-      return (ServerNormalResponse resp [] StatusUnknown "")
-    True  -> do
-      let connectorsWithStreamName = fromRight undefined <$> es'
-      atomicModifyIORef' subscribedConnectors (\hm -> (HM.insert subscribeRequestSubscriptionId connectorsWithStreamName hm, ()))
-      let resp = SubscribeResponse subscribeRequestSubscriptionId (Enumerated $ Right HStreamServerErrorNoError)
-      return (ServerNormalResponse resp [] StatusOk "")
+  es' <- loop subscribeRequestSubscriptions scLDClient 0 (length subscribeRequestSubscriptions) V.empty
+  let resp = SubscribeResponse subscribeRequestSubscriptionId
+  case es' of
+    Left err  -> do
+      return $ ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+    Right res -> do
+      atomicModifyIORef' subscribedReaders (\hm -> (HM.insert subscribeRequestSubscriptionId res hm, ()))
+      return $ ServerNormalResponse resp [] StatusOk ""
   where
-    getSourceConnector :: StreamSubscription -> IO (Either SomeException (TL.Text,SourceConnector))
-    getSourceConnector StreamSubscription{..} = do
+    loop
+      :: V.Vector StreamSubscription
+      -> LDClient
+      -> Int -> Int  -- current index and the length of StreamSubscription
+      -> V.Vector (TL.Text, LDSyncCkpReader)
+      -> IO (Either SomeException (V.Vector (TL.Text, LDSyncCkpReader)))
+    loop opts client idx len vec
+      | idx >= len = return $ Right vec
+      | otherwise  = do
+          res <- createStreamReader (opts V.! idx) client
+          case res of
+            Left err     -> return $ Left err
+            Right value  -> do loop opts client (idx + 1) len $ V.cons value vec
+
+    getStartLSN :: SubscriptionOffset -> LDClient -> C_LogID -> IO LSN
+    getStartLSN SubscriptionOffset{..} client logId = case fromJust $ subscriptionOffsetOffset of
+      SubscriptionOffsetOffsetSpecialOffset subOffset -> do
+        case subOffset of
+          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> return LSN_MIN
+          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> fmap (+1) $ getTailLSN client logId
+          Enumerated _                                               -> error $ "Wrong SpecialOffset!"
+      SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return $ recordIdBatchId
+
+    createStreamReader :: StreamSubscription -> LDClient -> IO (Either SomeException (TL.Text, LDSyncCkpReader))
+    createStreamReader StreamSubscription{..} client = do
       e' <- try $ do
-        newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict streamSubscriptionStreamName)
+        newLDRsmCkpReader client (textToCBytes $ TL.toStrict streamSubscriptionStreamName)
           checkpointStoreLogID 5000 1 Nothing 10
       case e' of
-        Left err       -> return (Left err)
-        Right ldreader -> do
-          let sc = hstoreSourceConnector scLDClient ldreader
-          a' <- try $ subscribeToStream sc (TL.toStrict streamSubscriptionStreamName) (Offset streamSubscriptionStartOffset)
+        Left err -> return $ Left err
+        Right ldReader -> do
+          logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamSubscriptionStreamName
+          startLSN <- getStartLSN (fromJust $ streamSubscriptionOffset) client logId
+          a' <- try $ ckpReaderStartReading ldReader logId startLSN LSN_MAX
           case a' of
-            Left a  -> return (Left a)
-            Right _ -> return (Right (streamSubscriptionStreamName, sc))
+            Left a -> return $ Left a
+            Right _ -> return $ Right (streamSubscriptionStreamName, ldReader)
 
 fetchHandler :: ServerContext
              -> ServerRequest 'Normal FetchRequest FetchResponse

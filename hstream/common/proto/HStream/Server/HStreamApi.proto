@@ -96,12 +96,23 @@ message SubscribeRequest {
 
 message SubscribeResponse {
   string subscriptionId = 1;
-  HStreamServerError error = 2;
 }
 
 message StreamSubscription {
   string streamName = 1;
-  uint64 startOffset = 2;
+  SubscriptionOffset offset = 2;
+}
+
+message SubscriptionOffset {
+  enum SpecialOffset {
+    EARLIST = 0;
+    LATEST = 1;
+  }
+
+  oneof offset {
+    SpecialOffset specialOffset = 1;
+    RecordId recordOffset = 2;
+  }
 }
 
 message FetchRequest {
