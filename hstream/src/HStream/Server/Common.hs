@@ -32,11 +32,11 @@ checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
 
 data ServerContext = ServerContext {
-    scLDClient               :: LDClient
+    scLDClient               :: HS.LDClient
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , cmpStrategy              :: Compression
+  , cmpStrategy              :: HS.Compression
 }
 
 runTaskWrapper :: Bool -> TaskBuilder -> HS.LDClient -> IO ()

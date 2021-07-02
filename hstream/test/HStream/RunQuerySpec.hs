@@ -6,8 +6,6 @@
 
 module HStream.RunQuerySpec (spec) where
 
-import           Control.Concurrent
-import qualified Data.Aeson         as Aeson
 import qualified Data.List          as L
 import qualified Data.Text.Lazy     as TL
 import           Test.Hspec
@@ -74,11 +72,6 @@ deleteQuery qid = withGRPCClient clientConfig $ \client -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
 
-successDeleteQueryResp :: DeleteQueryResponse
-successDeleteQueryResp = DeleteQueryResponse
-  { deleteQueryResponseSuccess = True
-  }
-
 cancelQuery :: TL.Text -> IO (Maybe CancelQueryResponse)
 cancelQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
@@ -90,11 +83,6 @@ cancelQuery qid = withGRPCClient clientConfig $ \client -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
 
-successCancelQueryResp :: CancelQueryResponse
-successCancelQueryResp = CancelQueryResponse
-  { cancelQueryResponseSuccess = True
-  }
-
 restartQuery :: TL.Text -> IO (Maybe RestartQueryResponse)
 restartQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
@@ -105,11 +93,6 @@ restartQuery qid = withGRPCClient clientConfig $ \client -> do
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
-
-successRestartQueryResp :: RestartQueryResponse
-successRestartQueryResp = RestartQueryResponse
-  { restartQueryResponseSuccess = True
-  }
 
 spec :: Spec
 spec = describe "HStream.RunQuerySpec" $ do
