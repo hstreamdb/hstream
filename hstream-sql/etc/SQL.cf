@@ -193,57 +193,57 @@ ExprColName. ValueExpr4 ::= ColName ;
 
 -- Set Functions
 SetFuncCountAll. SetFunc ::= "COUNT(*)" ;
-SetFuncCount.    SetFunc ::= "COUNT" "(" ValueExpr ")" ;
-SetFuncAvg.      SetFunc ::= "AVG"   "(" ValueExpr ")" ;
-SetFuncSum.      SetFunc ::= "SUM"   "(" ValueExpr ")" ;
-SetFuncMax.      SetFunc ::= "MAX"   "(" ValueExpr ")" ;
-SetFuncMin.      SetFunc ::= "MIN"   "(" ValueExpr ")" ;
+SetFuncCount.    SetFunc ::= "COUNT(" ValueExpr ")" ;
+SetFuncAvg.      SetFunc ::= "AVG("   ValueExpr ")" ;
+SetFuncSum.      SetFunc ::= "SUM("   ValueExpr ")" ;
+SetFuncMax.      SetFunc ::= "MAX("   ValueExpr ")" ;
+SetFuncMin.      SetFunc ::= "MIN("   ValueExpr ")" ;
 ExprSetFunc. ValueExpr4 ::= SetFunc ;
 
 -- Scalar Functions
-ScalarFuncSin.   ScalarFunc ::= "SIN"   "(" ValueExpr ")" ;
-ScalarFuncSinh.  ScalarFunc ::= "SINH"  "(" ValueExpr ")" ;
-ScalarFuncAsin.  ScalarFunc ::= "ASIN"  "(" ValueExpr ")" ;
-ScalarFuncAsinh. ScalarFunc ::= "ASINH" "(" ValueExpr ")" ;
-ScalarFuncCos.   ScalarFunc ::= "COS"   "(" ValueExpr ")" ;
-ScalarFuncCosh.  ScalarFunc ::= "COSH"  "(" ValueExpr ")" ;
-ScalarFuncAcos.  ScalarFunc ::= "ACOS"  "(" ValueExpr ")" ;
-ScalarFuncAcosh. ScalarFunc ::= "ACOSH" "(" ValueExpr ")" ;
-ScalarFuncTan.   ScalarFunc ::= "TAN"   "(" ValueExpr ")" ;
-ScalarFuncTanh.  ScalarFunc ::= "TANH"  "(" ValueExpr ")" ;
-ScalarFuncAtan.  ScalarFunc ::= "ATAN"  "(" ValueExpr ")" ;
-ScalarFuncAtanh. ScalarFunc ::= "ATANH" "(" ValueExpr ")" ;
+ScalarFuncSin.   ScalarFunc ::= "SIN("   ValueExpr ")" ;
+ScalarFuncSinh.  ScalarFunc ::= "SINH("  ValueExpr ")" ;
+ScalarFuncAsin.  ScalarFunc ::= "ASIN("  ValueExpr ")" ;
+ScalarFuncAsinh. ScalarFunc ::= "ASINH(" ValueExpr ")" ;
+ScalarFuncCos.   ScalarFunc ::= "COS("   ValueExpr ")" ;
+ScalarFuncCosh.  ScalarFunc ::= "COSH("  ValueExpr ")" ;
+ScalarFuncAcos.  ScalarFunc ::= "ACOS("  ValueExpr ")" ;
+ScalarFuncAcosh. ScalarFunc ::= "ACOSH(" ValueExpr ")" ;
+ScalarFuncTan.   ScalarFunc ::= "TAN("   ValueExpr ")" ;
+ScalarFuncTanh.  ScalarFunc ::= "TANH("  ValueExpr ")" ;
+ScalarFuncAtan.  ScalarFunc ::= "ATAN("  ValueExpr ")" ;
+ScalarFuncAtanh. ScalarFunc ::= "ATANH(" ValueExpr ")" ;
 
-ScalarFuncAbs.   ScalarFunc ::= "ABS"   "(" ValueExpr ")" ;
-ScalarFuncCeil.  ScalarFunc ::= "CEIL"  "(" ValueExpr ")" ;
-ScalarFuncFloor. ScalarFunc ::= "FLOOR" "(" ValueExpr ")" ;
-ScalarFuncRound. ScalarFunc ::= "ROUND" "(" ValueExpr ")" ;
+ScalarFuncAbs.   ScalarFunc ::= "ABS("   ValueExpr ")" ;
+ScalarFuncCeil.  ScalarFunc ::= "CEIL("  ValueExpr ")" ;
+ScalarFuncFloor. ScalarFunc ::= "FLOOR(" ValueExpr ")" ;
+ScalarFuncRound. ScalarFunc ::= "ROUND(" ValueExpr ")" ;
 
-ScalarFuncSqrt.  ScalarFunc ::= "SQRT"  "(" ValueExpr ")" ;
-ScalarFuncLog.   ScalarFunc ::= "LOG"   "(" ValueExpr ")" ;
-ScalarFuncLog2.  ScalarFunc ::= "LOG2"  "(" ValueExpr ")" ;
-ScalarFuncLog10. ScalarFunc ::= "LOG10" "(" ValueExpr ")" ;
-ScalarFuncExp.   ScalarFunc ::= "EXP"   "(" ValueExpr ")" ;
+ScalarFuncSqrt.  ScalarFunc ::= "SQRT("  ValueExpr ")" ;
+ScalarFuncLog.   ScalarFunc ::= "LOG("   ValueExpr ")" ;
+ScalarFuncLog2.  ScalarFunc ::= "LOG2("  ValueExpr ")" ;
+ScalarFuncLog10. ScalarFunc ::= "LOG10(" ValueExpr ")" ;
+ScalarFuncExp.   ScalarFunc ::= "EXP("   ValueExpr ")" ;
 
-ScalarFuncIsInt.   ScalarFunc ::= "IS_INT"   "(" ValueExpr ")" ;
-ScalarFuncIsFloat. ScalarFunc ::= "IS_FLOAT" "(" ValueExpr ")" ;
-ScalarFuncIsNum.   ScalarFunc ::= "IS_NUM"   "(" ValueExpr ")" ;
-ScalarFuncIsBool.  ScalarFunc ::= "IS_BOOL"  "(" ValueExpr ")" ;
-ScalarFuncIsStr.   ScalarFunc ::= "IS_STR"   "(" ValueExpr ")" ;
-ScalarFuncIsMap.   ScalarFunc ::= "IS_MAP"   "(" ValueExpr ")" ;
-ScalarFuncIsArr.   ScalarFunc ::= "IS_ARRAY" "(" ValueExpr ")" ;
-ScalarFuncIsDate.  ScalarFunc ::= "IS_DATE"  "(" ValueExpr ")" ;
-ScalarFuncIsTime.  ScalarFunc ::= "IS_TIME"  "(" ValueExpr ")" ;
+ScalarFuncIsInt.   ScalarFunc ::= "IS_INT("   ValueExpr ")" ;
+ScalarFuncIsFloat. ScalarFunc ::= "IS_FLOAT(" ValueExpr ")" ;
+ScalarFuncIsNum.   ScalarFunc ::= "IS_NUM("   ValueExpr ")" ;
+ScalarFuncIsBool.  ScalarFunc ::= "IS_BOOL("  ValueExpr ")" ;
+ScalarFuncIsStr.   ScalarFunc ::= "IS_STR("   ValueExpr ")" ;
+ScalarFuncIsMap.   ScalarFunc ::= "IS_MAP("   ValueExpr ")" ;
+ScalarFuncIsArr.   ScalarFunc ::= "IS_ARRAY(" ValueExpr ")" ;
+ScalarFuncIsDate.  ScalarFunc ::= "IS_DATE("  ValueExpr ")" ;
+ScalarFuncIsTime.  ScalarFunc ::= "IS_TIME("  ValueExpr ")" ;
 
-ScalarFuncToStr.  ScalarFunc ::= "TO_STR"  "(" ValueExpr ")" ;
+ScalarFuncToStr.  ScalarFunc ::= "TO_STR(" ValueExpr ")" ;
 
-ScalarFuncToLower. ScalarFunc ::= "TO_LOWER"   "(" ValueExpr ")" ;
-ScalarFuncToUpper. ScalarFunc ::= "TO_UPPER"   "(" ValueExpr ")" ;
-ScalarFuncTrim.    ScalarFunc ::= "TRIM"       "(" ValueExpr ")" ;
-ScalarFuncLTrim.   ScalarFunc ::= "LEFT_TRIM"  "(" ValueExpr ")" ;
-ScalarFuncRTrim.   ScalarFunc ::= "RIGHT_TRIM" "(" ValueExpr ")" ;
-ScalarFuncRev.     ScalarFunc ::= "REVERSE"    "(" ValueExpr ")" ;
-ScalarFuncStrlen.  ScalarFunc ::= "STRLEN"     "(" ValueExpr ")" ;
+ScalarFuncToLower. ScalarFunc ::= "TO_LOWER("   ValueExpr ")" ;
+ScalarFuncToUpper. ScalarFunc ::= "TO_UPPER("   ValueExpr ")" ;
+ScalarFuncTrim.    ScalarFunc ::= "TRIM("       ValueExpr ")" ;
+ScalarFuncLTrim.   ScalarFunc ::= "LEFT_TRIM("  ValueExpr ")" ;
+ScalarFuncRTrim.   ScalarFunc ::= "RIGHT_TRIM(" ValueExpr ")" ;
+ScalarFuncRev.     ScalarFunc ::= "REVERSE("    ValueExpr ")" ;
+ScalarFuncStrlen.  ScalarFunc ::= "STRLEN("     ValueExpr ")" ;
 
 ExprScalarFunc. ValueExpr ::= ScalarFunc ;
 
