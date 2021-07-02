@@ -74,21 +74,16 @@ enum HStreamServerError {
 }
 
 message AppendRequest {
-  repeated AppendSingleRequest requests = 1;
+  string streamName = 1;
+  repeated bytes records = 2;
 }
-
 message AppendResponse {
-  repeated AppendSingleResponse responses = 1;
-}
-
-message AppendSingleRequest {
   string streamName = 1;
-  repeated bytes payload = 2;
+  repeated RecordId recordIds = 2;
 }
-
-message AppendSingleResponse {
-  string streamName = 1;
-  HStreamServerError error = 2;
+message RecordId {
+  uint64 batchId = 1;
+  uint32 batchIndex = 2;
 }
 
 message SubscribeRequest {
