@@ -108,6 +108,7 @@ class Persistence handle where
   getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
   getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
   getQueryIds        :: HasCallStack => handle -> IO [CBytes]
+  getConnectorIds    :: HasCallStack => handle -> IO [CBytes]
 
   removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeQuery        :: HasCallStack => Id -> handle -> IO ()
@@ -174,6 +175,8 @@ instance Persistence PStoreMem where
 
   getQueryIds = ifThrow FailedToGet . (map queryId <$>) . getQueries
 
+  getConnectorIds = ifThrow FailedToGet . (map connectorId <$>) . getConnectors
+
   removeQuery' qid ifCheck ref@(refQ, _) = ifThrow FailedToRemove $
     if ifCheck then getQueryStatus qid ref >>= \case
       Terminated -> modifyIORef refQ . HM.delete . mkQueryPath $ qid
@@ -236,6 +239,8 @@ instance Persistence ZHandle where
 
   getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
 
+  getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren connectorsPath
+
   removeQuery' qid ifCheck zk = ifThrow FailedToRemove $
     if ifCheck then getQueryStatus qid zk >>= \case
       Terminated -> zooDeleteAll zk (mkQueryPath qid)
@@ -287,4 +292,4 @@ isViewQuery :: CBytes -> Bool
 isViewQuery = (== "view") . take 4 . unpack
 
 isStreamQuery :: CBytes -> Bool
-isStreamQuery = (== "stream") . take 4 . unpack
+isStreamQuery = (== "stream") . take 6 . unpack

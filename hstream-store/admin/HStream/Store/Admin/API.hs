@@ -4,6 +4,15 @@ module HStream.Store.Admin.API
   , buildLDClientRes
   , withResource
 
+  , module Thrift.Protocol
+  , module Thrift.Protocol.Id
+  , module Thrift.Protocol.ApplicationException.Types
+  , module Thrift.Channel
+  , module Thrift.Channel.HeaderChannel
+  , module Thrift.Channel.SocketChannel
+  , module Thrift.Monad
+  , FBUtil.withEventBaseDataplane
+
   , module Admin.AdminAPI.Client
   , module Admin.AdminAPI.Service
   , module AdminCommands.Types
@@ -17,13 +26,6 @@ module HStream.Store.Admin.API
   , module Safety.Types
   , module Settings.Types
   , module Common.Types
-  , module Thrift.Protocol
-  , module Thrift.Protocol.Id
-  , module Thrift.Protocol.ApplicationException.Types
-  , module Thrift.Channel
-  , module Thrift.Channel.HeaderChannel
-  , module Thrift.Channel.SocketChannel
-  , module Thrift.Monad
   ) where
 
 import           Admin.AdminAPI.Client
@@ -69,7 +71,7 @@ sendAdminApiRequest
   -> IO a
 sendAdminApiRequest conf m =
   FBUtil.withEventBaseDataplane $ \evb ->
-    withHeaderChannel' evb conf True m
+    withHeaderChannel' evb conf True False m
 
 getNodesAdminAddr :: HeaderConfig AdminAPI -> NodesFilter -> IO [SocketAddress]
 getNodesAdminAddr conf nodesFilter = do

@@ -10,16 +10,26 @@ import           Data.Aeson.Encode.Pretty  (encodePretty)
 import qualified Data.ByteString.Lazy      as BSL
 import qualified Data.Map.Strict           as Map
 import           Data.Text                 (Text)
-import           Data.Text.Encoding        (decodeUtf8)
+import           Data.Text.Encoding        (decodeUtf8, encodeUtf8)
 import qualified Data.Text.IO              as TIO
+import           Z.Data.CBytes             (CBytes)
+import           Z.Data.Text               (getUTF8Bytes)
+import           Z.Foreign                 (fromByteString, toByteString)
+import           Z.IO.FileSystem           as ZFS
 
+import           Common.Types              (NodeID (NodeID))
 import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
+import           Thrift.Protocol.JSON      (deserializeJSON)
 
 runNodesConfigCmd :: AA.HeaderConfig AA.AdminAPI -> NodesConfigOpts -> IO ()
-runNodesConfigCmd s (NodesConfigShow c)       = TIO.putStrLn =<< showConfig s c
+runNodesConfigCmd s (NodesConfigShow NodesShowOpts{..})       =
+  case nodesShowFile of
+    Just f  -> ZFS.writeFile f . fromByteString . encodeUtf8 =<< showConfig s nodesShowNodes
+    Nothing -> TIO.putStrLn =<< showConfig s nodesShowNodes
 runNodesConfigCmd s (NodesConfigBootstrap ps) = bootstrap s ps
 runNodesConfigCmd s (NodesConfigRemove c)     = removeConfig s c
+runNodesConfigCmd s (NodesConfigApply c)      = applyConfig s c
 
 showConfig :: AA.HeaderConfig AA.AdminAPI -> SimpleNodesFilter -> IO Text
 showConfig conf s = do
@@ -50,3 +60,16 @@ removeConfig conf s = do
     AA.removeNodes $ AA.RemoveNodesRequest (fromSimpleNodesFilter s)
   putStrLn $ "Successfully removed the node, new nodes configuration version "
     <> show (AA.removeNodesResponse_new_nodes_configuration_version resp)
+
+applyConfig :: AA.HeaderConfig AA.AdminAPI -> CBytes -> IO ()
+applyConfig conf path = do
+  config <- toByteString . getUTF8Bytes <$> ZFS.readTextFile path
+  case deserializeJSON config of
+    Left _ -> error "JSON file error"
+    Right (AA.NodesConfigResponse cs _) -> do
+      let
+        req = AA.UpdateNodesRequest $
+          (\c -> AA.UpdateSingleNodeRequest (NodeID (Just . AA.nodeConfig_node_index $ c) Nothing Nothing) c) <$> cs
+      resp <- AA.sendAdminApiRequest conf $ AA.updateNodes req
+      putStrLn $ "Successfully updated the node, new nodes configuration version "
+        <> show (AA.updateNodesResponse_new_nodes_configuration_version resp)

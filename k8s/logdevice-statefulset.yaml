@@ -15,7 +15,7 @@ metadata:
 spec:
   serviceName: "logdevice"
   # Change this to increase the number of nodes in the cluster.
-  replicas: 3
+  replicas: 4
   selector:
     matchLabels:
       app: logdevice
@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: logdevice
-        image: "hstreamdb/logdevice"
+        image: "hstreamdb/hstream"
         command:
           - "/usr/local/bin/logdeviced"
           - "--config-path"
@@ -80,4 +80,6 @@ spec:
       accessModes: [ "ReadWriteOnce" ]
       resources:
         requests:
-          storage: 20Gi
+          storage: 40Gi
+      # change this to fit your storageClass
+      storageClassName: hstream-store

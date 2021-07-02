@@ -53,9 +53,10 @@ combine CheckImpactOpts{..} prop =
       nodesIdsSelectByName = mapMaybe (`Map.lookup` nameToIdxMap) nodeNames
       nodesList = nodesIdsSelectByName `union` nodeIndexes
       shards' = getNodesShardNum nodesList nodeIdxMap
-      nodesSelectById = [AA.ShardID (AA.NodeID (Just n) Nothing Nothing) (fromIntegral s) | n <- nodesList
-                                                                                          , k <- shards'
-                                                                                          , s <- take (fromIntegral k) [0..]]
+      nodesSelectById =
+        [ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
+        | n <- nodesList , k <- shards' , s <- take (fromIntegral k) [0..]
+        ]
    in shardSets `union` nodesSelectById
 
 buildCheckImpactRequest :: CheckImpactOpts -> AA.ShardSet -> AA.CheckImpactRequest

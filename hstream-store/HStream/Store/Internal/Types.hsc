@@ -15,6 +15,7 @@ import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc
 import           Foreign.Ptr
 import           Foreign.Storable
+import qualified Text.Read             as Read
 import           Z.Data.CBytes         (CBytes)
 import qualified Z.Data.CBytes         as CBytes
 import           Z.Data.Vector         (Bytes)
@@ -387,6 +388,16 @@ data Compression
   | CompressionLZ4
   | CompressionLZ4HC
   deriving (Eq, Ord, Show)
+
+-- TODO: Doesn't support `CompressionZSTD Int` now
+instance Read Compression where
+  readPrec = do
+    i <- Read.lexP
+    case i of
+      Read.Ident "none"        -> return CompressionNone
+      Read.Ident "lz4"         -> return CompressionLZ4
+      Read.Ident "lz4hc"       -> return CompressionLZ4HC
+      x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
 fromCompression :: Compression -> C_Compression
 fromCompression CompressionNone = ((#const static_cast<HsInt>(Compression::NONE)), 0)

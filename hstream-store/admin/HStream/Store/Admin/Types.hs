@@ -88,10 +88,33 @@ statusParser = StatusOpts
 -------------------------------------------------------------------------------
 
 data NodesConfigOpts
-  = NodesConfigShow SimpleNodesFilter
+  = NodesConfigShow NodesShowOpts
   | NodesConfigBootstrap [ReplicationPropertyPair]
   | NodesConfigRemove SimpleNodesFilter
+  | NodesConfigApply CBytes
   deriving (Show)
+
+data NodesShowOpts = NodesShowOpts
+  { nodesShowNodes :: SimpleNodesFilter
+  , nodesShowFile  :: Maybe CBytes
+  } deriving (Show)
+
+nodesShowOptsParser :: Parser NodesShowOpts
+nodesShowOptsParser = NodesShowOpts
+  <$> simpleNodesFilterParser
+  <*> optional (strOption ( long "file"
+                        <> metavar "FILE"
+                        <> short 'f'
+                        <> help "The file to print config information"
+                          ))
+
+nodesEditFileParser :: Parser CBytes
+nodesEditFileParser =
+  strOption ( long "file"
+           <> metavar "FILE"
+           <> short 'f'
+           <> help "The file to read configs"
+            )
 
 nodesConfigBootstrapParser :: Parser NodesConfigOpts
 nodesConfigBootstrapParser = NodesConfigBootstrap
@@ -102,12 +125,18 @@ nodesConfigBootstrapParser = NodesConfigBootstrap
 
 nodesConfigParser :: Parser NodesConfigOpts
 nodesConfigParser = hsubparser
-  ( command "show" (info (NodesConfigShow <$> simpleNodesFilterParser) (progDesc "Print tier's NodesConfig to stdout"))
- <> command "bootstrap" (info nodesConfigBootstrapParser (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
- <> command "shrink"  (info (NodesConfigRemove <$> simpleNodesFilterParser)
-                       (progDesc ("Shrinks the cluster by removing nodes from the"
-                                <> " NodesConfig. This operation requires that the"
-                                <> " removed nodes are empty")))
+  ( command "show" (info (NodesConfigShow <$> nodesShowOptsParser)
+                     (progDesc "Print tier's NodesConfig to stdout"))
+ <> command "bootstrap" (info nodesConfigBootstrapParser
+                          (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
+ <> command "shrink" (info (NodesConfigRemove <$> simpleNodesFilterParser)
+                       (progDesc $ "Shrinks the cluster by removing nodes from"
+                                <> "the NodesConfig. This operation requires"
+                                <> "that the removed nodes are empty"))
+ <> command "apply" (info (NodesConfigApply <$> nodesEditFileParser)
+                      (progDesc $ "Apply the node configuration, The passed node "
+                               <> "configs should describe the desired final state"
+                               <> "of the node (not the diff)"))
   )
 
 -------------------------------------------------------------------------------
@@ -250,6 +279,7 @@ data LogsConfigCmd
   | RemoveCmd RemoveLogsOpts
   | SetRangeCmd SetRangeOpts
   | UpdateCmd UpdateLogsOpts
+  | LogsTrimCmd S.C_LogID S.LSN
   deriving (Show)
 
 logsConfigCmdParser :: Parser LogsConfigCmd
@@ -271,6 +301,9 @@ logsConfigCmdParser = hsubparser $
                             <> " a specific directory path in the LogsConfig tree."
                             <> " This will NOT delete the directory if it is not"
                             <> " empty by default, you need to use --recursive.")))
+ <> command "trim" (info (LogsTrimCmd <$> option auto (long "id" <> metavar "INT" <> help "which log to trim")
+                                      <*> option auto (long "lsn" <> metavar "INT" <> help "LSN"))
+                         (progDesc "Trim the log up to and including the specified LSN"))
  <> command "set-range" (info (SetRangeCmd <$> setRangeOptsParser)
                               (progDesc ("This updates the log id range for the"
                                <> " LogGroup under a specific directory path in"

@@ -1,6 +1,5 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -96,7 +95,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "mysql connector" $
     (do
        createMysqlTable $ TL.toStrict source3
-       _ <- executeCommandQuery $ "CREATE SOURCE | SINK CONNECTOR mysql WITH (type = \"mysql\", host = \"127.0.0.1\", streamname = \""<> source3 <>"\");"
+       _ <- executeCommandQuery $ "CREATE SOURCE | SINK CONNECTOR mysql WITH (type = mysql, host = \"127.0.0.1\", stream = source3);"
        _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (12, 84);"
        _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (22, 83);"
        _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (32, 82);"
@@ -112,7 +111,7 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "clickhouse connector" $
     (do
        createClickHouseTable $ TL.toStrict source4
-       _ <- executeCommandQuery $ "CREATE SOURCE | SINK CONNECTOR clickhouse WITH (type = \"clickhouse\", host = \"127.0.0.1\", streamname = \""<> source4 <>"\");"
+       _ <- executeCommandQuery $ "CREATE SOURCE | SINK CONNECTOR clickhouse WITH (type = clickhouse, host = \"127.0.0.1\", stream = source4);"
        _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (12, 84);"
        _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (22, 83);"
        _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (32, 82);"
@@ -258,6 +257,7 @@ fetchClickHouse :: Text -> IO (V.Vector (V.Vector ClickHouse.ClickhouseType))
 fetchClickHouse source = do
   conn <- ClickHouse.createClient clickHouseConnectInfo
   q <- ClickHouse.query conn $ "SELECT * FROM " <> Text.unpack source <> " ORDER BY temperature"
+  _ <- ClickHouse.query conn $ "DROP TABLE IF EXISTS " <> Text.unpack source
   ClickHouse.closeClient conn
   case q of
     Right res -> return res

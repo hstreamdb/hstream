@@ -29,6 +29,7 @@ library
     HStream.Utils
     HStream.Utils.Converter
     HStream.Utils.Format
+    HStream.Utils.BuildRecord
     ThirdParty.Google.Protobuf.Struct
     ThirdParty.Google.Protobuf.Timestamp
 
