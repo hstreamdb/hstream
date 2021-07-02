@@ -32,9 +32,9 @@ service HStreamApi {
   rpc CreateQuery(CreateQueryRequest) returns (CreateQueryResponse) {}
   rpc FetchQuery(FetchQueryRequest) returns (FetchQueryResponse) {}
   rpc GetQuery(GetQueryRequest) returns (GetQueryResponse) {}
-  // rpc DeleteQuery(DeleteQueryRequest) returns (DeleteQueryResponse) {}
-  // rpc RestartQuery(RestartQueryRequest) returns (RestartQueryResponse) {}
-  // rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse) {}
+  rpc DeleteQuery(DeleteQueryRequest) returns (DeleteQueryResponse) {}
+  rpc RestartQuery(RestartQueryRequest) returns (RestartQueryResponse) {}
+  rpc CancelQuery(CancelQueryRequest) returns (CancelQueryResponse) {}
 
   // connector related apis
   // rpc CreateConnector(CreateConnectorRequest) returns (CreateConnectorResponse) {}
@@ -269,4 +269,28 @@ message GetQueryResponse {
   int64 createdTime = 3;
   string queryText = 4;
   HStreamServerError error = 5;
+}
+
+message DeleteQueryRequest {
+  string id = 1;
+}
+
+message DeleteQueryResponse {
+  bool success = 1;
+}
+
+message RestartQueryRequest {
+  string id = 1;
+}
+
+message RestartQueryResponse {
+  bool success = 1;
+}
+
+message CancelQueryRequest {
+  string id = 1;
+}
+
+message CancelQueryResponse {
+  bool success = 1;
 }
