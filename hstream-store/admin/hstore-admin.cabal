@@ -113,6 +113,7 @@ library
     , vector                ^>=0.12.0.1
     , Z-Data
     , Z-IO
+    , zoovisitor            >=0.1.2    && <1
 
   include-dirs:       /usr/local/include
   extra-lib-dirs:     /usr/local/lib

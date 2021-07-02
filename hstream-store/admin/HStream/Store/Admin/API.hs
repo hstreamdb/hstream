@@ -62,6 +62,8 @@ import qualified Z.IO.Environment                           as Env
 import qualified Z.IO.FileSystem                            as FS
 import           Z.IO.Resource                              (Resource, liftIO,
                                                              withResource)
+import qualified ZooKeeper                                  as Zoo
+import qualified ZooKeeper.Types                            as Zoo
 
 import qualified HStream.Store                              as S
 
@@ -85,6 +87,7 @@ buildLDClientRes
   -> Resource S.LDClient
 buildLDClientRes conf settings = do
   liftIO $ S.setLogDeviceDbgLevel S.C_DBG_CRITICAL
+  liftIO $ Zoo.zooSetDebugLevel Zoo.ZooLogError
   d <- liftIO Env.getTempDir
   (path, file) <- FS.mkstemp d "ld_conf_" False
   liftIO $ do
