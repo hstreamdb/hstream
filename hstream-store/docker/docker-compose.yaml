@@ -67,19 +67,6 @@ services:
       hstream-net:
         ipv4_address: 172.16.0.10
 
-  ldshell:
-    image: hstreamdb/logdevice
-    networks:
-      - hstream-net
-    entrypoint:
-      ldshell -s 172.16.0.2
-
-  shell:
-    image: hstreamdb/logdevice
-    networks:
-      - hstream-net
-    entrypoint: bash
-
 networks:
   hstream-net:
     name: hstream-net

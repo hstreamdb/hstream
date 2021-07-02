@@ -15,7 +15,7 @@ services:
       /usr/local/bin/hstream-server -p 6570 -l /etc/logdevice/logdevice.json
 
   ld-admin-server:
-    image: hstreamdb/logdevice
+    image: hstreamdb/hstream
     networks:
       hstream-net:
         ipv4_address: 172.16.0.2
@@ -25,7 +25,7 @@ services:
       ld-admin-server --config-path /etc/logdevice/logdevice.json --enable-maintenance-manager --enable-safety-check-periodic-metadata-update --maintenance-log-snapshotting
 
   logdeviced-0:
-    image: hstreamdb/logdevice
+    image: hstreamdb/hstream
     networks:
       hstream-net:
         ipv4_address: 172.16.0.20
@@ -36,7 +36,7 @@ services:
       logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-0 --address 172.16.0.20 --local-log-store-path /data/logdevice
 
   logdeviced-1:
-    image: hstreamdb/logdevice
+    image: hstreamdb/hstream
     networks:
       hstream-net:
         ipv4_address: 172.16.0.21
@@ -47,7 +47,7 @@ services:
       logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-1 --address 172.16.0.21 --local-log-store-path /data/logdevice
 
   logdeviced-2:
-    image: hstreamdb/logdevice
+    image: hstreamdb/hstream
     networks:
       hstream-net:
         ipv4_address: 172.16.0.22
@@ -57,7 +57,7 @@ services:
     entrypoint: logdeviced --config-path /etc/logdevice/logdevice.json --name logdevice-2 --address 172.16.0.22 --local-log-store-path /data/logdevice
 
   logdeviced-3:
-    image: hstreamdb/logdevice
+    image: hstreamdb/hstream
     networks:
       hstream-net:
         ipv4_address: 172.16.0.23
