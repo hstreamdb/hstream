@@ -14,9 +14,8 @@ import           Control.Exception                 (Exception, SomeException,
                                                     throwIO, try)
 import           Control.Monad                     (void, when)
 import qualified Data.Aeson                        as Aeson
+import qualified Data.ByteString                   as BS
 import qualified Data.ByteString.Char8             as C
-import qualified Data.ByteString.Lazy              as BSL
-import           Data.Either                       (fromRight, isRight)
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef                        (IORef, atomicModifyIORef',
                                                     newIORef, readIORef)
@@ -27,6 +26,7 @@ import           Data.String                       (fromString)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
+import           Data.Word                         (Word32, Word64)
 import           Database.ClickHouseDriver.Client  (createClient)
 import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
@@ -45,7 +45,8 @@ import qualified Z.Data.CBytes                     as CB
 import qualified Z.Data.JSON                       as ZJ
 import qualified Z.Data.Text                       as ZT
 import           Z.Data.Vector                     (Bytes)
-import           Z.Foreign                         (fromByteString)
+import           Z.Foreign                         (fromByteString,
+                                                    toByteString)
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
 import           ZooKeeper.Types                   (ZHandle)
@@ -389,8 +390,8 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeReque
       | otherwise  = do
           res <- createStreamReader (opts V.! idx) client
           case res of
-            Left err     -> return $ Left err
-            Right value  -> do loop opts client (idx + 1) len $ V.cons value vec
+            Left err    -> return $ Left err
+            Right value -> do loop opts client (idx + 1) len $ V.cons value vec
 
     getStartLSN :: SubscriptionOffset -> LDClient -> C_LogID -> IO LSN
     getStartLSN SubscriptionOffset{..} client logId = case fromJust $ subscriptionOffsetOffset of
@@ -413,32 +414,33 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeReque
           startLSN <- getStartLSN (fromJust $ streamSubscriptionOffset) client logId
           a' <- try $ ckpReaderStartReading ldReader logId startLSN LSN_MAX
           case a' of
-            Left a -> return $ Left a
+            Left a  -> return $ Left a
             Right _ -> return $ Right (streamSubscriptionStreamName, ldReader)
 
 fetchHandler :: ServerContext
              -> ServerRequest 'Normal FetchRequest FetchResponse
              -> IO (ServerResponse 'Normal FetchResponse)
 fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) = do
-  hm <- readIORef subscribedConnectors
+  hm <- readIORef subscribedReaders
   case HM.lookup fetchRequestSubscriptionId hm of
     Nothing                       -> do
       let resp = FetchResponse V.empty
       return (ServerNormalResponse resp [] StatusOk "")
-    Just connectorsWithStreamName -> do
-      payloads <- mapM fetchSingleConnector (snd <$> connectorsWithStreamName)
-      let records = V.map payloadToFetchedRecord $ V.zip (fst <$> connectorsWithStreamName) payloads
+    Just reader -> do
+      payloads <- mapM (fetchSingleReader fetchRequestTimeout fetchRequestMaxSize) (snd <$> reader)
+      let records = V.map payloadToFetchedRecord $ V.zip (fst <$> reader) payloads
       let resp = FetchResponse records
       return (ServerNormalResponse resp [] StatusOk "")
   where
-    fetchSingleConnector :: SourceConnector -> IO [BSL.ByteString]
-    fetchSingleConnector SourceConnector{..} = do
-      records <- readRecords
-      return $ srcValue <$> records
+    fetchSingleReader :: Word64 -> Word32 -> LDSyncCkpReader -> IO [BS.ByteString]
+    fetchSingleReader timeout maxsize reader = do
+      void $ ckpReaderSetTimeout reader (fromIntegral timeout)
+      res <- ckpReaderRead reader (fromIntegral maxsize)
+      return $ toByteString . recordPayload <$> res
 
-    payloadToFetchedRecord :: (TL.Text, [BSL.ByteString]) -> FetchedRecord
+    payloadToFetchedRecord :: (TL.Text, [BS.ByteString]) -> FetchedRecord
     payloadToFetchedRecord (streamName, payloads) =
-      FetchedRecord streamName (V.fromList $ BSL.toStrict <$> payloads)
+      FetchedRecord streamName (V.fromList $ payloads)
 
 commitOffsetHandler :: ServerContext
                     -> ServerRequest 'Normal CommitOffsetRequest CommitOffsetResponse

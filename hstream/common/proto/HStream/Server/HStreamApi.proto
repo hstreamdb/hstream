@@ -117,6 +117,8 @@ message SubscriptionOffset {
 
 message FetchRequest {
   string subscriptionId = 1;
+  uint64 timeout = 2;
+  uint32 maxSize = 3;
 }
 
 message FetchResponse {
