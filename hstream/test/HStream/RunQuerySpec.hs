@@ -6,17 +6,17 @@
 
 module HStream.RunQuerySpec (spec) where
 
-import qualified Data.List          as L
-import qualified Data.Text.Lazy     as TL
-import           Test.Hspec
-import           Network.GRPC.HighLevel.Generated
+import qualified Data.List                        as L
+import qualified Data.Map.Strict                  as Map
+import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
-import qualified Data.Map.Strict                   as Map
+import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
+import           Test.Hspec
 
 import           HStream.Common
-import           HStream.Store
 import           HStream.Server.HStreamApi
+import           HStream.Store
 
 getQueryResponseIdIs :: TL.Text -> GetQueryResponse -> Bool
 getQueryResponseIdIs targetId (GetQueryResponse queryId _ _ _ _) = queryId == targetId
@@ -119,45 +119,45 @@ spec = describe "HStream.RunQuerySpec" $ do
 
   it "fetch queries" $
     ( do
-        Just FetchQueryResponse {fetchQueryResponseResponses = queries} <- fetchQuery 
+        Just FetchQueryResponse {fetchQueryResponseResponses = queries} <- fetchQuery
         let record = V.find (getQueryResponseIdIs queryname1) queries
-        case record of 
+        case record of
           Just _ -> return True
-          _ -> return False
+          _      -> return False
     ) `shouldReturn` True
 
   it "get query" $
     ( do
-        query <- getQuery queryname1 
-        case query of 
+        query <- getQuery queryname1
+        case query of
           Just _ -> return True
-          _ -> return False
+          _      -> return False
     ) `shouldReturn` True
 
   it "cancel query" $
     ( do
-        cancelQuery queryname1 
-        query <- getQuery queryname1 
-        case query of 
+        cancelQuery queryname1
+        query <- getQuery queryname1
+        case query of
           Just (GetQueryResponse _ 2 _ _ _) -> return True
-          _ -> return False
+          _                                 -> return False
     ) `shouldReturn` True
 
   it "restart query" $
     ( do
-        restartQuery queryname1 
-        query <- getQuery queryname1 
-        case query of 
+        restartQuery queryname1
+        query <- getQuery queryname1
+        case query of
           Just (GetQueryResponse _ 1 _ _ _) -> return True
-          _ -> return False
+          _                                 -> return False
     ) `shouldReturn` True
 
   it "delete query" $
     ( do
-        cancelQuery queryname1 
+        cancelQuery queryname1
         deleteQuery queryname1
-        query <- getQuery queryname1 
-        case query of 
+        query <- getQuery queryname1
+        case query of
           Just (GetQueryResponse _ _ _ _ Enumerated {enumerated = Right HStreamServerErrorNotExistError}) -> return True
           _ -> return False
     ) `shouldReturn` True

@@ -21,16 +21,16 @@ import qualified Database.ClickHouseDriver.Client  as ClickHouse
 import qualified Database.ClickHouseDriver.Types   as ClickHouse
 import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
 import qualified Database.MySQL.Base               as MySQL
+import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.LowLevel.Call        (clientCallCancel)
 import qualified System.IO.Streams                 as Streams
 import           System.Random
 import           Test.Hspec
 import           ThirdParty.Google.Protobuf.Struct
-import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Call        (clientCallCancel)
 
+import           HStream.Server.HStreamApi
 import           HStream.Store
 import           HStream.Utils
-import           HStream.Server.HStreamApi
 
 clientConfig :: ClientConfig
 clientConfig = ClientConfig { clientServerHost = Host "127.0.0.1"

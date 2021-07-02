@@ -120,7 +120,7 @@ deleteQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteQueryRequest DeleteQueryResponse
   -> IO (ServerResponse 'Normal DeleteQueryResponse)
-deleteQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) = do 
+deleteQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) = do
   res <- catch
     ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery (ZDC.pack $ TL.unpack deleteQueryRequestId)) >> return True)
     (\(e :: SomeException) -> return False)

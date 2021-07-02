@@ -32,6 +32,7 @@ import qualified ZooKeeper.Types            as ZK
 import qualified HStream.Connector.HStore   as HCH
 import qualified HStream.SQL.Codegen        as HSC
 import           HStream.SQL.Exception      (SomeSQLException)
+import qualified HStream.Server.Common      as Handler
 import qualified HStream.Server.Handler     as Handler
 import qualified HStream.Server.Persistence as HSP
 import qualified HStream.Store              as HS
