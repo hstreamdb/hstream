@@ -137,16 +137,12 @@ message CommitOffsetRequest {
 
 message StreamOffset {
   string streamName = 1;
-  uint64 offset = 2;
+  RecordId offset = 2;
 }
 
 message CommitOffsetResponse {
-  repeated StreamCommitOffsetResponse responses = 1;
-}
-
-message StreamCommitOffsetResponse {
-  string streamName = 1;
-  HStreamServerError error = 2;
+  string subscriptionId = 1;
+  repeated string successfulCommits = 2;
 }
 
 message CreateStreamsRequest {

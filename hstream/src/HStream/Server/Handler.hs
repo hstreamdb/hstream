@@ -82,10 +82,6 @@ subscribedReaders :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text, LDSyncCkpRead
 subscribedReaders = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE subscribedReaders #-}
 
-subscribedConnectors :: IORef (HM.HashMap TL.Text (V.Vector (TL.Text,SourceConnector)))
-subscribedConnectors = unsafePerformIO $ newIORef HM.empty
-{-# NOINLINE subscribedConnectors #-}
-
 --------------------------------------------------------------------------------
 
 handlers :: LDClient -> Int -> Maybe ZHandle -> Compression -> IO (HStreamApi ServerRequest ServerResponse)
@@ -379,12 +375,11 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeReque
       atomicModifyIORef' subscribedReaders (\hm -> (HM.insert subscribeRequestSubscriptionId res hm, ()))
       return $ ServerNormalResponse resp [] StatusOk ""
   where
-    loop
-      :: V.Vector StreamSubscription
-      -> LDClient
-      -> Int -> Int  -- current index and the length of StreamSubscription
-      -> V.Vector (TL.Text, LDSyncCkpReader)
-      -> IO (Either SomeException (V.Vector (TL.Text, LDSyncCkpReader)))
+    loop :: V.Vector StreamSubscription
+         -> LDClient
+         -> Int -> Int  -- current index and the length of StreamSubscription
+         -> V.Vector (TL.Text, LDSyncCkpReader)
+         -> IO (Either SomeException (V.Vector (TL.Text, LDSyncCkpReader)))
     loop opts client idx len vec
       | idx >= len = return $ Right vec
       | otherwise  = do
@@ -446,31 +441,35 @@ commitOffsetHandler :: ServerContext
                     -> ServerRequest 'Normal CommitOffsetRequest CommitOffsetResponse
                     -> IO (ServerResponse 'Normal CommitOffsetResponse)
 commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata CommitOffsetRequest{..}) = do
-  hm <- readIORef subscribedConnectors
+  hm <- readIORef subscribedReaders
   case HM.lookup commitOffsetRequestSubscriptionId hm of
     Nothing -> do
-      let resp = CommitOffsetResponse V.empty
+      let resp = CommitOffsetResponse commitOffsetRequestSubscriptionId V.empty
       return (ServerNormalResponse resp [] StatusOk "")
-    Just connectorsWithStreamName -> do
-      singleResps <- mapM (fmap eitherToResponse . commitSingle connectorsWithStreamName) commitOffsetRequestStreamOffsets
-      let resp = CommitOffsetResponse singleResps
+    Just reader -> do
+      singleResps <- V.mapM (commitSingle reader scLDClient) commitOffsetRequestStreamOffsets
+      let resp = CommitOffsetResponse commitOffsetRequestSubscriptionId $
+           foldr (\x acc -> case x of
+                             Right v -> V.cons v acc
+                             Left _  -> acc
+                 ) V.empty singleResps
       return (ServerNormalResponse resp [] StatusOk "")
   where
-    commitSingle :: V.Vector (TL.Text, SourceConnector) -> StreamOffset -> IO (TL.Text, Either SomeException ())
-    commitSingle v StreamOffset{..} = do
+    commitSingle :: V.Vector (TL.Text, LDSyncCkpReader) -> LDClient -> StreamOffset
+                 -> IO (Either SomeException TL.Text)
+    commitSingle v client StreamOffset{..} = do
       case V.find (\(stream,_) -> stream == streamOffsetStreamName) v of
-        Nothing                  -> return (streamOffsetStreamName, Left undefined)
-        Just (stream, connector) -> do
-          e' <- try $ commitCheckpoint connector (TL.toStrict stream) (Offset streamOffsetOffset)
+        Nothing                  -> return $ Left undefined
+        Just (stream, reader) -> do
+          e' <- try $ commitCheckpoint client reader stream (fromJust streamOffsetOffset)
           case e' of
-            Left e  -> return (stream, Left e)
-            Right _ -> return (stream, Right ())
-    eitherToResponse :: (TL.Text, Either SomeException ()) -> StreamCommitOffsetResponse
-    eitherToResponse (stream, e') =
-      let serverError = case e' of
-            Left _  -> HStreamServerErrorUnknownError
-            Right _ -> HStreamServerErrorNoError
-       in StreamCommitOffsetResponse stream (Enumerated $ Right serverError)
+            Left e  -> return $ Left e
+            Right _ -> return $ Right stream
+
+    commitCheckpoint :: LDClient -> LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
+    commitCheckpoint client reader streamName RecordId{..} = do
+      logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
+      writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 removeStreamsHandler
   :: ServerContext
