@@ -101,6 +101,7 @@ handlers ldclient repFactor handle compression = do
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
     , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
+    , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -162,7 +163,9 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     DropPlan checkIfExist dropObject -> mark LowLevelStoreException $
       handleDropPlan sc checkIfExist dropObject
     ShowPlan showObject -> handleShowPlan sc showObject
-    TerminatePlan terminationSelection -> handleTerminatePlan sc terminationSelection
+    TerminatePlan terminationSelection -> do
+      handleTerminate sc terminationSelection
+      return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
   where
     mkLogAttrs = LogAttrs . HsLogAttrs scDefaultStreamRepFactor
     create sName = createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
@@ -219,7 +222,7 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
       qids <- P.withMaybeZHandle zkHandle P.getQueryIds
       case L.find ((== path) . P.getSuffix) qids of
         Just x -> handle (\(_::QueryTerminatedOrNotExist) -> pure ()) (
-          handleTerminatePlan sc (OneQuery x) >> P.withMaybeZHandle zkHandle (P.removeQuery' x True))
+          handleTerminate sc (OneQuery x) >> P.withMaybeZHandle zkHandle (P.removeQuery' x True))
         Nothing -> pure ()
 
     handleDrop object name = do
@@ -254,21 +257,19 @@ handleShowPlan ServerContext{..} showObject =
       return (ServerNormalResponse resp [] StatusOk "")
     _ -> returnErrRes "not Supported"
 
-handleTerminatePlan :: ServerContext -> TerminationSelection
-  -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleTerminatePlan ServerContext{..} (OneQuery qid) = do
+handleTerminate :: ServerContext -> TerminationSelection
+  -> IO ()
+handleTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> throwIO QueryTerminatedOrNotExist
   P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
-  swapMVar runningQueries (HM.delete qid hmapQ)
-  return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
-handleTerminatePlan ServerContext{..} AllQuery = do
+  void $ swapMVar runningQueries (HM.delete qid hmapQ)
+handleTerminate ServerContext{..} AllQuery = do
   hmapQ <- readMVar runningQueries
   mapM_ killThread $ HM.elems hmapQ
   let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   mapM_ f $ HM.keys hmapQ
-  swapMVar runningQueries HM.empty
-  return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+  void $ swapMVar runningQueries HM.empty
 
 handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> IO ()
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
@@ -499,3 +500,12 @@ removeStreamsHandler ServerContext{..} (ServerNormalRequest _metadata RemoveStre
             Left _  -> HStreamServerErrorUnknownError
             Right _ -> HStreamServerErrorNoError
        in RemoveStreamResponse stream (Enumerated $ Right serverError)
+
+terminateQueryHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TerminateQueryRequest TerminateQueryResponse
+  -> IO (ServerResponse 'Normal TerminateQueryResponse)
+terminateQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueryRequest{..}) = do
+  let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
+  handleTerminate sc (OneQuery queryName)
+  return (ServerNormalResponse (TerminateQueryResponse terminateQueryRequestQueryName) [] StatusOk  "")
