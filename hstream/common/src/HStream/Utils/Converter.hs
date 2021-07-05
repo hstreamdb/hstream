@@ -19,18 +19,18 @@ module HStream.Utils.Converter
   , structToStruct
   ) where
 
-import           Control.Exception                 (Exception (..))
 import qualified Data.Aeson                        as Aeson
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.Map                          as M
 import qualified Data.Map.Strict                   as Map
-import           Data.Scientific
+import           Data.Scientific                   (toRealFloat)
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 
+import           Data.Bifunctor                    (Bifunctor (bimap))
 import qualified Data.ByteString.Lazy              as BL
 import qualified Data.Text                         as T
-import           Proto3.Suite
+import           Proto3.Suite                      (Enumerated (Enumerated))
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as ZCB
 import qualified Z.Data.JSON                       as Z
@@ -38,6 +38,7 @@ import qualified Z.Data.Text                       as ZT
 import qualified Z.Data.Vector                     as ZV
 import qualified Z.Foreign                         as ZF
 
+pattern V :: ValueKind -> Value
 pattern V x = Value (Just x)
 
 jsonObjectToStruct :: Aeson.Object -> Struct
@@ -55,20 +56,22 @@ jsonValueToValue Aeson.Null            = V $ ValueKindNullValue   (Enumerated $ 
 
 structToJsonObject :: Struct -> Aeson.Object
 structToJsonObject (Struct kvmap) = HM.fromList $
-  (\(text,value) -> (TL.toStrict text, convertMaybeValue value)) <$> kvTuples
+  bimap TL.toStrict convertMaybeValue <$> kvTuples
   where
     kvTuples = Map.toList kvmap
     convertMaybeValue Nothing  = error "Nothing encountered"
     convertMaybeValue (Just v) = valueToJsonValue v
 
 valueToJsonValue :: Value -> Aeson.Value
-valueToJsonValue (Value Nothing) = error "Nothing encountered"
 valueToJsonValue (V (ValueKindStructValue struct))           = Aeson.Object (structToJsonObject struct)
 valueToJsonValue (V (ValueKindListValue   (ListValue list))) = Aeson.Array  (valueToJsonValue <$> list)
 valueToJsonValue (V (ValueKindStringValue text))             = Aeson.String (TL.toStrict text)
 valueToJsonValue (V (ValueKindNumberValue num))              = Aeson.Number (read . show $ num)
 valueToJsonValue (V (ValueKindBoolValue   bool))             = Aeson.Bool   bool
 valueToJsonValue (V (ValueKindNullValue   _))                = Aeson.Null
+valueToJsonValue (Value Nothing) = error "Nothing encountered"
+-- The following line of code is not used but to fix a warning
+valueToJsonValue (Value (Just _)) = error "impossible happened"
 
 zJsonObjectToStruct :: ZObject -> Struct
 zJsonObjectToStruct object = Struct kvmap
@@ -93,13 +96,15 @@ structToZJsonObject (Struct kvmap) = ZV.pack $
     convertMaybeValue (Just v) = valueToZJsonValue v
 
 valueToZJsonValue :: Value -> Z.Value
-valueToZJsonValue (Value Nothing) = error "Nothing encountered"
 valueToZJsonValue (V (ValueKindStructValue struct))           = Z.Object (structToZJsonObject struct)
 valueToZJsonValue (V (ValueKindListValue   (ListValue list))) = Z.Array  (ZV.pack $ V.toList $ valueToZJsonValue <$> list)
 valueToZJsonValue (V (ValueKindStringValue text))             = Z.String (ZT.pack $ TL.unpack text)
 valueToZJsonValue (V (ValueKindNumberValue num))              = Z.Number (read . show $ num)
 valueToZJsonValue (V (ValueKindBoolValue   bool))             = Z.Bool   bool
 valueToZJsonValue (V (ValueKindNullValue   _))                = Z.Null
+valueToZJsonValue (Value Nothing) = error "Nothing encountered"
+-- The following line of code is not used but to fix a warning
+valueToZJsonValue (Value (Just _)) = error "impossible happened"
 
 cbytesToText :: ZCB.CBytes -> T.Text
 cbytesToText = T.pack . ZCB.unpack
@@ -121,6 +126,3 @@ structToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindStr
 
 cbytesToValue :: ZCB.CBytes -> Value
 cbytesToValue = Value . Just . ValueKindStringValue . TL.fromStrict . cbytesToText
-
-getKeyWordFromException :: Exception a => a -> TL.Text
-getKeyWordFromException =  TL.pack . takeWhile (/='{') . show
