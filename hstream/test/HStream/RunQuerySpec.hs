@@ -17,6 +17,7 @@ import           Test.Hspec
 import           HStream.Common
 import           HStream.Server.HStreamApi
 import           HStream.Store
+import           HStream.Store.Logger
 
 getQueryResponseIdIs :: TL.Text -> GetQueryResponse -> Bool
 getQueryResponseIdIs targetId (GetQueryResponse queryId _ _ _ _) = queryId == targetId

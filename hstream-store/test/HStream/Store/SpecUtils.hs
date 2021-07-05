@@ -3,15 +3,16 @@
 
 module HStream.Store.SpecUtils where
 
-import           Control.Applicative (liftA2)
-import           Data.Maybe          (fromMaybe)
-import           System.IO.Unsafe    (unsafePerformIO)
-import           System.Random       (newStdGen, randomRs)
-import           Z.Data.CBytes       (CBytes)
-import qualified Z.Data.CBytes       as CBytes
-import           Z.Data.Vector       (Bytes)
+import           Control.Applicative  (liftA2)
+import           Data.Maybe           (fromMaybe)
+import           System.IO.Unsafe     (unsafePerformIO)
+import           System.Random        (newStdGen, randomRs)
+import           Z.Data.CBytes        (CBytes)
+import qualified Z.Data.CBytes        as CBytes
+import           Z.Data.Vector        (Bytes)
 
-import qualified HStream.Store       as S
+import qualified HStream.Store        as S
+import qualified HStream.Store.Logger as S
 
 client :: S.LDClient
 client = unsafePerformIO $ do

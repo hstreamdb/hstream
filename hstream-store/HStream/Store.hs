@@ -23,9 +23,6 @@ module HStream.Store
     -- * Stream
   , module HStream.Store.Stream
 
-    -- * Logger
-  , module HStream.Store.Logger
-
     -- * Exception
   , module HStream.Store.Exception
 

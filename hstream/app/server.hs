@@ -20,27 +20,27 @@ import           ZooKeeper.Types
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
-import           HStream.Store                    (Compression (..),
-                                                   HsLogAttrs (..), LDClient,
-                                                   LogAttrs (..),
-                                                   initCheckpointStoreLogID,
-                                                   newLDClient,
-                                                   setupSigsegvHandler)
+import           HStream.Store
+import qualified HStream.Store.Logger             as Log
 
-data ServerConfig = ServerConfig
-  { _serverHost          :: CBytes
-  , _serverPort          :: PortNumber
-  , _persistent          :: Bool
-  , _zkUri               :: CBytes
-  , _logdeviceConfigPath :: CBytes
-  , _topicRepFactor      :: Int
-  , _ckpRepFactor        :: Int
-  , _compression         :: Compression
+-- TODO
+-- 1. config file for the Server
+-- 2. log options
+
+data ServerOpts = ServerOpts
+  { _serverHost     :: CBytes
+  , _serverPort     :: PortNumber
+  , _persistent     :: Bool
+  , _zkUri          :: CBytes
+  , _ldConfigPath   :: CBytes
+  , _topicRepFactor :: Int
+  , _ckpRepFactor   :: Int
+  , _compression    :: Compression
   } deriving (Show)
 
-parseConfig :: Parser ServerConfig
+parseConfig :: Parser ServerOpts
 parseConfig =
-  ServerConfig
+  ServerOpts
     <$> strOption ( long "host" <> metavar "HOST"
                  <> showDefault <> value "127.0.0.1"
                  <> help "server host value"
@@ -78,23 +78,25 @@ parseConfig =
                    <> help "Specify the compression policy for gdevice"
                     )
 
-app :: ServerConfig -> IO ()
-app config@ServerConfig{..} = do
+app :: ServerOpts -> IO ()
+app config@ServerOpts{..} = do
   setupSigsegvHandler
-  ldclient <- newLDClient _logdeviceConfigPath
+  ldclient <- newLDClient _ldConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
-  if _persistent then withResource (defaultHandle _zkUri) $
-    \zk -> initZooKeeper zk >> app' config ldclient (Just zk)
-  else app' config ldclient Nothing
+  if _persistent
+     then withResource (defaultHandle _zkUri) $ \zk -> do
+       initZooKeeper zk
+       serve config ldclient (Just zk)
+     else serve config ldclient Nothing
 
-app' :: ServerConfig -> LDClient -> Maybe ZHandle -> IO ()
-app' ServerConfig{..} ldclient zk = do
+serve :: ServerOpts -> LDClient -> Maybe ZHandle -> IO ()
+serve ServerOpts{..} ldclient zk = do
   let options = defaultServiceOptions
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
   api <- handlers ldclient _topicRepFactor zk _compression
-  print _logdeviceConfigPath
+  Log.i "Server started."
   hstreamApiServer api options
 
 initZooKeeper :: ZHandle -> IO ()

@@ -16,6 +16,7 @@ import           Test.Hspec
 
 import           HStream.Common
 import           HStream.Store
+import           HStream.Store.Logger
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do

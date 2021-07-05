@@ -18,6 +18,7 @@ import           ThirdParty.Google.Protobuf.Empty
 import           HStream.Common
 import           HStream.Server.HStreamApi
 import           HStream.Store
+import           HStream.Store.Logger
 
 viewIdIs :: TL.Text -> View -> Bool
 viewIdIs targetId (View queryId _ _ _ _) = queryId == targetId
