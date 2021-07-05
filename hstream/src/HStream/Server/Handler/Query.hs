@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Server.API.Query where
+module HStream.Server.Handler.Query where
 
 import           Control.Concurrent               (forkIO, killThread, putMVar,
                                                    takeMVar)
@@ -33,12 +33,12 @@ import           HStream.Processing.Processor     (getTaskName,
 import           HStream.Processing.Type          (Offset (..))
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException)
-import           HStream.Server.Common            (ServerContext (..),
+import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    checkpointRootPath,
                                                    createInsertPersistentQuery,
                                                    handlePushQueryCanceled,
                                                    runTaskWrapper)
-import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils.Converter          (cbytesToText, textToCBytes)

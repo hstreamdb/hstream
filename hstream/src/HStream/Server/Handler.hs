@@ -57,16 +57,15 @@ import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
                                                     runTask)
 import           HStream.Processing.Type
 import           HStream.SQL.Codegen
-import           HStream.Server.API.Query          (cancelQueryHandler,
+import           HStream.Server.Exception
+import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Query      (cancelQueryHandler,
                                                     createQueryHandler,
                                                     deleteQueryHandler,
                                                     fetchQueryHandler,
                                                     getQueryHandler,
                                                     restartQueryHandler)
-import           HStream.Server.Common
-import           HStream.Server.Exception
-import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common
 import qualified HStream.Server.Persistence        as P
 import           HStream.Store                     hiding (e)
 import           HStream.Utils
