@@ -78,8 +78,6 @@ createQueryHandler sc@ServerContext{..} (ServerNormalRequest _ CreateQueryReques
             tid <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
               >> runTaskWrapper True taskBuilder' scLDClient
             takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-            -- _ <- forkIO $ handlePushQueryCanceled _metadata
-            --   (killThread tid >> HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Terminated))
             ldreader' <- HS.newLDRsmCkpReader scLDClient
               (textToCBytes (T.append (getTaskName taskBuilder') "-result"))
               HS.checkpointStoreLogID 5000 1 Nothing 10
