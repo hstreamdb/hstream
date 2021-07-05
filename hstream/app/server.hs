@@ -31,7 +31,7 @@ data ServerConfig = ServerConfig
   { _serverHost          :: CBytes
   , _serverPort          :: PortNumber
   , _persistent          :: Bool
-  , _zkHost              :: CBytes
+  , _zkUri               :: CBytes
   , _logdeviceConfigPath :: CBytes
   , _topicRepFactor      :: Int
   , _ckpRepFactor        :: Int
@@ -52,7 +52,7 @@ parseConfig =
     <*> flag False True ( long "persistent"
                        <> help "set flag to store queries in zookeeper"
                         )
-    <*> strOption ( long "zkhost" <> metavar "STR"
+    <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault
                  <> value "127.0.0.1:2181"
                  <> help ( "comma separated host:port pairs, each corresponding"
@@ -83,7 +83,7 @@ app config@ServerConfig{..} = do
   setupSigsegvHandler
   ldclient <- newLDClient _logdeviceConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
-  if _persistent then withResource (defaultHandle _zkHost) $
+  if _persistent then withResource (defaultHandle _zkUri) $
     \zk -> initZooKeeper zk >> app' config ldclient (Just zk)
   else app' config ldclient Nothing
 
