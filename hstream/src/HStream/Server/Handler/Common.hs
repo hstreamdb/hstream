@@ -1,10 +1,16 @@
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent               (MVar, ThreadId)
+import           Control.Exception                (SomeException,
+                                                   displayException)
 import           Control.Monad                    (when)
+import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -72,3 +78,8 @@ handlePushQueryCanceled ServerCall{..} handle = do
     Right [OpRecvCloseOnServerResult b]
       -> when b handle
     _ -> putStrLn "impossible happened"
+
+eitherToResponse :: Either SomeException () -> a -> IO (ServerResponse 'Normal a)
+eitherToResponse (Left err) resp = return $
+  ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+eitherToResponse (Right _) resp = return $ ServerNormalResponse resp [] StatusOk ""

@@ -4,6 +4,11 @@ package hstream.server;
 
 import "third_party/google/protobuf/struct.proto";
 import "third_party/google/protobuf/timestamp.proto";
+import "third_party/google/protobuf/empty.proto";
+
+option java_package = "io.hstream";
+option java_multiple_files = true;
+option java_outer_classname = "HStreamProto";
 
 service HStreamApi {
   // only for push query
@@ -22,9 +27,11 @@ service HStreamApi {
 
   rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
 
-  rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
+  rpc CreateStream(Stream) returns (Stream) {}
 
-  rpc RemoveStreams(RemoveStreamsRequest) returns (RemoveStreamsResponse) {}
+  rpc DeleteStream(DeleteStreamRequest) returns (google.protobuf.Empty) {}
+
+  rpc ListStreams(google.protobuf.Empty) returns (ListStreamsResponse) {}
 
   rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
 
@@ -164,39 +171,17 @@ message StreamOffset {
   RecordId offset = 2;
 }
 
-message CreateStreamsRequest {
-  repeated CreateStreamRequest requests = 1;
+message DeleteStreamRequest {
+  string streamName = 1;
 }
 
-message CreateStreamRequest {
+message ListStreamsResponse {
+  repeated Stream streams = 1;
+}
+
+message Stream {
   string streamName = 1;
   uint32 replicationFactor = 2;
-}
-
-message CreateStreamsResponse {
-  repeated CreateStreamResponse responses = 1;
-}
-
-message CreateStreamResponse {
-  string streamName = 1;
-  HStreamServerError error = 2;
-}
-
-message RemoveStreamsRequest {
-  repeated RemoveStreamRequest requests = 1;
-}
-
-message RemoveStreamRequest {
-  string streamName = 1;
-}
-
-message RemoveStreamsResponse {
-  repeated RemoveStreamResponse responses = 1;
-}
-
-message RemoveStreamResponse {
-  string streamName = 1;
-  HStreamServerError error = 2;
 }
 
 message HStreamRecord {
