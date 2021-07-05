@@ -15,6 +15,7 @@ import           Control.Exception                 (Exception, SomeException,
 import           Control.Monad                     (void, when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
+import           Data.Either                       (isRight)
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef                        (IORef, atomicModifyIORef',
                                                     newIORef, readIORef)
@@ -28,14 +29,12 @@ import qualified Data.Vector                       as V
 import           Database.ClickHouseDriver.Client  (createClient)
 import qualified Database.MySQL.Base               as MySQL
 import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Op          (Op (OpRecvCloseOnServer),
-                                                    OpRecvResult (OpRecvCloseOnServerResult),
-                                                    runOps)
 import           Numeric                           (showHex)
 import           Proto3.Suite                      (Enumerated (..))
 import           RIO                               (async, forever)
 import           System.IO.Unsafe                  (unsafePerformIO)
 import           System.Random                     (newStdGen, randomRs)
+import           ThirdParty.Google.Protobuf.Empty
 import           ThirdParty.Google.Protobuf.Struct (Struct (Struct),
                                                     Value (Value),
                                                     ValueKind (ValueKindStringValue))
@@ -53,10 +52,9 @@ import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
 import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
-import           HStream.Processing.Processor      (TaskBuilder, getTaskName,
-                                                    runTask)
-import           HStream.Processing.Type
-import           HStream.SQL.Codegen
+import           HStream.Processing.Processor      (TaskBuilder, getTaskName)
+import           HStream.Processing.Type           hiding (StreamName)
+import           HStream.SQL.Codegen               hiding (StreamName)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
@@ -95,11 +93,12 @@ handlers ldclient repFactor handle compression = do
       hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
     , hstreamApiAppend           = appendHandler serverContext
-    , hstreamApiCreateStreams    = createStreamsHandler serverContext
+    , hstreamApiCreateStream     = createStreamsHandler serverContext
     , hstreamApiSubscribe        = subscribeHandler serverContext
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
-    , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
+    , hstreamApiDeleteStream     = deleteStreamsHandler serverContext
+    , hstreamApiListStreams      = listStreamsHandler serverContext
     , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
     , hstreamApiCreateQuery      = createQueryHandler serverContext
     , hstreamApiGetQuery         = getQueryHandler serverContext
@@ -346,24 +345,12 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
       return $ ServerNormalResponse resp [] StatusOk ""
 
 createStreamsHandler :: ServerContext
-                     -> ServerRequest 'Normal CreateStreamsRequest CreateStreamsResponse
-                     -> IO (ServerResponse 'Normal CreateStreamsResponse)
-createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata CreateStreamsRequest{..}) = do
-  singleResps <- mapM (fmap eitherToResponse . handleSingleRequest) createStreamsRequestRequests
-  let resp = CreateStreamsResponse singleResps
-  return (ServerNormalResponse resp [] StatusOk "")
-  where
-    handleSingleRequest :: CreateStreamRequest -> IO (TL.Text, Either SomeException ())
-    handleSingleRequest CreateStreamRequest{..} = do
-      e' <- try $ createStream scLDClient (transToStreamName $ TL.toStrict createStreamRequestStreamName)
-        (LogAttrs $ HsLogAttrs (fromIntegral createStreamRequestReplicationFactor) Map.empty)
-      return (createStreamRequestStreamName, e')
-    eitherToResponse :: (TL.Text, Either SomeException ()) -> CreateStreamResponse
-    eitherToResponse (stream, e') =
-      let serverError = case e' of
-            Left _  -> HStreamServerErrorUnknownError
-            Right _ -> HStreamServerErrorNoError
-       in CreateStreamResponse stream (Enumerated $ Right serverError)
+                     -> ServerRequest 'Normal Stream Stream
+                     -> IO (ServerResponse 'Normal Stream)
+createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = do
+  e' <- try $ createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
+    (LogAttrs $ HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+  eitherToResponse e' stream
 
 subscribeHandler :: ServerContext
                  -> ServerRequest 'Normal Subscription Subscription
@@ -379,12 +366,8 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
       logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict subscriptionStreamName
       startLSN <- getStartLSN (fromJust $ subscriptionOffset) scLDClient logId
       res <- try $ ckpReaderStartReading reader logId startLSN LSN_MAX
-      case res :: Either SomeException () of
-        Left err -> do
-          return $ ServerNormalResponse subscription [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
-        Right _  -> do
-          atomicModifyIORef' subscribedReaders (\hm -> (HM.insert subscriptionSubscriptionId reader hm, ()))
-          return $ ServerNormalResponse subscription [] StatusOk ""
+      when (isRight res) $ do atomicModifyIORef' subscribedReaders (\hm -> (HM.insert subscriptionSubscriptionId reader hm, ()))
+      eitherToResponse res subscription
   where
     getStartLSN :: SubscriptionOffset -> LDClient -> C_LogID -> IO LSN
     getStartLSN SubscriptionOffset{..} client logId = case fromJust $ subscriptionOffsetOffset of
@@ -424,37 +407,36 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@Comm
     Nothing     -> do
       return (ServerNormalResponse offset [] StatusInternal "SubscriptionId not found.")
     Just reader -> do
-      e <- try $ commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
-      case e :: Either SomeException () of
-        Left err ->
-          return $ ServerNormalResponse offset [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
-        Right _  ->
-          return $ ServerNormalResponse offset [] StatusOk ""
+      e' <- try $ commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
+      eitherToResponse e' offset
   where
     commitCheckpoint :: LDClient -> LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
       logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
       writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
-removeStreamsHandler
+deleteStreamsHandler
   :: ServerContext
-  -> ServerRequest 'Normal RemoveStreamsRequest RemoveStreamsResponse
-  -> IO (ServerResponse 'Normal RemoveStreamsResponse)
-removeStreamsHandler ServerContext{..} (ServerNormalRequest _metadata RemoveStreamsRequest{..}) = do
-  singleResps <- mapM (fmap eitherToResponse . handleSingleRequest) removeStreamsRequestRequests
-  let resp = RemoveStreamsResponse singleResps
-  return (ServerNormalResponse resp [] StatusOk "")
-  where
-    handleSingleRequest :: RemoveStreamRequest -> IO (TL.Text, Either SomeException ())
-    handleSingleRequest RemoveStreamRequest{..} = do
-      e' <- try $ removeStream scLDClient (transToStreamName $ TL.toStrict removeStreamRequestStreamName)
-      return (removeStreamRequestStreamName, e')
-    eitherToResponse :: (TL.Text, Either SomeException ()) -> RemoveStreamResponse
-    eitherToResponse (stream, e') =
-      let serverError = case e' of
-            Left _  -> HStreamServerErrorUnknownError
-            Right _ -> HStreamServerErrorNoError
-       in RemoveStreamResponse stream (Enumerated $ Right serverError)
+  -> ServerRequest 'Normal DeleteStreamRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+deleteStreamsHandler ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = do
+  e' <- try $ removeStream scLDClient (transToStreamName $ TL.toStrict deleteStreamRequestStreamName)
+  eitherToResponse e' Empty
+
+listStreamsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal Empty ListStreamsResponse
+  -> IO (ServerResponse 'Normal ListStreamsResponse)
+listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = do
+  e' <- try $ findStreams scLDClient True
+  case e' :: Either SomeException [StreamName] of
+    Left err -> return $
+      ServerNormalResponse (ListStreamsResponse V.empty) [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+    Right streams -> do
+      res <- V.forM (V.fromList streams) $ \stream -> do
+        refactor <- getStreamReplicaFactor scLDClient stream
+        return $ Stream (TL.fromStrict . cbytesToText . getStreamName $ stream) (fromIntegral refactor)
+      return $ ServerNormalResponse (ListStreamsResponse res) [] StatusOk ""
 
 terminateQueryHandler
   :: ServerContext
