@@ -60,6 +60,12 @@ import           HStream.SQL.Codegen
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Query      (cancelQueryHandler,
+                                                    createQueryHandler,
+                                                    deleteQueryHandler,
+                                                    fetchQueryHandler,
+                                                    getQueryHandler,
+                                                    restartQueryHandler)
 import qualified HStream.Server.Persistence        as P
 import           HStream.Store                     hiding (e)
 import           HStream.Utils
@@ -95,6 +101,12 @@ handlers ldclient repFactor handle compression = do
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
     , hstreamApiRemoveStreams    = removeStreamsHandler serverContext
     , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
+    , hstreamApiCreateQuery      = createQueryHandler serverContext
+    , hstreamApiGetQuery         = getQueryHandler serverContext
+    , hstreamApiFetchQuery       = fetchQueryHandler serverContext
+    , hstreamApiDeleteQuery      = deleteQueryHandler serverContext
+    , hstreamApiCancelQuery      = cancelQueryHandler serverContext
+    , hstreamApiRestartQuery     = restartQueryHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
