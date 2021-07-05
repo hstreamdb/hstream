@@ -63,7 +63,6 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
-    , cache
 
   default-language: Haskell2010
   ghc-options:

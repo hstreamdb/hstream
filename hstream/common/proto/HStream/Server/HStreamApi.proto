@@ -16,11 +16,11 @@ service HStreamApi {
 
   rpc Append(AppendRequest) returns (AppendResponse) {}
 
-  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
+  rpc Subscribe(Subscription) returns (Subscription) {}
 
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
 
-  rpc CommitOffset(CommitOffsetRequest) returns (CommitOffsetResponse) {}
+  rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
 
   rpc CreateStreams(CreateStreamsRequest) returns (CreateStreamsResponse) {}
 
@@ -84,25 +84,11 @@ message AppendResponse {
   string streamName = 1;
   repeated RecordId recordIds = 2;
 }
-message RecordId {
-  // LSN of the total batch records
-  uint64 batchId = 1;
-  // Offset of each record in the batch
-  uint32 batchIndex = 2;
-}
 
-message SubscribeRequest {
+message Subscription {
   string subscriptionId = 1;
-  repeated StreamSubscription subscriptions = 2;
-}
-
-message SubscribeResponse {
-  string subscriptionId = 1;
-}
-
-message StreamSubscription {
-  string streamName = 1;
-  SubscriptionOffset offset = 2;
+  string streamName = 2;
+  SubscriptionOffset offset = 3;
 }
 
 message SubscriptionOffset {
@@ -124,28 +110,23 @@ message FetchRequest {
 }
 
 message FetchResponse {
-  repeated FetchedRecord records = 1;
+  repeated ReceivedRecord receivedRecords = 1;
 }
 
-message FetchedRecord {
-  string streamName = 1;
-  repeated bytes records = 2;
+message ReceivedRecord {
+  RecordId recordId = 1;
+  bytes record = 2;
 }
 
-message CommitOffsetRequest {
+message CommittedOffset {
   string subscriptionId = 1;
-  repeated StreamOffset streamOffsets = 2;
+  string streamName = 2;
+  RecordId offset = 3;
 }
 
 message StreamOffset {
   string streamName = 1;
   RecordId offset = 2;
-}
-
-message CommitOffsetResponse {
-  string subscriptionId = 1;
-  // collection of successfully committed streamName
-  repeated string successfulCommits = 2;
 }
 
 message CreateStreamsRequest {
@@ -219,4 +200,11 @@ message TerminateQueryRequest {
 
 message TerminateQueryResponse {
   string queryName = 1;
+}
+
+message RecordId {
+  // LSN of the total batch records
+  uint64 batchId = 1;
+  // Offset of each record in the batch
+  uint32 batchIndex = 2;
 }

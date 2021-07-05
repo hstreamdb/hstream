@@ -15,7 +15,6 @@ import           Control.Exception                 (Exception, SomeException,
 import           Control.Monad                     (void, when)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.ByteString.Char8             as C
-import qualified Data.Cache                        as Cache
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef                        (IORef, atomicModifyIORef',
                                                     newIORef, readIORef)
@@ -40,14 +39,12 @@ import           System.Random                     (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Struct (Struct (Struct),
                                                     Value (Value),
                                                     ValueKind (ValueKindStringValue))
-import qualified Z.Data.Builder               as B
 import qualified Z.Data.CBytes                     as CB
 import qualified Z.Data.JSON                       as ZJ
 import qualified Z.Data.Text                       as ZT
-import           Z.Data.Vector                     (Bytes, packASCII)
+import           Z.Data.Vector                     (Bytes)
 import           Z.Foreign                         (fromByteString,
                                                     toByteString)
-import qualified Z.IO.Logger                  as Log
 import           Z.IO.Time                         (SystemTime (..),
                                                     getSystemTime')
 import           ZooKeeper.Types                   (ZHandle)
@@ -71,23 +68,10 @@ import           HStream.Utils
 newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
-data ServerContext = ServerContext {
-    scLDClient               :: LDClient
-  , scDefaultStreamRepFactor :: Int
-  , zkHandle                 :: Maybe ZHandle
-  , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , cmpStrategy              :: Compression
-}
-
 -- | Map: { subscriptionId : LDSyncCkpReader }
 subscribedReaders :: IORef (HM.HashMap TL.Text LDSyncCkpReader)
 subscribedReaders = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE subscribedReaders #-}
-
--- | Global logid to streamName cache
-streamNameCache :: Cache.Cache C_LogID TL.Text
-streamNameCache = unsafePerformIO $ Cache.newCache Nothing
-{-# NOINLINE streamNameCache #-}
 
 --------------------------------------------------------------------------------
 
@@ -369,49 +353,27 @@ createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata CreateStre
             Right _ -> HStreamServerErrorNoError
        in CreateStreamResponse stream (Enumerated $ Right serverError)
 
--- FIXME: what if the subscriptionId has been subscribed ???
 subscribeHandler :: ServerContext
-                 -> ServerRequest 'Normal SubscribeRequest SubscribeResponse
-                 -> IO (ServerResponse 'Normal SubscribeResponse)
-subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeRequest{..}) = do
+                 -> ServerRequest 'Normal Subscription Subscription
+                 -> IO (ServerResponse 'Normal Subscription)
+subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) = do
   e' <- try $ do
-    newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscribeRequestSubscriptionId)
+    newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
       checkpointStoreLogID 5000 1 Nothing 10
-  let resp = SubscribeResponse subscribeRequestSubscriptionId
   case e' :: Either SomeException LDSyncCkpReader of
     Left err     -> do
-      return $ ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+      return $ ServerNormalResponse subscription [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
     Right reader -> do
-      es' <- loop subscribeRequestSubscriptions reader scLDClient 0 (length subscribeRequestSubscriptions)
-      case es' of
+      logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict subscriptionStreamName
+      startLSN <- getStartLSN (fromJust $ subscriptionOffset) scLDClient logId
+      res <- try $ ckpReaderStartReading reader logId startLSN LSN_MAX
+      case res :: Either SomeException () of
         Left err -> do
-          return $ ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+          return $ ServerNormalResponse subscription [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
         Right _  -> do
-          atomicModifyIORef' subscribedReaders (\hm -> (HM.insert subscribeRequestSubscriptionId reader hm, ()))
-          return $ ServerNormalResponse resp [] StatusOk ""
+          atomicModifyIORef' subscribedReaders (\hm -> (HM.insert subscriptionSubscriptionId reader hm, ()))
+          return $ ServerNormalResponse subscription [] StatusOk ""
   where
-    loop :: V.Vector StreamSubscription
-         -> LDSyncCkpReader -> LDClient
-         -> Int -> Int  -- current index and the length of StreamSubscription
-         -> IO (Either SomeException ())
-    loop opts reader client idx len
-      | idx >= len = return $ Right ()
-      | otherwise  = do
-          res <- describeStream (opts V.! idx) reader client
-          case res of
-            Left err -> return $ Left err
-            Right _  -> do loop opts reader client (idx + 1) len
-
-    describeStream :: StreamSubscription -> LDSyncCkpReader -> LDClient -> IO (Either SomeException TL.Text)
-    describeStream StreamSubscription{..} ldReader client = do
-      logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamSubscriptionStreamName
-      void $ Cache.insert streamNameCache logId streamSubscriptionStreamName
-      startLSN <- getStartLSN (fromJust $ streamSubscriptionOffset) client logId
-      a' <- try $ ckpReaderStartReading ldReader logId startLSN LSN_MAX
-      case a' of
-        Left a  -> return $ Left a
-        Right _ -> return $ Right streamSubscriptionStreamName
-
     getStartLSN :: SubscriptionOffset -> LDClient -> C_LogID -> IO LSN
     getStartLSN SubscriptionOffset{..} client logId = case fromJust $ subscriptionOffsetOffset of
       SubscriptionOffsetOffsetSpecialOffset subOffset -> do
@@ -429,46 +391,34 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) 
   case HM.lookup fetchRequestSubscriptionId hm of
     Nothing     -> do
       let resp = FetchResponse V.empty
-      return (ServerNormalResponse resp [] StatusOk "")
+      return (ServerNormalResponse resp [] StatusInternal "SubscriptionId not found.")
     Just reader -> do
       void $ ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
       res <- ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
       resp <- V.mapM fetchResult $ V.fromList res
       return (ServerNormalResponse (FetchResponse resp) [] StatusOk "")
   where
-    fetchResult :: DataRecord -> IO (FetchedRecord)
+    fetchResult :: DataRecord -> IO (ReceivedRecord)
     fetchResult record = do
-      streamName <- fromJust <$> Cache.lookup streamNameCache (recordLogID record)
-      return $ FetchedRecord streamName (V.fromList $ [toByteString $ recordPayload record]) -- TODO: check here
+      let recordId = RecordId (recordLSN record) 0
+      return $ ReceivedRecord (Just recordId) (toByteString . recordPayload $ record)
 
 commitOffsetHandler :: ServerContext
-                    -> ServerRequest 'Normal CommitOffsetRequest CommitOffsetResponse
-                    -> IO (ServerResponse 'Normal CommitOffsetResponse)
-commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata CommitOffsetRequest{..}) = do
+                    -> ServerRequest 'Normal CommittedOffset CommittedOffset
+                    -> IO (ServerResponse 'Normal CommittedOffset)
+commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@CommittedOffset{..}) = do
   hm <- readIORef subscribedReaders
-  case HM.lookup commitOffsetRequestSubscriptionId hm of
+  case HM.lookup committedOffsetSubscriptionId hm of
     Nothing     -> do
-      let resp = CommitOffsetResponse commitOffsetRequestSubscriptionId V.empty
-      return (ServerNormalResponse resp [] StatusOk "")
+      return (ServerNormalResponse offset [] StatusInternal "SubscriptionId not found.")
     Just reader -> do
-      singleResps <- V.mapM (commitSingle reader scLDClient) commitOffsetRequestStreamOffsets
-      let resp = CommitOffsetResponse commitOffsetRequestSubscriptionId $
-           V.foldr' (\x acc -> case x of
-                                 Right v -> V.cons v acc
-                                 Left _  -> acc
-                    ) V.empty singleResps
-      return (ServerNormalResponse resp [] StatusOk "")
+      e <- try $ commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
+      case e :: Either SomeException () of
+        Left err ->
+          return $ ServerNormalResponse offset [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+        Right _  ->
+          return $ ServerNormalResponse offset [] StatusOk ""
   where
-    commitSingle :: LDSyncCkpReader -> LDClient -> StreamOffset
-                 -> IO (Either SomeException TL.Text)
-    commitSingle reader client StreamOffset{..} = do
-      e' <- try $ commitCheckpoint client reader streamOffsetStreamName (fromJust streamOffsetOffset)
-      case e' of
-        Left e  -> do
-          Log.withDefaultLogger . Log.debug . B.bytes . packASCII $ "commitCheckpoint error: " ++ displayException e
-          return $ Left e
-        Right _ -> return $ Right streamOffsetStreamName
-
     commitCheckpoint :: LDClient -> LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
       logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
