@@ -61,7 +61,7 @@ parseConfig =
                       <> "e.g. \"127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183\""
                          )
                   )
-    <*> strOption ( long "config-path" <> metavar "PATH"
+    <*> strOption ( long "store-config" <> metavar "PATH"
                  <> showDefault <> value "/data/store/logdevice.conf"
                  <> help "logdevice config path"
                   )
