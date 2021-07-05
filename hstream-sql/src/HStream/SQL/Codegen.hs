@@ -89,7 +89,7 @@ data ConnectorConfig
 data ExecutionPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
   | CreatePlan          StreamName Int
-  | CreateConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
+  | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int
   | InsertPlan          StreamName InsertType BL.ByteString
@@ -119,7 +119,7 @@ streamCodegen input = do
             RSelList fields -> map snd fields
       return $ CreateViewPlan schema source sink (HS.build builder) 1
     RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
-    RQCreate rCreateConnector -> return $ genCreateConnectorPlan rCreateConnector
+    RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
     RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (encode $ HM.fromList $ second constantToValue <$> tuples)
     RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  (BSL.fromStrict bs)
     RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BSL.fromStrict bs)
@@ -136,11 +136,11 @@ streamCodegen input = do
 
 --------------------------------------------------------------------------------
 
-genCreateConnectorPlan :: RCreate -> ExecutionPlan
-genCreateConnectorPlan (RCreateConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
+genCreateSinkConnectorPlan :: RCreate -> ExecutionPlan
+genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
   case connectorType of
-    "clickhouse" -> CreateConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []
-    "mysql" -> CreateConnectorPlan cName ifNotExist sName (MySqlConnector createMysqlSinkConnector) []
+    "clickhouse" -> CreateSinkConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []
+    "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName (MySqlConnector createMysqlSinkConnector) []
     _ -> throwSQLException CodegenException Nothing "Connector type not supported"
   where
     extractInt = \case Just (ConstantInt s) -> Just s; _ -> Nothing
@@ -159,7 +159,7 @@ genCreateConnectorPlan (RCreateConnector cName ifNotExist sName connectorType (R
       (getByteStringValue "database" "mysql")
       (getByteStringValue "username" "root")
       (getByteStringValue "password" "password") 33
-genCreateConnectorPlan _ =
+genCreateSinkConnectorPlan _ =
   throwSQLException CodegenException Nothing "Implementation: Wrong function called"
 
 ----

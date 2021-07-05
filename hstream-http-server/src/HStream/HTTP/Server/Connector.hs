@@ -77,13 +77,13 @@ createConnectorHandler ldClient zkHandle connector = liftIO $ do
   plan' <- try $ HSC.streamCodegen $ sql connector
   case plan' of
     Left  (_ :: SomeSQLException) -> returnErr "exception on parsing or codegen"
-    Right (HSC.CreateConnectorPlan cName ifNotExist sName cConfig _) -> do
+    Right (HSC.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) -> do
       streamExists <- HS.doesStreamExists ldClient (HCH.transToStreamName sName)
       connectorIds <- HSP.withMaybeZHandle zkHandle HSP.getConnectorIds
       let connectorExists = elem (T.unpack cName) $ map HSP.getSuffix connectorIds
       if streamExists then
         if connectorExists then if ifNotExist then return () else returnErr "connector exists"
-        else void $ Handler.handleCreateConnector
+        else void $ Handler.handleCreateSinkConnector
           Handler.ServerContext {Handler.scLDClient = ldClient, Handler.zkHandle = zkHandle}
           (TL.fromStrict $ sql connector) cName sName cConfig
       else returnErr "stream does not exist"

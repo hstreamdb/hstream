@@ -337,7 +337,7 @@ data RConnectorOptions = RConnectorOptions [(Text, Constant)]
 
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
-             | RCreateConnector Text Bool Text Text RConnectorOptions
+             | RCreateSinkConnector Text Bool Text Text RConnectorOptions
              | RCreateView Text RSelect
              deriving (Eq, Show)
 
@@ -373,10 +373,10 @@ instance Refine Create where
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateConnector _ (Ident s) options) =
-    let (sName, cType, ops) = refine options in RCreateConnector s False sName cType ops
-  refine (CreateConnectorIf _ (Ident s) options) =
-    let (sName, cType, ops) = refine options in RCreateConnector s True sName cType ops
+  refine (CreateSinkConnector _ (Ident s) options) =
+    let (sName, cType, ops) = refine options in RCreateSinkConnector s False sName cType ops
+  refine (CreateSinkConnectorIf _ (Ident s) options) =
+    let (sName, cType, ops) = refine options in RCreateSinkConnector s True sName cType ops
   refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT
