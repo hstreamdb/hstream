@@ -10,38 +10,39 @@ module HStream.HTTP.Server.Query (
   QueriesAPI, queryServer
 ) where
 
-import           Control.Concurrent           (forkIO, killThread)
-import           Control.Exception            (SomeException, catch, try)
-import           Control.Monad                (void)
-import           Control.Monad.IO.Class       (liftIO)
-import           Data.Aeson                   (FromJSON, ToJSON)
-import           Data.Int                     (Int64)
-import           Data.List                    (find)
-import qualified Data.Map.Strict              as Map
-import           Data.Swagger                 (ToSchema)
-import qualified Data.Text                    as T
-import           GHC.Generics                 (Generic)
-import           Servant                      (Capture, Delete, Get, JSON,
-                                               PlainText, Post, ReqBody,
-                                               type (:>), (:<|>) (..))
-import           Servant.Server               (Handler, Server)
-import           Z.Data.Builder.Base          (string8)
-import qualified Z.Data.CBytes                as ZDC
-import qualified Z.Data.Text                  as ZT
-import qualified Z.IO.Logger                  as Log
-import           Z.IO.Time                    (SystemTime (..), getSystemTime')
-import qualified ZooKeeper.Types              as ZK
+import           Control.Concurrent            (forkIO, killThread)
+import           Control.Exception             (SomeException, catch, try)
+import           Control.Monad                 (void)
+import           Control.Monad.IO.Class        (liftIO)
+import           Data.Aeson                    (FromJSON, ToJSON)
+import           Data.Int                      (Int64)
+import           Data.List                     (find)
+import qualified Data.Map.Strict               as Map
+import           Data.Swagger                  (ToSchema)
+import qualified Data.Text                     as T
+import           GHC.Generics                  (Generic)
+import           Servant                       (Capture, Delete, Get, JSON,
+                                                PlainText, Post, ReqBody,
+                                                type (:>), (:<|>) (..))
+import           Servant.Server                (Handler, Server)
+import           Z.Data.Builder.Base           (string8)
+import qualified Z.Data.CBytes                 as ZDC
+import qualified Z.Data.Text                   as ZT
+import qualified Z.IO.Logger                   as Log
+import           Z.IO.Time                     (SystemTime (..), getSystemTime')
+import qualified ZooKeeper.Types               as ZK
 
-import qualified HStream.Connector.HStore     as HCH
-import           HStream.Processing.Connector (subscribeToStream)
-import           HStream.Processing.Processor (getTaskName, taskBuilderWithName)
-import           HStream.Processing.Type      (Offset (..))
-import qualified HStream.SQL.Codegen          as HSC
-import           HStream.SQL.Exception        (SomeSQLException)
-import           HStream.Server.Handler       (runTaskWrapper)
-import qualified HStream.Server.Persistence   as HSP
-import qualified HStream.Store                as HS
-import           HStream.Utils.Converter      (cbytesToText, textToCBytes)
+import qualified HStream.Connector.HStore      as HCH
+import           HStream.Processing.Connector  (subscribeToStream)
+import           HStream.Processing.Processor  (getTaskName,
+                                                taskBuilderWithName)
+import           HStream.Processing.Type       (Offset (..))
+import qualified HStream.SQL.Codegen           as HSC
+import           HStream.SQL.Exception         (SomeSQLException)
+import           HStream.Server.Handler.Common (runTaskWrapper)
+import qualified HStream.Server.Persistence    as HSP
+import qualified HStream.Store                 as HS
+import           HStream.Utils.Converter       (cbytesToText, textToCBytes)
 
 -- BO is short for Business Object
 data QueryBO = QueryBO

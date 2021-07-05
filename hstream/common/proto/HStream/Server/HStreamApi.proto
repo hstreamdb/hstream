@@ -73,6 +73,7 @@ message CommandSuccess {
 enum HStreamServerError {
   NoError = 0;
   UnknownError = 1;
+  NotExistError = 3;
 }
 
 message AppendRequest {

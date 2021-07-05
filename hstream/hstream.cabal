@@ -26,6 +26,7 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Server.Handler.Common
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Persistence
@@ -124,7 +125,8 @@ executable hstream-client
 test-suite hstream-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
-  other-modules:      HStream.RunSQLSpec
+  other-modules:      
+    HStream.RunSQLSpec
   hs-source-dirs:     test
   build-depends:
     , aeson
@@ -140,6 +142,7 @@ test-suite hstream-test
     , hstream-store
     , io-streams
     , mysql-haskell
+    , proto3-suite
     , random              ^>=1.2
     , scientific
     , text

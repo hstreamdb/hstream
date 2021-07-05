@@ -9,33 +9,35 @@ module HStream.HTTP.Server.Connector (
   ConnectorsAPI, connectorServer
 ) where
 
-import           Control.Concurrent         (forkIO)
-import           Control.Exception          (SomeException, catch, try)
-import           Control.Monad              (void)
-import           Control.Monad.IO.Class     (liftIO)
-import           Data.Aeson                 (FromJSON, ToJSON)
-import           Data.Int                   (Int64)
-import           Data.List                  (find)
-import           Data.Swagger               (ToSchema)
-import qualified Data.Text                  as T
-import qualified Data.Text.Lazy             as TL
-import           GHC.Generics               (Generic)
-import           Servant                    (Capture, Delete, Get, JSON, Post,
-                                             ReqBody, type (:>), (:<|>) (..))
-import           Servant.Server             (Handler, Server)
-import           Z.Data.Builder.Base        (string8)
-import qualified Z.Data.CBytes              as ZDC
-import qualified Z.Data.Text                as ZT
-import qualified Z.IO.Logger                as Log
-import qualified ZooKeeper.Types            as ZK
+import           Control.Concurrent            (forkIO)
+import           Control.Exception             (SomeException, catch, try)
+import           Control.Monad                 (void)
+import           Control.Monad.IO.Class        (liftIO)
+import           Data.Aeson                    (FromJSON, ToJSON)
+import           Data.Int                      (Int64)
+import           Data.List                     (find)
+import           Data.Swagger                  (ToSchema)
+import qualified Data.Text                     as T
+import qualified Data.Text.Lazy                as TL
+import           GHC.Generics                  (Generic)
+import           Servant                       (Capture, Delete, Get, JSON,
+                                                Post, ReqBody, type (:>),
+                                                (:<|>) (..))
+import           Servant.Server                (Handler, Server)
+import           Z.Data.Builder.Base           (string8)
+import qualified Z.Data.CBytes                 as ZDC
+import qualified Z.Data.Text                   as ZT
+import qualified Z.IO.Logger                   as Log
+import qualified ZooKeeper.Types               as ZK
 
-import qualified HStream.Connector.HStore   as HCH
-import qualified HStream.SQL.Codegen        as HSC
-import           HStream.SQL.Exception      (SomeSQLException)
-import qualified HStream.Server.Handler     as Handler
-import qualified HStream.Server.Persistence as HSP
-import qualified HStream.Store              as HS
-import           HStream.Utils.Converter    (cbytesToText)
+import qualified HStream.Connector.HStore      as HCH
+import qualified HStream.SQL.Codegen           as HSC
+import           HStream.SQL.Exception         (SomeSQLException)
+import qualified HStream.Server.Handler        as Handler
+import qualified HStream.Server.Handler.Common as Handler
+import qualified HStream.Server.Persistence    as HSP
+import qualified HStream.Store                 as HS
+import           HStream.Utils.Converter       (cbytesToText)
 
 -- BO is short for Business Object
 data ConnectorBO = ConnectorBO
