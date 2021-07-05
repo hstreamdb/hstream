@@ -26,17 +26,19 @@ import           HStream.Utils.Converter           (jsonValueToValue,
 type Width = Int
 
 formatResult :: Width -> P.Struct -> String
-formatResult width struct@(P.Struct kv) =
+formatResult width (P.Struct kv) =
   case M.toList kv of
     [("SHOWSTREAMS", Just v)] -> unlines .  words . formatValue $ v
-    [("SHOWVIEWS", Just v)] -> unlines .  words . formatValue $ v
+    [("SHOWVIEWS",   Just v)] -> unlines .  words . formatValue $ v
+    [("SELECT",      Just x)] -> unwords (lines $ formatValue x) <> "\n"
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
-      renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
+      renderTableResult xs
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
-      renderJSONObjectsToTable width $ getObjects $ map valueToJsonValue $ V.toList xs
-    [("SELECT", Just x)] -> unwords (lines $ formatValue x) <> "\n"
-    [("Error Message:", Just v)] ->"Error Message: " ++  formatValue v ++ "\n"
+      renderTableResult xs
+    [("Error Message:", Just v)] -> "Error Message: " ++  formatValue v ++ "\n"
     x -> show x
+  where
+    renderTableResult = renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
 
 formatSomeSQLException :: E.SomeSQLException -> String
 formatSomeSQLException (E.ParseException   info) = "Parse exception " ++ formatParseExceptionInfo info
@@ -49,10 +51,10 @@ formatParseExceptionInfo E.SomeSQLExceptionInfo{..} =
     "syntax" : "error" : "at" : "line" : x : "column" : y : ss ->
       "at <line " ++ x ++ "column " ++ y ++ ">: syntax error " ++ unwords ss ++ "."
     _ -> posInfo ++ sqlExceptionMessage ++ "."
- where
-   posInfo = case sqlExceptionPosition of
-      Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"
-      Nothing    -> ""
+  where
+    posInfo = case sqlExceptionPosition of
+        Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"
+        Nothing    -> ""
 
 formatCommandQueryResponse :: Width -> HA.CommandQueryResponse -> String
 formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
@@ -60,12 +62,16 @@ formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
     "Command successfully executed.\n"
   HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet [y]) ->
     formatResult w y
+  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet ys) ->
+    "unknown behaviour" <> show ys
+formatCommandQueryResponse _ _ = ""
+
 
 --------------------------------------------------------------------------------
 
 formatStruct :: P.Struct -> String
 formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y <> ";"))
-                                           . M.toList . fmap (fmap formatValue) $ kv
+                            . M.toList . fmap (fmap formatValue) $ kv
 
 formatValue :: P.Value -> String
 formatValue (P.Value Nothing)  = ""

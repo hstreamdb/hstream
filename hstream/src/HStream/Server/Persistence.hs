@@ -147,15 +147,15 @@ instance Persistence PStoreMem where
     MkSystemTime timestamp _ <- getSystemTime'
     modifyIORef refC $ HM.insert (mkConnectorPath cid) $ Connector cid info (Status Created timestamp)
 
-  setQueryStatus qid status (refQ, _) = ifThrow FailedToSetStatus $ do
+  setQueryStatus qid statusQ (refQ, _) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
     let f s query = query {queryStatus = Status s timestamp}
-    modifyIORef refQ $ HM.adjust (f status) (mkQueryPath qid)
+    modifyIORef refQ $ HM.adjust (f statusQ) (mkQueryPath qid)
 
-  setConnectorStatus qid status (_, refC) = ifThrow FailedToSetStatus $ do
+  setConnectorStatus qid statusQ (_, refC) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
     let f s connector = connector {connectorStatus = Status s timestamp}
-    modifyIORef refC $ HM.adjust (f status) (mkConnectorPath qid)
+    modifyIORef refC $ HM.adjust (f statusQ) (mkConnectorPath qid)
 
   getQueries = ifThrow FailedToGet . (HM.elems <$>) . readIORef . fst
 
@@ -201,20 +201,20 @@ instance Persistence ZHandle where
     createInsert zk (mkQueryPath qid <> "/details/extra") (encode extraInfo)
     createInsert zk (mkQueryPath qid <> "/status")  (encode $ Status Created timestamp)
 
-  setQueryStatus qid status zk = ifThrow FailedToSetStatus $ do
+  setQueryStatus qid statusQ zk = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    setZkData zk (mkQueryPath qid <> "/status") (encode $ Status status timestamp)
+    setZkData zk (mkQueryPath qid <> "/status") (encode $ Status statusQ timestamp)
 
   getQueries zk = ifThrow FailedToGet $ do
     StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
     infos    <- mapM (getThenDecode "/details") qids
     extras   <- mapM (getThenDecode "/details/extra") qids
     statuses <- mapM (getThenDecode "/status") qids
-    return [Query qid info extra status
+    return [Query qid info extra statusQ
               | qid    <- qids
               | info   <- infos
               | extra  <- extras
-              | status <- statuses]
+              | statusQ <- statuses]
     where
       getThenDecode s = (decodeQ <$>) . zooGet zk . (<> s) . mkQueryPath
 
@@ -223,15 +223,15 @@ instance Persistence ZHandle where
     createInsert zk (mkConnectorPath cid <> "/details") (encode info)
     createInsert zk (mkConnectorPath cid <> "/status")  (encode $ Status Created timestamp)
 
-  setConnectorStatus cid status zk = ifThrow FailedToSetStatus $ do
+  setConnectorStatus cid statusC zk = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    setZkData zk (mkConnectorPath cid <> "/status") (encode $ Status status timestamp)
+    setZkData zk (mkConnectorPath cid <> "/status") (encode $ Status statusC timestamp)
 
   getConnectors zk = ifThrow FailedToGet $ do
     StringsCompletion (StringVector cids) <- zooGetChildren zk connectorsPath
     details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkConnectorPath) cids
-    status  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cids
-    return $ zipWith ($) (zipWith ($) (Connector <$> cids) details) status
+    statusC  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cids
+    return $ zipWith ($) (zipWith ($) (Connector <$> cids) details) statusC
 
   getQueryStatus qid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
 
@@ -266,7 +266,7 @@ setZkData zk path contents =
   void $ zooSet zk path (Just contents) Nothing
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
-tryCreate zk path = catch (createPath zk path) (\e -> return $ const () (e :: ZNODEEXISTS))
+tryCreate zk path = catch (createPath zk path) (\(_ :: ZNODEEXISTS) -> pure ())
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path =
