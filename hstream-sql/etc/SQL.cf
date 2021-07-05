@@ -37,12 +37,13 @@ comment "/*" "*/" ;
 
 entrypoints SQL ;
 
-QSelect. SQL ::= Select ";" ;
-QCreate. SQL ::= Create ";" ;
-QInsert. SQL ::= Insert ";" ;
-QShow.   SQL ::= ShowQ  ";" ;
-QDrop.   SQL ::= Drop   ";" ;
-QTerminate. SQL ::= Terminate ";";
+QSelect.     SQL ::= Select     ";" ;
+QSelectView. SQL ::= SelectView ";" ;
+QCreate.     SQL ::= Create     ";" ;
+QInsert.     SQL ::= Insert     ";" ;
+QShow.       SQL ::= ShowQ      ";" ;
+QDrop.       SQL ::= Drop       ";" ;
+QTerminate.  SQL ::= Terminate  ";";
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident ;
@@ -89,6 +90,9 @@ DropView. DropOption ::= "VIEW";
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" String ;
 TerminateAll. Terminate ::= "TERMINATE" "ALL";
+
+---- SelectView Query
+DSelectView. SelectView ::= Sel From Where ;
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;

@@ -51,7 +51,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   plan' <- try $ HSC.streamCodegen $ (TL.toStrict createViewRequestSql)
   err <- case plan' of
     Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
-    Right (HSC.CreateViewPlan schema _sources sink taskBuilder _repFactor) -> mark LowLevelStoreException $ do
+    Right (HSC.CreateViewPlan schema _sources sink taskBuilder _repFactor _) -> mark LowLevelStoreException $ do
       create sink
       (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (HSP.ViewQuery (ZDC.pack . T.unpack $ sink) schema)
       return $ Right $ View (TL.pack $ ZDC.unpack qid) (fromIntegral $ fromEnum HSP.Running) timestamp createViewRequestSql (V.fromList $ TL.pack <$> schema)

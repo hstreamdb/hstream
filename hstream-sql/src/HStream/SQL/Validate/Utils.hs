@@ -102,6 +102,20 @@ instance HavePos ScalarFunc where
     (ScalarFuncRev     pos _) -> pos
     (ScalarFuncStrlen  pos _) -> pos
 
+instance HavePos SearchCond where
+  getPos cond = case cond of
+    CondOr      pos _ _   -> pos
+    CondAnd     pos _ _   -> pos
+    CondNot     pos _     -> pos
+    CondOp      pos _ _ _ -> pos
+    CondBetween pos _ _ _ -> pos
+
+instance HavePos TableRef where
+  getPos ref = case ref of
+    TableRefSimple pos _         -> pos
+    TableRefAs     pos _ _       -> pos
+    TableRefJoin   pos _ _ _ _ _ -> pos
+
 --------------------------------------------------------------------------------
 -- mask
 -- 0b    *      *      *     *           *   *    *    *
