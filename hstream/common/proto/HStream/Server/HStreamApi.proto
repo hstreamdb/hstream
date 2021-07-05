@@ -85,7 +85,9 @@ message AppendResponse {
   repeated RecordId recordIds = 2;
 }
 message RecordId {
+  // LSN of the total batch records
   uint64 batchId = 1;
+  // Offset of each record in the batch
   uint32 batchIndex = 2;
 }
 
@@ -142,6 +144,7 @@ message StreamOffset {
 
 message CommitOffsetResponse {
   string subscriptionId = 1;
+  // collection of successfully committed streamName
   repeated string successfulCommits = 2;
 }
 
