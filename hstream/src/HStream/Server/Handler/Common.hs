@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module HStream.Server.Common where
+module HStream.Server.Handler.Common where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Monad                    (when)
@@ -17,8 +17,6 @@ import qualified Z.Data.Text                      as ZT
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 import           ZooKeeper.Types
-
-
 
 import qualified HStream.Connector.HStore         as HCS
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
