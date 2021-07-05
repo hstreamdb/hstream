@@ -568,8 +568,8 @@ instance Validate Create where
   validate create@(CreateAs _ _ select) = validate select >> return create
   validate create@(CreateAsOp _ _ select options) =
     validate select >> validate (StreamOptions options) >> return create
-  validate create@(CreateConnector _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSinkConnector _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSinkConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = case grp of
     DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "CREATE VIEW must have GROUP BY info given "
     _ -> validate select >> return create

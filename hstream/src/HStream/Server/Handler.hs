@@ -149,13 +149,13 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       create sink
       handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.ViewQuery (CB.pack . T.unpack $ sink) schema)
       returnOkRes
-    CreateConnectorPlan cName ifNotExist sName cConfig _ -> do
+    CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
       streamExists <- doesStreamExists scLDClient (transToStreamName sName)
       connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
       let connectorExists = elem (T.unpack cName) $ map P.getSuffix connectorIds
       if streamExists then
         if connectorExists then if ifNotExist then returnOkRes else returnErrRes "connector exists"
-        else handleCreateConnector sc commandQueryStmtText cName sName cConfig >> returnOkRes
+        else handleCreateSinkConnector sc commandQueryStmtText cName sName cConfig >> returnOkRes
       else returnErrRes "stream does not exist"
     InsertPlan stream insertType payload             -> mark LowLevelStoreException $ do
       timestamp <- getProtoTimestamp
@@ -283,8 +283,8 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = 
         >> runTaskWrapper False taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
 
-handleCreateConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
-handleCreateConnector ServerContext{..} commandQueryStmtText cName sName cConfig = do
+handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
+handleCreateSinkConnector ServerContext{..} commandQueryStmtText cName sName cConfig = do
     MkSystemTime timestamp _ <- getSystemTime'
     let cid = CB.pack $ showHex timestamp (T.unpack (cName <> "-"))
         cinfo = P.Info (ZT.pack $ T.unpack $ TL.toStrict commandQueryStmtText) timestamp
