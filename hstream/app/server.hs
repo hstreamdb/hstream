@@ -32,7 +32,6 @@ data ServerConfig = ServerConfig
   , _serverPort          :: PortNumber
   , _persistent          :: Bool
   , _zkHost              :: CBytes
-  , _zkPort              :: CBytes
   , _logdeviceConfigPath :: CBytes
   , _topicRepFactor      :: Int
   , _ckpRepFactor        :: Int
@@ -42,22 +41,49 @@ data ServerConfig = ServerConfig
 parseConfig :: Parser ServerConfig
 parseConfig =
   ServerConfig
-    <$> strOption   (long "host"             <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "server host value")
-    <*> option auto (long "port"             <> metavar "INT"  <> showDefault <> value 6570 <> short 'p'            <> help "server port value")
-    <*> flag False True (long "persistent"                                                                          <> help "set flag to store queries in zookeeper")
-    <*> strOption   (long "zkhost"           <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "zookeeper host value, only meaningful when persistent flag is set")
-    <*> strOption   (long "zkport"           <> metavar "INT"  <> showDefault <> value "2181"                       <> help "zookeeper port value, only meaningful when persistent flag is set")
-    <*> strOption   (long "config-path"      <> metavar "PATH" <> showDefault <> value "/data/store/logdevice.conf" <> help "logdevice config path")
-    <*> option auto (long "replicate-factor" <> metavar "INT"  <> showDefault <> value 3                            <> help "topic replicate factor")
-    <*> option auto (long "ckp-replicate-factor" <> metavar "INT"  <> showDefault <> value 1                        <> help "checkpoint replicate factor")
-    <*> option auto (long "compression"      <> metavar "none|lz4|lz4hc" <> showDefault <> value CompressionLZ4     <> help "Specify the compression policy for gdevice")
+    <$> strOption ( long "host" <> metavar "HOST"
+                 <> showDefault <> value "127.0.0.1"
+                 <> help "server host value"
+                  )
+    <*> option auto ( long "port" <> short 'p' <> metavar "INT"
+                   <> showDefault <> value 6570
+                   <> help "server port value"
+                    )
+    <*> flag False True ( long "persistent"
+                       <> help "set flag to store queries in zookeeper"
+                        )
+    <*> strOption ( long "zkhost" <> metavar "STR"
+                 <> showDefault
+                 <> value "127.0.0.1:2181"
+                 <> help ( "comma separated host:port pairs, each corresponding"
+                      <> "to a zk zookeeper server, only meaningful when"
+                      <> "persistent flag is set. "
+                      <> "e.g. \"127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183\""
+                         )
+                  )
+    <*> strOption ( long "config-path" <> metavar "PATH"
+                 <> showDefault <> value "/data/store/logdevice.conf"
+                 <> help "logdevice config path"
+                  )
+    <*> option auto ( long "replicate-factor" <> metavar "INT"
+                   <> showDefault <> value 3
+                   <> help "topic replicate factor"
+                    )
+    <*> option auto ( long "ckp-replicate-factor" <> metavar "INT"
+                   <> showDefault <> value 1
+                   <> help "checkpoint replicate factor"
+                    )
+    <*> option auto ( long "compression" <> metavar "none|lz4|lz4hc"
+                   <> showDefault <> value CompressionLZ4
+                   <> help "Specify the compression policy for gdevice"
+                    )
 
 app :: ServerConfig -> IO ()
 app config@ServerConfig{..} = do
   setupSigsegvHandler
   ldclient <- newLDClient _logdeviceConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
-  if _persistent then withResource (defaultHandle (_zkHost <> ":" <> _zkPort)) $
+  if _persistent then withResource (defaultHandle _zkHost) $
     \zk -> initZooKeeper zk >> app' config ldclient (Just zk)
   else app' config ldclient Nothing
 
