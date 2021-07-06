@@ -27,8 +27,9 @@ source-repository head
 library
   exposed-modules:
     HStream.Server.Handler.Common
-    HStream.Server.Handler.Query
     HStream.Server.Handler.Connector
+    HStream.Server.Handler.Query
+    HStream.Server.Handler.View
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Persistence
@@ -131,6 +132,7 @@ test-suite hstream-test
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
+    HStream.RunViewSpec
   hs-source-dirs:     test
   build-depends:
     , aeson

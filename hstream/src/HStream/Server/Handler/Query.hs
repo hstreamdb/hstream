@@ -69,7 +69,7 @@ createQueryHandler sc@ServerContext{..} (ServerNormalRequest _ CreateQueryReques
           Left (_ :: SomeException) -> return $ Just "error when creating sink stream."
           Right _                   -> do
             -- create persistent query
-            qid <- createInsertPersistentQuery (getTaskName taskBuilder')
+            (qid, _) <- createInsertPersistentQuery (getTaskName taskBuilder')
               createQueryRequestQueryText HSP.PlainQuery zkHandle
             -- run task
             tid <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
