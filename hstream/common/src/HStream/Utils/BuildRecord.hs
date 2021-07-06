@@ -6,6 +6,7 @@ module HStream.Utils.BuildRecord where
 
 import           Control.Exception                    (displayException)
 import           Data.Bits                            (shiftL)
+import qualified Data.ByteString                      as B
 import           Data.ByteString.Lazy                 (ByteString)
 import qualified Data.ByteString.Lazy                 as BL
 import           Data.Int                             (Int64)
@@ -43,8 +44,11 @@ encodeRecord :: HStreamRecord -> Bytes
 encodeRecord = fromByteString . BL.toStrict . PT.toLazyByteString
 
 decodeRecord :: Bytes -> HStreamRecord
-decodeRecord record =
-  let rc = PT.fromByteString . toByteString $ record
+decodeRecord = decodeByteStringRecord . toByteString
+
+decodeByteStringRecord :: B.ByteString -> HStreamRecord
+decodeByteStringRecord record =
+  let rc = PT.fromByteString record
   in case rc of
       Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
       Right res -> res
@@ -60,3 +64,9 @@ getTimeStamp HStreamRecord{..} =
   let Timestamp{..} = fromJust . hstreamRecordHeaderPublishTime . fromJust $ hstreamRecordHeader
       !ts = floor @Double $ (fromIntegral timestampSeconds * 1e3) + (fromIntegral timestampNanos / 1e6)
   in ts
+
+updateRecordTimestamp :: HStreamRecord -> Timestamp -> HStreamRecord
+updateRecordTimestamp HStreamRecord{..} timestamp =
+  let oldHeader = fromJust hstreamRecordHeader
+      newHeader = oldHeader { hstreamRecordHeaderPublishTime = Just timestamp }
+  in HStreamRecord (Just newHeader) hstreamRecordPayload

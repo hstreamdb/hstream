@@ -9,66 +9,65 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                 (Exception, SomeException,
-                                                    displayException, handle,
-                                                    throwIO, try)
-import           Control.Monad                     (void, when)
-import qualified Data.Aeson                        as Aeson
-import qualified Data.ByteString.Char8             as C
-import           Data.Either                       (isRight)
-import qualified Data.HashMap.Strict               as HM
-import           Data.IORef                        (IORef, atomicModifyIORef',
-                                                    newIORef, readIORef)
-import qualified Data.List                         as L
-import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromJust, isJust)
-import           Data.String                       (fromString)
-import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
-import qualified Data.Vector                       as V
+import           Control.Exception                    (Exception, SomeException,
+                                                       displayException, handle,
+                                                       throwIO, try)
+import           Control.Monad                        (void, when)
+import qualified Data.Aeson                           as Aeson
+import           Data.ByteString                      (ByteString)
+import qualified Data.ByteString.Char8                as C
+import           Data.Either                          (isRight)
+import qualified Data.HashMap.Strict                  as HM
+import           Data.IORef                           (IORef,
+                                                       atomicModifyIORef',
+                                                       newIORef, readIORef)
+import qualified Data.List                            as L
+import qualified Data.Map.Strict                      as Map
+import           Data.Maybe                           (fromJust, isJust)
+import           Data.String                          (fromString)
+import qualified Data.Text                            as T
+import qualified Data.Text.Lazy                       as TL
+import qualified Data.Vector                          as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                      (Enumerated (..))
-import           RIO                               (async, forever)
-import           System.IO.Unsafe                  (unsafePerformIO)
-import           System.Random                     (newStdGen, randomRs)
+import           Proto3.Suite                         (Enumerated (..))
+import           System.IO.Unsafe                     (unsafePerformIO)
+import           System.Random                        (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Empty
-import           ThirdParty.Google.Protobuf.Struct (Struct (Struct),
-                                                    Value (Value),
-                                                    ValueKind (ValueKindStringValue))
-import qualified Z.Data.CBytes                     as CB
-import qualified Z.Data.JSON                       as ZJ
-import qualified Z.Data.Text                       as ZT
-import           Z.Data.Vector                     (Bytes)
-import           Z.Foreign                         (fromByteString,
-                                                    toByteString)
-import           Z.IO.Time                         (SystemTime (..),
-                                                    getSystemTime')
-import           ZooKeeper.Types                   (ZHandle)
+import           ThirdParty.Google.Protobuf.Struct    (Struct (Struct),
+                                                       Value (Value),
+                                                       ValueKind (ValueKindStringValue))
+import           ThirdParty.Google.Protobuf.Timestamp
+import qualified Z.Data.CBytes                        as CB
+import qualified Z.Data.JSON                          as ZJ
+import           Z.Data.Vector                        (Bytes)
+import           Z.Foreign                            (toByteString)
+import           ZooKeeper.Types                      (ZHandle)
 
-import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
 import           HStream.Processing.Connector
-import           HStream.Processing.Processor      (TaskBuilder, getTaskName)
-import           HStream.Processing.Type           hiding (StreamName)
-import           HStream.SQL.Codegen               hiding (StreamName)
+import           HStream.Processing.Processor         (TaskBuilder, getTaskName)
+import           HStream.Processing.Type              hiding (StreamName,
+                                                       Timestamp)
+import           HStream.SQL.Codegen                  hiding (StreamName)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector  (cancelConnectorHandler,
-                                                    createSinkConnectorHandler,
-                                                    deleteConnectorHandler,
-                                                    getConnectorHandler,
-                                                    listConnectorHandler,
-                                                    restartConnectorHandler)
-import           HStream.Server.Handler.Query      (cancelQueryHandler,
-                                                    createQueryHandler,
-                                                    deleteQueryHandler,
-                                                    fetchQueryHandler,
-                                                    getQueryHandler,
-                                                    restartQueryHandler)
-import qualified HStream.Server.Persistence        as P
-import           HStream.Store                     hiding (e)
+import           HStream.Server.Handler.Connector     (cancelConnectorHandler,
+                                                       createSinkConnectorHandler,
+                                                       deleteConnectorHandler,
+                                                       getConnectorHandler,
+                                                       listConnectorHandler,
+                                                       restartConnectorHandler)
+import           HStream.Server.Handler.Query         (cancelQueryHandler,
+                                                       createQueryHandler,
+                                                       deleteQueryHandler,
+                                                       fetchQueryHandler,
+                                                       getQueryHandler,
+                                                       restartQueryHandler)
+import qualified HStream.Server.Persistence           as P
+import           HStream.Store                        hiding (e)
 import           HStream.Utils
+
 --------------------------------------------------------------------------------
 
 newRandomName :: Int -> IO CB.CBytes
@@ -322,7 +321,8 @@ appendHandler :: ServerContext
               -> ServerRequest 'Normal AppendRequest AppendResponse
               -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) = do
-  let payloads = map fromByteString $ V.toList appendRequestRecords
+  timestamp <- getProtoTimestamp
+  let payloads = map (buildHStreamRecord timestamp) $ V.toList appendRequestRecords
   e' <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
   case e' :: Either SomeException AppendCompletion of
     Left err                   -> do
@@ -332,6 +332,10 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
       let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
           resp = AppendResponse appendRequestStreamName records
       return $ ServerNormalResponse resp [] StatusOk ""
+  where
+    buildHStreamRecord :: Timestamp -> ByteString -> Bytes
+    buildHStreamRecord timestamp payload = encodeRecord $
+      updateRecordTimestamp (decodeByteStringRecord payload) timestamp
 
 createStreamsHandler :: ServerContext
                      -> ServerRequest 'Normal Stream Stream
