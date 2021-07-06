@@ -11,6 +11,7 @@ import           Data.Aeson                                      (Object,
                                                                   encode)
 import qualified Data.ByteString.Char8                           as BS
 import qualified Data.ByteString.Lazy                            as BSL
+import qualified Data.Either                                     (isLeft)
 import qualified Data.HashMap.Strict                             as HM
 import qualified Data.List                                       as L
 import           Data.Scientific                                 (fromFloatDigits,
@@ -323,8 +324,10 @@ genFilterNode = HS.filter . genFilterR
 genMapR :: RSel -> Record Object Object -> Record Object Object
 genMapR RSelAsterisk record = record
 genMapR (RSelList exprsWithAlias) record@Record{..} =
-  record { recordValue = HM.filterWithKey (\k _ -> k `L.elem` aliases) recordValue }
-  where aliases = pack <$> (snd <$> exprsWithAlias)
+  record { recordValue = HM.fromList scalarValues }
+  where
+    scalars      = L.filter (\(e,_) -> isLeft e) exprsWithAlias
+    scalarValues = (\(Left expr,alias) -> let (_,v) = genRExprValue expr recordValue in (pack alias,v)) <$> exprsWithAlias
 
 genTimeWindowKeyMapR :: RSel
                      -> Record (TimeWindowKey Object) Object
@@ -492,13 +495,14 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
   streamSinkConfig <- genStreamSinkConfig sinkStream' grp
   (s0, source)     <- genStreamWithSourceStream taskName frm
   s1               <- genFilterNode whr s0
-                      -- >>= genMapNode sel
+
   case grp of
     RGroupByEmpty -> do
-      s2 <- genFilteRNodeFromHaving hav s1
+      s2 <- genMapNode sel s1
+      s3 <- genFilteRNodeFromHaving hav s2
       case streamSinkConfig of
         SinkConfigType sink sinkConfig -> do
-          builder <- HS.to sinkConfig s2
+          builder <- HS.to sinkConfig s3
           return (builder, source, sink)
         _                              ->
           throwSQLException CodegenException Nothing "Impossible happened"
