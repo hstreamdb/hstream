@@ -4,7 +4,7 @@
 
 module HStream.Utils.BuildRecord where
 
-import           Data.Aeson
+import           Control.Exception                    (displayException)
 import           Data.Bits                            (shiftL)
 import           Data.ByteString.Lazy                 (ByteString)
 import qualified Data.ByteString.Lazy                 as BL
@@ -13,6 +13,7 @@ import           Data.Map.Strict                      (Map)
 import           Data.Maybe                           (fromJust)
 import           Data.Text.Lazy                       (Text)
 import           Data.Word                            (Word32)
+import qualified Proto3.Suite                         as PT
 import           Z.Data.Vector                        (Bytes)
 import           Z.Foreign                            (fromByteString,
                                                        toByteString)
@@ -39,14 +40,14 @@ buildRecord :: HStreamRecordHeader -> ByteString -> HStreamRecord
 buildRecord header payload = HStreamRecord (Just header) (BL.toStrict payload)
 
 encodeRecord :: HStreamRecord -> Bytes
-encodeRecord = fromByteString . BL.toStrict . encode
+encodeRecord = fromByteString . BL.toStrict . PT.toLazyByteString
 
 decodeRecord :: Bytes -> HStreamRecord
 decodeRecord record =
-  let rc = decode . BL.fromStrict . toByteString $ record
+  let rc = PT.fromByteString . toByteString $ record
   in case rc of
-      Nothing  -> error $ "Decode HStreamRecord error!"
-      Just res -> res
+      Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
+      Right res -> res
 
 getPayload :: HStreamRecord -> Bytes
 getPayload HStreamRecord{..} = fromByteString hstreamRecordPayload
