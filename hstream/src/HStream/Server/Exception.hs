@@ -147,3 +147,10 @@ data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
 instance Exception QueryTerminatedOrNotExist where
   toException = serverHandlerExceptionToException
   fromException = serverHandlerExceptionFromException
+
+data ConnectorTerminatedOrNotExist = ConnectorTerminatedOrNotExist
+  deriving Show
+
+instance Exception ConnectorTerminatedOrNotExist where
+  toException = serverHandlerExceptionToException
+  fromException = serverHandlerExceptionFromException

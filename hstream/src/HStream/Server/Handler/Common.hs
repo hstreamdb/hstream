@@ -7,10 +7,13 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent               (MVar, ThreadId, forkIO,
-                                                   putMVar, takeMVar)
+                                                   putMVar, takeMVar,
+                                                   killThread, putMVar,
+                                                   readMVar, swapMVar, takeMVar))
 import           Control.Exception                (Exception, SomeException,
                                                    displayException, handle,
                                                    throwIO)
+
 import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
@@ -22,7 +25,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import           RIO                              (async, forever)
+import           RIO                              (forever)
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
 import           Z.IO.Time                        (SystemTime (..),
@@ -52,6 +55,7 @@ data ServerContext = ServerContext {
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
+  , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , cmpStrategy              :: HS.Compression
 }
 
@@ -97,10 +101,10 @@ handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
     connector <- case cConfig of
       ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
       MySqlConnector config -> mysqlSinkConnector <$> MySQL.connect config
-    void . async $ do
+    tid <- forkIO $ do
       HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Running)
-      forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
-
+      readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector)
+    void (takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid)
   where
     writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
 
@@ -115,3 +119,15 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = 
 
 mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
 mark mke = handle (throwIO . mke)
+
+handleTerminateConnector :: ServerContext -> CB.CBytes
+  -> IO ()
+handleTerminateConnector ServerContext{..} cid = do
+  hmapC <- readMVar runningConnectors
+  case HM.lookup cid hmapC of
+    Just tid -> killThread tid
+    -- TODO: shall we throwIO here
+    _ -> return ()
+  -- TODO: shall we move this op to Just tid -> killThread tid
+  HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
+  void $ swapMVar runningConnectors (HM.delete cid hmapC)
