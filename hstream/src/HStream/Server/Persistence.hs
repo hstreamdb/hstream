@@ -181,13 +181,13 @@ instance Persistence PStoreMem where
     if ifCheck then getQueryStatus qid ref >>= \case
       Terminated -> modifyIORef refQ . HM.delete . mkQueryPath $ qid
       _          -> throwIO QueryStillRunning
-    else modifyIORef refQ $ HM.delete qid
+    else modifyIORef refQ $ HM.delete . mkQueryPath $ qid
 
   removeConnector' cid ifCheck ref@(_, refC) = ifThrow FailedToRemove $
     if ifCheck then getConnectorStatus cid ref >>= \case
       Terminated -> modifyIORef refC . HM.delete . mkConnectorPath $ cid
       _          -> throwIO ConnectorStillRunning
-    else modifyIORef refC $ HM.delete cid
+    else modifyIORef refC $ HM.delete . mkConnectorPath $ cid
 
 --------------------------------------------------------------------------------
 

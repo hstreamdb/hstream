@@ -29,8 +29,9 @@ library
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
-    HStream.Server.Handler.Query
     HStream.Server.Handler.Connector
+    HStream.Server.Handler.Query
+    HStream.Server.Handler.View
     HStream.Server.Persistence
 
   hs-source-dirs:   src
@@ -132,6 +133,7 @@ test-suite hstream-test
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
+    HStream.RunViewSpec
     HStream.Common
 
   hs-source-dirs:     test

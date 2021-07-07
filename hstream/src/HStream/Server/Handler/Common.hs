@@ -6,12 +6,15 @@
 
 module HStream.Server.Handler.Common where
 
-import           Control.Concurrent               (MVar, ThreadId)
-import           Control.Exception                (SomeException,
-                                                   displayException)
+import           Control.Concurrent               (MVar, ThreadId, forkIO,
+                                                   putMVar, takeMVar)
+import           Control.Exception                (Exception, SomeException,
+                                                   displayException, handle,
+                                                   throwIO)
 import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
+import           Data.Int                         (Int64)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Database.MySQL.Base              as MySQL
@@ -66,7 +69,7 @@ runTaskWrapper isTemp taskBuilder ldclient = do
   runTask sourceConnector sinkConnector taskBuilder
 
 
-createInsertPersistentQuery :: TaskName -> TL.Text -> HSP.QueryType -> Maybe ZHandle -> IO CB.CBytes
+createInsertPersistentQuery :: TaskName -> TL.Text -> HSP.QueryType -> Maybe ZHandle -> IO (CB.CBytes, Int64)
 createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
   let qid = case extraInfo of
@@ -76,7 +79,7 @@ createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
         <> CB.pack (T.unpack taskName)
       qinfo = HSP.Info (ZT.pack $ T.unpack $ TL.toStrict queryText) timestamp
   HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo extraInfo
-  return qid
+  return (qid, timestamp)
 
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
@@ -113,3 +116,15 @@ handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
 
   where
     writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+
+-- TODO: return info in a more maintainable way
+handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> HSP.QueryType -> IO (CB.CBytes, Int64)
+handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
+  (qid, timestamp) <- createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
+  tid <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
+        >> runTaskWrapper False taskBuilder scLDClient
+  takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+  return (qid, timestamp)
+
+mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
+mark mke = handle (throwIO . mke)

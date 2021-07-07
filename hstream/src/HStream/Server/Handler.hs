@@ -64,6 +64,10 @@ import           HStream.Server.Handler.Query         (cancelQueryHandler,
                                                        fetchQueryHandler,
                                                        getQueryHandler,
                                                        restartQueryHandler)
+import           HStream.Server.Handler.View          (createViewHandler,
+                                                       deleteViewHandler,
+                                                       getViewHandler,
+                                                       listViewsHandler)
 import qualified HStream.Server.Persistence           as P
 import           HStream.Store                        hiding (e)
 import           HStream.Utils
@@ -115,6 +119,11 @@ handlers ldclient repFactor zkHandle compression = do
     , hstreamApiDeleteConnector  = deleteConnectorHandler serverContext
     , hstreamApiCancelConnector  = cancelConnectorHandler serverContext
     , hstreamApiRestartConnector = restartConnectorHandler serverContext
+
+    , hstreamApiCreateView       = createViewHandler serverContext
+    , hstreamApiGetView          = getViewHandler serverContext
+    , hstreamApiListViews        = listViewsHandler serverContext
+    , hstreamApiDeleteView       = deleteViewHandler serverContext
     }
 
 genErrorStruct :: TL.Text -> Struct
@@ -199,7 +208,7 @@ executePushQueryHandler ServerContext{..}
         createTempStream scLDClient (transToTempStreamName sink)
           (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
-        qid <- createInsertPersistentQuery (getTaskName taskBuilder)
+        (qid, _) <- createInsertPersistentQuery (getTaskName taskBuilder)
           commandPushQueryQueryText P.PlainQuery zkHandle
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
@@ -283,13 +292,6 @@ handleTerminate ServerContext{..} AllQuery = do
   mapM_ f $ HM.keys hmapQ
   void $ swapMVar runningQueries HM.empty
 
-handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> IO ()
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
-  qid <- createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
-  tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
-        >> runTaskWrapper False taskBuilder scLDClient
-  takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-
 --------------------------------------------------------------------------------
 
 sendToClient :: Maybe ZHandle -> CB.CBytes -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
@@ -311,9 +313,6 @@ sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = handle
       (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
         Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
-
-mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
-mark mke = handle (throwIO . mke)
 
 --------------------------------------------------------------------------------
 appendHandler :: ServerContext
