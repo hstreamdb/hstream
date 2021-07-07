@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+
 module HStream.Utils.Format where
 
 import qualified Data.Aeson                        as A
@@ -18,6 +19,7 @@ import           Text.Layout.Table                 (center, colsAllG, column,
                                                     unicodeRoundS)
 import qualified ThirdParty.Google.Protobuf.Struct as P
 
+
 import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
 import           HStream.Utils.Converter           (jsonValueToValue,
@@ -28,8 +30,8 @@ type Width = Int
 formatResult :: Width -> P.Struct -> String
 formatResult width (P.Struct kv) =
   case M.toList kv of
-    [("SHOWSTREAMS", Just v)] -> unlines .  words . formatValue $ v
-    [("SHOWVIEWS",   Just v)] -> unlines .  words . formatValue $ v
+    [("SHOWSTREAMS", Just v)] -> emptyNotice . unlines .  words . formatValue $ v
+    [("SHOWVIEWS",   Just v)] -> emptyNotice . unlines .  words . formatValue $ v
     [("SELECT",      Just x)] -> unwords (lines $ formatValue x) <> "\n"
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderTableResult xs
@@ -38,7 +40,8 @@ formatResult width (P.Struct kv) =
     [("Error Message:", Just v)] -> "Error Message: " ++  formatValue v ++ "\n"
     x -> show x
   where
-    renderTableResult = renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
+    renderTableResult = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
+    emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" :: String else xs
 
 formatSomeSQLException :: E.SomeSQLException -> String
 formatSomeSQLException (E.ParseException   info) = "Parse exception " ++ formatParseExceptionInfo info
@@ -65,9 +68,6 @@ formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
   HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet ys) ->
     "unknown behaviour" <> show ys
 formatCommandQueryResponse _ _ = ""
-
-
---------------------------------------------------------------------------------
 
 formatStruct :: P.Struct -> String
 formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y <> ";"))
