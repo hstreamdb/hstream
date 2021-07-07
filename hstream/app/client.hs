@@ -11,7 +11,8 @@ module Main where
 import           Control.Exception                (finally, try)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
-import qualified Data.List                        as L
+import           Data.Char                        (toUpper)
+import qualified Data.Map                         as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Network.GRPC.HighLevel.Generated
@@ -32,47 +33,6 @@ import           HStream.Utils.Format             (formatCommandQueryResponse,
                                                    formatResult,
                                                    formatSomeSQLException)
 
-helpInfo :: String
-helpInfo =
-  unlines
-    [ "Command ",
-      "  :h                        help command",
-      "  :q                        quit cli",
-      "  <sql>                     run sql"
-    ]
-
-def :: H.Settings IO
-def = H.setComplete compE H.defaultSettings
-
-compE :: H.CompletionFunc IO
-compE = H.completeWord Nothing [] compword
-
-wordTable :: [[String]]
-wordTable =
-  [ [":h"],
-    [":q"]
-  ]
-
-generalComplete :: [[String]] -> [String] -> [String]
-generalComplete t [] = L.nub (map head t)
-generalComplete t [x] = case L.nub (filter (L.isPrefixOf x) (map head t)) of
-  [w]
-    | x == w ->
-      map (\z -> x ++ " " ++ z) (generalComplete (filter (/= []) (map tail (filter (\z -> head z == x) t))) [])
-  ws -> ws
-generalComplete t (x : xs) =
-  map (\z -> x ++ " " ++ z) (generalComplete (filter (/= []) (map tail (filter (\z -> head z == x) t))) xs)
-
-specificComplete :: Monad m => [String] -> m [String]
-specificComplete _ = return []
-
-compword :: Monad m => String -> m [H.Completion]
-compword s = do
-  let gs = generalComplete wordTable (words s)
-  cs <- specificComplete (words s)
-  return $ map H.simpleCompletion (gs <> cs)
-
---------------------------------------------------------------------------------
 data UserConfig = UserConfig
   { _serverHost :: ByteString
   , _serverPort :: Int
@@ -106,26 +66,29 @@ main = do
 app :: ClientConfig -> IO ()
 app clientConfig = do
   putStrLn helpInfo
-  H.runInputT def loop
+  H.runInputT H.defaultSettings  loop
   where
     loop :: H.InputT IO ()
     loop = do
-        input <- H.getInputLine "> "
-        case input of
-          Nothing   -> return ()
-          Just ":q" -> return ()
-          Just xs   -> do
-            case words xs of
-              ":h" : _                          -> liftIO $ putStrLn helpInfo
-              val@(_ : _)                       -> do
-                let sql = T.pack (unwords val)
-                (liftIO . try . parseAndRefine $ sql) >>= \case
-                  Left (e :: SomeSQLException) -> liftIO . putStrLn . formatSomeSQLException $ e
-                  Right rsql                -> case rsql of
-                    RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
-                    _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
-              [] -> return ()
-            loop
+      H.getInputLine "> " >>= \case
+        Nothing   -> return ()
+        Just str
+          | take 1 (words str) == [":q"] -> return ()
+          | otherwise  -> liftIO (commandExec clientConfig str) >> loop
+
+commandExec :: ClientConfig -> String -> IO ()
+commandExec clientConfig xs = case words xs of
+  ":h" : _ -> putStr helpInfo
+  [":help"] -> putStr groupedHelpInfo
+  ":help" : x : _ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
+  val@(_ : _) -> do
+    let sql = T.pack (unwords val)
+    (liftIO . try . parseAndRefine $ sql) >>= \case
+      Left (e :: SomeSQLException) -> liftIO . putStrLn . formatSomeSQLException $ e
+      Right rsql                -> case rsql of
+        RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
+        _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
+  [] -> return ()
 
 sqlStreamAction :: ClientConfig -> TL.Text -> IO ()
 sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
@@ -162,3 +125,56 @@ withInterrupt :: IO () -> IO a -> IO a
 withInterrupt handle act = do
   old_handler <- installHandler keyboardSignal (Catch handle) Nothing
   act `finally` installHandler keyboardSignal old_handler Nothing
+
+helpInfo :: String
+helpInfo =
+  [r|
+Command
+  :h                           To show these help info
+  :q                           To exit command line interface
+  :help [sql_operation]        To show full usage of sql statement
+
+SQL STATEMENTS:
+  To create a simplest stream:
+    CREATE STREAM stream_name ;
+
+  To create a query select all fields from a stream:
+    SELECT * FROM stream_name EMIT CHANGES ;
+
+  To insert values to a stream:
+    INSERT INTO stream_name (field1, field2) VALUES (1, 2) ;
+  |]
+
+helpInfos :: M.Map String String
+helpInfos = M.fromList [
+  ("CREATE",[r|
+  CREATE STREAM <stream_name> [AS <select_query>] [ WITH ( {stream_options} ) ];
+  CREATE {SOURCE|SINK} CONNECTOR <stream_name> [IF NOT EXIST WITH] ( {connector_options} ) ;
+  CREATE VIEW <stream_name> AS <select_query> ;
+  |]),
+  ("INSERT",[r|
+  INSERT INTO <stream_name> ( {field_name} ) VALUES ( {field_value} );
+  |]),
+  ("SELECT", [r|
+  SELECT <* | {expression [ AS field_alias ]}>
+  FROM stream_name_1
+       [ join_type JOIN stream_name_2
+         WITHIN (some_interval)
+         ON stream_name_1.field_1 = stream_name_2.field_2 ]
+  [ WHERE search_condition ]
+  [ GROUP BY field_name [, window_type] ]
+  EMIT CHANGES ;
+  |]),
+  ("SHOW", [r|
+  SHOW <CONNECTORS|QUERIES|VIEWS>
+  |]),
+  ("TERMINATE", [r|
+  TERMINATE <QUERY <query_id>|ALL>
+  |]),
+  ("DROP", [r|
+  DROP <STREAM [IF EXISTS] <stream_name>|VIEW [IF EXISTS] <view_name>>
+  |])
+  ]
+
+groupedHelpInfo :: String
+groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ helpInfos
