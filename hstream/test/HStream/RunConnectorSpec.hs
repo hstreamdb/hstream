@@ -118,7 +118,6 @@ spec = describe "HStream.RunConnectorSpec" $ do
   it "list connectors" $
     ( do
         Just ListConnectorResponse {listConnectorResponseResponses = connectors} <- listConnector
-        print connectors
         let record = V.find (getConnectorResponseIdIs mysqlConnector) connectors
         case record of
           Just _ -> return True
@@ -135,7 +134,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "cancel connector" $
     ( do
-        cancelConnector mysqlConnector
+        _ <- cancelConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
           Just (GetConnectorResponse _ 2 _ _ _) -> return True
@@ -144,7 +143,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "restart connector" $
     ( do
-        restartConnector mysqlConnector
+        _ <- restartConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
           Just (GetConnectorResponse _ 1 _ _ _) -> return True
@@ -153,8 +152,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "delete connector" $
     ( do
-        cancelConnector mysqlConnector
-        deleteConnector mysqlConnector
+        _ <- cancelConnector mysqlConnector
+        _ <- deleteConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
           Just (GetConnectorResponse _ _ _ _ Enumerated {enumerated = Right HStreamServerErrorNotExistError}) -> return True

@@ -81,12 +81,12 @@ subscribedReaders = unsafePerformIO $ newIORef HM.empty
 --------------------------------------------------------------------------------
 
 handlers :: LDClient -> Int -> Maybe ZHandle -> Compression -> IO (HStreamApi ServerRequest ServerResponse)
-handlers ldclient repFactor handle compression = do
+handlers ldclient repFactor zkHandle compression = do
   runningQs <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
       , scDefaultStreamRepFactor = repFactor
-      , zkHandle                 = handle
+      , zkHandle                 = zkHandle
       , runningQueries           = runningQs
       , cmpStrategy              = compression
       }
@@ -268,7 +268,6 @@ handleShowPlan ServerContext{..} showObject =
       let views = filter P.isViewQuery qids
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWVIEWS" $ cbytesToValue <$> views
       return (ServerNormalResponse resp [] StatusOk "")
-    _ -> returnErrRes "not Supported"
 
 handleTerminate :: ServerContext -> TerminationSelection
   -> IO ()
@@ -374,7 +373,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
 fetchHandler :: ServerContext
              -> ServerRequest 'Normal FetchRequest FetchResponse
              -> IO (ServerResponse 'Normal FetchResponse)
-fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) = do
+fetchHandler _ (ServerNormalRequest _metadata FetchRequest{..}) = do
   hm <- readIORef subscribedReaders
   case HM.lookup fetchRequestSubscriptionId hm of
     Nothing     -> do
@@ -435,7 +434,7 @@ terminateQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal TerminateQueryRequest TerminateQueryResponse
   -> IO (ServerResponse 'Normal TerminateQueryResponse)
-terminateQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueryRequest{..}) = do
+terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..}) = do
   let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
   handleTerminate sc (OneQuery queryName)
   return (ServerNormalResponse (TerminateQueryResponse terminateQueryRequestQueryName) [] StatusOk  "")

@@ -95,8 +95,8 @@ terminateQuery :: TL.Text
                     -> IO (Maybe TerminateQueryResponse)
 terminateQuery queryName = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let terminateQuery = TerminateQueryRequest{ terminateQueryRequestQueryName = queryName }
-  resp <- hstreamApiTerminateQuery (ClientNormalRequest terminateQuery 100 (MetadataMap $ Map.empty))
+  let terminateQuery' = TerminateQueryRequest{ terminateQueryRequestQueryName = queryName }
+  resp <- hstreamApiTerminateQuery (ClientNormalRequest terminateQuery' 100 (MetadataMap $ Map.empty))
   case resp of
     ClientNormalResponse x@TerminateQueryResponse{} _meta1 _meta2 _status _details ->
       return $ Just x
