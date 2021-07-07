@@ -131,6 +131,7 @@ test-suite hstream-test
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
+    HStream.Common
   hs-source-dirs:     test
   build-depends:
     , aeson

@@ -136,7 +136,7 @@ spec = describe "HStream.RunQuerySpec" $ do
 
   it "cancel query" $
     ( do
-        cancelQuery queryname1
+        _ <- cancelQuery queryname1
         query <- getQuery queryname1
         case query of
           Just (GetQueryResponse _ 2 _ _ _) -> return True
@@ -145,7 +145,7 @@ spec = describe "HStream.RunQuerySpec" $ do
 
   it "restart query" $
     ( do
-        restartQuery queryname1
+        _ <- restartQuery queryname1
         query <- getQuery queryname1
         case query of
           Just (GetQueryResponse _ 1 _ _ _) -> return True
@@ -154,8 +154,8 @@ spec = describe "HStream.RunQuerySpec" $ do
 
   it "delete query" $
     ( do
-        cancelQuery queryname1
-        deleteQuery queryname1
+        _ <- cancelQuery queryname1
+        _ <- deleteQuery queryname1
         query <- getQuery queryname1
         case query of
           Just (GetQueryResponse _ _ _ _ Enumerated {enumerated = Right HStreamServerErrorNotExistError}) -> return True
