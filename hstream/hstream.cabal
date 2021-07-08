@@ -134,6 +134,7 @@ test-suite hstream-test
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunViewSpec
+    HStream.RegressionSpec
     HStream.Common
 
   hs-source-dirs:     test
