@@ -68,19 +68,6 @@ runTaskWrapper isTemp taskBuilder ldclient = do
   -- RUN TASK
   runTask sourceConnector sinkConnector taskBuilder
 
-
-createInsertPersistentQuery :: TaskName -> TL.Text -> HSP.QueryType -> Maybe ZHandle -> IO (CB.CBytes, Int64)
-createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
-  MkSystemTime timestamp _ <- getSystemTime'
-  let qid = case extraInfo of
-        HSP.PlainQuery             -> ""
-        HSP.StreamQuery streamName -> "stream_" <> streamName <> "-"
-        HSP.ViewQuery   viewName _ -> "view_" <> viewName <> "-"
-        <> CB.pack (T.unpack taskName)
-      qinfo = HSP.Info (ZT.pack $ T.unpack $ TL.toStrict queryText) timestamp
-  HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo extraInfo
-  return (qid, timestamp)
-
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
   x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
@@ -120,7 +107,7 @@ handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> HSP.QueryType -> IO (CB.CBytes, Int64)
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
-  (qid, timestamp) <- createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
+  (qid, timestamp) <- HSP.createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
   tid <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
         >> runTaskWrapper False taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid

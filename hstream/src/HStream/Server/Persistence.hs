@@ -23,18 +23,21 @@ module HStream.Server.Persistence
   , getSuffix
   , isViewQuery
   , isStreamQuery
-  ) where
+  ,createInsertPersistentQuery,getRelatedStreams) where
 
 import           Control.Exception        (Exception, handle, throw)
 import           Control.Monad            (void)
 import qualified Data.HashMap.Strict      as HM
-import           Data.IORef
+import           Data.IORef               (IORef, modifyIORef, newIORef,
+                                           readIORef)
 import           Data.Int                 (Int64)
+import           Data.Text                (Text, unpack)
+import           Data.Text.Lazy           (Text, toStrict)
 import           GHC.Generics             (Generic)
 import           System.IO.Unsafe         (unsafePerformIO)
-import           Z.Data.CBytes            (CBytes (..), unpack)
+import           Z.Data.CBytes            (CBytes (..), pack, unpack)
 import           Z.Data.JSON              (JSON, decode, encode)
-import           Z.Data.Text              (Text)
+import           Z.Data.Text              (Text, pack)
 import           Z.Data.Vector            (Bytes)
 import           Z.IO.Exception           (HasCallStack, catch)
 import           Z.IO.Time                (SystemTime (..), getSystemTime')
@@ -46,10 +49,11 @@ import           HStream.Server.Exception
 
 type Id = CBytes
 type TimeStamp    = Int64
-type SqlStatement = Text
+type SqlStatement = Z.Data.Text.Text
 type StreamName = CBytes
 type ViewName = CBytes
 type ViewSchema = [String]
+type RelatedStreams = [StreamName]
 
 data Query = Query {
     queryId        :: Id
@@ -84,9 +88,10 @@ data PStatus = Created
   deriving (Show, Eq, Generic, Enum)
 instance JSON PStatus
 
-data QueryType = PlainQuery
-  | StreamQuery StreamName
-  | ViewQuery ViewName ViewSchema
+data QueryType
+  = PlainQuery  RelatedStreams
+  | StreamQuery RelatedStreams StreamName
+  | ViewQuery   RelatedStreams ViewName ViewSchema
   deriving (Show, Eq, Generic)
 instance JSON QueryType
 
@@ -123,6 +128,18 @@ class Persistence handle where
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
 withMaybeZHandle Nothing   f = f (queryCollection, connectorsCollection)
+
+createInsertPersistentQuery :: Data.Text.Text -> Data.Text.Lazy.Text -> QueryType -> Maybe ZHandle -> IO (CBytes, Int64)
+createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
+  MkSystemTime timestamp _ <- getSystemTime'
+  let qid = case extraInfo of
+        PlainQuery  _            -> ""
+        StreamQuery _ streamName -> "stream_" <> streamName <> "-"
+        ViewQuery   _ viewName _ -> "view_" <> viewName <> "-"
+        <> Z.Data.CBytes.pack (Data.Text.unpack taskName)
+      qinfo = Info (Z.Data.Text.pack $ Data.Text.unpack $ Data.Text.Lazy.toStrict queryText) timestamp
+  withMaybeZHandle zkHandle $ insertQuery qid qinfo extraInfo
+  return (qid, timestamp)
 
 --------------------------------------------------------------------------------
 
@@ -286,10 +303,15 @@ ifThrow :: Exception e => e -> IO a -> IO a
 ifThrow e = handle (\(_ :: ZooException) -> throwIO e)
 
 getSuffix :: CBytes -> String
-getSuffix = reverse . drop 1 . dropWhile (/= '-') . reverse . unpack
+getSuffix = reverse . drop 1 . dropWhile (/= '-') . reverse . Z.Data.CBytes.unpack
 
 isViewQuery :: CBytes -> Bool
-isViewQuery = (== "view") . take 4 . unpack
+isViewQuery = (== "view") . take 4 . Z.Data.CBytes.unpack
 
 isStreamQuery :: CBytes -> Bool
-isStreamQuery = (== "stream") . take 6 . unpack
+isStreamQuery = (== "stream") . take 6 . Z.Data.CBytes.unpack
+
+getRelatedStreams :: QueryType -> RelatedStreams
+getRelatedStreams (PlainQuery ss)    = ss
+getRelatedStreams (StreamQuery ss _) = ss
+getRelatedStreams (ViewQuery ss _ _) = ss

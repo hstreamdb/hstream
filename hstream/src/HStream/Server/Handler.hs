@@ -170,15 +170,17 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     -- execute plans that can be executed with this method
     CreatePlan stream _repFactor -> mark LowLevelStoreException $
       create stream >> returnOkRes
-    CreateBySelectPlan _sources sink taskBuilder _repFactor -> mark LowLevelStoreException $ do
+    CreateBySelectPlan sources sink taskBuilder _repFactor -> mark LowLevelStoreException $
       create sink
-      handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.StreamQuery . CB.pack . T.unpack $ sink)
-      returnOkRes
-    CreateViewPlan schema _sources sink taskBuilder _repFactor materialized -> mark LowLevelStoreException $ do
+      >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
+        (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink))
+      >> returnOkRes
+    CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> mark LowLevelStoreException $ do
       create sink
-      handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.ViewQuery (CB.pack . T.unpack $ sink) schema)
-      atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
-      returnOkRes
+      >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
+        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
+      >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
+      >> returnOkRes
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
       streamExists <- doesStreamExists scLDClient (transToStreamName sName)
       connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
@@ -248,8 +250,8 @@ executePushQueryHandler ServerContext{..}
         createTempStream scLDClient (transToTempStreamName sink)
           (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
-        (qid, _) <- createInsertPersistentQuery (getTaskName taskBuilder)
-          commandPushQueryQueryText P.PlainQuery zkHandle
+        (qid, _) <- P.createInsertPersistentQuery (getTaskName taskBuilder)
+          commandPushQueryQueryText (P.PlainQuery $ textToCBytes <$> sources) zkHandle
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
           >> runTaskWrapper True taskBuilder scLDClient
@@ -285,21 +287,30 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
     DStream stream -> handleDrop "stream_" stream
     DView view     -> handleDrop "view_" view
   where
-    terminateQueryAndRemove path = do
-      qids <- P.withMaybeZHandle zkHandle P.getQueryIds
-      case L.find ((== path) . P.getSuffix) qids of
-        Just x -> handle (\(_::QueryTerminatedOrNotExist) -> pure ()) (
-          handleTerminate sc (OneQuery x) >> P.withMaybeZHandle zkHandle (P.removeQuery' x True))
-        Nothing -> pure ()
-
     handleDrop object name = do
       streamExists <- doesStreamExists scLDClient (transToStreamName name)
       if streamExists then
         terminateQueryAndRemove (T.unpack (object <> name))
+        >> terminateRelatedQueries (textToCBytes name)
         >> removeStream scLDClient (transToStreamName name)
         >> returnOkRes
       else if checkIfExist then returnOkRes
       else returnErrRes "Object does not exist"
+
+    terminateQueryAndRemove path = do
+      qids <- P.withMaybeZHandle zkHandle P.getQueryIds
+      case L.find ((== path) . P.getSuffix) qids of
+        Just x ->
+          handleStatusException (handleTerminate sc (OneQuery x))
+          >> P.withMaybeZHandle zkHandle (P.removeQuery' x True)
+        Nothing -> pure ()
+
+    terminateRelatedQueries name = do
+      queries <- P.withMaybeZHandle zkHandle P.getQueries
+      mapM_ (handleStatusException . handleTerminate sc . OneQuery) (getRelatedQueries name queries)
+
+    getRelatedQueries name queries = [ P.queryId query | query <- queries, name `elem` P.getRelatedStreams (P.queryInfoExtra query)]
+    handleStatusException = handle (\(_::QueryTerminatedOrNotExist) -> pure ())
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
