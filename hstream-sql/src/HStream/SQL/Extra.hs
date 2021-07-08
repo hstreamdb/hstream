@@ -6,11 +6,14 @@ module HStream.SQL.Extra
   , extractSelRefNames
   , extractCondRefNames
   , extractRefNameFromExpr
+  , trimSpacesPrint
   ) where
 
-import qualified Data.List       as L
-import           Data.Text       (Text)
+import           Data.Char         (isSpace)
+import qualified Data.List         as L
+import           Data.Text         (Text)
 import           HStream.SQL.Abs
+import           HStream.SQL.Print (Print, printTree)
 
 --------------------------------------------------------------------------------
 extractPNInteger :: PNInteger -> Integer
@@ -22,6 +25,10 @@ extractPNDouble :: PNDouble -> Double
 extractPNDouble (PDouble  _ n) = n
 extractPNDouble (IPDouble _ n) = n
 extractPNDouble (NDouble  _ n) = (-n)
+
+trimSpacesPrint :: Print a => a -> String
+trimSpacesPrint = removeSpace . printTree
+  where removeSpace = L.filter (not . isSpace)
 
 --------------------------------------------------------------------------------
 anyJoin :: [TableRef] -> Bool
