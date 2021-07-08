@@ -6,7 +6,7 @@
 module HStream.RegressionSpec (spec) where
 
 import           Control.Concurrent
-import qualified Data.Aeson                      as Aeson
+import qualified Data.Aeson         as Aeson
 import           Test.Hspec
 
 import           HStream.Common
@@ -31,4 +31,21 @@ spec = describe "HStream.RunSQLSpec" $ do
                                 , ("s2.a"     , Aeson.Number 2)
                                 , ("s2.b"     , Aeson.Number 3)
                                 ]
+                     ]
+
+  it "#394_JOIN" $
+    (do
+       _ <- executeCommandQuery "CREATE STREAM s3;"
+       _ <- forkIO $ do
+         threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+         _ <- executeCommandQuery "INSERT INTO s3 (a, b) VALUES (1, 4);"
+         _ <- executeCommandQuery "INSERT INTO s3 (a, b) VALUES (1, 4);"
+         _ <- executeCommandQuery "INSERT INTO s3 (a, b) VALUES (1, 4);"
+         _ <- executeCommandQuery "INSERT INTO s3 (a, b) VALUES (1, 4);"
+         return ()
+       executeCommandPushQuery "SELECT a, b, SUM(a) FROM s3 GROUP BY b, SESSION(INTERVAL 10 MINUTE) EMIT CHANGES;"
+    ) `shouldReturn` [ mkStruct [("SUM(a)", Aeson.Number 1), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
+                     , mkStruct [("SUM(a)", Aeson.Number 2), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
+                     , mkStruct [("SUM(a)", Aeson.Number 3), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
+                     , mkStruct [("SUM(a)", Aeson.Number 4), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
                      ]
