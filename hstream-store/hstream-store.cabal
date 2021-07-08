@@ -37,6 +37,7 @@ library
   exposed-modules:
     HStream.Store
     HStream.Store.Internal.LogDevice
+    HStream.Store.Logger
 
   other-modules:
     HStream.Store.Exception
@@ -47,17 +48,16 @@ library
     HStream.Store.Internal.LogDevice.VersionedConfigStore
     HStream.Store.Internal.LogDevice.Writer
     HStream.Store.Internal.Types
-    HStream.Store.Logger
     HStream.Store.Stream
 
   build-depends:
-    , base        >=4.13    && <5
+    , base        >=4.13  && <5
     , cache       ^>=0.1
     , containers  ^>=0.6
-    , ghc-prim    >=0.5     && <1.0
+    , ghc-prim    >=0.5   && <1.0
     , primitive   ^>=0.7
     , random      ^>=1.2
-    , time        >=1.9     && <2.0
+    , time        >=1.9   && <2.0
     , Z-Data
     , Z-IO
     , zoovisitor  >=0.1.2 && <1
@@ -166,6 +166,7 @@ executable hstore-bench-writter
   main-is:          writeBench.hs
   hs-source-dirs:   app
   build-depends:
+    , async
     , base
     , containers
     , data-default
@@ -174,7 +175,6 @@ executable hstore-bench-writter
     , random
     , Z-Data
     , Z-IO
-    , async
 
   default-language: Haskell2010
   ghc-options:

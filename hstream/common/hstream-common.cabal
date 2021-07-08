@@ -47,7 +47,6 @@ library
     , grpc-haskell-core
     , hstream-processing
     , hstream-sql
-    , hstream-store
     , proto3-suite
     , proto3-wire
     , random

@@ -22,6 +22,7 @@ import qualified Z.Data.Vector            as ZV
 import           Z.IO.Time                (SystemTime (..), getSystemTime')
 
 import qualified HStream.Store            as HS
+import qualified HStream.Store.Logger     as Log
 
 type Timestamp = Int64
 
@@ -391,7 +392,7 @@ runCommand (ParallelBench opts)    = parallelBench opts
 
 main :: IO ()
 main = do
-  HS.setLogDeviceDbgLevel HS.C_DBG_ERROR
+  Log.setLogDeviceDbgLevel Log.C_DBG_ERROR
   runCommand =<< customExecParser (prefs showHelpOnEmpty) opts
   where
     opts = info (helper <*> commandParser) (fullDesc <> progDesc "HStore-Write-Bench-Tool")

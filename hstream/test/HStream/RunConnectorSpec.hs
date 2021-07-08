@@ -17,6 +17,7 @@ import           Test.Hspec
 import           HStream.Common
 import           HStream.Server.HStreamApi
 import           HStream.Store
+import           HStream.Store.Logger
 
 getConnectorResponseIdIs :: TL.Text -> GetConnectorResponse -> Bool
 getConnectorResponseIdIs targetId (GetConnectorResponse connectorId _ _ _ _) = connectorId == targetId

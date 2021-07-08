@@ -2,12 +2,13 @@
 # to the daemon as a file that gets automatically updated when the config map
 # content changes.
 configMapGenerator:
-- name: logdevice-config
-  files:
-  - config.json
+  - name: logdevice-config
+    files:
+      - config.json
 resources:
-- logdevice-statefulset.yaml
-- logdevice-service.yaml
-- logdevice-admin-server.yaml
+  - logdevice-statefulset.yaml
+  - logdevice-service.yaml
+  - logdevice-admin-server.yaml
+  - hstream-server.yaml
 generatorOptions:
   disableNameSuffixHash: true

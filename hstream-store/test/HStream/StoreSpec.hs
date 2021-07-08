@@ -10,6 +10,7 @@ import qualified Z.Data.CBytes           as CBytes
 import           Z.Data.Vector           (packASCII)
 
 import qualified HStream.Store           as S
+import qualified HStream.Store.Logger    as S
 import           HStream.Store.SpecUtils
 
 spec :: Spec
