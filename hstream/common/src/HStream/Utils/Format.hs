@@ -5,6 +5,7 @@
 module HStream.Utils.Format where
 
 import qualified Data.Aeson                        as A
+import qualified Data.Aeson.Text                   as A
 import qualified Data.HashMap.Strict               as HM
 import           Data.List                         (sort)
 import qualified Data.Map.Strict                   as M
@@ -32,7 +33,7 @@ formatResult width (P.Struct kv) =
   case M.toList kv of
     [("SHOWSTREAMS", Just v)] -> emptyNotice . unlines .  words . formatValue $ v
     [("SHOWVIEWS",   Just v)] -> emptyNotice . unlines .  words . formatValue $ v
-    [("SELECT",      Just x)] -> unwords (lines $ formatValue x) <> "\n"
+    [("SELECT",      Just x)] -> TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderTableResult xs
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
