@@ -37,7 +37,6 @@ library
   hs-source-dirs:   src gen-src
   build-depends:
     , aeson
-    , aeson-pretty
     , ansi-terminal
     , base
     , bytestring
