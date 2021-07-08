@@ -327,6 +327,35 @@ instance Refine Select where
   refine (DSelect _ sel frm whr grp hav) =
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
 
+---- SELECTVIEW
+
+data SelectViewSelect = SVSelectAll | SVSelectFields [(FieldName, FieldAlias)] deriving (Eq, Show)
+type SelectViewCond = (FieldName, RValueExpr)
+data RSelectView = RSelectView
+  { rSelectViewSelect :: SelectViewSelect
+  , rSelectViewFrom   :: StreamName
+  , rSelectViewWhere  :: SelectViewCond
+  } deriving (Eq, Show)
+
+type instance RefinedType SelectView = RSelectView
+instance Refine SelectView where
+  refine (DSelectView _ sel frm whr) =
+    RSelectView svSel svFrm svWhr
+    where
+      -- TODO: use `refine` instance of `Sel`
+      svSel = case sel of
+        (DSel _ (SelListAsterisk _)) -> SVSelectAll
+        (DSel _ (SelListSublist _ dcols)) ->
+          let f dcol = case dcol of
+                (DerivedColSimpl _ expr@(ExprColName _ (ColNameSimple _ (Ident col))))       ->
+                  (col, printTree expr)
+                (DerivedColAs _ (ExprColName _ (ColNameSimple _ (Ident col))) (Ident alias)) ->
+                  (col, Text.unpack alias)
+           in SVSelectFields (f <$> dcols)
+      svFrm = let (RFromSingle stream) = refine frm in stream
+      svWhr = let (RWhere (RCondOp RCompOpEQ (RExprCol _ Nothing field) rexpr)) = refine whr
+               in (field, rexpr)
+
 ---- CREATE
 data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
@@ -454,15 +483,17 @@ data RSQL = RQSelect RSelect
           | RQShow   RShow
           | RQDrop   RDrop
           | RQTerminate RTerminate
+          | RQSelectView RSelectView
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
-  refine (QSelect _  select) = RQSelect (refine select)
-  refine (QCreate _  create) = RQCreate (refine create)
-  refine (QInsert _  insert) = RQInsert (refine insert)
-  refine (QShow   _   show_) = RQShow   (refine show_)
-  refine (QDrop   _   drop_) = RQDrop   (refine drop_)
-  refine (QTerminate _ term) = RQTerminate (refine term)
+  refine (QSelect _  select)        = RQSelect (refine select)
+  refine (QCreate _  create)        = RQCreate (refine create)
+  refine (QInsert _  insert)        = RQInsert (refine insert)
+  refine (QShow   _   show_)        = RQShow   (refine show_)
+  refine (QDrop   _   drop_)        = RQDrop   (refine drop_)
+  refine (QTerminate _ term)        = RQTerminate (refine term)
+  refine (QSelectView _ selectView) = RQSelectView (refine selectView)
 
 --------------------------------------------------------------------------------
 

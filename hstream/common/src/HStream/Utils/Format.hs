@@ -38,6 +38,7 @@ formatResult width (P.Struct kv) =
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderTableResult xs
     [("Error Message:", Just v)] -> "Error Message: " ++  formatValue v ++ "\n"
+    [("SELECTVIEW",  Just x)] -> unwords (lines $ formatValue x) <> "\n"
     x -> show x
   where
     renderTableResult = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
@@ -63,12 +64,15 @@ formatCommandQueryResponse :: Width -> HA.CommandQueryResponse -> String
 formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
   HA.CommandQueryResponseKindSuccess _ ->
     "Command successfully executed.\n"
+  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet [])  ->
+    "No results.\n"
   HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet [y]) ->
     formatResult w y
-  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet ys) ->
+  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet ys)  ->
     "unknown behaviour" <> show ys
 formatCommandQueryResponse _ _ = ""
 
+--------------------------------------------------------------------------------
 formatStruct :: P.Struct -> String
 formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y <> ";"))
                             . M.toList . fmap (fmap formatValue) $ kv

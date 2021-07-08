@@ -8,7 +8,7 @@ module HStream.Processing.Store
   ( KVStore (..),
     SessionStore (..),
     TimestampedKVStore (..),
-    StateStore,
+    StateStore(..),
     InMemoryKVStore,
     -- mkInMemoryKVStore,
     mkInMemoryStateKVStore,

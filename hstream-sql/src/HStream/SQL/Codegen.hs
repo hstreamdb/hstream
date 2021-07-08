@@ -11,7 +11,6 @@ import           Data.Aeson                                      (Object,
                                                                   encode)
 import qualified Data.ByteString.Char8                           as BS
 import qualified Data.ByteString.Lazy                            as BSL
-import qualified Data.Either                                     (isLeft)
 import qualified Data.HashMap.Strict                             as HM
 import qualified Data.List                                       as L
 import           Data.Scientific                                 (fromFloatDigits,
@@ -92,11 +91,12 @@ data ExecutionPlan
   | CreatePlan          StreamName Int
   | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
-  | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int
+  | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object)
   | InsertPlan          StreamName InsertType BL.ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
+  | SelectViewPlan      RSelectView
 
 --------------------------------------------------------------------------------
 
@@ -106,19 +106,19 @@ streamCodegen input = do
   case rsql of
     RQSelect select                     -> do
       tName <- genTaskName
-      (builder, source, sink) <- genStreamBuilderWithStream tName Nothing select
+      (builder, source, sink, _) <- genStreamBuilderWithStream tName Nothing select
       return $ SelectPlan source sink (HS.build builder)
     RQCreate (RCreateAs stream select rOptions) -> do
       tName <- genTaskName
-      (builder, source, sink) <- genStreamBuilderWithStream tName (Just stream) select
+      (builder, source, sink, _) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
     RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
       tName <- genTaskName
-      (builder, source, sink) <- genStreamBuilderWithStream tName (Just view) select
+      (builder, source, sink, Just mat) <- genStreamBuilderWithStream tName (Just view) select
       let schema = case sel of
             RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
             RSelList fields -> map snd fields
-      return $ CreateViewPlan schema source sink (HS.build builder) 1
+      return $ CreateViewPlan schema source sink (HS.build builder) 1 mat
     RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
     RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
     RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (encode $ HM.fromList $ second constantToValue <$> tuples)
@@ -134,6 +134,7 @@ streamCodegen input = do
     RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
     RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
     RQTerminate RTerminateAll          -> return $ TerminatePlan AllQuery
+    RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
 
 --------------------------------------------------------------------------------
 
@@ -455,7 +456,7 @@ fuseAggregateComponents components =
 
 genGroupByNode :: RSelect
                -> Stream Object Object
-               -> IO (Either (Stream Object Object) (Stream (TimeWindowKey Object) Object))
+               -> IO (Either (Stream Object Object) (Stream (TimeWindowKey Object) Object), Materialized Object Object)
 genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) s =
   throwSQLException CodegenException Nothing "Impossible happened"
 genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
@@ -466,20 +467,24 @@ genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
   let AggregateCompontnts{..} = genAggregateComponents sel
   case win' of
     Nothing                       -> do
-      table <- HG.aggregate aggregateInit aggregateF materialized grped
-      Left <$> HT.toStream table
+      table  <- HG.aggregate aggregateInit aggregateF materialized grped
+      stream <- HT.toStream table
+      return (Left stream, materialized)
     Just (RTumblingWindow diff)   -> do
-      timed <- HG.timeWindowedBy (mkTumblingWindow (diffTimeToMs diff)) grped
-      table <- HTW.aggregate aggregateInit aggregateF materialized timed
-      Right <$> HT.toStream table
+      timed  <- HG.timeWindowedBy (mkTumblingWindow (diffTimeToMs diff)) grped
+      table  <- HTW.aggregate aggregateInit aggregateF materialized timed
+      stream <- HT.toStream table
+      return (Right stream, materialized)
     Just (RHoppingWIndow len hop) -> do
-      timed <- HG.timeWindowedBy (mkHoppingWindow (diffTimeToMs len) (diffTimeToMs hop)) grped
-      table <- HTW.aggregate aggregateInit aggregateF materialized timed
-      Right <$> HT.toStream table
+      timed  <- HG.timeWindowedBy (mkHoppingWindow (diffTimeToMs len) (diffTimeToMs hop)) grped
+      table  <- HTW.aggregate aggregateInit aggregateF materialized timed
+      stream <-  HT.toStream table
+      return (Right stream, materialized)
     Just (RSessionWindow diff)    -> do
-      timed <- HG.sessionWindowedBy (mkSessionWindows (diffTimeToMs diff)) grped
-      table <- HSW.aggregate aggregateInit aggregateF aggregateMergeF materialized timed
-      Right <$> HT.toStream table
+      timed  <- HG.sessionWindowedBy (mkSessionWindows (diffTimeToMs diff)) grped
+      table  <- HSW.aggregate aggregateInit aggregateF aggregateMergeF materialized timed
+      stream <- HT.toStream table
+      return (Right stream, materialized)
 
 ----
 genFilterRFromHaving :: RHaving -> Record Object Object -> Bool
@@ -490,12 +495,15 @@ genFilteRNodeFromHaving :: RHaving -> Stream Object Object -> IO (Stream Object 
 genFilteRNodeFromHaving = HS.filter . genFilterRFromHaving
 
 ----
-genStreamBuilderWithStream :: HasCallStack => TaskName -> Maybe StreamName -> RSelect -> IO (StreamBuilder, SourceStream, SinkStream)
+genStreamBuilderWithStream :: HasCallStack
+                           => TaskName
+                           -> Maybe StreamName
+                           -> RSelect
+                           -> IO (StreamBuilder, SourceStream, SinkStream, Maybe (Materialized Object Object))
 genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp hav) = do
   streamSinkConfig <- genStreamSinkConfig sinkStream' grp
   (s0, source)     <- genStreamWithSourceStream taskName frm
   s1               <- genFilterNode whr s0
-
   case grp of
     RGroupByEmpty -> do
       s2 <- genMapNode sel s1
@@ -503,23 +511,23 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
       case streamSinkConfig of
         SinkConfigType sink sinkConfig -> do
           builder <- HS.to sinkConfig s3
-          return (builder, source, sink)
+          return (builder, source, sink, Nothing)
         _                              ->
           throwSQLException CodegenException Nothing "Impossible happened"
     _ -> do
-      s2 <- genGroupByNode select s1
+      (s2, materialized) <- genGroupByNode select s1
       case streamSinkConfig of
         SinkConfigTypeWithWindow sink sinkConfig -> do
           case s2 of
             Right timeStream -> do
               s3 <- genTimeWindowKeyMapNode sel timeStream
               builder <- HS.to sinkConfig s3
-              return (builder, source, sink)
+              return (builder, source, sink, Just materialized)
             Left _ -> throwSQLException CodegenException Nothing "Expected timeStream but got stream"
         SinkConfigType sink sinkConfig -> do
           case s2 of
             Left stream -> do
               s3 <- genFilteRNodeFromHaving hav stream
               builder <- HS.to sinkConfig s3
-              return (builder, source, sink)
+              return (builder, source, sink, Just materialized)
             Right _ -> throwSQLException CodegenException Nothing "Expected stream but got timeStream"

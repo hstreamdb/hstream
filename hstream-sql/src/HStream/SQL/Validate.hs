@@ -361,17 +361,19 @@ instance Validate Sel where
 instance Validate SelList where
   validate l@(SelListAsterisk _) = Right l
   validate l@(SelListSublist pos dcols) = do
-    mapM_ validateCol dcols
+    mapM_ validate dcols
     when (anySame $ extractAlias dcols)
       (Left $ buildSQLException ParseException pos "An SELECT clause can not contain the same column aliases")
     return l
     where
-      validateCol (DerivedColSimpl _ e) = validate e
-      validateCol (DerivedColAs _ e _)  = validate e
       anyAgg = anyAggInSelList l
       extractAlias []                                   = []
       extractAlias ((DerivedColSimpl _ _) : xs)         = extractAlias xs
       extractAlias ((DerivedColAs _ _ (Ident as)) : xs) = as : extractAlias xs
+
+instance Validate DerivedCol where
+  validate dcol@(DerivedColSimpl _ e) = validate e >> return dcol
+  validate dcol@(DerivedColAs _ e _)  = validate e >> return dcol
 
 -- From
 -- 1. FROM only supports:
@@ -560,6 +562,32 @@ instance Validate Select where
                 False -> Left $ buildSQLException ParseException pos "There should be an aggregate function in the SELECT clause when GROUP BY clause exists"
       -- TODO: matchHavWithSel
 
+----------------------------------- SELECTVIEW ---------------------------------
+instance Validate SelectView where
+  validate sv@(DSelectView _ sel frm whr) = do
+    validate sel >> validate frm >> validate whr
+    validateSel sel >> validateFrm frm >> validateWhr whr
+    return sv
+    where
+      validateSel sel@(DSel _ (SelListAsterisk _)) = return sel
+      validateSel sel@(DSel _ (SelListSublist _ dcols)) = mapM_ validate dcols >> return sel
+
+      validateDCols dcol@(DerivedColSimpl _ vexpr) = validate vexpr
+      validateDCols dcol@(DerivedColAs pos vexpr _) = validateDCols (DerivedColSimpl pos vexpr)
+
+      validateVExpr vexpr@(ExprColName _ (ColNameSimple _ _)) = return vexpr
+      validateVExpr vexpr = Left $ buildSQLException ParseException (getPos vexpr) "Only column names are allowed in SELECT clause when selecing from a VIEW"
+
+      validateFrm frm@(DFrom _ refs) = mapM_ validateRef refs >> return frm
+
+      validateRef ref@(TableRefSimple _ _) = return ref
+      validateRef ref = Left $ buildSQLException ParseException (getPos ref) "Only a view name is allowed in FROM clause when selecting from a VIEW"
+
+      validateWhr (DWhereEmpty pos) = Left $ buildSQLException ParseException pos "There has to be a nonempty WHERE clause when selecting from a VIEW"
+      validateWhr (DWhere _ cond) = validateCond cond
+
+      validateCond cond@(CondOp pos (ExprColName _ (ColNameSimple _ _)) (CompOpEQ _) vexpr2) = return cond
+      validateCond cond = Left $ buildSQLException ParseException (getPos cond) "Only forms like COLUMN = VALUE is allowed in WHERE clause when selecting from a VIEW"
 
 ------------------------------------- CREATE -----------------------------------
 instance Validate Create where
@@ -631,9 +659,10 @@ instance Validate Terminate where
 
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where
-  validate sql@(QSelect  _ select) = validate select >> return sql
-  validate sql@(QCreate  _ create) = validate create >> return sql
-  validate sql@(QInsert  _ insert) = validate insert >> return sql
-  validate sql@(QShow    _  show_) = validate show_  >> return sql
-  validate sql@(QDrop    _  drop_) = validate drop_  >> return sql
-  validate sql@(QTerminate _ term) = validate term   >> return sql
+  validate sql@(QSelect     _ select)     = validate select     >> return sql
+  validate sql@(QSelectView _ selectView) = validate selectView >> return sql
+  validate sql@(QCreate     _ create)     = validate create     >> return sql
+  validate sql@(QInsert     _ insert)     = validate insert     >> return sql
+  validate sql@(QShow       _  show_)     = validate show_      >> return sql
+  validate sql@(QDrop       _  drop_)     = validate drop_      >> return sql
+  validate sql@(QTerminate  _ term)       = validate term       >> return sql

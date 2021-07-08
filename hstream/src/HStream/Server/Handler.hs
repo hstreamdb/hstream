@@ -9,67 +9,76 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                    (Exception, SomeException,
-                                                       displayException, handle,
-                                                       throwIO, try)
-import           Control.Monad                        (void, when)
-import qualified Data.Aeson                           as Aeson
-import           Data.ByteString                      (ByteString)
-import qualified Data.ByteString.Char8                as C
-import           Data.Either                          (isRight)
-import qualified Data.HashMap.Strict                  as HM
-import           Data.IORef                           (IORef,
-                                                       atomicModifyIORef',
-                                                       newIORef, readIORef)
-import qualified Data.List                            as L
-import qualified Data.Map.Strict                      as Map
-import           Data.Maybe                           (fromJust, isJust)
-import           Data.String                          (fromString)
-import qualified Data.Text                            as T
-import qualified Data.Text.Lazy                       as TL
-import qualified Data.Vector                          as V
+import           Control.Exception                     (Exception,
+                                                        SomeException,
+                                                        displayException,
+                                                        handle, throwIO, try)
+import           Control.Monad                         (void, when)
+import qualified Data.Aeson                            as Aeson
+import           Data.ByteString                       (ByteString)
+import qualified Data.ByteString.Char8                 as C
+import           Data.Either                           (isRight)
+import qualified Data.HashMap.Strict                   as HM
+import           Data.IORef                            (IORef,
+                                                        atomicModifyIORef',
+                                                        newIORef, readIORef)
+import qualified Data.List                             as L
+import qualified Data.Map.Strict                       as Map
+import           Data.Maybe                            (fromJust, isJust)
+import           Data.String                           (fromString)
+import qualified Data.Text                             as T
+import qualified Data.Text.Lazy                        as TL
+import qualified Data.Vector                           as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                         (Enumerated (..))
-import           System.IO.Unsafe                     (unsafePerformIO)
-import           System.Random                        (newStdGen, randomRs)
+import           Proto3.Suite                          (Enumerated (..))
+import           System.IO.Unsafe                      (unsafePerformIO)
+import           System.Random                         (newStdGen, randomRs)
 import           ThirdParty.Google.Protobuf.Empty
-import           ThirdParty.Google.Protobuf.Struct    (Struct (Struct),
-                                                       Value (Value),
-                                                       ValueKind (ValueKindStringValue))
+import           ThirdParty.Google.Protobuf.Struct     (Struct (Struct),
+                                                        Value (Value),
+                                                        ValueKind (ValueKindStringValue))
 import           ThirdParty.Google.Protobuf.Timestamp
-import qualified Z.Data.CBytes                        as CB
-import qualified Z.Data.JSON                          as ZJ
-import           Z.Data.Vector                        (Bytes)
-import           Z.Foreign                            (toByteString)
-import           ZooKeeper.Types                      (ZHandle)
+import qualified Z.Data.CBytes                         as CB
+import qualified Z.Data.JSON                           as ZJ
+import           Z.Data.Vector                         (Bytes)
+import           Z.Foreign                             (toByteString)
+import           ZooKeeper.Types                       (ZHandle)
 
 import           HStream.Connector.HStore
 import           HStream.Processing.Connector
-import           HStream.Processing.Processor         (TaskBuilder, getTaskName)
-import           HStream.Processing.Type              hiding (StreamName,
-                                                       Timestamp)
-import           HStream.SQL.Codegen                  hiding (StreamName)
+import           HStream.Processing.Encoding
+import           HStream.Processing.Processor          (TaskBuilder,
+                                                        getTaskName)
+import           HStream.Processing.Store
+import           HStream.Processing.Stream             (Materialized (..))
+import           HStream.Processing.Stream.TimeWindows (mkTimeWindow,
+                                                        mkTimeWindowKey)
+import           HStream.Processing.Type               hiding (StreamName,
+                                                        Timestamp)
+import           HStream.Processing.Util               (getCurrentTimestamp)
+import           HStream.SQL.AST                       (RSelectView (..))
+import           HStream.SQL.Codegen                   hiding (StreamName)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector     (cancelConnectorHandler,
-                                                       createSinkConnectorHandler,
-                                                       deleteConnectorHandler,
-                                                       getConnectorHandler,
-                                                       listConnectorHandler,
-                                                       restartConnectorHandler)
-import           HStream.Server.Handler.Query         (cancelQueryHandler,
-                                                       createQueryHandler,
-                                                       deleteQueryHandler,
-                                                       fetchQueryHandler,
-                                                       getQueryHandler,
-                                                       restartQueryHandler)
-import           HStream.Server.Handler.View          (createViewHandler,
-                                                       deleteViewHandler,
-                                                       getViewHandler,
-                                                       listViewsHandler)
-import qualified HStream.Server.Persistence           as P
-import           HStream.Store                        hiding (e)
+import           HStream.Server.Handler.Connector      (cancelConnectorHandler,
+                                                        createSinkConnectorHandler,
+                                                        deleteConnectorHandler,
+                                                        getConnectorHandler,
+                                                        listConnectorHandler,
+                                                        restartConnectorHandler)
+import           HStream.Server.Handler.Query          (cancelQueryHandler,
+                                                        createQueryHandler,
+                                                        deleteQueryHandler,
+                                                        fetchQueryHandler,
+                                                        getQueryHandler,
+                                                        restartQueryHandler)
+import           HStream.Server.Handler.View           (createViewHandler,
+                                                        deleteViewHandler,
+                                                        getViewHandler,
+                                                        listViewsHandler)
+import qualified HStream.Server.Persistence            as P
+import           HStream.Store                         hiding (e)
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
@@ -82,6 +91,9 @@ subscribedReaders :: IORef (HM.HashMap TL.Text LDSyncCkpReader)
 subscribedReaders = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE subscribedReaders #-}
 
+groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
+groupbyStores = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE groupbyStores #-}
 --------------------------------------------------------------------------------
 
 handlers :: LDClient -> Int -> Maybe ZHandle -> Compression -> IO (HStreamApi ServerRequest ServerResponse)
@@ -162,9 +174,10 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       create sink
       handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.StreamQuery . CB.pack . T.unpack $ sink)
       returnOkRes
-    CreateViewPlan schema _sources sink taskBuilder _repFactor -> mark LowLevelStoreException $ do
+    CreateViewPlan schema _sources sink taskBuilder _repFactor materialized -> mark LowLevelStoreException $ do
       create sink
       handleCreateAsSelect sc taskBuilder commandQueryStmtText (P.ViewQuery (CB.pack . T.unpack $ sink) schema)
+      atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       returnOkRes
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
       streamExists <- doesStreamExists scLDClient (transToStreamName sName)
@@ -188,9 +201,36 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     TerminatePlan terminationSelection -> do
       handleTerminate sc terminationSelection
       return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+    SelectViewPlan RSelectView{..} -> do
+      hm <- readIORef groupbyStores
+      case HM.lookup rSelectViewFrom hm of
+        Nothing -> returnErrRes $ "No VIEW named " <> TL.fromStrict rSelectViewFrom <> " found"
+        Just materialized -> do
+          let (keyName, keyExpr) = rSelectViewWhere
+              (_,keyValue) = genRExprValue keyExpr (HM.fromList [])
+          let keySerde   = mKeySerde materialized
+              valueSerde = mValueSerde materialized
+          let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
+          case mStateStore materialized of
+            KVStateStore store        -> do
+              ma <- ksGet key store
+              sendResp ma valueSerde
+            SessionStateStore store   -> do
+              timestamp <- getCurrentTimestamp
+              let ssKey = mkTimeWindowKey key (mkTimeWindow timestamp timestamp)
+              ma <- ssGet ssKey store
+              sendResp ma valueSerde
+            TimestampedKVStateStore _ ->
+              returnErrRes "Impossible happened"
   where
     mkLogAttrs = LogAttrs . HsLogAttrs scDefaultStreamRepFactor
     create sName = createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
+    sendResp ma valueSerde = do
+      case ma of
+        Nothing -> returnResultSetRes V.empty
+        Just x  -> do
+          let result = runDeser (deserializer valueSerde) x
+          returnResultSetRes (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
 
 executePushQueryHandler
   :: ServerContext
@@ -228,7 +268,12 @@ returnErrRes :: TL.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
 returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
 
 returnOkRes :: IO (ServerResponse 'Normal CommandQueryResponse)
-returnOkRes = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+returnOkRes = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk "")
+
+returnResultSetRes :: V.Vector Struct -> IO (ServerResponse 'Normal CommandQueryResponse)
+returnResultSetRes v = do
+  let resp = genQueryResultResponse v
+  return (ServerNormalResponse resp [] StatusOk "")
 
 returnRes :: StatusDetails -> IO (ServerResponse 'ServerStreaming Struct)
 returnRes = return . ServerWriterResponse [] StatusAborted
