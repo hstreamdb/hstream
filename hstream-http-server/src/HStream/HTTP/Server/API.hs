@@ -8,6 +8,7 @@ module HStream.HTTP.Server.API (
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString.Lazy.Char8    as BL8
 import           Data.Swagger                  (Swagger)
+import           Network.GRPC.LowLevel.Client  (Client)
 import           Servant                       (Proxy (..), (:<|>) (..))
 import           Servant.Server                (Server)
 import           Servant.Swagger               (toSwagger)
@@ -21,6 +22,7 @@ import           HStream.HTTP.Server.Node      (NodesAPI, nodeServer)
 import           HStream.HTTP.Server.Overview  (OverviewAPI, overviewServer)
 import           HStream.HTTP.Server.Query     (QueriesAPI, queryServer)
 import           HStream.HTTP.Server.Stream    (StreamsAPI, streamServer)
+import           HStream.HTTP.Server.View      (ViewsAPI, viewServer)
 import qualified HStream.Store                 as HS
 
 data ServerConfig = ServerConfig
@@ -33,6 +35,8 @@ data ServerConfig = ServerConfig
   , _streamRepFactor     :: Int
   , _ldAdminHost         :: ByteString
   , _ldAdminPort         :: Int
+  , _hstreamHost         :: ByteString
+  , _hstreamPort         :: Int
   } deriving (Show)
 
 type API =
@@ -41,17 +45,19 @@ type API =
   :<|> NodesAPI
   :<|> ConnectorsAPI
   :<|> OverviewAPI
+  :<|> ViewsAPI
 
 api :: Proxy API
 api = Proxy
 
-apiServer :: HS.LDClient -> Maybe ZK.ZHandle -> ServerConfig -> Server API
-apiServer ldClient zk ServerConfig{..} = do
+apiServer :: HS.LDClient -> Maybe ZK.ZHandle -> Client -> ServerConfig -> Server API
+apiServer ldClient zk hClient ServerConfig{..} = do
   (streamServer ldClient)
-  :<|> (queryServer ldClient zk (_streamRepFactor, _checkpointRootPath))
+  :<|> (queryServer ldClient zk hClient (_streamRepFactor, _checkpointRootPath))
   :<|> (nodeServer _ldAdminHost _ldAdminPort)
-  :<|> (connectorServer ldClient zk)
+  :<|> (connectorServer ldClient zk hClient)
   :<|> (overviewServer ldClient zk _ldAdminHost _ldAdminPort)
+  :<|> (viewServer hClient)
 
 apiSwagger :: Swagger
 apiSwagger = toSwagger api
