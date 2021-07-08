@@ -113,7 +113,9 @@ dataRecordToSourceRecord ldclient Payload {..} = do
   groupName <- S.logGroupGetName logGroup
   return SourceRecord
     { srcStream = cbytesToText groupName
-    , srcKey = Just $ BL.singleton (fromIntegral 8)
+    , srcKey = Just "{}"
+    -- A dummy key typed Aeson.Object, for avoiding errors while processing queries with JOIN clause only.
+    -- It is not used and will be removed in the future.
     , srcValue = BL.fromStrict . toByteString $ pValue
     , srcTimestamp = pTimeStamp
     , srcOffset = pLSN
