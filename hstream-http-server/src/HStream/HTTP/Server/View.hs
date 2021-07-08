@@ -52,12 +52,13 @@ instance ToSchema ViewBO
 type ViewsAPI =
   "views" :> Get '[JSON] [ViewBO]
   :<|> "views" :> ReqBody '[JSON] ViewBO :> Post '[JSON] ViewBO
+  :<|> "views" :> Capture "name" String :> Delete '[JSON] Bool
+  :<|> "views" :> Capture "name" String :> Get '[JSON] (Maybe ViewBO)
 
 viewToViewBO :: View -> ViewBO
 viewToViewBO (View id status createdTime sql _) =
   ViewBO (Just $ TL.toStrict id) (Just $ fromIntegral status) (Just createdTime) (TL.toStrict sql)
 
--- TODO: we should remove the duplicate code in HStream/Admin/Server/View.hs and HStream/Server/Handler.hs
 createViewHandler :: Client -> ViewBO -> Handler ViewBO
 createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
@@ -84,7 +85,33 @@ listViewHandler hClient = liftIO $ do
       putStrLn $ "Client Error: " <> show clientError
       return []
 
+deleteViewHandler :: Client -> String -> Handler Bool
+deleteViewHandler hClient vid = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let deleteViewRequest = DeleteViewRequest { deleteViewRequestViewId = TL.pack vid }
+  resp <- hstreamApiDeleteView (ClientNormalRequest deleteViewRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 statusOk _details -> return True
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return False
+    _ -> return False
+
+getViewHandler :: Client -> String -> Handler (Maybe ViewBO)
+getViewHandler hClient vid = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let getViewRequest = GetViewRequest { getViewRequestViewId = TL.pack vid }
+  resp <- hstreamApiGetView (ClientNormalRequest getViewRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 statusOk _details -> return $ Just $ viewToViewBO x
+    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return Nothing
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return Nothing
+
 viewServer :: Client -> Server ViewsAPI
 viewServer hClient =
   (listViewHandler hClient)
   :<|> (createViewHandler hClient)
+  :<|> (deleteViewHandler hClient)
+  :<|> (getViewHandler hClient)
