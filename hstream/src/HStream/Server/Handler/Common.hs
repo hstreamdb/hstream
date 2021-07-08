@@ -7,9 +7,8 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent               (MVar, ThreadId, forkIO,
-                                                   putMVar, takeMVar,
                                                    killThread, putMVar,
-                                                   readMVar, swapMVar, takeMVar))
+                                                   readMVar, swapMVar, takeMVar)
 import           Control.Exception                (Exception, SomeException,
                                                    displayException, handle,
                                                    throwIO)
@@ -103,7 +102,7 @@ handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
       MySqlConnector config -> mysqlSinkConnector <$> MySQL.connect config
     tid <- forkIO $ do
       HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Running)
-      readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector)
+      forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
     void (takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid)
   where
     writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
@@ -127,7 +126,7 @@ handleTerminateConnector ServerContext{..} cid = do
   case HM.lookup cid hmapC of
     Just tid -> killThread tid
     -- TODO: shall we throwIO here
-    _ -> return ()
+    _        -> return ()
   -- TODO: shall we move this op to Just tid -> killThread tid
   HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
   void $ swapMVar runningConnectors (HM.delete cid hmapC)

@@ -8,8 +8,7 @@
 
 module HStream.Server.Handler.Connector where
 
-import           Control.Concurrent               (forkIO, killThread, putMVar,
-                                                   swapMVar, takeMVar)
+import           Control.Concurrent               (forkIO)
 import           Control.Exception                (SomeException, catch, try)
 import           Data.List                        (find)
 import qualified Data.Text                        as T
@@ -117,7 +116,7 @@ cancelConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal CancelConnectorRequest CancelConnectorResponse
   -> IO (ServerResponse 'Normal CancelConnectorResponse)
-cancelConnectorHandler ServerContext{..} (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
+cancelConnectorHandler sc@ServerContext{..} (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
   res <- do
     connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
     case find (hstreamConnectorNameIs (T.pack $ TL.unpack cancelConnectorRequestId)) connectors of

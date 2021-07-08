@@ -11,7 +11,6 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                     (Enumerated (..))
 import           Test.Hspec
 import           ThirdParty.Google.Protobuf.Empty
 
@@ -36,6 +35,7 @@ createView sql = withGRPCClient clientConfig $ \client -> do
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
+    _ -> putStrLn "Other Error" >> return Nothing
 
 listViews :: IO (Maybe ListViewsResponse)
 listViews = withGRPCClient clientConfig $ \client -> do
@@ -50,6 +50,7 @@ listViews = withGRPCClient clientConfig $ \client -> do
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
+    _ -> putStrLn "Other Error" >> return Nothing
 
 getView :: TL.Text -> IO (Maybe View)
 getView qid = withGRPCClient clientConfig $ \client -> do
@@ -64,6 +65,7 @@ getView qid = withGRPCClient clientConfig $ \client -> do
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
+    _ -> putStrLn "Other Error" >> return Nothing
 
 deleteView :: TL.Text -> IO Bool
 deleteView qid = withGRPCClient clientConfig $ \client -> do
@@ -78,6 +80,7 @@ deleteView qid = withGRPCClient clientConfig $ \client -> do
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
       return False
+    _ -> putStrLn "Other Error" >> return False
 
 spec :: Spec
 spec = describe "HStream.RunViewSpec" $ do
@@ -97,7 +100,7 @@ spec = describe "HStream.RunViewSpec" $ do
         return [res1]
     ) `shouldReturn` L.replicate 1 (Just successResp)
 
-  it "test query" $
+  it "test view" $
     ( do
         -- test create view
         viewM <- createView ("CREATE VIEW " <> viewname <> " AS SELECT temperature, SUM(temperature) FROM " <> source1 <> " GROUP BY temperature EMIT CHANGES;")
@@ -114,7 +117,6 @@ spec = describe "HStream.RunViewSpec" $ do
                   Just _ -> do
                     -- test delete view
                     res <- deleteView $ viewViewId view
-                    print res
                     case res of
                       True -> do
                         -- should be deleted
