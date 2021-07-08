@@ -442,9 +442,10 @@ genAggregateComponentsFromDerivedCol (Right agg, alias) =
 genAggregateComponentsFromDerivedCol (Left rexpr, alias) =
   AggregateCompontnts
   { aggregateInit = HM.singleton (pack alias) (Number 0)
-  , aggregateF = \old Record{..} -> HM.adjust (\_ -> (HM.!) recordValue (pack alias)) (pack alias) old
-  , aggregateMergeF = \_ _ o2 -> o2
+  , aggregateF = \old record -> HM.adjust (\_ -> updateV record rexpr) (pack alias) old
+  , aggregateMergeF = \_ _ o2 -> let v = (HM.!) o2 (pack alias) in HM.singleton (pack alias) v
   }
+  where updateV Record{..} rexpr = let (_,v) = genRExprValue rexpr recordValue in v
 
 fuseAggregateComponents :: [AggregateComponents] -> AggregateComponents
 fuseAggregateComponents components =
