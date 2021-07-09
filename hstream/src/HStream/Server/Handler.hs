@@ -453,12 +453,12 @@ fetchHandler _ (ServerNormalRequest _metadata FetchRequest{..}) = do
     Just (reader, _) -> do
       void $ ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
       res <- ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
-      resp <- V.mapM fetchResult $ V.fromList res
+      resp <- V.imapM fetchResult $ V.fromList res
       return (ServerNormalResponse (FetchResponse resp) [] StatusOk "")
   where
-    fetchResult :: DataRecord -> IO ReceivedRecord
-    fetchResult record = do
-      let recordId = RecordId (recordLSN record) 0
+    fetchResult :: Int -> DataRecord -> IO ReceivedRecord
+    fetchResult index record = do
+      let recordId = RecordId (recordLSN record) (fromIntegral index)
       return $ ReceivedRecord (Just recordId) (toByteString . recordPayload $ record)
 
 commitOffsetHandler :: ServerContext
