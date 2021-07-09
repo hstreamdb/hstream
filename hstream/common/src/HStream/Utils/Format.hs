@@ -33,7 +33,7 @@ formatResult width (P.Struct kv) =
   case M.toList kv of
     [("SHOWSTREAMS", Just v)] -> emptyNotice . unlines .  words . formatValue $ v
     [("SHOWVIEWS",   Just v)] -> emptyNotice . unlines .  words . formatValue $ v
-    [("SELECT",      Just x)] -> TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
+    [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
       renderTableResult xs
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
