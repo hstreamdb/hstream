@@ -23,6 +23,10 @@ service HStreamApi {
 
   rpc Subscribe(Subscription) returns (Subscription) {}
 
+  rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
+
+  rpc ListSubscriptions(google.protobuf.Empty) returns (ListSubscriptionsResponse) {}
+
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
 
   rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
@@ -139,6 +143,10 @@ message SubscriptionOffset {
   }
 }
 
+message DeleteSubscriptionRequest {
+  string subscriptionId = 1;
+}
+
 message FetchRequest {
   string subscriptionId = 1;
   uint64 timeout = 2;
@@ -171,6 +179,10 @@ message DeleteStreamRequest {
 
 message ListStreamsResponse {
   repeated Stream streams = 1;
+}
+
+message ListSubscriptionsResponse {
+  repeated Subscription subscription = 1;
 }
 
 message Stream {
