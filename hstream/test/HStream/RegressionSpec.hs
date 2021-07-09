@@ -33,7 +33,7 @@ spec = describe "HStream.RunSQLSpec" $ do
                                 ]
                      ]
 
-  it "#394_JOIN" $
+  it "#394_SESSION" $
     (do
        _ <- executeCommandQuery "CREATE STREAM s3;"
        _ <- forkIO $ do
@@ -48,4 +48,22 @@ spec = describe "HStream.RunSQLSpec" $ do
                      , mkStruct [("SUM(a)", Aeson.Number 2), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
                      , mkStruct [("SUM(a)", Aeson.Number 3), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
                      , mkStruct [("SUM(a)", Aeson.Number 4), ("a", Aeson.Number 1), ("b", Aeson.Number 4)]
+                     ]
+
+  it "#403_RAW" $
+    (do
+       _ <- executeCommandQuery "CREATE STREAM s4;"
+       _ <- executeCommandQuery "CREATE STREAM s5 AS SELECT SUM(a), a + 1, COUNT(*) AS result, b FROM s4 GROUP BY b EMIT CHANGES;"
+       _ <- forkIO $ do
+         threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+         _ <- executeCommandQuery "INSERT INTO s4 (a, b) VALUES (1, 4);"
+         _ <- executeCommandQuery "INSERT INTO s4 (a, b) VALUES (1, 4);"
+         _ <- executeCommandQuery "INSERT INTO s4 (a, b) VALUES (1, 4);"
+         _ <- executeCommandQuery "INSERT INTO s4 (a, b) VALUES (1, 4);"
+         return ()
+       executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
+    ) `shouldReturn` [ mkStruct [("cnt", Aeson.Number 1), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 1)]
+                     , mkStruct [("cnt", Aeson.Number 2), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 2)]
+                     , mkStruct [("cnt", Aeson.Number 3), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 3)]
+                     , mkStruct [("cnt", Aeson.Number 4), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 4)]
                      ]
