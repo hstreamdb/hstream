@@ -19,7 +19,7 @@ import qualified ZooKeeper                        as ZK
 import qualified ZooKeeper.Exception              as ZK
 import qualified ZooKeeper.Types                  as ZK
 
-import           HStream.HTTP.Server.API          (API, ServerConfig (..), api,
+import           HStream.HTTP.Server.API          (ServerConfig (..), api,
                                                    apiServer)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS

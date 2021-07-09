@@ -6,15 +6,12 @@ module HStream.HTTP.Server.API (
 ) where
 
 import           Data.ByteString               (ByteString)
-import qualified Data.ByteString.Lazy.Char8    as BL8
 import           Data.Swagger                  (Swagger)
 import           Network.GRPC.LowLevel.Client  (Client)
 import           Servant                       (Proxy (..), (:<|>) (..))
 import           Servant.Server                (Server)
 import           Servant.Swagger               (toSwagger)
 import qualified Z.Data.CBytes                 as ZDC
-import qualified ZooKeeper                     as ZK
-import qualified ZooKeeper.Exception           as ZK
 import qualified ZooKeeper.Types               as ZK
 
 import           HStream.HTTP.Server.Connector (ConnectorsAPI, connectorServer)
@@ -53,9 +50,9 @@ api = Proxy
 apiServer :: HS.LDClient -> Maybe ZK.ZHandle -> Client -> ServerConfig -> Server API
 apiServer ldClient zk hClient ServerConfig{..} = do
   (streamServer ldClient)
-  :<|> (queryServer ldClient zk hClient (_streamRepFactor, _checkpointRootPath))
+  :<|> (queryServer hClient)
   :<|> (nodeServer _ldAdminHost _ldAdminPort)
-  :<|> (connectorServer ldClient zk hClient)
+  :<|> (connectorServer hClient)
   :<|> (overviewServer ldClient zk _ldAdminHost _ldAdminPort)
   :<|> (viewServer hClient)
 

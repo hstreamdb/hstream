@@ -16,9 +16,8 @@ import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           GHC.Generics             (Generic)
 import           GHC.Int                  (Int64)
-import           Servant                  (Capture, Delete, Get, JSON,
-                                           PlainText, Post, ReqBody, type (:>),
-                                           (:<|>) (..))
+import           Servant                  (Capture, Delete, Get, JSON, Post,
+                                           ReqBody, type (:>), (:<|>) (..))
 import           Servant.Server           (Handler, Server)
 import qualified Z.Data.CBytes            as ZDC
 
@@ -44,22 +43,22 @@ type StreamsAPI =
   :<|> "streams" :> Capture "name" String :> Get '[JSON] (Maybe StreamBO)
 
 queryStreamHandler :: HS.LDClient -> String -> Handler (Maybe StreamBO)
-queryStreamHandler ldClient name = do
+queryStreamHandler ldClient s = do
   res <- liftIO $ do
-    exists <- HS.doesStreamExists ldClient (HS.mkStreamName $ ZDC.pack name)
+    exists <- HS.doesStreamExists ldClient (HS.mkStreamName $ ZDC.pack s)
     if exists
       then do
-        let streamName = HS.mkStreamName $ ZDC.pack name
+        let streamName = HS.mkStreamName $ ZDC.pack s
         rep <- HS.getStreamReplicaFactor ldClient streamName
         ts  <- HS.getStreamHeadTimestamp ldClient streamName
-        return $ Just $ StreamBO (T.pack name) rep ts
+        return $ Just $ StreamBO (T.pack s) rep ts
       else return Nothing
 
   return res
 
 removeStreamHandler :: HS.LDClient -> String -> Handler Bool
-removeStreamHandler ldClient name = do
-  liftIO $ HS.removeStream ldClient (HS.mkStreamName $ ZDC.pack name)
+removeStreamHandler ldClient s = do
+  liftIO $ HS.removeStream ldClient (HS.mkStreamName $ ZDC.pack s)
   return True
 
 createStreamHandler :: HS.LDClient -> StreamBO -> Handler StreamBO
@@ -76,9 +75,9 @@ fetchStreamHandler ldClient = do
     replicationFactors <- sequence $ (HS.getStreamReplicaFactor ldClient) <$> streamNames
     timestamps <- sequence $ (HS.getStreamHeadTimestamp ldClient) <$> streamNames
 
-    return [StreamBO name rep ts | name <- names
-                                 | rep  <- replicationFactors
-                                 | ts   <- timestamps
+    return [StreamBO n rep ts | n <- names
+                              | rep  <- replicationFactors
+                              | ts   <- timestamps
            ]
 
   return streams

@@ -1,7 +1,10 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DoAndIfThenElse     #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 
@@ -9,16 +12,14 @@ module HStream.HTTP.Server.Connector (
   ConnectorsAPI, connectorServer
 ) where
 
-import           Control.Concurrent               (forkIO)
-import           Control.Exception                (SomeException, catch, try)
-import           Control.Monad                    (void)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Int                         (Int64)
-import           Data.List                        (find)
+import qualified Data.Map.Strict                  as Map
 import           Data.Swagger                     (ToSchema)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Client     (Client)
@@ -26,20 +27,9 @@ import           Servant                          (Capture, Delete, Get, JSON,
                                                    Post, ReqBody, type (:>),
                                                    (:<|>) (..))
 import           Servant.Server                   (Handler, Server)
-import           Z.Data.Builder.Base              (string8)
-import qualified Z.Data.CBytes                    as ZDC
-import qualified Z.Data.Text                      as ZT
 import qualified Z.IO.Logger                      as Log
-import qualified ZooKeeper.Types                  as ZK
 
-import qualified HStream.Connector.HStore         as HCH
-import qualified HStream.SQL.Codegen              as HSC
-import           HStream.SQL.Exception            (SomeSQLException)
-import qualified HStream.Server.Handler           as Handler
-import qualified HStream.Server.Handler.Common    as Handler
-import qualified HStream.Server.Persistence       as HSP
-import qualified HStream.Store                    as HS
-import           HStream.Utils.Converter          (cbytesToText)
+import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
 data ConnectorBO = ConnectorBO
@@ -61,76 +51,91 @@ type ConnectorsAPI =
   :<|> "connectors" :> Capture "name" String :> Delete '[JSON] Bool
   :<|> "connectors" :> Capture "name" String :> Get '[JSON] (Maybe ConnectorBO)
 
-hstreamConnectorToConnectorBO :: HSP.Connector -> ConnectorBO
-hstreamConnectorToConnectorBO (HSP.Connector connectorId (HSP.Info sqlStatement createdTime) (HSP.Status status _)) =
-  ConnectorBO (Just $ cbytesToText connectorId) (Just $ fromEnum status) (Just createdTime) (T.pack $ ZT.unpack sqlStatement)
+connectorResponseToConnectorBO :: GetConnectorResponse -> ConnectorBO
+connectorResponseToConnectorBO (GetConnectorResponse id' status createdTime queryText _) =
+  ConnectorBO (Just $ TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
 
-hstreamConnectorNameIs :: T.Text -> HSP.Connector -> Bool
-hstreamConnectorNameIs name (HSP.Connector connectorId _ _) = cbytesToText connectorId == name
+createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
+createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let createSinkConnectorRequest = CreateSinkConnectorRequest { createSinkConnectorRequestSql = TL.pack $ T.unpack sql }
+  resp <- hstreamApiCreateSinkConnector (ClientNormalRequest createSinkConnectorRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    -- TODO: should return connectorBO; but we need to update hstream api first
+    ClientNormalResponse _ _meta1 _meta2 _status _details -> return $ ConnectorBO Nothing Nothing Nothing sql
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return $ ConnectorBO Nothing Nothing Nothing sql
 
-removeConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
-removeConnectorHandler _ldClient zkHandle name = liftIO $ catch
-  (HSP.withMaybeZHandle zkHandle (HSP.removeConnector (ZDC.pack name)) >> return True)
-  (\(_ :: SomeException) -> return False)
+listConnectorHandler :: Client -> Handler [ConnectorBO]
+listConnectorHandler hClient = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let listConnectorRequest = ListConnectorRequest {}
+  resp <- hstreamApiListConnector (ClientNormalRequest listConnectorRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x@ListConnectorResponse{} _meta1 _meta2 _status _details -> do
+      case x of
+        ListConnectorResponse {listConnectorResponseResponses = connectors} -> do
+          return $ V.toList $ V.map connectorResponseToConnectorBO connectors
+        _ -> return []
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return []
 
--- TODO: we should remove the duplicate code in HStream/Admin/Server/Connector.hs and HStream/Server/Handler.hs
-createConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> ConnectorBO -> Handler ConnectorBO
-createConnectorHandler ldClient zkHandle connector = liftIO $ do
-  plan' <- try $ HSC.streamCodegen $ sql connector
-  case plan' of
-    Left  (_ :: SomeSQLException) -> returnErr "exception on parsing or codegen"
-    Right (HSC.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) -> do
-      streamExists <- HS.doesStreamExists ldClient (HCH.transToStreamName sName)
-      connectorIds <- HSP.withMaybeZHandle zkHandle HSP.getConnectorIds
-      let connectorExists = elem (T.unpack cName) $ map HSP.getSuffix connectorIds
-      if streamExists then
-        if connectorExists then if ifNotExist then return () else returnErr "connector exists"
-        else void $ Handler.handleCreateSinkConnector
-          Handler.ServerContext {Handler.scLDClient = ldClient, Handler.zkHandle = zkHandle}
-          (TL.fromStrict $ sql connector) cName sName cConfig
-      else returnErr "stream does not exist"
-    _ -> returnErr "wrong methods called"
-    -- TODO: return error code
-  return connector
-  where
-    returnErr = Log.fatal . string8
+deleteConnectorHandler :: Client -> String -> Handler Bool
+deleteConnectorHandler hClient cid = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let deleteConnectorRequest = DeleteConnectorRequest { deleteConnectorRequestId = TL.pack cid }
+  resp <- hstreamApiDeleteConnector (ClientNormalRequest deleteConnectorRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
+    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return True
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return False
+    _ -> return False
 
-fetchConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> Handler [ConnectorBO]
-fetchConnectorHandler ldClient zkHandle = do
-  connectors <- liftIO $ HSP.withMaybeZHandle zkHandle HSP.getConnectors
-  return $ map hstreamConnectorToConnectorBO connectors
+getConnectorHandler :: Client -> String -> Handler (Maybe ConnectorBO)
+getConnectorHandler hClient cid = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let getConnectorRequest = GetConnectorRequest { getConnectorRequestId = TL.pack cid }
+  resp <- hstreamApiGetConnector (ClientNormalRequest getConnectorRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ connectorResponseToConnectorBO x
+    ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return Nothing
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return Nothing
 
-getConnectorHandler :: Maybe ZK.ZHandle -> String -> Handler (Maybe ConnectorBO)
-getConnectorHandler zkHandle name = do
-  connector <- liftIO $ do
-    connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
-    return $ find (hstreamConnectorNameIs (T.pack name)) connectors
-  return $ hstreamConnectorToConnectorBO <$> connector
+restartConnectorHandler :: Client -> String -> Handler Bool
+restartConnectorHandler hClient cid = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let restartConnectorRequest = RestartConnectorRequest { restartConnectorRequestId = TL.pack cid }
+  resp <- hstreamApiRestartConnector (ClientNormalRequest restartConnectorRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
+    ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return False
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return False
 
--- Question: What else should I do to really restart the connector? Unsubscribe and Stop CkpReader?
-restartConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
-restartConnectorHandler ldClient zkHandle name = liftIO $ do
-  connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
-  case find (hstreamConnectorNameIs (T.pack name)) connectors of
-    Just connector -> do
-      _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Running)
-      return True
-    Nothing -> return False
+cancelConnectorHandler :: Client -> String -> Handler Bool
+cancelConnectorHandler hClient cid = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let cancelConnectorRequest = CancelConnectorRequest { cancelConnectorRequestId = TL.pack cid }
+  resp <- hstreamApiCancelConnector (ClientNormalRequest cancelConnectorRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
+    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return False
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return False
 
-cancelConnectorHandler :: HS.LDClient -> Maybe ZK.ZHandle -> String -> Handler Bool
-cancelConnectorHandler ldClient zkHandle name = liftIO $ do
-  connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
-  case find (hstreamConnectorNameIs (T.pack name)) connectors of
-    Just connector -> do
-      _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Terminated)
-      return True
-    Nothing -> return False
-
-connectorServer :: HS.LDClient -> Maybe ZK.ZHandle -> Client -> Server ConnectorsAPI
-connectorServer ldClient zkHandle hClient =
-  fetchConnectorHandler ldClient zkHandle
-  :<|> restartConnectorHandler ldClient zkHandle
-  :<|> cancelConnectorHandler ldClient zkHandle
-  :<|> createConnectorHandler ldClient zkHandle
-  :<|> removeConnectorHandler ldClient zkHandle
-  :<|> getConnectorHandler zkHandle
+connectorServer :: Client -> Server ConnectorsAPI
+connectorServer hClient =
+  listConnectorHandler hClient
+  :<|> restartConnectorHandler hClient
+  :<|> cancelConnectorHandler hClient
+  :<|> createConnectorHandler hClient
+  :<|> deleteConnectorHandler hClient
+  :<|> getConnectorHandler hClient
