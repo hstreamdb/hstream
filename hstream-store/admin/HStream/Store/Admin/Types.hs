@@ -572,3 +572,59 @@ checkImpactOptsParser = CheckImpactOpts
                  <> value False
                  <> help "Do we want to validate if sequencers will be disabled on these nodes as well?"
                   )
+
+-------------------------------------------------------------------------------
+
+data MaintenanceOpts
+  = MaintenanceListCmd MaintenanceListOpts
+  deriving (Show)
+
+data MaintenanceListOpts = MaintenanceListOpts
+  { mntListIds         :: [Text]
+  , mntListUsers       :: Maybe Text
+  , mntListNodeIndexes :: [Int]
+  , mntListNodeNames   :: [Text]
+  , mntListBlocked     :: Bool
+  , mntListCompleted   :: Bool
+  , mntListInProgress  :: Bool
+  , mntListPriority    :: Maybe AA.MaintenancePriority
+  } deriving (Show)
+
+instance Read AA.MaintenancePriority where
+  readPrec = do
+    i <- Read.lexP
+    case i of
+      Read.Ident "imminent" -> return AA.MaintenancePriority_IMMINENT
+      Read.Ident "high"     -> return AA.MaintenancePriority_HIGH
+      Read.Ident "medium"   -> return AA.MaintenancePriority_MEDIUM
+      Read.Ident "low"      -> return AA.MaintenancePriority_LOW
+      x -> errorWithoutStackTrace $ "cannot parse priority" <> show x
+
+maintenanceOptsParser :: Parser MaintenanceOpts
+maintenanceOptsParser = hsubparser $
+  command "list" (info (MaintenanceListCmd <$> maintenanceListOptsParser)
+                 (progDesc "Prints compact list of maintenances applied to the cluster"))
+
+maintenanceListOptsParser :: Parser MaintenanceListOpts
+maintenanceListOptsParser = MaintenanceListOpts
+  <$> many (strOption ( long "ids"
+                     <> metavar "STRING"
+                     <> help "List only maintenances with specified Maintenance Group IDs"))
+  <*> optional (strOption ( long "users"
+                         <> metavar "STRING"
+                         <> help "List only maintenances created by specified user"))
+  <*> many (option auto ( long "node-indexes"
+                       <> metavar "INT"
+                       <> help "List only maintenances affecting specified nodes"))
+  <*> many (strOption ( long "node-names"
+                     <> metavar "STRING"
+                     <> help "List only maintenances affecting specified nodes"))
+  <*> switch ( long "blocked"
+            <> help "List only maintenances which are blocked due to some reason")
+  <*> switch ( long "completed"
+            <> help "List only maintenances which are finished")
+  <*> switch ( long "in-progress"
+            <> help "List only maintenances which are in progress (including blocked)")
+  <*> optional (option auto ( long "priority"
+                           <> metavar "[imminent|high|medium|low]"
+                           <> help "Show only maintenances with a given priority"))
