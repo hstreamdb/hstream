@@ -30,10 +30,10 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    handleCreateAsSelect, mark)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
-import           HStream.Utils.Converter          (cbytesToText)
+import           HStream.Utils.Converter          (cbytesToText, textToCBytes)
 
 hstreamQueryToView :: HSP.Query -> View
-hstreamQueryToView (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HSP.ViewQuery _ schema) (HSP.Status status _)) =
+hstreamQueryToView (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HSP.ViewQuery _ _ schema) (HSP.Status status _)) =
   View (TL.pack $ ZDC.unpack queryId) (fromIntegral $ fromEnum status) createdTime (TL.pack $ ZT.unpack sqlStatement) (V.fromList $ TL.pack <$> schema)
 hstreamQueryToView _ = emptyView
 
@@ -51,9 +51,9 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   plan' <- try $ HSC.streamCodegen $ (TL.toStrict createViewRequestSql)
   err <- case plan' of
     Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
-    Right (HSC.CreateViewPlan schema _sources sink taskBuilder _repFactor _) -> mark LowLevelStoreException $ do
+    Right (HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _) -> mark LowLevelStoreException $ do
       create sink
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (HSP.ViewQuery (ZDC.pack . T.unpack $ sink) schema)
+      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (HSP.ViewQuery (textToCBytes <$> sources) (ZDC.pack . T.unpack $ sink) schema)
       return $ Right $ View (TL.pack $ ZDC.unpack qid) (fromIntegral $ fromEnum HSP.Running) timestamp createViewRequestSql (V.fromList $ TL.pack <$> schema)
     Right _ -> return $ Left "inconsistent method called"
   case err of

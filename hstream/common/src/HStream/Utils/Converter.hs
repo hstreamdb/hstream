@@ -20,16 +20,15 @@ module HStream.Utils.Converter
   ) where
 
 import qualified Data.Aeson                        as Aeson
+import           Data.Bifunctor                    (Bifunctor (bimap))
+import qualified Data.ByteString.Lazy              as BL
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.Map                          as M
 import qualified Data.Map.Strict                   as Map
 import           Data.Scientific                   (toRealFloat)
+import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
-
-import           Data.Bifunctor                    (Bifunctor (bimap))
-import qualified Data.ByteString.Lazy              as BL
-import qualified Data.Text                         as T
 import           Proto3.Suite                      (Enumerated (Enumerated))
 import           ThirdParty.Google.Protobuf.Struct
 import qualified Z.Data.CBytes                     as ZCB

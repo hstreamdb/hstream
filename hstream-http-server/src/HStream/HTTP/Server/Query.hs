@@ -97,7 +97,7 @@ createQueryHandler ldClient zkHandle (streamRepFactor, checkpointRootPath) query
               MkSystemTime timestamp _ <- getSystemTime'
               let qid = ZDC.pack $ T.unpack $ getTaskName taskBuilder'
                   qinfo = HSP.Info (ZT.pack $ T.unpack $ queryText query) timestamp
-              HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo HSP.PlainQuery
+              HSP.withMaybeZHandle zkHandle $ HSP.insertQuery qid qinfo (HSP.PlainQuery $ textToCBytes <$> sources)
               -- run task
               _ <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
                 >> runTaskWrapper True taskBuilder' ldClient
