@@ -124,9 +124,8 @@ handleTerminateConnector :: ServerContext -> CB.CBytes
 handleTerminateConnector ServerContext{..} cid = do
   hmapC <- readMVar runningConnectors
   case HM.lookup cid hmapC of
-    Just tid -> killThread tid
+    Just tid -> void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
     -- TODO: shall we throwIO here
     _        -> return ()
   -- TODO: shall we move this op to Just tid -> killThread tid
-  HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
-  void $ swapMVar runningConnectors (HM.delete cid hmapC)
+  void $ HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
