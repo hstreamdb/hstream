@@ -59,8 +59,8 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   case err of
     Left err' -> do
       Log.fatal . string8 $ err'
-      return (ServerNormalResponse emptyView [] StatusInternal "failed")
-    Right view  -> return (ServerNormalResponse view [] StatusOk  "")
+      return (ServerNormalResponse Nothing [] StatusInternal "failed")
+    Right view  -> return (ServerNormalResponse (Just view) [] StatusOk  "")
   where
     mkLogAttrs = HS.LogAttrs . HS.HsLogAttrs scDefaultStreamRepFactor
     create sName = HS.createStream scLDClient (HCH.transToStreamName sName) (mkLogAttrs Map.empty)
@@ -73,7 +73,7 @@ listViewsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
   let records = map hstreamQueryToView queries
   let resp = ListViewsResponse . V.fromList $ records
-  return (ServerNormalResponse resp [] StatusOk "")
+  return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 getViewHandler
   :: ServerContext
@@ -84,8 +84,8 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
     queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
     return $ find (hstreamViewIdIs (T.pack $ TL.unpack getViewRequestViewId)) queries
   case query of
-        Just q -> return (ServerNormalResponse (hstreamQueryToView q) [] StatusOk "")
-        _      ->  return (ServerNormalResponse emptyView [] StatusInternal "Not exists")
+        Just q -> return (ServerNormalResponse (Just (hstreamQueryToView q)) [] StatusOk "")
+        _      ->  return (ServerNormalResponse Nothing [] StatusInternal "Not exists")
 
 deleteViewHandler
   :: ServerContext
@@ -93,5 +93,5 @@ deleteViewHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) = do
   catch
-    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse Empty [] StatusOk "Failed"))
-    (\(_ :: SomeException) -> return (ServerNormalResponse Empty [] StatusInternal "Failed"))
+    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse (Just Empty) [] StatusOk "Failed"))
+    (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))

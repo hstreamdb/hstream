@@ -82,8 +82,8 @@ createQueryHandler sc@ServerContext{..} (ServerNormalRequest _ CreateQueryReques
   case err of
     Just err -> do
       Log.fatal . string8 $ err
-      return (ServerNormalResponse (CreateQueryResponse False) [] StatusOk  "")
-    Nothing  -> return (ServerNormalResponse (CreateQueryResponse True) [] StatusOk  "")
+      return (ServerNormalResponse (Just (CreateQueryResponse False)) [] StatusOk  "")
+    Nothing  -> return (ServerNormalResponse (Just (CreateQueryResponse True)) [] StatusOk  "")
 
 fetchQueryHandler
   :: ServerContext
@@ -93,7 +93,7 @@ fetchQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata _) = do
   queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
   let records = map hstreamQueryToGetQueryResponse queries
   let resp = FetchQueryResponse . V.fromList $ records
-  return (ServerNormalResponse resp [] StatusOk "")
+  return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 getQueryHandler
   :: ServerContext
@@ -106,7 +106,7 @@ getQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata GetQueryRequ
   let resp = case query of
         Just q -> hstreamQueryToGetQueryResponse q
         _      ->  emptyGetQueryResponse
-  return (ServerNormalResponse resp [] StatusOk "")
+  return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 deleteQueryHandler
   :: ServerContext
@@ -116,7 +116,7 @@ deleteQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteQue
   res <- catch
     ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery (ZDC.pack $ TL.unpack deleteQueryRequestId)) >> return True)
     (\(e :: SomeException) -> return False)
-  return (ServerNormalResponse (DeleteQueryResponse res) [] StatusOk "")
+  return (ServerNormalResponse (Just (DeleteQueryResponse res)) [] StatusOk "")
 
 restartQueryHandler
   :: ServerContext
@@ -130,7 +130,7 @@ restartQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata RestartQ
         _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Running)
         return True
       Nothing -> return False
-  return (ServerNormalResponse (RestartQueryResponse res) [] StatusOk "")
+  return (ServerNormalResponse (Just (RestartQueryResponse res)) [] StatusOk "")
 
 cancelQueryHandler
   :: ServerContext
@@ -144,4 +144,4 @@ cancelQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CancelQue
         _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Terminated)
         return True
       Nothing -> return False
-  return (ServerNormalResponse (CancelQueryResponse res) [] StatusOk "")
+  return (ServerNormalResponse (Just (CancelQueryResponse res)) [] StatusOk "")

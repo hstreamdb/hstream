@@ -61,8 +61,8 @@ createSinkConnectorHandler sc@ServerContext{..} (ServerNormalRequest _ CreateSin
   case err of
     Just err' -> do
       Log.fatal . string8 $ err'
-      return (ServerNormalResponse (CreateSinkConnectorResponse False) [] StatusOk  "")
-    Nothing  -> return (ServerNormalResponse (CreateSinkConnectorResponse True) [] StatusOk  "")
+      return (ServerNormalResponse (Just (CreateSinkConnectorResponse False)) [] StatusOk  "")
+    Nothing  -> return (ServerNormalResponse (Just (CreateSinkConnectorResponse True)) [] StatusOk  "")
 
 listConnectorHandler
   :: ServerContext
@@ -72,7 +72,7 @@ listConnectorHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
   let records = map hstreamConnectorToGetConnectorResponse connectors
   let resp = ListConnectorResponse . V.fromList $ records
-  return (ServerNormalResponse resp [] StatusOk "")
+  return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 getConnectorHandler
   :: ServerContext
@@ -85,7 +85,7 @@ getConnectorHandler ServerContext{..} (ServerNormalRequest _metadata GetConnecto
   let resp = case connector of
         Just q -> hstreamConnectorToGetConnectorResponse q
         _      ->  emptyGetConnectorResponse
-  return (ServerNormalResponse resp [] StatusOk "")
+  return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 deleteConnectorHandler
   :: ServerContext
@@ -95,7 +95,7 @@ deleteConnectorHandler ServerContext{..} (ServerNormalRequest _metadata DeleteCo
   res <- catch
     ((HSP.withMaybeZHandle zkHandle $ HSP.removeConnector (ZDC.pack $ TL.unpack deleteConnectorRequestId)) >> return True)
     (\(_ :: SomeException) -> return False)
-  return (ServerNormalResponse (DeleteConnectorResponse res) [] StatusOk "")
+  return (ServerNormalResponse (Just (DeleteConnectorResponse res)) [] StatusOk "")
 
 restartConnectorHandler
   :: ServerContext
@@ -109,7 +109,7 @@ restartConnectorHandler ServerContext{..} (ServerNormalRequest _metadata Restart
         _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Running)
         return True
       Nothing -> return False
-  return (ServerNormalResponse (RestartConnectorResponse res) [] StatusOk "")
+  return (ServerNormalResponse (Just (RestartConnectorResponse res)) [] StatusOk "")
 
 cancelConnectorHandler
   :: ServerContext
@@ -123,4 +123,4 @@ cancelConnectorHandler ServerContext{..} (ServerNormalRequest _metadata CancelCo
         _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Terminated)
         return True
       Nothing -> return False
-  return (ServerNormalResponse (CancelConnectorResponse res) [] StatusOk "")
+  return (ServerNormalResponse (Just (CancelConnectorResponse res)) [] StatusOk "")
