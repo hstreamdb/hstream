@@ -11,15 +11,15 @@ module HStream.SQL.Extra
 
 import           Data.Char         (isSpace)
 import qualified Data.List         as L
-import           Data.Text         (Text)
+import           Data.Text         (Text, unpack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Print (Print, printTree)
 
 --------------------------------------------------------------------------------
 extractPNInteger :: PNInteger -> Integer
-extractPNInteger (PInteger  _ n) = n
-extractPNInteger (IPInteger _ n) = n
-extractPNInteger (NInteger  _ n) = (-n)
+extractPNInteger (PInteger  _ (IntegerNew n)) = read $ unpack n
+extractPNInteger (IPInteger _ (IntegerNew n)) = read $ unpack n
+extractPNInteger (NInteger  _ (IntegerNew n)) = - (read . unpack $ n)
 
 extractPNDouble :: PNDouble -> Double
 extractPNDouble (PDouble  _ n) = n

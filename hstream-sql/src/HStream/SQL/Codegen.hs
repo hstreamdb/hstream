@@ -132,7 +132,7 @@ streamCodegen input = do
     RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
     RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
     RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
-    RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
+    RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery . CB.pack . T.unpack $ qid)
     RQTerminate RTerminateAll          -> return $ TerminatePlan AllQuery
     RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
 

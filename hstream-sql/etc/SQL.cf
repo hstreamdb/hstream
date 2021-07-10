@@ -21,15 +21,17 @@ INSERT INTO demoStream (temperature, humidity) VALUES (30, 75);
 
 --------------------------------------------------------------------------------
 
-PInteger.  PNInteger ::= "+" Integer ;
-IPInteger. PNInteger ::=     Integer ;
-NInteger.  PNInteger ::= "-" Integer ;
+PInteger.  PNInteger ::= "+" IntegerNew ;
+IPInteger. PNInteger ::=     IntegerNew ;
+NInteger.  PNInteger ::= "-" IntegerNew ;
 
 PDouble.  PNDouble ::= "+" Double ;
 IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
 token SString '\'' char+ '\'' ;
+token IntegerNew digit+ ;
+token ID digit (["abcdef"]|digit|'_'|'-')+ ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
@@ -40,6 +42,7 @@ entrypoints SQL ;
 QSelect.     SQL ::= Select     ";" ;
 QSelectView. SQL ::= SelectView ";" ;
 QCreate.     SQL ::= Create     ";" ;
+
 QInsert.     SQL ::= Insert     ";" ;
 QShow.       SQL ::= ShowQ      ";" ;
 QDrop.       SQL ::= Drop       ";" ;
@@ -88,7 +91,8 @@ DropStream. DropOption ::= "STREAM";
 DropView. DropOption ::= "VIEW";
 
 -- Terminate Query
-TerminateQuery. Terminate ::= "TERMINATE" "QUERY" String ;
+TerminateQueryID. Terminate ::= "TERMINATE" "QUERY" ID ;
+TerminateQueryIdent. Terminate ::= "TERMINATE" "QUERY" Ident ;
 TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- SelectView Query

@@ -85,7 +85,7 @@ formatValue (P.Value (Just x)) = formatValueKind x
 formatValueKind :: P.ValueKind -> String
 formatValueKind (P.ValueKindNullValue _)   = "NULL"
 formatValueKind (P.ValueKindNumberValue n) = show n
-formatValueKind (P.ValueKindStringValue s) = show s
+formatValueKind (P.ValueKindStringValue s) = TL.unpack s
 formatValueKind (P.ValueKindBoolValue   b) = show b
 formatValueKind (P.ValueKindStructValue s) = formatStruct s
 formatValueKind (P.ValueKindListValue (P.ListValue vs)) = unwords . map formatValue . V.toList $ vs
