@@ -16,7 +16,6 @@ import           ThirdParty.Google.Protobuf.Empty
 
 import           HStream.Common
 import           HStream.Server.HStreamApi
-import           HStream.Store
 import           HStream.Store.Logger
 
 viewIdIs :: TL.Text -> View -> Bool
@@ -26,7 +25,7 @@ createView :: TL.Text -> IO (Maybe View)
 createView sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let createViewRequest = CreateViewRequest { createViewRequestSql = sql }
-  resp <- hstreamApiCreateView (ClientNormalRequest createViewRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiCreateView (ClientNormalRequest createViewRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@View{} _meta1 _meta2 StatusOk _details -> return $ Just x
     ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> do
@@ -41,7 +40,7 @@ listViews :: IO (Maybe ListViewsResponse)
 listViews = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let listViewsRequest = ListViewsRequest {}
-  resp <- hstreamApiListViews (ClientNormalRequest listViewsRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiListViews (ClientNormalRequest listViewsRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@ListViewsResponse{} _meta1 _meta2 StatusOk _details -> return $ Just x
     ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> do
@@ -56,7 +55,7 @@ getView :: TL.Text -> IO (Maybe View)
 getView qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let getViewRequest = GetViewRequest { getViewRequestViewId = qid }
-  resp <- hstreamApiGetView (ClientNormalRequest getViewRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiGetView (ClientNormalRequest getViewRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@View{} _meta1 _meta2 StatusOk _details -> return $ Just x
     ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> do
@@ -71,7 +70,7 @@ deleteView :: TL.Text -> IO Bool
 deleteView qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let deleteViewRequest = DeleteViewRequest { deleteViewRequestViewId = qid }
-  resp <- hstreamApiDeleteView (ClientNormalRequest deleteViewRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiDeleteView (ClientNormalRequest deleteViewRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse Empty _meta1 _meta2 StatusOk _details -> return True
     ClientNormalResponse Empty _meta1 _meta2 StatusInternal _details -> do
@@ -91,8 +90,9 @@ spec = describe "HStream.RunViewSpec" $ do
     ( do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+        res2 <- executeCommandQuery $ "DROP STREAM " <> viewname <> " IF EXISTS;"
+        return [res1, res2]
+    ) `shouldReturn` L.replicate 2 (Just successResp)
 
   it "create streams" $
     ( do

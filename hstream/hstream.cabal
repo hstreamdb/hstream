@@ -136,6 +136,7 @@ test-suite hstream-test
     HStream.RunViewSpec
     HStream.RegressionSpec
     HStream.Common
+    HStream.HandlerSpec
 
   hs-source-dirs:     test
   build-depends:
