@@ -29,6 +29,7 @@ runCli s (NodesConfigCmd cmd) = printTime $ runNodesConfigCmd s cmd
 runCli s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
 runCli s (LogsCmd cmd) = printTime $ runLogsCmd s cmd
 runCli s (CheckImpactCmd checkImpactOpts) = printTime $ checkImpact s checkImpactOpts
+runCli s (MaintenanceCmd opts) = printTime $ runMaintenanceCmd s opts
 
 printTime :: IO a -> IO a
 printTime f = do
@@ -46,6 +47,7 @@ data Command
   | ConfigCmd ConfigCmdOpts
   | LogsCmd LogsConfigCmd
   | CheckImpactCmd CheckImpactOpts
+  | MaintenanceCmd MaintenanceOpts
   deriving (Show)
 
 commandParser :: O.Parser Command
@@ -54,6 +56,8 @@ commandParser = O.hsubparser
  <> O.command "nodes-config" (O.info (NodesConfigCmd <$> nodesConfigParser) (O.progDesc "Manipulates the cluster's NodesConfig"))
  <> O.command "config" (O.info (ConfigCmd <$> configCmdParser) (O.progDesc "Commands about logdevice config"))
  <> O.command "logs" (O.info (LogsCmd <$> logsConfigCmdParser) (O.progDesc "Control the logs config of logdevice dynamically"))
- <> O.command "check-impact" (O.info (CheckImpactCmd <$> checkImpactOptsParser) (O.progDesc ("Return true if performing"
-                              <> "operations to the given shards will cause loss of read/write availability or data loss.")))
+ <> O.command "check-impact" (O.info (CheckImpactCmd <$> checkImpactOptsParser) (O.progDesc $ "Return true if performing"
+                              <> "operations to the given shards will cause loss of read/write availability or data loss."))
+ <> O.command "maintenance" (O.info (MaintenanceCmd <$> maintenanceOptsParser)
+                             (O.progDesc "Allows to manipulate maintenances in Maintenance Manager"))
   )
