@@ -82,14 +82,14 @@ logDirectoryGetHsLogAttrs dir =
 getAttrsExtrasFromPtr :: Ptr LogDeviceLogAttributes -> IO (Map.Map CBytes CBytes)
 getAttrsExtrasFromPtr attrs = do
   (len, (keys_ptr, (values_ptr, (keys_vec, (values_vec, _))))) <-
-    Z.withPrimUnsafe (0 :: Int) $ \len ->
+    Z.withPrimUnsafe (0 :: CSize) $ \len ->
     Z.withPrimUnsafe nullPtr $ \keys ->
     Z.withPrimUnsafe nullPtr $ \values ->
     Z.withPrimUnsafe nullPtr $ \keys_vec ->
     Z.withPrimUnsafe nullPtr $ \values_vec ->
       c_get_attribute_extras attrs len keys values keys_vec values_vec
   finally
-    (buildExtras len keys_ptr values_ptr)
+    (buildExtras (fromIntegral len) keys_ptr values_ptr)
     (delete_vector_of_string keys_vec <> delete_vector_of_string values_vec)
   where
     buildExtras len keys_ptr values_ptr = do

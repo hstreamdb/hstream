@@ -40,7 +40,6 @@ import           HStream.Store.Exception
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice
 import           HStream.Store.Internal.Types
-import           HStream.Store.Logger
 import           HStream.Store.Stream
 
 setClientSettings :: HasCallStack => LDClient -> Map CBytes CBytes -> IO ()

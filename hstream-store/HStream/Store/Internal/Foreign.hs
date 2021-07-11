@@ -16,6 +16,7 @@ import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.StablePtr
+import           Foreign.Storable
 import           GHC.Conc
 import           GHC.Exts
 import           GHC.Stack
@@ -121,6 +122,12 @@ withPrimSafe' v f = do
     return (a, b)
 {-# INLINE withPrimSafe' #-}
 
+peekVectorStringToCBytes :: Ptr (StdVector Z.StdString) -> IO [CBytes]
+peekVectorStringToCBytes ptr = do
+  size <- get_vector_of_string_size ptr
+  ptr' <- get_vector_of_string_data ptr
+  peekStdStringToCBytesN size ptr'
+
 peekStdStringToCBytesN :: Int -> Ptr Z.StdString -> IO [CBytes]
 peekStdStringToCBytesN len ptr
   | len <= 0 || ptr == nullPtr = return []
@@ -137,6 +144,11 @@ peekStdStringToCBytesIdx p offset = do
   CBytes.fromMutablePrimArray mpa
 {-# INLINE peekStdStringToCBytesIdx #-}
 
+peekN :: Storable a => Int -> Ptr a -> IO [a]
+peekN len ptr
+  | len <= 0 || ptr == nullPtr = return []
+  | otherwise = forM [0..len-1] (peekElemOff ptr)
+
 foreign import ccall unsafe "hs_logdevice.h hs_cal_std_string_off"
   hs_cal_std_string_off :: Ptr Z.StdString -> Int -> IO (Ptr Z.StdString)
 
@@ -144,6 +156,15 @@ data StdVector a
 
 foreign import ccall unsafe "hs_logdevice.h delete_vector_of_string"
   delete_vector_of_string :: Ptr (StdVector Z.StdString) -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h delete_vector_of_cint"
+  delete_vector_of_cint :: Ptr (StdVector CInt) -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h get_vector_of_string_size"
+  get_vector_of_string_size :: Ptr (StdVector Z.StdString) -> IO Int
+
+foreign import ccall unsafe "hs_logdevice.h get_vector_of_string_data"
+  get_vector_of_string_data :: Ptr (StdVector Z.StdString) -> IO (Ptr Z.StdString)
 
 foreign import ccall unsafe "hs_logdevice.h setup_sigsegv_handler"
   setupSigsegvHandler :: IO ()
