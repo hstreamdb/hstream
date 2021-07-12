@@ -26,12 +26,12 @@ import           System.Posix                     (Handler (Catch),
 import           Text.RawString.QQ                (r)
 
 import           HStream.SQL
-import           HStream.SQL.Exception            (SomeSQLException)
+import           HStream.SQL.Exception            (SomeSQLException,
+                                                   formatSomeSQLException)
 import           HStream.Server.HStreamApi
 import           HStream.Store                    (setupSigsegvHandler)
 import           HStream.Utils.Format             (formatCommandQueryResponse,
-                                                   formatResult,
-                                                   formatSomeSQLException)
+                                                   formatResult)
 
 data UserConfig = UserConfig
   { _serverHost :: ByteString

@@ -20,8 +20,6 @@ import           Text.Layout.Table                 (center, colsAllG, column,
                                                     unicodeRoundS)
 import qualified ThirdParty.Google.Protobuf.Struct as P
 
-
-import qualified HStream.SQL.Exception             as E
 import qualified HStream.Server.HStreamApi         as HA
 import           HStream.Utils.Converter           (jsonValueToValue,
                                                     valueToJsonValue)
@@ -44,22 +42,6 @@ formatResult width (P.Struct kv) =
   where
     renderTableResult = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
     emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" :: String else xs
-
-formatSomeSQLException :: E.SomeSQLException -> String
-formatSomeSQLException (E.ParseException   info) = "Parse exception " ++ formatParseExceptionInfo info
-formatSomeSQLException (E.RefineException  info) = "Refine exception at " ++ show info
-formatSomeSQLException (E.CodegenException info) = "Codegen exception at " ++ show info
-
-formatParseExceptionInfo :: E.SomeSQLExceptionInfo -> String
-formatParseExceptionInfo E.SomeSQLExceptionInfo{..} =
-  case words sqlExceptionMessage of
-    "syntax" : "error" : "at" : "line" : x : "column" : y : ss ->
-      "at <line " ++ x ++ "column " ++ y ++ ">: syntax error " ++ unwords ss ++ "."
-    _ -> posInfo ++ sqlExceptionMessage ++ "."
-  where
-    posInfo = case sqlExceptionPosition of
-        Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"
-        Nothing    -> ""
 
 formatCommandQueryResponse :: Width -> HA.CommandQueryResponse -> String
 formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of

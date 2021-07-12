@@ -9,6 +9,7 @@ module HStream.SQL.Exception
   , SomeRuntimeException (..)
   , buildSQLException
   , throwSQLException
+  , formatSomeSQLException
   ) where
 
 import           Control.Exception (Exception, throw)
@@ -36,6 +37,22 @@ instance Show SomeSQLException where
   show (CodegenException info) = "CodegenException at " ++ show info ++ "\n" ++ prettyCallStack callStack
 
 instance Exception SomeSQLException
+
+formatSomeSQLException :: SomeSQLException -> String
+formatSomeSQLException (ParseException   info) = "Parse exception " ++ formatParseExceptionInfo info
+formatSomeSQLException (RefineException  info) = "Refine exception at " ++ show info
+formatSomeSQLException (CodegenException info) = "Codegen exception at " ++ show info
+
+formatParseExceptionInfo :: SomeSQLExceptionInfo -> String
+formatParseExceptionInfo SomeSQLExceptionInfo{..} =
+  case words sqlExceptionMessage of
+    "syntax" : "error" : "at" : "line" : x : "column" : y : ss ->
+      "at <line " ++ x ++ "column " ++ y ++ ">: syntax error " ++ unwords ss ++ "."
+    _ -> posInfo ++ sqlExceptionMessage ++ "."
+  where
+    posInfo = case sqlExceptionPosition of
+        Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"
+        Nothing    -> ""
 
 -- | SomeSQLException information.
 data SomeSQLExceptionInfo = SomeSQLExceptionInfo
