@@ -29,13 +29,3 @@ jobs:
           else
             echo "Empty dockerhub user info..."
           fi
-
-      - name: Build & Push builder image
-        run: |
-          docker build . -f Dockerfile.deps -t ${DEPS_IMAGE_NAME}:latest
-
-          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" -a -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-            docker push ${DEPS_IMAGE_NAME}:latest
-          else
-            echo "Empty dockerhub user info..."
-          fi
