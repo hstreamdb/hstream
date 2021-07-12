@@ -65,6 +65,7 @@ import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Parse                               (parseAndRefine)
+import           HStream.Utils                                   (genUnique)
 
 --------------------------------------------------------------------------------
 
@@ -251,9 +252,13 @@ genStreamWithSourceStream taskName frm = do
               throwSQLException CodegenException Nothing "Impossible happened"
 
 genTaskName :: IO Text
-genTaskName = do
-  MkSystemTime time _ <- getSystemTime'
-  return $ pack $ showHex time ""
+-- Please do not encode the this id to other forms,
+-- since there is a minor issue related with parsing.
+-- When parsing a identifier, the first letter is required to be a letter.
+-- When parsing a string, quotes are required.
+-- Currently there is no way to parse an id start with digit but contains letters/
+genTaskName = pack . show <$> genUnique
+
 ----
 constantToValue :: Constant -> Value
 constantToValue (ConstantInt n)         = Number (scientific (toInteger n) 0)

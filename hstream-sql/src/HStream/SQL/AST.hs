@@ -477,7 +477,7 @@ data RTerminate
   | RTerminateAll
   deriving (Eq, Show)
 instance Refine Terminate where
-  refine (TerminateQuery _ x) = RTerminateQuery x
+  refine (TerminateQuery _ x) = RTerminateQuery (show x)
   refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 

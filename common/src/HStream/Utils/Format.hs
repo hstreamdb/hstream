@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Utils.Format where
 
@@ -14,7 +13,7 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           Text.Layout.Table                 (center, colsAllG, column,
-                                                    expandUntil, justify, left,
+                                                    expand, justify, left,
                                                     noAlign, singleCutMark,
                                                     tableString, titlesH,
                                                     unicodeRoundS)
@@ -57,7 +56,7 @@ formatCommandQueryResponse _ _ = ""
 
 --------------------------------------------------------------------------------
 formatStruct :: P.Struct -> String
-formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y <> ";"))
+formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y))
                             . M.toList . fmap (fmap formatValue) $ kv
 
 formatValue :: P.Value -> String
@@ -67,7 +66,7 @@ formatValue (P.Value (Just x)) = formatValueKind x
 formatValueKind :: P.ValueKind -> String
 formatValueKind (P.ValueKindNullValue _)   = "NULL"
 formatValueKind (P.ValueKindNumberValue n) = show n
-formatValueKind (P.ValueKindStringValue s) = show s
+formatValueKind (P.ValueKindStringValue s) = TL.unpack s
 formatValueKind (P.ValueKindBoolValue   b) = show b
 formatValueKind (P.ValueKindStructValue s) = formatStruct s
 formatValueKind (P.ValueKindListValue (P.ListValue vs)) = unwords . map formatValue . V.toList $ vs
@@ -87,7 +86,7 @@ renderJSONObjectsToTable l os@(o:_) =
     elems = map (map snd . sort . HM.toList) os
     size  = length o
     colout = replicate size
-      $ column (expandUntil $ (l - size*2 - 6) `div` size) left noAlign (singleCutMark "...")
+      $ column expand left noAlign (singleCutMark "...")
 
 renderContents :: Width -> [A.Value] -> [[String]]
 renderContents width = map $ concatMap (justify width . words') . lines . formatValue . jsonValueToValue
