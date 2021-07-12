@@ -2,13 +2,18 @@ module HStream.Store.Admin.Command.Maintenance
   ( runMaintenanceCmd
   ) where
 
-import           Data.List                  (intersect, nub, union)
-import           Data.Maybe                 (fromMaybe, mapMaybe)
-import           Data.Text                  (Text, intercalate, pack)
+import           Control.Monad              (forM_, when, (<=<))
+import           Data.Int                   (Int64)
+import           Data.List                  (group, intercalate, intersect, nub,
+                                             sort, union)
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (catMaybes, fromMaybe, mapMaybe)
+import           Data.Set                   (elems)
+import           Data.Text                  (Text, pack)
 import qualified Data.Text                  as Text
 import           System.IO.Unsafe           (unsafePerformIO)
 import qualified Text.Layout.Table          as Table
-import           Z.Data.CBytes              (unpack)
+import           Z.Data.CBytes              (CBytes, unpack)
 import           Z.IO.Time                  (SystemTime (MkSystemTime),
                                              formatSystemTime, simpleDateFormat)
 
@@ -19,6 +24,7 @@ import           HStream.Store.Admin.Types
 
 runMaintenanceCmd :: HeaderConfig AdminAPI -> MaintenanceOpts -> IO ()
 runMaintenanceCmd conf (MaintenanceListCmd s) = runMaintenanceList conf s
+runMaintenanceCmd conf (MaintenanceShowCmd s) = runMaintenanceShow conf s
 
 data MaintenanceFilter = MaintenanceFilter
   { mntFilterIndexes    :: [Int]
@@ -47,6 +53,9 @@ mntFilter MaintenanceFilter{..} = filter predicate
         && (not mntFilterCompleted || progress == MaintenanceProgress_COMPLETED)
         && (not mntFilterInProgress || progress == MaintenanceProgress_IN_PROGRESS)
         && maybe True (== priority) mntFilterPriority
+
+-------------------------------------------------------------------------------
+-- maintenance list
 
 getNodeState :: HeaderConfig AdminAPI -> NodeID -> IO [NodeState]
 getNodeState conf nodeId = do
@@ -81,6 +90,9 @@ getStatesProgress :: (NodeState -> (Int, Int)) -> [NodeState] -> (Int, Int)
 getStatesProgress f = foldr (pairAdd . f) (0,0)
   where pairAdd (a, b) (c, d) = (a + c, b + d)
 
+getShardNodes :: MaintenanceDefinition -> [NodeID]
+getShardNodes = nub . fmap shardID_node . maintenanceDefinition_shards
+
 runMaintenanceList :: HeaderConfig AdminAPI -> MaintenanceListOpts -> IO ()
 runMaintenanceList conf MaintenanceListOpts{..} = do
   resp <- AA.sendAdminApiRequest conf $
@@ -88,7 +100,6 @@ runMaintenanceList conf MaintenanceListOpts{..} = do
 
   let titles = ["MNT. ID", "AFFECTED", "STATUS", "SHARDS", "SEQUENCERS",
                 "PRIORITY", "CREATED BY", "REASON", "CREATED AT", "EXPIRES IN"]
-  let getShardNodes = nub . fmap shardID_node . maintenanceDefinition_shards
   let shardProgress mnt = unsafePerformIO $ getStatesProgress getShardProgress . concat
         <$> traverse (getNodeState conf) (getShardNodes mnt)
   let sequencerProgress mnt = unsafePerformIO $ getStatesProgress getSequencerProgress . concat
@@ -96,23 +107,22 @@ runMaintenanceList conf MaintenanceListOpts{..} = do
   -- Affected nodes include the sequencer nodes and the nodes where affected shards reside
   let getAffectedNodesIndex mnt = mapMaybe nodeID_node_index $
         maintenanceDefinition_sequencer_nodes mnt `union` getShardNodes mnt
-  let getShards mnt = printShardOperationalState (maintenanceDefinition_shard_target_state mnt)
+  let getShards mnt = printInfo (maintenanceDefinition_shard_target_state mnt)
         <> "(" <> (show . fst . shardProgress $ mnt)
         <> "/" <> (show . snd . shardProgress $ mnt) <> ")"
-  let getSequencers mnt = printSequencingState (maintenanceDefinition_sequencer_target_state mnt)
+  let getSequencers mnt = printInfo (maintenanceDefinition_sequencer_target_state mnt)
         <> "(" <> (show . fst . sequencerProgress $ mnt)
         <> "/" <> (show . snd . sequencerProgress $ mnt) <> ")"
-  let fmtTimeStamp ts = unsafePerformIO $ formatSystemTime simpleDateFormat (MkSystemTime (ts `div` 1000) 0)
   let lenses = [ Text.unpack . fromMaybe "" . maintenanceDefinition_group_id
-               , Text.unpack . intercalate "," . map (\x -> "N" <> pack (show x)) . nub . getAffectedNodesIndex
-               , printMaintenanceProgress . maintenanceDefinition_progress
+               , Text.unpack . Text.intercalate "," . map (\x -> "N" <> pack (show x)) . nub . getAffectedNodesIndex
+               , printInfo . maintenanceDefinition_progress
                , getShards
                , getSequencers
-               , printPriority . fromMaybe MaintenancePriority_MEDIUM . maintenanceDefinition_priority
+               , printInfo . fromMaybe MaintenancePriority_MEDIUM . maintenanceDefinition_priority
                , Text.unpack . maintenanceDefinition_user
                , Text.unpack . maintenanceDefinition_reason
-               , maybe "-" (unpack . fmtTimeStamp) . maintenanceDefinition_created_on
-               , maybe "-" (unpack . fmtTimeStamp) . maintenanceDefinition_expires_on
+               , maybe "-" (unpack . printTimeStamp) . maintenanceDefinition_created_on
+               , maybe "-" (unpack . printTimeStamp) . maintenanceDefinition_expires_on
                ]
   let mntListFilter = mntFilter MaintenanceFilter
                       { mntFilterIndexes = mntListNodeIndexes
@@ -127,35 +137,181 @@ runMaintenanceList conf MaintenanceListOpts{..} = do
     then putStrLn "No maintenances matching given criteria"
     else putStrLn $ simpleShowTable (map (, 20, Table.left) titles) stats
 
-printPriority :: AA.MaintenancePriority -> String
-printPriority MaintenancePriority_IMMINENT     = "IMMINENT"
-printPriority MaintenancePriority_HIGH         = "HIGH"
-printPriority MaintenancePriority_MEDIUM       = "MEDIUM"
-printPriority MaintenancePriority_LOW          = "LOW"
-printPriority (MaintenancePriority__UNKNOWN n) = "UNKNOWN" <> show n
+-------------------------------------------------------------------------------
+-- maintenance show
 
-printSequencingState :: SequencingState -> String
-printSequencingState SequencingState_ENABLED      = "ENABLED"
-printSequencingState SequencingState_BOYCOTTED    = "BOYCOTTED"
-printSequencingState SequencingState_DISABLED     = "DISABLED"
-printSequencingState SequencingState_UNKNOWN      = "UNKNOWN"
-printSequencingState (SequencingState__UNKNOWN n) = "UNKNOWN" <> show n
+runMaintenanceShow :: HeaderConfig AdminAPI -> MaintenanceShowOpts -> IO ()
+runMaintenanceShow conf MaintenanceShowOpts{..} = do
+  resp <- AA.sendAdminApiRequest conf $
+    getMaintenances $ MaintenancesFilter mntShowIds mntShowUsers
+  let mntListFilter = mntFilter MaintenanceFilter
+                      { mntFilterIndexes = mntShowNodeIndexes
+                      , mntFilterNames = mntShowNodeNames
+                      , mntFilterBlocked = mntShowBlocked
+                      , mntFilterCompleted = mntShowCompleted
+                      , mntFilterInProgress = mntShowInProgress
+                      , mntFilterPriority = Nothing
+                      }
+  forM_ (mntListFilter $ maintenanceDefinitionResponse_maintenances resp) $ \mnt -> do
+    putStrLn $ maintenanceShowOverview mnt
+    putStrLn "\nShard Maintenances:"
+    shardNodesStates <- concat <$> traverse (getNodeState conf) (getShardNodes mnt)
+    if mntShowExpandShards
+      then do
+      forM_ shardNodesStates $ \node -> do
+        putStrLn $ "N" <> show (nodeState_node_index node)
+          <> "(" <> Text.unpack (nodeConfig_name (nodeState_config node)) <> ")"
+        case nodeState_shard_states node of
+          Just shards -> putStrLn $ maintenanceShowExpandShards shards
+          Nothing     -> putStrLn ""
+      else putStrLn $ maintenanceShowShards shardNodesStates
+    putStrLn "\nSequencer Maintenances:"
+    sequencerNodesStates <- concat <$> traverse (getNodeState conf) (maintenanceDefinition_sequencer_nodes mnt)
+    putStrLn $ maintenanceShowSequencer sequencerNodesStates
+    when (mntShowSafetyCheckResults
+          && maintenanceDefinition_progress mnt == MaintenanceProgress_BLOCKED_UNTIL_SAFE) $ do
+      putStrLn "\nSafety Check Impact:"
+      putStrLn "please run the command check-impact manually"
+    putStrLn "\n---"
 
-printShardOperationalState :: ShardOperationalState -> String
-printShardOperationalState ShardOperationalState_UNKNOWN = "UNKNOWN"
-printShardOperationalState ShardOperationalState_ENABLED = "ENABLED"
-printShardOperationalState ShardOperationalState_MAY_DISAPPEAR = "MAY_DISAPPEAR"
-printShardOperationalState ShardOperationalState_DRAINED = "DRAINED"
-printShardOperationalState ShardOperationalState_MIGRATING_DATA = "MIGRATING_DATA"
-printShardOperationalState ShardOperationalState_ENABLING = "ENABLING"
-printShardOperationalState ShardOperationalState_PROVISIONING = "PROVISIONING"
-printShardOperationalState ShardOperationalState_PASSIVE_DRAINING = "PASSIVE_DRAINING"
-printShardOperationalState ShardOperationalState_INVALID = "INVALID"
-printShardOperationalState (ShardOperationalState__UNKNOWN n) = "UNKNOWN" <> show n
+maintenanceShowExpandShards :: [ShardState] -> String
+maintenanceShowExpandShards shards =
+  let titles = ["SHARD INDEX", "CURRENT STATE", "TARGET STATE", "MAINTENANCE STATUS", "LAST UPDATED"]
+      lenses = [ printInfo . shardState_current_operational_state
+               , maybe "-" (intercalate "," . fmap printInfo . elems . shardMaintenanceProgress_target_states)
+                 . shardState_maintenance
+               , maybe "-" (printInfo . shardMaintenanceProgress_status) . shardState_maintenance
+               , maybe "-" (unpack . printTimeStamp . shardMaintenanceProgress_last_updated_at) . shardState_maintenance
+               ]
+      stats = (\s -> ($ s) <$> lenses) <$> shards
+      statsWithIndex = zipWith (\i s -> show (i :: Int) : s) [1..] stats
+  in simpleShowTable (map (, 30, Table.left) titles) statsWithIndex
 
-printMaintenanceProgress :: MaintenanceProgress -> String
-printMaintenanceProgress MaintenanceProgress_UNKNOWN = "UNKNOWN"
-printMaintenanceProgress MaintenanceProgress_BLOCKED_UNTIL_SAFE = "BLOCKED_UNTIL_SAFE"
-printMaintenanceProgress MaintenanceProgress_IN_PROGRESS = "IN_PROGRESS"
-printMaintenanceProgress MaintenanceProgress_COMPLETED = "COMPLETED"
-printMaintenanceProgress (MaintenanceProgress__UNKNOWN n) = "UNKNOWN" <> show n
+
+maintenanceShowShards :: [NodeState] -> String
+maintenanceShowShards nodes =
+  let titles = ["NODE INDEX", "NODE NAME", "LOCATION", "TARGET STATE", "CURRENT STATE", "MAINTENANCE STATUS", "LAST UPDATED"]
+      lenses = [ show . nodeState_node_index
+               , Text.unpack . nodeConfig_name . nodeState_config
+               , printLoc . nodeConfig_location_per_scope . nodeState_config
+               , printCounter printInfo . shardsTargetState
+               , printCounter printInfo . shardsCurrentState
+               , printCounter printInfo . shardsMaintenanceState
+               , maybe "-" (unpack . printTimeStamp) . shardsLastUpdatedAt
+               ]
+      stats  = (\s -> map ($ s) lenses) <$> nodes
+  in simpleShowTable (map (, 30, Table.left) titles) stats
+
+shardsCurrentState :: NodeState -> Map.Map ShardOperationalState Int
+shardsCurrentState = maybe Map.empty (counter . fmap shardState_current_operational_state) . nodeState_shard_states
+
+shardsMaintenanceState :: NodeState -> Map.Map MaintenanceStatus Int
+shardsMaintenanceState nodeState =
+  case nodeState_shard_states nodeState of
+    Nothing -> Map.empty
+    Just shardStates ->
+      case sequenceA $ shardState_maintenance <$> shardStates of
+        Nothing       -> Map.empty
+        Just progress -> counter $ shardMaintenanceProgress_status <$> progress
+
+shardsTargetState :: NodeState -> Map.Map ShardOperationalState Int
+shardsTargetState nodeState =
+  case nodeState_shard_states nodeState of
+    Nothing -> Map.empty
+    Just shardStates ->
+      case sequenceA $ shardState_maintenance <$> shardStates of
+        Nothing -> Map.empty
+        Just progress -> counter (concat (elems . shardMaintenanceProgress_target_states <$> progress))
+
+shardsLastUpdatedAt :: NodeState -> Maybe Timestamp
+shardsLastUpdatedAt nodeState =
+  case nodeState_shard_states nodeState of
+    Nothing -> Nothing
+    Just shardStates ->
+      if null shardStates then Nothing
+      else shardMaintenanceProgress_last_updated_at <$> shardState_maintenance (head shardStates)
+
+maintenanceShowSequencer :: [NodeState] -> String
+maintenanceShowSequencer nodes =
+  let readFromMaintenance f = f <.> (sequencerState_maintenance <=< nodeState_sequencer_state)
+      titles = ["NODE INDEX", "NODE NAME", "LOCATION", "TARGET STATE", "CURRENT STATE", "MAINTENANCE STATUS", "LAST UPDATED"]
+      lenses = [ show . nodeState_node_index
+               , Text.unpack . nodeConfig_name . nodeState_config
+               , printLoc . nodeConfig_location_per_scope . nodeState_config
+               , maybe "-" printInfo . readFromMaintenance sequencerMaintenanceProgress_target_state
+               , maybe "-" (printInfo . sequencerState_state) . nodeState_sequencer_state
+               , maybe "-" printInfo . readFromMaintenance sequencerMaintenanceProgress_status
+               , maybe "-" (unpack . printTimeStamp) . readFromMaintenance sequencerMaintenanceProgress_last_updated_at
+               ]
+      stats  = (\s -> map ($ s) lenses) <$> nodes
+  in simpleShowTable (map (, 200, Table.left) titles) stats
+
+maintenanceShowOverview :: MaintenanceDefinition -> String
+maintenanceShowOverview mnt =
+  let table = [ ["Maintenance ID:", maybe "-" Text.unpack $ maintenanceDefinition_group_id mnt]
+              , ["Priority:", printInfo . fromMaybe MaintenancePriority_MEDIUM . maintenanceDefinition_priority $ mnt]
+              , ["Affected:", affected]
+              , ["Status:", printInfo . maintenanceDefinition_progress $ mnt]
+              , ["Impact Result:", result]
+              , ["Created By:", Text.unpack . maintenanceDefinition_user $ mnt]
+              , ["Reason:", Text.unpack . maintenanceDefinition_reason $ mnt]
+              , ["Extras:", extras]
+              , ["Created On:", maybe "-" (unpack . printTimeStamp) $ maintenanceDefinition_created_on mnt]
+              , ["Expires On:", maybe "-" (unpack . printTimeStamp) $ maintenanceDefinition_expires_on mnt]
+              , ["Skip Safety Checks:", show $ maintenanceDefinition_skip_safety_checks mnt]
+              , ["Skip Capacity Checks:", show $ maintenanceDefinition_skip_capacity_checks mnt]
+              , ["Allow Passive Drains:", show $ maintenanceDefinition_allow_passive_drains mnt]
+              , ["RESTORE rebuilding enforced:", show $ maintenanceDefinition_force_restore_rebuilding mnt]
+              ]
+      result = if maintenanceDefinition_progress mnt `elem`
+                  [MaintenanceProgress_UNKNOWN, MaintenanceProgress_BLOCKED_UNTIL_SAFE]
+               then maybe "-" (Data.List.intercalate "," . fmap printInfo . checkImpactResponse_impact)
+                    $ maintenanceDefinition_last_check_impact_result mnt
+               else "-"
+      affected = (show . length . maintenanceDefinition_shards $ mnt)
+                 <> " shards on "
+                 <> (show . length . getShardNodes $ mnt)
+                 <> " nodes, "
+                 <> (show . length . maintenanceDefinition_sequencer_nodes $ mnt)
+                 <> " sequencers"
+      extras = if Map.null (maintenanceDefinition_extras mnt)
+               then "-"
+               else concatMap (\(k, v) -> Text.unpack k <> ":" <> Text.unpack v)
+                    $ Map.toList (maintenanceDefinition_extras mnt)
+      colSpec = Table.column Table.expand Table.left Table.def Table.def
+  in Table.gridString [colSpec, colSpec] table
+
+-------------------------------------------------------------------------------
+-- Utils
+
+(<.>) :: Functor m => (b -> c) -> (a -> m b) -> a -> m c
+(f <.> g) a = f <$> g a
+
+type MapCounter a = Map.Map a Int
+
+counter :: Ord a => [a] -> MapCounter a
+counter = Map.fromList . map (\x -> (head x, length x)) . group . sort
+
+printCounter :: (a -> String) -> MapCounter a -> String
+printCounter f m =
+  if Map.null m then "-"
+  else intercalate "," $ (\(x,i) -> f x <> "(" <> show i <> ")") <$> Map.toList m
+
+printTimeStamp :: Int64 -> CBytes
+printTimeStamp ts = unsafePerformIO $ formatSystemTime simpleDateFormat (MkSystemTime (ts `div` 1000) 0)
+
+printLoc :: Location -> String
+printLoc m =
+  let loc = ($ m) <$> [ Map.lookup LocationScope_ROOT
+                      , Map.lookup LocationScope_RACK
+                      , Map.lookup LocationScope_ROW
+                      , Map.lookup LocationScope_CLUSTER
+                      , Map.lookup LocationScope_DATA_CENTER
+                      , Map.lookup LocationScope_REGION
+                      , Map.lookup LocationScope_ROOT
+                      ]
+  in
+    Text.unpack . Text.intercalate "." . catMaybes $ loc
+
+printInfo :: Show a => a -> String
+printInfo = Text.unpack . Text.intercalate "_" . tail . Text.splitOn "_" . pack . show
