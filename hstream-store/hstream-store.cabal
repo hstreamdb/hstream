@@ -43,6 +43,7 @@ library
     HStream.Store.Exception
     HStream.Store.Internal.Foreign
     HStream.Store.Internal.LogDevice.Checkpoint
+    HStream.Store.Internal.LogDevice.LDQuery
     HStream.Store.Internal.LogDevice.LogConfigTypes
     HStream.Store.Internal.LogDevice.Reader
     HStream.Store.Internal.LogDevice.VersionedConfigStore
@@ -80,6 +81,7 @@ library
     stdc++
     folly
     logdevice
+    ldquery
     thriftcpp2
     thriftprotocol
     glog
@@ -90,6 +92,7 @@ library
   cxx-sources:
     cbits/hs_logdevice.cpp
     cbits/logdevice/hs_checkpoint.cpp
+    cbits/logdevice/hs_ldquery.cpp
     cbits/logdevice/hs_logconfigtypes.cpp
     cbits/logdevice/hs_reader.cpp
     cbits/logdevice/hs_versioned_config_store.cpp
