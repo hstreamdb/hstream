@@ -89,7 +89,7 @@ DropStream. DropOption ::= "STREAM";
 DropView. DropOption ::= "VIEW";
 
 -- Terminate Query
-TerminateQuery. Terminate ::= "TERMINATE" "QUERY" String ;
+TerminateQuery. Terminate ::= "TERMINATE" "QUERY" Integer ;
 TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- SelectView Query
