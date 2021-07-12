@@ -89,28 +89,25 @@ module HStream.Store.Stream
   ) where
 
 import           Control.Exception                (finally, try)
-import           Control.Monad                    (forM, forM_, unless)
-import           Data.Bits                        (bit, shiftL, shiftR, (.&.),
-                                                   (.|.))
+import           Control.Monad                    (forM, forM_)
+import           Data.Bits                        (bit)
 import qualified Data.Cache                       as Cache
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Int                         (Int64)
 import           Data.String                      (IsString)
-import           Data.Time.Clock.System           (SystemTime (..))
-import           Data.Word                        (Word16, Word32)
+import           Data.Word                        (Word32)
 import           Foreign.C                        (CSize)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
-import           System.Random                    (randomRIO)
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.IO.FileSystem                  as FS
-import           Z.IO.Time                        (getSystemTime')
 
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
 import qualified HStream.Store.Internal.Types     as FFI
 import qualified HStream.Store.Logger             as Log
+import           HStream.Utils                    (genUnique)
 
 -------------------------------------------------------------------------------
 
@@ -272,7 +269,7 @@ createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
       if maxTries <= 0
          then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
-           logid <- genRandomLogID
+           logid <- genUnique
            result <- try $ LD.makeLogGroup client logPath logid logid attrs True
            case result of
              Right group -> do
@@ -282,27 +279,6 @@ createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
                Log.warning "LogDevice ID_CLASH!"
                go $! maxTries - 1
 {-# INLINABLE createRandomLogGroup #-}
-
--- | Generate a random logid through a simplify version of snowflake algorithm.
---
--- idx: 63...56 55...0
---      |    |  |    |
--- bit: 0....0  xx....
-genRandomLogID :: IO FFI.C_LogID
-genRandomLogID = do
-  let startTS = 1577808000  -- 2020-01-01
-  ts <- getSystemTime'
-  let sec = systemSeconds ts - startTS
-  unless (sec > 0) $ error "Impossible happened, make sure your system time is synchronized."
-  -- 32bit
-  let tsBit :: Int64 = fromIntegral (maxBound :: Word32) .&. sec
-  -- 8bit
-  let tsBit' :: Word32 = shiftR (systemNanoseconds ts) 24
-  -- 16bit
-  rdmBit :: Word16 <- randomRIO (0, maxBound :: Word16)
-  return $ fromIntegral (shiftL tsBit 24)
-       .|. fromIntegral (shiftL tsBit' 16)
-       .|. fromIntegral rdmBit
 
 -- | Try to set logid for checkpoint store.
 --

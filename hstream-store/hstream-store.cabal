@@ -52,16 +52,17 @@ library
     HStream.Store.Stream
 
   build-depends:
-    , base        >=4.13  && <5
-    , cache       ^>=0.1
-    , containers  ^>=0.6
-    , ghc-prim    >=0.5   && <1.0
-    , primitive   ^>=0.7
-    , random      ^>=1.2
-    , time        >=1.9   && <2.0
+    , base            >=4.13  && <5
+    , cache           ^>=0.1
+    , containers      ^>=0.6
+    , ghc-prim        >=0.5   && <1.0
+    , hstream-common
+    , primitive       ^>=0.7
+    , random          ^>=1.2
+    , time            >=1.9   && <2.0
     , Z-Data
     , Z-IO
-    , zoovisitor  >=0.1.2 && <1
+    , zoovisitor      >=0.1.2 && <1
 
   default-language:   Haskell2010
   default-extensions:

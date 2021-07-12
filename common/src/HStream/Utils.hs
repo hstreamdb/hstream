@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Utils
   ( module HStream.Utils.Converter
@@ -7,16 +8,22 @@ module HStream.Utils
   , getKeyWordFromException
   , flattenJSON
   , getProtoTimestamp
+  , genUnique
   ) where
 
 import           Control.Exception                    (Exception (..))
-import           Control.Monad                        (join)
+import           Control.Monad                        (join, unless)
 import           Data.Aeson                           as Aeson
 import           Data.Bifunctor                       (first)
+import           Data.Bits                            (shiftL, shiftR, (.&.),
+                                                       (.|.))
 import qualified Data.HashMap.Strict                  as HM
+import           Data.Int                             (Int64)
 import           Data.Text                            (Text)
 import qualified Data.Text                            as Text
 import qualified Data.Text.Lazy                       as TL
+import           Data.Word                            (Word16, Word32, Word64)
+import           System.Random                        (randomRIO)
 import           Z.IO.Time                            (SystemTime (..),
                                                        getSystemTime')
 
@@ -48,3 +55,25 @@ getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do
   MkSystemTime sec nano <- getSystemTime'
   return $ Timestamp sec (fromIntegral nano)
+
+-- | Generate a "unique" number through a modified version of snowflake algorithm.
+--
+-- idx: 63...56 55...0
+--      |    |  |    |
+-- bit: 0....0  xx....
+genUnique :: IO Word64
+genUnique = do
+  let startTS = 1577808000  -- 2020-01-01
+  ts <- getSystemTime'
+  let sec = systemSeconds ts - startTS
+  unless (sec > 0) $ error "Impossible happened, make sure your system time is synchronized."
+  -- 32bit
+  let tsBit :: Int64 = fromIntegral (maxBound :: Word32) .&. sec
+  -- 8bit
+  let tsBit' :: Word32 = shiftR (systemNanoseconds ts) 24
+  -- 16bit
+  rdmBit :: Word16 <- randomRIO (0, maxBound :: Word16)
+  return $ fromIntegral (shiftL tsBit 24)
+       .|. fromIntegral (shiftL tsBit' 16)
+       .|. fromIntegral rdmBit
+{-# INLINE genUnique #-}
