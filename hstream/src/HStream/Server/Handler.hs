@@ -97,11 +97,13 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 handlers :: LDClient -> Int -> Maybe ZHandle -> Compression -> IO (HStreamApi ServerRequest ServerResponse)
 handlers ldclient repFactor zkHandle compression = do
   runningQs <- newMVar HM.empty
+  runningCs <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
       , scDefaultStreamRepFactor = repFactor
       , zkHandle                 = zkHandle
       , runningQueries           = runningQs
+      , runningConnectors        = runningCs
       , cmpStrategy              = compression
       }
   return HStreamApi {

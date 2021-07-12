@@ -26,7 +26,8 @@ import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   handleCreateSinkConnector)
+                                                   handleCreateSinkConnector,
+                                                   handleTerminateConnector)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils.Converter          (cbytesToText)
@@ -115,12 +116,12 @@ cancelConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal CancelConnectorRequest CancelConnectorResponse
   -> IO (ServerResponse 'Normal CancelConnectorResponse)
-cancelConnectorHandler ServerContext{..} (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
+cancelConnectorHandler sc@ServerContext{..} (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
   res <- do
     connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
     case find (hstreamConnectorNameIs (T.pack $ TL.unpack cancelConnectorRequestId)) connectors of
       Just connector -> do
-        _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Terminated)
+        handleTerminateConnector sc (HSP.connectorId connector)
         return True
       Nothing -> return False
   return (ServerNormalResponse (Just (CancelConnectorResponse res)) [] StatusOk "")
