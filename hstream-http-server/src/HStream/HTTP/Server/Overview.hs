@@ -10,21 +10,13 @@ module HStream.HTTP.Server.Overview (
 import           Control.Monad.IO.Class     (liftIO)
 import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.ByteString            (ByteString)
-import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (fromMaybe)
 import           Data.Swagger               (ToSchema)
-import           Data.Text                  (Text)
 import           GHC.Generics               (Generic)
-import           Servant                    (Capture, Delete, Get, JSON,
-                                             PlainText, Post, ReqBody,
-                                             type (:>), (:<|>) (..))
+import           Servant                    (Get, JSON, type (:>))
 import           Servant.Server             (Handler, Server)
-import qualified Z.Data.CBytes              as ZDC
-import qualified ZooKeeper                  as ZK
-import qualified ZooKeeper.Exception        as ZK
 import qualified ZooKeeper.Types            as ZK
 
-import           HStream.Connector.HStore   as HCH
 import           HStream.HTTP.Server.Node   (getNodes)
 import qualified HStream.Server.Persistence as HSP
 import           HStream.Store              as HS
@@ -52,11 +44,11 @@ fetchOverviewHandler ldClient zkHandle headerConfig statusOpts = do
   overview <- liftIO $ do
     streamCnt <- length <$> (findStreams ldClient True)
     queryCnt <- length <$> (HSP.withMaybeZHandle zkHandle HSP.getQueries)
-    let views = 0
+    let viewCnt = 0
     connectorCnt <- length <$> (HSP.withMaybeZHandle zkHandle HSP.getConnectors)
-    nodes <- (getNodes headerConfig statusOpts)
-    let nodeCnt = length $ fromMaybe [] nodes
-    return $ OverviewBO streamCnt queryCnt views connectorCnt nodeCnt
+    nodes' <- (getNodes headerConfig statusOpts)
+    let nodeCnt = length $ fromMaybe [] nodes'
+    return $ OverviewBO streamCnt queryCnt viewCnt connectorCnt nodeCnt
   return overview
 
 overviewServer :: HS.LDClient -> Maybe ZK.ZHandle -> ByteString -> Int -> Server OverviewAPI

@@ -4,24 +4,25 @@
 
 module Main where
 
-import           Control.Exception          (catch)
-import           Control.Monad              (void)
-import           Control.Monad.IO.Class     (liftIO)
-import           Network.Wai.Handler.Warp   (run)
-import           Options.Applicative        (Parser, auto, execParser, fullDesc,
-                                             help, helper, info, long, metavar,
-                                             option, progDesc, short,
-                                             showDefault, strOption, value,
-                                             (<**>))
-import           Servant.Server             (serve)
-import qualified ZooKeeper                  as ZK
-import qualified ZooKeeper.Exception        as ZK
-import qualified ZooKeeper.Types            as ZK
+import           Control.Exception                (catch)
+import           Control.Monad                    (void)
+import           Control.Monad.IO.Class           (liftIO)
+import           Network.GRPC.HighLevel.Generated
+import           Network.Wai.Handler.Warp         (run)
+import           Options.Applicative              (Parser, auto, execParser,
+                                                   fullDesc, help, helper, info,
+                                                   long, metavar, option,
+                                                   progDesc, short, showDefault,
+                                                   strOption, value, (<**>))
+import           Servant.Server                   (serve)
+import qualified ZooKeeper                        as ZK
+import qualified ZooKeeper.Exception              as ZK
+import qualified ZooKeeper.Types                  as ZK
 
-import           HStream.HTTP.Server.API    (API, ServerConfig (..), api,
-                                             apiServer)
-import qualified HStream.Server.Persistence as HSP
-import qualified HStream.Store              as HS
+import           HStream.HTTP.Server.API          (ServerConfig (..), api,
+                                                   apiServer)
+import qualified HStream.Server.Persistence       as HSP
+import qualified HStream.Store                    as HS
 
 parseConfig :: Parser ServerConfig
 parseConfig =
@@ -34,18 +35,27 @@ parseConfig =
     <*> strOption   (long "checkpoint-path"      <> metavar "PATH" <> showDefault <> value "/tmp/checkpoint"            <> help "checkpoint root path")
     <*> option auto (long "replicate-factor"     <> metavar "INT"  <> showDefault <> value 3 <> short 'f'               <> help "topic replicate factor")
     <*> strOption   (long "logdevice-admin-host" <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "logdevice admin host value")
-    <*> option auto (long "logdevice-admin-port" <> metavar "INT"  <> showDefault <> value 6440                         <> help "logdevice admin port value")
+    <*> option auto (long "logdevice-admin-port" <> metavar "INT"  <> showDefault <> value 47149                         <> help "logdevice admin port value")
+    <*> strOption   (long "hstream-host"         <> metavar "HOST" <> showDefault <> value "127.0.0.1"                  <> help "hstream grpc server host value")
+    <*> option auto (long "hstream-port"         <> metavar "INT"  <> showDefault <> value 6570                         <> help "hstream grpc server port value")
 
 initZooKeeper :: ZK.ZHandle -> IO ()
 initZooKeeper zk = catch (HSP.initializeAncestors zk) (\e -> void $ return (e :: ZK.ZNODEEXISTS))
 
 app :: ServerConfig -> IO ()
-app config@ServerConfig{..} =
-  ZK.withResource (HSP.defaultHandle (_zkHost <> ":" <> _zkPort)) $
-    \zk -> do
-      initZooKeeper zk
-      ldClient <- liftIO (HS.newLDClient _logdeviceConfigPath)
-      run _serverPort $ serve api $ apiServer ldClient (Just zk) config
+app config@ServerConfig{..} = do
+  let clientConfig = ClientConfig { clientServerHost = Host _hstreamHost
+                            , clientServerPort = Port _hstreamPort
+                            , clientArgs = []
+                            , clientSSLConfig = Nothing
+                            , clientAuthority = Nothing
+                            }
+  withGRPCClient clientConfig $
+    \hClient -> ZK.withResource (HSP.defaultHandle (_zkHost <> ":" <> _zkPort)) $
+      \zk -> do
+        initZooKeeper zk
+        ldClient <- liftIO (HS.newLDClient _logdeviceConfigPath)
+        run _serverPort $ serve api $ apiServer ldClient (Just zk) hClient config
 
 main :: IO ()
 main = do
