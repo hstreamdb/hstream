@@ -1,0 +1,28 @@
+name: Publish builder
+
+on:
+  push:
+    branches: [master, main]
+
+env:
+  DEPS_IMAGE_NAME: "hstreamdb/hstream-builder"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
+
+      - name: build
+        run: |
+          docker build . -f Dockerfile.deps -t ${DEPS_IMAGE_NAME}:latest
+
+      - name: push
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" -a -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            docker push ${DEPS_IMAGE_NAME}:latest
+          else
+            echo "Empty dockerhub user info..."
+          fi
