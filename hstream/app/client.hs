@@ -136,24 +136,27 @@ Command
 
 SQL STATEMENTS:
   To create a simplest stream:
-    CREATE STREAM stream_name ;
+    CREATE STREAM stream_name;
 
   To create a query select all fields from a stream:
-    SELECT * FROM stream_name EMIT CHANGES ;
+    SELECT * FROM stream_name EMIT CHANGES;
 
   To insert values to a stream:
-    INSERT INTO stream_name (field1, field2) VALUES (1, 2) ;
+    INSERT INTO stream_name (field1, field2) VALUES (1, 2);
+
   |]
 
 helpInfos :: M.Map String String
 helpInfos = M.fromList [
   ("CREATE",[r|
   CREATE STREAM <stream_name> [AS <select_query>] [ WITH ( {stream_options} ) ];
-  CREATE {SOURCE|SINK} CONNECTOR <stream_name> [IF NOT EXIST WITH] ( {connector_options} ) ;
+  CREATE {SOURCE|SINK} CONNECTOR <stream_name> [IF NOT EXIST] WITH ( {connector_options} ) ;
   CREATE VIEW <stream_name> AS <select_query> ;
   |]),
   ("INSERT",[r|
   INSERT INTO <stream_name> ( {field_name} ) VALUES ( {field_value} );
+  INSERT INTO <stream_name> VALUES '<json_value>';
+  INSERT INTO <stream_name> VALUES "<binary_value>";
   |]),
   ("SELECT", [r|
   SELECT <* | {expression [ AS field_alias ]}>
@@ -163,16 +166,16 @@ helpInfos = M.fromList [
          ON stream_name_1.field_1 = stream_name_2.field_2 ]
   [ WHERE search_condition ]
   [ GROUP BY field_name [, window_type] ]
-  EMIT CHANGES ;
+  EMIT CHANGES;
   |]),
   ("SHOW", [r|
-  SHOW <CONNECTORS|QUERIES|VIEWS>
+  SHOW <CONNECTORS|QUERIES|VIEWS>;
   |]),
   ("TERMINATE", [r|
-  TERMINATE <QUERY <query_id>|ALL>
+  TERMINATE <QUERY <query_id>|ALL>;
   |]),
   ("DROP", [r|
-  DROP <STREAM [IF EXISTS] <stream_name>|VIEW [IF EXISTS] <view_name>>
+  DROP <STREAM <stream_name>|VIEW <view_name>> [IF EXISTS];
   |])
   ]
 
