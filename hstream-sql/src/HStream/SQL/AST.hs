@@ -41,6 +41,10 @@ type instance RefinedType SString = BS.ByteString
 instance Refine SString where
   refine (SString t) = encodeUtf8 . Text.init . Text.tail $ t
 
+type instance RefinedType RawColumn = Text
+instance Refine RawColumn where
+  refine (RawColumn t) = Text.init . Text.tail $ t
+
 type RBool = Bool
 type instance RefinedType Boolean = RBool
 instance Refine Boolean where
@@ -123,6 +127,7 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n) -- WARNING: May lose presision
     (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantNum $ refine n)
     (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantString s)
+    (ExprRaw _ s)             -> RExprCol (Text.unpack $ refine s) Nothing (refine s) -- WARNING: Spaces are not trimmed
     (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBool $ refine b)
     (ExprDate _ date)         -> RExprConst (trimSpacesPrint expr) (ConstantDate $ refine date)
     (ExprTime _ time)         -> RExprConst (trimSpacesPrint expr) (ConstantTime $ refine time)

@@ -30,6 +30,7 @@ IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
 token SString '\'' char+ '\'' ;
+token RawColumn '`' (char - ["`"])+ '`' ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
@@ -159,6 +160,7 @@ ExprNum. ValueExpr4 ::= PNDouble  ;
 
 -- Plain String
 ExprString. ValueExpr4 ::= String ;
+ExprRaw.    ValueExpr4 ::= RawColumn ;
 
 -- Boolean Type
 BoolTrue.  Boolean ::= "TRUE"  ;

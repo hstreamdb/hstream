@@ -43,6 +43,9 @@ instance Validate PNDouble where
 instance Validate SString where
   validate = return
 
+instance Validate RawColumn where
+  validate = return
+
 instance Validate Boolean where
   validate e@(BoolTrue  _) = return e
   validate e@(BoolFalse _) = return e
@@ -138,6 +141,7 @@ instance Validate ValueExpr where
   validate expr@ExprInt{}    = Right expr
   validate expr@ExprNum{}    = Right expr
   validate expr@ExprString{} = Right expr
+  validate expr@ExprRaw{}    = Right expr
   validate expr@ExprBool{}   = Right expr
   validate expr@(ExprDate _ date) = validate date >> return expr
   validate expr@(ExprTime _ time) = validate time >> return expr
@@ -170,6 +174,7 @@ isNumExpr expr = case expr of
   (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Array"
   (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
+  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
   (ExprSetFunc _ (SetFuncCount _ _))  -> Right expr
   (ExprSetFunc _ (SetFuncAvg _ _))    -> return expr
@@ -198,6 +203,7 @@ isFloatExpr expr = case expr of
   (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Array"
   (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
+  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
   (ExprSetFunc pos (SetFuncCount _ _))  -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
   (ExprSetFunc _ (SetFuncAvg _ _))    -> return expr
@@ -226,6 +232,7 @@ isOrdExpr expr = case expr of
   (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got an Array"
   (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a Map"
   (ExprColName _ _) -> Right expr-- inaccurate
+  (ExprRaw _ _)     -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
   (ExprSetFunc _ (SetFuncCount _ _))  -> Right expr
   (ExprSetFunc _ (SetFuncAvg _ _))    -> return expr
@@ -254,6 +261,7 @@ isBoolExpr expr = case expr of
   (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
+  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSetFunc pos (SetFuncCount _ _))  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSetFunc pos (SetFuncAvg _ _))    -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -284,6 +292,7 @@ isIntExpr expr = case expr of
   (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected an integral expression but got an Array"
   (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
+  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _))    -> Right expr
   (ExprSetFunc _ (SetFuncCount _ _))     -> Right expr
   (ExprSetFunc _ (SetFuncAvg _ e))       -> isIntExpr e >> return expr -- not precise
@@ -312,6 +321,7 @@ isStringExpr expr = case expr of
   (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Array"
   (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
+  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _))    -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
   (ExprSetFunc pos (SetFuncCount _ _))     -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
   (ExprSetFunc pos (SetFuncAvg _ _))       -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
