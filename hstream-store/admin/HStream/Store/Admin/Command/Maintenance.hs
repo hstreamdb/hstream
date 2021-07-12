@@ -8,12 +8,13 @@ import           Data.List                  (group, intercalate, intersect, nub,
                                              sort, union)
 import qualified Data.Map                   as Map
 import           Data.Maybe                 (catMaybes, fromMaybe, mapMaybe)
-import           Data.Set                   (elems)
+import           Data.Set                   (elems, member)
 import           Data.Text                  (Text, pack)
 import qualified Data.Text                  as Text
 import           System.IO.Unsafe           (unsafePerformIO)
 import qualified Text.Layout.Table          as Table
 import           Z.Data.CBytes              (CBytes, unpack)
+import           Z.IO                       (getEnv)
 import           Z.IO.Time                  (SystemTime (MkSystemTime),
                                              formatSystemTime, simpleDateFormat)
 
@@ -22,9 +23,11 @@ import qualified HStream.Store.Admin.API    as AA
 import           HStream.Store.Admin.Format (simpleShowTable)
 import           HStream.Store.Admin.Types
 
+
 runMaintenanceCmd :: HeaderConfig AdminAPI -> MaintenanceOpts -> IO ()
-runMaintenanceCmd conf (MaintenanceListCmd s) = runMaintenanceList conf s
-runMaintenanceCmd conf (MaintenanceShowCmd s) = runMaintenanceShow conf s
+runMaintenanceCmd conf (MaintenanceListCmd s)  = runMaintenanceList conf s
+runMaintenanceCmd conf (MaintenanceShowCmd s)  = runMaintenanceShow conf s
+runMaintenanceCmd conf (MaintenanceApplyCmd s) = runMaintenanceApply conf s
 
 data MaintenanceFilter = MaintenanceFilter
   { mntFilterIndexes    :: [Int]
@@ -152,11 +155,16 @@ runMaintenanceShow conf MaintenanceShowOpts{..} = do
                       , mntFilterInProgress = mntShowInProgress
                       , mntFilterPriority = Nothing
                       }
-  forM_ (mntListFilter $ maintenanceDefinitionResponse_maintenances resp) $ \mnt -> do
+  maintenanceShowMaintenanceDefs conf mntShowExpandShards mntShowSafetyCheckResults
+    . mntListFilter . maintenanceDefinitionResponse_maintenances $ resp
+
+maintenanceShowMaintenanceDefs :: HeaderConfig AdminAPI -> Bool -> Bool -> [MaintenanceDefinition] -> IO ()
+maintenanceShowMaintenanceDefs conf expand safetyCheck defs = do
+  forM_ defs $ \mnt -> do
     putStrLn $ maintenanceShowOverview mnt
     putStrLn "\nShard Maintenances:"
     shardNodesStates <- concat <$> traverse (getNodeState conf) (getShardNodes mnt)
-    if mntShowExpandShards
+    if expand
       then do
       forM_ shardNodesStates $ \node -> do
         putStrLn $ "N" <> show (nodeState_node_index node)
@@ -168,7 +176,7 @@ runMaintenanceShow conf MaintenanceShowOpts{..} = do
     putStrLn "\nSequencer Maintenances:"
     sequencerNodesStates <- concat <$> traverse (getNodeState conf) (maintenanceDefinition_sequencer_nodes mnt)
     putStrLn $ maintenanceShowSequencer sequencerNodesStates
-    when (mntShowSafetyCheckResults
+    when (safetyCheck
           && maintenanceDefinition_progress mnt == MaintenanceProgress_BLOCKED_UNTIL_SAFE) $ do
       putStrLn "\nSafety Check Impact:"
       putStrLn "please run the command check-impact manually"
@@ -280,6 +288,62 @@ maintenanceShowOverview mnt =
                     $ Map.toList (maintenanceDefinition_extras mnt)
       colSpec = Table.column Table.expand Table.left Table.def Table.def
   in Table.gridString [colSpec, colSpec] table
+
+-------------------------------------------------------------------------------
+-- maintenance apply
+
+nodeIDFromIndex :: (Integral a) => a -> NodeID
+nodeIDFromIndex index =  NodeID (Just $ fromIntegral index) Nothing Nothing
+
+nodeIDFromName :: Text -> NodeID
+nodeIDFromName name = NodeID Nothing Nothing (Just name)
+
+isStorage :: NodeState -> Bool
+isStorage ns = Role_STORAGE `member` nodeConfig_roles (nodeState_config ns)
+
+isSequencer :: NodeState -> Bool
+isSequencer ns = Role_SEQUENCER `member` nodeConfig_roles (nodeState_config ns)
+
+runMaintenanceApply :: HeaderConfig AdminAPI -> MaintenanceApplyOpts -> IO ()
+runMaintenanceApply conf MaintenanceApplyOpts{..} = do
+  let nodes = (nodeIDFromIndex <$> mntApplyNodeIndexes) `union` (nodeIDFromName <$> mntApplyNodeNames)
+  let sequencers = (nodeIDFromIndex <$> mntApplySequencerNodeIndexes)
+                   `union` (nodeIDFromName <$> mntApplySequencerNodeNames)
+  nodeStates <- concat <$> traverse (getNodeState conf) nodes
+  let storageNodes = filter isStorage nodeStates
+  let sequencerNodes = filter isSequencer nodeStates
+  user <- if Text.null mntApplyUser
+          -- hardcode a username when the USER env var is not set
+          then maybe "unknown-user" (pack . unpack) <$> getEnv "USER"
+          else pure mntApplyUser
+  let maintenance = MaintenanceDefinition
+        { -- the affected shards include shards specified by user with the option --shards
+          -- and all the shards on the nodes specified by the --node-indexes and --node-names options
+          maintenanceDefinition_shards = mntApplyShards
+            `union` ((`ShardID` aLL_SHARDS) . nodeIDFromIndex . nodeState_node_index <$> storageNodes)
+        , maintenanceDefinition_shard_target_state = mntApplyShardTargetState
+          -- likewise for sequencers
+        , maintenanceDefinition_sequencer_nodes = sequencers
+            `union` (nodeIDFromIndex . nodeState_node_index <$> sequencerNodes)
+        , maintenanceDefinition_sequencer_target_state = SequencingState_DISABLED
+        , maintenanceDefinition_user = user
+        , maintenanceDefinition_reason = mntApplyReason
+        , maintenanceDefinition_extras = Map.empty
+        , maintenanceDefinition_skip_safety_checks = mntApplySkipSafetyChecks
+        , maintenanceDefinition_force_restore_rebuilding = mntApplyForceRestoreRebuilding
+        , maintenanceDefinition_group = mntApplyGroup
+        , maintenanceDefinition_ttl_seconds = fromIntegral mntApplyTtl
+        , maintenanceDefinition_allow_passive_drains = mntApplyAllowPassiveDrains
+        , maintenanceDefinition_group_id = Nothing
+        , maintenanceDefinition_last_check_impact_result = Nothing
+        , maintenanceDefinition_expires_on = Nothing
+        , maintenanceDefinition_created_on = Nothing
+        , maintenanceDefinition_progress = MaintenanceProgress_UNKNOWN
+        , maintenanceDefinition_priority = Just mntApplyPriority
+        , maintenanceDefinition_skip_capacity_checks = mntApplySkipCapacityChecks
+        }
+  resp <- AA.sendAdminApiRequest conf $ applyMaintenance maintenance
+  maintenanceShowMaintenanceDefs conf False False $ maintenanceDefinitionResponse_maintenances resp
 
 -------------------------------------------------------------------------------
 -- Utils

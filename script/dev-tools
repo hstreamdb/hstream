@@ -253,6 +253,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 -e HOME={HOME} \
                 -e LC_ALL=C.UTF-8 \
                 -e PATH={user_path} \
+                -e USER={CUSERNAME} \
                 -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
                 -v {HOME}/.ghc:{HOME}/.ghc:rw \
                 -v {STACK_HOME}:{HOME}/.stack:rw \
