@@ -22,6 +22,9 @@ jobs:
       - name: push
         run: |
           if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" -a -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "Login dockerhub..."
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
             docker push ${DEPS_IMAGE_NAME}:latest
           else
             echo "Empty dockerhub user info..."
