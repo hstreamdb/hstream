@@ -30,12 +30,12 @@ spec = describe "HStream.RunSQLSpec" $ do
   it "clean streams" $
     ( do
         setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source1 <> " ;"
-        res2 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source2 <> " ;"
-        res3 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source3 <> " ;"
-        res4 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source4 <> " ;"
-        res5 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> sink1 <> " ;"
-        res6 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> sink2 <> " ;"
+        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
+        res2 <- executeCommandQuery $ "DROP STREAM " <> source2 <> " IF EXISTS;"
+        res3 <- executeCommandQuery $ "DROP STREAM " <> source3 <> " IF EXISTS;"
+        res4 <- executeCommandQuery $ "DROP STREAM " <> source4 <> " IF EXISTS;"
+        res5 <- executeCommandQuery $ "DROP STREAM " <> sink1 <> " IF EXISTS;"
+        res6 <- executeCommandQuery $ "DROP STREAM " <> sink2 <> " IF EXISTS;"
         return [res1, res2, res3, res4, res5, res6]
     ) `shouldReturn` L.replicate 6 (Just successResp)
 

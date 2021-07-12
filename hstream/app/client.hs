@@ -143,7 +143,6 @@ SQL STATEMENTS:
 
   To insert values to a stream:
     INSERT INTO stream_name (field1, field2) VALUES (1, 2);
-
   |]
 
 helpInfos :: M.Map String String
@@ -169,7 +168,7 @@ helpInfos = M.fromList [
   EMIT CHANGES;
   |]),
   ("SHOW", [r|
-  SHOW <CONNECTORS|QUERIES|VIEWS>;
+  SHOW <CONNECTORS|STREAMS|QUERIES|VIEWS>;
   |]),
   ("TERMINATE", [r|
   TERMINATE <QUERY <query_id>|ALL>;
