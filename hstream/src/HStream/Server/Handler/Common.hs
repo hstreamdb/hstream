@@ -80,8 +80,8 @@ handlePushQueryCanceled ServerCall{..} handle = do
 
 eitherToResponse :: Either SomeException () -> a -> IO (ServerResponse 'Normal a)
 eitherToResponse (Left err) resp = return $
-  ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
-eitherToResponse (Right _) resp = return $ ServerNormalResponse resp [] StatusOk ""
+  ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+eitherToResponse (Right _) resp = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
 handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
 handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do

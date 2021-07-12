@@ -202,7 +202,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     ShowPlan showObject -> handleShowPlan sc showObject
     TerminatePlan terminationSelection -> do
       handleTerminate sc terminationSelection
-      return (ServerNormalResponse genSuccessQueryResponse [] StatusOk  "")
+      return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk  "")
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
       case HM.lookup rSelectViewFrom hm of
@@ -267,15 +267,15 @@ executePushQueryHandler ServerContext{..}
     _ -> returnRes "inconsistent method called"
 
 returnErrRes :: TL.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
-returnErrRes x = return (ServerNormalResponse (genErrorQueryResponse x) [] StatusUnknown "")
+returnErrRes x = return (ServerNormalResponse  (Just (genErrorQueryResponse x)) [] StatusUnknown "")
 
 returnOkRes :: IO (ServerResponse 'Normal CommandQueryResponse)
-returnOkRes = return (ServerNormalResponse genSuccessQueryResponse [] StatusOk "")
+returnOkRes = return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk "")
 
 returnResultSetRes :: V.Vector Struct -> IO (ServerResponse 'Normal CommandQueryResponse)
 returnResultSetRes v = do
   let resp = genQueryResultResponse v
-  return (ServerNormalResponse resp [] StatusOk "")
+  return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 returnRes :: StatusDetails -> IO (ServerResponse 'ServerStreaming Struct)
 returnRes = return . ServerWriterResponse [] StatusAborted
@@ -319,20 +319,20 @@ handleShowPlan ServerContext{..} showObject =
     SStreams -> mark LowLevelStoreException $ do
       names <- findStreams scLDClient True
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
-      return (ServerNormalResponse resp [] StatusOk "")
+      return (ServerNormalResponse (Just resp) [] StatusOk "")
     SQueries -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
-      return (ServerNormalResponse resp [] StatusOk "")
+      return (ServerNormalResponse (Just resp) [] StatusOk "")
     SConnectors -> do
       connectors <- P.withMaybeZHandle zkHandle P.getConnectors
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
-      return (ServerNormalResponse resp [] StatusOk "")
+      return (ServerNormalResponse (Just resp) [] StatusOk "")
     SViews -> do
       qids <- P.withMaybeZHandle zkHandle P.getQueryIds
       let views = filter P.isViewQuery qids
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWVIEWS" $ cbytesToValue <$> views
-      return (ServerNormalResponse resp [] StatusOk "")
+      return (ServerNormalResponse (Just resp) [] StatusOk "")
 
 handleTerminate :: ServerContext -> TerminationSelection
   -> IO ()
@@ -381,11 +381,11 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   case e' :: Either SomeException AppendCompletion of
     Left err                   -> do
       let resp = AppendResponse appendRequestStreamName V.empty
-      return $ ServerNormalResponse resp [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+      return $ ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
     Right AppendCompletion{..} -> do
       let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
           resp = AppendResponse appendRequestStreamName records
-      return $ ServerNormalResponse resp [] StatusOk ""
+      return $ ServerNormalResponse (Just resp) [] StatusOk ""
   where
     buildHStreamRecord :: Timestamp -> ByteString -> Bytes
     buildHStreamRecord timestamp payload = encodeRecord $
@@ -405,7 +405,7 @@ subscribeHandler :: ServerContext
 subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) = do
   hm <- readIORef subscribedReaders
   case HM.lookup subscriptionSubscriptionId hm of
-    Just _  -> return $ ServerNormalResponse subscription [] StatusInternal "SubscriptionID has been used."
+    Just _  -> return $ ServerNormalResponse Nothing [] StatusInternal "SubscriptionID has been used."
     Nothing -> do
       reader <- newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
         checkpointStoreLogID 5000 1 Nothing 10
@@ -432,7 +432,7 @@ deleteSubscriptionHandler :: ServerContext
 deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata DeleteSubscriptionRequest{..}) = do
   hm <- readIORef subscribedReaders
   case HM.lookup deleteSubscriptionRequestSubscriptionId hm of
-    Nothing                         -> return $ ServerNormalResponse Empty [] StatusOk ""
+    Nothing                         -> return $ ServerNormalResponse (Just Empty) [] StatusOk ""
     Just (reader, Subscription{..}) -> do
       logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict subscriptionStreamName
       res <- try $ ckpReaderStopReading reader logId
@@ -449,12 +449,12 @@ fetchHandler _ (ServerNormalRequest _metadata FetchRequest{..}) = do
   case HM.lookup fetchRequestSubscriptionId hm of
     Nothing          -> do
       let resp = FetchResponse V.empty
-      return (ServerNormalResponse resp [] StatusInternal "SubscriptionId not found.")
+      return (ServerNormalResponse Nothing [] StatusInternal "SubscriptionId not found.")
     Just (reader, _) -> do
       void $ ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
       res <- ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
       resp <- V.imapM fetchResult $ V.fromList res
-      return (ServerNormalResponse (FetchResponse resp) [] StatusOk "")
+      return (ServerNormalResponse (Just (FetchResponse resp)) [] StatusOk "")
   where
     fetchResult :: Int -> DataRecord -> IO ReceivedRecord
     fetchResult index record = do
@@ -468,7 +468,7 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@Comm
   hm <- readIORef subscribedReaders
   case HM.lookup committedOffsetSubscriptionId hm of
     Nothing          -> do
-      return (ServerNormalResponse offset [] StatusInternal "SubscriptionId not found.")
+      return (ServerNormalResponse Nothing [] StatusInternal "SubscriptionId not found.")
     Just (reader, _) -> do
       e' <- try $ commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
       eitherToResponse e' offset
@@ -494,12 +494,12 @@ listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = do
   e' <- try $ findStreams scLDClient True
   case e' :: Either SomeException [StreamName] of
     Left err -> return $
-      ServerNormalResponse (ListStreamsResponse V.empty) [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
+      ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
     Right streams -> do
       res <- V.forM (V.fromList streams) $ \stream -> do
         refactor <- getStreamReplicaFactor scLDClient stream
         return $ Stream (TL.fromStrict . cbytesToText . getStreamName $ stream) (fromIntegral refactor)
-      return $ ServerNormalResponse (ListStreamsResponse res) [] StatusOk ""
+      return $ ServerNormalResponse (Just (ListStreamsResponse res)) [] StatusOk ""
 
 listSubscriptionsHandler
   :: ServerRequest 'Normal Empty ListSubscriptionsResponse
@@ -507,7 +507,7 @@ listSubscriptionsHandler
 listSubscriptionsHandler (ServerNormalRequest _metadata Empty) = do
   hm <- readIORef subscribedReaders
   let resp = ListSubscriptionsResponse $ HM.foldr' (\(_, s) acc -> V.cons s acc) V.empty hm
-  return $ ServerNormalResponse resp [] StatusOk ""
+  return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
 terminateQueryHandler
   :: ServerContext
@@ -516,4 +516,4 @@ terminateQueryHandler
 terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..}) = do
   let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
   handleTerminate sc (OneQuery queryName)
-  return (ServerNormalResponse (TerminateQueryResponse terminateQueryRequestQueryName) [] StatusOk  "")
+  return (ServerNormalResponse (Just (TerminateQueryResponse terminateQueryRequestQueryName)) [] StatusOk  "")
