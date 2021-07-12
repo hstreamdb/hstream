@@ -115,7 +115,7 @@ streamCodegen input = do
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
     RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
       tName <- genTaskName
-      (builder, source, sink, Just mat) <- genStreamBuilderWithStream tName (Just view) select
+      (builder, source, sink, Just mat) <- genStreamBuilderWithStream tName (Just ("__" <> view)) select
       let schema = case sel of
             RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
             RSelList fields -> map snd fields

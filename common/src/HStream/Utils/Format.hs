@@ -31,12 +31,10 @@ formatResult width (P.Struct kv) =
     [("SHOWSTREAMS", Just v)] -> emptyNotice . unlines .  words . formatValue $ v
     [("SHOWVIEWS",   Just v)] -> emptyNotice . unlines .  words . formatValue $ v
     [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
-    [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
-      renderTableResult xs
-    [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] ->
-      renderTableResult xs
+    [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
+    [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] -> renderTableResult xs
+    [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] -> renderTableResult xs
     [("Error Message:", Just v)] -> "Error Message: " ++  formatValue v ++ "\n"
-    [("SELECTVIEW",  Just x)] -> unwords (lines $ formatValue x) <> "\n"
     x -> show x
   where
     renderTableResult = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
