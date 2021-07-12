@@ -11,10 +11,10 @@ thrift::
 	(cd hstream-store/admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
 grpc:: grpc-deps
-	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/struct.proto --out ../gen-src)
-	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/timestamp.proto --out ../gen-src)
-	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/empty.proto --out ../gen-src)
-	 (cd hstream/common/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamApi.proto --out ../gen-src)
+	 (cd common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/struct.proto --out ../gen-src)
+	 (cd common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/timestamp.proto --out ../gen-src)
+	 (cd common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/empty.proto --out ../gen-src)
+	 (cd common/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamApi.proto --out ../gen-src)
 
 grpc-deps:
 	(cd ~ && command -v $(PROTO_COMPILE) || cabal install proto3-suite --constraint 'proto3-suite == 0.4.1')
