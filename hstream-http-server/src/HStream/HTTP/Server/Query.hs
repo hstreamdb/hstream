@@ -69,8 +69,8 @@ createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
       putStrLn $ "Client Error: " <> show clientError
       return $ QueryBO qid Nothing Nothing queryText
 
-fetchQueryHandler :: Client -> Handler [QueryBO]
-fetchQueryHandler hClient = liftIO $ do
+listQueriesHandler :: Client -> Handler [QueryBO]
+listQueriesHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
   let fetchQueryRequest = FetchQueryRequest {}
   resp <- hstreamApiFetchQuery (ClientNormalRequest fetchQueryRequest 100 (MetadataMap $ Map.empty))
@@ -135,7 +135,7 @@ cancelQueryHandler hClient qid = liftIO $ do
 
 queryServer :: Client -> Server QueriesAPI
 queryServer hClient =
-  (fetchQueryHandler hClient)
+  (listQueriesHandler hClient)
   :<|> (restartQueryHandler hClient)
   :<|> (cancelQueryHandler hClient)
   :<|> (createQueryHandler hClient)

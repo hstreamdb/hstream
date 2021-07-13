@@ -11,17 +11,16 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                     (Enumerated (..))
 import           Test.Hspec
 
 import           HStream.Common
 import           HStream.Server.HStreamApi
 import           HStream.Store.Logger
 
-getQueryResponseIdIs :: TL.Text -> GetQueryResponse -> Bool
-getQueryResponseIdIs targetId (GetQueryResponse queryId _ _ _ _) = queryId == targetId
+getQueryResponseIdIs :: TL.Text -> Query -> Bool
+getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
 
-createQuery :: TL.Text -> TL.Text -> IO (Maybe CreateQueryResponse)
+createQuery :: TL.Text -> TL.Text -> IO (Maybe Query)
 createQuery qid sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let createQueryRequest = CreateQueryRequest { createQueryRequestId = qid
@@ -29,70 +28,74 @@ createQuery qid sql = withGRPCClient clientConfig $ \client -> do
                                               }
   resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@CreateQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse x@Query{} _meta1 _meta2 StatusOk _details -> return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ "Create Query Client Error: " <> show clientError
       return Nothing
+    _ -> return Nothing
 
-successCreateQueryResp :: CreateQueryResponse
-successCreateQueryResp = CreateQueryResponse
-  { createQueryResponseSuccess = True
-  }
 
-fetchQuery :: IO (Maybe FetchQueryResponse)
-fetchQuery = withGRPCClient clientConfig $ \client -> do
+listQueries :: IO (Maybe ListQueriesResponse)
+listQueries = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let fetchQueryRequest = FetchQueryRequest {}
-  resp <- hstreamApiFetchQuery (ClientNormalRequest fetchQueryRequest 100 (MetadataMap Map.empty))
+  let listQueryRequesies = ListQueriesRequest {}
+  resp <- hstreamApiListQueries (ClientNormalRequest listQueryRequesies 100 (MetadataMap $ Map.empty))
   case resp of
-    ClientNormalResponse x@FetchQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse x@ListQueriesResponse{} _meta1 _meta2 StatusOk _details -> do
+      return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ "List Queries Client Error: " <> show clientError
       return Nothing
+    _ -> return Nothing
 
-getQuery :: TL.Text -> IO (Maybe GetQueryResponse)
+getQuery :: TL.Text -> IO (Maybe Query)
 getQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let getQueryRequest = GetQueryRequest { getQueryRequestId = qid }
   resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@GetQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse x@Query{} _meta1 _meta2 StatusOk _details -> do
+      return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ "Get Query Client Error: " <> show clientError
       return Nothing
+    _ -> return Nothing
 
-deleteQuery :: TL.Text -> IO (Maybe DeleteQueryResponse)
+deleteQuery :: TL.Text -> IO Bool
 deleteQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let deleteQueryRequest = DeleteQueryRequest { deleteQueryRequestId = qid }
   resp <- hstreamApiDeleteQuery (ClientNormalRequest deleteQueryRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@DeleteQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+      putStrLn $ "Delete Query Client Error: " <> show clientError
+      return False
+    _ -> return False
 
-cancelQuery :: TL.Text -> IO (Maybe CancelQueryResponse)
+cancelQuery :: TL.Text -> IO Bool
 cancelQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let cancelQueryRequest = CancelQueryRequest { cancelQueryRequestId = qid }
   resp <- hstreamApiCancelQuery (ClientNormalRequest cancelQueryRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@CancelQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+      putStrLn $ "Cancel Query Client Error: " <> show clientError
+      return False
+    _ -> return False
 
-restartQuery :: TL.Text -> IO (Maybe RestartQueryResponse)
+restartQuery :: TL.Text -> IO Bool
 restartQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let restartQueryRequest = RestartQueryRequest { restartQueryRequestId = qid }
   resp <- hstreamApiRestartQuery (ClientNormalRequest restartQueryRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@RestartQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+      putStrLn $ "Restart Query Client Error: " <> show clientError
+      return False
+    _ -> return False
 
 spec :: Spec
 spec = describe "HStream.RunQuerySpec" $ do
@@ -114,12 +117,15 @@ spec = describe "HStream.RunQuerySpec" $ do
 
   it "create query" $
     ( do
-        createQuery queryname1 ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
-    ) `shouldReturn` Just successCreateQueryResp
+        res <- createQuery queryname1 ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
+        case res of
+          Just _ -> return True
+          _      -> return False
+    ) `shouldReturn` True
 
-  it "fetch queries" $
+  it "list queries" $
     ( do
-        Just FetchQueryResponse {fetchQueryResponseResponses = queries} <- fetchQuery
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
         let record = V.find (getQueryResponseIdIs queryname1) queries
         case record of
           Just _ -> return True
@@ -139,8 +145,8 @@ spec = describe "HStream.RunQuerySpec" $ do
         _ <- cancelQuery queryname1
         query <- getQuery queryname1
         case query of
-          Just (GetQueryResponse _ 2 _ _ _) -> return True
-          _                                 -> return False
+          Just (Query _ 2 _ _ ) -> return True
+          _                     -> return False
     ) `shouldReturn` True
 
   it "restart query" $
@@ -148,8 +154,8 @@ spec = describe "HStream.RunQuerySpec" $ do
         _ <- restartQuery queryname1
         query <- getQuery queryname1
         case query of
-          Just (GetQueryResponse _ 1 _ _ _) -> return True
-          _                                 -> return False
+          Just (Query _ 1 _ _ ) -> return True
+          _                     -> return False
     ) `shouldReturn` True
 
   it "delete query" $
@@ -158,9 +164,9 @@ spec = describe "HStream.RunQuerySpec" $ do
         _ <- deleteQuery queryname1
         query <- getQuery queryname1
         case query of
-          Just (GetQueryResponse _ _ _ _ Enumerated {enumerated = Right HStreamServerErrorNotExistError}) -> return True
-          _ -> return False
-    ) `shouldReturn` True
+          Just (Query _ _ _ _) -> return True
+          _                    -> return False
+    ) `shouldReturn` False
 
   it "clean streams" $
     ( do

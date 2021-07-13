@@ -67,8 +67,8 @@ createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do
       putStrLn $ "Client Error: " <> show clientError
       return $ ConnectorBO Nothing Nothing Nothing sql
 
-listConnectorHandler :: Client -> Handler [ConnectorBO]
-listConnectorHandler hClient = liftIO $ do
+listConnectorsHandler :: Client -> Handler [ConnectorBO]
+listConnectorsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
   let listConnectorRequest = ListConnectorRequest {}
   resp <- hstreamApiListConnector (ClientNormalRequest listConnectorRequest 100 (MetadataMap $ Map.empty))
@@ -133,7 +133,7 @@ cancelConnectorHandler hClient cid = liftIO $ do
 
 connectorServer :: Client -> Server ConnectorsAPI
 connectorServer hClient =
-  listConnectorHandler hClient
+  listConnectorsHandler hClient
   :<|> restartConnectorHandler hClient
   :<|> cancelConnectorHandler hClient
   :<|> createConnectorHandler hClient

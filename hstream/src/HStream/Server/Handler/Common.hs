@@ -86,7 +86,7 @@ eitherToResponse (Left err) resp = return $
   ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
 eitherToResponse (Right _) resp = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
-handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO ()
+handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO (CB.CBytes, Int64)
 handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
     MkSystemTime timestamp _ <- getSystemTime'
     let cid = CB.pack $ T.unpack cName
@@ -103,7 +103,8 @@ handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
     tid <- forkIO $ do
       HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Running)
       forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
-    void (takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid)
+    takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+    return (cid, timestamp)
   where
     writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
 

@@ -63,13 +63,13 @@ import           HStream.Server.Handler.Connector      (cancelConnectorHandler,
                                                         createSinkConnectorHandler,
                                                         deleteConnectorHandler,
                                                         getConnectorHandler,
-                                                        listConnectorHandler,
+                                                        listConnectorsHandler,
                                                         restartConnectorHandler)
 import           HStream.Server.Handler.Query          (cancelQueryHandler,
                                                         createQueryHandler,
                                                         deleteQueryHandler,
-                                                        fetchQueryHandler,
                                                         getQueryHandler,
+                                                        listQueriesHandler,
                                                         restartQueryHandler)
 import           HStream.Server.Handler.View           (createViewHandler,
                                                         deleteViewHandler,
@@ -122,17 +122,17 @@ handlers ldclient repFactor zkHandle compression = do
 
     , hstreamApiCreateQuery      = createQueryHandler serverContext
     , hstreamApiGetQuery         = getQueryHandler serverContext
-    , hstreamApiFetchQuery       = fetchQueryHandler serverContext
+    , hstreamApiListQueries      = listQueriesHandler serverContext
     , hstreamApiDeleteQuery      = deleteQueryHandler serverContext
     , hstreamApiCancelQuery      = cancelQueryHandler serverContext
     , hstreamApiRestartQuery     = restartQueryHandler serverContext
 
     , hstreamApiCreateSinkConnector  = createSinkConnectorHandler serverContext
-    , hstreamApiGetConnector     = getConnectorHandler serverContext
-    , hstreamApiListConnector    = listConnectorHandler serverContext
-    , hstreamApiDeleteConnector  = deleteConnectorHandler serverContext
-    , hstreamApiCancelConnector  = cancelConnectorHandler serverContext
-    , hstreamApiRestartConnector = restartConnectorHandler serverContext
+    , hstreamApiGetConnector         = getConnectorHandler serverContext
+    , hstreamApiListConnectors       = listConnectorsHandler serverContext
+    , hstreamApiDeleteConnector      = deleteConnectorHandler serverContext
+    , hstreamApiCancelConnector      = cancelConnectorHandler serverContext
+    , hstreamApiRestartConnector     = restartConnectorHandler serverContext
 
     , hstreamApiCreateView       = createViewHandler serverContext
     , hstreamApiGetView          = getViewHandler serverContext
