@@ -93,5 +93,5 @@ deleteViewHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) = do
   catch
-    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse (Just Empty) [] StatusOk "Failed"))
+    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
     (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))
