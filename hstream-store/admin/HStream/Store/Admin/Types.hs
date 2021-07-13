@@ -577,6 +577,7 @@ checkImpactOptsParser = CheckImpactOpts
 
 data MaintenanceOpts
   = MaintenanceListCmd MaintenanceListOpts
+  | MaintenanceShowCmd MaintenanceShowOpts
   deriving (Show)
 
 data MaintenanceListOpts = MaintenanceListOpts
@@ -588,6 +589,18 @@ data MaintenanceListOpts = MaintenanceListOpts
   , mntListCompleted   :: Bool
   , mntListInProgress  :: Bool
   , mntListPriority    :: Maybe AA.MaintenancePriority
+  } deriving (Show)
+
+data MaintenanceShowOpts = MaintenanceShowOpts
+  { mntShowIds                :: [Text]
+  , mntShowUsers              :: Maybe Text
+  , mntShowNodeIndexes        :: [Int]
+  , mntShowNodeNames          :: [Text]
+  , mntShowBlocked            :: Bool
+  , mntShowCompleted          :: Bool
+  , mntShowInProgress         :: Bool
+  , mntShowExpandShards       :: Bool
+  , mntShowSafetyCheckResults :: Bool
   } deriving (Show)
 
 instance Read AA.MaintenancePriority where
@@ -602,8 +615,10 @@ instance Read AA.MaintenancePriority where
 
 maintenanceOptsParser :: Parser MaintenanceOpts
 maintenanceOptsParser = hsubparser $
-  command "list" (info (MaintenanceListCmd <$> maintenanceListOptsParser)
-                 (progDesc "Prints compact list of maintenances applied to the cluster"))
+    command "list" (info (MaintenanceListCmd <$> maintenanceListOptsParser)
+                    (progDesc "Prints compact list of maintenances applied to the cluster"))
+ <> command "show" (info (MaintenanceShowCmd <$> maintenanceShowOptsParser)
+                    (progDesc "Shows maintenances in expanded format with more information"))
 
 maintenanceListOptsParser :: Parser MaintenanceListOpts
 maintenanceListOptsParser = MaintenanceListOpts
@@ -628,3 +643,28 @@ maintenanceListOptsParser = MaintenanceListOpts
   <*> optional (option auto ( long "priority"
                            <> metavar "[imminent|high|medium|low]"
                            <> help "Show only maintenances with a given priority"))
+
+maintenanceShowOptsParser :: Parser MaintenanceShowOpts
+maintenanceShowOptsParser = MaintenanceShowOpts
+  <$> many (strOption ( long "ids"
+                     <> metavar "STRING"
+                     <> help "List only maintenances with specified Maintenance Group IDs"))
+  <*> optional (strOption ( long "users"
+                         <> metavar "STRING"
+                         <> help "List only maintenances created by specified user"))
+  <*> many (option auto ( long "node-indexes"
+                       <> metavar "INT"
+                       <> help "List only maintenances affecting specified nodes"))
+  <*> many (strOption ( long "node-names"
+                     <> metavar "STRING"
+                     <> help "List only maintenances affecting specified nodes"))
+  <*> switch ( long "blocked"
+            <> help "List only maintenances which are blocked due to some reason")
+  <*> switch ( long "completed"
+            <> help "List only maintenances which are finished")
+  <*> switch ( long "in-progress"
+            <> help "List only maintenances which are in progress (including blocked)")
+  <*> switch ( long "expand-shards"
+            <> help "Show also per-shard information")
+  <*> switch ( long "show-safety-check-results"
+            <> help "Show the entire output (includes all logs) of the impact check")
