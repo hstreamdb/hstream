@@ -678,7 +678,7 @@ maintenanceMarkDataUnrecoverableOptsParser = MaintenanceMarkDataUnrecoverableOpt
   <$> optional (strOption ( long "log-user"
                          <> metavar "STRING"
                          <> help "The user doing the removal operation, this is used for maintenance auditing and logging"))
-  <*> strOption ( long "reason"
+  <*> strOption ( long "log-reason"
                <> metavar "STRING"
                <> help "The reason of removing the maintenance")
 
@@ -688,7 +688,7 @@ versionParser =
              <> value 0
              <> showDefault
              <> help ("The minimum version that you would like "
-                      <> "to ensure that the snapshot has, 0 means any version"))
+                   <> "to ensure that the snapshot has, 0 means any version"))
 
 maintenanceRemoveOptsParser :: Parser MaintenanceRemoveOpts
 maintenanceRemoveOptsParser = MaintenanceRemoveOpts
