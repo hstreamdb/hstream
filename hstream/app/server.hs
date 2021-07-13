@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Exception
+import           Data.Int                         (Int64)
 import qualified Data.Map.Strict                  as Map
 import           Network.GRPC.HighLevel.Generated
 import           Options.Applicative
@@ -28,14 +29,15 @@ import qualified HStream.Store.Logger             as Log
 -- 2. log options
 
 data ServerOpts = ServerOpts
-  { _serverHost     :: CBytes
-  , _serverPort     :: PortNumber
-  , _persistent     :: Bool
-  , _zkUri          :: CBytes
-  , _ldConfigPath   :: CBytes
-  , _topicRepFactor :: Int
-  , _ckpRepFactor   :: Int
-  , _compression    :: Compression
+  { _serverHost       :: CBytes
+  , _serverPort       :: PortNumber
+  , _persistent       :: Bool
+  , _zkUri            :: CBytes
+  , _ldConfigPath     :: CBytes
+  , _topicRepFactor   :: Int
+  , _ckpRepFactor     :: Int
+  , _heartbeatTimeout :: Int64
+  , _compression      :: Compression
   } deriving (Show)
 
 parseConfig :: Parser ServerOpts
@@ -73,6 +75,10 @@ parseConfig =
                    <> showDefault <> value 1
                    <> help "checkpoint replicate factor"
                     )
+    <*> option auto ( long "timeout" <> metavar "INT"
+                   <> showDefault <> value 1000
+                   <> help "the timer timeout in milliseconds"
+                    )
     <*> option auto ( long "compression" <> metavar "none|lz4|lz4hc"
                    <> showDefault <> value CompressionLZ4
                    <> help "Specify the compression policy for gdevice"
@@ -95,7 +101,7 @@ serve ServerOpts{..} ldclient zk = do
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
-  api <- handlers ldclient _topicRepFactor zk _compression
+  api <- handlers ldclient _topicRepFactor zk _heartbeatTimeout _compression
   Log.i "Server started."
   hstreamApiServer api options
 

@@ -66,6 +66,9 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
+    , stm
+    , timers
+    , suspend
 
   default-language: Haskell2010
   ghc-options:
@@ -93,6 +96,9 @@ executable hstream-server
     , Z-Data
     , Z-IO
     , zoovisitor
+    , stm
+    , timers
+    , suspend
 
   default-language: Haskell2010
   ghc-options:

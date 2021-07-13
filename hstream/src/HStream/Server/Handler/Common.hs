@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -9,6 +10,9 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent               (MVar, ThreadId, forkIO,
                                                    killThread, putMVar,
                                                    readMVar, swapMVar, takeMVar)
+import           Control.Concurrent.STM           (STM, TVar, atomically,
+                                                   modifyTVar', readTVar,
+                                                   writeTVar)
 import           Control.Exception                (Exception, SomeException,
                                                    displayException, handle,
                                                    throwIO)
@@ -17,6 +21,7 @@ import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
+import qualified Data.Map.Strict                  as MP
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Database.MySQL.Base              as MySQL
@@ -42,6 +47,7 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
+import           HStream.Server.HStreamApi        (Subscription)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (textToCBytes)
@@ -49,12 +55,39 @@ import           HStream.Utils                    (textToCBytes)
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
 
+data ReaderStatus = Released | Occupyied deriving (Show)
+
+-- | SubscribedReaders is an map, Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
+type SubscribedReaders = TVar (HM.HashMap TL.Text ReaderMap)
+data ReaderMap = None | ReaderMap HS.LDSyncCkpReader Subscription ReaderStatus deriving (Show)
+
+getReaderStatus :: SubscribedReaders -> TL.Text -> STM (Maybe ReaderStatus)
+getReaderStatus readers subscriptionId = do
+  mp <- readTVar readers
+  case HM.lookup subscriptionId mp of
+    Nothing                -> return Nothing
+    Just None              -> return Nothing
+    Just (ReaderMap _ _ s) -> return $ Just s
+
+updateReaderStatus :: SubscribedReaders -> ReaderStatus -> TL.Text -> STM ()
+updateReaderStatus readers status subscriptionId  = do
+  hm <- readTVar readers
+  case HM.lookup subscriptionId hm of
+    Just (ReaderMap rd sId _) -> do
+      let newMap = HM.insert subscriptionId (ReaderMap rd sId status) hm
+      writeTVar readers newMap
+    _ -> return ()
+
+type Timestamp = Int64
+
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
+  , subscribedReaders        :: SubscribedReaders
+  , subscribeHeap            :: TVar (MP.Map TL.Text Timestamp)
   , cmpStrategy              :: HS.Compression
 }
 
@@ -82,7 +115,7 @@ handlePushQueryCanceled ServerCall{..} handle = do
     _ -> putStrLn "impossible happened"
 
 eitherToResponse :: Either SomeException () -> a -> IO (ServerResponse 'Normal a)
-eitherToResponse (Left err) resp = return $
+eitherToResponse (Left err) _ = return $
   ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
 eitherToResponse (Right _) resp = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
@@ -130,3 +163,53 @@ handleTerminateConnector ServerContext{..} cid = do
     _        -> return ()
   -- TODO: shall we move this op to Just tid -> killThread tid
   void $ HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
+
+lookupSubscribedReaders :: SubscribedReaders -> TL.Text -> IO (Maybe (HS.LDSyncCkpReader, Subscription))
+lookupSubscribedReaders readers subscriptionId = atomically $ do
+  hm <- readTVar readers
+  case HM.lookup subscriptionId hm of
+    Just None                            -> return Nothing
+    Just (ReaderMap reader subscription _) -> return $ Just (reader, subscription)
+    Nothing                              -> return Nothing
+
+-- | Modify the SubscribedReaders strictly. If key exist in map, return false, otherwise insert the key value pair
+insertSubscribedReaders :: SubscribedReaders -> TL.Text -> ReaderMap -> IO Bool
+insertSubscribedReaders readers subscriptionId readerMap = atomically $ do
+  hm <- readTVar readers
+  case HM.lookup subscriptionId hm of
+    Just _ -> return False
+    Nothing -> do
+      let newMap = HM.insert subscriptionId readerMap hm
+      writeTVar readers newMap
+      return True
+
+-- | Update the subscribedReaders. If key is existed in map, the old value will be replaced by new value
+updateSubscribedReaders :: SubscribedReaders -> TL.Text -> ReaderMap -> STM ()
+updateSubscribedReaders readers subscriptionId readerMap = do
+  modifyTVar' readers $ \hm -> HM.insert subscriptionId readerMap hm
+
+deleteSubscribedReaders :: SubscribedReaders -> TL.Text -> STM ()
+deleteSubscribedReaders readers subscriptionId = do
+  modifyTVar' readers $ \hm -> HM.delete subscriptionId hm
+
+-- | The strick version of deleteSubscribedReaders, if the key doesn't exist, return error
+deleteSubscribedReaders' :: SubscribedReaders -> TL.Text -> IO (Either String ())
+deleteSubscribedReaders' readers subscriptionId = atomically $ do
+  hm <- readTVar readers
+  case HM.lookup subscriptionId hm of
+    Just _ -> do
+      let newMap = HM.delete subscriptionId hm
+      writeTVar readers newMap
+      return $ Right ()
+    Nothing -> return $ Left "cann't find subscriptionId."
+
+subscribedReadersToMap :: SubscribedReaders -> IO (HM.HashMap TL.Text (HS.LDSyncCkpReader, Subscription))
+subscribedReadersToMap readers = atomically $ do
+  hm <- readTVar readers
+  if HM.null hm
+  then return HM.empty
+  else return $
+    HM.mapMaybe (\case None                   -> Nothing
+                       ReaderMap reader sId _ -> Just (reader, sId)
+                ) hm
+
