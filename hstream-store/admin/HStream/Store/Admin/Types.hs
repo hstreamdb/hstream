@@ -579,6 +579,7 @@ data MaintenanceOpts
   = MaintenanceListCmd MaintenanceListOpts
   | MaintenanceShowCmd MaintenanceShowOpts
   | MaintenanceApplyCmd MaintenanceApplyOpts
+  | MaintenanceRemoveCmd MaintenanceRemoveOpts
   deriving (Show)
 
 data MaintenanceListOpts = MaintenanceListOpts
@@ -622,6 +623,20 @@ data MaintenanceApplyOpts = MaintenanceApplyOpts
   , mntApplyPriority               :: AA.MaintenancePriority
   } deriving (Show)
 
+data MaintenanceRemoveOpts = MaintenanceRemoveOpts
+  { mntRemoveReason          :: Text
+  , mntRemoveIds             :: [Text]
+  , mntRemoveUsers           :: Maybe Text
+  , mntRemoveNodeIndexes     :: [Int]
+  , mntRemoveNodeNames       :: [Text]
+  , mntRemoveBlocked         :: Bool
+  , mntRemoveCompleted       :: Bool
+  , mntRemoveInProgress      :: Bool
+  , mntRemoveLogUser         :: Text
+  , mntRemovePriority        :: Maybe AA.MaintenancePriority
+  , mntRemoveIncludeInternal :: Bool
+  } deriving (Show)
+
 instance Read AA.MaintenancePriority where
   readPrec = do
     i <- Read.lexP
@@ -640,6 +655,41 @@ maintenanceOptsParser = hsubparser $
                     (progDesc "Shows maintenances in expanded format with more information"))
  <> command "apply" (info (MaintenanceApplyCmd <$> maintenanceApplyOptsParser)
                      (progDesc "Applies new maintenance to Maintenance Manager"))
+ <> command "remove" (info (MaintenanceRemoveCmd <$> maintenanceRemoveOptsParser)
+                      (progDesc "Removes maintenances specified by filters."))
+
+maintenanceRemoveOptsParser :: Parser MaintenanceRemoveOpts
+maintenanceRemoveOptsParser = MaintenanceRemoveOpts
+  <$> strOption ( long "log-reason"
+               <> metavar "STRING"
+               <> help "The reason of removing the maintenance")
+  <*> many (strOption ( long "ids"
+                     <> metavar "STRING"
+                     <> help "Remove maintenances with specified Maintenance Group IDs"))
+  <*> optional (strOption ( long "user"
+                         <> metavar "STRING"
+                         <> help "Remove maintenances created by specified user"))
+  <*> many (option auto ( long "node-indexes"
+                       <> metavar "INT"
+                       <> help "Remove maintenances to specified nodes"))
+  <*> many (strOption ( long "node-names"
+                     <> metavar "STRING"
+                     <> help "Remove maintenances to specified nodes"))
+  <*> switch ( long "blocked"
+            <> help "Remove maintenances which are blocked due to some reason")
+  <*> switch ( long "completed"
+            <> help "Remove maintenances which are finished")
+  <*> switch ( long "in-progress"
+            <> help "Remove maintenances which are in progress (including blocked)")
+  <*> strOption ( long "log-user"
+               <> metavar "STRING"
+               <> value ""
+               <> help "The user doing the removal operation, this is used for maintenance auditing and logging")
+  <*> optional (option auto ( long "priority"
+                           <> metavar "[imminent|high|medium|low]"
+                           <> help "Remove maintenances with a given priority"))
+  <*> switch ( long "remove-include-internal"
+            <> help "Should we include internal maintenances in our removal request?")
 
 maintenanceApplyOptsParser :: Parser MaintenanceApplyOpts
 maintenanceApplyOptsParser = MaintenanceApplyOpts
