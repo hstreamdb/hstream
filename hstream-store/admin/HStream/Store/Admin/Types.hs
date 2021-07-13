@@ -670,7 +670,7 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
   <*> strOption ( long "user"
                <> value ""
                <> help "User for logging and auditing, by default taken from environment")
-  <*> flag False True ( long "group"
+  <*> flag False True ( long "no-group"
                      <> help "Defines should MaintenanceManager group this maintenance or not")
   <*> switch ( long "skip_safety_checks"
             <> help "If set safety-checks will be skipped")
