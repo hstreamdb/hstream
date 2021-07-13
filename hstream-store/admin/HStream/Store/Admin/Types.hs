@@ -660,7 +660,7 @@ maintenanceOptsParser = hsubparser $
 
 maintenanceRemoveOptsParser :: Parser MaintenanceRemoveOpts
 maintenanceRemoveOptsParser = MaintenanceRemoveOpts
-  <$> strOption ( long "reason"
+  <$> strOption ( long "log-reason"
                <> metavar "STRING"
                <> help "The reason of removing the maintenance")
   <*> many (strOption ( long "ids"
