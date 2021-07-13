@@ -83,7 +83,7 @@ ShowViews. ShowOption ::= "VIEWS" ;
 
 --- Drop Query
 DDrop.  Drop ::= "DROP" DropOption Ident ;
-DropIf. Drop ::= "DROP" DropOption "IF" "EXISTS" Ident ;
+DropIf. Drop ::= "DROP" DropOption Ident "IF" "EXISTS" ;
 
 DropStream. DropOption ::= "STREAM";
 DropView. DropOption ::= "VIEW";

@@ -103,7 +103,7 @@ spec = describe "HStream.RunQuerySpec" $ do
   it "clean streams" $
     ( do
         setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM IF EXISTS " <> source1 <> " ;"
+        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
         return [res1]
     ) `shouldReturn` L.replicate 1 (Just successResp)
 
