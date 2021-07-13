@@ -16,7 +16,6 @@ import           Test.Hspec
 
 import           HStream.Common
 import           HStream.Server.HStreamApi
-import           HStream.Store
 import           HStream.Store.Logger
 
 getQueryResponseIdIs :: TL.Text -> GetQueryResponse -> Bool
@@ -28,7 +27,7 @@ createQuery qid sql = withGRPCClient clientConfig $ \client -> do
   let createQueryRequest = CreateQueryRequest { createQueryRequestId = qid
                                               , createQueryRequestQueryText = sql
                                               }
-  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@CreateQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -44,7 +43,7 @@ fetchQuery :: IO (Maybe FetchQueryResponse)
 fetchQuery = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let fetchQueryRequest = FetchQueryRequest {}
-  resp <- hstreamApiFetchQuery (ClientNormalRequest fetchQueryRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiFetchQuery (ClientNormalRequest fetchQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@FetchQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -55,7 +54,7 @@ getQuery :: TL.Text -> IO (Maybe GetQueryResponse)
 getQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let getQueryRequest = GetQueryRequest { getQueryRequestId = qid }
-  resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@GetQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -66,7 +65,7 @@ deleteQuery :: TL.Text -> IO (Maybe DeleteQueryResponse)
 deleteQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let deleteQueryRequest = DeleteQueryRequest { deleteQueryRequestId = qid }
-  resp <- hstreamApiDeleteQuery (ClientNormalRequest deleteQueryRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiDeleteQuery (ClientNormalRequest deleteQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@DeleteQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -77,7 +76,7 @@ cancelQuery :: TL.Text -> IO (Maybe CancelQueryResponse)
 cancelQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let cancelQueryRequest = CancelQueryRequest { cancelQueryRequestId = qid }
-  resp <- hstreamApiCancelQuery (ClientNormalRequest cancelQueryRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiCancelQuery (ClientNormalRequest cancelQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@CancelQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -88,7 +87,7 @@ restartQuery :: TL.Text -> IO (Maybe RestartQueryResponse)
 restartQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let restartQueryRequest = RestartQueryRequest { restartQueryRequestId = qid }
-  resp <- hstreamApiRestartQuery (ClientNormalRequest restartQueryRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiRestartQuery (ClientNormalRequest restartQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@RestartQueryResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -162,3 +161,10 @@ spec = describe "HStream.RunQuerySpec" $ do
           Just (GetQueryResponse _ _ _ _ Enumerated {enumerated = Right HStreamServerErrorNotExistError}) -> return True
           _ -> return False
     ) `shouldReturn` True
+
+  it "clean streams" $
+    ( do
+        setLogDeviceDbgLevel C_DBG_ERROR
+        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
+        return [res1]
+    ) `shouldReturn` L.replicate 1 (Just successResp)

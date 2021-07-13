@@ -382,7 +382,6 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   e' <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
   case e' :: Either SomeException AppendCompletion of
     Left err                   -> do
-      let resp = AppendResponse appendRequestStreamName V.empty
       return $ ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
     Right AppendCompletion{..} -> do
       let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
@@ -409,15 +408,9 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
   case HM.lookup subscriptionSubscriptionId hm of
     Just _  -> return $ ServerNormalResponse Nothing [] StatusInternal "SubscriptionID has been used."
     Nothing -> do
-      reader <- newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
-        checkpointStoreLogID 5000 1 Nothing 10
-      logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict subscriptionStreamName
-      startLSN <- getStartLSN (fromJust subscriptionOffset) scLDClient logId
-      res <- try $ ckpReaderStartReading reader logId startLSN LSN_MAX
-      when (isRight res) $ do
-        atomicModifyIORef' subscribedReaders
-          (\mp -> (HM.insert subscriptionSubscriptionId (reader, subscription) mp, ()))
-      eitherToResponse res subscription
+      e' <- checkExist scLDClient subscriptionStreamName
+      either (return . ServerNormalResponse Nothing [] StatusInternal)
+        (doSubscribe scLDClient subscription) e'
   where
     getStartLSN :: SubscriptionOffset -> LDClient -> C_LogID -> IO LSN
     getStartLSN SubscriptionOffset{..} client logId = case fromJust subscriptionOffsetOffset of
@@ -428,20 +421,48 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
           Enumerated _                                               -> error "Wrong SpecialOffset!"
       SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
 
+    checkExist :: LDClient -> TL.Text -> IO (Either StatusDetails StreamName)
+    checkExist client name = do
+      let streamName = transToStreamName $ TL.toStrict name
+      isExist <- doesStreamExists client streamName
+      if isExist
+      then return $ Right streamName
+      else return $ Left "Stream doesn't exist"
+
+    doSubscribe :: LDClient -> Subscription -> StreamName -> IO (ServerResponse 'Normal Subscription)
+    doSubscribe client subscription@Subscription{..} streamName = do
+      reader <- newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
+        checkpointStoreLogID 5000 1 Nothing 10
+      logId <- getCLogIDByStreamName client streamName
+      startLSN <- getStartLSN (fromJust subscriptionOffset) client logId
+      res <- try $ ckpReaderStartReading reader logId startLSN LSN_MAX
+      when (isRight res) $ do
+        atomicModifyIORef' subscribedReaders
+          (\mp -> (HM.insert subscriptionSubscriptionId (reader, subscription) mp, ()))
+      eitherToResponse res subscription
+
 deleteSubscriptionHandler :: ServerContext
-                   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
-                   -> IO (ServerResponse 'Normal Empty)
+                          -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
+                          -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata DeleteSubscriptionRequest{..}) = do
   hm <- readIORef subscribedReaders
   case HM.lookup deleteSubscriptionRequestSubscriptionId hm of
     Nothing                         -> return $ ServerNormalResponse (Just Empty) [] StatusOk ""
     Just (reader, Subscription{..}) -> do
-      logId <- getCLogIDByStreamName scLDClient $ transToStreamName $ TL.toStrict subscriptionStreamName
-      res <- try $ ckpReaderStopReading reader logId
-      when (isRight res) $ do
-        atomicModifyIORef' subscribedReaders
-          (\mp -> (HM.delete subscriptionSubscriptionId mp, ()))
-      eitherToResponse res Empty
+      let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
+      logId <- getCLogIDByStreamName scLDClient streamName
+      isExist <- doesStreamExists scLDClient streamName
+      if isExist
+         then do
+          res <- try $ ckpReaderStopReading reader logId
+          when (isRight res) $ do
+            atomicModifyIORef' subscribedReaders
+              (\mp -> (HM.delete subscriptionSubscriptionId mp, ()))
+          eitherToResponse res Empty
+         else do
+          atomicModifyIORef' subscribedReaders
+            (\mp -> (HM.delete subscriptionSubscriptionId mp, ()))
+          return $ ServerNormalResponse Nothing [] StatusInternal "Stream doesn't exist"
 
 fetchHandler :: ServerContext
              -> ServerRequest 'Normal FetchRequest FetchResponse
@@ -450,18 +471,22 @@ fetchHandler _ (ServerNormalRequest _metadata FetchRequest{..}) = do
   hm <- readIORef subscribedReaders
   case HM.lookup fetchRequestSubscriptionId hm of
     Nothing          -> do
-      let resp = FetchResponse V.empty
       return (ServerNormalResponse Nothing [] StatusInternal "SubscriptionId not found.")
     Just (reader, _) -> do
       void $ ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
       res <- ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
-      resp <- V.imapM fetchResult $ V.fromList res
+      let resp = fetchResult res
       return (ServerNormalResponse (Just (FetchResponse resp)) [] StatusOk "")
   where
-    fetchResult :: Int -> DataRecord -> IO ReceivedRecord
-    fetchResult index record = do
+    fetchResult :: [DataRecord] -> V.Vector ReceivedRecord
+    fetchResult records =
+      let groups = L.groupBy (\x y -> recordLSN x == recordLSN y) records
+      in V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
+
+    mkReceivedRecord :: Int -> DataRecord -> ReceivedRecord
+    mkReceivedRecord index record =
       let recordId = RecordId (recordLSN record) (fromIntegral index)
-      return $ ReceivedRecord (Just recordId) (toByteString . recordPayload $ record)
+      in ReceivedRecord (Just recordId) (toByteString . recordPayload $ record)
 
 commitOffsetHandler :: ServerContext
                     -> ServerRequest 'Normal CommittedOffset CommittedOffset
@@ -480,18 +505,22 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@Comm
       logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
       writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
-deleteStreamsHandler
-  :: ServerContext
-  -> ServerRequest 'Normal DeleteStreamRequest Empty
-  -> IO (ServerResponse 'Normal Empty)
+deleteStreamsHandler :: ServerContext
+                     -> ServerRequest 'Normal DeleteStreamRequest Empty
+                     -> IO (ServerResponse 'Normal Empty)
 deleteStreamsHandler ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = do
-  e' <- try $ removeStream scLDClient (transToStreamName $ TL.toStrict deleteStreamRequestStreamName)
-  eitherToResponse e' Empty
+  let streamName = transToStreamName $ TL.toStrict deleteStreamRequestStreamName
+  isExist <- doesStreamExists scLDClient streamName
+  if isExist
+  then do
+    e' <- try $ removeStream scLDClient streamName
+    putStrLn $ "the result of removeStream: " <> show e'
+    eitherToResponse e' Empty
+  else return $ ServerNormalResponse Nothing [] StatusInternal "Stream doesn't exist"
 
-listStreamsHandler
-  :: ServerContext
-  -> ServerRequest 'Normal Empty ListStreamsResponse
-  -> IO (ServerResponse 'Normal ListStreamsResponse)
+listStreamsHandler :: ServerContext
+                   -> ServerRequest 'Normal Empty ListStreamsResponse
+                   -> IO (ServerResponse 'Normal ListStreamsResponse)
 listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = do
   e' <- try $ findStreams scLDClient True
   case e' :: Either SomeException [StreamName] of
@@ -503,18 +532,16 @@ listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = do
         return $ Stream (TL.fromStrict . cbytesToText . getStreamName $ stream) (fromIntegral refactor)
       return $ ServerNormalResponse (Just (ListStreamsResponse res)) [] StatusOk ""
 
-listSubscriptionsHandler
-  :: ServerRequest 'Normal Empty ListSubscriptionsResponse
-  -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
+listSubscriptionsHandler :: ServerRequest 'Normal Empty ListSubscriptionsResponse
+                         -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsHandler (ServerNormalRequest _metadata Empty) = do
   hm <- readIORef subscribedReaders
   let resp = ListSubscriptionsResponse $ HM.foldr' (\(_, s) acc -> V.cons s acc) V.empty hm
   return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
-terminateQueryHandler
-  :: ServerContext
-  -> ServerRequest 'Normal TerminateQueryRequest TerminateQueryResponse
-  -> IO (ServerResponse 'Normal TerminateQueryResponse)
+terminateQueryHandler :: ServerContext
+                      -> ServerRequest 'Normal TerminateQueryRequest TerminateQueryResponse
+                      -> IO (ServerResponse 'Normal TerminateQueryResponse)
 terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..}) = do
   let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
   handleTerminate sc (OneQuery queryName)

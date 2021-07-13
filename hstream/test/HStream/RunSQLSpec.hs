@@ -15,7 +15,6 @@ import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
 import           Test.Hspec
 
 import           HStream.Common
-import           HStream.Store
 import           HStream.Store.Logger
 
 spec :: Spec
@@ -118,3 +117,15 @@ spec = describe "HStream.RunSQLSpec" $ do
                          , mkStruct [("result", Aeson.Number 6)]
                          , mkStruct [("result", Aeson.Number 4)]
                          ]
+
+  it "clean streams" $
+    ( do
+        setLogDeviceDbgLevel C_DBG_ERROR
+        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
+        res2 <- executeCommandQuery $ "DROP STREAM " <> source2 <> " IF EXISTS;"
+        res3 <- executeCommandQuery $ "DROP STREAM " <> source3 <> " IF EXISTS;"
+        res4 <- executeCommandQuery $ "DROP STREAM " <> source4 <> " IF EXISTS;"
+        res5 <- executeCommandQuery $ "DROP STREAM " <> sink1 <> " IF EXISTS;"
+        res6 <- executeCommandQuery $ "DROP STREAM " <> sink2 <> " IF EXISTS;"
+        return [res1, res2, res3, res4, res5, res6]
+    ) `shouldReturn` L.replicate 6 (Just successResp)

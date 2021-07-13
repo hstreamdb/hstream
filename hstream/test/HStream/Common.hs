@@ -7,7 +7,10 @@
 module HStream.Common where
 
 import           Control.Concurrent
+import           Control.Monad
 import qualified Data.Aeson                        as Aeson
+import qualified Data.ByteString                   as BS
+import qualified Data.ByteString.Internal          as BS (c2w)
 import qualified Data.ByteString.Lazy.Char8        as DBCL
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef
@@ -39,6 +42,9 @@ clientConfig = ClientConfig { clientServerHost = Host "127.0.0.1"
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
+newRandomByteString :: Int -> IO BS.ByteString
+newRandomByteString n = BS.pack <$> replicateM n (BS.c2w <$> randomRIO ('a', 'z'))
+
 successResp :: CommandQueryResponse
 successResp = CommandQueryResponse
   { commandQueryResponseKind = Just (CommandQueryResponseKindSuccess CommandSuccess)
@@ -52,7 +58,7 @@ executeCommandQuery :: TL.Text
 executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
-  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details ->
       return $ Just x
@@ -96,7 +102,7 @@ terminateQuery :: TL.Text
 terminateQuery queryName = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let terminateQuery' = TerminateQueryRequest{ terminateQueryRequestQueryName = queryName }
-  resp <- hstreamApiTerminateQuery (ClientNormalRequest terminateQuery' 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiTerminateQuery (ClientNormalRequest terminateQuery' 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@TerminateQueryResponse{} _meta1 _meta2 _status _details ->
       return $ Just x
