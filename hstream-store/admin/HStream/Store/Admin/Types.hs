@@ -578,6 +578,7 @@ checkImpactOptsParser = CheckImpactOpts
 data MaintenanceOpts
   = MaintenanceListCmd MaintenanceListOpts
   | MaintenanceShowCmd MaintenanceShowOpts
+  | MaintenanceApplyCmd MaintenanceApplyOpts
   deriving (Show)
 
 data MaintenanceListOpts = MaintenanceListOpts
@@ -603,6 +604,24 @@ data MaintenanceShowOpts = MaintenanceShowOpts
   , mntShowSafetyCheckResults :: Bool
   } deriving (Show)
 
+data MaintenanceApplyOpts = MaintenanceApplyOpts
+  { mntApplyReason                 :: Text
+  , mntApplyNodeIndexes            :: [Int]
+  , mntApplyNodeNames              :: [Text]
+  , mntApplyShards                 :: [AA.ShardID]
+  , mntApplyShardTargetState       :: AA.ShardOperationalState
+  , mntApplySequencerNodeIndexes   :: [Int]
+  , mntApplySequencerNodeNames     :: [Text]
+  , mntApplyUser                   :: Text
+  , mntApplyGroup                  :: Bool
+  , mntApplySkipSafetyChecks       :: Bool
+  , mntApplySkipCapacityChecks     :: Bool
+  , mntApplyTtl                    :: Int
+  , mntApplyAllowPassiveDrains     :: Bool
+  , mntApplyForceRestoreRebuilding :: Bool
+  , mntApplyPriority               :: AA.MaintenancePriority
+  } deriving (Show)
+
 instance Read AA.MaintenancePriority where
   readPrec = do
     i <- Read.lexP
@@ -619,6 +638,65 @@ maintenanceOptsParser = hsubparser $
                     (progDesc "Prints compact list of maintenances applied to the cluster"))
  <> command "show" (info (MaintenanceShowCmd <$> maintenanceShowOptsParser)
                     (progDesc "Shows maintenances in expanded format with more information"))
+ <> command "apply" (info (MaintenanceApplyCmd <$> maintenanceApplyOptsParser)
+                     (progDesc "Applies new maintenance to Maintenance Manager"))
+
+maintenanceApplyOptsParser :: Parser MaintenanceApplyOpts
+maintenanceApplyOptsParser = MaintenanceApplyOpts
+  <$> strOption ( long "reason"
+               <> metavar "STRING"
+               <> help "Reason for logging and auditing")
+  <*> many (option auto ( long "node-indexes"
+                       <> metavar "INT"
+                       <> help "Apply maintenance to specified nodes"))
+  <*> many (strOption ( long "node-names"
+                     <> metavar "STRING"
+                     <> help "Apply maintenance to specified nodes"))
+  <*> many (option parseShard ( long "shards"
+                             <> metavar "NX:SY"
+                             <> help ("Apply maintenance to specified shards "
+                                     <> "in notation like \"N1:S2\", \"N3:S4\", \"N165:S14\"")))
+  <*> option auto ( long "shard_target_state"
+                 <> metavar "[may-disappear|drained]"
+                 <> value AA.ShardOperationalState_MAY_DISAPPEAR
+                 <> showDefault
+                 <> help "Shard Target State, either \"may-disappear\" or \"drained\"")
+  <*> many (option auto ( long "sequencer-node-indexes"
+                       <> metavar "INT"
+                       <> help "Apply maintenance to specified sequencers"))
+  <*> many (strOption ( long "sequencer-node-names"
+                     <> metavar "STRING"
+                     <> help "Apply maintenance to specified sequencers"))
+  <*> strOption ( long "user"
+               <> value ""
+               <> help "User for logging and auditing, by default taken from environment")
+  <*> flag False True ( long "no-group"
+                     <> help "Defines should MaintenanceManager group this maintenance or not")
+  <*> switch ( long "skip_safety_checks"
+            <> help "If set safety-checks will be skipped")
+  <*> switch ( long "skip_capacity_checks"
+            <> help "If set capacity-checks will be skipped")
+  <*> option auto ( long "ttl"
+                 <> value 0
+                 <> showDefault
+                 <> help "If set this maintenance will be auto-expired after given number of seconds")
+  <*> switch ( long "allow_passive_drains"
+            <> help "If set passive drains will be allowed")
+  <*> switch ( long "force_restore_rebuilding"
+            <> help "Forces rebuilding to run in RESTORE mode")
+  <*> option auto ( long "priority"
+                  <> metavar "[imminent|high|medium|low]"
+                  <> value AA.MaintenancePriority_MEDIUM
+                  <> showDefault
+                  <> help "Show only maintenances with a given priority")
+
+instance Read AA.ShardOperationalState where
+  readPrec = do
+    i <- Read.lexP
+    case i of
+      Read.Ident "may-disappear" -> return AA.ShardOperationalState_MAY_DISAPPEAR
+      Read.Ident "drained"       -> return AA.ShardOperationalState_DRAINED
+      x -> errorWithoutStackTrace $ "cannot parse state" <> show x
 
 maintenanceListOptsParser :: Parser MaintenanceListOpts
 maintenanceListOptsParser = MaintenanceListOpts
