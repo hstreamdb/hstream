@@ -15,6 +15,8 @@ cradle:
       component: "lib:hstream-common"
     - path: "common/src"
       component: "lib:hstream-common"
+    - path: "common/test"
+      component: "hstream-common:test:hstream-common-test"
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"
