@@ -676,9 +676,8 @@ maintenanceOptsParser = hsubparser $
 maintenanceMarkDataUnrecoverableOptsParser :: Parser MaintenanceMarkDataUnrecoverableOpts
 maintenanceMarkDataUnrecoverableOptsParser = MaintenanceMarkDataUnrecoverableOpts
   <$> optional (strOption ( long "log-user"
-                            <> metavar "STRING"
-                            <> value ""
-                            <> help "The user doing the removal operation, this is used for maintenance auditing and logging"))
+                         <> metavar "STRING"
+                         <> help "The user doing the removal operation, this is used for maintenance auditing and logging"))
   <*> strOption ( long "reason"
                <> metavar "STRING"
                <> help "The reason of removing the maintenance")
@@ -715,10 +714,9 @@ maintenanceRemoveOptsParser = MaintenanceRemoveOpts
   <*> switch ( long "in-progress"
             <> help "Remove maintenances which are in progress (including blocked)")
   <*> optional (strOption ( long "log-user"
-                            <> metavar "STRING"
-                            <> value ""
-                            <> help ("The user doing the removal operation, this is"
-                                      <> " used for maintenance auditing and logging")))
+                         <> metavar "STRING"
+                         <> help ("The user doing the removal operation, this is"
+                                    <> " used for maintenance auditing and logging")))
   <*> optional (option auto ( long "priority"
                            <> metavar "[imminent|high|medium|low]"
                            <> help "Remove maintenances with a given priority"))
@@ -752,8 +750,7 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
                      <> metavar "STRING"
                      <> help "Apply maintenance to specified sequencers"))
   <*> optional (strOption ( long "user"
-                            <> value ""
-                            <> help "User for logging and auditing, by default taken from environment"))
+                         <> help "User for logging and auditing, by default taken from environment"))
   <*> flag False True ( long "no-group"
                      <> help "Defines should MaintenanceManager group this maintenance or not")
   <*> switch ( long "skip_safety_checks"
