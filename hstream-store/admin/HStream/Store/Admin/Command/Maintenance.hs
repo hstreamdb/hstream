@@ -2,7 +2,8 @@ module HStream.Store.Admin.Command.Maintenance
   ( runMaintenanceCmd
   ) where
 
-import           Control.Monad              (forM_, when, (<=<))
+import           Control.Monad              (forM_, guard, when, (<=<))
+import           Data.Char                  (toUpper)
 import           Data.Int                   (Int64)
 import           Data.List                  (group, intercalate, intersect, nub,
                                              sort, union)
@@ -11,6 +12,7 @@ import           Data.Maybe                 (catMaybes, fromMaybe, mapMaybe)
 import           Data.Set                   (elems, member)
 import           Data.Text                  (Text, pack)
 import qualified Data.Text                  as Text
+import           System.IO                  (hFlush, stdout)
 import           System.IO.Unsafe           (unsafePerformIO)
 import qualified Text.Layout.Table          as Table
 import           Z.Data.CBytes              (CBytes, unpack)
@@ -25,17 +27,19 @@ import           HStream.Store.Admin.Types
 
 
 runMaintenanceCmd :: HeaderConfig AdminAPI -> MaintenanceOpts -> IO ()
-runMaintenanceCmd conf (MaintenanceListCmd s)  = runMaintenanceList conf s
-runMaintenanceCmd conf (MaintenanceShowCmd s)  = runMaintenanceShow conf s
-runMaintenanceCmd conf (MaintenanceApplyCmd s) = runMaintenanceApply conf s
+runMaintenanceCmd conf (MaintenanceListCmd s)   = runMaintenanceList conf s
+runMaintenanceCmd conf (MaintenanceShowCmd s)   = runMaintenanceShow conf s
+runMaintenanceCmd conf (MaintenanceApplyCmd s)  = runMaintenanceApply conf s
+runMaintenanceCmd conf (MaintenanceRemoveCmd s) = runMaintenanceRemove conf s
 
 data MaintenanceFilter = MaintenanceFilter
-  { mntFilterIndexes    :: [Int]
-  , mntFilterNames      :: [Text]
-  , mntFilterBlocked    :: Bool
-  , mntFilterCompleted  :: Bool
-  , mntFilterInProgress :: Bool
-  , mntFilterPriority   :: Maybe MaintenancePriority
+  { mntFilterIndexes         :: [Int]
+  , mntFilterNames           :: [Text]
+  , mntFilterBlocked         :: Bool
+  , mntFilterCompleted       :: Bool
+  , mntFilterInProgress      :: Bool
+  , mntFilterPriority        :: Maybe MaintenancePriority
+  , mntFilterIncludeInternal :: Bool
   } deriving (Show)
 
 mntFilter :: MaintenanceFilter -> [MaintenanceDefinition] -> [MaintenanceDefinition]
@@ -54,8 +58,10 @@ mntFilter MaintenanceFilter{..} = filter predicate
           || names `intersect` mntFilterNames /= [])
         && (not mntFilterBlocked || progress == MaintenanceProgress_BLOCKED_UNTIL_SAFE)
         && (not mntFilterCompleted || progress == MaintenanceProgress_COMPLETED)
-        && (not mntFilterInProgress || progress == MaintenanceProgress_IN_PROGRESS)
+        && (not mntFilterInProgress || progress == MaintenanceProgress_IN_PROGRESS
+             || progress == MaintenanceProgress_BLOCKED_UNTIL_SAFE)
         && maybe True (== priority) mntFilterPriority
+        && (mntFilterIncludeInternal || maintenanceDefinition_user mnt /= "_internal_")
 
 -------------------------------------------------------------------------------
 -- maintenance list
@@ -128,12 +134,13 @@ runMaintenanceList conf MaintenanceListOpts{..} = do
                , maybe "-" (unpack . printTimeStamp) . maintenanceDefinition_expires_on
                ]
   let mntListFilter = mntFilter MaintenanceFilter
-                      { mntFilterIndexes = mntListNodeIndexes
-                      , mntFilterNames = mntListNodeNames
-                      , mntFilterBlocked = mntListBlocked
-                      , mntFilterCompleted = mntListCompleted
-                      , mntFilterInProgress = mntListInProgress
-                      , mntFilterPriority = mntListPriority
+                      { mntFilterIndexes         = mntListNodeIndexes
+                      , mntFilterNames           = mntListNodeNames
+                      , mntFilterBlocked         = mntListBlocked
+                      , mntFilterCompleted       = mntListCompleted
+                      , mntFilterInProgress      = mntListInProgress
+                      , mntFilterPriority        = mntListPriority
+                      , mntFilterIncludeInternal = True
                       }
   let stats = (\s -> map ($ s) lenses) <$> mntListFilter (maintenanceDefinitionResponse_maintenances resp)
   if null stats
@@ -148,12 +155,13 @@ runMaintenanceShow conf MaintenanceShowOpts{..} = do
   resp <- AA.sendAdminApiRequest conf $
     getMaintenances $ MaintenancesFilter mntShowIds mntShowUsers
   let mntListFilter = mntFilter MaintenanceFilter
-                      { mntFilterIndexes = mntShowNodeIndexes
-                      , mntFilterNames = mntShowNodeNames
-                      , mntFilterBlocked = mntShowBlocked
-                      , mntFilterCompleted = mntShowCompleted
-                      , mntFilterInProgress = mntShowInProgress
-                      , mntFilterPriority = Nothing
+                      { mntFilterIndexes         = mntShowNodeIndexes
+                      , mntFilterNames           = mntShowNodeNames
+                      , mntFilterBlocked         = mntShowBlocked
+                      , mntFilterCompleted       = mntShowCompleted
+                      , mntFilterInProgress      = mntShowInProgress
+                      , mntFilterPriority        = Nothing
+                      , mntFilterIncludeInternal = True
                       }
   maintenanceShowMaintenanceDefs conf mntShowExpandShards mntShowSafetyCheckResults
     . mntListFilter . maintenanceDefinitionResponse_maintenances $ resp
@@ -344,6 +352,61 @@ runMaintenanceApply conf MaintenanceApplyOpts{..} = do
         }
   resp <- AA.sendAdminApiRequest conf $ applyMaintenance maintenance
   maintenanceShowMaintenanceDefs conf False False $ maintenanceDefinitionResponse_maintenances resp
+
+-------------------------------------------------------------------------------
+-- MaintenanceRemove
+
+runMaintenanceRemove :: HeaderConfig AdminAPI -> MaintenanceRemoveOpts -> IO ()
+runMaintenanceRemove conf MaintenanceRemoveOpts{..} = do
+  resp <- AA.sendAdminApiRequest conf $
+    getMaintenances $ MaintenancesFilter mntRemoveIds mntRemoveUsers
+  let mntDefsFilter = mntFilter MaintenanceFilter
+                      { mntFilterIndexes         = mntRemoveNodeIndexes
+                      , mntFilterNames           = mntRemoveNodeNames
+                      , mntFilterBlocked         = mntRemoveBlocked
+                      , mntFilterCompleted       = mntRemoveCompleted
+                      , mntFilterInProgress      = mntRemoveInProgress
+                      , mntFilterPriority        = mntRemovePriority
+                      , mntFilterIncludeInternal = mntRemoveIncludeInternal
+                      }
+  let mntDefs = mntDefsFilter $ maintenanceDefinitionResponse_maintenances resp
+  let msgNotFound = if mntRemoveIncludeInternal
+                    then "No maintenances matching given criteria"
+                    else "No maintenances matching given criteria, did you "
+                         <> "mean to target internal maintenances?\nUse "
+                         <> "`include-internal-maintenances` for this."
+  let msgFound = if mntRemoveIncludeInternal
+                 then "\n\nWARNING: You might be deleting internal maintenances.\n "
+                      <> "This is a DANGEROUS operation. Only proceed if you are "
+                      <> "absolutely sure."
+                 else "NOTE: Your query might have matched internal maintenances.\n"
+                      <> "We have excluded them from your remove request for "
+                      <> "safety. If you really need to remove internal maintenances,"
+                      <> " You need to to set `include-internal-maintenances to "
+                      <> "True`"
+  let msgWarn = if mntRemoveIncludeInternal
+                then "Take the RISK? [Y/n]"
+                else "Continue? [Y/n]"
+  if null mntDefs
+    then putStrLn msgNotFound
+    else do
+    putStrLn "You are going to remove following maintenances:"
+    maintenanceShowMaintenanceDefs conf False False mntDefs
+
+    putStrLn msgFound
+    c <- putStrLn msgWarn >> hFlush stdout >> getChar
+    guard (toUpper c == 'Y')
+    let groupIds = catMaybes $ maintenanceDefinition_group_id <$> mntDefs
+    putStrLn $ "removing" <> show groupIds
+    user <- if Text.null mntRemoveLogUser
+            then maybe "unknown-user" (pack . unpack) <$> getEnv "USER"
+            else pure mntRemoveLogUser
+    let removeFilter = MaintenancesFilter groupIds mntRemoveUsers
+    removeResp <- AA.sendAdminApiRequest conf $
+      removeMaintenances $ RemoveMaintenancesRequest removeFilter user mntRemoveReason
+    let removeIds = catMaybes $ maintenanceDefinition_group_id
+          <$> removeMaintenancesResponse_maintenances removeResp
+    putStrLn $ "removed" <> show removeIds
 
 -------------------------------------------------------------------------------
 -- Utils
