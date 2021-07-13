@@ -580,6 +580,8 @@ data MaintenanceOpts
   | MaintenanceShowCmd MaintenanceShowOpts
   | MaintenanceApplyCmd MaintenanceApplyOpts
   | MaintenanceRemoveCmd MaintenanceRemoveOpts
+  | MaintenanceTakeSnapShot Int64
+  | MaintenanceMarkDataUnrecoverable MaintenanceMarkDataUnrecoverableOpts
   deriving (Show)
 
 data MaintenanceListOpts = MaintenanceListOpts
@@ -613,7 +615,7 @@ data MaintenanceApplyOpts = MaintenanceApplyOpts
   , mntApplyShardTargetState       :: AA.ShardOperationalState
   , mntApplySequencerNodeIndexes   :: [Int]
   , mntApplySequencerNodeNames     :: [Text]
-  , mntApplyUser                   :: Text
+  , mntApplyUser                   :: Maybe Text
   , mntApplyGroup                  :: Bool
   , mntApplySkipSafetyChecks       :: Bool
   , mntApplySkipCapacityChecks     :: Bool
@@ -632,9 +634,14 @@ data MaintenanceRemoveOpts = MaintenanceRemoveOpts
   , mntRemoveBlocked         :: Bool
   , mntRemoveCompleted       :: Bool
   , mntRemoveInProgress      :: Bool
-  , mntRemoveLogUser         :: Text
+  , mntRemoveLogUser         :: Maybe Text
   , mntRemovePriority        :: Maybe AA.MaintenancePriority
   , mntRemoveIncludeInternal :: Bool
+  } deriving (Show)
+
+data MaintenanceMarkDataUnrecoverableOpts = MaintenanceMarkDataUnrecoverableOpts
+  { mntMarkDataUnrecoverableUser   :: Maybe Text
+  , mntMarkDataUnrecoverableReason :: Text
   } deriving (Show)
 
 instance Read AA.MaintenancePriority where
@@ -657,6 +664,32 @@ maintenanceOptsParser = hsubparser $
                      (progDesc "Applies new maintenance to Maintenance Manager"))
  <> command "remove" (info (MaintenanceRemoveCmd <$> maintenanceRemoveOptsParser)
                       (progDesc "Removes maintenances specified by filters."))
+ <> command "take-snapshot" (info (MaintenanceTakeSnapShot <$> versionParser)
+                             (progDesc $ "Asks the Admin Server to take an immediate snapshot of "
+                               <> "the maintenance internal log."))
+ <> command "mark-data-unrecoverable" (info (MaintenanceMarkDataUnrecoverable
+                                             <$> maintenanceMarkDataUnrecoverableOptsParser)
+                                      (progDesc $ "[DANGER] Marks all the UNAVAILABLE shards (stuck on DATA_MIGRATION "
+                                        <> "storage state) as unrecoverable. This will advice the readers to not"
+                                        <> " wait for data on these shards and issue data loss gaps if necessary."))
+
+maintenanceMarkDataUnrecoverableOptsParser :: Parser MaintenanceMarkDataUnrecoverableOpts
+maintenanceMarkDataUnrecoverableOptsParser = MaintenanceMarkDataUnrecoverableOpts
+  <$> optional (strOption ( long "log-user"
+                            <> metavar "STRING"
+                            <> value ""
+                            <> help "The user doing the removal operation, this is used for maintenance auditing and logging"))
+  <*> strOption ( long "reason"
+               <> metavar "STRING"
+               <> help "The reason of removing the maintenance")
+
+versionParser :: Parser Int64
+versionParser =
+  option auto ( long "min-version"
+             <> value 0
+             <> showDefault
+             <> help ("The minimum version that you would like "
+                      <> "to ensure that the snapshot has, 0 means any version"))
 
 maintenanceRemoveOptsParser :: Parser MaintenanceRemoveOpts
 maintenanceRemoveOptsParser = MaintenanceRemoveOpts
@@ -681,10 +714,11 @@ maintenanceRemoveOptsParser = MaintenanceRemoveOpts
             <> help "Remove maintenances which are finished")
   <*> switch ( long "in-progress"
             <> help "Remove maintenances which are in progress (including blocked)")
-  <*> strOption ( long "log-user"
-               <> metavar "STRING"
-               <> value ""
-               <> help "The user doing the removal operation, this is used for maintenance auditing and logging")
+  <*> optional (strOption ( long "log-user"
+                            <> metavar "STRING"
+                            <> value ""
+                            <> help ("The user doing the removal operation, this is"
+                                      <> " used for maintenance auditing and logging")))
   <*> optional (option auto ( long "priority"
                            <> metavar "[imminent|high|medium|low]"
                            <> help "Remove maintenances with a given priority"))
@@ -717,9 +751,9 @@ maintenanceApplyOptsParser = MaintenanceApplyOpts
   <*> many (strOption ( long "sequencer-node-names"
                      <> metavar "STRING"
                      <> help "Apply maintenance to specified sequencers"))
-  <*> strOption ( long "user"
-               <> value ""
-               <> help "User for logging and auditing, by default taken from environment")
+  <*> optional (strOption ( long "user"
+                            <> value ""
+                            <> help "User for logging and auditing, by default taken from environment"))
   <*> flag False True ( long "no-group"
                      <> help "Defines should MaintenanceManager group this maintenance or not")
   <*> switch ( long "skip_safety_checks"

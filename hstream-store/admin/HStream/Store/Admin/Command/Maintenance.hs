@@ -2,7 +2,7 @@ module HStream.Store.Admin.Command.Maintenance
   ( runMaintenanceCmd
   ) where
 
-import           Control.Monad              (forM_, guard, when, (<=<))
+import           Control.Monad              (forM_, guard, unless, when, (<=<))
 import           Data.Char                  (toUpper)
 import           Data.Int                   (Int64)
 import           Data.List                  (group, intercalate, intersect, nub,
@@ -27,11 +27,15 @@ import           HStream.Store.Admin.Types
 
 
 runMaintenanceCmd :: HeaderConfig AdminAPI -> MaintenanceOpts -> IO ()
-runMaintenanceCmd conf (MaintenanceListCmd s)   = runMaintenanceList conf s
-runMaintenanceCmd conf (MaintenanceShowCmd s)   = runMaintenanceShow conf s
-runMaintenanceCmd conf (MaintenanceApplyCmd s)  = runMaintenanceApply conf s
-runMaintenanceCmd conf (MaintenanceRemoveCmd s) = runMaintenanceRemove conf s
+runMaintenanceCmd conf (MaintenanceListCmd s)               = runMaintenanceList conf s
+runMaintenanceCmd conf (MaintenanceShowCmd s)               = runMaintenanceShow conf s
+runMaintenanceCmd conf (MaintenanceApplyCmd s)              = runMaintenanceApply conf s
+runMaintenanceCmd conf (MaintenanceRemoveCmd s)             = runMaintenanceRemove conf s
+runMaintenanceCmd conf (MaintenanceTakeSnapShot version)    = takeSnapshot conf version
+runMaintenanceCmd conf (MaintenanceMarkDataUnrecoverable s) = markDataUnrecoverable conf s
 
+-- the maintenance id and user options are passed to the API as a filter (see MaintenancesFilter)
+-- so we only run the filter with the rest of options here
 data MaintenanceFilter = MaintenanceFilter
   { mntFilterIndexes         :: [Int]
   , mntFilterNames           :: [Text]
@@ -320,10 +324,9 @@ runMaintenanceApply conf MaintenanceApplyOpts{..} = do
   nodeStates <- concat <$> traverse (getNodeState conf) nodes
   let storageNodes = filter isStorage nodeStates
   let sequencerNodes = filter isSequencer nodeStates
-  user <- if Text.null mntApplyUser
-          -- hardcode a username when the USER env var is not set
-          then maybe "unknown-user" (pack . unpack) <$> getEnv "USER"
-          else pure mntApplyUser
+  -- use $USER from the environment variables if --user is left unspecified
+  -- hardcode the user to "unknown" if the env var is not set
+  user <- maybe (maybe "unknown-user" (pack . unpack) <$> getEnv "USER") pure mntApplyUser
   let maintenance = MaintenanceDefinition
         { -- the affected shards include shards specified by user with the option --shards
           -- and all the shards on the nodes specified by the --node-indexes and --node-names options
@@ -398,15 +401,36 @@ runMaintenanceRemove conf MaintenanceRemoveOpts{..} = do
     guard (toUpper c == 'Y')
     let groupIds = catMaybes $ maintenanceDefinition_group_id <$> mntDefs
     putStrLn $ "removing" <> show groupIds
-    user <- if Text.null mntRemoveLogUser
-            then maybe "unknown-user" (pack . unpack) <$> getEnv "USER"
-            else pure mntRemoveLogUser
+    user <- maybe (maybe "unknown-user" (pack . unpack) <$> getEnv "USER") pure mntRemoveLogUser
     let removeFilter = MaintenancesFilter groupIds mntRemoveUsers
     removeResp <- AA.sendAdminApiRequest conf $
       removeMaintenances $ RemoveMaintenancesRequest removeFilter user mntRemoveReason
     let removeIds = catMaybes $ maintenanceDefinition_group_id
           <$> removeMaintenancesResponse_maintenances removeResp
     putStrLn $ "removed" <> show removeIds
+
+-------------------------------------------------------------------------------
+-- maintenance mark-data-unrecoverable
+
+markDataUnrecoverable :: HeaderConfig AdminAPI -> MaintenanceMarkDataUnrecoverableOpts -> IO ()
+markDataUnrecoverable conf MaintenanceMarkDataUnrecoverableOpts{..} = do
+  user <- maybe (maybe "unknown-user" (pack . unpack) <$> getEnv "USER") pure mntMarkDataUnrecoverableUser
+  resp <- AA.sendAdminApiRequest conf $ markAllShardsUnrecoverable
+          $ MarkAllShardsUnrecoverableRequest user mntMarkDataUnrecoverableReason
+  let success = markAllShardsUnrecoverableResponse_shards_succeeded resp
+  let failure = markAllShardsUnrecoverableResponse_shards_failed resp
+  unless (null success) $
+    putStrLn $ "succeeded: " <> show success
+  unless (null failure) $
+    putStrLn $ "failed: " <> show failure
+  when (null success && null failure) $
+    putStrLn "No UNAVAILABLE shards to mark unrecoverable!"
+
+-------------------------------------------------------------------------------
+-- maintenance take-snapshot
+
+takeSnapshot :: HeaderConfig AdminAPI -> Int64 -> IO ()
+takeSnapshot conf version = AA.sendAdminApiRequest conf $ takeMaintenanceLogSnapshot version
 
 -------------------------------------------------------------------------------
 -- Utils
