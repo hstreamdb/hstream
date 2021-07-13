@@ -51,8 +51,8 @@ type QueriesAPI =
   :<|> "queries" :> Capture "name" String :> Delete '[JSON] Bool
   :<|> "queries" :> Capture "name" String :> Get '[JSON] (Maybe QueryBO)
 
-queryResponseToQueryBO :: GetQueryResponse -> QueryBO
-queryResponseToQueryBO (GetQueryResponse id' status createdTime queryText _) =
+queryToQueryBO :: Query -> QueryBO
+queryToQueryBO (Query id' status createdTime queryText) =
   QueryBO (TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
 
 createQueryHandler :: Client -> QueryBO -> Handler QueryBO
@@ -72,13 +72,13 @@ createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
 listQueriesHandler :: Client -> Handler [QueryBO]
 listQueriesHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let fetchQueryRequest = FetchQueryRequest {}
-  resp <- hstreamApiFetchQuery (ClientNormalRequest fetchQueryRequest 100 (MetadataMap $ Map.empty))
+  let listQueriesRequest = ListQueriesRequest {}
+  resp <- hstreamApiListQueries (ClientNormalRequest listQueriesRequest 100 (MetadataMap $ Map.empty))
   case resp of
-    ClientNormalResponse x@FetchQueryResponse{} _meta1 _meta2 _status _details -> do
+    ClientNormalResponse x@ListQueriesResponse{} _meta1 _meta2 _status _details -> do
       case x of
-        FetchQueryResponse {fetchQueryResponseResponses = queries} -> do
-          return $ V.toList $ V.map queryResponseToQueryBO queries
+        ListQueriesResponse {listQueriesResponseQueries = queries} -> do
+          return $ V.toList $ V.map queryToQueryBO queries
         _ -> return []
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
@@ -103,7 +103,7 @@ getQueryHandler hClient qid = liftIO $ do
   let getQueryRequest = GetQueryRequest { getQueryRequestId = TL.pack qid }
   resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap $ Map.empty))
   case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ queryResponseToQueryBO x
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ queryToQueryBO x
     ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return Nothing
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
