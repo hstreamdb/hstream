@@ -180,7 +180,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> mark LowLevelStoreException $ do
       create sink
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
-        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
+        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . drop 2 . T.unpack $ sink) schema)
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnOkRes
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
@@ -207,7 +207,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk  "")
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
-      case HM.lookup rSelectViewFrom hm of
+      case HM.lookup ("__" <> rSelectViewFrom) hm of
         Nothing -> returnErrRes $ "No VIEW named " <> TL.fromStrict rSelectViewFrom <> " found"
         Just materialized -> do
           let (keyName, keyExpr) = rSelectViewWhere
@@ -287,7 +287,7 @@ handleDropPlan :: ServerContext -> Bool -> DropObject
 handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
   case dropObject of
     DStream stream -> handleDrop "stream_" stream
-    DView view     -> handleDrop "view_" view
+    DView view     -> handleDrop "view_" ("__" <> view)
   where
     handleDrop object name = do
       streamExists <- doesStreamExists scLDClient (transToStreamName name)
@@ -320,7 +320,9 @@ handleShowPlan ServerContext{..} showObject =
   case showObject of
     SStreams -> mark LowLevelStoreException $ do
       names <- findStreams scLDClient True
-      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $ cbytesToValue . getStreamName <$> L.sort names
+      let implicitNames = filter ((/= "__") . take 2 . CB.unpack) . L.sort . map getStreamName $ names
+      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $
+            cbytesToValue <$> implicitNames
       return (ServerNormalResponse (Just resp) [] StatusOk "")
     SQueries -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
@@ -331,8 +333,8 @@ handleShowPlan ServerContext{..} showObject =
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
       return (ServerNormalResponse (Just resp) [] StatusOk "")
     SViews -> do
-      qids <- P.withMaybeZHandle zkHandle P.getQueryIds
-      let views = filter P.isViewQuery qids
+      queries <- P.withMaybeZHandle zkHandle P.getQueries
+      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra) . filter (P.isViewQuery . P.queryId) $ queries
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWVIEWS" $ cbytesToValue <$> views
       return (ServerNormalResponse (Just resp) [] StatusOk "")
 
