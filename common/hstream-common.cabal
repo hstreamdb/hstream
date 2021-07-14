@@ -60,3 +60,37 @@ library
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+test-suite hstream-common-test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  hs-source-dirs:     test
+  other-modules:      HStream.UtilsSpec
+  build-depends:
+    , base            >=4.11 && <5
+    , containers      ^>=0.6
+    , hspec
+    , hstream-common
+    , random          ^>=1.2
+    , Z-Data
+    , Z-IO
+
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    UnliftedFFITypes
+
+  default-language:   Haskell2010
+  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N

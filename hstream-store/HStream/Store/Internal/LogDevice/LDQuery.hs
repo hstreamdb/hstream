@@ -169,7 +169,7 @@ queryResultMetadata results idx = withForeignPtr results $ \results_ptr -> do
                                (delete_vector_of_string addr_del)
             reasons <- finally (peekStdStringToCBytesN (fromIntegral len) reason_val)
                                (delete_vector_of_string reason_del)
-            let details = map (uncurry FailedNodeDetails) (zip addrs reasons)
+            let details = zipWith FailedNodeDetails addrs reasons
             return $ IntMap.fromList $ zip keys details
     else return IntMap.empty
   return $ ActiveQueryMetadata

@@ -32,6 +32,14 @@ base = describe "HStream.Store.Stream" $ do
     S.createStream client streamName attrs
     S.doesStreamExists client streamName `shouldReturn` True
 
+  it "create the same stream should throw exception" $ do
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
+                                                                         , ("A", "B")
+                                                                         ]
+                                        }
+    S.createStream client streamName attrs `shouldThrow` existsException
+
   it "get full path of loggroup by name or id shoule be equal" $ do
     logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
     logid <- S.getCLogIDByStreamName client streamName
