@@ -68,6 +68,7 @@ import qualified ZooKeeper                                  as Zoo
 import qualified ZooKeeper.Types                            as Zoo
 
 import qualified HStream.Store                              as S
+import qualified HStream.Store.Internal.LogDevice           as S
 import qualified HStream.Store.Logger                       as S
 
 sendAdminApiRequest

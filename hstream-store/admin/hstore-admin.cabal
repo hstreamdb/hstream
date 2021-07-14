@@ -102,7 +102,7 @@ library
     , deepseq
     , fb-util
     , hashable              >=1.2.7.0  && <1.4
-    , haskeline
+    , haskeline             ^>=0.8.1
     , hstream-store
     , network               ^>=3.1.0
     , optparse-applicative  ^>=0.16

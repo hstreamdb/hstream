@@ -1,9 +1,10 @@
 module HStream.Store.Admin.Command.SQL
-  ( startSQL
+  ( startSQLRepl
   ) where
 
 import           Control.Monad                    (forM_)
 import           Control.Monad.IO.Class           (liftIO)
+import           Data.List                        (isPrefixOf)
 import           HStream.Store.Admin.Format       (simpleShowTable)
 import qualified System.Console.Haskeline         as H
 import           Text.Layout.Table                (asciiS, center, colsAllG,
@@ -12,11 +13,9 @@ import           Text.Layout.Table                (asciiS, center, colsAllG,
                                                    left, tableString, titlesH)
 import           Z.Data.CBytes                    (pack, unpack)
 
-import qualified HStream.Store                    as S
 import           HStream.Store.Admin.API
 import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
-
 
 runShowTables :: S.LDQuery -> IO ()
 runShowTables ldq = do
@@ -57,11 +56,14 @@ runSelect ldq cmd = do
     putStrLn $
       simpleShowTable ((, 20, left) <$> titles) rows
 
-startSQL :: HeaderConfig AdminAPI -> StartSQLOpts -> IO ()
-startSQL conf StartSQLOpts{..} = do
-  let ldq' = buildLDQueryRes conf startSQLTimeout startSQLUseSsl
+startSQLRepl :: HeaderConfig AdminAPI -> StartSQLReplOpts -> IO ()
+startSQLRepl conf StartSQLReplOpts{..} = do
+  let ldq' = buildLDQueryRes conf startSQLReplTimeout startSQLReplUseSsl
   withResource ldq' $ \ldq -> do
-    H.runInputT H.defaultSettings $
+    completionWords <- fmap (unpack . fst) <$> S.showTables ldq
+    let complete = H.completeWord Nothing " \t" $ return . completeFunc completionWords
+    let setting  = (H.defaultSettings :: H.Settings IO) {H.complete = complete}
+    H.runInputT setting $
       fix (\loop -> do
               H.getInputLine "> " >>= \case
                 Nothing  -> return ()
@@ -70,10 +72,14 @@ startSQL conf StartSQLOpts{..} = do
 runSQLCmd :: S.LDQuery -> String -> H.InputT IO ()
 runSQLCmd ldq str = liftIO $
   case words str of
-    ["tables"]            -> runShowTables ldq
+    "show" : "tables" : _ -> runShowTables ldq
     "describe" : name : _ -> runDescribe ldq name
     "select" : _          -> runSelect ldq str
     _                     -> putStrLn $ "unknown command: " <> str
+
+completeFunc :: [String] -> String -> [H.Completion]
+completeFunc wordList str =
+  map H.simpleCompletion $ filter (str `isPrefixOf`) wordList
 
 -------------------------------------------------------------------------------
 -- Utils

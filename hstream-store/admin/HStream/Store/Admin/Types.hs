@@ -830,13 +830,13 @@ maintenanceShowOptsParser = MaintenanceShowOpts
 
 -------------------------------------------------------------------------------
 
-data StartSQLOpts = StartSQLOpts
-  { startSQLTimeout :: Int64
-  , startSQLUseSsl  :: Bool
+data StartSQLReplOpts = StartSQLReplOpts
+  { startSQLReplTimeout :: Int64
+  , startSQLReplUseSsl  :: Bool
   } deriving (Show)
 
-startSQLOptsParser :: Parser StartSQLOpts
-startSQLOptsParser = StartSQLOpts
+startSQLReplOptsParser :: Parser StartSQLReplOpts
+startSQLReplOptsParser = StartSQLReplOpts
   <$> option auto ( long "timeout"
                  <> value 5000
                  <> showDefault
