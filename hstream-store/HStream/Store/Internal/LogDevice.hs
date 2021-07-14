@@ -17,6 +17,7 @@ module HStream.Store.Internal.LogDevice
   , module HStream.Store.Internal.LogDevice.Reader
   , module HStream.Store.Internal.LogDevice.VersionedConfigStore
   , module HStream.Store.Internal.LogDevice.Writer
+  , module HStream.Store.Internal.LogDevice.LDQuery
   ) where
 
 import           Control.Monad
@@ -39,6 +40,7 @@ import           HStream.Store.Internal.Types
 
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice.Checkpoint
+import           HStream.Store.Internal.LogDevice.LDQuery
 import           HStream.Store.Internal.LogDevice.LogConfigTypes
 import           HStream.Store.Internal.LogDevice.Reader
 import           HStream.Store.Internal.LogDevice.VersionedConfigStore
