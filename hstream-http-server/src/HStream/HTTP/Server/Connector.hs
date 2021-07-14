@@ -51,8 +51,8 @@ type ConnectorsAPI =
   :<|> "connectors" :> Capture "name" String :> Delete '[JSON] Bool
   :<|> "connectors" :> Capture "name" String :> Get '[JSON] (Maybe ConnectorBO)
 
-connectorResponseToConnectorBO :: GetConnectorResponse -> ConnectorBO
-connectorResponseToConnectorBO (GetConnectorResponse id' status createdTime queryText _) =
+connectorToConnectorBO :: Connector -> ConnectorBO
+connectorToConnectorBO (Connector id' status createdTime queryText) =
   ConnectorBO (Just $ TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
 
 createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
@@ -67,16 +67,16 @@ createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do
       putStrLn $ "Client Error: " <> show clientError
       return $ ConnectorBO Nothing Nothing Nothing sql
 
-listConnectorHandler :: Client -> Handler [ConnectorBO]
-listConnectorHandler hClient = liftIO $ do
+listConnectorsHandler :: Client -> Handler [ConnectorBO]
+listConnectorsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let listConnectorRequest = ListConnectorRequest {}
-  resp <- hstreamApiListConnector (ClientNormalRequest listConnectorRequest 100 (MetadataMap $ Map.empty))
+  let listConnectorRequest = ListConnectorsRequest {}
+  resp <- hstreamApiListConnectors (ClientNormalRequest listConnectorRequest 100 (MetadataMap $ Map.empty))
   case resp of
-    ClientNormalResponse x@ListConnectorResponse{} _meta1 _meta2 _status _details -> do
+    ClientNormalResponse x@ListConnectorsResponse{} _meta1 _meta2 _status _details -> do
       case x of
-        ListConnectorResponse {listConnectorResponseResponses = connectors} -> do
-          return $ V.toList $ V.map connectorResponseToConnectorBO connectors
+        ListConnectorsResponse {listConnectorsResponseConnectors = connectors} -> do
+          return $ V.toList $ V.map connectorToConnectorBO connectors
         _ -> return []
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
@@ -101,7 +101,7 @@ getConnectorHandler hClient cid = liftIO $ do
   let getConnectorRequest = GetConnectorRequest { getConnectorRequestId = TL.pack cid }
   resp <- hstreamApiGetConnector (ClientNormalRequest getConnectorRequest 100 (MetadataMap $ Map.empty))
   case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ connectorResponseToConnectorBO x
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ connectorToConnectorBO x
     ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return Nothing
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
@@ -133,7 +133,7 @@ cancelConnectorHandler hClient cid = liftIO $ do
 
 connectorServer :: Client -> Server ConnectorsAPI
 connectorServer hClient =
-  listConnectorHandler hClient
+  listConnectorsHandler hClient
   :<|> restartConnectorHandler hClient
   :<|> cancelConnectorHandler hClient
   :<|> createConnectorHandler hClient

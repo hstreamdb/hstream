@@ -11,86 +11,85 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                     (Enumerated (..))
 import           Test.Hspec
 
 import           HStream.Common
 import           HStream.Server.HStreamApi
 import           HStream.Store.Logger
 
-getConnectorResponseIdIs :: TL.Text -> GetConnectorResponse -> Bool
-getConnectorResponseIdIs targetId (GetConnectorResponse connectorId _ _ _ _) = connectorId == targetId
+getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
+getConnectorResponseIdIs targetId (Connector connectorId _ _ _ ) = connectorId == targetId
 
-createSinkConnector :: TL.Text -> IO (Maybe CreateSinkConnectorResponse)
+createSinkConnector :: TL.Text -> IO (Maybe Connector)
 createSinkConnector sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let createSinkConnectorRequest = CreateSinkConnectorRequest { createSinkConnectorRequestSql = sql }
   resp <- hstreamApiCreateSinkConnector (ClientNormalRequest createSinkConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@CreateSinkConnectorResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse x@Connector{} _meta1 _meta2 StatusOk _details -> return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ "Create Connector Client Error: " <> show clientError
       return Nothing
+    _ -> return Nothing
 
-successCreateConnectorResp :: CreateSinkConnectorResponse
-successCreateConnectorResp = CreateSinkConnectorResponse
-  { createSinkConnectorResponseSuccess = True
-  }
-
-listConnector :: IO (Maybe ListConnectorResponse)
-listConnector = withGRPCClient clientConfig $ \client -> do
+listConnectors :: IO (Maybe ListConnectorsResponse)
+listConnectors = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let listConnectorRequest = ListConnectorRequest {}
-  resp <- hstreamApiListConnector (ClientNormalRequest listConnectorRequest 100 (MetadataMap Map.empty))
+  let listConnectorsRequest = ListConnectorsRequest {}
+  resp <- hstreamApiListConnectors (ClientNormalRequest listConnectorsRequest 100 (MetadataMap $ Map.empty))
   case resp of
-    ClientNormalResponse x@ListConnectorResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse x@ListConnectorsResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ "List Connectors Client Error: " <> show clientError
       return Nothing
 
-getConnector :: TL.Text -> IO (Maybe GetConnectorResponse)
+getConnector :: TL.Text -> IO (Maybe Connector)
 getConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let getConnectorRequest = GetConnectorRequest { getConnectorRequestId = connectorId }
   resp <- hstreamApiGetConnector (ClientNormalRequest getConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@GetConnectorResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse x@Connector{} _meta1 _meta2 _status _details -> do
+      return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ "Get Connector Client Error: " <> show clientError
       return Nothing
 
-deleteConnector :: TL.Text -> IO (Maybe DeleteConnectorResponse)
+deleteConnector :: TL.Text -> IO Bool
 deleteConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let deleteConnectorRequest = DeleteConnectorRequest { deleteConnectorRequestId = connectorId }
   resp <- hstreamApiDeleteConnector (ClientNormalRequest deleteConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@DeleteConnectorResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+      putStrLn $ "Delete Connector Client Error: " <> show clientError
+      return False
+    _ -> return False
 
-cancelConnector :: TL.Text -> IO (Maybe CancelConnectorResponse)
+cancelConnector :: TL.Text -> IO Bool
 cancelConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let cancelConnectorRequest = CancelConnectorRequest { cancelConnectorRequestId = connectorId }
   resp <- hstreamApiCancelConnector (ClientNormalRequest cancelConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@CancelConnectorResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+      putStrLn $ "Cancel Connector Client Error: " <> show clientError
+      return False
+    _ -> return False
 
-restartConnector :: TL.Text -> IO (Maybe RestartConnectorResponse)
+restartConnector :: TL.Text -> IO Bool
 restartConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let restartConnectorRequest = RestartConnectorRequest { restartConnectorRequestId = connectorId }
   resp <- hstreamApiRestartConnector (ClientNormalRequest restartConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
-    ClientNormalResponse x@RestartConnectorResponse{} _meta1 _meta2 _status _details -> return $ Just x
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return False
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+      putStrLn $ "Restart Connector Client Error: " <> show clientError
+      return False
+    _ -> return False
 
 spec :: Spec
 spec = describe "HStream.RunConnectorSpec" $ do
@@ -112,12 +111,15 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "create mysql sink connector" $
     ( do
-        createSinkConnector ("CREATE SINK CONNECTOR " <> mysqlConnector <> " WITH (type = mysql, host = \"127.0.0.1\", stream = " <> source1 <> ");")
-    ) `shouldReturn` Just successCreateConnectorResp
+        res <- createSinkConnector ("CREATE SINK CONNECTOR " <> mysqlConnector <> " WITH (type = mysql, host = \"127.0.0.1\", stream = " <> source1 <> ");")
+        case res of
+          Just _ -> return True
+          _      -> return False
+    ) `shouldReturn` True
 
   it "list connectors" $
     ( do
-        Just ListConnectorResponse {listConnectorResponseResponses = connectors} <- listConnector
+        Just ListConnectorsResponse {listConnectorsResponseConnectors = connectors} <- listConnectors
         let record = V.find (getConnectorResponseIdIs mysqlConnector) connectors
         case record of
           Just _ -> return True
@@ -137,8 +139,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
         _ <- cancelConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          Just (GetConnectorResponse _ 2 _ _ _) -> return True
-          _                                     -> return False
+          Just (Connector _ 2 _ _) -> return True
+          _                        -> return False
     ) `shouldReturn` True
 
   it "restart connector" $
@@ -146,8 +148,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
         _ <- restartConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          Just (GetConnectorResponse _ 1 _ _ _) -> return True
-          _                                     -> return False
+          Just (Connector _ 1 _ _) -> return True
+          _                        -> return False
     ) `shouldReturn` True
 
   it "delete connector" $
@@ -156,9 +158,9 @@ spec = describe "HStream.RunConnectorSpec" $ do
         _ <- deleteConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          Just (GetConnectorResponse _ _ _ _ Enumerated {enumerated = Right HStreamServerErrorNotExistError}) -> return True
-          _ -> return False
-    ) `shouldReturn` True
+          Just (Connector _ _ _ _) -> return True
+          _                        -> return False
+    ) `shouldReturn` False
 
   it "clean streams" $
     ( do
