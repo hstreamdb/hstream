@@ -12,13 +12,13 @@ import           Control.Concurrent               (MVar, ThreadId, forkIO,
 import           Control.Exception                (Exception, SomeException,
                                                    displayException, handle,
                                                    throwIO)
-
 import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import           Database.ClickHouseDriver.Client (createClient)
 import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
@@ -31,17 +31,16 @@ import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 import           ZooKeeper.Types
 
-import           Database.ClickHouseDriver.Client (createClient)
-import           HStream.Connector.ClickHouse
-import           HStream.Connector.HStore
+import           HStream.Connector.ClickHouse     (clickHouseSinkConnector)
 import qualified HStream.Connector.HStore         as HCS
-import           HStream.Connector.MySQL
-import           HStream.Processing.Connector
+import           HStream.Connector.MySQL          (mysqlSinkConnector)
+import           HStream.Processing.Connector     (SinkConnector (writeRecord),
+                                                   SourceConnectorWithoutCkp (readRecordsWithoutCkp, subscribeToStreamWithoutCkp))
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
-import           HStream.SQL.Codegen
+import           HStream.SQL.Codegen              (ConnectorConfig (..))
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (textToCBytes)
@@ -94,7 +93,7 @@ handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
     HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
 
     ldreader <- HS.newLDReader scLDClient 1000 Nothing
-    let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+    let sc = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
     subscribeToStreamWithoutCkp sc sName Latest
 
     connector <- case cConfig of
@@ -116,6 +115,7 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = 
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
 
+-- FIXME: This will be removed when we add a default handler for exceptions.
 mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
 mark mke = handle (throwIO . mke)
 

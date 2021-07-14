@@ -57,6 +57,15 @@ type RelatedStreams = [StreamName]
 
 data Query = Query {
     queryId        :: Id
+  -- ^
+  -- Normal `SELECT`: A series of number converted from system time.
+  -- For example, `812446132734184`.
+  --
+  -- Query created when create stream: `stream_<stream_name>-<id>`.
+  -- For example, `stream_demo-812446132734184`.
+  --
+  -- Query created when create view: `view_<view_name>-<id>`.
+  -- For example, `view_demo-812446132734184`.
   , queryInfo      :: Info
   , queryInfoExtra :: QueryType
   , queryStatus    :: Status

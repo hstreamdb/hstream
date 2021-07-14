@@ -81,9 +81,6 @@ import           HStream.Utils
 
 --------------------------------------------------------------------------------
 
-newRandomName :: Int -> IO CB.CBytes
-newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
-
 -- | Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
 subscribedReaders :: IORef (HM.HashMap TL.Text (LDSyncCkpReader, Subscription))
 subscribedReaders = unsafePerformIO $ newIORef HM.empty
@@ -160,6 +157,11 @@ batchAppend client streamName payloads strategy = do
   logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
   try $ appendBatch client logId payloads strategy Nothing
 
+{-
+Since all the data we receive at hstream-client are of the same form and type,
+to apply different format strategies, we need to add a key to return value,
+so that we can identify the type of results.
+-}
 executeQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal CommandQuery CommandQueryResponse

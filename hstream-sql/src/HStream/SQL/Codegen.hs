@@ -21,12 +21,9 @@ import           Data.Time                                       (diffTimeToPico
                                                                   showGregorian)
 import qualified Database.ClickHouseDriver.Types                 as Clickhouse
 import qualified Database.MySQL.Base                             as MySQL
-import           Numeric                                         (showHex)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 import qualified Z.Data.CBytes                                   as CB
-import           Z.IO.Time                                       (SystemTime (MkSystemTime),
-                                                                  getSystemTime')
 
 import           HStream.Processing.Processor                    (Record (..),
                                                                   TaskBuilder)
@@ -69,14 +66,14 @@ import           HStream.Utils                                   (genUnique)
 
 --------------------------------------------------------------------------------
 
-type StreamName     = HPT.StreamName
-type ViewName = T.Text
-type ConnectorName  = T.Text
-type SourceStream   = [StreamName]
-type SinkStream     = StreamName
+type StreamName = HPT.StreamName
+type ViewName   = T.Text
+type ConnectorName = T.Text
+type SourceStream  = [StreamName]
+type SinkStream    = StreamName
 type CheckIfExist  = Bool
-type ViewSchema = [String]
-type OtherOptions = [(Text,Constant)]
+type ViewSchema    = [String]
+type OtherOptions  = [(Text,Constant)]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text
@@ -113,6 +110,16 @@ streamCodegen input = do
       tName <- genTaskName
       (builder, source, sink, _) <- genStreamBuilderWithStream tName (Just stream) select
       return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
+
+    -- When creating views, they are created and stored the same as streams,
+    -- so if we try to get all streams we will also get views.
+    -- This will cause `SHOW STREAMS` to print out views as well,
+    -- however, this is not the desired behaviour.
+    --
+    -- So when we create a new view, we add `__` before the view name provided.
+    -- When `SHOW STREAMS`, we filter out all the name with `__` at the front.
+    -- When `SHOW VIEWS`, we will get view names from zk, this is different from `SHOW STREAMS`.
+    -- (This is just the internal implementation strategy and will not be noticed by the user.)
     RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
       tName <- genTaskName
       (builder, source, sink, Just mat) <- genStreamBuilderWithStream tName (Just ("__" <> view)) select
