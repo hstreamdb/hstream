@@ -43,22 +43,19 @@ type StreamsAPI =
   :<|> "streams" :> Capture "name" String :> Get '[JSON] (Maybe StreamBO)
 
 queryStreamHandler :: HS.LDClient -> String -> Handler (Maybe StreamBO)
-queryStreamHandler ldClient s = do
-  res <- liftIO $ do
-    exists <- HS.doesStreamExists ldClient (HS.mkStreamName $ ZDC.pack s)
-    if exists
-      then do
-        let streamName = HS.mkStreamName $ ZDC.pack s
-        rep <- HS.getStreamReplicaFactor ldClient streamName
-        ts  <- HS.getStreamHeadTimestamp ldClient streamName
-        return $ Just $ StreamBO (T.pack s) rep ts
-      else return Nothing
-
-  return res
+queryStreamHandler ldClient s = liftIO $ do
+  exists <- HS.doesStreamExists ldClient (HS.mkStreamId HS.StreamTypeStream $ ZDC.pack s)
+  if exists
+    then do
+      let streamName = HS.mkStreamId HS.StreamTypeStream $ ZDC.pack s
+      rep <- HS.getStreamReplicaFactor ldClient streamName
+      ts  <- HS.getStreamHeadTimestamp ldClient streamName
+      return $ Just $ StreamBO (T.pack s) rep ts
+    else return Nothing
 
 removeStreamHandler :: HS.LDClient -> String -> Handler Bool
 removeStreamHandler ldClient s = do
-  liftIO $ HS.removeStream ldClient (HS.mkStreamName $ ZDC.pack s)
+  liftIO $ HS.removeStream ldClient (HS.mkStreamId HS.StreamTypeStream $ ZDC.pack s)
   return True
 
 createStreamHandler :: HS.LDClient -> StreamBO -> Handler StreamBO
@@ -68,19 +65,19 @@ createStreamHandler ldClient stream = do
   return stream
 
 fetchStreamHandler :: HS.LDClient -> Handler [StreamBO]
-fetchStreamHandler ldClient = do
-  streams <- liftIO $ do
-    streamNames <- HS.findStreams ldClient True
-    let names = (\streamName -> cbytesToText $ HS.getStreamName streamName) <$> streamNames
-    replicationFactors <- sequence $ (HS.getStreamReplicaFactor ldClient) <$> streamNames
-    timestamps <- sequence $ (HS.getStreamHeadTimestamp ldClient) <$> streamNames
+fetchStreamHandler ldClient = liftIO $ do
+    streamNames <- HS.findStreams ldClient HS.StreamTypeStream True
+    let names = T.pack . HS.showStreamName <$> streamNames
+    replicationFactors <- sequence $ HS.getStreamReplicaFactor ldClient <$> streamNames
+    timestamps <- sequence $ HS.getStreamHeadTimestamp ldClient <$> streamNames
 
     return [StreamBO n rep ts | n <- names
                               | rep  <- replicationFactors
                               | ts   <- timestamps
            ]
 
-  return streams
-
 streamServer :: HS.LDClient -> Server StreamsAPI
-streamServer ldClient = (fetchStreamHandler ldClient) :<|> (createStreamHandler ldClient) :<|> (removeStreamHandler ldClient) :<|> (queryStreamHandler ldClient)
+streamServer ldClient = fetchStreamHandler ldClient
+                   :<|> createStreamHandler ldClient
+                   :<|> removeStreamHandler ldClient
+                   :<|> queryStreamHandler ldClient

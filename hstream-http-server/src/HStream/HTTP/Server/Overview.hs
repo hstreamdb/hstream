@@ -19,7 +19,7 @@ import qualified ZooKeeper.Types            as ZK
 
 import           HStream.HTTP.Server.Node   (getNodes)
 import qualified HStream.Server.Persistence as HSP
-import           HStream.Store              as HS
+import qualified HStream.Store              as HS
 import qualified HStream.Store.Admin.API    as AA
 import           HStream.Store.Admin.Types  (SimpleNodesFilter (..),
                                              StatusFormat (..), StatusOpts (..))
@@ -42,7 +42,7 @@ type OverviewAPI =
 fetchOverviewHandler :: HS.LDClient -> Maybe ZK.ZHandle -> AA.HeaderConfig AA.AdminAPI -> StatusOpts -> Handler OverviewBO
 fetchOverviewHandler ldClient zkHandle headerConfig statusOpts = do
   overview <- liftIO $ do
-    streamCnt <- length <$> (findStreams ldClient True)
+    streamCnt <- length <$> (HS.findStreams ldClient HS.StreamTypeStream True)
     queryCnt <- length <$> (HSP.withMaybeZHandle zkHandle HSP.getQueries)
     let viewCnt = 0
     connectorCnt <- length <$> (HSP.withMaybeZHandle zkHandle HSP.getConnectors)

@@ -66,18 +66,20 @@ hstoreTempSinkConnector ldclient = SinkConnector {
 }
 
 --------------------------------------------------------------------------------
-transToStreamName :: HPT.StreamName -> S.StreamName
-transToStreamName = S.mkStreamName . textToCBytes
 
-transToTempStreamName :: HPT.StreamName -> S.TempStreamName
-transToTempStreamName = S.mkTempStreamName . textToCBytes
+transToStreamName :: HPT.StreamName -> S.StreamId
+transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
+
+transToTempStreamName :: HPT.StreamName -> S.StreamId
+transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
 
 --------------------------------------------------------------------------------
+
 subscribeToHStoreStream :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 subscribeToHStoreStream isTemp ldclient reader stream startOffset = do
   logId <- case isTemp of
-    True  -> S.getCLogIDByTempStreamName ldclient (transToTempStreamName stream)
-    False -> S.getCLogIDByStreamName     ldclient (transToStreamName stream)
+    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName stream)
+    False -> S.getUnderlyingLogId ldclient (transToStreamName stream)
   startLSN <-
         case startOffset of
           Earlist    -> return S.LSN_MIN
@@ -87,7 +89,7 @@ subscribeToHStoreStream isTemp ldclient reader stream startOffset = do
 
 subscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> Offset -> IO ()
 subscribeToHStoreStream' ldclient reader stream startOffset = do
-  logId <- S.getCLogIDByStreamName ldclient (transToStreamName stream)
+  logId <- S.getUnderlyingLogId ldclient (transToStreamName stream)
   startLSN <-
         case startOffset of
           Earlist    -> return S.LSN_MIN
@@ -98,13 +100,13 @@ subscribeToHStoreStream' ldclient reader stream startOffset = do
 unSubscribeToHStoreStream :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> IO ()
 unSubscribeToHStoreStream isTemp ldclient reader streamName = do
   logId <- case isTemp of
-    True  -> S.getCLogIDByTempStreamName ldclient (transToTempStreamName streamName)
-    False -> S.getCLogIDByStreamName     ldclient (transToStreamName streamName)
+    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName streamName)
+    False -> S.getUnderlyingLogId ldclient (transToStreamName streamName)
   S.ckpReaderStopReading reader logId
 
 unSubscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> IO ()
 unSubscribeToHStoreStream' ldclient reader streamName = do
-  logId <- S.getCLogIDByStreamName ldclient (transToStreamName streamName)
+  logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
   S.readerStopReading reader logId
 
 dataRecordToSourceRecord :: S.LDClient -> Payload -> IO SourceRecord
@@ -146,8 +148,8 @@ getJsonFormatRecord S.DataRecord{..}
 commitCheckpointToHStore :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 commitCheckpointToHStore isTemp ldclient reader streamName offset = do
   logId <- case isTemp of
-    True  -> S.getCLogIDByTempStreamName ldclient (transToTempStreamName streamName)
-    False -> S.getCLogIDByStreamName     ldclient (transToStreamName streamName)
+    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName streamName)
+    False -> S.getUnderlyingLogId ldclient (transToStreamName streamName)
   case offset of
     Earlist    -> error "expect normal offset, but get Earlist"
     Latest     -> error "expect normal offset, but get Latest"
@@ -157,8 +159,8 @@ writeRecordToHStore :: Bool -> S.LDClient -> SinkRecord -> IO ()
 writeRecordToHStore isTemp ldclient SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
   logId <- case isTemp of
-    True  -> S.getCLogIDByTempStreamName ldclient (transToTempStreamName snkStream)
-    False -> S.getCLogIDByStreamName     ldclient (transToStreamName snkStream)
+    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName snkStream)
+    False -> S.getUnderlyingLogId ldclient (transToStreamName snkStream)
   timestamp <- getProtoTimestamp
   let header = buildRecordHeader jsonPayloadFlag Map.empty timestamp TL.empty
   let payload = encodeRecord $ buildRecord header snkValue
