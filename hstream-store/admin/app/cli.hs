@@ -56,8 +56,10 @@ commandParser = O.hsubparser
  <> O.command "nodes-config" (O.info (NodesConfigCmd <$> nodesConfigParser) (O.progDesc "Manipulates the cluster's NodesConfig"))
  <> O.command "config" (O.info (ConfigCmd <$> configCmdParser) (O.progDesc "Commands about logdevice config"))
  <> O.command "logs" (O.info (LogsCmd <$> logsConfigCmdParser) (O.progDesc "Control the logs config of logdevice dynamically"))
- <> O.command "check-impact" (O.info (CheckImpactCmd <$> checkImpactOptsParser) (O.progDesc $ "Return true if performing"
-                              <> "operations to the given shards will cause loss of read/write availability or data loss."))
+ <> O.command "check-impact" (O.info (CheckImpactCmd <$> checkImpactOptsParser)
+                                     (O.progDesc $ "Return true if performing"
+                                                <> "operations to the given shards will cause loss of read/write availability or data loss.")
+                             )
  <> O.command "maintenance" (O.info (MaintenanceCmd <$> maintenanceOptsParser)
-                             (O.progDesc "Allows to manipulate maintenances in Maintenance Manager"))
+                            (O.progDesc "Allows to manipulate maintenances in Maintenance Manager"))
   )
