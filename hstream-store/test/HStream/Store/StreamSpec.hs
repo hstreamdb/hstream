@@ -16,21 +16,21 @@ spec = do
 
 base :: Spec
 base = describe "HStream.Store.Stream" $ do
-  streamName <- S.mkStreamName <$> runIO (newRandomName 5)
-  logPath <- runIO $ S.streamNameToLogPath streamName
-  newStreamName <- S.mkStreamName <$> runIO (newRandomName 5)
-  newLogPath <- runIO $ S.streamNameToLogPath newStreamName
+  streamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
+  logPath <- runIO $ S.getUnderlyingLogPath streamId
+  newStreamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
+  newLogPath <- runIO $ S.getUnderlyingLogPath newStreamId
 
   it "create stream" $ do
-    print $ "Create a new stream: " <> streamName
-    S.doesStreamExists client streamName `shouldReturn` False
+    print $ "Create a new stream: " <> S.showStreamName streamId
+    S.doesStreamExists client streamId `shouldReturn` False
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
                                                                          , ("A", "B")
                                                                          ]
                                         }
-    S.createStream client streamName attrs
-    S.doesStreamExists client streamName `shouldReturn` True
+    S.createStream client streamId attrs
+    S.doesStreamExists client streamId `shouldReturn` True
 
   it "create the same stream should throw exception" $ do
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
@@ -38,32 +38,32 @@ base = describe "HStream.Store.Stream" $ do
                                                                          , ("A", "B")
                                                                          ]
                                         }
-    S.createStream client streamName attrs `shouldThrow` existsException
+    S.createStream client streamId attrs `shouldThrow` existsException
 
   it "get full path of loggroup by name or id shoule be equal" $ do
     logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
-    logid <- S.getCLogIDByStreamName client streamName
+    logid <- S.getUnderlyingLogId client streamId
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
     logpath `shouldBe` logpath'
 
   it "rename stream" $ do
-    print $ "Rename stream " <> streamName <> " to " <> newStreamName
-    S.renameStream client streamName newStreamName
-    S.doesStreamExists client streamName `shouldReturn` False
-    S.doesStreamExists client newStreamName `shouldReturn` True
+    print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
+    S.renameStream client streamId newStreamId
+    S.doesStreamExists client streamId `shouldReturn` False
+    S.doesStreamExists client newStreamId `shouldReturn` True
 
   it "stream replication factor" $ do
-    S.getStreamReplicaFactor client newStreamName `shouldReturn` 1
+    S.getStreamReplicaFactor client newStreamId `shouldReturn` 1
 
   it "stream head record timestamp" $ do
     -- since there is no records in this stream
-    S.getStreamHeadTimestamp client newStreamName `shouldReturn` Nothing
-    logid <- S.getCLogIDByStreamName client newStreamName
+    S.getStreamHeadTimestamp client newStreamId `shouldReturn` Nothing
+    logid <- S.getUnderlyingLogId client newStreamId
     _ <- S.append client logid "hello" Nothing
     let cond mv = case mv of
                     Just v  -> v > 0 && v < (maxBound :: Int64)
                     Nothing -> error "predicate failed"
-    S.getStreamHeadTimestamp client newStreamName >>= (`shouldSatisfy` cond)
+    S.getStreamHeadTimestamp client newStreamId >>= (`shouldSatisfy` cond)
 
   it "get/set extra-attrs" $ do
     logGroup <- S.getLogGroup client newLogPath
@@ -78,5 +78,5 @@ base = describe "HStream.Store.Stream" $ do
     S.logGroupGetExtraAttr logGroup_ "Alice" `shouldReturn` Just "Bob"
 
   it "remove the stream" $ do
-    S.removeStream client newStreamName
-    S.doesStreamExists client newStreamName `shouldReturn` False
+    S.removeStream client newStreamId
+    S.doesStreamExists client newStreamId `shouldReturn` False

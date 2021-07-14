@@ -5,17 +5,19 @@ module HStream.Store.Stream
   ( -- * Stream
     StreamSettings (..)
   , updateGloStreamSettings
-    -- ** StreamName
-  , StreamName
-  , mkStreamName
-  , TempStreamName
-  , mkTempStreamName
-  , getStreamName
+  , StreamType (..)
+  , StreamId
+  , showStreamName
+  , mkStreamId
+  , mkStreamIdFromLogPath
+    -- ** helpers
+  , getUnderlyingLogPath
+  , getUnderlyingLogId
+    -- ** Log
   , FFI.LogAttrs (LogAttrs)
   , FFI.HsLogAttrs (..)
-    -- **
+    -- ** Operations
   , createStream
-  , createTempStream
   , renameStream
   , removeStream
   , findStreams
@@ -34,11 +36,6 @@ module HStream.Store.Stream
   , LD.logGroupGetFullName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
-    -- ** helpers
-  , streamNameToLogPath
-  , logPathToStreamName
-  , getCLogIDByStreamName
-  , getCLogIDByTempStreamName
 
     -- * Writer
   , LD.append
@@ -95,12 +92,12 @@ import qualified Data.Cache                       as Cache
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Int                         (Int64)
-import           Data.String                      (IsString)
 import           Data.Word                        (Word32)
 import           Foreign.C                        (CSize)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.CBytes                    as CBytes
 import qualified Z.IO.FileSystem                  as FS
 
 import qualified HStream.Store.Exception          as E
@@ -111,33 +108,16 @@ import           HStream.Utils                    (genUnique)
 
 -------------------------------------------------------------------------------
 
--- | A stream name is an identity of the stream.
---
--- The first character of the StreamName should not be '/'.
-newtype StreamName = StreamName CBytes
-  deriving newtype (Show, Eq, Ord, Semigroup, Monoid, IsString)
-
-newtype TempStreamName = TempStreamName CBytes
-  deriving newtype (Show, Eq, Ord, Semigroup, Monoid, IsString)
-
--- TODO: validation
-mkStreamName :: CBytes -> StreamName
-mkStreamName = StreamName
-
-mkTempStreamName :: CBytes -> TempStreamName
-mkTempStreamName = TempStreamName
-
-getStreamName :: StreamName -> CBytes
-getStreamName (StreamName name) = name
-
 data StreamSettings = StreamSettings
-  { streamNamePrefix :: CBytes
+  { streamNameLogDir :: CBytes
+  , streamViewLogDir :: CBytes
   , streamTempLogDir :: CBytes
   }
 
 gloStreamSettings :: IORef StreamSettings
 gloStreamSettings = unsafePerformIO . newIORef $
-  StreamSettings { streamNamePrefix = "/hstream"
+  StreamSettings { streamNameLogDir = "/hstream/stream"
+                 , streamViewLogDir = "/hstream/view"
                  , streamTempLogDir = "/tmp/hstream"
                  }
 {-# NOINLINE gloStreamSettings #-}
@@ -145,20 +125,51 @@ gloStreamSettings = unsafePerformIO . newIORef $
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
 updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
 
-streamNameToLogPath :: StreamName -> IO CBytes
-streamNameToLogPath (StreamName stream) = do
-  s <- readIORef gloStreamSettings
-  streamNamePrefix s `FS.join` stream
+data StreamType = StreamTypeStream | StreamTypeView | StreamTypeTemp
+  deriving (Show, Eq)
 
-tempStreamNameToLogPath :: TempStreamName -> IO CBytes
-tempStreamNameToLogPath (TempStreamName stream) = do
-  s <- readIORef gloStreamSettings
-  streamTempLogDir s `FS.join` stream
+data StreamId = StreamId
+  { streamType :: StreamType
+  , streamName :: CBytes
+  -- ^ A stream name is an identifier of the stream.
+  -- The first character of the StreamName should not be '/'.
+  } deriving (Show, Eq)
 
-logPathToStreamName :: CBytes -> IO StreamName
-logPathToStreamName path = do
-  prefix <- streamNamePrefix <$> readIORef gloStreamSettings
-  StreamName <$> FS.relative prefix path
+-- TODO: validation
+mkStreamId :: StreamType -> CBytes -> StreamId
+mkStreamId = StreamId
+
+-- TODO: validation
+mkStreamIdFromLogPath :: StreamType -> CBytes -> IO StreamId
+mkStreamIdFromLogPath streamType path = do
+  s <- readIORef gloStreamSettings
+  name <- case streamType of
+            StreamTypeStream -> FS.relative (streamNameLogDir s) path
+            StreamTypeView   -> FS.relative (streamViewLogDir s) path
+            StreamTypeTemp   -> FS.relative (streamTempLogDir s) path
+  return $ StreamId streamType name
+
+showStreamName :: StreamId -> String
+showStreamName = CBytes.unpack . streamName
+
+getUnderlyingLogPath :: StreamId -> IO CBytes
+getUnderlyingLogPath StreamId{..} = do
+  s <- readIORef gloStreamSettings
+  case streamType of
+    StreamTypeStream -> streamNameLogDir s `FS.join` streamName
+    StreamTypeView   -> streamViewLogDir s `FS.join` streamName
+    StreamTypeTemp   -> streamTempLogDir s `FS.join` streamName
+{-# INLINABLE getUnderlyingLogPath #-}
+
+getUnderlyingLogId :: FFI.LDClient -> StreamId -> IO FFI.C_LogID
+getUnderlyingLogId client stream = getUnderlyingLogPath stream >>= getCLogIDByLogGroup client
+{-# INLINABLE getUnderlyingLogId #-}
+
+getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
+getStreamReplicaFactor client stream = do
+  logid <- getUnderlyingLogId client stream
+  loggroup <- LD.getLogGroupByID client logid
+  LD.getAttrsReplicationFactorFromPtr =<< LD.logGroupGetAttrs loggroup
 
 -- | Global loggroup path to logid cache
 logPathCache :: Cache.Cache CBytes FFI.C_LogID
@@ -168,71 +179,59 @@ logPathCache = unsafePerformIO $ Cache.newCache Nothing
 -- | Create stream
 --
 -- Currently a Stream is a loggroup which only contains one random logid.
-createStream :: HasCallStack => FFI.LDClient -> StreamName -> FFI.LogAttrs -> IO ()
+createStream :: HasCallStack => FFI.LDClient -> StreamId -> FFI.LogAttrs -> IO ()
 createStream client stream attrs = do
-  path <- streamNameToLogPath stream
-  createRandomLogGroup client path attrs
-
--- | Create a temporary stream
---
--- TODO: trim logs when unused.
-createTempStream :: HasCallStack => FFI.LDClient -> TempStreamName -> FFI.LogAttrs -> IO ()
-createTempStream client stream attrs = do
-  path <- tempStreamNameToLogPath stream
+  path <- getUnderlyingLogPath stream
   createRandomLogGroup client path attrs
 
 renameStream
   :: HasCallStack
   => FFI.LDClient
-  -> StreamName
-  -- ^ The source path to rename
-  -> StreamName
-  -- ^ The new path you are renaming to
+  -> StreamId
+  -- ^ The source stream to rename
+  -> StreamId
+  -- ^ The new stream you are renaming to
   -> IO ()
 renameStream client from to = do
-  from' <- streamNameToLogPath from
-  to'   <- streamNameToLogPath to
+  from' <- getUnderlyingLogPath from
+  to'   <- getUnderlyingLogPath to
   finally (LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to')
           (Cache.delete logPathCache from')
   m_v <- Cache.lookup' logPathCache from'
   forM_ m_v $ Cache.insert logPathCache to'
 
-removeStream :: HasCallStack => FFI.LDClient -> StreamName -> IO ()
+removeStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
 removeStream client stream = do
-  path <- streamNameToLogPath stream
+  path <- getUnderlyingLogPath stream
   finally (LD.syncLogsConfigVersion client =<< LD.removeLogGroup client path)
           (Cache.delete logPathCache path)
 
-findStreams :: HasCallStack => FFI.LDClient -> Bool -> IO [StreamName]
-findStreams client recursive = do
-  prefix <- streamNamePrefix <$> readIORef gloStreamSettings
+findStreams
+  :: HasCallStack
+  => FFI.LDClient -> StreamType -> Bool -> IO [StreamId]
+findStreams client streamType recursive = do
+  prefix <- streamNameLogDir <$> readIORef gloStreamSettings
   d <- try $ LD.getLogDirectory client prefix
   case d of
     Left (_ :: E.NOTFOUND) -> return []
     Right dir -> do
       ps <- LD.logDirectoryGetLogsName recursive dir
-      forM ps logPathToStreamName
-
-getStreamReplicaFactor :: FFI.LDClient -> StreamName -> IO Int
-getStreamReplicaFactor client name = do
-  logid <- getCLogIDByStreamName client name
-  loggroup <- LD.getLogGroupByID client logid
-  LD.getAttrsReplicationFactorFromPtr =<< LD.logGroupGetAttrs loggroup
+      forM ps (mkStreamIdFromLogPath streamType)
 
 -- | Approximate milliseconds timestamp of the next record after trim point.
 --
 -- Set to Nothing if there is no records bigger than trim point.
-getStreamHeadTimestamp :: FFI.LDClient -> StreamName -> IO (Maybe Int64)
-getStreamHeadTimestamp client name = do
-  headAttrs <- LD.getLogHeadAttrs client =<< getCLogIDByStreamName client name
+getStreamHeadTimestamp :: FFI.LDClient -> StreamId -> IO (Maybe Int64)
+getStreamHeadTimestamp client stream = do
+  headAttrs <- LD.getLogHeadAttrs client =<< getUnderlyingLogId client stream
   ts <- LD.getLogHeadAttrsTrimPointTimestamp headAttrs
   case ts of
     FFI.C_MAX_MILLISECONDS -> return Nothing
     _                      -> return $ Just ts
 
-doesStreamExists :: HasCallStack => FFI.LDClient -> StreamName -> IO Bool
+doesStreamExists :: HasCallStack => FFI.LDClient -> StreamId -> IO Bool
 doesStreamExists client stream = do
-  path <- streamNameToLogPath stream
+  path <- getUnderlyingLogPath stream
   m_v <- Cache.lookup logPathCache path
   case m_v of
     Just _  -> return True
@@ -244,22 +243,6 @@ doesStreamExists client stream = do
           logid <- fst <$> LD.logGroupGetRange group
           Cache.insert logPathCache path logid
           return True
-
-getCLogIDByStreamName :: FFI.LDClient -> StreamName -> IO FFI.C_LogID
-getCLogIDByStreamName client stream = streamNameToLogPath stream >>= getCLogIDByLogGroup client
-
-getCLogIDByTempStreamName :: FFI.LDClient -> TempStreamName -> IO FFI.C_LogID
-getCLogIDByTempStreamName client stream = tempStreamNameToLogPath stream >>= getCLogIDByLogGroup client
-
-getCLogIDByLogGroup :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
-getCLogIDByLogGroup client path = do
-  m_v <- Cache.lookup logPathCache path
-  case m_v of
-    Just v -> return v
-    Nothing -> do
-      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client path)
-      Cache.insert logPathCache path logid
-      return logid
 
 createRandomLogGroup :: HasCallStack => FFI.LDClient -> CBytes -> FFI.LogAttrs -> IO ()
 createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
@@ -358,3 +341,15 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
   store <- LD.newZookeeperBasedCheckpointStore client
   reader <- LD.newLDReader client max_logs m_buffer_size
   LD.newLDSyncCkpReader name reader store retries
+
+-------------------------------------------------------------------------------
+
+getCLogIDByLogGroup :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+getCLogIDByLogGroup client path = do
+  m_v <- Cache.lookup logPathCache path
+  case m_v of
+    Just v -> return v
+    Nothing -> do
+      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client path)
+      Cache.insert logPathCache path logid
+      return logid
