@@ -20,6 +20,10 @@ module HStream.Store
   , findTime
   , logIdHasGroup
 
+    -- * LDQuery
+  , LDQuery
+  , newLDQuery
+
     -- * Stream
   , module HStream.Store.Stream
 

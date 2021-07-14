@@ -83,6 +83,7 @@ library
     HStream.Store.Admin.Command.NodesConfig
     HStream.Store.Admin.Command.Status
     HStream.Store.Admin.Command.Maintenance
+    HStream.Store.Admin.Command.SQL
     Logtree.Types
     Maintenance.Types
     Membership.Types
@@ -101,6 +102,7 @@ library
     , deepseq
     , fb-util
     , hashable              >=1.2.7.0  && <1.4
+    , haskeline
     , hstream-store
     , network               ^>=3.1.0
     , optparse-applicative  ^>=0.16

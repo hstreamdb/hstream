@@ -3,6 +3,7 @@ module HStream.Store.Admin.API
   , getNodesAdminAddr
   , buildLDClientRes
   , withResource
+  , buildLDQueryRes
 
   , module Thrift.Protocol
   , module Thrift.Protocol.Id
@@ -50,6 +51,7 @@ import           Thrift.Protocol
 import           Thrift.Protocol.ApplicationException.Types
 import           Thrift.Protocol.Id
 
+import           Data.Int                                   (Int64)
 import qualified Data.Map.Strict                            as Map
 import           Data.Maybe                                 (fromJust)
 import qualified Data.Text.Encoding                         as DText
@@ -98,3 +100,19 @@ buildLDClientRes conf settings = do
     client <- S.newLDClient path
     S.setClientSettings client settings
     return client
+
+buildLDQueryRes
+  :: HeaderConfig AdminAPI
+  -> Int64
+  -> Bool
+  -> Resource S.LDQuery
+buildLDQueryRes conf timeout use_ssl = do
+  liftIO $ S.setLogDeviceDbgLevel S.C_DBG_CRITICAL
+  liftIO $ Zoo.zooSetDebugLevel Zoo.ZooLogError
+  d <- liftIO Env.getTempDir
+  (path, file) <- FS.mkstemp d "ld_conf_" False
+  liftIO $ do
+    config <- sendAdminApiRequest conf dumpServerConfigJson
+    let content = fromByteString $ DText.encodeUtf8 config
+    withPrimVectorSafe content (writeOutput file)
+    S.newLDQuery path timeout use_ssl
