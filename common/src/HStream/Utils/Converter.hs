@@ -15,6 +15,7 @@ module HStream.Utils.Converter
   , lazyByteStringToCBytes
   , cbytesToLazyByteString
   , cbytesToValue
+  , stringToValue
   , listToStruct
   , structToStruct
   ) where
@@ -30,80 +31,80 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           Proto3.Suite                      (Enumerated (Enumerated))
-import           ThirdParty.Google.Protobuf.Struct
+import qualified ThirdParty.Google.Protobuf.Struct as PB
 import qualified Z.Data.CBytes                     as ZCB
 import qualified Z.Data.JSON                       as Z
 import qualified Z.Data.Text                       as ZT
 import qualified Z.Data.Vector                     as ZV
 import qualified Z.Foreign                         as ZF
 
-pattern V :: ValueKind -> Value
-pattern V x = Value (Just x)
+pattern V :: PB.ValueKind -> PB.Value
+pattern V x = PB.Value (Just x)
 
-jsonObjectToStruct :: Aeson.Object -> Struct
-jsonObjectToStruct object = Struct kvmap
+jsonObjectToStruct :: Aeson.Object -> PB.Struct
+jsonObjectToStruct object = PB.Struct kvmap
   where
     kvmap = M.fromList $ map (\(k,v) -> (TL.fromStrict k, Just (jsonValueToValue v))) (HM.toList object)
 
-jsonValueToValue :: Aeson.Value -> Value
-jsonValueToValue (Aeson.Object object) = V $ ValueKindStructValue (jsonObjectToStruct object)
-jsonValueToValue (Aeson.Array  array)  = V $ ValueKindListValue   (ListValue $ jsonValueToValue <$> array)
-jsonValueToValue (Aeson.String text)   = V $ ValueKindStringValue (TL.fromStrict text)
-jsonValueToValue (Aeson.Number sci)    = V $ ValueKindNumberValue (toRealFloat sci)
-jsonValueToValue (Aeson.Bool   bool)   = V $ ValueKindBoolValue   bool
-jsonValueToValue Aeson.Null            = V $ ValueKindNullValue   (Enumerated $ Right NullValueNULL_VALUE)
+jsonValueToValue :: Aeson.Value -> PB.Value
+jsonValueToValue (Aeson.Object object) = V $ PB.ValueKindStructValue (jsonObjectToStruct object)
+jsonValueToValue (Aeson.Array  array)  = V $ PB.ValueKindListValue   (PB.ListValue $ jsonValueToValue <$> array)
+jsonValueToValue (Aeson.String text)   = V $ PB.ValueKindStringValue (TL.fromStrict text)
+jsonValueToValue (Aeson.Number sci)    = V $ PB.ValueKindNumberValue (toRealFloat sci)
+jsonValueToValue (Aeson.Bool   bool)   = V $ PB.ValueKindBoolValue   bool
+jsonValueToValue Aeson.Null            = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
 
-structToJsonObject :: Struct -> Aeson.Object
-structToJsonObject (Struct kvmap) = HM.fromList $
+structToJsonObject :: PB.Struct -> Aeson.Object
+structToJsonObject (PB.Struct kvmap) = HM.fromList $
   bimap TL.toStrict convertMaybeValue <$> kvTuples
   where
     kvTuples = Map.toList kvmap
     convertMaybeValue Nothing  = error "Nothing encountered"
     convertMaybeValue (Just v) = valueToJsonValue v
 
-valueToJsonValue :: Value -> Aeson.Value
-valueToJsonValue (V (ValueKindStructValue struct))           = Aeson.Object (structToJsonObject struct)
-valueToJsonValue (V (ValueKindListValue   (ListValue list))) = Aeson.Array  (valueToJsonValue <$> list)
-valueToJsonValue (V (ValueKindStringValue text))             = Aeson.String (TL.toStrict text)
-valueToJsonValue (V (ValueKindNumberValue num))              = Aeson.Number (read . show $ num)
-valueToJsonValue (V (ValueKindBoolValue   bool))             = Aeson.Bool   bool
-valueToJsonValue (V (ValueKindNullValue   _))                = Aeson.Null
-valueToJsonValue (Value Nothing) = error "Nothing encountered"
+valueToJsonValue :: PB.Value -> Aeson.Value
+valueToJsonValue (V (PB.ValueKindStructValue struct))           = Aeson.Object (structToJsonObject struct)
+valueToJsonValue (V (PB.ValueKindListValue   (PB.ListValue list))) = Aeson.Array  (valueToJsonValue <$> list)
+valueToJsonValue (V (PB.ValueKindStringValue text))             = Aeson.String (TL.toStrict text)
+valueToJsonValue (V (PB.ValueKindNumberValue num))              = Aeson.Number (read . show $ num)
+valueToJsonValue (V (PB.ValueKindBoolValue   bool))             = Aeson.Bool   bool
+valueToJsonValue (V (PB.ValueKindNullValue   _))                = Aeson.Null
+valueToJsonValue (PB.Value Nothing) = error "Nothing encountered"
 -- The following line of code is not used but to fix a warning
-valueToJsonValue (Value (Just _)) = error "impossible happened"
+valueToJsonValue (PB.Value (Just _)) = error "impossible happened"
 
-zJsonObjectToStruct :: ZObject -> Struct
-zJsonObjectToStruct object = Struct kvmap
+zJsonObjectToStruct :: ZObject -> PB.Struct
+zJsonObjectToStruct object = PB.Struct kvmap
  where
    kvmap = M.fromList $ map (\(k,v) -> (TL.pack $ ZT.unpack k, Just (zJsonValueToValue v))) (ZV.unpack object)
 
-zJsonValueToValue :: Z.Value -> Value
-zJsonValueToValue (Z.Object object) = V $ ValueKindStructValue (zJsonObjectToStruct object)
-zJsonValueToValue (Z.Array  array)  = V $ ValueKindListValue   (ListValue $ V.fromList $ zJsonValueToValue <$> ZV.unpack array)
-zJsonValueToValue (Z.String text)   = V $ ValueKindStringValue (TL.pack $ ZT.unpack text)
-zJsonValueToValue (Z.Number sci)    = V $ ValueKindNumberValue (toRealFloat sci)
-zJsonValueToValue (Z.Bool   bool)   = V $ ValueKindBoolValue   bool
-zJsonValueToValue Z.Null            = V $ ValueKindNullValue   (Enumerated $ Right NullValueNULL_VALUE)
+zJsonValueToValue :: Z.Value -> PB.Value
+zJsonValueToValue (Z.Object object) = V $ PB.ValueKindStructValue (zJsonObjectToStruct object)
+zJsonValueToValue (Z.Array  array)  = V $ PB.ValueKindListValue   (PB.ListValue $ V.fromList $ zJsonValueToValue <$> ZV.unpack array)
+zJsonValueToValue (Z.String text)   = V $ PB.ValueKindStringValue (TL.pack $ ZT.unpack text)
+zJsonValueToValue (Z.Number sci)    = V $ PB.ValueKindNumberValue (toRealFloat sci)
+zJsonValueToValue (Z.Bool   bool)   = V $ PB.ValueKindBoolValue   bool
+zJsonValueToValue Z.Null            = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
 
 type ZObject = ZV.Vector (ZT.Text, Z.Value)
-structToZJsonObject :: Struct -> ZObject
-structToZJsonObject (Struct kvmap) = ZV.pack $
+structToZJsonObject :: PB.Struct -> ZObject
+structToZJsonObject (PB.Struct kvmap) = ZV.pack $
   (\(text,value) -> (ZT.pack $ TL.unpack text, convertMaybeValue value)) <$> kvTuples
   where
     kvTuples = Map.toList kvmap
     convertMaybeValue Nothing  = error "Nothing encountered"
     convertMaybeValue (Just v) = valueToZJsonValue v
 
-valueToZJsonValue :: Value -> Z.Value
-valueToZJsonValue (V (ValueKindStructValue struct))           = Z.Object (structToZJsonObject struct)
-valueToZJsonValue (V (ValueKindListValue   (ListValue list))) = Z.Array  (ZV.pack $ V.toList $ valueToZJsonValue <$> list)
-valueToZJsonValue (V (ValueKindStringValue text))             = Z.String (ZT.pack $ TL.unpack text)
-valueToZJsonValue (V (ValueKindNumberValue num))              = Z.Number (read . show $ num)
-valueToZJsonValue (V (ValueKindBoolValue   bool))             = Z.Bool   bool
-valueToZJsonValue (V (ValueKindNullValue   _))                = Z.Null
-valueToZJsonValue (Value Nothing) = error "Nothing encountered"
+valueToZJsonValue :: PB.Value -> Z.Value
+valueToZJsonValue (V (PB.ValueKindStructValue struct))           = Z.Object (structToZJsonObject struct)
+valueToZJsonValue (V (PB.ValueKindListValue   (PB.ListValue list))) = Z.Array  (ZV.pack $ V.toList $ valueToZJsonValue <$> list)
+valueToZJsonValue (V (PB.ValueKindStringValue text))             = Z.String (ZT.pack $ TL.unpack text)
+valueToZJsonValue (V (PB.ValueKindNumberValue num))              = Z.Number (read . show $ num)
+valueToZJsonValue (V (PB.ValueKindBoolValue   bool))             = Z.Bool   bool
+valueToZJsonValue (V (PB.ValueKindNullValue   _))                = Z.Null
+valueToZJsonValue (PB.Value Nothing) = error "Nothing encountered"
 -- The following line of code is not used but to fix a warning
-valueToZJsonValue (Value (Just _)) = error "impossible happened"
+valueToZJsonValue (PB.Value (Just _)) = error "impossible happened"
 
 cbytesToText :: ZCB.CBytes -> T.Text
 cbytesToText = T.pack . ZCB.unpack
@@ -117,11 +118,14 @@ cbytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
 lazyByteStringToCBytes :: BL.ByteString -> ZCB.CBytes
 lazyByteStringToCBytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
 
-listToStruct :: TL.Text -> [Value] -> Struct
-listToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindListValue . ListValue . V.fromList
+listToStruct :: TL.Text -> [PB.Value] -> PB.Struct
+listToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindListValue . PB.ListValue . V.fromList
 
-structToStruct :: TL.Text -> Struct -> Struct
-structToStruct x = Struct . Map.singleton x . Just . Value . Just . ValueKindStructValue
+structToStruct :: TL.Text -> PB.Struct -> PB.Struct
+structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindStructValue
 
-cbytesToValue :: ZCB.CBytes -> Value
-cbytesToValue = Value . Just . ValueKindStringValue . TL.fromStrict . cbytesToText
+cbytesToValue :: ZCB.CBytes -> PB.Value
+cbytesToValue = PB.Value . Just . PB.ValueKindStringValue . TL.fromStrict . cbytesToText
+
+stringToValue :: String -> PB.Value
+stringToValue = PB.Value . Just . PB.ValueKindStringValue . TL.pack

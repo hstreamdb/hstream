@@ -57,7 +57,7 @@ createQueryHandler ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{.
       exists <- mapM (HS.doesStreamExists scLDClient . HCH.transToStreamName) sources
       if (not . and) exists then return $ Left "some source stream do not exist"
       else do
-        e' <- try $ HS.createTempStream scLDClient (HCH.transToTempStreamName sink)
+        e' <- try $ HS.createStream scLDClient (HCH.transToTempStreamName sink)
           (HS.LogAttrs $ HS.HsLogAttrs scDefaultStreamRepFactor Map.empty)
         case e' of
           Left (_ :: SomeException) -> return $ Left "error when creating sink stream."

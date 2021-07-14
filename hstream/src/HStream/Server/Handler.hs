@@ -76,7 +76,7 @@ import           HStream.Server.Handler.View           (createViewHandler,
                                                         getViewHandler,
                                                         listViewsHandler)
 import qualified HStream.Server.Persistence            as P
-import           HStream.Store
+import qualified HStream.Store                         as S
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ newRandomName :: Int -> IO CB.CBytes
 newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
 -- | Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
-subscribedReaders :: IORef (HM.HashMap TL.Text (LDSyncCkpReader, Subscription))
+subscribedReaders :: IORef (HM.HashMap TL.Text (S.LDSyncCkpReader, Subscription))
 subscribedReaders = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE subscribedReaders #-}
 
@@ -94,7 +94,7 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
 --------------------------------------------------------------------------------
 
-handlers :: LDClient -> Int -> Maybe ZHandle -> Compression -> IO (HStreamApi ServerRequest ServerResponse)
+handlers :: S.LDClient -> Int -> Maybe ZHandle -> S.Compression -> IO (HStreamApi ServerRequest ServerResponse)
 handlers ldclient repFactor zkHandle compression = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
@@ -155,10 +155,10 @@ genQueryResultResponse :: V.Vector Struct -> CommandQueryResponse
 genQueryResultResponse = CommandQueryResponse .
   Just . CommandQueryResponseKindResultSet . CommandQueryResultSet
 
-batchAppend :: LDClient -> TL.Text -> [Bytes] -> Compression -> IO (Either SomeException AppendCompletion)
+batchAppend :: S.LDClient -> TL.Text -> [Bytes] -> S.Compression -> IO (Either SomeException S.AppendCompletion)
 batchAppend client streamName payloads strategy = do
-  logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
-  try $ appendBatch client logId payloads strategy Nothing
+  logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
+  try $ S.appendBatch client logId payloads strategy Nothing
 
 executeQueryHandler
   :: ServerContext
@@ -184,7 +184,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnOkRes
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
-      streamExists <- doesStreamExists scLDClient (transToStreamName sName)
+      streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
       connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
       let connectorExists = elem (T.unpack cName) $ map P.getSuffix connectorIds
       if streamExists then
@@ -227,8 +227,8 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
             TimestampedKVStateStore _ ->
               returnErrRes "Impossible happened"
   where
-    mkLogAttrs = LogAttrs . HsLogAttrs scDefaultStreamRepFactor
-    create sName = createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
+    mkLogAttrs = S.LogAttrs . S.HsLogAttrs scDefaultStreamRepFactor
+    create sName = S.createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
     sendResp ma valueSerde = do
       case ma of
         Nothing -> returnResultSetRes V.empty
@@ -246,11 +246,11 @@ executePushQueryHandler ServerContext{..}
   plan' <-  mark FrontSQLException $ streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
     SelectPlan sources sink taskBuilder -> do
-      exists <- mapM (doesStreamExists scLDClient . transToStreamName) sources
+      exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
       if (not . and) exists then returnRes "some source stream do not exist"
       else mark LowLevelStoreException $ do
-        createTempStream scLDClient (transToTempStreamName sink)
-          (LogAttrs $ HsLogAttrs scDefaultStreamRepFactor Map.empty)
+        S.createStream scLDClient (transToTempStreamName sink)
+          (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
         (qid, _) <- P.createInsertPersistentQuery (getTaskName taskBuilder)
           commandPushQueryQueryText (P.PlainQuery $ textToCBytes <$> sources) zkHandle
@@ -260,9 +260,9 @@ executePushQueryHandler ServerContext{..}
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
         _ <- forkIO $ handlePushQueryCanceled meta
           (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
-        ldreader' <- newLDRsmCkpReader scLDClient
+        ldreader' <- S.newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
-          checkpointStoreLogID 5000 1 Nothing 10
+          S.checkpointStoreLogID 5000 1 Nothing 10
         let sc = hstoreTempSourceConnector scLDClient ldreader'
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
@@ -290,11 +290,11 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
     DView view     -> handleDrop "view_" ("__" <> view)
   where
     handleDrop object name = do
-      streamExists <- doesStreamExists scLDClient (transToStreamName name)
+      streamExists <- S.doesStreamExists scLDClient (transToStreamName name)
       if streamExists then
         terminateQueryAndRemove (T.unpack (object <> name))
         >> terminateRelatedQueries (textToCBytes name)
-        >> removeStream scLDClient (transToStreamName name)
+        >> S.removeStream scLDClient (transToStreamName name)
         >> returnOkRes
       else if checkIfExist then returnOkRes
       else returnErrRes "Object does not exist"
@@ -319,10 +319,10 @@ handleShowPlan :: ServerContext -> ShowObject
 handleShowPlan ServerContext{..} showObject =
   case showObject of
     SStreams -> mark LowLevelStoreException $ do
-      names <- findStreams scLDClient True
-      let implicitNames = filter ((/= "__") . take 2 . CB.unpack) . L.sort . map getStreamName $ names
+      names <- S.findStreams scLDClient S.StreamTypeStream True
+      let implicitNames = filter ((/= "__") . take 2) . L.sort . map S.showStreamName $ names
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $
-            cbytesToValue <$> implicitNames
+            stringToValue <$> implicitNames
       return (ServerNormalResponse (Just resp) [] StatusOk "")
     SQueries -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
@@ -382,10 +382,10 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   timestamp <- getProtoTimestamp
   let payloads = map (buildHStreamRecord timestamp) $ V.toList appendRequestRecords
   e' <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
-  case e' :: Either SomeException AppendCompletion of
+  case e' :: Either SomeException S.AppendCompletion of
     Left err                   -> do
       return $ ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
-    Right AppendCompletion{..} -> do
+    Right S.AppendCompletion{..} -> do
       let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
           resp = AppendResponse appendRequestStreamName records
       return $ ServerNormalResponse (Just resp) [] StatusOk ""
@@ -398,8 +398,8 @@ createStreamsHandler :: ServerContext
                      -> ServerRequest 'Normal Stream Stream
                      -> IO (ServerResponse 'Normal Stream)
 createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = do
-  e' <- try $ createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
-    (LogAttrs $ HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+  e' <- try $ S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
+    (S.LogAttrs $ S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
   eitherToResponse e' stream
 
 subscribeHandler :: ServerContext
@@ -414,30 +414,30 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
       either (return . ServerNormalResponse Nothing [] StatusInternal)
         (doSubscribe scLDClient subscription) e'
   where
-    getStartLSN :: SubscriptionOffset -> LDClient -> C_LogID -> IO LSN
+    getStartLSN :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO S.LSN
     getStartLSN SubscriptionOffset{..} client logId = case fromJust subscriptionOffsetOffset of
       SubscriptionOffsetOffsetSpecialOffset subOffset -> do
         case subOffset of
-          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> return LSN_MIN
-          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> (+1) <$> getTailLSN client logId
+          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> return S.LSN_MIN
+          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> (+1) <$> S.getTailLSN client logId
           Enumerated _                                               -> error "Wrong SpecialOffset!"
       SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
 
-    checkExist :: LDClient -> TL.Text -> IO (Either StatusDetails StreamName)
+    checkExist :: S.LDClient -> TL.Text -> IO (Either StatusDetails S.StreamId)
     checkExist client name = do
       let streamName = transToStreamName $ TL.toStrict name
-      isExist <- doesStreamExists client streamName
+      isExist <- S.doesStreamExists client streamName
       if isExist
       then return $ Right streamName
       else return $ Left "Stream doesn't exist"
 
-    doSubscribe :: LDClient -> Subscription -> StreamName -> IO (ServerResponse 'Normal Subscription)
+    doSubscribe :: S.LDClient -> Subscription -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
     doSubscribe client subscription@Subscription{..} streamName = do
-      reader <- newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
-        checkpointStoreLogID 5000 1 Nothing 10
-      logId <- getCLogIDByStreamName client streamName
+      reader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
+        S.checkpointStoreLogID 5000 1 Nothing 10
+      logId <- S.getUnderlyingLogId client streamName
       startLSN <- getStartLSN (fromJust subscriptionOffset) client logId
-      res <- try $ ckpReaderStartReading reader logId startLSN LSN_MAX
+      res <- try $ S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
       when (isRight res) $ do
         atomicModifyIORef' subscribedReaders
           (\mp -> (HM.insert subscriptionSubscriptionId (reader, subscription) mp, ()))
@@ -452,11 +452,11 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata Delet
     Nothing                         -> return $ ServerNormalResponse (Just Empty) [] StatusOk ""
     Just (reader, Subscription{..}) -> do
       let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-      logId <- getCLogIDByStreamName scLDClient streamName
-      isExist <- doesStreamExists scLDClient streamName
+      logId <- S.getUnderlyingLogId scLDClient streamName
+      isExist <- S.doesStreamExists scLDClient streamName
       if isExist
          then do
-          res <- try $ ckpReaderStopReading reader logId
+          res <- try $ S.ckpReaderStopReading reader logId
           when (isRight res) $ do
             atomicModifyIORef' subscribedReaders
               (\mp -> (HM.delete subscriptionSubscriptionId mp, ()))
@@ -475,20 +475,20 @@ fetchHandler _ (ServerNormalRequest _metadata FetchRequest{..}) = do
     Nothing          -> do
       return (ServerNormalResponse Nothing [] StatusInternal "SubscriptionId not found.")
     Just (reader, _) -> do
-      void $ ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
-      res <- ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
+      void $ S.ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
+      res <- S.ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
       let resp = fetchResult res
       return (ServerNormalResponse (Just (FetchResponse resp)) [] StatusOk "")
   where
-    fetchResult :: [DataRecord] -> V.Vector ReceivedRecord
+    fetchResult :: [S.DataRecord] -> V.Vector ReceivedRecord
     fetchResult records =
-      let groups = L.groupBy (\x y -> recordLSN x == recordLSN y) records
+      let groups = L.groupBy (\x y -> S.recordLSN x == S.recordLSN y) records
       in V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
 
-    mkReceivedRecord :: Int -> DataRecord -> ReceivedRecord
+    mkReceivedRecord :: Int -> S.DataRecord -> ReceivedRecord
     mkReceivedRecord index record =
-      let recordId = RecordId (recordLSN record) (fromIntegral index)
-      in ReceivedRecord (Just recordId) (toByteString . recordPayload $ record)
+      let recordId = RecordId (S.recordLSN record) (fromIntegral index)
+      in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
 commitOffsetHandler :: ServerContext
                     -> ServerRequest 'Normal CommittedOffset CommittedOffset
@@ -502,20 +502,20 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@Comm
       e' <- try $ commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
       eitherToResponse e' offset
   where
-    commitCheckpoint :: LDClient -> LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
+    commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
-      logId <- getCLogIDByStreamName client $ transToStreamName $ TL.toStrict streamName
-      writeCheckpoints reader (Map.singleton logId recordIdBatchId)
+      logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
+      S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 deleteStreamsHandler :: ServerContext
                      -> ServerRequest 'Normal DeleteStreamRequest Empty
                      -> IO (ServerResponse 'Normal Empty)
 deleteStreamsHandler ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = do
   let streamName = transToStreamName $ TL.toStrict deleteStreamRequestStreamName
-  isExist <- doesStreamExists scLDClient streamName
+  isExist <- S.doesStreamExists scLDClient streamName
   if isExist
   then do
-    e' <- try $ removeStream scLDClient streamName
+    e' <- try $ S.removeStream scLDClient streamName
     putStrLn $ "the result of removeStream: " <> show e'
     eitherToResponse e' Empty
   else return $ ServerNormalResponse Nothing [] StatusInternal "Stream doesn't exist"
@@ -524,14 +524,14 @@ listStreamsHandler :: ServerContext
                    -> ServerRequest 'Normal Empty ListStreamsResponse
                    -> IO (ServerResponse 'Normal ListStreamsResponse)
 listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = do
-  e' <- try $ findStreams scLDClient True
-  case e' :: Either SomeException [StreamName] of
+  e' <- try $ S.findStreams scLDClient S.StreamTypeStream True
+  case e' :: Either SomeException [S.StreamId] of
     Left err -> return $
       ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
     Right streams -> do
       res <- V.forM (V.fromList streams) $ \stream -> do
-        refactor <- getStreamReplicaFactor scLDClient stream
-        return $ Stream (TL.fromStrict . cbytesToText . getStreamName $ stream) (fromIntegral refactor)
+        refactor <- S.getStreamReplicaFactor scLDClient stream
+        return $ Stream (TL.pack . S.showStreamName $ stream) (fromIntegral refactor)
       return $ ServerNormalResponse (Just (ListStreamsResponse res)) [] StatusOk ""
 
 listSubscriptionsHandler :: ServerRequest 'Normal Empty ListSubscriptionsResponse
