@@ -13,6 +13,7 @@ module HStream.Connector.HStore
   , hstoreTempSinkConnector
   , transToStreamName
   , transToTempStreamName
+  , transToViewStreamName
   )
 where
 
@@ -72,6 +73,9 @@ transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
 
 transToTempStreamName :: HPT.StreamName -> S.StreamId
 transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
+
+transToViewStreamName :: HPT.StreamName -> S.StreamId
+transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
 
 --------------------------------------------------------------------------------
 

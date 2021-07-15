@@ -171,16 +171,16 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     SelectPlan{}           -> returnErrRes "inconsistent method called"
     -- execute plans that can be executed with this method
     CreatePlan stream _repFactor -> mark LowLevelStoreException $
-      create stream >> returnOkRes
+      create (transToStreamName stream) >> returnOkRes
     CreateBySelectPlan sources sink taskBuilder _repFactor -> mark LowLevelStoreException $
-      create sink
+      create (transToStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
         (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink))
       >> returnOkRes
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> mark LowLevelStoreException $ do
-      create sink
+      create (transToViewStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
-        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . drop 2 . T.unpack $ sink) schema)
+        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnOkRes
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
@@ -207,7 +207,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk  "")
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
-      case HM.lookup ("__" <> rSelectViewFrom) hm of
+      case HM.lookup rSelectViewFrom hm of
         Nothing -> returnErrRes $ "No VIEW named " <> TL.fromStrict rSelectViewFrom <> " found"
         Just materialized -> do
           let (keyName, keyExpr) = rSelectViewWhere
@@ -228,7 +228,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
               returnErrRes "Impossible happened"
   where
     mkLogAttrs = S.LogAttrs . S.HsLogAttrs scDefaultStreamRepFactor
-    create sName = S.createStream scLDClient (transToStreamName sName) (mkLogAttrs Map.empty)
+    create sName = S.createStream scLDClient sName (mkLogAttrs Map.empty)
     sendResp ma valueSerde = do
       case ma of
         Nothing -> returnResultSetRes V.empty
@@ -286,15 +286,15 @@ handleDropPlan :: ServerContext -> Bool -> DropObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
   case dropObject of
-    DStream stream -> handleDrop "stream_" stream
-    DView view     -> handleDrop "view_" ("__" <> view)
+    DStream stream -> handleDrop "stream_" stream transToStreamName
+    DView view     -> handleDrop "view_" view transToViewStreamName
   where
-    handleDrop object name = do
-      streamExists <- S.doesStreamExists scLDClient (transToStreamName name)
+    handleDrop object name toSName = do
+      streamExists <- S.doesStreamExists scLDClient (toSName name)
       if streamExists then
         terminateQueryAndRemove (T.unpack (object <> name))
         >> terminateRelatedQueries (textToCBytes name)
-        >> S.removeStream scLDClient (transToStreamName name)
+        >> S.removeStream scLDClient (toSName name)
         >> returnOkRes
       else if checkIfExist then returnOkRes
       else returnErrRes "Object does not exist"
@@ -320,9 +320,8 @@ handleShowPlan ServerContext{..} showObject =
   case showObject of
     SStreams -> mark LowLevelStoreException $ do
       names <- S.findStreams scLDClient S.StreamTypeStream True
-      let implicitNames = filter ((/= "__") . take 2) . L.sort . map S.showStreamName $ names
-      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS"  $
-            stringToValue <$> implicitNames
+      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS" . L.sort $
+            stringToValue . S.showStreamName <$> names
       return (ServerNormalResponse (Just resp) [] StatusOk "")
     SQueries -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries

@@ -90,7 +90,7 @@ spec = describe "HStream.RunViewSpec" $ do
     ( do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        res2 <- executeCommandQuery $ "DROP STREAM " <> viewname <> " IF EXISTS;"
+        res2 <- executeCommandQuery $ "DROP VIEW " <> viewname <> " IF EXISTS;"
         return [res1, res2]
     ) `shouldReturn` L.replicate 2 (Just successResp)
 
@@ -134,6 +134,6 @@ spec = describe "HStream.RunViewSpec" $ do
     ( do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        res2 <- executeCommandQuery $ "DROP STREAM " <> viewname <> " IF EXISTS;"
+        res2 <- executeCommandQuery $ "DROP VIEW " <> viewname <> " IF EXISTS;"
         return [res1, res2]
     ) `shouldReturn` L.replicate 2 (Just successResp)
