@@ -62,14 +62,29 @@ startSQLRepl :: HeaderConfig AdminAPI -> StartSQLReplOpts -> IO ()
 startSQLRepl conf StartSQLReplOpts{..} = do
   let ldq' = buildLDQueryRes conf startSQLReplTimeout startSQLReplUseSsl
   withResource ldq' $ \ldq -> do
-    completionWords <- fmap (unpack . fst) <$> S.showTables ldq
-    let complete = H.completeWord Nothing " \t" $ return . completeFunc completionWords
+    complete <- getCompletionFun ldq
     let setting  = (H.defaultSettings :: H.Settings IO) {H.complete = complete}
     H.runInputT setting $
       fix (\loop -> do
-              H.getInputLine "> " >>= \case
+              H.getInputLine "sql> " >>= \case
                 Nothing  -> return ()
                 Just str -> runSQLCmd ldq str >> loop)
+
+getCompletionFun :: S.LDQuery -> IO (H.CompletionFunc IO)
+getCompletionFun ldq = do
+  let commands = ["show", "describe", "select"]
+  tables <- map (unpack . fst) <$> S.showTables ldq
+  return $ H.completeWordWithPrev Nothing " \t" $ \leftStr str -> do
+    let leftWord = if null (words leftStr)
+                      then ""
+                      else reverse . head $ words leftStr
+    let wordList = case leftWord of
+                     ""         -> commands
+                     "show"     -> ["tables"]
+                     "describe" -> tables
+                     "from"     -> tables
+                     _          -> []
+    return $ map H.simpleCompletion $ filter (str `isPrefixOf`) wordList
 
 runSQLCmd :: S.LDQuery -> String -> H.InputT IO ()
 runSQLCmd ldq str = liftIO $
@@ -77,8 +92,10 @@ runSQLCmd ldq str = liftIO $
     "show" : "tables" : _ -> runShowTables ldq
     "describe" : name : _ -> runDescribe ldq name
     "select" : _          -> runSelect ldq str
-    _                     -> putStrLn $ "unknown command: " <> str
+    _                     -> putStrLn $ "unknown command: " <> str <> "\n\n" <> helpMsg
 
-completeFunc :: [String] -> String -> [H.Completion]
-completeFunc wordList str =
-  map H.simpleCompletion $ filter (str `isPrefixOf`) wordList
+helpMsg :: String
+helpMsg = "Commands: \n"
+       <> "- show tables: Shows a list of the supported tables\n"
+       <> "- describle <table name>: to get detailed information about that table\n"
+       <> "- select: a sql query interface for the tier, use `show tables` to get information about the tables available for query"
