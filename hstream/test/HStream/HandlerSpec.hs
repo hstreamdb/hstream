@@ -15,10 +15,6 @@ import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
-import           HStream.Common
-import           HStream.Server.HStreamApi
-import           HStream.Utils                    (getProtoTimestamp)
-import           HStream.Utils.BuildRecord
 import           Network.GRPC.HighLevel.Client    (Client)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
@@ -26,11 +22,16 @@ import           Test.Hspec
 import           ThirdParty.Google.Protobuf.Empty
 import           Z.Foreign                        (toByteString)
 
+import           HStream.Server.HStreamApi
+import           HStream.SpecUtils
+import           HStream.Utils                    (getProtoTimestamp)
+import           HStream.Utils.BuildRecord
+
 requestTimeout :: Int
 requestTimeout = 1000
 
 mkReceivedRecord :: V.Vector B.ByteString -> V.Vector RecordId -> V.Vector ReceivedRecord
-mkReceivedRecord payloads recordId = V.zipWith (\rid rd -> ReceivedRecord (Just rid) rd) recordId payloads
+mkReceivedRecord payloads recordId = V.zipWith (ReceivedRecord . Just) recordId payloads
 
 rebuildReceivedRecord :: ReceivedRecord -> ReceivedRecord
 rebuildReceivedRecord record@ReceivedRecord{..} =

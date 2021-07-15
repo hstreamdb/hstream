@@ -14,7 +14,7 @@ import qualified Database.ClickHouseDriver.Types as ClickHouse
 import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
 import           Test.Hspec
 
-import           HStream.Common
+import           HStream.SpecUtils
 import           HStream.Store.Logger
 
 spec :: Spec

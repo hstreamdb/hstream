@@ -130,13 +130,13 @@ test-suite hstream-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:
+    HStream.HandlerSpec
+    HStream.RegressionSpec
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunViewSpec
-    HStream.RegressionSpec
-    HStream.Common
-    HStream.HandlerSpec
+    HStream.SpecUtils
 
   hs-source-dirs:     test
   build-depends:

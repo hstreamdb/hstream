@@ -9,7 +9,7 @@ import           Control.Concurrent
 import qualified Data.Aeson         as Aeson
 import           Test.Hspec
 
-import           HStream.Common
+import           HStream.SpecUtils
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do

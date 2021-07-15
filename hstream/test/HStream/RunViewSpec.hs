@@ -14,8 +14,8 @@ import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
 import           ThirdParty.Google.Protobuf.Empty
 
-import           HStream.Common
 import           HStream.Server.HStreamApi
+import           HStream.SpecUtils
 import           HStream.Store.Logger
 
 viewIdIs :: TL.Text -> View -> Bool
