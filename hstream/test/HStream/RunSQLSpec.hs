@@ -1,21 +1,27 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
-import qualified Data.Aeson                      as Aeson
-import qualified Data.List                       as L
-import qualified Data.Text.Lazy                  as TL
-import qualified Data.Vector                     as V
-import qualified Database.ClickHouseDriver.Types as ClickHouse
-import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
-import           Test.Hspec
+import qualified Data.Aeson                        as Aeson
+import qualified Data.List                         as L
+import qualified Data.Text.Lazy                    as TL
+import qualified Data.Vector                       as V
+import qualified Database.ClickHouseDriver.Types   as ClickHouse
+import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
+import           Test.Hspec                        (Spec, describe, it, runIO,
+                                                    shouldReturn)
 
+import           HStream.Server.HStreamApi         (CommandQueryResponse (CommandQueryResponse),
+                                                    CommandQueryResponseKind (CommandQueryResponseKindResultSet),
+                                                    CommandQueryResultSet (CommandQueryResultSet))
 import           HStream.SpecUtils
 import           HStream.Store.Logger
+import           HStream.Utils.Converter           (structToStruct)
+import           HStream.Utils.Format              (formatCommandQueryResponse)
+import           ThirdParty.Google.Protobuf.Struct (Struct)
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
@@ -48,6 +54,12 @@ spec = describe "HStream.RunSQLSpec" $ do
         res6 <- executeCommandQuery $ "CREATE STREAM " <> sink2   <> " ;"
         return [res1, res2, res3, res4, res5, res6]
     ) `shouldReturn` L.replicate 6 (Just successResp)
+
+  it "show streams" $
+    (do
+      (Just res) <- executeCommandQuery "SHOW STREAMS;"
+      return . L.sort . words $ formatCommandQueryResponse 0 res
+    )`shouldReturn` TL.unpack <$> L.sort [source1, source2, source3, source4, sink1, sink2]
 
   it "insert data to source streams" $
     (do
@@ -129,3 +141,44 @@ spec = describe "HStream.RunSQLSpec" $ do
         res6 <- executeCommandQuery $ "DROP STREAM " <> sink2 <> " IF EXISTS;"
         return [res1, res2, res3, res4, res5, res6]
     ) `shouldReturn` L.replicate 6 (Just successResp)
+
+  viewName <- runIO $ TL.fromStrict <$> newRandomText 20
+  source5 <- runIO $ TL.fromStrict <$> newRandomText 20
+  source6 <- runIO $ TL.fromStrict <$> newRandomText 20
+
+  it "clean view" $
+    executeCommandQuery ("DROP VIEW " <> viewName <> " IF EXISTS;")
+    `shouldReturn` Just successResp
+
+  it "create a view" $
+    ( do
+        _ <- executeCommandQuery $ "DROP STREAM " <> source5 <> " IF EXISTS;"
+        _ <- executeCommandQuery $ "DROP STREAM " <> source6 <> " IF EXISTS;"
+        _ <- executeCommandQuery $ "CREATE STREAM " <> source5 <> " ;"
+        _ <- executeCommandQuery $ "CREATE STREAM " <> source6 <> " AS SELECT a, 1 AS b FROM " <> source5 <> " EMIT CHANGES;"
+        res1 <- executeCommandQuery $ "CREATE VIEW " <> viewName <> " AS SELECT SUM(a) FROM " <> source6 <> " GROUP BY b EMIT CHANGES;"
+        (Just res2) <- executeCommandQuery "SHOW VIEWS;"
+        return (res1, formatCommandQueryResponse 0 res2)
+    ) `shouldReturn` (Just successResp, TL.unpack $ viewName <> "\n")
+
+  it "select from view" $
+    ( do
+        threadDelay 2000000
+        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (1);"
+        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (2);"
+        threadDelay 2000000
+        (Just res1) <- executeCommandQuery $ "SELECT * FROM " <> viewName <> " WHERE b = 1;"
+        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (3);"
+        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (4);"
+        threadDelay 2000000
+        (Just res2) <- executeCommandQuery $ "SELECT * FROM " <> viewName <> " WHERE b = 1;"
+        _ <- executeCommandQuery $ "DROP STREAM " <> source5 <> " IF EXISTS;"
+        _ <- executeCommandQuery $ "DROP STREAM " <> source6 <> " IF EXISTS;"
+        return [res1, res2]
+    ) `shouldReturn` mkViewResponse . mkStruct <$>
+    [ [("SUM(a)", Aeson.Number 3)],
+      [("SUM(a)", Aeson.Number 10)] ]
+
+mkViewResponse :: Struct -> CommandQueryResponse
+mkViewResponse = CommandQueryResponse . Just . CommandQueryResponseKindResultSet .
+  CommandQueryResultSet . V.singleton . structToStruct "SELECTVIEW"
