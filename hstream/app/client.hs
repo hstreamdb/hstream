@@ -78,7 +78,7 @@ app clientConfig = do
 
 commandExec :: ClientConfig -> String -> IO ()
 commandExec clientConfig xs = case words xs of
-  ":h" : _ -> putStr helpInfo
+  ":h" : _ -> putStrLn helpInfo
   [":help"] -> putStr groupedHelpInfo
   ":help" : x : _ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
   val@(_ : _) -> do
