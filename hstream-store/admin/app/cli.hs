@@ -30,6 +30,7 @@ runCli s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
 runCli s (LogsCmd cmd) = printTime $ runLogsCmd s cmd
 runCli s (CheckImpactCmd checkImpactOpts) = printTime $ checkImpact s checkImpactOpts
 runCli s (MaintenanceCmd opts) = printTime $ runMaintenanceCmd s opts
+runCli s (StartSQLReplCmd opts) = startSQLRepl s opts
 
 printTime :: IO a -> IO a
 printTime f = do
@@ -48,6 +49,7 @@ data Command
   | LogsCmd LogsConfigCmd
   | CheckImpactCmd CheckImpactOpts
   | MaintenanceCmd MaintenanceOpts
+  | StartSQLReplCmd StartSQLReplOpts
   deriving (Show)
 
 commandParser :: O.Parser Command
@@ -62,4 +64,6 @@ commandParser = O.hsubparser
                              )
  <> O.command "maintenance" (O.info (MaintenanceCmd <$> maintenanceOptsParser)
                             (O.progDesc "Allows to manipulate maintenances in Maintenance Manager"))
+ <> O.command "sql" (O.info (StartSQLReplCmd <$> startSQLReplOptsParser)
+                      (O.progDesc "Start an interactive SQL shell"))
   )

@@ -827,3 +827,20 @@ maintenanceShowOptsParser = MaintenanceShowOpts
             <> help "Show also per-shard information")
   <*> switch ( long "show-safety-check-results"
             <> help "Show the entire output (includes all logs) of the impact check")
+
+-------------------------------------------------------------------------------
+
+data StartSQLReplOpts = StartSQLReplOpts
+  { startSQLReplTimeout :: Int64
+  , startSQLReplUseSsl  :: Bool
+  } deriving (Show)
+
+startSQLReplOptsParser :: Parser StartSQLReplOpts
+startSQLReplOptsParser = StartSQLReplOpts
+  <$> option auto ( long "timeout"
+                 <> value 5000
+                 <> showDefault
+                 <> help ("Timeout when retrieve data from a LD node"
+                       <> "through its admin command port, milliseconds"))
+  <*> switch ( long "use-ssl"
+            <> help "whether ldquery should connect to admin command port using SSL/TLS")
