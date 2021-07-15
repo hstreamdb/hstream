@@ -4,7 +4,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Common where
+module HStream.SpecUtils where
 
 import           Control.Concurrent
 import           Control.Monad

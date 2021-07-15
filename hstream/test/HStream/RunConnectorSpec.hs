@@ -13,8 +13,8 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
 
-import           HStream.Common
 import           HStream.Server.HStreamApi
+import           HStream.SpecUtils
 import           HStream.Store.Logger
 
 getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
