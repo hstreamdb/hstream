@@ -4,6 +4,7 @@ module HStream.Store.Admin.Command.SQL
 
 import           Control.Monad                    (forM_)
 import           Control.Monad.IO.Class           (liftIO)
+import           Data.Function                    (fix)
 import           Data.List                        (isPrefixOf)
 import           HStream.Store.Admin.Format       (simpleShowTable)
 import qualified System.Console.Haskeline         as H
@@ -16,6 +17,7 @@ import           Z.Data.CBytes                    (pack, unpack)
 import           HStream.Store.Admin.API
 import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
+
 
 runShowTables :: S.LDQuery -> IO ()
 runShowTables ldq = do
@@ -80,8 +82,3 @@ runSQLCmd ldq str = liftIO $
 completeFunc :: [String] -> String -> [H.Completion]
 completeFunc wordList str =
   map H.simpleCompletion $ filter (str `isPrefixOf`) wordList
-
--------------------------------------------------------------------------------
--- Utils
-fix :: (a -> a) -> a
-fix f = f (fix f)
