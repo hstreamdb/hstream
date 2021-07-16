@@ -1,6 +1,7 @@
 module HStream.Store.Admin.API
   ( sendAdminApiRequest
-  , getNodesAdminAddr
+  , fetchNodesAdminAddr
+  , getNodeAdminAddr
   , buildLDClientRes
   , withResource
   , buildLDQueryRes
@@ -53,7 +54,8 @@ import           Thrift.Protocol.Id
 
 import           Data.Int                                   (Int64)
 import qualified Data.Map.Strict                            as Map
-import           Data.Maybe                                 (fromJust)
+import           Data.Maybe                                 (fromJust,
+                                                             fromMaybe)
 import qualified Data.Text.Encoding                         as DText
 import qualified Util.EventBase                             as FBUtil
 import           Z.Data.CBytes                              (CBytes)
@@ -79,11 +81,17 @@ sendAdminApiRequest conf m =
   FBUtil.withEventBaseDataplane $ \evb ->
     withHeaderChannel' evb conf True False m
 
-getNodesAdminAddr :: HeaderConfig AdminAPI -> NodesFilter -> IO [SocketAddress]
-getNodesAdminAddr conf nodesFilter = do
+fetchNodesAdminAddr :: HeaderConfig AdminAPI -> NodesFilter -> IO [SocketAddress]
+fetchNodesAdminAddr conf nodesFilter = do
   config <- sendAdminApiRequest conf (getNodesConfig nodesFilter)
   return $ map fromJust . filter (== Nothing) $
     map (maybe Nothing addresses_admin . nodeConfig_other_addresses) (nodesConfigResponse_nodes config)
+
+-- | Get node admin adress. If there is Nothing in 'nodeConfig_other_addresses',
+-- we then use data address.
+getNodeAdminAddr :: NodeConfig -> SocketAddress
+getNodeAdminAddr NodeConfig{..} =
+  fromMaybe nodeConfig_data_address (addresses_admin =<< nodeConfig_other_addresses)
 
 buildLDClientRes
   :: HeaderConfig AdminAPI
