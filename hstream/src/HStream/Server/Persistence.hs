@@ -24,7 +24,8 @@ module HStream.Server.Persistence
   , isViewQuery
   , isStreamQuery
   , createInsertPersistentQuery
-  , getRelatedStreams) where
+  , getRelatedStreams
+  ) where
 
 import           Control.Exception        (Exception, handle, throw)
 import           Control.Monad            (void)
