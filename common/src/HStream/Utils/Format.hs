@@ -11,6 +11,7 @@ import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (maybeToList)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
+import           Data.Time.Clock                   (NominalDiffTime)
 import qualified Data.Vector                       as V
 import           Text.Layout.Table                 (center, colsAllG, column,
                                                     expand, justify, left,
@@ -22,6 +23,8 @@ import qualified ThirdParty.Google.Protobuf.Struct as P
 import qualified HStream.Server.HStreamApi         as HA
 import           HStream.Utils.Converter           (jsonValueToValue,
                                                     valueToJsonValue)
+
+--------------------------------------------------------------------------------
 
 type Width = Int
 
@@ -53,6 +56,7 @@ formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
 formatCommandQueryResponse _ _ = ""
 
 --------------------------------------------------------------------------------
+
 formatStruct :: P.Struct -> String
 formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y))
                             . M.toList . fmap (fmap formatValue) $ kv
@@ -94,6 +98,24 @@ renderJSONToTable width (A.Object hmap) = renderJSONObjectToTable width hmap
 renderJSONToTable _ x                   = show x
 
 --------------------------------------------------------------------------------
+
+approxNaturaltime :: NominalDiffTime -> String
+approxNaturaltime n
+  | n < 0 = ""
+  | n == 0 = "0s"
+  | n < 1 = show @Int (floor $ n * 1000) ++ "ms"
+  | n < 60 = show @Int (floor n) ++ "s"
+  | n < fromIntegral hour = show @Int (floor n `div` 60) ++ " min"
+  | n < fromIntegral day  = show @Int (floor n `div` hour) ++ " hours"
+  | n < fromIntegral year = show @Int (floor n `div` day) ++ " days"
+  | otherwise = show @Int (floor n `div` year) ++ " years"
+  where
+    hour = 60 * 60
+    day = hour * 24
+    year = day * 365
+
+--------------------------------------------------------------------------------
+
 removePunc :: String -> String
 removePunc xs = [ x | x <- xs, x `notElem` (['}','{','\"','\''] :: [Char])]
 

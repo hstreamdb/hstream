@@ -34,7 +34,7 @@ library
     ThirdParty.Google.Protobuf.Struct
     ThirdParty.Google.Protobuf.Timestamp
 
-  hs-source-dirs:   src gen-src
+  hs-source-dirs:     src gen-src
   build-depends:
     , aeson
     , base
@@ -56,7 +56,16 @@ library
     , Z-Data
     , Z-IO
 
-  default-language: Haskell2010
+  default-language:   Haskell2010
+  default-extensions:
+    EmptyDataDeriving
+    GADTSyntax
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
@@ -86,7 +95,6 @@ test-suite hstream-common-test
     RecordWildCards
     ScopedTypeVariables
     TypeApplications
-    UnliftedFFITypes
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
