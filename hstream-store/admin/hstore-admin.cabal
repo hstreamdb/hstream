@@ -24,6 +24,92 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+library
+  hs-source-dirs:     . gen-hs2
+  exposed-modules:
+    HStream.Store.Admin.API
+    HStream.Store.Admin.Command
+    HStream.Store.Admin.Format
+    HStream.Store.Admin.Types
+
+  other-modules:
+    Admin.AdminAPI.Client
+    Admin.AdminAPI.Service
+    Admin.Types
+    AdminCommands.Types
+    ClusterMembership.Types
+    Common.Types
+    Exceptions.Types
+    Fb303.FacebookService.Client
+    Fb303.FacebookService.Service
+    Fb303.Types
+    HStream.Store.Admin.Command.CheckImpact
+    HStream.Store.Admin.Command.Config
+    HStream.Store.Admin.Command.Connect
+    HStream.Store.Admin.Command.Logs
+    HStream.Store.Admin.Command.Maintenance
+    HStream.Store.Admin.Command.NodesConfig
+    HStream.Store.Admin.Command.SQL
+    HStream.Store.Admin.Command.Status
+    Logtree.Types
+    Maintenance.Types
+    Membership.Types
+    Nodes.Types
+    Safety.Types
+    Settings.Types
+
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , base                  >=4.11.1   && <4.15
+    , bytestring            ^>=0.10.8.2
+    , colourista            ^>=0.1.0.1
+    , containers
+    , data-default
+    , deepseq
+    , fb-util
+    , hashable              >=1.2.7.0  && <1.4
+    , haskeline             ^>=0.8.1
+    , hstream-common
+    , hstream-store
+    , network               ^>=3.1.0
+    , optparse-applicative  ^>=0.16
+    , STMonadTrans
+    , table-layout          ^>=0.9.1
+    , text                  ^>=1.2.3.0
+    , thrift-cpp-channel
+    , thrift-lib
+    , time
+    , transformers          ^>=0.5.5.0
+    , unordered-containers  ^>=0.2.9.0
+    , vector                ^>=0.12.0.1
+    , Z-Data
+    , Z-IO
+    , zoovisitor            >=0.1.2    && <1
+
+  include-dirs:       /usr/local/include
+  extra-lib-dirs:     /usr/local/lib
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    FlexibleContexts
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    TupleSections
+    TypeApplications
+    UnliftedFFITypes
+
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
 executable hadmin
   main-is:            cli.hs
   hs-source-dirs:     app
@@ -56,87 +142,3 @@ executable hadmin
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
     -threaded -rtsopts -with-rtsopts=-N
-
-library
-  hs-source-dirs:     . gen-hs2
-  exposed-modules:
-    HStream.Store.Admin.API
-    HStream.Store.Admin.Command
-    HStream.Store.Admin.Format
-    HStream.Store.Admin.Types
-
-  other-modules:
-    Admin.AdminAPI.Client
-    Admin.AdminAPI.Service
-    Admin.Types
-    AdminCommands.Types
-    ClusterMembership.Types
-    Common.Types
-    Exceptions.Types
-    Fb303.FacebookService.Client
-    Fb303.FacebookService.Service
-    Fb303.Types
-    HStream.Store.Admin.Command.CheckImpact
-    HStream.Store.Admin.Command.Config
-    HStream.Store.Admin.Command.Connect
-    HStream.Store.Admin.Command.Logs
-    HStream.Store.Admin.Command.NodesConfig
-    HStream.Store.Admin.Command.Status
-    HStream.Store.Admin.Command.Maintenance
-    HStream.Store.Admin.Command.SQL
-    Logtree.Types
-    Maintenance.Types
-    Membership.Types
-    Nodes.Types
-    Safety.Types
-    Settings.Types
-
-  build-depends:
-    , aeson
-    , aeson-pretty
-    , base                  >=4.11.1   && <4.15
-    , bytestring            ^>=0.10.8.2
-    , colourista            ^>=0.1.0.1
-    , containers
-    , data-default
-    , deepseq
-    , fb-util
-    , hashable              >=1.2.7.0  && <1.4
-    , haskeline             ^>=0.8.1
-    , hstream-store
-    , network               ^>=3.1.0
-    , optparse-applicative  ^>=0.16
-    , STMonadTrans
-    , table-layout          ^>=0.9.1
-    , text                  ^>=1.2.3.0
-    , thrift-cpp-channel
-    , thrift-lib
-    , transformers          ^>=0.5.5.0
-    , unordered-containers  ^>=0.2.9.0
-    , vector                ^>=0.12.0.1
-    , Z-Data
-    , Z-IO
-    , zoovisitor            >=0.1.2    && <1
-
-  include-dirs:       /usr/local/include
-  extra-lib-dirs:     /usr/local/lib
-  default-language:   Haskell2010
-  default-extensions:
-    DeriveGeneric
-    DerivingStrategies
-    EmptyDataDeriving
-    FlexibleContexts
-    GADTSyntax
-    GeneralizedNewtypeDeriving
-    LambdaCase
-    OverloadedStrings
-    RankNTypes
-    RecordWildCards
-    ScopedTypeVariables
-    TupleSections
-    TypeApplications
-    UnliftedFFITypes
-
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
