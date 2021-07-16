@@ -31,12 +31,14 @@ DEFAULT_DB_IMAGE      = 'docker.io/hstreamdb/hstream'
 DEFAULT_SWAGGER_IMAGE = 'swaggerapi/swagger-ui'
 # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
 DEFAULT_MYSQL_IMAGE   = 'mysql:5.6'
+DEFAULT_ZK_IMAGE = 'zookeeper'
 DEFAULT_CLICKHOUSE_IMAGE = 'yandex/clickhouse-server'
 
 SWAGGER_CONTAINER_NAME   = 'hstream-swagger'
 MYSQL_CONTAINER_NAME     = 'hstream-mysql'
 DEFAULT_MYSQL_PASSWORD   = 'password'
 LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
+ZK_CONTAINER_NAME = 'hstream-zookeeper'
 CLICKHOUSE_CONTAINER_NAME = 'hstream-clickhouse'
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
@@ -69,10 +71,18 @@ def mysql_start(container_bin):
     run_sh(cmd)
     loginfo("done")
 
-
 def mysql_stop(container_bin):
     run_sh(f"{container_bin} kill {MYSQL_CONTAINER_NAME}", check=False)
 
+def zookeeper_start(container_bin):
+    cmd = ' '.join([
+        f'{container_bin} run --rm --name {ZK_CONTAINER_NAME} -p 2181:2181 -d {DEFAULT_ZK_IMAGE}'
+    ])
+    run_sh(cmd)
+    loginfo("Zookeeper start as port 2181")
+
+def zookeeper_stop(container_bin):
+    run_sh(f"{container_bin} kill {ZK_CONTAINER_NAME}", check=False)
 
 def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
     if gen_from_image:
@@ -295,8 +305,18 @@ if __name__ == '__main__':
 
     # cluster-stop
     parser_cluster_stop = subparsers.add_parser(
-        'cluster-stop', help='Stop logdevice dev cluster')
+        'cluster-stop', help='Stop Zookeeper')
     parser_cluster_stop.add_argument('--container-bin', default='docker')
+
+    # zookeeper-start
+    parser_zookeeper_start = subparsers.add_parser(
+        'zookeeper-start', help='Start zookeeper')
+    parser_zookeeper_start.add_argument('--container-bin', default='docker')
+
+    # zookeeper-stop
+    parser_zookeeper_stop = subparsers.add_parser(
+        'zookeeper-stop', help='Stop logdevice dev zookeeper')
+    parser_zookeeper_stop.add_argument('--container-bin', default='docker')
 
     # mysql-start
     parser_mysql_start = subparsers.add_parser(
@@ -381,6 +401,10 @@ if __name__ == '__main__':
         cluster_stop(**args)
     elif sub_command == 'admin-addr':
         admin_addr(**args)
+    elif sub_command == 'zookeeper-start':
+        zookeeper_start(**args)
+    elif sub_command == 'zookeeper-stop':
+        zookeeper_stop(**args)
     elif sub_command == 'mysql-start':
         mysql_start(**args)
     elif sub_command == 'mysql-stop':

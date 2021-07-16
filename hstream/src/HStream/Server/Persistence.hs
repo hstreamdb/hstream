@@ -23,7 +23,8 @@ module HStream.Server.Persistence
   , getSuffix
   , isViewQuery
   , isStreamQuery
-  ,createInsertPersistentQuery,getRelatedStreams) where
+  , createInsertPersistentQuery
+  , getRelatedStreams) where
 
 import           Control.Exception        (Exception, handle, throw)
 import           Control.Monad            (void)
@@ -60,26 +61,26 @@ data Query = Query {
   , queryInfo      :: Info
   , queryInfoExtra :: QueryType
   , queryStatus    :: Status
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Query
 
 data Connector = Connector {
     connectorId     :: Id
   , connectorInfo   :: Info
   , connectorStatus :: Status
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Connector
 
 data Info = Info {
     sqlStatement :: SqlStatement
   , createdTime  :: TimeStamp
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Info
 
 data Status = Status {
     status         :: PStatus
   , timeCheckpoint :: TimeStamp
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Status
 
 data PStatus = Created
@@ -115,6 +116,7 @@ class Persistence handle where
   getQueryIds        :: HasCallStack => handle -> IO [CBytes]
   getConnectorIds    :: HasCallStack => handle -> IO [CBytes]
 
+  -- With an parameter to decide whether check if Terminated before removing
   removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeQuery        :: HasCallStack => Id -> handle -> IO ()
   removeQuery cid = removeQuery' cid True
