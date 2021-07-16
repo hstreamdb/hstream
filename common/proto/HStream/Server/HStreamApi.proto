@@ -19,6 +19,8 @@ service HStreamApi {
   // e.g., insert, create, show/list, select(without emit changes) ...
   rpc ExecuteQuery(CommandQuery) returns (CommandQueryResponse);
 
+  rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
+
   rpc Append(AppendRequest) returns (AppendResponse) {}
 
   rpc Subscribe(Subscription) returns (Subscription) {}
@@ -114,6 +116,14 @@ enum HStreamServerError {
   NoError = 0;
   UnknownError = 1;
   NotExistError = 3;
+}
+
+message ConsumerHeartbeatRequest {
+  string subscriptionId = 1;
+}
+
+message ConsumerHeartbeatResponse {
+  string subscriptionId = 1;
 }
 
 message AppendRequest {

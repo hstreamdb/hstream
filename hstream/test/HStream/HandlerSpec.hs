@@ -6,7 +6,10 @@
 
 module HStream.HandlerSpec (spec) where
 
-import           Control.Monad                    (forM_, replicateM, void)
+import           Control.Concurrent               (forkIO, killThread,
+                                                   threadDelay)
+import           Control.Monad                    (forM_, forever, replicateM,
+                                                   void)
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Lazy             as BL
 import qualified Data.List                        as L
@@ -24,6 +27,7 @@ import           Z.Foreign                        (toByteString)
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
+import           HStream.Store
 import           HStream.Utils                    (getProtoTimestamp)
 import           HStream.Utils.BuildRecord
 
@@ -155,10 +159,24 @@ commitOffsetRequest client subscriptionId streamName recordId = do
     ClientErrorResponse clientError                     -> do
       putStrLn ("Client Error: " <> show clientError) >> return False
 
+sendHeartbeatRequest :: Client -> TL.Text -> IO Bool
+sendHeartbeatRequest client subscriptionId = do
+  HStreamApi{..} <- hstreamApiClient client
+  let req = ConsumerHeartbeatRequest subscriptionId
+  resp <- hstreamApiSendConsumerHeartbeat $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
+  case resp of
+    ClientNormalResponse _ _meta1 _meta2 status details -> do
+      case status of
+        StatusOk -> return True
+        _        -> putStrLn ("Server Error: " <> show details) >> return False
+    ClientErrorResponse clientError                       -> do
+      putStrLn ("Client Error: " <> show clientError) >> return False
+
 -----------------------------------------------------------------------------------------------------------
 
 spec :: Spec
-spec = describe "HStream.BasicRpcSpec" $ do
+spec = describe "HStream.BasicHandlerSpec" $ do
+   runIO setupSigsegvHandler
 
    it "test create request" $
       (do
@@ -224,6 +242,9 @@ spec = describe "HStream.BasicRpcSpec" $ do
        subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
        -- resubscribe a subscribed stream should return False
        subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
+       -- after some delay without send heartbeat, the subscribe should be release and resubscribe should success
+       threadDelay 3000000
+       subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
        deleteSubscribeRequest client randomSubsciptionId `shouldReturn` True
        deleteStreamRequest client randomStreamName `shouldReturn` True
 
@@ -310,6 +331,10 @@ spec = describe "HStream.BasicRpcSpec" $ do
        randomSubsciptionId <- TL.fromStrict <$> newRandomText 10
        let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
        subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
+       tid <- forkIO $ do
+         forever $ do
+           void $ sendHeartbeatRequest client randomSubsciptionId
+           threadDelay 500000
 
        timeStamp <- getProtoTimestamp
        let header = buildRecordHeader rawPayloadFlag Map.empty timeStamp TL.empty
@@ -336,6 +361,25 @@ spec = describe "HStream.BasicRpcSpec" $ do
        let receivedRecord2 = V.head . fromJust $ resp2
        let resPayload2 = rebuildReceivedRecord receivedRecord2
        resPayload2 `shouldBe` reqPayloads !! 1
+
+       void $ killThread tid
+       deleteSubscribeRequest client randomSubsciptionId `shouldReturn` True
+       deleteStreamRequest client randomStreamName `shouldReturn` True
+
+   it "test sendHeartbeat request" $ withGRPCClient clientConfig $ \client ->
+     do
+       randomSubsciptionId <- TL.fromStrict <$> newRandomText 10
+       -- send heartbeat request to an unsubscribed subscription shoud return false
+       sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
+
+       randomStreamName <- TL.fromStrict <$> newRandomText 20
+       void $ createStreamRequest client $ Stream randomStreamName 1
+       let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
+       subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
+       -- send heartbeat request to an exist subscription should return True
+       sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
+       -- after send heartbeat responsed, resubscribe same subscription should return False
+       subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
 
        deleteSubscribeRequest client randomSubsciptionId `shouldReturn` True
        deleteStreamRequest client randomStreamName `shouldReturn` True
