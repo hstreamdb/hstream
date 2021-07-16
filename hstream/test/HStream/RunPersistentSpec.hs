@@ -34,7 +34,6 @@ setQueryStatus' :: HasCallStack => CBytes -> Int64 -> P.PStatus -> ZHandle -> IO
 setQueryStatus' qid time statusQ zkHandle = void $
   Z.zooSet zkHandle ("/hstreamdb/hstream/queries/" <> qid <> "/status") (Just (encode $ P.Status statusQ time)) Nothing
 
-
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
   zkHandle <- runIO $ Z.zookeeperInit zkUriDefault 5000 Nothing 0
@@ -63,7 +62,6 @@ spec = describe "HStream.RunSQLSpec" $ do
         P.insertQuery "333" (P.Info "select * from demo emit changes" 111) (P.PlainQuery ["demo"]) zkHandle
         P.getQueryIds zkHandle
     ) `shouldReturn` ["111","222","333"]
-
 
   it "remove query" $
     ( do
