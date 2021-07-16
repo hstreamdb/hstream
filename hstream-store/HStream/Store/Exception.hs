@@ -11,7 +11,6 @@ module HStream.Store.Exception
   , throwStreamError
   , throwStreamErrorIfNotOK
   , throwStreamErrorIfNotOK'
-  , throwStoreError
 
     -- * Custom Errors
   , SubmitError (..)
@@ -20,6 +19,7 @@ module HStream.Store.Exception
 
     -- * General Store Exception
   , StoreError               (..)
+  , throwStoreError
     -- ** Specific Stream Exception
   , NOTFOUND                 (..)
   , TIMEDOUT                 (..)

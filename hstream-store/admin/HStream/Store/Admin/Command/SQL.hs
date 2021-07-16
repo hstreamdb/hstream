@@ -6,7 +6,6 @@ import           Control.Monad                    (forM_)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Function                    (fix)
 import           Data.List                        (isPrefixOf)
-import           HStream.Store.Admin.Format       (simpleShowTable)
 import qualified System.Console.Haskeline         as H
 import           Text.Layout.Table                (asciiS, center, colsAllG,
                                                    column, def, expand,
@@ -14,7 +13,9 @@ import           Text.Layout.Table                (asciiS, center, colsAllG,
                                                    left, tableString, titlesH)
 import           Z.Data.CBytes                    (pack, unpack)
 
+import qualified HStream.Store                    as S
 import           HStream.Store.Admin.API
+import           HStream.Store.Admin.Format
 import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
 
@@ -87,7 +88,7 @@ getCompletionFun ldq = do
     return $ map H.simpleCompletion $ filter (str `isPrefixOf`) wordList
 
 runSQLCmd :: S.LDQuery -> String -> H.InputT IO ()
-runSQLCmd ldq str = liftIO $
+runSQLCmd ldq str = liftIO $ handleStoreError $ do
   case words str of
     "show" : "tables" : _ -> runShowTables ldq
     "describe" : name : _ -> runDescribe ldq name
