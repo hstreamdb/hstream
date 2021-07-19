@@ -141,7 +141,6 @@ test-suite hstream-test
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
-    HStream.RunViewSpec
     HStream.SpecUtils
 
   hs-source-dirs:     test
