@@ -139,6 +139,7 @@ test-suite hstream-test
     HStream.HandlerSpec
     HStream.RegressionSpec
     HStream.RunConnectorSpec
+    HStream.RunPersistentSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.SpecUtils
@@ -165,6 +166,7 @@ test-suite hstream-test
     , unordered-containers
     , vector
     , Z-Data
+    , zoovisitor
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
