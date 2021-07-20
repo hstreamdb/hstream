@@ -119,11 +119,11 @@ eitherToResponse (Left err) _ = return $
   ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
 eitherToResponse (Right _) resp = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
-handleCreateSinkConnector :: ServerContext -> TL.Text -> T.Text -> T.Text -> ConnectorConfig -> IO (CB.CBytes, Int64)
+handleCreateSinkConnector :: ServerContext -> T.Text -> T.Text -> T.Text -> ConnectorConfig -> IO (CB.CBytes, Int64)
 handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
     MkSystemTime timestamp _ <- getSystemTime'
     let cid = CB.pack $ T.unpack cName
-        cinfo = HSP.Info (ZT.pack $ T.unpack $ TL.toStrict sql) timestamp
+        cinfo = HSP.Info (ZT.pack $ T.unpack sql) timestamp
     HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
 
     ldreader <- HS.newLDReader scLDClient 1000 Nothing
@@ -212,4 +212,3 @@ subscribedReadersToMap readers = atomically $ do
     HM.mapMaybe (\case None                   -> Nothing
                        ReaderMap reader sId _ -> Just (reader, sId)
                 ) hm
-

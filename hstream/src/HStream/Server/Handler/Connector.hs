@@ -8,7 +8,6 @@
 
 module HStream.Server.Handler.Connector where
 
-import           Control.Concurrent               (forkIO)
 import           Control.Exception                (SomeException, catch, try)
 import           Data.List                        (find)
 import qualified Data.Text                        as T
@@ -39,28 +38,32 @@ hstreamConnectorToConnector (HSP.Connector connectorId (HSP.Info sqlStatement cr
 hstreamConnectorNameIs :: T.Text -> HSP.Connector -> Bool
 hstreamConnectorNameIs name (HSP.Connector connectorId _ _) = (cbytesToText connectorId) == name
 
-createSinkConnectorHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CreateSinkConnectorRequest Connector
-  -> IO (ServerResponse 'Normal Connector)
-createSinkConnectorHandler sc@ServerContext{..} (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = do
-  plan' <- try $ HSC.streamCodegen $ (TL.toStrict createSinkConnectorRequestSql)
-  err <- case plan' of
+createConnector :: ServerContext -> T.Text -> Bool -> IO (Either String Connector)
+createConnector sc@ServerContext{..} sql isCreate = do
+  plan' <- try $ HSC.streamCodegen sql
+  case plan' of
     Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
     Right (HSC.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) -> do
       streamExists <- HS.doesStreamExists scLDClient (HCH.transToStreamName sName)
       connectorIds <- HSP.withMaybeZHandle zkHandle HSP.getConnectorIds
       let connectorExists = elem (T.unpack cName) $ map HSP.getSuffix connectorIds
       if streamExists then
-        if connectorExists then
+        if connectorExists && isCreate then
           if ifNotExist then
             return $ Right $ Connector "" (fromIntegral $ fromEnum HSP.Running) 0 ""
           else return $ Left "connector exists"
         else do
-          (cid, timestamp) <- handleCreateSinkConnector sc createSinkConnectorRequestSql cName sName cConfig
-          return $ Right $ Connector (TL.pack $ ZDC.unpack cid) (fromIntegral $ fromEnum HSP.Running) timestamp createSinkConnectorRequestSql
+          (cid, timestamp) <- handleCreateSinkConnector sc sql cName sName cConfig
+          return $ Right $ Connector (TL.pack $ ZDC.unpack cid) (fromIntegral $ fromEnum HSP.Running) timestamp (TL.pack $ T.unpack sql)
       else return $ Left "stream does not exist"
     _ -> return $ Left "inconsistent method called"
+
+createSinkConnectorHandler
+  :: ServerContext
+  -> ServerRequest 'Normal CreateSinkConnectorRequest Connector
+  -> IO (ServerResponse 'Normal Connector)
+createSinkConnectorHandler sc (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = do
+  err <- createConnector sc (TL.toStrict createSinkConnectorRequestSql) True
   case err of
     Left err' -> do
       Log.fatal . string8 $ err'
@@ -102,13 +105,23 @@ restartConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal RestartConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-restartConnectorHandler ServerContext{..} (ServerNormalRequest _metadata RestartConnectorRequest{..}) = do
+restartConnectorHandler sc@ServerContext{..} (ServerNormalRequest _metadata RestartConnectorRequest{..}) = do
   connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
   case find (hstreamConnectorNameIs (T.pack $ TL.unpack restartConnectorRequestId)) connectors of
-    Just connector -> do
-      _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus (HSP.connectorId connector) HSP.Running)
-      return $ ServerNormalResponse (Just Empty) [] StatusOk ""
-    Nothing -> return $ ServerNormalResponse Nothing [] StatusInternal "failed"
+    Just (HSP.Connector cId HSP.Info{..} HSP.Status{..})  -> do
+      if status == HSP.Terminated
+        then do
+          err <- createConnector sc (T.pack $ ZT.unpack sqlStatement) False
+          case err of
+            Left err' -> do
+              Log.fatal . string8 $ err'
+              return (ServerNormalResponse Nothing [] StatusInternal  "Failed")
+            Right _ -> do
+              HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus cId HSP.Running
+              return (ServerNormalResponse (Just Empty) [] StatusOk "")
+        -- If the connector is already started, nothing should be done.
+        else return $ ServerNormalResponse (Just Empty) [] StatusOk ""
+    Nothing -> return $ ServerNormalResponse Nothing [] StatusInternal "Not exists"
 
 cancelConnectorHandler
   :: ServerContext
