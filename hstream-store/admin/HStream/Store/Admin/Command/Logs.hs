@@ -137,7 +137,7 @@ createLogs conf CreateLogsOpts{..} = do
 
 runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
 runLogsRemove conf RemoveLogsOpts{..} = do
-  putStr $ "Are you sure you want to rename " <> show rmPath <> "? [y/n] "
+  putStr $ "Are you sure you want to remove " <> show rmPath <> "? [y/n] "
   hFlush stdout
   c <- getChar
   if toUpper c == 'Y'

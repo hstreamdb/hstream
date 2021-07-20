@@ -24,26 +24,44 @@ CWD = os.getcwd()
 
 DEFAULT_LOGDEVICE_DIR = os.path.join(PROJECT_ROOT, "local-data/logdevice")
 Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
+DEFAULT_ENV_FILE = os.path.join(PROJECT_ROOT, "local-data/dev_tools.env")
 
-DEFAULT_HS_IMAGE      = 'docker.io/hstreamdb/haskell'
-DEFAULT_LD_IMAGE      = 'docker.io/hstreamdb/logdevice'
-DEFAULT_DB_IMAGE      = 'docker.io/hstreamdb/hstream'
-DEFAULT_SWAGGER_IMAGE = 'swaggerapi/swagger-ui'
-# TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
-DEFAULT_MYSQL_IMAGE   = 'mysql:5.6'
-DEFAULT_CLICKHOUSE_IMAGE = 'yandex/clickhouse-server'
+IMAGES = {
+    'HS_IMAGE': 'docker.io/hstreamdb/haskell',
+    'LD_IMAGE': 'docker.io/hstreamdb/logdevice',
+    'DB_IMAGE': 'docker.io/hstreamdb/hstream',
+    'SWAGGER_IMAGE': 'swaggerapi/swagger-ui',
+    # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
+    'MYSQL_IMAGE': 'mysql:5.6',
+    'CLICKHOUSE_IMAGE': 'yandex/clickhouse-server',
+}
 
-SWAGGER_CONTAINER_NAME   = 'hstream-swagger'
-MYSQL_CONTAINER_NAME     = 'hstream-mysql'
-DEFAULT_MYSQL_PASSWORD   = 'password'
-LOGDEVICE_CONTAINER_NAME = f"logdevice-dev-cluster-{CUID}"
-CLICKHOUSE_CONTAINER_NAME = 'hstream-clickhouse'
+SERVICES = {
+    'mysql': f'hstream-test-mysql-{CUID}',
+    'clickhouse': f'hstream-test-clickhouse-{CUID}',
+    'store': f'logdevice-dev-cluster-{CUID}',
+}
+
+HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
+MYSQL_PORT_ENV = 'MYSQL_LOCAL_PORT'
+CLICKHOUSE_PORT_ENV = 'CLICKHOUSE_LOCAL_PORT'
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
 loginfo = lambda s: print(f"\033[96m{s}\033[0m")
+logwarn = lambda s: print(f"\033[33m{s}\033[0m")
 
 gen_randoms = lambda n: ''.join(random.choices(string.ascii_letters + string.digits, k=n))
+
+
+def find_free_port():
+    import socket
+    from contextlib import closing
+
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
 
 
 def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
@@ -52,104 +70,56 @@ def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
     return subprocess.run(args, stderr=stderr, stdout=stdout, check=check)
 
 
-def update_images(images=None):
-    images = images or [DEFAULT_DB_IMAGE, DEFAULT_HS_IMAGE, DEFAULT_LD_IMAGE, DEFAULT_SWAGGER_IMAGE, DEFAULT_MYSQL_IMAGE, DEFAULT_CLICKHOUSE_IMAGE]
-    for i in images:
-        cmd = f"docker pull {i}"
-        loginfo(f"Run {cmd}...")
-        run_sh(cmd)
+# -----------------------------------------------------------------------------
 
 
-def mysql_start(container_bin):
-    cmd = ' '.join([
-        f'{container_bin} run -td -p 3306:3306 --name {MYSQL_CONTAINER_NAME} --rm',
-        f'-e MYSQL_ROOT_PASSWORD={DEFAULT_MYSQL_PASSWORD}',
-        DEFAULT_MYSQL_IMAGE
-    ])
-    run_sh(cmd)
-    loginfo("done")
-
-
-def mysql_stop(container_bin):
-    run_sh(f"{container_bin} kill {MYSQL_CONTAINER_NAME}", check=False)
-
-
-def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
-    if gen_from_image:
-        run_sh(f'{container_bin} run -t --rm {DEFAULT_DB_IMAGE} -- /usr/local/bin/hstream-swagger-json /tmp')
-        swagger_path = "/tmp/swagger.json"
-
-    if not os.path.exists(swagger_path):
-        return logerr(f"No such swagger_path: {swagger_path}")
-
-    cmd = ' '.join([
-        f'{container_bin} run -t --rm -p {port}:8080 --name {SWAGGER_CONTAINER_NAME}',
-        f'-v {swagger_path}:/app/swagger.json',
-        '-e SWAGGER_JSON=/app/swagger.json',
-        '-e SWAGGER_JSON_URL=/swagger.json',
-        '-e BASE_URL="/"',
-        DEFAULT_SWAGGER_IMAGE
-    ])
-    print(cmd)
-    run_sh(cmd)
-
-def clickhouse_start(container_bin):
-    cmd = ' '.join([
-        f'{container_bin} run -td -p 9000:9000 --name {CLICKHOUSE_CONTAINER_NAME} --rm',
-        f'--ulimit nofile=262144:262144',
-        DEFAULT_CLICKHOUSE_IMAGE
-    ])
-    run_sh(cmd)
-    loginfo("done")
-
-def clickhouse_stop(container_bin):
-    run_sh(f"{container_bin} kill {CLICKHOUSE_CONTAINER_NAME}", check=False)
-
-def is_cluster_started(container_bin):
+def is_service_started(container_bin, service_key):
+    if not container_bin:
+        return logerr("No such container_bin")
     result = run_sh(
         str(container_bin) + " ps --format {{.Names}}",
         stdout=subprocess.PIPE
     )
     if result and result.stdout:
         rs = result.stdout.decode().strip().split('\n')
-        if LOGDEVICE_CONTAINER_NAME in rs:
+        if SERVICES[service_key] in rs:
             return True
     return False
 
 
-def cluster_start(image, data_dir, container_bin, retries=60):
-    if is_cluster_started(container_bin):
-        return logerr("Already started!")
+def write_env(key, val):
+    if not os.path.exists(DEFAULT_ENV_FILE):
+        with open(DEFAULT_ENV_FILE, 'w') as f:
+            f.write(f'{key}={val}\n')
+        return None
 
-    cmd = ' '.join([
-        f'{container_bin} run -td --name {LOGDEVICE_CONTAINER_NAME} --rm',
-        '--network host',
-        '-u ' + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else '',
-        f'-v {data_dir}:/data/store {image}',
-        '/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp'
-    ])
-    run_sh(cmd)
+    # NOTE: thread unsafe
+    with open(DEFAULT_ENV_FILE) as f:
+        lines = f.readlines()
+        envs = dict(
+            [x.strip() for x in re.split('=', line, maxsplit=1)]
+            for line in lines
+        )
+        envs[key.strip()] = val
+    with open(DEFAULT_ENV_FILE, 'w') as f:
+        f.write(''.join(f'{k}={v}\n' for k, v in envs.items()))
 
-    while True:
-        if retries < 0:
-            logerr("Fail to start dev cluster!")
-            cluster_stop(container_bin)
-            return None
-        time.sleep(1)
-        port = get_ldadmin_server_port(container_bin)
-        if port:
-            break
-        else:
-            loginfo("Starting dev cluster...")
-        retries = retries - 1
-    loginfo("Cluster admin info: ")
-    admin_addr(container_bin)
-    run_hadmin(image=DEFAULT_DB_IMAGE, container_bin='docker', command='hadmin', cmd_args=["status"])
-    loginfo("Done")
+
+def read_env():
+    if not os.path.exists(DEFAULT_ENV_FILE):
+        return {}
+
+    with open(DEFAULT_ENV_FILE) as f:
+        lines = f.readlines()
+        return dict(
+            [x.strip() for x in re.split('=', line, maxsplit=1)]
+            for line in lines
+        )
 
 
 def get_ldadmin_server_host(container_bin):
-    result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
+    container_name = SERVICES['store']
+    result = run_sh(f"{container_bin} logs {container_name}", stdout=subprocess.PIPE)
     if result and result.stdout:
         rs = set(re.findall(r'--admin-server-host=([\d\.]*)', result.stdout.decode()))
         if len(rs) == 0:
@@ -162,7 +132,8 @@ def get_ldadmin_server_host(container_bin):
 
 
 def get_ldadmin_server_port(container_bin):
-    result = run_sh(f"{container_bin} logs {LOGDEVICE_CONTAINER_NAME}", stdout=subprocess.PIPE)
+    container_name = SERVICES['store']
+    result = run_sh(f"{container_bin} logs {container_name}", stdout=subprocess.PIPE)
     if result and result.stdout:
         rs = set(re.findall(r'--admin-server-port=(\d*)', result.stdout.decode()))
         if len(rs) == 0:
@@ -175,18 +146,17 @@ def get_ldadmin_server_port(container_bin):
 
 
 def admin_addr(container_bin):
+    if not is_service_started(container_bin, 'store'):
+        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+
     host = get_ldadmin_server_host(container_bin)
     port = get_ldadmin_server_port(container_bin)
     if host and port:
         loginfo(f"Host: {host}, port: {port}")
 
 
-def cluster_stop(container_bin):
-    run_sh(f"{container_bin} kill {LOGDEVICE_CONTAINER_NAME}", check=False)
-
-
 def run_hadmin(image, container_bin, command, cmd_args):
-    if not is_cluster_started(container_bin):
+    if not is_service_started(container_bin, 'store'):
         return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
     host = '127.0.0.1'
@@ -205,8 +175,168 @@ def run_hadmin(image, container_bin, command, cmd_args):
     run_sh(cmd, check=False)
 
 
+# TODO: wait serive to start
+def _service_mysql_(container_bin='docker', port=None, **kw):
+    if is_service_started(container_bin, 'mysql'):
+        return logerr("Already started!")
+
+    port = port or os.getenv(MYSQL_PORT_ENV, 3306)
+    write_env(MYSQL_PORT_ENV, port)
+    container_name = SERVICES['mysql']
+    cmd = ' '.join([
+        f'{container_bin} run -td -p {port}:3306 --name {container_name} --rm',
+        '-e MYSQL_ALLOW_EMPTY_PASSWORD=yes',
+        IMAGES['MYSQL_IMAGE']
+    ])
+    run_sh(cmd)
+    loginfo("done")
+
+
+# TODO: wait serive to start
+def _service_clickhouse_(container_bin='docker', port=None, **kw):
+    if is_service_started(container_bin, 'clickhouse'):
+        return logerr("Already started!")
+
+    port = port or os.getenv(CLICKHOUSE_PORT_ENV, 9000)
+    write_env(CLICKHOUSE_PORT_ENV, port)
+    container_name = SERVICES['clickhouse']
+    cmd = ' '.join([
+        f'{container_bin} run -td -p {port}:9000 --name {container_name} --rm',
+        '--ulimit nofile=262144:262144',
+        IMAGES['CLICKHOUSE_IMAGE']
+    ])
+    run_sh(cmd)
+    loginfo("done")
+
+
+def _service_store_(container_bin='docker',
+                    image=IMAGES['DB_IMAGE'],
+                    data_dir=DEFAULT_LOGDEVICE_DIR, retries=120, **kw):
+    if is_service_started(container_bin, 'store'):
+        return logerr("Already started!")
+
+    container_name = SERVICES['store']
+    cmd = ' '.join([
+        f'{container_bin} run -td --name {container_name} --rm',
+        '--network host',
+        '-u ' + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else '',
+        f'-v {data_dir}:/data/store {image}',
+        '/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp'
+    ])
+    run_sh(cmd)
+
+    while True:
+        if retries < 0:
+            logerr("Fail to start dev cluster!")
+            service_stop(container_bin, services=["store"])
+            return None
+        time.sleep(1)
+        port = get_ldadmin_server_port(container_bin)
+        if port:
+            break
+        else:
+            loginfo("Starting dev cluster...")
+        retries = retries - 1
+    loginfo("Cluster admin info: ")
+    admin_addr(container_bin)
+    run_hadmin(image=image, container_bin='docker', command='hadmin', cmd_args=["status"])
+    loginfo("Done")
+
+
+def service_start(services=None, container_bin=None, **kws):
+    services = services or SERVICES.keys()
+    kws['container_bin'] = container_bin
+    for s in services:
+        port = find_free_port()
+        kws['port'] = port
+        loginfo(f"Start {s}...")
+        globals()[f'_service_{s}_'](**kws)
+        time.sleep(1)
+
+    port = find_free_port()
+    write_env(HSTREAM_SERVER_PORT_ENV, port)
+
+    # here we stop all "shell" containers, because "service_start" will refresh
+    # all random ports, the old ports used in "shell" container is obsoleted.
+    loginfo("Stop all 'shell' containers...")
+    run_sh(
+        f"{container_bin} "
+        "ps --format '{{.Names}}' | "
+        f"grep '{CUSERNAME}_{CUID}_haskell_' | "
+        "xargs --no-run-if-empty docker kill"
+    )
+
+
+def service_stop(container_bin=None, services=None):
+    if not container_bin:
+        return logerr("No container_bin...")
+
+    services = services or SERVICES.keys()
+    for s in services:
+        name = SERVICES[s]
+        if is_service_started(container_bin, s):
+            run_sh(f"{container_bin} kill {name}", check=False)
+        else:
+            logwarn(f"No such service {s}, ignored")
+
+
+def update_images(images=None):
+    images = images or IMAGES.values()
+    for i in images:
+        cmd = f"docker pull {i}"
+        loginfo(f"Run {cmd}...")
+        run_sh(cmd)
+
+
+def get_info(container_bin):
+    if not is_service_started(container_bin, 'store'):
+        logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+    else:
+        host = get_ldadmin_server_host(container_bin)
+        port = get_ldadmin_server_port(container_bin)
+        if host and port:
+            loginfo(f"dev-cluster host: {host}, port: {port}")
+        else:
+            logerr("get dev-cluster address info failed.")
+
+    envs = read_env()
+
+    if not is_service_started(container_bin, 'mysql'):
+        logerr("Please start the mysql service first. Run: dev-tools mysql-start")
+    else:
+        loginfo(f"mysql port: {envs.get('mysql')}")
+
+    if not is_service_started(container_bin, 'clickhouse'):
+        logerr("Please start the clickhouse service first. Run: dev-tools clickhouse-start")
+    else:
+        loginfo(f"clickhouse port: {envs.get('clickhouse')}")
+
+
+def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
+    SWAGGER_CONTAINER_NAME = f'hstream-swagger-{CUID}'
+
+    if gen_from_image:
+        db_image = IMAGES['DB_IMAGE']
+        run_sh(f'{container_bin} run -t --rm {db_image} -- /usr/local/bin/hstream-swagger-json /tmp')
+        swagger_path = "/tmp/swagger.json"
+
+    if not os.path.exists(swagger_path):
+        return logerr(f"No such swagger_path: {swagger_path}")
+
+    cmd = ' '.join([
+        f'{container_bin} run -t --rm -p {port}:8080 --name {SWAGGER_CONTAINER_NAME}',
+        f'-v {swagger_path}:/app/swagger.json',
+        '-e SWAGGER_JSON=/app/swagger.json',
+        '-e SWAGGER_JSON_URL=/swagger.json',
+        '-e BASE_URL="/"',
+        IMAGES['SWAGGER_IMAGE']
+    ])
+    print(cmd)
+    run_sh(cmd)
+
+
 def run_ldshell(image, container_bin, command, cmd_args):
-    if not is_cluster_started(container_bin):
+    if not is_service_started(container_bin, "store"):
         return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
     host = '127.0.0.1'
@@ -229,7 +359,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 tty, interactive, rm, no_dev_cluster, detach, check,
                 network="host", extra_container_options=""):
 
-    if not no_dev_cluster and not is_cluster_started(container_bin):
+    if not no_dev_cluster and not is_service_started(container_bin, 'store'):
         sys.exit("Please start the dev-cluster first. Run: dev-tools cluster-start")
 
     Path(f"{HOME}/.local/bin").mkdir(parents=True, exist_ok=True)
@@ -254,6 +384,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 -e LC_ALL=C.UTF-8 \
                 -e PATH={user_path} \
                 -e USER={CUSERNAME} \
+                --env-file {DEFAULT_ENV_FILE} \
                 -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
                 -v {HOME}/.ghc:{HOME}/.ghc:rw \
                 -v {STACK_HOME}:{HOME}/.stack:rw \
@@ -276,71 +407,24 @@ if __name__ == '__main__':
 
     # update-image
     parser_update_images = subparsers.add_parser(
-        'update-images', help='Update required docker images')
+        'update-images', help='Update all required docker images')
 
-    # cluster-start
-    parser_cluster_start = subparsers.add_parser(
-        'cluster-start', help='Start logdevice dev cluster')
-    parser_cluster_start.add_argument(
-        '--image', '-i', help='logdevice docker images',
-        default=DEFAULT_DB_IMAGE)
-    parser_cluster_start.add_argument(
-        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
-    parser_cluster_start.add_argument('--container-bin', default='docker')
+    # start all services
+    parser_start_services = subparsers.add_parser(
+        'start-services', help="Start all services with default argument")
+    parser_start_services.add_argument('--container-bin', default='docker')
 
-    # admin-addr
-    parser_admin_addr = subparsers.add_parser(
-        'admin-addr', help='Get address of admin server.')
-    parser_admin_addr.add_argument('--container-bin', default='docker')
-
-    # cluster-stop
-    parser_cluster_stop = subparsers.add_parser(
-        'cluster-stop', help='Stop logdevice dev cluster')
-    parser_cluster_stop.add_argument('--container-bin', default='docker')
-
-    # mysql-start
-    parser_mysql_start = subparsers.add_parser(
-        'mysql-start', help='Start mysql service for testing')
-    parser_mysql_start.add_argument('--container-bin', default='docker')
-
-    # mysql-stop
-    parser_mysql_stop = subparsers.add_parser(
-        'mysql-stop', help='Stop mysql service')
-    parser_mysql_stop.add_argument('--container-bin', default='docker')
-
-    # swagger-start
-    parser_swagger_start = subparsers.add_parser(
-        'swagger-start', help='Start swagger ui')
-    parser_swagger_start.add_argument('--container-bin', default='docker')
-    parser_swagger_start.add_argument('--port', default='8080')
-    parser_swagger_start.add_argument('--swagger-path', default=f'{CWD}/swagger.json')
-    parser_swagger_start.add_argument('--gen-from-image', action='store_true')
-
-    # clickhouse-start
-    parser_clickhouse_start = subparsers.add_parser(
-        'clickhouse-start', help='Start clickhouse service for testing')
-    parser_clickhouse_start.add_argument('--container-bin', default='docker')
-
-    # clickhouse-stop
-    parser_clickhouse_stop = subparsers.add_parser(
-        'clickhouse-stop', help='Stop clickhouse service')
-    parser_clickhouse_stop.add_argument('--container-bin', default='docker')
-
-    # ldshell
-    parser_cluster_ldshell = subparsers.add_parser(
-        'ldshell', help='')
-    parser_cluster_ldshell.add_argument(
-        '--image', '-i', help='ldshell docker images',
-        default=f'{DEFAULT_LD_IMAGE}:v3.0.0')
-    parser_cluster_ldshell.add_argument('--container-bin', default='docker')
-    parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
-    parser_cluster_ldshell.add_argument('cmd_args', nargs='*')
+    # stop all services
+    parser_stop_services = subparsers.add_parser(
+        'stop-services', help="Stop all services"
+    )
+    parser_stop_services.add_argument('--container-bin', default='docker')
 
     # shell
     parser_haskell = subparsers.add_parser(
         'shell', help='Enter in a shell with all haskell dev dependencies')
     parser_haskell.add_argument(
-        '--image', '-i', help='haskell docker images', default=DEFAULT_HS_IMAGE)
+        '--image', '-i', help='haskell docker images', default=IMAGES['HS_IMAGE'])
     parser_haskell.add_argument('--container-bin', default='docker')
     parser_haskell.add_argument('--no-interactive', action='store_true')
     parser_haskell.add_argument('--no-tty', action='store_true')
@@ -356,7 +440,7 @@ if __name__ == '__main__':
     # cabal
     parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
     parser_haskell_cabal.add_argument(
-        '--image', '-i', help='haskell docker images', default=DEFAULT_HS_IMAGE)
+        '--image', '-i', help='haskell docker images', default=IMAGES['HS_IMAGE'])
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
     parser_haskell_cabal.add_argument('--no-tty', action='store_true')
@@ -370,29 +454,76 @@ if __name__ == '__main__':
     parser_haskell_cabal.add_argument('--extra-container-options', default='')
     parser_haskell_cabal.add_argument('cmd_args', nargs='*')
 
+    # get-info
+    parser_get_info = subparsers.add_parser(
+        'get-info', help='Get info about services.')
+    parser_get_info.add_argument('--container-bin', default='docker')
+
+    # cluster-start
+    parser_cluster_start = subparsers.add_parser(
+        'cluster-start', help='Start logdevice dev cluster')
+    parser_cluster_start.add_argument(
+        '--image', '-i', help='logdevice docker images',
+        default=IMAGES['DB_IMAGE'])
+    parser_cluster_start.add_argument(
+        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_cluster_start.add_argument('--container-bin', default='docker')
+
+    # cluster-stop
+    parser_cluster_stop = subparsers.add_parser(
+        'cluster-stop', help='Stop logdevice dev cluster')
+    parser_cluster_stop.add_argument('--container-bin', default='docker')
+
+    # mysql-start
+    parser_mysql_start = subparsers.add_parser(
+        'mysql-start', help='Start mysql service for testing')
+    parser_mysql_start.add_argument('--container-bin', default='docker')
+    parser_mysql_start.add_argument('--port', default=3306)
+
+    # mysql-stop
+    parser_mysql_stop = subparsers.add_parser(
+        'mysql-stop', help='Stop mysql service')
+    parser_mysql_stop.add_argument('--container-bin', default='docker')
+
+    # clickhouse-start
+    parser_clickhouse_start = subparsers.add_parser(
+        'clickhouse-start', help='Start clickhouse service for testing')
+    parser_clickhouse_start.add_argument('--container-bin', default='docker')
+    parser_clickhouse_start.add_argument('--port', default=9000)
+
+    # clickhouse-stop
+    parser_clickhouse_stop = subparsers.add_parser(
+        'clickhouse-stop', help='Stop clickhouse service')
+    parser_clickhouse_stop.add_argument('--container-bin', default='docker')
+
+    # swagger-start
+    parser_swagger_start = subparsers.add_parser(
+        'swagger-start', help='Start swagger ui')
+    parser_swagger_start.add_argument('--container-bin', default='docker')
+    parser_swagger_start.add_argument('--port', default='8080')
+    parser_swagger_start.add_argument('--swagger-path', default=f'{CWD}/swagger.json')
+    parser_swagger_start.add_argument('--gen-from-image', action='store_true')
+
+    # ldshell
+    parser_cluster_ldshell = subparsers.add_parser(
+        'ldshell', help='')
+    parser_cluster_ldshell.add_argument(
+        '--image', '-i', help='ldshell docker images',
+        default=f'{IMAGES["LD_IMAGE"]}:v3.0.0')
+    parser_cluster_ldshell.add_argument('--container-bin', default='docker')
+    parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
+    parser_cluster_ldshell.add_argument('cmd_args', nargs='*')
+
     args = vars(parser.parse_args())
     sub_command = args.pop('sub_command')
 
     if sub_command == 'update-images':
         update_images()
-    elif sub_command == 'cluster-start':
-        cluster_start(**args)
-    elif sub_command == 'cluster-stop':
-        cluster_stop(**args)
-    elif sub_command == 'admin-addr':
-        admin_addr(**args)
-    elif sub_command == 'mysql-start':
-        mysql_start(**args)
-    elif sub_command == 'mysql-stop':
-        mysql_stop(**args)
-    elif sub_command == 'swagger-start':
-        swagger_ui_start(**args)
-    elif sub_command == 'clickhouse-start':
-        clickhouse_start(**args)
-    elif sub_command == 'clickhouse-stop':
-        clickhouse_stop(**args)
-    elif sub_command == 'ldshell':
-        run_ldshell(**args)
+    elif sub_command == 'start-services':
+        service_start(**args)
+    elif sub_command == 'stop-services':
+        service_stop(**args)
+    # ---
     elif sub_command == 'shell':
         args['interactive'] = not args.pop('no_interactive')
         args['tty'] = not args.pop('no_tty')
@@ -405,5 +536,25 @@ if __name__ == '__main__':
         args['interactive'] = not args.pop('no_interactive')
         args['tty'] = not args.pop('no_tty')
         haskell_env(command='/opt/ghc/bin/cabal', rm=True, **args)
+    # ---
+    elif sub_command == 'get-info':
+        get_info(**args)
+    # ---
+    elif sub_command == 'cluster-start':
+        service_start(services=["store"], **args)
+    elif sub_command == 'cluster-stop':
+        service_stop(services=["store"], **args)
+    elif sub_command == 'mysql-start':
+        service_start(services=["mysql"], **args)
+    elif sub_command == 'mysql-stop':
+        service_stop(services=["mysql"], **args)
+    elif sub_command == 'clickhouse-start':
+        service_start(services=["clickhouse"], **args)
+    elif sub_command == 'clickhouse-stop':
+        service_stop(services=["clickhouse"], **args)
+    elif sub_command == 'swagger-start':
+        swagger_ui_start(**args)
+    elif sub_command == 'ldshell':
+        run_ldshell(**args)
     else:
         parser.print_help()

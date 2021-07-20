@@ -11,7 +11,9 @@ import qualified Data.Map.Strict                  as Map
 import           Network.GRPC.HighLevel.Generated
 import           Options.Applicative
 import           Text.RawString.QQ                (r)
+import qualified Z.Data.Builder                   as Builder
 import           Z.Data.CBytes                    (CBytes, toBytes)
+import qualified Z.Data.CBytes                    as CBytes
 import           Z.Foreign                        (toByteString)
 import           Z.IO.Network
 import           ZooKeeper
@@ -102,7 +104,8 @@ serve ServerOpts{..} ldclient zk = do
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
   api <- handlers ldclient _topicRepFactor zk _heartbeatTimeout _compression
-  Log.i "Server started."
+  Log.i $ "Server started on "
+       <> CBytes.toBuilder _serverHost <> ":" <> Builder.int _serverPort
   hstreamApiServer api options
 
 initZooKeeper :: ZHandle -> IO ()
