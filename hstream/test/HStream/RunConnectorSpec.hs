@@ -20,23 +20,11 @@ import           HStream.Store.Logger
 getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
 getConnectorResponseIdIs targetId (Connector connectorId _ _ _ ) = connectorId == targetId
 
-createSinkConnector :: TL.Text -> IO (Maybe Connector)
-createSinkConnector sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let createSinkConnectorRequest = CreateSinkConnectorRequest { createSinkConnectorRequestSql = sql }
-  resp <- hstreamApiCreateSinkConnector (ClientNormalRequest createSinkConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@Connector{} _meta1 _meta2 StatusOk _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Create Connector Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
-
 listConnectors :: IO (Maybe ListConnectorsResponse)
 listConnectors = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let listConnectorsRequest = ListConnectorsRequest {}
-  resp <- hstreamApiListConnectors (ClientNormalRequest listConnectorsRequest 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiListConnectors (ClientNormalRequest listConnectorsRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@ListConnectorsResponse{} _meta1 _meta2 _status _details -> return $ Just x
     ClientErrorResponse clientError -> do
@@ -94,28 +82,18 @@ restartConnector connectorId = withGRPCClient clientConfig $ \client -> do
 spec :: Spec
 spec = describe "HStream.RunConnectorSpec" $ do
   source1 <- runIO $ TL.fromStrict <$> newRandomText 20
+  runIO $ setLogDeviceDbgLevel C_DBG_ERROR
   let mysqlConnector = "mysql"
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS ;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+  it "create mysql sink connector" $ do
+    executeCommandQuery' ("DROP STREAM " <> source1 <> " IF EXISTS ;")
+      `shouldReturn` successResp
 
-  it "create streams" $
-    ( do
-        res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+    executeCommandQuery' ("CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);")
+      `shouldReturn` successResp
 
-  it "create mysql sink connector" $
-    ( do
-        res <- createSinkConnector ("CREATE SINK CONNECTOR " <> mysqlConnector <> " WITH (type = mysql, host = \"127.0.0.1\", stream = " <> source1 <> ");")
-        case res of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+    executeCommandQuery' (createMySqlConnectorSql mysqlConnector source1)
+      `shouldReturn` successResp
 
   it "list connectors" $
     ( do

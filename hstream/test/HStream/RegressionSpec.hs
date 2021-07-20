@@ -12,7 +12,7 @@ import           Test.Hspec
 import           HStream.SpecUtils
 
 spec :: Spec
-spec = describe "HStream.RunSQLSpec" $ do
+spec = describe "HStream.RegressionSpec" $ do
 
   it "#391_JOIN" $
     (do
@@ -24,7 +24,7 @@ spec = describe "HStream.RunSQLSpec" $ do
          _ <- executeCommandQuery "INSERT INTO s2 (a, b) VALUES (2, 3);"
          return ()
        res <- executeCommandPushQuery "SELECT s1.a, s2.a, s1.b, s2.b, SUM(s1.a), SUM(s2.a) FROM s1 INNER JOIN s2 WITHIN (INTERVAL 1 MINUTE) ON (s1.b = s2.b) GROUP BY s1.b EMIT CHANGES;"
-       _ <- executeCommandQuery $ "DROP STREAM s1 IF EXISTS;"
+       _ <- executeCommandQuery "DROP STREAM s1 IF EXISTS;"
        _ <- executeCommandQuery "DROP STREAM s2 IF EXISTS;"
        return res
     ) `shouldReturn` [ mkStruct [ ("SUM(s1.a)", Aeson.Number 1)

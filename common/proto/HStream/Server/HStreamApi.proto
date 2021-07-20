@@ -11,6 +11,8 @@ option java_multiple_files = true;
 option java_outer_classname = "HStreamProto";
 
 service HStreamApi {
+  rpc Echo(EchoRequest) returns (EchoResponse);
+
   // only for push query
   // e.g., create as select
   rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
@@ -71,7 +73,15 @@ service HStreamApi {
   // rpc GetNode(GetNodeRequest) returns (GetNodeResponse) {}
 }
 
-message CommandStreamTask{
+message EchoRequest {
+  string msg = 1;
+}
+
+message EchoResponse {
+  string msg = 1;
+}
+
+message CommandStreamTask {
   string command_sql = 1;
 }
 
@@ -97,7 +107,7 @@ message CommandQuery {
   string stmt_text = 1;
 }
 
-message CommandQueryResponse{
+message CommandQueryResponse {
   oneof kind {
     CommandSuccess success = 1;
     CommandQueryResultSet result_set = 2;
@@ -294,7 +304,7 @@ message CancelQueryResponse {
 
 // Connector Related Request and Response
 message CreateSinkConnectorRequest {
-  string sql = 4;
+  string sql = 1;
 }
 
 message ListConnectorsRequest {}

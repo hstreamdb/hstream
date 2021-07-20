@@ -5,18 +5,17 @@
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
+import           Control.Monad                     (void)
 import qualified Data.Aeson                        as Aeson
 import qualified Data.List                         as L
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import qualified Database.ClickHouseDriver.Types   as ClickHouse
 import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
-import           Test.Hspec                        (Spec, describe, it, runIO,
-                                                    shouldReturn)
+import           System.IO.Unsafe                  (unsafePerformIO)
+import           Test.Hspec
 
-import           HStream.Server.HStreamApi         (CommandQueryResponse (CommandQueryResponse),
-                                                    CommandQueryResponseKind (CommandQueryResponseKindResultSet),
-                                                    CommandQueryResultSet (CommandQueryResultSet))
+import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
 import           HStream.Utils.Converter           (structToStruct)
@@ -25,48 +24,40 @@ import           ThirdParty.Google.Protobuf.Struct (Struct)
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
-  source1 <- runIO $ TL.fromStrict <$> newRandomText 20
-  source2 <- runIO $ TL.fromStrict <$> newRandomText 20
-  sink1   <- runIO $ TL.fromStrict <$> newRandomText 20
-  sink2   <- runIO $ TL.fromStrict <$> newRandomText 20
-  let source3 = "source3"
-      source4 = "source4"
+  runIO $ setLogDeviceDbgLevel C_DBG_ERROR
+  baseSpec
+  connectorSpec
+  viewSpec
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        res2 <- executeCommandQuery $ "DROP STREAM " <> source2 <> " IF EXISTS;"
-        res3 <- executeCommandQuery $ "DROP STREAM " <> source3 <> " IF EXISTS;"
-        res4 <- executeCommandQuery $ "DROP STREAM " <> source4 <> " IF EXISTS;"
-        res5 <- executeCommandQuery $ "DROP STREAM " <> sink1 <> " IF EXISTS;"
-        res6 <- executeCommandQuery $ "DROP STREAM " <> sink2 <> " IF EXISTS;"
-        return [res1, res2, res3, res4, res5, res6]
-    ) `shouldReturn` L.replicate 6 (Just successResp)
+-------------------------------------------------------------------------------
+-- BaseSpec
 
-  it "create streams" $
-    (do
-        res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
-        res2 <- executeCommandQuery $ "CREATE STREAM " <> source2 <> ";"
-        res3 <- executeCommandQuery $ "CREATE STREAM " <> source3 <> " WITH (REPLICATE = 3);"
-        res4 <- executeCommandQuery $ "CREATE STREAM " <> source4 <> " WITH (REPLICATE = 3);"
-        res5 <- executeCommandQuery $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
-        res6 <- executeCommandQuery $ "CREATE STREAM " <> sink2   <> " ;"
-        return [res1, res2, res3, res4, res5, res6]
-    ) `shouldReturn` L.replicate 6 (Just successResp)
+source1 :: TL.Text
+source1 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE source1 #-}
 
-  it "show streams" $
-    (do
-      (Just res) <- executeCommandQuery "SHOW STREAMS;"
-      return . L.sort . words $ formatCommandQueryResponse 0 res
-    )`shouldReturn` TL.unpack <$> L.sort [source1, source2, source3, source4, sink1, sink2]
+source2 :: TL.Text
+source2 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE source2 #-}
 
-  it "insert data to source streams" $
-    (do
-      res1 <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);"
-      res2 <- executeCommandQuery $ "INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (15, 10);"
-      return [res1, res2]
-    ) `shouldReturn` L.replicate 2 (Just successResp)
+baseSpecSetup :: IO ()
+baseSpecSetup = do
+  void $ executeCommandQuery' $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
+  void $ executeCommandQuery' $ "CREATE STREAM " <> source2 <> ";"
+
+baseSpecClean :: IO ()
+baseSpecClean = do
+  void $ executeCommandQuery' $ "DROP STREAM " <> source1 <> " IF EXISTS;"
+  void $ executeCommandQuery' $ "DROP STREAM " <> source2 <> " IF EXISTS;"
+
+baseSpec :: Spec
+baseSpec = beforeAll_ baseSpecSetup $ afterAll_ baseSpecClean $ describe "HStream.RunSQLSpec" $ do
+
+  it "insert data to source streams" $ do
+    executeCommandQuery' ("INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (15, 10);")
+      `shouldReturn` successResp
 
   it "a simple SQL query" $
     (do
@@ -79,40 +70,6 @@ spec = describe "HStream.RunSQLSpec" $ do
     ) `shouldReturn` [ mkStruct [("temperature", Aeson.Number 31), ("humidity", Aeson.Number 26)]
                      , mkStruct [("temperature", Aeson.Number 15), ("humidity", Aeson.Number 10)]
                      ]
-
-  it "mysql connector" $
-    (do
-       createMysqlTable $ TL.toStrict source3
-       _ <- executeCommandQuery "CREATE SINK CONNECTOR mysql WITH (type = mysql, host = \"127.0.0.1\", stream = source3);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (12, 84);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (22, 83);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (32, 82);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source3 <> " (temperature, humidity) VALUES (42, 81);"
-       threadDelay 5000000
-       fetchMysql $ TL.toStrict source3
-    ) `shouldReturn` [ [MySQLInt32 12, MySQLInt32 84]
-                     , [MySQLInt32 22, MySQLInt32 83]
-                     , [MySQLInt32 32, MySQLInt32 82]
-                     , [MySQLInt32 42, MySQLInt32 81]
-                     ]
-
-  it "clickhouse connector" $
-    (do
-       createClickHouseTable $ TL.toStrict source4
-       _ <- executeCommandQuery "CREATE SINK CONNECTOR clickhouse WITH (type = clickhouse, host = \"127.0.0.1\", stream = source4);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (12, 84);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (22, 83);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (32, 82);"
-       _ <- executeCommandQuery $ "INSERT INTO " <> source4 <> " (temperature, humidity) VALUES (42, 81);"
-       threadDelay 5000000
-       fetchClickHouse $ TL.toStrict source4
-    ) `shouldReturn` V.fromList [ V.fromList [ClickHouse.CKInt64 12,ClickHouse.CKInt64 84]
-                                , V.fromList [ClickHouse.CKInt64 22,ClickHouse.CKInt64 83]
-                                , V.fromList [ClickHouse.CKInt64 32,ClickHouse.CKInt64 82]
-                                , V.fromList [ClickHouse.CKInt64 42,ClickHouse.CKInt64 81]
-                     ]
-    -- Note: ClickHouse does not return data in deterministic order by default,
-    --       see [this answer](https://stackoverflow.com/questions/54786494/clickhouse-query-row-order-behaviour).
 
   it "GROUP BY without timewindow" $
     (do
@@ -130,50 +87,125 @@ spec = describe "HStream.RunSQLSpec" $ do
                          , mkStruct [("result", Aeson.Number 4)]
                          ]
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        res2 <- executeCommandQuery $ "DROP STREAM " <> source2 <> " IF EXISTS;"
-        res3 <- executeCommandQuery $ "DROP STREAM " <> source3 <> " IF EXISTS;"
-        res4 <- executeCommandQuery $ "DROP STREAM " <> source4 <> " IF EXISTS;"
-        res5 <- executeCommandQuery $ "DROP STREAM " <> sink1 <> " IF EXISTS;"
-        res6 <- executeCommandQuery $ "DROP STREAM " <> sink2 <> " IF EXISTS;"
-        return [res1, res2, res3, res4, res5, res6]
-    ) `shouldReturn` L.replicate 6 (Just successResp)
+-------------------------------------------------------------------------------
+-- ConnectorSpec
 
-  viewName <- runIO $ TL.fromStrict <$> newRandomText 20
-  source5 <- runIO $ TL.fromStrict <$> newRandomText 20
-  source6 <- runIO $ TL.fromStrict <$> newRandomText 20
+sink1 :: TL.Text
+sink1 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE sink1 #-}
 
-  it "clean view" $
-    executeCommandQuery ("DROP VIEW " <> viewName <> " IF EXISTS;")
-    `shouldReturn` Just successResp
+sink2 :: TL.Text
+sink2 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE sink2 #-}
 
-  it "create a view" $
-    ( do
-        _ <- executeCommandQuery $ "DROP STREAM " <> source5 <> " IF EXISTS;"
-        _ <- executeCommandQuery $ "DROP STREAM " <> source6 <> " IF EXISTS;"
-        _ <- executeCommandQuery $ "CREATE STREAM " <> source5 <> " ;"
-        _ <- executeCommandQuery $ "CREATE STREAM " <> source6 <> " AS SELECT a, 1 AS b FROM " <> source5 <> " EMIT CHANGES;"
-        res1 <- executeCommandQuery $ "CREATE VIEW " <> viewName <> " AS SELECT SUM(a) FROM " <> source6 <> " GROUP BY b EMIT CHANGES;"
-        (Just res2) <- executeCommandQuery "SHOW VIEWS;"
-        return (res1, formatCommandQueryResponse 0 res2)
-    ) `shouldReturn` (Just successResp, TL.unpack $ viewName <> "\n")
+connectorSpecSetup :: IO ()
+connectorSpecSetup = do
+  void $ executeCommandQuery' $ "CREATE STREAM " <> sink1   <> " WITH (REPLICATE = 3);"
+  void $ executeCommandQuery' $ "CREATE STREAM " <> sink2   <> " ;"
+  createMysqlTable $ TL.toStrict sink1
+  createClickHouseTable $ TL.toStrict sink2
+
+connectorSpecClean :: IO ()
+connectorSpecClean = do
+  void $ executeCommandQuery' $ "DROP STREAM " <> sink1 <> " IF EXISTS;"
+  void $ executeCommandQuery' $ "DROP STREAM " <> sink2 <> " IF EXISTS;"
+  dropMysqlTable $ TL.toStrict sink1
+  dropClickHouseTable $ TL.toStrict sink2
+
+connectorSpec :: Spec
+connectorSpec = beforeAll_ connectorSpecSetup $ afterAll_ connectorSpecClean $
+  describe "HStream.RunSQLSpec.Connector" $ do
+
+  it "mysql connector" $ do
+    executeCommandQuery' (createMySqlConnectorSql "mysql" sink1)
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (12, 84);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (22, 83);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (32, 82);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (42, 81);")
+      `shouldReturn` successResp
+    threadDelay 5000000
+    fetchMysql (TL.toStrict sink1) `shouldReturn` [ [MySQLInt32 12, MySQLInt32 84]
+                                                  , [MySQLInt32 22, MySQLInt32 83]
+                                                  , [MySQLInt32 32, MySQLInt32 82]
+                                                  , [MySQLInt32 42, MySQLInt32 81]
+                                                  ]
+
+  it "clickhouse connector" $ do
+    executeCommandQuery' (createClickHouseConnectorSql "clickhouse" sink2)
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (12, 84);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (22, 83);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (32, 82);")
+      `shouldReturn` successResp
+    executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (42, 81);")
+      `shouldReturn` successResp
+    threadDelay 5000000
+    -- Note: ClickHouse does not return data in deterministic order by default,
+    --       see [this answer](https://stackoverflow.com/questions/54786494/clickhouse-query-row-order-behaviour).
+    fetchClickHouse (TL.toStrict sink2)
+      `shouldReturn` V.fromList [ V.fromList [ClickHouse.CKInt64 12,ClickHouse.CKInt64 84]
+                                , V.fromList [ClickHouse.CKInt64 22,ClickHouse.CKInt64 83]
+                                , V.fromList [ClickHouse.CKInt64 32,ClickHouse.CKInt64 82]
+                                , V.fromList [ClickHouse.CKInt64 42,ClickHouse.CKInt64 81]
+                     ]
+
+-------------------------------------------------------------------------------
+-- ViewSpec
+
+viewSource1 :: TL.Text
+viewSource1 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE viewSource1 #-}
+
+viewSource2 :: TL.Text
+viewSource2 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE viewSource2 #-}
+
+view1 :: TL.Text
+view1 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE view1 #-}
+
+viewSpecSetup :: IO ()
+viewSpecSetup = do
+  void $ executeCommandQuery' $ "CREATE STREAM " <> viewSource1 <> ";"
+  void $ executeCommandQuery' $ "CREATE STREAM " <> viewSource2 <> " AS SELECT a, 1 AS b FROM " <> viewSource1 <> " EMIT CHANGES;"
+  void $ executeCommandQuery' $ "CREATE VIEW " <> view1 <> " AS SELECT SUM(a) FROM " <> viewSource2 <> " GROUP BY b EMIT CHANGES;"
+
+viewSpecClean :: IO ()
+viewSpecClean = do
+  void $ executeCommandQuery' $ "DROP VIEW " <> view1 <> " IF EXISTS;"
+  void $ executeCommandQuery $ "DROP STREAM " <> viewSource1 <> " IF EXISTS;"
+  void $ executeCommandQuery $ "DROP STREAM " <> viewSource2 <> " IF EXISTS;"
+
+viewSpec :: Spec
+viewSpec = beforeAll_ viewSpecSetup $ afterAll_ viewSpecClean $
+  describe "HStream.RunSQLSpec.View" $ do
+
+  it "show streams should not include views" $ do
+    (Just res) <- executeCommandQuery "SHOW STREAMS;"
+    L.sort (words (formatCommandQueryResponse 0 res))
+      `shouldBe` map TL.unpack (L.sort [viewSource1, viewSource2])
+
+  it "show views should not include streams" $ do
+    (Just res2) <- executeCommandQuery "SHOW VIEWS;"
+    formatCommandQueryResponse 0 res2 `shouldBe` TL.unpack (view1 <> "\n")
 
   it "select from view" $
     ( do
         threadDelay 2000000
-        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (1);"
-        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (2);"
+        _ <- executeCommandQuery $ "INSERT INTO " <> viewSource1 <> " (a) VALUES (1);"
+        _ <- executeCommandQuery $ "INSERT INTO " <> viewSource1 <> " (a) VALUES (2);"
         threadDelay 2000000
-        (Just res1) <- executeCommandQuery $ "SELECT * FROM " <> viewName <> " WHERE b = 1;"
-        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (3);"
-        _ <- executeCommandQuery $ "INSERT INTO " <> source5 <> " (a) VALUES (4);"
+        (Just res1) <- executeCommandQuery $ "SELECT * FROM " <> view1 <> " WHERE b = 1;"
+        _ <- executeCommandQuery $ "INSERT INTO " <> viewSource1 <> " (a) VALUES (3);"
+        _ <- executeCommandQuery $ "INSERT INTO " <> viewSource1 <> " (a) VALUES (4);"
         threadDelay 2000000
-        (Just res2) <- executeCommandQuery $ "SELECT * FROM " <> viewName <> " WHERE b = 1;"
-        _ <- executeCommandQuery $ "DROP STREAM " <> source5 <> " IF EXISTS;"
-        _ <- executeCommandQuery $ "DROP STREAM " <> source6 <> " IF EXISTS;"
+        (Just res2) <- executeCommandQuery $ "SELECT * FROM " <> view1 <> " WHERE b = 1;"
         return [res1, res2]
     ) `shouldReturn` mkViewResponse . mkStruct <$>
     [ [("SUM(a)", Aeson.Number 3)],
