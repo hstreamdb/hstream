@@ -194,7 +194,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       let connectorExists = elem (T.unpack cName) $ map P.getSuffix connectorIds
       if streamExists then
         if connectorExists then if ifNotExist then returnOkRes else returnErrRes "connector exists"
-        else handleCreateSinkConnector sc commandQueryStmtText cName sName cConfig >> returnOkRes
+        else handleCreateSinkConnector sc (TL.toStrict commandQueryStmtText) cName sName cConfig >> returnOkRes
       else returnErrRes "stream does not exist"
     InsertPlan stream insertType payload             -> do
       timestamp <- getProtoTimestamp
