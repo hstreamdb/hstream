@@ -42,14 +42,14 @@ hstreamQueryToQuery (HSP.Query queryId (HSP.Info sqlStatement createdTime) _ (HS
   Query (TL.pack $ ZDC.unpack queryId) (fromIntegral $ fromEnum status) createdTime (TL.pack $ ZT.unpack sqlStatement)
 
 hstreamQueryNameIs :: T.Text -> HSP.Query -> Bool
-hstreamQueryNameIs name (HSP.Query queryId _ _ _) = (cbytesToText queryId) == name
+hstreamQueryNameIs name (HSP.Query queryId _ _ _) = cbytesToText queryId == name
 
 createQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateQueryRequest Query
   -> IO (ServerResponse 'Normal Query)
 createQueryHandler ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = do
-  plan' <- try $ HSC.streamCodegen $ (TL.toStrict createQueryRequestQueryText)
+  plan' <- try $ HSC.streamCodegen (TL.toStrict createQueryRequestQueryText)
   err <- case plan' of
     Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
     Right (HSC.SelectPlan sources sink taskBuilder) -> do

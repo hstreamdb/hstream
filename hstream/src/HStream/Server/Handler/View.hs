@@ -27,7 +27,7 @@ import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   handleCreateAsSelect, mark)
+                                                   handleCreateAsSelect)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.Utils.Converter          (cbytesToText, textToCBytes)
@@ -41,14 +41,14 @@ emptyView :: View
 emptyView = View "" 0 0 "" []
 
 hstreamViewIdIs :: T.Text -> HSP.Query -> Bool
-hstreamViewIdIs name (HSP.Query queryId _ _ _) = (cbytesToText queryId) == name
+hstreamViewIdIs name (HSP.Query queryId _ _ _) = cbytesToText queryId == name
 
 createViewHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateViewRequest View
   -> IO (ServerResponse 'Normal View)
 createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
-  plan' <- try $ HSC.streamCodegen $ (TL.toStrict createViewRequestSql)
+  plan' <- try $ HSC.streamCodegen $ TL.toStrict createViewRequestSql
   err <- case plan' of
     Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
     Right (HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _) -> do
@@ -93,5 +93,5 @@ deleteViewHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) = do
   catch
-    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
+    (HSP.withMaybeZHandle zkHandle (HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
     (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))

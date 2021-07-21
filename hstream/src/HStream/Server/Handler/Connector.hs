@@ -36,7 +36,7 @@ hstreamConnectorToConnector (HSP.Connector connectorId (HSP.Info sqlStatement cr
   Connector (TL.pack $ ZDC.unpack connectorId) (fromIntegral $ fromEnum status) createdTime (TL.pack $ ZT.unpack sqlStatement)
 
 hstreamConnectorNameIs :: T.Text -> HSP.Connector -> Bool
-hstreamConnectorNameIs name (HSP.Connector connectorId _ _) = (cbytesToText connectorId) == name
+hstreamConnectorNameIs name (HSP.Connector connectorId _ _) = cbytesToText connectorId == name
 
 createConnector :: ServerContext -> T.Text -> Bool -> IO (Either String Connector)
 createConnector sc@ServerContext{..} sql isCreate = do
@@ -98,7 +98,7 @@ deleteConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteConnectorHandler ServerContext{..} (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = do
   catch
-    ((HSP.withMaybeZHandle zkHandle $ HSP.removeConnector (ZDC.pack $ TL.unpack deleteConnectorRequestId)) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
+    (HSP.withMaybeZHandle zkHandle (HSP.removeConnector $ ZDC.pack $ TL.unpack deleteConnectorRequestId) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
     (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))
 
 restartConnectorHandler
