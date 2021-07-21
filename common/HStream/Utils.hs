@@ -9,6 +9,7 @@ module HStream.Utils
   , flattenJSON
   , getProtoTimestamp
   , genUnique
+  , setupSigsegvHandler
   ) where
 
 import           Control.Exception                    (Exception (..))
@@ -77,3 +78,6 @@ genUnique = do
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
 {-# INLINE genUnique #-}
+
+foreign import ccall unsafe "setup_sigsegv_handler"
+  setupSigsegvHandler :: IO ()

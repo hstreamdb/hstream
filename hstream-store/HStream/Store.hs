@@ -26,8 +26,6 @@ module HStream.Store
     -- * Exception
   , module HStream.Store.Exception
 
-    -- * Helpers
-  , setupSigsegvHandler
   ) where
 
 import           Control.Monad                    (forM_)
