@@ -19,6 +19,7 @@ import           Control.Monad                         (void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
 import qualified Data.ByteString.Char8                 as C
+import qualified Data.ByteString.Lazy                  as BSL
 import           Data.Either                           (isRight)
 import qualified Data.HashMap.Strict                   as HM
 import           Data.IORef                            (IORef,
@@ -31,6 +32,7 @@ import           Data.Maybe                            (fromJust, isJust)
 import           Data.String                           (fromString)
 import qualified Data.Text                             as T
 import qualified Data.Text.Lazy                        as TL
+import qualified Data.Text.Lazy.Encoding               as TL
 import qualified Data.Vector                           as V
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                          (Enumerated (..))
@@ -91,6 +93,7 @@ newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
+
 --------------------------------------------------------------------------------
 
 checkSubscriptions :: Timestamp -> ServerContext -> IO ()
@@ -121,7 +124,9 @@ handlers ldclient repFactor zkHandle timeout compression = do
   timer <- newTimer
   _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
   return HStreamApi {
-      hstreamApiExecuteQuery     = executeQueryHandler serverContext
+      hstreamApiEcho = echoHandler
+
+    , hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
     , hstreamApiSendConsumerHeartbeat = consumerHeartbeatHandler serverContext
     , hstreamApiAppend           = appendHandler serverContext
@@ -155,25 +160,11 @@ handlers ldclient repFactor zkHandle timeout compression = do
     , hstreamApiDeleteView       = deleteViewHandler serverContext
     }
 
-genErrorStruct :: TL.Text -> Struct
-genErrorStruct =
-  Struct . Map.singleton "Error Message:" . Just . Value . Just . ValueKindStringValue
-
-genErrorQueryResponse :: TL.Text -> CommandQueryResponse
-genErrorQueryResponse = genQueryResultResponse . V.singleton . genErrorStruct
-
-genSuccessQueryResponse :: CommandQueryResponse
-genSuccessQueryResponse = CommandQueryResponse $
-  Just . CommandQueryResponseKindSuccess $ CommandSuccess
-
-genQueryResultResponse :: V.Vector Struct -> CommandQueryResponse
-genQueryResultResponse = CommandQueryResponse .
-  Just . CommandQueryResponseKindResultSet . CommandQueryResultSet
-
-batchAppend :: S.LDClient -> TL.Text -> [Bytes] -> S.Compression -> IO (Either SomeException S.AppendCompletion)
-batchAppend client streamName payloads strategy = do
-  logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
-  try $ S.appendBatch client logId payloads strategy Nothing
+echoHandler
+  :: ServerRequest 'Normal EchoRequest EchoResponse
+  -> IO (ServerResponse 'Normal EchoResponse)
+echoHandler (ServerNormalRequest _metadata EchoRequest{..}) = do
+  return $ ServerNormalResponse (Just $ EchoResponse echoRequestMsg) [] StatusOk ""
 
 executeQueryHandler
   :: ServerContext
@@ -284,7 +275,8 @@ executePushQueryHandler ServerContext{..}
     _ -> returnRes "inconsistent method called"
 
 returnErrRes :: TL.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
-returnErrRes x = return (ServerNormalResponse  (Just (genErrorQueryResponse x)) [] StatusUnknown "")
+returnErrRes x = return $
+  ServerNormalResponse Nothing [] StatusInternal (StatusDetails . BSL.toStrict . TL.encodeUtf8 $ x)
 
 returnOkRes :: IO (ServerResponse 'Normal CommandQueryResponse)
 returnOkRes = return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk "")
@@ -605,3 +597,23 @@ terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..
   let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
   handleTerminate sc (OneQuery queryName)
   return (ServerNormalResponse (Just (TerminateQueryResponse terminateQueryRequestQueryName)) [] StatusOk  "")
+
+genErrorStruct :: TL.Text -> Struct
+genErrorStruct =
+  Struct . Map.singleton "Error Message:" . Just . Value . Just . ValueKindStringValue
+
+genErrorQueryResponse :: TL.Text -> CommandQueryResponse
+genErrorQueryResponse = genQueryResultResponse . V.singleton . genErrorStruct
+
+genSuccessQueryResponse :: CommandQueryResponse
+genSuccessQueryResponse = CommandQueryResponse $
+  Just . CommandQueryResponseKindSuccess $ CommandSuccess
+
+genQueryResultResponse :: V.Vector Struct -> CommandQueryResponse
+genQueryResultResponse = CommandQueryResponse .
+  Just . CommandQueryResponseKindResultSet . CommandQueryResultSet
+
+batchAppend :: S.LDClient -> TL.Text -> [Bytes] -> S.Compression -> IO (Either SomeException S.AppendCompletion)
+batchAppend client streamName payloads strategy = do
+  logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
+  try $ S.appendBatch client logId payloads strategy Nothing

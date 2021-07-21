@@ -65,9 +65,7 @@ jobs:
 
       - name: Start required services
         run: |
-          python3 script/dev-tools mysql-start
-          python3 script/dev-tools clickhouse-start
-          python3 script/dev-tools cluster-start
+          python3 script/dev-tools start-services
 
       # Since we use the upgraded version of z-data and z-io, this should resolve the problem.
       #
@@ -83,7 +81,8 @@ jobs:
 
       - name: start hstream server
         run: |
-          python3 script/dev-tools cabal --check --no-interactive --detach -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- run hstream-server
+          python3 script/dev-tools cabal --check --no-interactive --detach \
+            -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} run -- -- hstream-server --port $(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
           sleep 5
 
       - name: test
