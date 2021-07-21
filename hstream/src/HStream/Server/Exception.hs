@@ -1,156 +1,38 @@
+{-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE OverloadedLists           #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
 module HStream.Server.Exception where
 
-import           Control.Exception     (Exception (..), SomeException)
-import           Data.Typeable         (cast)
+import           Control.Exception             (Exception (..),
+                                                Handler (Handler),
+                                                SomeException, catches)
 
-import           HStream.SQL.Exception (SomeSQLException)
-import           HStream.Store         (SomeHStoreException)
+import qualified Data.ByteString.Char8         as BS
+import           HStream.SQL.Exception         (SomeSQLException,
+                                                formatSomeSQLException)
+import           HStream.Store                 (EXISTS)
+import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.HighLevel.Server
 
-data ServerHandlerException = forall e . Exception e => ServerHandlerException e
+-- TODO: More exception handle needs specific handling.
+defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
+defaultExceptionHandle = flip catches [
+  Handler (\(err :: SomeSQLException) ->
+    returnErrRes $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
+  Handler (\(_ :: EXISTS) ->
+    returnErrRes "Stream already exists"),
+  Handler (\(_ :: QueryTerminatedOrNotExist) ->
+    returnErrRes "Query is already terminated or does not exist"),
+  Handler (\(err :: SomeException) -> do
+    putStrLn $ displayException err
+    returnErrRes "Internal Server Error")
+  ]
 
-instance Show ServerHandlerException where
-  show (ServerHandlerException e) = show e
-
-instance Exception ServerHandlerException
-
-serverHandlerExceptionToException :: Exception e => e -> SomeException
-serverHandlerExceptionToException = toException . ServerHandlerException
-
-serverHandlerExceptionFromException :: Exception e => SomeException -> Maybe e
-serverHandlerExceptionFromException x = do
-  ServerHandlerException a <- fromException x
-  cast a
-
----------------------------------------------------------------------
-
-data PersistenceException = forall e . Exception e => PersistenceException e
-
-instance Show PersistenceException where
-  show (PersistenceException e) = show e
-
-instance Exception PersistenceException where
-  toException = serverHandlerExceptionToException
-  fromException = serverHandlerExceptionFromException
-
-persistenceExceptionToException :: Exception e => e -> SomeException
-persistenceExceptionToException = toException . PersistenceException
-
-persistenceExceptionFromException :: Exception e => SomeException -> Maybe e
-persistenceExceptionFromException x = do
-  PersistenceException a <- fromException x
-  cast a
-
-data FailedToSetStatus = FailedToSetStatus
-  deriving Show
-
-instance Exception FailedToSetStatus where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data FailedToRecordInfo = FailedToRecordInfo
-  deriving Show
-
-instance Exception FailedToRecordInfo where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data FailedToGet = FailedToGet
-  deriving Show
-
-instance Exception FailedToGet where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data FailedToRemove = FailedToRemove
-  deriving Show
-
-instance Exception FailedToRemove where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data FailedToDecode = FailedToDecode
-  deriving Show
-
-instance Exception FailedToDecode where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data QueryNotFound = QueryNotFound
-  deriving Show
-
-instance Exception QueryNotFound where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data ConnectorNotFound = ConnectorNotFound
-  deriving Show
-
-instance Exception ConnectorNotFound where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data QueryStillRunning = QueryStillRunning
-  deriving Show
-
-instance Exception QueryStillRunning where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
-data ConnectorStillRunning = ConnectorStillRunning
-  deriving Show
-
-instance Exception ConnectorStillRunning where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
----------------------------------------------------------------------
-
-data StoreException = forall e . Exception e => StoreException e
-
-instance Show StoreException where
-  show (StoreException e) = show e
-
-instance Exception StoreException where
-  toException = serverHandlerExceptionToException
-  fromException = serverHandlerExceptionFromException
-
-storeExceptionToException :: Exception e => e -> SomeException
-storeExceptionToException = toException . StoreException
-
-storeExceptionFromException :: Exception e => SomeException -> Maybe e
-storeExceptionFromException x = do
-  StoreException a <- fromException x
-  cast a
-
-newtype LowLevelStoreException = LowLevelStoreException SomeHStoreException
-  deriving Show
-
-instance Exception LowLevelStoreException where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
----------------------------------------------------------------
-
-newtype FrontSQLException = FrontSQLException SomeSQLException
-  deriving Show
-
-instance Exception FrontSQLException where
-  toException = serverHandlerExceptionToException
-  fromException = serverHandlerExceptionFromException
-
-----------------------------------------------------
+returnErrRes :: StatusDetails -> IO (ServerResponse 'Normal a)
+returnErrRes = return . ServerNormalResponse Nothing [] StatusInternal
 
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
-  deriving Show
-
-instance Exception QueryTerminatedOrNotExist where
-  toException = serverHandlerExceptionToException
-  fromException = serverHandlerExceptionFromException
-
-data ConnectorTerminatedOrNotExist = ConnectorTerminatedOrNotExist
-  deriving Show
-
-instance Exception ConnectorTerminatedOrNotExist where
-  toException = serverHandlerExceptionToException
-  fromException = serverHandlerExceptionFromException
+  deriving (Show)
+instance Exception QueryTerminatedOrNotExist

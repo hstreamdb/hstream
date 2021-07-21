@@ -25,27 +25,29 @@ module HStream.Server.Persistence
   , isStreamQuery
   ,createInsertPersistentQuery,getRelatedStreams) where
 
-import           Control.Exception        (Exception, handle, throw)
-import           Control.Monad            (void)
-import qualified Data.HashMap.Strict      as HM
-import           Data.IORef               (IORef, modifyIORef, newIORef,
-                                           readIORef)
-import           Data.Int                 (Int64)
-import           Data.Text                (Text, unpack)
-import           Data.Text.Lazy           (Text, toStrict)
-import           GHC.Generics             (Generic)
-import           System.IO.Unsafe         (unsafePerformIO)
-import           Z.Data.CBytes            (CBytes (..), pack, unpack)
-import           Z.Data.JSON              (JSON, decode, encode)
-import           Z.Data.Text              (Text, pack)
-import           Z.Data.Vector            (Bytes)
-import           Z.IO.Exception           (HasCallStack, catch)
-import           Z.IO.Time                (SystemTime (..), getSystemTime')
+import           Control.Exception                    (Exception, handle, throw)
+import           Control.Monad                        (void)
+import qualified Data.HashMap.Strict                  as HM
+import           Data.IORef                           (IORef, modifyIORef,
+                                                       newIORef, readIORef)
+import           Data.Int                             (Int64)
+import           Data.Text                            (Text, unpack)
+import           Data.Text.Lazy                       (Text, toStrict)
+import           GHC.Generics                         (Generic)
+import           System.IO.Unsafe                     (unsafePerformIO)
+import           Z.Data.CBytes                        (CBytes (..), pack,
+                                                       unpack)
+import           Z.Data.JSON                          (JSON, decode, encode)
+import           Z.Data.Text                          (Text, pack)
+import           Z.Data.Vector                        (Bytes)
+import           Z.IO.Exception                       (HasCallStack, catch)
+import           Z.IO.Time                            (SystemTime (..),
+                                                       getSystemTime')
 import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
-import           HStream.Server.Exception
+import           HStream.Server.Persistence.Exception
 
 type Id = CBytes
 type TimeStamp    = Int64

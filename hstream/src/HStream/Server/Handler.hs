@@ -170,20 +170,19 @@ executeQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal CommandQuery CommandQueryResponse
   -> IO (ServerResponse 'Normal CommandQueryResponse)
-executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = handle
-  (\(e :: ServerHandlerException) -> returnErrRes $ getKeyWordFromException e) $ do
-  plan' <- mark FrontSQLException $ streamCodegen (TL.toStrict commandQueryStmtText)
+executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = defaultExceptionHandle $ do
+  plan' <- streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
     SelectPlan{}           -> returnErrRes "inconsistent method called"
     -- execute plans that can be executed with this method
-    CreatePlan stream _repFactor -> mark LowLevelStoreException $
+    CreatePlan stream _repFactor ->
       create (transToStreamName stream) >> returnOkRes
-    CreateBySelectPlan sources sink taskBuilder _repFactor -> mark LowLevelStoreException $
+    CreateBySelectPlan sources sink taskBuilder _repFactor ->
       create (transToStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
         (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink))
       >> returnOkRes
-    CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> mark LowLevelStoreException $ do
+    CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
       create (transToViewStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
         (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
@@ -197,7 +196,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
         if connectorExists then if ifNotExist then returnOkRes else returnErrRes "connector exists"
         else handleCreateSinkConnector sc commandQueryStmtText cName sName cConfig >> returnOkRes
       else returnErrRes "stream does not exist"
-    InsertPlan stream insertType payload             -> mark LowLevelStoreException $ do
+    InsertPlan stream insertType payload             -> do
       timestamp <- getProtoTimestamp
       let header = case insertType of
             JsonFormat -> buildRecordHeader jsonPayloadFlag Map.empty timestamp TL.empty
@@ -205,7 +204,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       let record = encodeRecord $ buildRecord header payload
       void $ batchAppend scLDClient (TL.fromStrict stream) [record] cmpStrategy
       returnOkRes
-    DropPlan checkIfExist dropObject -> mark LowLevelStoreException $
+    DropPlan checkIfExist dropObject ->
       handleDropPlan sc checkIfExist dropObject
     ShowPlan showObject -> handleShowPlan sc showObject
     TerminatePlan terminationSelection -> do
@@ -214,7 +213,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
       case HM.lookup rSelectViewFrom hm of
-        Nothing -> returnErrRes $ "No VIEW named " <> TL.fromStrict rSelectViewFrom <> " found"
+        Nothing -> returnErrRes "VIEW not found"
         Just materialized -> do
           let (keyName, keyExpr) = rSelectViewWhere
               (_,keyValue) = genRExprValue keyExpr (HM.fromList [])
@@ -247,14 +246,13 @@ executePushQueryHandler
   -> ServerRequest 'ServerStreaming CommandPushQuery Struct
   -> IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler ServerContext{..}
-  (ServerWriterRequest meta CommandPushQuery{..} streamSend) = handle
-  (\(e :: ServerHandlerException) -> returnRes $ fromString (show e)) $ do
-  plan' <-  mark FrontSQLException $ streamCodegen (TL.toStrict commandPushQueryQueryText)
+  (ServerWriterRequest meta CommandPushQuery{..} streamSend) = do
+  plan' <-  streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
     SelectPlan sources sink taskBuilder -> do
       exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
       if (not . and) exists then returnRes "some source stream do not exist"
-      else mark LowLevelStoreException $ do
+      else do
         S.createStream scLDClient (transToTempStreamName sink)
           (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
@@ -273,10 +271,6 @@ executePushQueryHandler ServerContext{..}
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
     _ -> returnRes "inconsistent method called"
-
-returnErrRes :: TL.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
-returnErrRes x = return $
-  ServerNormalResponse Nothing [] StatusInternal (StatusDetails . BSL.toStrict . TL.encodeUtf8 $ x)
 
 returnOkRes :: IO (ServerResponse 'Normal CommandQueryResponse)
 returnOkRes = return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk "")
@@ -327,7 +321,7 @@ handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 handleShowPlan ServerContext{..} showObject =
   case showObject of
-    SStreams -> mark LowLevelStoreException $ do
+    SStreams -> do
       names <- S.findStreams scLDClient S.StreamTypeStream True
       let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS" . L.sort $
             stringToValue . S.showStreamName <$> names

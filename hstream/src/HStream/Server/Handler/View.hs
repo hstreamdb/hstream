@@ -24,7 +24,7 @@ import qualified Z.IO.Logger                      as Log
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException)
-import           HStream.Server.Exception         (LowLevelStoreException (..))
+import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    handleCreateAsSelect, mark)
@@ -47,11 +47,11 @@ createViewHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateViewRequest View
   -> IO (ServerResponse 'Normal View)
-createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = do
+createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
   plan' <- try $ HSC.streamCodegen $ (TL.toStrict createViewRequestSql)
   err <- case plan' of
     Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
-    Right (HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _) -> mark LowLevelStoreException $ do
+    Right (HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _) -> do
       create sink
       (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (HSP.ViewQuery (textToCBytes <$> sources) (ZDC.pack . T.unpack $ sink) schema)
       return $ Right $ View (TL.pack $ ZDC.unpack qid) (fromIntegral $ fromEnum HSP.Running) timestamp createViewRequestSql (V.fromList $ TL.pack <$> schema)
