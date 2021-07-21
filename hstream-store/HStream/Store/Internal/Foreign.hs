@@ -166,9 +166,6 @@ foreign import ccall unsafe "hs_logdevice.h get_vector_of_string_size"
 foreign import ccall unsafe "hs_logdevice.h get_vector_of_string_data"
   get_vector_of_string_data :: Ptr (StdVector Z.StdString) -> IO (Ptr Z.StdString)
 
-foreign import ccall unsafe "hs_logdevice.h setup_sigsegv_handler"
-  setupSigsegvHandler :: IO ()
-
 -------------------------------------------------------------------------------
 -- Internal helpers
 

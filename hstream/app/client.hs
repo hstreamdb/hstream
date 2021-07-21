@@ -29,7 +29,7 @@ import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.Server.HStreamApi
-import           HStream.Store                    (setupSigsegvHandler)
+import           HStream.Utils                    (setupSigsegvHandler)
 import           HStream.Utils.Format             (formatCommandQueryResponse,
                                                    formatResult)
 

@@ -25,6 +25,7 @@ import           HStream.Server.Handler
 import           HStream.Server.Persistence
 import           HStream.Store
 import qualified HStream.Store.Logger             as Log
+import           HStream.Utils                    (setupSigsegvHandler)
 
 -- TODO
 -- 1. config file for the Server

@@ -27,9 +27,9 @@ import           Z.Foreign                        (toByteString)
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
-import           HStream.Store                    (setupSigsegvHandler)
 import           HStream.Store.Logger
-import           HStream.Utils                    (getProtoTimestamp)
+import           HStream.Utils                    (getProtoTimestamp,
+                                                   setupSigsegvHandler)
 import           HStream.Utils.BuildRecord
 
 
