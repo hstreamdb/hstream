@@ -212,4 +212,3 @@ subscribedReadersToMap readers = atomically $ do
     HM.mapMaybe (\case None                   -> Nothing
                        ReaderMap reader sId _ -> Just (reader, sId)
                 ) hm
-

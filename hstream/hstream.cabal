@@ -33,6 +33,7 @@ library
     HStream.Server.Handler.Query
     HStream.Server.Handler.View
     HStream.Server.Persistence
+    HStream.Server.Persistence.Exception
 
   hs-source-dirs:   src
   build-depends:
