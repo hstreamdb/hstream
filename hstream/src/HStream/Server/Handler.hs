@@ -294,7 +294,9 @@ handleDropPlan :: ServerContext -> Bool -> DropObject
 handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
   case dropObject of
     DStream stream -> handleDrop "stream_" stream transToStreamName
-    DView view     -> handleDrop "view_" view transToViewStreamName
+    DView view     -> do
+      atomicModifyIORef' groupbyStores (\hm -> (HM.delete view hm, ()))
+      handleDrop "view_" view transToViewStreamName
   where
     handleDrop object name toSName = do
       streamExists <- S.doesStreamExists scLDClient (toSName name)
