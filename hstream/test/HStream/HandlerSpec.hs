@@ -32,7 +32,6 @@ import           HStream.Utils                    (getProtoTimestamp,
                                                    setupSigsegvHandler)
 import           HStream.Utils.BuildRecord
 
-
 randomStreamNames :: V.Vector TL.Text
 randomStreamNames = unsafePerformIO $ V.replicateM 5 $ ("StreamSpec_" <>) . TL.fromStrict <$> newRandomText 20
 {-# NOINLINE randomStreamNames #-}
@@ -116,24 +115,19 @@ createStreamRequest client stream = do
   HStreamApi{..} <- hstreamApiClient client
   resp <- hstreamApiCreateStream $ ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse respStream _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return $ Just respStream
-        _        -> putStrLn ("Server Error: " <> show details) >> return Nothing
-    ClientErrorResponse clientError                              -> do
-      putStrLn ("Client error: " <> show clientError) >> return Nothing
+    ClientNormalResponse respStream _meta1 _meta2 StatusOk _details -> return $ Just respStream
+    ClientErrorResponse clientError                                 -> do
+      putStrLn ("Create Stream Error: " <> show clientError) >> return Nothing
 
 listStreamRequest :: Client -> IO (Maybe (V.Vector Stream))
 listStreamRequest client = do
   HStreamApi{..} <- hstreamApiClient client
   resp <- hstreamApiListStreams $ ClientNormalRequest Empty requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse respStream _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return . Just $ listStreamsResponseStreams respStream
-        _        -> putStrLn ("Server Error: " <> show details) >> return Nothing
-    ClientErrorResponse clientError                              -> do
-      putStrLn ("Client error: " <> show clientError) >> return Nothing
+    ClientNormalResponse respStream _meta1 _meta2 StatusOk _details -> do
+      return . Just $ listStreamsResponseStreams respStream
+    ClientErrorResponse clientError                                 -> do
+      putStrLn ("List Stream Error: " <> show clientError) >> return Nothing
 
 deleteStreamRequest :: Client -> TL.Text -> IO Bool
 deleteStreamRequest client streamName = do
@@ -141,12 +135,9 @@ deleteStreamRequest client streamName = do
   let req = DeleteStreamRequest streamName
   resp <- hstreamApiDeleteStream $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse _ _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return True
-        _        -> putStrLn ("Server Error: " <> show details) >> return False
-    ClientErrorResponse clientError                     -> do
-      putStrLn ("Client Error: " <> show clientError) >> return False
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
+    ClientErrorResponse clientError                        -> do
+      putStrLn ("Delete Stream Error: " <> show clientError) >> return False
 
 sendHeartbeatRequest :: Client -> TL.Text -> IO Bool
 sendHeartbeatRequest client subscriptionId = do
@@ -154,12 +145,9 @@ sendHeartbeatRequest client subscriptionId = do
   let req = ConsumerHeartbeatRequest subscriptionId
   resp <- hstreamApiSendConsumerHeartbeat $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse _ _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return True
-        _        -> putStrLn ("Server Error: " <> show details) >> return False
-    ClientErrorResponse clientError                       -> do
-      putStrLn ("Client Error: " <> show clientError) >> return False
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
+    ClientErrorResponse clientError                        -> do
+      putStrLn ("Send Heartbeat Error: " <> show clientError) >> return False
 
 ----------------------------------------------------------------------------------------------------------
 -- SubscribeSpec
@@ -219,24 +207,19 @@ subscribeRequest client subscribeId streamName offset = do
   let req = Subscription subscribeId streamName $ Just offset
   resp <- hstreamApiSubscribe $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse _ _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return True
-        _        -> putStrLn ("Server Error: " <> show details) >> return False
-    ClientErrorResponse clientError                     -> do
-      putStrLn ("Client Error: " <> show clientError) >> return False
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
+    ClientErrorResponse clientError                        -> do
+      putStrLn ("Subscribe Error: " <> show clientError) >> return False
 
 listSubscriptionRequest :: Client -> IO (Maybe (V.Vector Subscription))
 listSubscriptionRequest client = do
   HStreamApi{..} <- hstreamApiClient client
   resp <- hstreamApiListSubscriptions $ ClientNormalRequest Empty requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse res _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return . Just . listSubscriptionsResponseSubscription $ res
-        _        -> putStrLn ("Server Error: " <> show details) >> return Nothing
-    ClientErrorResponse clientError                       -> do
-      putStrLn ("Client Error: " <> show clientError) >> return Nothing
+    ClientNormalResponse res _meta1 _meta2 StatusOk _details -> do
+      return . Just . listSubscriptionsResponseSubscription $ res
+    ClientErrorResponse clientError                          -> do
+      putStrLn ("List Subscription Error: " <> show clientError) >> return Nothing
 
 deleteSubscriptionRequest :: Client -> TL.Text -> IO Bool
 deleteSubscriptionRequest client subscribeId = do
@@ -244,12 +227,9 @@ deleteSubscriptionRequest client subscribeId = do
   let req = DeleteSubscriptionRequest subscribeId
   resp <- hstreamApiDeleteSubscription $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse _ _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return True
-        _        -> putStrLn ("Server Error: " <> show details) >> return False
-    ClientErrorResponse clientError                     -> do
-      putStrLn ("Client Error: " <> show clientError) >> return False
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
+    ClientErrorResponse clientError                        -> do
+      putStrLn ("Delete Subscription Error: " <> show clientError) >> return False
 
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec
@@ -313,12 +293,9 @@ appendRequest client streamName records = do
   let req = AppendRequest streamName records
   resp <- hstreamApiAppend $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse x@AppendResponse{} _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return $ Just x
-        _        -> putStrLn ("Server Error: " <> show details) >> return Nothing
-    ClientErrorResponse clientError -> do
-      putStrLn ("Client Error: " <> show clientError) >> return Nothing
+    ClientNormalResponse resp _meta1 _meta2 StatusOk _details -> return $ Just resp
+    ClientErrorResponse clientError                           -> do
+      putStrLn ("AppendRequest Error: " <> show clientError) >> return Nothing
 
 fetchRequest :: Client -> TL.Text -> Word64 -> Word32 -> IO (Maybe (V.Vector ReceivedRecord))
 fetchRequest client subscribeId timeout maxSize = do
@@ -326,12 +303,10 @@ fetchRequest client subscribeId timeout maxSize = do
   let req = FetchRequest subscribeId timeout maxSize
   resp <- hstreamApiFetch $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse res _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return . Just $ fetchResponseReceivedRecords res
-        _        -> putStrLn ("Server Error: " <> show details) >> return Nothing
-    ClientErrorResponse clientError                       -> do
-      putStrLn ("Client Error: " <> show clientError) >> return Nothing
+    ClientNormalResponse res _meta1 _meta2 StatusOk _details -> do
+      return . Just $ fetchResponseReceivedRecords res
+    ClientErrorResponse clientError                          -> do
+      putStrLn ("FetchRequest Error: " <> show clientError) >> return Nothing
 
 commitOffsetRequest :: Client -> TL.Text -> TL.Text -> RecordId -> IO Bool
 commitOffsetRequest client subscriptionId streamName recordId = do
@@ -339,12 +314,9 @@ commitOffsetRequest client subscriptionId streamName recordId = do
   let req = CommittedOffset subscriptionId streamName $ Just recordId
   resp <- hstreamApiCommitOffset $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
-    ClientNormalResponse _ _meta1 _meta2 status details -> do
-      case status of
-        StatusOk -> return True
-        _        -> putStrLn ("Server Error: " <> show details) >> return False
-    ClientErrorResponse clientError                     -> do
-      putStrLn ("Client Error: " <> show clientError) >> return False
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
+    ClientErrorResponse clientError                        -> do
+      putStrLn ("Commite Error: " <> show clientError) >> return False
 
 requestTimeout :: Int
 requestTimeout = 1000
