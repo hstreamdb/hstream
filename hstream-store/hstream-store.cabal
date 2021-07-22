@@ -53,6 +53,7 @@ library
 
   build-depends:
     , base            >=4.13  && <5
+    , bytestring      ^>=0.10
     , cache           ^>=0.1
     , containers      ^>=0.6
     , ghc-prim        >=0.5   && <1.0

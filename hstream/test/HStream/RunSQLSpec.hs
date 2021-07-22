@@ -36,56 +36,52 @@ source1 :: TL.Text
 source1 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
 {-# NOINLINE source1 #-}
 
-source2 :: TL.Text
-source2 = unsafePerformIO $ ("RunSQLSpec_" <>) . TL.fromStrict <$> newRandomText 20
-{-# NOINLINE source2 #-}
-
 baseSpecSetup :: IO ()
 baseSpecSetup = do
   void $ executeCommandQuery' $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
-  void $ executeCommandQuery' $ "CREATE STREAM " <> source2 <> ";"
 
 baseSpecClean :: IO ()
 baseSpecClean = do
   void $ executeCommandQuery' $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-  void $ executeCommandQuery' $ "DROP STREAM " <> source2 <> " IF EXISTS;"
 
 baseSpec :: Spec
-baseSpec = beforeAll_ baseSpecSetup $ afterAll_ baseSpecClean $ describe "HStream.RunSQLSpec" $ do
+baseSpec = beforeAll_ baseSpecSetup $ afterAll_ baseSpecClean $ do
 
-  it "insert data to source streams" $ do
-    executeCommandQuery' ("INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);")
-      `shouldReturn` successResp
-    executeCommandQuery' ("INSERT INTO " <> source2 <> " (temperature, humidity) VALUES (15, 10);")
-      `shouldReturn` successResp
+  it "insert data and select" $ do
+    _ <- forkIO $ do
+      -- FIXME: requires a notification mechanism to ensure that the task
+      -- starts successfully before inserting data
+      threadDelay 5000000
+      executeCommandQuery' ("INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);")
+        `shouldReturn` successResp
+      executeCommandQuery' ("INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (15, 10);")
+        `shouldReturn` successResp
 
-  it "a simple SQL query" $
-    (do
-       _ <- forkIO $ do
-         threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
-         _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (31, 26);"
-         _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (15, 10);"
-         return ()
-       executeCommandPushQuery $ "SELECT * FROM " <> source1 <> " EMIT CHANGES;"
-    ) `shouldReturn` [ mkStruct [("temperature", Aeson.Number 31), ("humidity", Aeson.Number 26)]
+    executeCommandPushQuery ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
+      `shouldReturn` [ mkStruct [("temperature", Aeson.Number 22), ("humidity", Aeson.Number 80)]
                      , mkStruct [("temperature", Aeson.Number 15), ("humidity", Aeson.Number 10)]
                      ]
 
-  it "GROUP BY without timewindow" $
-    (do
-        _ <- forkIO $ do
-          threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
-          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (1, 2);"
-          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (2, 2);"
-          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (3, 2);"
-          _ <- executeCommandQuery $ "INSERT INTO " <> source1 <> " (a, b) VALUES (4, 3);"
-          return ()
-        executeCommandPushQuery $ "SELECT SUM(a) AS result FROM " <> source1 <> " GROUP BY b EMIT CHANGES;"
-        ) `shouldReturn` [ mkStruct [("result", Aeson.Number 1)]
-                         , mkStruct [("result", Aeson.Number 3)]
-                         , mkStruct [("result", Aeson.Number 6)]
-                         , mkStruct [("result", Aeson.Number 4)]
-                         ]
+  it "GROUP BY without timewindow" $ do
+    _ <- forkIO $ do
+      -- FIXME: requires a notification mechanism to ensure that the task
+      -- starts successfully before inserting data
+      threadDelay 5000000
+      executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (1, 2);")
+        `shouldReturn` successResp
+      executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (2, 2);")
+        `shouldReturn` successResp
+      executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (3, 2);")
+        `shouldReturn` successResp
+      executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (4, 3);")
+        `shouldReturn` successResp
+
+    executeCommandPushQuery ("SELECT SUM(a) AS result FROM " <> source1 <> " GROUP BY b EMIT CHANGES;")
+      `shouldReturn` [ mkStruct [("result", Aeson.Number 1)]
+                     , mkStruct [("result", Aeson.Number 3)]
+                     , mkStruct [("result", Aeson.Number 6)]
+                     , mkStruct [("result", Aeson.Number 4)]
+                     ]
 
 -------------------------------------------------------------------------------
 -- ConnectorSpec

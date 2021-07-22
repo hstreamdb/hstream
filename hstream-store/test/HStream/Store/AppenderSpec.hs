@@ -15,6 +15,10 @@ spec = describe "Stream Writer" $ do
     _ <- S.append client logid "hello" Nothing
     readPayload logid Nothing `shouldReturn` "hello"
 
+  it "appendBS and read" $ do
+    _ <- S.appendBS client logid "hello" Nothing
+    readPayload logid Nothing `shouldReturn` "hello"
+
   it "appendBatch" $ do
     _ <- S.appendBatch client logid ["hello", "world"] S.CompressionLZ4 Nothing
     readPayload' logid Nothing `shouldReturn` ["hello", "world"]
