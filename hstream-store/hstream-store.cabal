@@ -150,16 +150,15 @@ test-suite hstream-store-test
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
     -threaded -rtsopts -with-rtsopts=-N
 
-benchmark hstream-store-bench
+benchmark hstore-bench-append
   type:               exitcode-stdio-1.0
-  main-is:            Bench.hs
-  other-modules:
-    HStream.AppendBench
+  main-is:            AppendBench.hs
 
   hs-source-dirs:     bench
   build-depends:
     , base           >=4.11 && <5
     , hstream-store
+    , optparse-applicative  ^>=0.16
     , criterion      ^>=1.5
     , bytestring     ^>=0.10 
     , Z-Data

@@ -67,7 +67,7 @@ cradle:
     - path: "hstream-store/app"
       component: "hstream-store:exe:hstore-bench-writter"
     - path: "hstream-store/bench"
-      component: "hstream-store:bench:hstream-store-bench"
+      component: "hstream-store:bench:hstore-bench-append"
 
     - path: "hstream-store/admin"
       component: "lib:hstore-admin"
