@@ -13,9 +13,8 @@ import           Control.Concurrent               (MVar, ThreadId, forkIO,
 import           Control.Concurrent.STM           (STM, TVar, atomically,
                                                    modifyTVar', readTVar,
                                                    writeTVar)
-import           Control.Exception                (Exception, SomeException,
-                                                   displayException, handle,
-                                                   throwIO)
+import           Control.Exception                (SomeException,
+                                                   displayException, throwIO)
 
 import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
@@ -29,7 +28,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import           RIO                              (forever)
+import           RIO                              (forever, readTVarIO)
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
 import           Z.IO.Time                        (SystemTime (..),
@@ -47,6 +46,7 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
+import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (Subscription)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
@@ -54,29 +54,6 @@ import           HStream.Utils                    (textToCBytes)
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
-
-data ReaderStatus = Released | Occupyied deriving (Show)
-
--- | SubscribedReaders is an map, Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
-type SubscribedReaders = TVar (HM.HashMap TL.Text ReaderMap)
-data ReaderMap = None | ReaderMap HS.LDSyncCkpReader Subscription ReaderStatus deriving (Show)
-
-getReaderStatus :: SubscribedReaders -> TL.Text -> STM (Maybe ReaderStatus)
-getReaderStatus readers subscriptionId = do
-  mp <- readTVar readers
-  case HM.lookup subscriptionId mp of
-    Nothing                -> return Nothing
-    Just None              -> return Nothing
-    Just (ReaderMap _ _ s) -> return $ Just s
-
-updateReaderStatus :: SubscribedReaders -> ReaderStatus -> TL.Text -> STM ()
-updateReaderStatus readers status subscriptionId  = do
-  hm <- readTVar readers
-  case HM.lookup subscriptionId hm of
-    Just (ReaderMap rd sId _) -> do
-      let newMap = HM.insert subscriptionId (ReaderMap rd sId status) hm
-      writeTVar readers newMap
-    _ -> return ()
 
 type Timestamp = Int64
 
@@ -119,6 +96,9 @@ eitherToResponse (Left err) _ = return $
   ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
 eitherToResponse (Right _) resp = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 
+--------------------------------------------------------------------------------
+-- GRPC Handler Helper
+
 handleCreateSinkConnector :: ServerContext -> T.Text -> T.Text -> T.Text -> ConnectorConfig -> IO (CB.CBytes, Int64)
 handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
     MkSystemTime timestamp _ <- getSystemTime'
@@ -150,9 +130,6 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = 
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
 
-mark :: (Exception e, Exception f) => (e -> f) -> IO a -> IO a
-mark mke = handle (throwIO . mke)
-
 handleTerminateConnector :: ServerContext -> CB.CBytes
   -> IO ()
 handleTerminateConnector ServerContext{..} cid = do
@@ -164,13 +141,37 @@ handleTerminateConnector ServerContext{..} cid = do
   -- TODO: shall we move this op to Just tid -> killThread tid
   void $ HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
 
-lookupSubscribedReaders :: SubscribedReaders -> TL.Text -> IO (Maybe (HS.LDSyncCkpReader, Subscription))
-lookupSubscribedReaders readers subscriptionId = atomically $ do
+--------------------------------------------------------------------------------
+-- Subscription
+
+data ReaderStatus = Released | Occupied deriving (Show)
+-- | SubscribedReaders is an map, Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
+type SubscribedReaders = TVar (HM.HashMap TL.Text ReaderMap)
+data ReaderMap = None | ReaderMap HS.LDSyncCkpReader Subscription ReaderStatus deriving (Show)
+
+getReaderStatus :: SubscribedReaders -> TL.Text -> STM (Maybe ReaderStatus)
+getReaderStatus readers subscriptionId = do
+  mp <- readTVar readers
+  case HM.lookup subscriptionId mp of
+    Nothing                -> return Nothing
+    Just None              -> return Nothing
+    Just (ReaderMap _ _ s) -> return $ Just s
+
+updateReaderStatus :: SubscribedReaders -> ReaderStatus -> TL.Text -> STM ()
+updateReaderStatus readers status subscriptionId  = do
   hm <- readTVar readers
   case HM.lookup subscriptionId hm of
-    Just None                            -> return Nothing
-    Just (ReaderMap reader subscription _) -> return $ Just (reader, subscription)
-    Nothing                              -> return Nothing
+    Just (ReaderMap rd sId _) -> do
+      let newMap = HM.insert subscriptionId (ReaderMap rd sId status) hm
+      writeTVar readers newMap
+    _ -> return ()
+
+lookupSubscribedReaders :: SubscribedReaders -> TL.Text -> IO (HS.LDSyncCkpReader, Subscription)
+lookupSubscribedReaders readers subscriptionId = do
+  hm <- readTVarIO readers
+  case HM.lookup subscriptionId hm of
+    Just (ReaderMap reader subscription _) -> return (reader, subscription)
+    _                                      -> throwIO SubscriptionIdNotFound
 
 -- | Modify the SubscribedReaders strictly. If key exist in map, return false, otherwise insert the key value pair
 insertSubscribedReaders :: SubscribedReaders -> TL.Text -> ReaderMap -> IO Bool
@@ -191,17 +192,6 @@ updateSubscribedReaders readers subscriptionId readerMap = do
 deleteSubscribedReaders :: SubscribedReaders -> TL.Text -> STM ()
 deleteSubscribedReaders readers subscriptionId = do
   modifyTVar' readers $ \hm -> HM.delete subscriptionId hm
-
--- | The strick version of deleteSubscribedReaders, if the key doesn't exist, return error
-deleteSubscribedReaders' :: SubscribedReaders -> TL.Text -> IO (Either String ())
-deleteSubscribedReaders' readers subscriptionId = atomically $ do
-  hm <- readTVar readers
-  case HM.lookup subscriptionId hm of
-    Just _ -> do
-      let newMap = HM.delete subscriptionId hm
-      writeTVar readers newMap
-      return $ Right ()
-    Nothing -> return $ Left "cann't find subscriptionId."
 
 subscribedReadersToMap :: SubscribedReaders -> IO (HM.HashMap TL.Text (HS.LDSyncCkpReader, Subscription))
 subscribedReadersToMap readers = atomically $ do

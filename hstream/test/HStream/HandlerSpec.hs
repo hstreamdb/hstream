@@ -267,8 +267,8 @@ spec = describe "HStream.BasicHandlerSpec" $ do
    it "test deleteSubscribe request" $ withGRPCClient clientConfig $ \client ->
      do
        randomSubsciptionId <- TL.fromStrict <$> newRandomText 10
-       -- delete unsubscribed stream should return true
-       deleteSubscribeRequest client randomSubsciptionId `shouldReturn` True
+       -- delete unsubscribed stream should return False
+       deleteSubscribeRequest client randomSubsciptionId `shouldReturn` False
        randomStreamName <- TL.fromStrict <$> newRandomText 20
        void $ createStreamRequest client $ Stream randomStreamName 1
        let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
