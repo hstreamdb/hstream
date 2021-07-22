@@ -5,6 +5,8 @@
 module HStream.Store.Internal.LogDevice.Writer where
 
 import           Control.Monad
+import qualified Data.ByteString                as BS
+import qualified Data.ByteString.Internal       as BS
 import           Data.Int
 import           Data.Maybe                     (fromMaybe)
 import           Data.Primitive
@@ -37,17 +39,41 @@ append
   -> Bytes
   -> Maybe (KeyType, CBytes)
   -> IO AppendCompletion
-append client logid payload m_key_attr = withForeignPtr client $ \client' -> do
+append client logid payload m_key_attr =
+  withForeignPtr client $ \client' -> do
   Z.withPrimVectorSafe payload $ \payload' len -> do
-    cfun <- case m_key_attr of
-              Nothing -> return $ c_logdevice_append_async client' logid payload' 0 len
-              Just (keytype, keyval) -> CBytes.withCBytes keyval $ \keyval' ->
-                return $ c_logdevice_append_with_attrs_async client' logid payload' 0 len keytype keyval'
-    AppendCallBackData{..} <- withAsync appendCallBackDataSize peekAppendCallBackData cfun
-    void $ E.throwStreamErrorIfNotOK' appendCbRetCode
-    return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
-
+    __append__ client' logid payload' len m_key_attr
 {-# INLINABLE append #-}
+
+appendBS
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> BS.ByteString
+  -> Maybe (KeyType, CBytes)
+  -> IO AppendCompletion
+appendBS client logid (BS.PS payload _offset{- always be 0-} len) m_key_attr =
+  withForeignPtr client $ \client' ->
+  withForeignPtr payload $ \payload' -> do
+    __append__ client' logid payload' len m_key_attr
+{-# INLINABLE appendBS #-}
+
+__append__
+  :: HasCallStack
+  => Ptr LogDeviceClient
+  -> C_LogID
+  -> Ptr Word8 -> Int
+  -> Maybe (KeyType, CBytes)
+  -> IO AppendCompletion
+__append__ client logid payload len m_key_attr = do
+  cfun <- case m_key_attr of
+            Nothing -> return $ c_logdevice_append_async client logid payload 0 len
+            Just (keytype, keyval) -> CBytes.withCBytes keyval $ \keyval' ->
+              return $ c_logdevice_append_with_attrs_async client logid payload 0 len keytype keyval'
+  AppendCallBackData{..} <- withAsync appendCallBackDataSize peekAppendCallBackData cfun
+  void $ E.throwStreamErrorIfNotOK' appendCbRetCode
+  return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
+{-# INLINE __append__ #-}
 
 appendBatch
   :: HasCallStack

@@ -39,6 +39,7 @@ module HStream.Store.Stream
 
     -- * Writer
   , LD.append
+  , LD.appendBS
   , LD.appendBatch
   , LD.AppendCompletion (..)
   , FFI.KeyType
