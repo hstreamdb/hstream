@@ -35,7 +35,6 @@ import           GHC.Stack                        (HasCallStack)
 import           Z.Data.CBytes                    (CBytes)
 
 import           HStream.Store.Exception
-import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice
 import           HStream.Store.Internal.Types
 import           HStream.Store.Stream

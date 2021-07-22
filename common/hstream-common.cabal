@@ -27,12 +27,15 @@ library
   exposed-modules:
     HStream.Server.HStreamApi
     HStream.Utils
-    HStream.Utils.BuildRecord
     HStream.Utils.Converter
     HStream.Utils.Format
     ThirdParty.Google.Protobuf.Empty
     ThirdParty.Google.Protobuf.Struct
     ThirdParty.Google.Protobuf.Timestamp
+
+  other-modules:
+    HStream.Utils.BuildRecord
+    HStream.Utils.RPC
 
   hs-source-dirs:     . gen-src
   cxx-sources:        cbits/utils.cpp

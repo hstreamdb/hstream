@@ -28,9 +28,7 @@ import           Z.Foreign                        (toByteString)
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
-import           HStream.Utils                    (getProtoTimestamp,
-                                                   setupSigsegvHandler)
-import           HStream.Utils.BuildRecord
+import           HStream.Utils
 
 randomStreamNames :: V.Vector TL.Text
 randomStreamNames = unsafePerformIO $ V.replicateM 5 $ ("StreamSpec_" <>) . TL.fromStrict <$> newRandomText 20
