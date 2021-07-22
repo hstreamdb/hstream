@@ -200,8 +200,7 @@ dropMysqlTable name = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \co
 fetchMysql :: Text -> IO [[MySQL.MySQLValue]]
 fetchMysql source = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn -> do
   (_, items) <- MySQL.query_ conn $ MySQL.Query . DBCL.pack $ "SELECT * FROM " <> Text.unpack source
-  datas <- Streams.fold (\xs x -> xs ++ [x]) [] items
-  return datas
+  Streams.fold (\xs x -> xs ++ [x]) [] items
 
 createClickHouseTable :: Text -> IO ()
 createClickHouseTable source =
