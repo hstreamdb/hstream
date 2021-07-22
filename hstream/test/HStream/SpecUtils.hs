@@ -112,10 +112,8 @@ newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
 newRandomByteString :: Int -> IO BS.ByteString
 newRandomByteString n = BS.pack <$> replicateM n (BS.c2w <$> randomRIO ('a', 'z'))
 
-successResp :: CommandQueryResponse
-successResp = CommandQueryResponse
-  { commandQueryResponseKind = Just (CommandQueryResponseKindSuccess CommandSuccess)
-  }
+commandQuerySuccessResp :: CommandQueryResponse
+commandQuerySuccessResp = CommandQueryResponse V.empty
 
 mkStruct :: [(Text, Aeson.Value)] -> Struct
 mkStruct = jsonObjectToStruct . HM.fromList

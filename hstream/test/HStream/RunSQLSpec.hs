@@ -53,9 +53,9 @@ baseSpec = beforeAll_ baseSpecSetup $ afterAll_ baseSpecClean $ do
       -- starts successfully before inserting data
       threadDelay 5000000
       executeCommandQuery' ("INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (22, 80);")
-        `shouldReturn` successResp
+        `shouldReturn` commandQuerySuccessResp
       executeCommandQuery' ("INSERT INTO " <> source1 <> " (temperature, humidity) VALUES (15, 10);")
-        `shouldReturn` successResp
+        `shouldReturn` commandQuerySuccessResp
 
     executeCommandPushQuery ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
       `shouldReturn` [ mkStruct [("temperature", Aeson.Number 22), ("humidity", Aeson.Number 80)]
@@ -68,13 +68,13 @@ baseSpec = beforeAll_ baseSpecSetup $ afterAll_ baseSpecClean $ do
       -- starts successfully before inserting data
       threadDelay 5000000
       executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (1, 2);")
-        `shouldReturn` successResp
+        `shouldReturn` commandQuerySuccessResp
       executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (2, 2);")
-        `shouldReturn` successResp
+        `shouldReturn` commandQuerySuccessResp
       executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (3, 2);")
-        `shouldReturn` successResp
+        `shouldReturn` commandQuerySuccessResp
       executeCommandQuery' ("INSERT INTO " <> source1 <> " (a, b) VALUES (4, 3);")
-        `shouldReturn` successResp
+        `shouldReturn` commandQuerySuccessResp
 
     executeCommandPushQuery ("SELECT SUM(a) AS result FROM " <> source1 <> " GROUP BY b EMIT CHANGES;")
       `shouldReturn` [ mkStruct [("result", Aeson.Number 1)]
@@ -114,15 +114,15 @@ connectorSpec = beforeAll_ connectorSpecSetup $ afterAll_ connectorSpecClean $
 
   it "mysql connector" $ do
     executeCommandQuery' (createMySqlConnectorSql "mysql" sink1)
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (12, 84);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (22, 83);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (32, 82);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink1 <> " (temperature, humidity) VALUES (42, 81);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     threadDelay 5000000
     fetchMysql (TL.toStrict sink1) `shouldReturn` [ [MySQLInt32 12, MySQLInt32 84]
                                                   , [MySQLInt32 22, MySQLInt32 83]
@@ -132,15 +132,15 @@ connectorSpec = beforeAll_ connectorSpecSetup $ afterAll_ connectorSpecClean $
 
   it "clickhouse connector" $ do
     executeCommandQuery' (createClickHouseConnectorSql "clickhouse" sink2)
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (12, 84);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (22, 83);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (32, 82);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("INSERT INTO " <> sink2 <> " (temperature, humidity) VALUES (42, 81);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     threadDelay 5000000
     -- Note: ClickHouse does not return data in deterministic order by default,
     --       see [this answer](https://stackoverflow.com/questions/54786494/clickhouse-query-row-order-behaviour).
@@ -208,5 +208,4 @@ viewSpec = beforeAll_ viewSpecSetup $ afterAll_ viewSpecClean $
       [("SUM(a)", Aeson.Number 10)] ]
 
 mkViewResponse :: Struct -> CommandQueryResponse
-mkViewResponse = CommandQueryResponse . Just . CommandQueryResponseKindResultSet .
-  CommandQueryResultSet . V.singleton . structToStruct "SELECTVIEW"
+mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"

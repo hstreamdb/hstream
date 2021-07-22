@@ -35,7 +35,8 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils.Converter          (cbytesToText, textToCBytes)
+import           HStream.Utils                    (cbytesToText, returnErrResp,
+                                                   returnResp, textToCBytes)
 
 hstreamQueryToQuery :: HSP.Query -> Query
 hstreamQueryToQuery (HSP.Query queryId (HSP.Info sqlStatement createdTime) _ (HSP.Status status _)) =
@@ -77,10 +78,10 @@ createQueryHandler ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{.
             return $ Right $ Query (TL.pack $ ZDC.unpack qid) (fromIntegral $ fromEnum HSP.Running) timestamp createQueryRequestQueryText
     Right _ -> return $ Left "inconsistent method called"
   case err of
-    Left err' -> do
+    Left err'   -> do
       Log.fatal . string8 $ err'
-      return (ServerNormalResponse Nothing [] StatusInternal  "Failed")
-    Right query -> return (ServerNormalResponse (Just query) [] StatusOk  "")
+      returnErrResp StatusInternal "Failed"
+    Right query -> returnResp query
 
 listQueriesHandler
   :: ServerContext
@@ -90,7 +91,7 @@ listQueriesHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
   let records = map hstreamQueryToQuery queries
   let resp = ListQueriesResponse . V.fromList $ records
-  return (ServerNormalResponse (Just resp) [] StatusOk "")
+  returnResp resp
 
 getQueryHandler
   :: ServerContext
@@ -101,9 +102,8 @@ getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest
     queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
     return $ find (hstreamQueryNameIs (T.pack $ TL.unpack getQueryRequestId)) queries
   case query of
-    Just q -> return (ServerNormalResponse (Just (hstreamQueryToQuery q)) [] StatusOk "")
-    _      -> return (ServerNormalResponse Nothing [] StatusInternal "Not exists")
-
+    Just q -> returnResp $ hstreamQueryToQuery q
+    _      -> returnErrResp StatusInternal "Not exist"
 
 deleteQueryHandler
   :: ServerContext
@@ -111,8 +111,8 @@ deleteQueryHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) = do
   catch
-    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery (ZDC.pack $ TL.unpack deleteQueryRequestId)) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
-    (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))
+    ((HSP.withMaybeZHandle zkHandle $ HSP.removeQuery (ZDC.pack $ TL.unpack deleteQueryRequestId)) >> returnResp Empty)
+    (\(_ :: SomeException) -> returnErrResp StatusInternal "Failed")
 
 restartQueryHandler
   :: ServerContext
@@ -123,8 +123,8 @@ restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQuer
     case find (hstreamQueryNameIs (T.pack $ TL.unpack restartQueryRequestId)) queries of
       Just query -> do
         _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Running)
-        return (ServerNormalResponse (Just Empty) [] StatusOk "")
-      Nothing -> return (ServerNormalResponse Nothing [] StatusInternal "")
+        returnResp Empty
+      Nothing    -> returnErrResp StatusInternal ""
 
 cancelQueryHandler
   :: ServerContext
@@ -135,5 +135,5 @@ cancelQueryHandler ServerContext{..} (ServerNormalRequest _metadata CancelQueryR
   case find (hstreamQueryNameIs (T.pack $ TL.unpack cancelQueryRequestId)) queries of
     Just query -> do
       _ <- forkIO (HSP.withMaybeZHandle zkHandle $ HSP.setQueryStatus (HSP.queryId query) HSP.Terminated)
-      return (ServerNormalResponse (Just Empty) [] StatusOk "")
-    Nothing -> return (ServerNormalResponse Nothing [] StatusInternal "")
+      returnResp Empty
+    Nothing    -> returnErrResp StatusInternal ""

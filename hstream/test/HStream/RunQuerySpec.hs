@@ -39,7 +39,7 @@ listQueries :: IO (Maybe ListQueriesResponse)
 listQueries = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let listQueryRequesies = ListQueriesRequest {}
-  resp <- hstreamApiListQueries (ClientNormalRequest listQueryRequesies 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiListQueries (ClientNormalRequest listQueryRequesies 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse x@ListQueriesResponse{} _meta1 _meta2 StatusOk _details -> do
       return $ Just x
@@ -107,13 +107,13 @@ spec = describe "HStream.RunQuerySpec" $ do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)
 
   it "create streams" $
     ( do
         res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)
 
   it "create query" $
     ( do
@@ -164,8 +164,8 @@ spec = describe "HStream.RunQuerySpec" $ do
         _ <- deleteQuery queryname1
         query <- getQuery queryname1
         case query of
-          Just (Query _ _ _ _) -> return True
-          _                    -> return False
+          Just Query{} -> return True
+          _            -> return False
     ) `shouldReturn` False
 
   it "clean streams" $
@@ -173,4 +173,4 @@ spec = describe "HStream.RunQuerySpec" $ do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)

@@ -30,7 +30,8 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils.Converter          (cbytesToText, textToCBytes)
+import           HStream.Utils                    (cbytesToText, returnErrResp,
+                                                   returnResp, textToCBytes)
 
 hstreamQueryToView :: HSP.Query -> View
 hstreamQueryToView (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HSP.ViewQuery _ _ schema) (HSP.Status status _)) =
@@ -57,10 +58,10 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
       return $ Right $ View (TL.pack $ ZDC.unpack qid) (fromIntegral $ fromEnum HSP.Running) timestamp createViewRequestSql (V.fromList $ TL.pack <$> schema)
     Right _ -> return $ Left "inconsistent method called"
   case err of
-    Left err' -> do
+    Left err'  -> do
       Log.fatal . string8 $ err'
-      return (ServerNormalResponse Nothing [] StatusInternal "failed")
-    Right view  -> return (ServerNormalResponse (Just view) [] StatusOk  "")
+      returnErrResp StatusInternal "failed"
+    Right view -> returnResp view
   where
     mkLogAttrs = HS.LogAttrs . HS.HsLogAttrs scDefaultStreamRepFactor
     create sName = HS.createStream scLDClient (HCH.transToStreamName sName) (mkLogAttrs Map.empty)
@@ -73,7 +74,7 @@ listViewsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
   let records = map hstreamQueryToView queries
   let resp = ListViewsResponse . V.fromList $ records
-  return (ServerNormalResponse (Just resp) [] StatusOk "")
+  returnResp resp
 
 getViewHandler
   :: ServerContext
@@ -84,8 +85,8 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
     queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
     return $ find (hstreamViewIdIs (T.pack $ TL.unpack getViewRequestViewId)) queries
   case query of
-        Just q -> return (ServerNormalResponse (Just (hstreamQueryToView q)) [] StatusOk "")
-        _      ->  return (ServerNormalResponse Nothing [] StatusInternal "Not exists")
+        Just q -> returnResp $ hstreamQueryToView q
+        _      -> returnErrResp StatusInternal "Not exist"
 
 deleteViewHandler
   :: ServerContext
@@ -93,5 +94,5 @@ deleteViewHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) = do
   catch
-    (HSP.withMaybeZHandle zkHandle (HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
-    (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))
+    (HSP.withMaybeZHandle zkHandle (HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> returnResp Empty)
+    (\(_ :: SomeException) -> returnErrResp StatusInternal "Failed")

@@ -56,7 +56,6 @@ library
     , mysql-haskell
     , proto3-suite
     , proto3-wire
-    , random
     , rio
     , scientific
     , table-layout

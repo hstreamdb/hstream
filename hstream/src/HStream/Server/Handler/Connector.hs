@@ -29,7 +29,8 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils.Converter          (cbytesToText)
+import           HStream.Utils                    (cbytesToText, returnErrResp,
+                                                   returnResp)
 
 hstreamConnectorToConnector :: HSP.Connector -> Connector
 hstreamConnectorToConnector (HSP.Connector connectorId (HSP.Info sqlStatement createdTime) (HSP.Status status _)) =
@@ -65,10 +66,10 @@ createSinkConnectorHandler
 createSinkConnectorHandler sc (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = do
   err <- createConnector sc (TL.toStrict createSinkConnectorRequestSql) True
   case err of
-    Left err' -> do
+    Left err'        -> do
       Log.fatal . string8 $ err'
-      return (ServerNormalResponse Nothing [] StatusInternal  "Failed")
-    Right connector  -> return (ServerNormalResponse (Just connector) [] StatusOk  "")
+      returnErrResp StatusInternal "Failed"
+    Right connector  -> returnResp connector
 
 listConnectorsHandler
   :: ServerContext
@@ -78,7 +79,7 @@ listConnectorsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
   let records = map hstreamConnectorToConnector connectors
   let resp = ListConnectorsResponse . V.fromList $ records
-  return (ServerNormalResponse (Just resp) [] StatusOk "")
+  returnResp resp
 
 getConnectorHandler
   :: ServerContext
@@ -89,8 +90,8 @@ getConnectorHandler ServerContext{..} (ServerNormalRequest _metadata GetConnecto
     connectors <- HSP.withMaybeZHandle zkHandle HSP.getConnectors
     return $ find (hstreamConnectorNameIs (T.pack $ TL.unpack getConnectorRequestId)) connectors
   case connector of
-    Just q -> return (ServerNormalResponse (Just (hstreamConnectorToConnector q)) [] StatusOk "")
-    _      ->  return (ServerNormalResponse Nothing [] StatusInternal "Not exists")
+    Just q -> returnResp $ hstreamConnectorToConnector q
+    _      -> returnErrResp StatusInternal "Not Exist"
 
 deleteConnectorHandler
   :: ServerContext
@@ -98,8 +99,8 @@ deleteConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteConnectorHandler ServerContext{..} (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = do
   catch
-    (HSP.withMaybeZHandle zkHandle (HSP.removeConnector $ ZDC.pack $ TL.unpack deleteConnectorRequestId) >> return (ServerNormalResponse (Just Empty) [] StatusOk ""))
-    (\(_ :: SomeException) -> return (ServerNormalResponse Nothing [] StatusInternal "Failed"))
+    (HSP.withMaybeZHandle zkHandle (HSP.removeConnector $ ZDC.pack $ TL.unpack deleteConnectorRequestId) >> returnResp Empty)
+    (\(_ :: SomeException) -> returnErrResp StatusInternal "Failed")
 
 restartConnectorHandler
   :: ServerContext
@@ -115,13 +116,13 @@ restartConnectorHandler sc@ServerContext{..} (ServerNormalRequest _metadata Rest
           case err of
             Left err' -> do
               Log.fatal . string8 $ err'
-              return (ServerNormalResponse Nothing [] StatusInternal  "Failed")
+              returnErrResp StatusInternal "Failed"
             Right _ -> do
               HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus cId HSP.Running
-              return (ServerNormalResponse (Just Empty) [] StatusOk "")
+              returnResp Empty
         -- If the connector is already started, nothing should be done.
-        else return $ ServerNormalResponse (Just Empty) [] StatusOk ""
-    Nothing -> return $ ServerNormalResponse Nothing [] StatusInternal "Not exists"
+        else returnResp Empty
+    Nothing -> returnErrResp StatusInternal "Not exist"
 
 cancelConnectorHandler
   :: ServerContext
@@ -132,5 +133,5 @@ cancelConnectorHandler sc@ServerContext{..} (ServerNormalRequest _metadata Cance
   case find (hstreamConnectorNameIs (T.pack $ TL.unpack cancelConnectorRequestId)) connectors of
     Just connector -> do
       handleTerminateConnector sc (HSP.connectorId connector)
-      return $ ServerNormalResponse (Just Empty) [] StatusOk ""
-    Nothing -> return $ ServerNormalResponse Nothing [] StatusInternal "failed"
+      returnResp Empty
+    Nothing -> returnErrResp StatusInternal "failed"
