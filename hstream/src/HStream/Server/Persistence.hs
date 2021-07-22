@@ -23,7 +23,8 @@ module HStream.Server.Persistence
   , getSuffix
   , isViewQuery
   , isStreamQuery
-  ,createInsertPersistentQuery,getRelatedStreams) where
+  , createInsertPersistentQuery
+  , getRelatedStreams) where
 
 import           Control.Exception                    (Exception, handle, throw)
 import           Control.Monad                        (void)
@@ -110,12 +111,17 @@ class Persistence handle where
   setQueryStatus     :: HasCallStack => Id -> PStatus -> handle -> IO ()
   setConnectorStatus :: HasCallStack => Id -> PStatus -> handle -> IO ()
 
-  getQueries         :: HasCallStack => handle -> IO [Query]
-  getConnectors      :: HasCallStack => handle -> IO [Connector]
-  getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
-  getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
   getQueryIds        :: HasCallStack => handle -> IO [CBytes]
+  getQueries         :: HasCallStack => handle -> IO [Query]
+  getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
+
+  getConnector       :: HasCallStack => Id -> handle -> IO Connector
   getConnectorIds    :: HasCallStack => handle -> IO [CBytes]
+
+  getConnectors      :: HasCallStack => handle -> IO [Connector]
+  getConnectors h = getConnectorIds h >>= mapM (`getConnector` h)
+  getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
+  getConnectorStatus cid h = status . connectorStatus <$> getConnector cid h
 
   removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeQuery        :: HasCallStack => Id -> handle -> IO ()
@@ -146,7 +152,7 @@ createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
 --------------------------------------------------------------------------------
 
 type PStoreMem   = (QueriesM, ConnectorsM)
-type ConnectorsM = IORef (HM.HashMap CBytes Connector)
+type ConnectorsM = IORef (HM.HashMap CBytes Connector)
 type QueriesM    = IORef (HM.HashMap CBytes Query)
 
 queryCollection :: QueriesM
@@ -176,21 +182,21 @@ instance Persistence PStoreMem where
     let f s connector = connector {connectorStatus = Status s timestamp}
     modifyIORef refC $ HM.adjust (f statusQ) (mkConnectorPath qid)
 
-  getQueries = ifThrow FailedToGet . (HM.elems <$>) . readIORef . fst
-
-  getConnectors = ifThrow FailedToGet . (HM.elems <$>) . readIORef . snd
-
   getQueryStatus qid (refQ, _) = ifThrow FailedToGet $ do
     hmapQ <- readIORef refQ
     case HM.lookup (mkQueryPath qid) hmapQ of
       Nothing                         -> throwIO QueryNotFound
       Just (Query _ _ _ (Status x _)) -> return x
 
-  getConnectorStatus cid (_, refC) = ifThrow FailedToGet $ do
+  getQueries = ifThrow FailedToGet . (HM.elems <$>) . readIORef . fst
+
+  getConnector cid (_, refC) = ifThrow FailedToGet $ do
     hmapC <- readIORef refC
     case HM.lookup (mkConnectorPath cid) hmapC of
-      Nothing                           -> throwIO ConnectorNotFound
-      Just (Connector _ _ (Status x _)) -> return x
+      Nothing -> throwIO ConnectorNotFound
+      Just c  -> return c
+
+  getConnectors = ifThrow FailedToGet . (HM.elems <$>) . readIORef . snd
 
   getQueryIds = ifThrow FailedToGet . (map queryId <$>) . getQueries
 
@@ -237,6 +243,10 @@ instance Persistence ZHandle where
     where
       getThenDecode s = (decodeQ <$>) . zooGet zk . (<> s) . mkQueryPath
 
+  getQueryStatus qid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
+
+  getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
+
   insertConnector cid info@(Info _ timestamp) zk = ifThrow FailedToRecordInfo $ do
     createPath   zk (mkConnectorPath cid)
     createInsert zk (mkConnectorPath cid <> "/details") (encode info)
@@ -246,19 +256,12 @@ instance Persistence ZHandle where
     MkSystemTime timestamp _ <- getSystemTime'
     setZkData zk (mkConnectorPath cid <> "/status") (encode $ Status statusC timestamp)
 
-  getConnectors zk = ifThrow FailedToGet $ do
-    StringsCompletion (StringVector cids) <- zooGetChildren zk connectorsPath
-    details <- mapM ((decodeQ <$>) . zooGet zk . (<> "/details") . mkConnectorPath) cids
-    statusC  <- mapM ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cids
-    return $ zipWith ($) (zipWith ($) (Connector <$> cids) details) statusC
-
-  getQueryStatus qid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
-
-  getConnectorStatus cid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkConnectorPath cid <> "/status")
-
-  getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
-
   getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren connectorsPath
+
+  getConnector cid zk = ifThrow FailedToGet $ do
+    detailC <- ((decodeQ <$>) . zooGet zk . (<> "/details") . mkConnectorPath) cid
+    statusC <- ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cid
+    return (Connector cid detailC statusC)
 
   removeQuery' qid ifCheck zk = ifThrow FailedToRemove $
     if ifCheck then getQueryStatus qid zk >>= \case
