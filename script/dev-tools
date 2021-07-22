@@ -34,17 +34,20 @@ IMAGES = {
     # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
     'MYSQL_IMAGE': 'mysql:5.6',
     'CLICKHOUSE_IMAGE': 'yandex/clickhouse-server',
+    'ZOOKEEPER_IMAGE': 'zookeeper:3.6',
 }
 
 SERVICES = {
     'mysql': f'hstream-test-mysql-{CUID}',
     'clickhouse': f'hstream-test-clickhouse-{CUID}',
+    'zookeeper': f'hstream-test-zookeeper-{CUID}',
     'store': f'logdevice-dev-cluster-{CUID}',
 }
 
 HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
 MYSQL_PORT_ENV = 'MYSQL_LOCAL_PORT'
 CLICKHOUSE_PORT_ENV = 'CLICKHOUSE_LOCAL_PORT'
+ZOOKEEPER_PORT_ENV = 'ZOOKEEPER_LOCAL_PORT'
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
@@ -209,6 +212,22 @@ def _service_clickhouse_(container_bin='docker', port=None, **kw):
     loginfo("done")
 
 
+# TODO: wait serive to start
+def _service_zookeeper_(container_bin='docker', port=None, **kw):
+    if is_service_started(container_bin, 'zookeeper'):
+        return logerr("Already started!")
+
+    port = port or os.getenv(ZOOKEEPER_PORT_ENV, 9000)
+    write_env(ZOOKEEPER_PORT_ENV, port)
+    container_name = SERVICES['zookeeper']
+    cmd = ' '.join([
+        f'{container_bin} run -td -p {port}:2181 --name {container_name} --rm',
+        IMAGES['ZOOKEEPER_IMAGE']
+    ])
+    run_sh(cmd)
+    loginfo("done")
+
+
 def _service_store_(container_bin='docker',
                     image=IMAGES['DB_IMAGE'],
                     data_dir=DEFAULT_LOGDEVICE_DIR, retries=120, **kw):
@@ -356,11 +375,11 @@ def run_ldshell(image, container_bin, command, cmd_args):
 
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
-                tty, interactive, rm, no_dev_cluster, detach, check,
+                tty, interactive, rm, no_services_required, detach, check,
                 network="host", extra_container_options=""):
 
-    if not no_dev_cluster and not is_service_started(container_bin, 'store'):
-        sys.exit("Please start the dev-cluster first. Run: dev-tools cluster-start")
+    if not no_services_required and not all(is_service_started(container_bin, k) for k in SERVICES.keys()):
+        sys.exit("Please start all required services first. Run: dev-tools start-services")
 
     Path(f"{HOME}/.local/bin").mkdir(parents=True, exist_ok=True)
     Path(f"{HOME}/.ghc").mkdir(parents=True, exist_ok=True)
@@ -428,7 +447,7 @@ if __name__ == '__main__':
     parser_haskell.add_argument('--container-bin', default='docker')
     parser_haskell.add_argument('--no-interactive', action='store_true')
     parser_haskell.add_argument('--no-tty', action='store_true')
-    parser_haskell.add_argument('--no-dev-cluster', action='store_true')
+    parser_haskell.add_argument('--no-services-required', action='store_true')
     parser_haskell.add_argument('--detach', action='store_true')
     parser_haskell.add_argument('--check', action='store_true')
     parser_haskell.add_argument(
@@ -444,7 +463,7 @@ if __name__ == '__main__':
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
     parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
     parser_haskell_cabal.add_argument('--no-tty', action='store_true')
-    parser_haskell_cabal.add_argument('--no-dev-cluster', action='store_true')
+    parser_haskell_cabal.add_argument('--no-services-required', action='store_true')
     parser_haskell_cabal.add_argument('--detach', action='store_true')
     parser_haskell_cabal.add_argument('--check', action='store_true')
     parser_haskell_cabal.add_argument('--container-bin', default='docker')
@@ -495,6 +514,17 @@ if __name__ == '__main__':
     parser_clickhouse_stop = subparsers.add_parser(
         'clickhouse-stop', help='Stop clickhouse service')
     parser_clickhouse_stop.add_argument('--container-bin', default='docker')
+
+    # zookeeper-start
+    parser_zookeeper_start = subparsers.add_parser(
+        'zookeeper-start', help='Start zookeeper service for testing')
+    parser_zookeeper_start.add_argument('--container-bin', default='docker')
+    parser_zookeeper_start.add_argument('--port', default=2181)
+
+    # clickhouse-stop
+    parser_zookeeper_stop = subparsers.add_parser(
+        'zookeeper-stop', help='Stop zookeeper service')
+    parser_zookeeper_stop.add_argument('--container-bin', default='docker')
 
     # swagger-start
     parser_swagger_start = subparsers.add_parser(
@@ -552,6 +582,11 @@ if __name__ == '__main__':
         service_start(services=["clickhouse"], **args)
     elif sub_command == 'clickhouse-stop':
         service_stop(services=["clickhouse"], **args)
+    elif sub_command == 'zookeeper-start':
+        service_start(services=["zookeeper"], **args)
+    elif sub_command == 'zookeeper-stop':
+        service_stop(services=["zookeeper"], **args)
+    # ---
     elif sub_command == 'swagger-start':
         swagger_ui_start(**args)
     elif sub_command == 'ldshell':
