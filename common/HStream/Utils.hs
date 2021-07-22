@@ -5,6 +5,7 @@ module HStream.Utils
   ( module HStream.Utils.Converter
   , module HStream.Utils.Format
   , module HStream.Utils.BuildRecord
+  , module HStream.Utils.RPC
   , getKeyWordFromException
   , flattenJSON
   , getProtoTimestamp
@@ -31,6 +32,7 @@ import           Z.IO.Time                            (SystemTime (..),
 import           HStream.Utils.BuildRecord
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
+import           HStream.Utils.RPC
 import           ThirdParty.Google.Protobuf.Timestamp
 
 getKeyWordFromException :: Exception a => a -> TL.Text

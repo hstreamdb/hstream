@@ -7,10 +7,9 @@ module HStream.Server.Exception where
 
 import           Control.Exception                    (Exception (..),
                                                        Handler (Handler),
-                                                       IOException,
-                                                       SomeException, catches)
-
+                                                       IOException, catches)
 import qualified Data.ByteString.Char8                as BS
+
 import           HStream.SQL.Exception                (SomeSQLException,
                                                        formatSomeSQLException)
 import           HStream.Server.Persistence.Exception (PersistenceException)
@@ -35,6 +34,7 @@ defaultExceptionHandle = flip catches [
     returnErrRes $ StatusDetails (BS.pack . displayException $ err))
   ]
 
+-- TODO: use HStream.Utils.RPC.returnErrResp instead
 returnErrRes :: Monad m => StatusDetails -> m (ServerResponse 'Normal a)
 returnErrRes = return . ServerNormalResponse Nothing [] StatusInternal
 
