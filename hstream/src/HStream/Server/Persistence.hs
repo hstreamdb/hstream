@@ -63,26 +63,26 @@ data Query = Query {
   , queryInfo      :: Info
   , queryInfoExtra :: QueryType
   , queryStatus    :: Status
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Query
 
 data Connector = Connector {
     connectorId     :: Id
   , connectorInfo   :: Info
   , connectorStatus :: Status
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Connector
 
 data Info = Info {
     sqlStatement :: SqlStatement
   , createdTime  :: TimeStamp
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Info
 
 data Status = Status {
     status         :: PStatus
   , timeCheckpoint :: TimeStamp
-} deriving (Generic, Show)
+} deriving (Generic, Show, Eq)
 instance JSON Status
 
 data PStatus = Created
@@ -117,12 +117,12 @@ class Persistence handle where
 
   getConnector       :: HasCallStack => Id -> handle -> IO Connector
   getConnectorIds    :: HasCallStack => handle -> IO [CBytes]
-
   getConnectors      :: HasCallStack => handle -> IO [Connector]
   getConnectors h = getConnectorIds h >>= mapM (`getConnector` h)
   getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
   getConnectorStatus cid h = status . connectorStatus <$> getConnector cid h
 
+  -- With an parameter to decide whether check if Terminated before removing
   removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
   removeQuery        :: HasCallStack => Id -> handle -> IO ()
   removeQuery cid = removeQuery' cid True
