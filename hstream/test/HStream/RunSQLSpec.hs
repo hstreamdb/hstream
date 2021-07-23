@@ -5,22 +5,22 @@
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
-import           Control.Monad                     (void)
-import qualified Data.Aeson                        as Aeson
-import qualified Data.List                         as L
-import qualified Data.Text.Lazy                    as TL
-import qualified Data.Vector                       as V
-import qualified Database.ClickHouseDriver.Types   as ClickHouse
-import           Database.MySQL.Base               (MySQLValue (MySQLInt32))
-import           System.IO.Unsafe                  (unsafePerformIO)
+import           Control.Monad                   (void)
+import qualified Data.Aeson                      as Aeson
+import qualified Data.List                       as L
+import qualified Data.Text.Lazy                  as TL
+import qualified Data.Vector                     as V
+import qualified Database.ClickHouseDriver.Types as ClickHouse
+import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
+import           System.IO.Unsafe                (unsafePerformIO)
 import           Test.Hspec
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
-import           HStream.Utils.Converter           (structToStruct)
-import           HStream.Utils.Format              (formatCommandQueryResponse)
-import           ThirdParty.Google.Protobuf.Struct (Struct)
+import           HStream.ThirdParty.Protobuf     (Struct)
+import           HStream.Utils.Converter         (structToStruct)
+import           HStream.Utils.Format            (formatCommandQueryResponse)
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do

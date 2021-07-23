@@ -22,12 +22,12 @@ import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Test.Hspec
-import           ThirdParty.Google.Protobuf.Empty
 import           Z.Foreign                        (toByteString)
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils
 
 randomStreamNames :: V.Vector TL.Text
