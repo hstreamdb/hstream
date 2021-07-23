@@ -188,7 +188,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
       streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
       connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
-      let connectorExists = elem (T.unpack cName) $ map P.getSuffix connectorIds
+      let connectorExists = textToCBytes cName `elem` connectorIds
       if streamExists then
         if connectorExists then
           if ifNotExist then returnCommandQueryEmptyResp
@@ -285,7 +285,7 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
     handleDrop object name toSName = do
       streamExists <- S.doesStreamExists scLDClient (toSName name)
       if streamExists then
-        terminateQueryAndRemove (T.unpack (object <> name))
+        terminateQueryAndRemove (textToCBytes (object <> name))
         >> terminateRelatedQueries (textToCBytes name)
         >> S.removeStream scLDClient (toSName name)
         >> returnCommandQueryEmptyResp
@@ -295,7 +295,7 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
         returnErrResp StatusInternal "Object does not exist"
     terminateQueryAndRemove path = do
       qids <- P.withMaybeZHandle zkHandle P.getQueryIds
-      case L.find ((== path) . P.getSuffix) qids of
+      case L.find (== path) qids of
         Just x ->
           handleTerminate sc (OneQuery x)
           >> P.withMaybeZHandle zkHandle (P.removeQuery' x True)
@@ -328,10 +328,10 @@ handleShowPlan ServerContext{..} showObject =
       returnResp resp
     SViews -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra)
-                    . filter (P.isViewQuery . P.queryId) $ queries
+      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra) $
+                    filter P.isViewQuery queries
       let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWVIEWS" $
-            cBytesToValue <$> views
+                    cBytesToValue <$> views
       returnResp resp
 
 handleTerminate :: ServerContext -> TerminationSelection -> IO ()

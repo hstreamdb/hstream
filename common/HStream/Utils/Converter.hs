@@ -11,15 +11,15 @@ module HStream.Utils.Converter
   , structToZJsonObject
   , valueToZJsonValue
   , cBytesToText
+  , cBytesToLazyText
   , textToCBytes
+  , lazyTextToCBytes
   , lazyByteStringToCBytes
   , cBytesToLazyByteString
   , cBytesToValue
   , stringToValue
   , listToStruct
-  , structToStruct
-  , cBytesToLazyText
-  , lazyTextToCBytes) where
+  , structToStruct) where
 
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor                    (Bifunctor (bimap))
@@ -110,14 +110,14 @@ valueToZJsonValue (PB.Value (Just _)) = error "impossible happened"
 cBytesToText :: ZCB.CBytes -> T.Text
 cBytesToText = T.pack . ZCB.unpack
 
+cBytesToLazyText :: ZCB.CBytes -> TL.Text
+cBytesToLazyText = TL.fromStrict . cBytesToText
+
 textToCBytes :: T.Text -> ZCB.CBytes
 textToCBytes = ZCB.pack . T.unpack
 
 lazyTextToCBytes :: TL.Text -> ZCB.CBytes
-lazyTextToCBytes = ZCB.pack . TL.unpack
-
-cBytesToLazyText :: ZCB.CBytes -> TL.Text
-cBytesToLazyText = TL.pack . ZCB.unpack
+lazyTextToCBytes = textToCBytes . TL.toStrict
 
 cBytesToLazyByteString :: ZCB.CBytes -> BL.ByteString
 cBytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes

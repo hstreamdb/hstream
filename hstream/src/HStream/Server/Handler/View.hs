@@ -8,60 +8,55 @@
 
 module HStream.Server.Handler.View where
 
-import           Control.Exception                (SomeException, catch, try)
+import qualified Data.ByteString.Char8            as BSC
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           Z.Data.Builder.Base              (string8)
-import qualified Z.Data.CBytes                    as ZDC
 import qualified Z.Data.Text                      as ZT
-import qualified Z.IO.Logger                      as Log
 
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.SQL.Codegen              as HSC
-import           HStream.SQL.Exception            (SomeSQLException)
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    handleCreateAsSelect)
-import qualified HStream.Server.Persistence       as HSP
+import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (cBytesToText, returnErrResp,
-                                                   returnResp, textToCBytes)
+import           HStream.Utils                    (cBytesToLazyText,
+                                                   lazyTextToCBytes,
+                                                   returnErrResp, returnResp,
+                                                   textToCBytes)
 
-hstreamQueryToView :: HSP.Query -> View
-hstreamQueryToView (HSP.Query queryId (HSP.Info sqlStatement createdTime) (HSP.ViewQuery _ _ schema) (HSP.Status status _)) =
-  View (TL.pack $ ZDC.unpack queryId) (fromIntegral $ fromEnum status) createdTime (TL.pack $ ZT.unpack sqlStatement) (V.fromList $ TL.pack <$> schema)
-hstreamQueryToView _ = emptyView
-
-emptyView :: View
-emptyView = View "" 0 0 "" []
-
-hstreamViewIdIs :: T.Text -> HSP.Query -> Bool
-hstreamViewIdIs name (HSP.Query queryId _ _ _) = cBytesToText queryId == name
+hstreamQueryToView :: P.Query -> View
+hstreamQueryToView (P.Query queryId (P.Info sqlStatement createdTime) (P.ViewQuery _ _ schema) (P.Status status _)) =
+  View { viewViewId = cBytesToLazyText queryId
+       , viewStatus = fromIntegral $ fromEnum status
+       , viewCreatedTime = createdTime
+       , viewSql = TL.pack $ ZT.unpack sqlStatement
+       , viewSchema = V.fromList $ TL.pack <$> schema
+       }
+hstreamQueryToView _ = error "Impossible happened..."
 
 createViewHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateViewRequest View
   -> IO (ServerResponse 'Normal View)
 createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
-  plan' <- try $ HSC.streamCodegen $ TL.toStrict createViewRequestSql
-  err <- case plan' of
-    Left  (_ :: SomeSQLException) -> return $ Left "exception on parsing or codegen"
-    Right (HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _) -> do
+  plan <- HSC.streamCodegen $ TL.toStrict createViewRequestSql
+  case plan of
+    HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _ -> do
       create sink
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (HSP.ViewQuery (textToCBytes <$> sources) (ZDC.pack . T.unpack $ sink) schema)
-      return $ Right $ View (TL.pack $ ZDC.unpack qid) (fromIntegral $ fromEnum HSP.Running) timestamp createViewRequestSql (V.fromList $ TL.pack <$> schema)
-    Right _ -> return $ Left "inconsistent method called"
-  case err of
-    Left err'  -> do
-      Log.fatal . string8 $ err'
-      returnErrResp StatusInternal "failed"
-    Right view -> returnResp view
+      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema)
+      returnResp $ View { viewViewId = cBytesToLazyText qid
+                        , viewStatus = fromIntegral $ fromEnum P.Running
+                        , viewCreatedTime = timestamp
+                        , viewSql = createViewRequestSql
+                        , viewSchema = V.fromList $ TL.pack <$> schema
+                        }
+    _ -> returnErrResp StatusInternal (StatusDetails $ BSC.pack "inconsistent method called")
   where
     mkLogAttrs = HS.LogAttrs . HS.HsLogAttrs scDefaultStreamRepFactor
     create sName = HS.createStream scLDClient (HCH.transToStreamName sName) (mkLogAttrs Map.empty)
@@ -71,8 +66,8 @@ listViewsHandler
   -> ServerRequest 'Normal ListViewsRequest ListViewsResponse
   -> IO (ServerResponse 'Normal ListViewsResponse)
 listViewsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
-  queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
-  let records = map hstreamQueryToView queries
+  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  let records = map hstreamQueryToView $ filter P.isViewQuery queries
   let resp = ListViewsResponse . V.fromList $ records
   returnResp resp
 
@@ -82,17 +77,19 @@ getViewHandler
   -> IO (ServerResponse 'Normal View)
 getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{..}) = do
   query <- do
-    queries <- HSP.withMaybeZHandle zkHandle HSP.getQueries
-    return $ find (hstreamViewIdIs (T.pack $ TL.unpack getViewRequestViewId)) queries
+    viewQueries <- filter P.isViewQuery <$> P.withMaybeZHandle zkHandle P.getQueries
+    return $
+      find (\P.Query{..} -> cBytesToLazyText queryId == getViewRequestViewId) viewQueries
   case query of
-        Just q -> returnResp $ hstreamQueryToView q
-        _      -> returnErrResp StatusInternal "Not exist"
+    Just q -> returnResp $ hstreamQueryToView q
+    _      -> returnErrResp StatusInternal "View does not exist"
 
 deleteViewHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteViewRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) = do
-  catch
-    (HSP.withMaybeZHandle zkHandle (HSP.removeQuery' (ZDC.pack $ TL.unpack deleteViewRequestViewId) False) >> returnResp Empty)
-    (\(_ :: SomeException) -> returnErrResp StatusInternal "Failed")
+deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) =
+  defaultExceptionHandle $ do
+    P.withMaybeZHandle zkHandle $
+      P.removeQuery' (lazyTextToCBytes deleteViewRequestViewId) False
+    returnResp Empty
