@@ -4,10 +4,14 @@ module HStream.Utils.RPC
   ( mkServerErrResp
   , returnErrResp
   , getServerResp
+  , getProtoTimestamp
   ) where
 
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
+import           Z.IO.Time                     (SystemTime (..), getSystemTime')
+
+import           HStream.ThirdParty.Protobuf   (Timestamp (..))
 
 mkServerErrResp :: StatusCode -> StatusDetails -> ServerResponse 'Normal a
 mkServerErrResp = ServerNormalResponse Nothing mempty
@@ -29,3 +33,8 @@ getServerResp result = do
       error $ "Impossible happened..." <> show _status
     ClientErrorResponse err -> ioError . userError $ "Server error happened: " <> show err
 {-# INLINE getServerResp #-}
+
+getProtoTimestamp :: IO Timestamp
+getProtoTimestamp = do
+  MkSystemTime sec nano <- getSystemTime'
+  return $ Timestamp sec (fromIntegral nano)

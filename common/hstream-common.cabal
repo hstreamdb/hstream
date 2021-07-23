@@ -26,16 +26,17 @@ source-repository head
 library
   exposed-modules:
     HStream.Server.HStreamApi
+    HStream.ThirdParty.Protobuf
     HStream.Utils
     HStream.Utils.Converter
     HStream.Utils.Format
-    ThirdParty.Google.Protobuf.Empty
-    ThirdParty.Google.Protobuf.Struct
-    ThirdParty.Google.Protobuf.Timestamp
 
   other-modules:
     HStream.Utils.BuildRecord
     HStream.Utils.RPC
+    ThirdParty.Google.Protobuf.Empty
+    ThirdParty.Google.Protobuf.Struct
+    ThirdParty.Google.Protobuf.Timestamp
 
   hs-source-dirs:     . gen-src
   cxx-sources:        cbits/utils.cpp

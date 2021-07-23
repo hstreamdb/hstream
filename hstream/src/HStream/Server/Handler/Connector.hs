@@ -14,7 +14,6 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           ThirdParty.Google.Protobuf.Empty
 import           Z.Data.Builder.Base              (string8)
 import qualified Z.Data.CBytes                    as ZDC
 import qualified Z.Data.Text                      as ZT
@@ -29,6 +28,7 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    handleTerminateConnector)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
+import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils.Converter          (cbytesToText)
 
 hstreamConnectorToConnector :: HSP.Connector -> Connector

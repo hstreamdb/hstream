@@ -6,34 +6,31 @@ module HStream.Utils
   , module HStream.Utils.Format
   , module HStream.Utils.BuildRecord
   , module HStream.Utils.RPC
+
   , getKeyWordFromException
   , flattenJSON
-  , getProtoTimestamp
   , genUnique
   , setupSigsegvHandler
   ) where
 
-import           Control.Exception                    (Exception (..))
-import           Control.Monad                        (join, unless)
-import           Data.Aeson                           as Aeson
-import           Data.Bifunctor                       (first)
-import           Data.Bits                            (shiftL, shiftR, (.&.),
-                                                       (.|.))
-import qualified Data.HashMap.Strict                  as HM
-import           Data.Int                             (Int64)
-import           Data.Text                            (Text)
-import qualified Data.Text                            as Text
-import qualified Data.Text.Lazy                       as TL
-import           Data.Word                            (Word16, Word32, Word64)
-import           System.Random                        (randomRIO)
-import           Z.IO.Time                            (SystemTime (..),
-                                                       getSystemTime')
+import           Control.Exception         (Exception (..))
+import           Control.Monad             (join, unless)
+import           Data.Aeson                as Aeson
+import           Data.Bifunctor            (first)
+import           Data.Bits                 (shiftL, shiftR, (.&.), (.|.))
+import qualified Data.HashMap.Strict       as HM
+import           Data.Int                  (Int64)
+import           Data.Text                 (Text)
+import qualified Data.Text                 as Text
+import qualified Data.Text.Lazy            as TL
+import           Data.Word                 (Word16, Word32, Word64)
+import           System.Random             (randomRIO)
+import           Z.IO.Time                 (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
 import           HStream.Utils.RPC
-import           ThirdParty.Google.Protobuf.Timestamp
 
 getKeyWordFromException :: Exception a => a -> TL.Text
 getKeyWordFromException =  TL.pack . takeWhile (/='{') . show
@@ -53,11 +50,6 @@ flattenJSON' splitor prefix (k, v) = do
   case v of
     Aeson.Object o -> join $ map (flattenJSON' splitor (prefix <> splitor <> k)) (HM.toList o)
     _              -> [(prefix <> splitor <> k, v)]
-
-getProtoTimestamp :: IO Timestamp
-getProtoTimestamp = do
-  MkSystemTime sec nano <- getSystemTime'
-  return $ Timestamp sec (fromIntegral nano)
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --

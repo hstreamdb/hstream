@@ -7,33 +7,34 @@
 module HStream.SpecUtils where
 
 import           Control.Concurrent
-import           Control.Exception                 (bracket)
+import           Control.Exception                (bracket)
 import           Control.Monad
-import qualified Data.Aeson                        as Aeson
-import qualified Data.ByteString                   as BS
-import qualified Data.ByteString.Char8             as BSC
-import qualified Data.ByteString.Internal          as BS (c2w)
-import qualified Data.ByteString.Lazy.Char8        as DBCL
-import qualified Data.HashMap.Strict               as HM
+import qualified Data.Aeson                       as Aeson
+import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Char8            as BSC
+import qualified Data.ByteString.Internal         as BS (c2w)
+import qualified Data.ByteString.Lazy.Char8       as DBCL
+import qualified Data.HashMap.Strict              as HM
 import           Data.IORef
-import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromMaybe)
-import           Data.Text                         (Text)
-import qualified Data.Text                         as Text
-import qualified Data.Text.Lazy                    as TL
-import qualified Data.Vector                       as V
-import qualified Database.ClickHouseDriver.Client  as ClickHouse
-import qualified Database.ClickHouseDriver.Types   as ClickHouse
-import qualified Database.MySQL.Base               as MySQL
+import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromMaybe)
+import           Data.Text                        (Text)
+import qualified Data.Text                        as Text
+import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
+import qualified Database.ClickHouseDriver.Client as ClickHouse
+import qualified Database.ClickHouseDriver.Types  as ClickHouse
+import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Call        (clientCallCancel)
-import           System.Environment                (lookupEnv)
-import qualified System.IO.Streams                 as Streams
-import           System.IO.Unsafe                  (unsafePerformIO)
+import           Network.GRPC.LowLevel.Call       (clientCallCancel)
+import           System.Environment               (lookupEnv)
+import qualified System.IO.Streams                as Streams
+import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
-import           ThirdParty.Google.Protobuf.Struct
 
 import           HStream.Server.HStreamApi
+import           HStream.ThirdParty.Protobuf      (Struct (..), Value (Value),
+                                                   ValueKind (ValueKindStructValue))
 import           HStream.Utils
 
 clientConfig :: ClientConfig

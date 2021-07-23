@@ -12,9 +12,7 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Suspend            (msDelay)
 import           Control.Concurrent.Timer
-import           Control.Exception                     (SomeException,
-                                                        displayException,
-                                                        handle, throwIO, try)
+import           Control.Exception                     (handle, throwIO, try)
 import           Control.Monad                         (unless, void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
@@ -22,6 +20,7 @@ import qualified Data.HashMap.Strict                   as HM
 import           Data.IORef                            (IORef,
                                                         atomicModifyIORef',
                                                         newIORef, readIORef)
+import           Data.Int                              (Int64)
 import qualified Data.List                             as L
 import           Data.Map.Strict                       (Map)
 import qualified Data.Map.Strict                       as Map
@@ -34,10 +33,6 @@ import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                          (Enumerated (..))
 import           System.IO.Unsafe                      (unsafePerformIO)
 import           System.Random                         (newStdGen, randomRs)
-import           ThirdParty.Google.Protobuf.Empty      (Empty (..))
-import           ThirdParty.Google.Protobuf.Struct     (Struct (Struct),
-                                                        ValueKind (ValueKindStringValue))
-import qualified ThirdParty.Google.Protobuf.Timestamp  as Proto
 import qualified Z.Data.CBytes                         as CB
 import qualified Z.Data.JSON                           as ZJ
 import           Z.Data.Vector                         (Bytes)
@@ -80,6 +75,7 @@ import qualified HStream.Server.Persistence            as P
 import           HStream.Store                         (SomeHStoreException,
                                                         ckpReaderStopReading)
 import qualified HStream.Store                         as S
+import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
@@ -93,7 +89,10 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 
 --------------------------------------------------------------------------------
 
-checkSubscriptions :: Timestamp -> ServerContext -> IO ()
+checkSubscriptions
+  :: Int64    -- ^ timer timeout, ms
+  -> ServerContext
+  -> IO ()
 checkSubscriptions timeout ServerContext{..} =  do
   currentTime <- getCurrentTimestamp
   atomically $ do
@@ -102,7 +101,13 @@ checkSubscriptions timeout ServerContext{..} =  do
     mapM_ (updateReaderStatus subscribedReaders Released) $ Map.keys outDated
     writeTVar subscribeHeap remained
 
-handlers :: S.LDClient -> Int -> Maybe ZHandle -> Timestamp -> S.Compression -> IO (HStreamApi ServerRequest ServerResponse)
+handlers
+  :: S.LDClient
+  -> Int
+  -> Maybe ZHandle
+  -> Int64    -- ^ timer timeout, ms
+  -> S.Compression
+  -> IO (HStreamApi ServerRequest ServerResponse)
 handlers ldclient repFactor zkHandle timeout compression = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
@@ -403,7 +408,7 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
   returnOkRes $ AppendResponse appendRequestStreamName records
   where
-    buildHStreamRecord :: Proto.Timestamp -> ByteString -> Bytes
+    buildHStreamRecord :: PB.Timestamp -> ByteString -> Bytes
     buildHStreamRecord timestamp payload = encodeRecord $
       updateRecordTimestamp (decodeByteStringRecord payload) timestamp
 
@@ -445,7 +450,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
           Enumerated _                                               -> error "Wrong SpecialOffset!"
       SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
 
-    checkAndUpdateReaderStatus :: SubscribedReaders -> Timestamp -> STM (Either StatusDetails ())
+    checkAndUpdateReaderStatus :: SubscribedReaders -> Int64 -> STM (Either StatusDetails ())
     checkAndUpdateReaderStatus readers  currentTime = do
       status <- getReaderStatus readers subscriptionSubscriptionId
       case status of
@@ -456,7 +461,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
           return $ Right ()
         _              -> return $ Left "Unknown error"
 
-    doSubscribe :: S.LDClient -> SubscribedReaders -> TVar (Map TL.Text Timestamp) -> Subscription -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
+    doSubscribe :: S.LDClient -> SubscribedReaders -> TVar (Map TL.Text Int64) -> Subscription -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
     doSubscribe client sReaders subscribeHp subscription@Subscription{..} streamName = do
       reader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
         S.checkpointStoreLogID 5000 1 Nothing 10
