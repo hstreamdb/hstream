@@ -3,15 +3,21 @@
 module HStream.Utils.RPC
   ( mkServerErrResp
   , returnErrResp
+  , returnResp
+  , returnStreamingResp
+  , returnCommandQueryResp
+  , returnCommandQueryEmptyResp
   , getServerResp
   , getProtoTimestamp
   ) where
 
+import qualified Data.Vector                   as V
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
 import           Z.IO.Time                     (SystemTime (..), getSystemTime')
 
-import           HStream.ThirdParty.Protobuf   (Timestamp (..))
+import           HStream.Server.HStreamApi     (CommandQueryResponse (..))
+import           HStream.ThirdParty.Protobuf   (Struct, Timestamp (..))
 
 mkServerErrResp :: StatusCode -> StatusDetails -> ServerResponse 'Normal a
 mkServerErrResp = ServerNormalResponse Nothing mempty
@@ -22,6 +28,26 @@ returnErrResp
   => StatusCode -> StatusDetails -> m (ServerResponse 'Normal a)
 returnErrResp = (return .) . mkServerErrResp
 {-# INLINE returnErrResp #-}
+
+returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
+returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
+{-# INLINE returnResp #-}
+
+returnStreamingResp :: Monad m => StatusCode -> StatusDetails -> m (ServerResponse 'ServerStreaming Struct)
+returnStreamingResp code = return . ServerWriterResponse mempty code
+{-# INLINE returnStreamingResp #-}
+
+returnCommandQueryResp :: Monad m
+                       => V.Vector Struct
+                       -> m (ServerResponse 'Normal CommandQueryResponse)
+returnCommandQueryResp v = do
+  let resp = CommandQueryResponse v
+  return (ServerNormalResponse (Just resp) mempty StatusOk "")
+{-# INLINE returnCommandQueryResp #-}
+
+returnCommandQueryEmptyResp :: Monad m => m (ServerResponse 'Normal CommandQueryResponse)
+returnCommandQueryEmptyResp = returnResp $ CommandQueryResponse V.empty
+{-# INLINE returnCommandQueryEmptyResp #-}
 
 -- | Extract response value from ClientResult, if there is any error happened,
 -- throw IOException.

@@ -108,24 +108,7 @@ message CommandQuery {
 }
 
 message CommandQueryResponse {
-  oneof kind {
-    CommandSuccess success = 1;
-    CommandQueryResultSet result_set = 2;
-  }
-}
-
-message CommandQueryResultSet {
-    repeated Struct result_set = 1;
-}
-
-message CommandSuccess {
-}
-
-// add more error
-enum HStreamServerError {
-  NoError = 0;
-  UnknownError = 1;
-  NotExistError = 3;
+  repeated Struct result_set = 1;
 }
 
 message ConsumerHeartbeatRequest {
@@ -221,12 +204,12 @@ message HStreamRecord {
 
 message HStreamRecordHeader {
   // Required.
-  // Flag for payload. 
-  // - JSON: 0x01 << 24  
+  // Flag for payload.
+  // - JSON: 0x01 << 24
   // - RAW:  0x02 << 24
   uint32 flag = 1;
 
-  // Optional. 
+  // Optional.
   // Attributes attached to this record.
   map<string, string> attributes = 2;
 
@@ -235,8 +218,8 @@ message HStreamRecordHeader {
   // populated by the server.
   Timestamp publish_time = 3;
 
-  // Optional. 
-  // key for the message.  
+  // Optional.
+  // key for the message.
   string key = 4;
 }
 

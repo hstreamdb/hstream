@@ -50,7 +50,8 @@ import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (Subscription)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
-import           HStream.Utils                    (textToCBytes)
+import           HStream.Utils                    (returnErrResp, returnResp,
+                                                   textToCBytes)
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
@@ -92,9 +93,10 @@ handlePushQueryCanceled ServerCall{..} handle = do
     _ -> putStrLn "impossible happened"
 
 eitherToResponse :: Either SomeException () -> a -> IO (ServerResponse 'Normal a)
-eitherToResponse (Left err) _ = return $
-  ServerNormalResponse Nothing [] StatusInternal $ StatusDetails (C.pack . displayException $ err)
-eitherToResponse (Right _) resp = return $ ServerNormalResponse (Just resp) [] StatusOk ""
+eitherToResponse (Left err) _   =
+  returnErrResp StatusInternal $ StatusDetails (C.pack . displayException $ err)
+eitherToResponse (Right _) resp =
+  returnResp resp
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper

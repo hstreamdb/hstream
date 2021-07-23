@@ -32,7 +32,6 @@ import qualified Data.Vector                           as V
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                          (Enumerated (..))
 import           System.IO.Unsafe                      (unsafePerformIO)
-import           System.Random                         (newStdGen, randomRs)
 import qualified Z.Data.CBytes                         as CB
 import qualified Z.Data.JSON                           as ZJ
 import           Z.Data.Vector                         (Bytes)
@@ -72,16 +71,12 @@ import           HStream.Server.Handler.View           (createViewHandler,
                                                         getViewHandler,
                                                         listViewsHandler)
 import qualified HStream.Server.Persistence            as P
-import           HStream.Store                         (SomeHStoreException,
-                                                        ckpReaderStopReading)
+import           HStream.Store                         (ckpReaderStopReading)
 import qualified HStream.Store                         as S
 import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
-
-newRandomName :: Int -> IO CB.CBytes
-newRandomName n = CB.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
 groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
@@ -175,29 +170,32 @@ executeQueryHandler
 executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = defaultExceptionHandle $ do
   plan' <- streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
-    SelectPlan{}           -> returnErrRes "inconsistent method called"
+    SelectPlan{}           -> returnErrResp StatusInternal "inconsistent method called"
     -- execute plans that can be executed with this method
     CreatePlan stream _repFactor ->
-      create (transToStreamName stream) >> returnOk
+      create (transToStreamName stream) >> returnCommandQueryEmptyResp
     CreateBySelectPlan sources sink taskBuilder _repFactor ->
       create (transToStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
         (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink))
-      >> returnOk
+      >> returnCommandQueryEmptyResp
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
       create (transToViewStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
         (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
-      >> returnOk
+      >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
       streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
       connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
       let connectorExists = elem (T.unpack cName) $ map P.getSuffix connectorIds
       if streamExists then
-        if connectorExists then if ifNotExist then returnOk else returnErrRes "connector exists"
-        else handleCreateSinkConnector sc (TL.toStrict commandQueryStmtText) cName sName cConfig >> returnOk
-      else returnErrRes "stream does not exist"
+        if connectorExists then
+          if ifNotExist then returnCommandQueryEmptyResp
+                        else returnErrResp StatusInternal "connector exists"
+        else handleCreateSinkConnector sc (TL.toStrict commandQueryStmtText) cName sName cConfig
+             >> returnCommandQueryEmptyResp
+      else returnErrResp StatusInternal"stream does not exist"
     InsertPlan stream insertType payload -> do
       timestamp <- getProtoTimestamp
       let header = case insertType of
@@ -205,17 +203,17 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
             RawFormat  -> buildRecordHeader rawPayloadFlag Map.empty timestamp TL.empty
       let record = encodeRecord $ buildRecord header payload
       void $ batchAppend scLDClient (TL.fromStrict stream) [record] cmpStrategy
-      returnOk
+      returnCommandQueryEmptyResp
     DropPlan checkIfExist dropObject ->
       handleDropPlan sc checkIfExist dropObject
     ShowPlan showObject -> handleShowPlan sc showObject
     TerminatePlan terminationSelection -> do
       handleTerminate sc terminationSelection
-      return (ServerNormalResponse (Just genSuccessQueryResponse) [] StatusOk  "")
+      returnCommandQueryEmptyResp
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
       case HM.lookup rSelectViewFrom hm of
-        Nothing -> returnErrRes "VIEW not found"
+        Nothing -> returnErrResp StatusInternal "VIEW not found"
         Just materialized -> do
           let (keyName, keyExpr) = rSelectViewWhere
               (_,keyValue) = genRExprValue keyExpr (HM.fromList [])
@@ -232,16 +230,17 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
               ma <- ssGet ssKey store
               sendResp ma valueSerde
             TimestampedKVStateStore _ ->
-              returnErrRes "Impossible happened"
+              returnErrResp StatusInternal "Impossible happened"
   where
     mkLogAttrs = S.LogAttrs . S.HsLogAttrs scDefaultStreamRepFactor
     create sName = S.createStream scLDClient sName (mkLogAttrs Map.empty)
     sendResp ma valueSerde = do
       case ma of
-        Nothing -> returnResultSetRes V.empty
+        Nothing -> returnCommandQueryResp V.empty
         Just x  -> do
           let result = runDeser (deserializer valueSerde) x
-          returnResultSetRes (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
+          returnCommandQueryResp
+            (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
 
 executePushQueryHandler
   :: ServerContext
@@ -253,7 +252,7 @@ executePushQueryHandler ServerContext{..}
   case plan' of
     SelectPlan sources sink taskBuilder -> do
       exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
-      if (not . and) exists then returnStreamingRes "some source stream do not exist"
+      if (not . and) exists then returnStreamingResp StatusInternal "some source stream do not exist"
       else do
         S.createStream scLDClient (transToTempStreamName sink)
           (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
@@ -272,21 +271,7 @@ executePushQueryHandler ServerContext{..}
         let sc = hstoreTempSourceConnector scLDClient ldreader'
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
-    _ -> returnStreamingRes "inconsistent method called"
-
-returnOk :: Monad m => m (ServerResponse 'Normal CommandQueryResponse)
-returnOk = returnOkRes genSuccessQueryResponse
-
-returnOkRes :: Monad m => a -> m (ServerResponse 'Normal a)
-returnOkRes resp = return (ServerNormalResponse (Just resp) [] StatusOk "")
-
-returnResultSetRes :: V.Vector Struct -> IO (ServerResponse 'Normal CommandQueryResponse)
-returnResultSetRes v = do
-  let resp = genQueryResultResponse v
-  return (ServerNormalResponse (Just resp) [] StatusOk "")
-
-returnStreamingRes :: StatusDetails -> IO (ServerResponse 'ServerStreaming Struct)
-returnStreamingRes = return . ServerWriterResponse [] StatusAborted
+    _ -> returnStreamingResp StatusInternal "inconsistent method called"
 
 handleDropPlan :: ServerContext -> Bool -> DropObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
@@ -303,10 +288,11 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
         terminateQueryAndRemove (T.unpack (object <> name))
         >> terminateRelatedQueries (textToCBytes name)
         >> S.removeStream scLDClient (toSName name)
-        >> returnOk
-      else if checkIfExist then returnOk
-      else returnErrRes "Object does not exist"
-
+        >> returnCommandQueryEmptyResp
+      else if checkIfExist then
+        returnCommandQueryEmptyResp
+      else
+        returnErrResp StatusInternal "Object does not exist"
     terminateQueryAndRemove path = do
       qids <- P.withMaybeZHandle zkHandle P.getQueryIds
       case L.find ((== path) . P.getSuffix) qids of
@@ -314,12 +300,12 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
           handleTerminate sc (OneQuery x)
           >> P.withMaybeZHandle zkHandle (P.removeQuery' x True)
         Nothing -> pure ()
-
     terminateRelatedQueries name = do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
       mapM_ (handleTerminate sc . OneQuery) (getRelatedQueries name queries)
-
-    getRelatedQueries name queries = [ P.queryId query | query <- queries, name `elem` P.getRelatedStreams (P.queryInfoExtra query)]
+    getRelatedQueries name queries =
+      [P.queryId query | query <- queries
+                       , name `elem` P.getRelatedStreams (P.queryInfoExtra query)]
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
@@ -327,25 +313,28 @@ handleShowPlan ServerContext{..} showObject =
   case showObject of
     SStreams -> do
       names <- S.findStreams scLDClient S.StreamTypeStream True
-      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWSTREAMS" . L.sort $
+      let resp = CommandQueryResponse . V.singleton . listToStruct "SHOWSTREAMS" . L.sort $
             stringToValue . S.showStreamName <$> names
-      return (ServerNormalResponse (Just resp) [] StatusOk "")
+      returnResp resp
     SQueries -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWQUERIES" $ zJsonValueToValue . ZJ.toValue <$> queries
-      return (ServerNormalResponse (Just resp) [] StatusOk "")
+      let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWQUERIES" $
+            zJsonValueToValue . ZJ.toValue <$> queries
+      returnResp resp
     SConnectors -> do
       connectors <- P.withMaybeZHandle zkHandle P.getConnectors
-      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWCONNECTORS" $ zJsonValueToValue . ZJ.toValue <$> connectors
-      return (ServerNormalResponse (Just resp) [] StatusOk "")
+      let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWCONNECTORS" $
+            zJsonValueToValue . ZJ.toValue <$> connectors
+      returnResp resp
     SViews -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra) . filter (P.isViewQuery . P.queryId) $ queries
-      let resp = genQueryResultResponse . V.singleton . listToStruct "SHOWVIEWS" $ cbytesToValue <$> views
-      return (ServerNormalResponse (Just resp) [] StatusOk "")
+      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra)
+                    . filter (P.isViewQuery . P.queryId) $ queries
+      let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWVIEWS" $
+            cbytesToValue <$> views
+      returnResp resp
 
-handleTerminate :: ServerContext -> TerminationSelection
-  -> IO ()
+handleTerminate :: ServerContext -> TerminationSelection -> IO ()
 handleTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
@@ -360,24 +349,30 @@ handleTerminate ServerContext{..} AllQuery = do
 
 --------------------------------------------------------------------------------
 
-sendToClient :: Maybe ZHandle -> CB.CBytes -> SourceConnector -> (Struct -> IO (Either GRPCIOError ()))
+sendToClient :: Maybe ZHandle
+             -> CB.CBytes
+             -> SourceConnector
+             -> (Struct -> IO (Either GRPCIOError ()))
              -> IO (ServerResponse 'ServerStreaming Struct)
-sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = handle
-  (\(_ :: P.ZooException) -> return $ ServerWriterResponse [] StatusAborted "failed to get status") $ do
-  P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
-  >>= \case
-    P.Terminated -> return (ServerWriterResponse [] StatusUnknown "")
-    P.Created    -> return (ServerWriterResponse [] StatusUnknown "")
-    P.Running    -> do
-      sourceRecords <- readRecords
-      let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
-          structs                            = jsonObjectToStruct . fromJust <$> filter isJust objects'
-      streamSendMany structs
+sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = do
+  let f (_ :: P.ZooException) =
+        return $ ServerWriterResponse [] StatusAborted "failed to get status"
+  handle f $ do
+    P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
+    >>= \case
+      P.Terminated -> return (ServerWriterResponse [] StatusUnknown "")
+      P.Created    -> return (ServerWriterResponse [] StatusUnknown "")
+      P.Running    -> do
+        sourceRecords <- readRecords
+        let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+            structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+        streamSendMany structs
   where
-    streamSendMany xs = case xs of
+    streamSendMany = \case
       []      -> sendToClient zkHandle qid sc ss
       (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
-        Left err -> print err >> return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
+        Left err -> do print err
+                       return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
 
 --------------------------------------------------------------------------------
@@ -391,11 +386,11 @@ consumerHeartbeatHandler ServerContext{..} (ServerNormalRequest _metadata Consum
   atomically $ do
     hm <- readTVar subscribedReaders
     case HM.lookup consumerHeartbeatRequestSubscriptionId hm of
-      Nothing -> returnErrRes "SubscriptionId doesn't exist."
+      Nothing -> returnErrResp StatusInternal "SubscriptionId doesn't exist."
       Just _  -> do
         modifyTVar' subscribeHeap $ \hp ->
           Map.insert consumerHeartbeatRequestSubscriptionId timestamp hp
-        returnOkRes $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
+        returnResp $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
 
 appendHandler
   :: ServerContext
@@ -406,7 +401,7 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   let payloads = map (buildHStreamRecord timestamp) $ V.toList appendRequestRecords
   S.AppendCompletion{..} <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
   let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
-  returnOkRes $ AppendResponse appendRequestStreamName records
+  returnResp $ AppendResponse appendRequestStreamName records
   where
     buildHStreamRecord :: PB.Timestamp -> ByteString -> Bytes
     buildHStreamRecord timestamp payload = encodeRecord $
@@ -419,7 +414,7 @@ createStreamsHandler
 createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
   S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
     (S.LogAttrs $ S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
-  returnOkRes stream
+  returnResp stream
 
 subscribeHandler
   :: ServerContext
@@ -431,15 +426,16 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
   then do
     let sName = transToStreamName $ TL.toStrict subscriptionStreamName
     ifExists <- S.doesStreamExists scLDClient sName
-    unless ifExists (atomically (deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId)
-      >> throwIO StreamNotExist)
+    unless ifExists $ do
+      atomically $ deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
+      throwIO StreamNotExist
     doSubscribe scLDClient subscribedReaders subscribeHeap subscription sName
   else do
     currentTime <- getCurrentTimestamp
     status <- atomically $ do checkAndUpdateReaderStatus subscribedReaders currentTime
     case status of
-      Left err   -> return $ ServerNormalResponse Nothing [] StatusInternal err
-      Right _  -> return $ ServerNormalResponse (Just subscription) [] StatusOk ""
+      Left err -> returnErrResp StatusInternal err
+      Right _  -> returnResp subscription
   where
     getStartLSN :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO S.LSN
     getStartLSN SubscriptionOffset{..} client logId = case fromJust subscriptionOffsetOffset of
@@ -491,7 +487,7 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata Delet
   atomically $ do
     deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
     modifyTVar' subscribeHeap $ \hm -> Map.delete subscriptionSubscriptionId hm
-  returnOkRes Empty
+  returnResp Empty
 
 fetchHandler
   :: ServerContext
@@ -501,13 +497,12 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) 
   (reader, _) <- lookupSubscribedReaders subscribedReaders fetchRequestSubscriptionId
   void $ S.ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
   res <- S.ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
-  returnOkRes $ FetchResponse (fetchResult res)
+  returnResp $ FetchResponse (fetchResult res)
   where
     fetchResult :: [S.DataRecord] -> V.Vector ReceivedRecord
     fetchResult records =
       let groups = L.groupBy (\x y -> S.recordLSN x == S.recordLSN y) records
       in V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
-
     mkReceivedRecord :: Int -> S.DataRecord -> ReceivedRecord
     mkReceivedRecord index record =
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
@@ -520,7 +515,7 @@ commitOffsetHandler
 commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@CommittedOffset{..}) = defaultExceptionHandle $ do
   (reader, _) <- lookupSubscribedReaders subscribedReaders committedOffsetSubscriptionId
   commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
-  returnOkRes offset
+  returnResp offset
   where
     commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
@@ -533,7 +528,7 @@ deleteStreamsHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteStreamsHandler ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
   S.removeStream scLDClient $ transToStreamName $ TL.toStrict deleteStreamRequestStreamName
-  returnOkRes Empty
+  returnResp Empty
 
 listStreamsHandler
   :: ServerContext
@@ -544,7 +539,7 @@ listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = def
   res <- V.forM (V.fromList streams) $ \stream -> do
     refactor <- S.getStreamReplicaFactor scLDClient stream
     return $ Stream (TL.pack . S.showStreamName $ stream) (fromIntegral refactor)
-  returnOkRes $ ListStreamsResponse res
+  returnResp $ ListStreamsResponse res
 
 listSubscriptionsHandler
   :: ServerContext
@@ -563,14 +558,6 @@ terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..
   let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
   handleTerminate sc (OneQuery queryName)
   return (ServerNormalResponse (Just (TerminateQueryResponse terminateQueryRequestQueryName)) [] StatusOk  "")
-
-genSuccessQueryResponse :: CommandQueryResponse
-genSuccessQueryResponse = CommandQueryResponse $
-  Just . CommandQueryResponseKindSuccess $ CommandSuccess
-
-genQueryResultResponse :: V.Vector Struct -> CommandQueryResponse
-genQueryResultResponse = CommandQueryResponse .
-  Just . CommandQueryResponseKindResultSet . CommandQueryResultSet
 
 batchAppend :: S.LDClient -> TL.Text -> [Bytes] -> S.Compression -> IO S.AppendCompletion
 batchAppend client streamName payloads strategy = do

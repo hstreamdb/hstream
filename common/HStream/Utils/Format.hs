@@ -44,16 +44,10 @@ formatResult width (P.Struct kv) =
     emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" :: String else xs
 
 formatCommandQueryResponse :: Width -> HA.CommandQueryResponse -> String
-formatCommandQueryResponse w (HA.CommandQueryResponse (Just x)) = case x of
-  HA.CommandQueryResponseKindSuccess _ ->
-    "Command successfully executed.\n"
-  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet [])  ->
-    "No results.\n"
-  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet [y]) ->
-    formatResult w y
-  HA.CommandQueryResponseKindResultSet (HA.CommandQueryResultSet ys)  ->
-    "unknown behaviour" <> show ys
-formatCommandQueryResponse _ _ = ""
+formatCommandQueryResponse w (HA.CommandQueryResponse x) = case x of
+  []  -> "Done. No results.\n"
+  [y] -> formatResult w y
+  ys  -> "unknown behaviour" <> show ys
 
 --------------------------------------------------------------------------------
 

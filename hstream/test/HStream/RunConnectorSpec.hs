@@ -102,9 +102,9 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "create mysql sink connector" $ do
     executeCommandQuery' ("DROP STREAM " <> source1 <> " IF EXISTS ;")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
     executeCommandQuery' ("CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);")
-      `shouldReturn` successResp
+      `shouldReturn` commandQuerySuccessResp
 
     createSinkConnector (createMySqlConnectorSql mysqlConnector source1)
       >>= (`shouldSatisfy` isJust)
@@ -141,8 +141,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
         _ <- deleteConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          Just (Connector _ _ _ _) -> return True
-          _                        -> return False
+          Just Connector{} -> return True
+          _                -> return False
     ) `shouldReturn` False
 
   it "clean streams" $
@@ -150,4 +150,4 @@ spec = describe "HStream.RunConnectorSpec" $ do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS ;"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just successResp)
+    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)
