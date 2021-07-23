@@ -23,7 +23,7 @@ import qualified Z.Data.CBytes            as ZDC
 
 import           HStream.Connector.HStore as HCH
 import qualified HStream.Store            as HS
-import           HStream.Utils.Converter  (cbytesToText)
+import           HStream.Utils.Converter  (cBytesToText)
 
 -- BO is short for Business Object
 data StreamBO = StreamBO

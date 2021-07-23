@@ -30,7 +30,7 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (cbytesToText, returnErrResp,
+import           HStream.Utils                    (cBytesToText, returnErrResp,
                                                    returnResp, textToCBytes)
 
 hstreamQueryToView :: HSP.Query -> View
@@ -42,7 +42,7 @@ emptyView :: View
 emptyView = View "" 0 0 "" []
 
 hstreamViewIdIs :: T.Text -> HSP.Query -> Bool
-hstreamViewIdIs name (HSP.Query queryId _ _ _) = cbytesToText queryId == name
+hstreamViewIdIs name (HSP.Query queryId _ _ _) = cBytesToText queryId == name
 
 createViewHandler
   :: ServerContext

@@ -46,3 +46,7 @@ instance Exception SubscriptionIdNotFound
 data StreamNotExist = StreamNotExist
   deriving (Show)
 instance Exception StreamNotExist
+
+data ConnectorAlreadyExists = ConnectorAlreadyExists
+  deriving (Show)
+instance Exception ConnectorAlreadyExists

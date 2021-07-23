@@ -118,7 +118,7 @@ dataRecordToSourceRecord ldclient Payload {..} = do
   logGroup <- S.getLogGroupByID ldclient pLogID
   groupName <- S.logGroupGetName logGroup
   return SourceRecord
-    { srcStream = cbytesToText groupName
+    { srcStream = cBytesToText groupName
     , srcKey = Just "{}"
     -- A dummy key typed Aeson.Object, for avoiding errors while processing queries with JOIN clause only.
     -- It is not used and will be removed in the future.

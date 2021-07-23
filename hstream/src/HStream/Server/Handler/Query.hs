@@ -35,7 +35,7 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (cbytesToText, returnErrResp,
+import           HStream.Utils                    (cBytesToText, returnErrResp,
                                                    returnResp, textToCBytes)
 
 hstreamQueryToQuery :: HSP.Query -> Query
@@ -43,7 +43,7 @@ hstreamQueryToQuery (HSP.Query queryId (HSP.Info sqlStatement createdTime) _ (HS
   Query (TL.pack $ ZDC.unpack queryId) (fromIntegral $ fromEnum status) createdTime (TL.pack $ ZT.unpack sqlStatement)
 
 hstreamQueryNameIs :: T.Text -> HSP.Query -> Bool
-hstreamQueryNameIs name (HSP.Query queryId _ _ _) = cbytesToText queryId == name
+hstreamQueryNameIs name (HSP.Query queryId _ _ _) = cBytesToText queryId == name
 
 createQueryHandler
   :: ServerContext

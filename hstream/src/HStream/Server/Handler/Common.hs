@@ -20,7 +20,7 @@ import           Control.Monad                    (void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
-import qualified Data.Map.Strict                  as MP
+import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Database.MySQL.Base              as MySQL
@@ -65,7 +65,7 @@ data ServerContext = ServerContext {
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscribedReaders        :: SubscribedReaders
-  , subscribeHeap            :: TVar (MP.Map TL.Text Timestamp)
+  , subscribeHeap            :: TVar (M.Map TL.Text Timestamp)
   , cmpStrategy              :: HS.Compression
 }
 
@@ -81,6 +81,25 @@ runTaskWrapper isTemp taskBuilder ldclient = do
   let sinkConnector = if isTemp then HCS.hstoreTempSinkConnector ldclient else HCS.hstoreSinkConnector ldclient
   -- RUN TASK
   runTask sourceConnector sinkConnector taskBuilder
+
+runSinkConnector
+  :: ServerContext
+  -> CB.CBytes -- ^ Connector Id
+  -> T.Text -- ^ Source Stream Name
+  -> ConnectorConfig -> IO ()
+runSinkConnector ServerContext{..} cid sName cConfig = do
+  ldreader <- HS.newLDReader scLDClient 1000 Nothing
+  let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+  subscribeToStreamWithoutCkp sc sName Latest
+  connector <- case cConfig of
+    ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
+    MySqlConnector      config -> mysqlSinkConnector      <$> MySQL.connect config
+  tid <- forkIO $ do
+    HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus cid HSP.Running
+    forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
+  takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+  where
+    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
 
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
@@ -101,27 +120,19 @@ eitherToResponse (Right _) resp =
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
 
-handleCreateSinkConnector :: ServerContext -> T.Text -> T.Text -> T.Text -> ConnectorConfig -> IO (CB.CBytes, Int64)
-handleCreateSinkConnector ServerContext{..} sql cName sName cConfig = do
-    MkSystemTime timestamp _ <- getSystemTime'
-    let cid = CB.pack $ T.unpack cName
-        cinfo = HSP.Info (ZT.pack $ T.unpack sql) timestamp
-    HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
-
-    ldreader <- HS.newLDReader scLDClient 1000 Nothing
-    let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
-    subscribeToStreamWithoutCkp sc sName Latest
-
-    connector <- case cConfig of
-      ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
-      MySqlConnector config -> mysqlSinkConnector <$> MySQL.connect config
-    tid <- forkIO $ do
-      HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Running)
-      forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
-    takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
-    return (cid, timestamp)
-  where
-    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+handleCreateSinkConnector
+  :: ServerContext
+  -> T.Text -- ^ SqlStatement
+  -> T.Text -- ^ Connector Name
+  -> T.Text -- ^ Source Stream Name
+  -> ConnectorConfig -> IO HSP.Connector
+handleCreateSinkConnector sc@ServerContext{..} sql cName sName cConfig = do
+  MkSystemTime timestamp _ <- getSystemTime'
+  let cid = CB.pack $ T.unpack cName
+      cinfo = HSP.Info (ZT.pack $ T.unpack sql) timestamp
+  HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
+  runSinkConnector sc cid sName cConfig
+  HSP.withMaybeZHandle zkHandle $ HSP.getConnector cid
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> HSP.QueryType -> IO (CB.CBytes, Int64)
