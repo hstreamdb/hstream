@@ -499,11 +499,12 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) 
   res <- S.ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
   returnResp $ FetchResponse (fetchResult res)
   where
-    fetchResult :: [S.DataRecord] -> V.Vector ReceivedRecord
+    fetchResult :: [S.DataRecord Bytes] -> V.Vector ReceivedRecord
     fetchResult records =
       let groups = L.groupBy (\x y -> S.recordLSN x == S.recordLSN y) records
       in V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
-    mkReceivedRecord :: Int -> S.DataRecord -> ReceivedRecord
+
+    mkReceivedRecord :: Int -> S.DataRecord Bytes -> ReceivedRecord
     mkReceivedRecord index record =
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)

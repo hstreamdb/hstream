@@ -141,13 +141,17 @@ readRecordsFromHStore' ldclient reader maxlen = do
   let payloads = filter (isJust) $ map getJsonFormatRecord dataRecords
   mapM (dataRecordToSourceRecord ldclient . fromJust) payloads
 
-getJsonFormatRecord :: S.DataRecord -> Maybe Payload
-getJsonFormatRecord S.DataRecord{..}
-   | flag == jsonPayloadFlag = Just $ Payload recordLogID (getPayload record) recordLSN (getTimeStamp record)
+getJsonFormatRecord :: S.DataRecord Bytes -> Maybe Payload
+getJsonFormatRecord dataRecord
+   | flag == jsonPayloadFlag = Just $ Payload logid payload lsn timestamp
    | otherwise               = Nothing
   where
-    record = decodeRecord $ recordPayload
-    flag = getPayloadFlag record
+    record    = decodeRecord $ S.recordPayload dataRecord
+    flag      = getPayloadFlag record
+    payload   = getPayload record
+    logid     = S.recordLogID dataRecord
+    lsn       = S.recordLSN dataRecord
+    timestamp = getTimeStamp record
 
 commitCheckpointToHStore :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
 commitCheckpointToHStore isTemp ldclient reader streamName offset = do

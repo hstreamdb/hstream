@@ -4,10 +4,12 @@ module HStream.Store.ReaderSpec (spec) where
 
 import           Control.Monad           (void)
 import           Data.Bits               (shiftL)
+import           Data.ByteString         (ByteString)
 import qualified Data.Map.Strict         as Map
 import qualified HStream.Store           as S
 import           System.Timeout          (timeout)
 import           Test.Hspec
+import           Z.Data.Vector.Base      (Bytes)
 
 import           HStream.Store.SpecUtils
 
@@ -39,18 +41,22 @@ fileBased = context "FileBasedCheckpointedReader" $ do
 
     S.ckpReaderStartReading ckpReader logid start_lsn end_lsn
     [record_1] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record_1 `shouldBe` "1"
+    S.recordPayload record_1 `shouldBe` ("1" :: Bytes)
     S.recordLSN record_1 `shouldBe` start_lsn
 
     -- last read checkpoint: start_lsn
     S.writeLastCheckpoints ckpReader [logid]
 
-    [record_2] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record_2 `shouldBe` "2"
+    [recordbs_2] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload recordbs_2 `shouldBe` ("2" :: ByteString)
 
     S.startReadingFromCheckpoint ckpReader logid end_lsn
     [record'] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record' `shouldBe` "2"
+    S.recordPayload record' `shouldBe` ("2" :: Bytes)
+
+    S.startReadingFromCheckpoint ckpReader logid end_lsn
+    [recordbs'] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload recordbs' `shouldBe` ("2" :: ByteString)
 
 preRsmBased :: Spec
 preRsmBased = context "Pre-RSMBasedCheckpointedReader" $ do
@@ -80,18 +86,22 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
 
     S.ckpReaderStartReading ckpReader logid start_lsn end_lsn
     [record_1] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record_1 `shouldBe` "1"
+    S.recordPayload record_1 `shouldBe` ("1" :: Bytes)
     S.recordLSN record_1 `shouldBe` start_lsn
 
     -- last read checkpoint: start_lsn
     S.writeLastCheckpoints ckpReader [logid]
 
-    [record_2] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record_2 `shouldBe` "2"
+    [recordbs_2] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload recordbs_2 `shouldBe` ("2" :: ByteString)
 
     S.startReadingFromCheckpoint ckpReader logid end_lsn
     [record'] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record' `shouldBe` "2"
+    S.recordPayload record' `shouldBe` ("2" :: Bytes)
+
+    S.startReadingFromCheckpoint ckpReader logid end_lsn
+    [recordbs'] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload recordbs' `shouldBe` ("2" :: ByteString)
 
 misc :: Spec
 misc = do
@@ -102,7 +112,7 @@ misc = do
     sn <- S.getTailLSN client logid
     S.readerStartReading reader logid sn sn
     void $ S.readerSetTimeout reader 0
-    timeout 1000000 (S.readerRead reader 1) `shouldReturn` Just []
+    timeout 1000000 (S.readerRead reader 1) `shouldReturn` Just ([] :: [S.DataRecord Bytes])
 
   -- TODO
   -- it "Set IncludeByteOffset" $ do

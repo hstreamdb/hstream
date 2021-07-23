@@ -1,9 +1,12 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE MagicHash    #-}
+{-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE MagicHash            #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module HStream.Store.Internal.LogDevice.Reader where
 
-import           Control.Monad                  (void)
+import           Control.Monad                  (forM, void)
+import qualified Data.ByteString                as BS
 import           Data.Int                       (Int32, Int64)
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
@@ -18,6 +21,7 @@ import           GHC.Conc
 import           GHC.Stack
 import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as ZC
+import           Z.Data.Vector.Base             (Bytes)
 import           Z.Foreign                      (BA#, MBA#)
 import qualified Z.Foreign                      as Z
 
@@ -116,7 +120,7 @@ ckpReaderStopReading reader logid =
 -- call to read() will deliver the gap.
 --
 -- Waiting will not be interrupted if a signal is delivered to the thread.
-readerRead :: LDReader -> Int -> IO [DataRecord]
+readerRead :: DataRecordFormat a => LDReader -> Int -> IO [DataRecord a]
 readerRead reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' -> go reader' payload'
@@ -127,7 +131,7 @@ readerRead reader maxlen =
         Just rs -> return rs
         Nothing -> go rp pp
 
-ckpReaderRead :: LDSyncCkpReader -> Int -> IO [DataRecord]
+ckpReaderRead :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO [DataRecord a]
 ckpReaderRead reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' -> go reader' payload'
@@ -139,13 +143,13 @@ ckpReaderRead reader maxlen =
         Nothing -> go rp pp
 
 -- | Attempts to read a batch of records synchronously.
-tryReaderRead :: LDReader -> Int -> IO (Maybe [DataRecord])
+tryReaderRead :: DataRecordFormat a => LDReader -> Int -> IO (Maybe [DataRecord a])
 tryReaderRead reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
     tryReaderRead' reader' nullPtr payload' maxlen
 
-tryCheckpointedReaderRead :: LDSyncCkpReader -> Int -> IO (Maybe [DataRecord])
+tryCheckpointedReaderRead :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO (Maybe [DataRecord a])
 tryCheckpointedReaderRead reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
@@ -262,12 +266,25 @@ writeLastCheckpointsSync reader xs =
 
 -------------------------------------------------------------------------------
 
+class DataRecordFormat a where
+  peekDataFromPtr :: Ptr DataRecordInternal -> Int -> IO (DataRecord a)
+
+instance DataRecordFormat Bytes where
+  peekDataFromPtr = peekDataRecord
+
+instance DataRecordFormat BS.ByteString where
+  peekDataFromPtr = peekDataRecordBS
+
+peekDataRecords :: DataRecordFormat a => Int -> Ptr DataRecordInternal -> IO [DataRecord a]
+peekDataRecords len ptr = forM [0..len-1] (peekDataFromPtr ptr)
+
 tryReaderRead'
-  :: Ptr LogDeviceReader
+  :: DataRecordFormat a
+  => Ptr LogDeviceReader
   -> Ptr LogDeviceSyncCheckpointedReader
-  -> Ptr DataRecord
+  -> Ptr DataRecordInternal
   -> Int
-  -> IO (Maybe [DataRecord])
+  -> IO (Maybe [DataRecord a])
 tryReaderRead' reader chkReader record maxlen =
   if reader /= nullPtr
      then do (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
@@ -356,9 +373,19 @@ foreign import ccall unsafe "hs_logdevice.h ld_ckp_reader_wait_only_when_no_data
   c_ld_ckp_reader_wait_only_when_no_data :: Ptr LogDeviceSyncCheckpointedReader -> IO ()
 
 foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
-  c_logdevice_reader_read_safe :: Ptr LogDeviceReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
+  c_logdevice_reader_read_safe
+    :: Ptr LogDeviceReader
+    -> CSize
+    -> Ptr DataRecordInternal
+    -> Ptr Int
+    -> IO ErrorCode
 foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
-  c_logdevice_checkpointed_reader_read_safe :: Ptr LogDeviceSyncCheckpointedReader -> CSize -> Ptr DataRecord -> Ptr Int -> IO ErrorCode
+  c_logdevice_checkpointed_reader_read_safe
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> CSize
+    -> Ptr DataRecordInternal
+    -> Ptr Int
+    -> IO ErrorCode
 
 foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
   c_sync_write_checkpoints_safe
