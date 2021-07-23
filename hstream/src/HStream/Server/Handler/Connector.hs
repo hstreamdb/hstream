@@ -30,7 +30,8 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (returnResp)
+import           HStream.Utils                    (cBytesToLazyText,
+                                                   lazyTextToCBytes, returnResp)
 
 createSinkConnectorHandler
   :: ServerContext
@@ -58,7 +59,7 @@ getConnectorHandler
 getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   connector <- P.withMaybeZHandle zkHandle $
-    P.getConnector (CB.pack $ TL.unpack getConnectorRequestId)
+    P.getConnector (lazyTextToCBytes getConnectorRequestId)
   returnResp $ hstreamConnectorToConnector connector
 
 deleteConnectorHandler
@@ -68,7 +69,7 @@ deleteConnectorHandler
 deleteConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
     P.withMaybeZHandle zkHandle $
-      P.removeConnector (CB.pack $ TL.unpack deleteConnectorRequestId)
+      P.removeConnector (lazyTextToCBytes deleteConnectorRequestId)
     returnResp Empty
 
 restartConnectorHandler
@@ -77,7 +78,7 @@ restartConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 restartConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle $ do
-  let cid = CB.pack $ TL.unpack restartConnectorRequestId
+  let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
   when (cStatus == P.Terminated) $ restartConnector sc cid
   returnResp Empty
@@ -88,7 +89,7 @@ cancelConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 cancelConnectorHandler sc
   (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
-  let cid = CB.pack $ TL.unpack cancelConnectorRequestId
+  let cid = lazyTextToCBytes cancelConnectorRequestId
   handleTerminateConnector sc cid
   returnResp Empty
 
@@ -96,7 +97,7 @@ cancelConnectorHandler sc
 
 hstreamConnectorToConnector :: P.Connector -> Connector
 hstreamConnectorToConnector P.Connector {..} =
-  Connector (TL.pack . CB.unpack $ connectorId)
+  Connector (cBytesToLazyText $ connectorId)
     (fromIntegral . fromEnum . P.status $ connectorStatus)
     (P.createdTime connectorInfo)
     (TL.pack . ZT.unpack . P.sqlStatement $ connectorInfo)
@@ -107,7 +108,7 @@ createConnector sc@ServerContext{..} sql = do
   streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
   connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
   let cid = T.unpack cName
-      connectorExists = cid `elem` map P.getSuffix connectorIds
+      connectorExists = cid `elem` map CB.unpack connectorIds
   unless streamExists $ throwIO StreamNotExist
   when (connectorExists && not ifNotExist) $ throwIO ConnectorAlreadyExists
   if connectorExists then do

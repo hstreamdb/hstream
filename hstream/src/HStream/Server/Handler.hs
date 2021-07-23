@@ -331,7 +331,7 @@ handleShowPlan ServerContext{..} showObject =
       let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra)
                     . filter (P.isViewQuery . P.queryId) $ queries
       let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWVIEWS" $
-            cbytesToValue <$> views
+            cBytesToValue <$> views
       returnResp resp
 
 handleTerminate :: ServerContext -> TerminationSelection -> IO ()

@@ -10,15 +10,16 @@ module HStream.Utils.Converter
   , zJsonValueToValue
   , structToZJsonObject
   , valueToZJsonValue
-  , cbytesToText
+  , cBytesToText
   , textToCBytes
   , lazyByteStringToCBytes
-  , cbytesToLazyByteString
-  , cbytesToValue
+  , cBytesToLazyByteString
+  , cBytesToValue
   , stringToValue
   , listToStruct
   , structToStruct
-  ) where
+  , cBytesToLazyText
+  , lazyTextToCBytes) where
 
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor                    (Bifunctor (bimap))
@@ -106,14 +107,20 @@ valueToZJsonValue (PB.Value Nothing) = error "Nothing encountered"
 -- The following line of code is not used but to fix a warning
 valueToZJsonValue (PB.Value (Just _)) = error "impossible happened"
 
-cbytesToText :: ZCB.CBytes -> T.Text
-cbytesToText = T.pack . ZCB.unpack
+cBytesToText :: ZCB.CBytes -> T.Text
+cBytesToText = T.pack . ZCB.unpack
 
 textToCBytes :: T.Text -> ZCB.CBytes
 textToCBytes = ZCB.pack . T.unpack
 
-cbytesToLazyByteString :: ZCB.CBytes -> BL.ByteString
-cbytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
+lazyTextToCBytes :: TL.Text -> ZCB.CBytes
+lazyTextToCBytes = ZCB.pack . TL.unpack
+
+cBytesToLazyText :: ZCB.CBytes -> TL.Text
+cBytesToLazyText = TL.pack . ZCB.unpack
+
+cBytesToLazyByteString :: ZCB.CBytes -> BL.ByteString
+cBytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
 
 lazyByteStringToCBytes :: BL.ByteString -> ZCB.CBytes
 lazyByteStringToCBytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
@@ -124,8 +131,8 @@ listToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.Value
 structToStruct :: TL.Text -> PB.Struct -> PB.Struct
 structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindStructValue
 
-cbytesToValue :: ZCB.CBytes -> PB.Value
-cbytesToValue = PB.Value . Just . PB.ValueKindStringValue . TL.fromStrict . cbytesToText
+cBytesToValue :: ZCB.CBytes -> PB.Value
+cBytesToValue = PB.Value . Just . PB.ValueKindStringValue . TL.fromStrict . cBytesToText
 
 stringToValue :: String -> PB.Value
 stringToValue = PB.Value . Just . PB.ValueKindStringValue . TL.pack
