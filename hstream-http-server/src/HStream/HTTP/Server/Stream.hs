@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeOperators     #-}
 
 module HStream.HTTP.Server.Stream (
-  StreamsAPI, streamServer
+  StreamsAPI, streamServer, listStreamsHandler
 ) where
 
 import           Control.Monad.IO.Class   (liftIO)
@@ -64,8 +64,8 @@ createStreamHandler ldClient stream = do
           (HS.LogAttrs $ HS.HsLogAttrs (replicationFactor stream) Map.empty)
   return stream
 
-fetchStreamHandler :: HS.LDClient -> Handler [StreamBO]
-fetchStreamHandler ldClient = liftIO $ do
+listStreamsHandler :: HS.LDClient -> Handler [StreamBO]
+listStreamsHandler ldClient = liftIO $ do
     streamNames <- HS.findStreams ldClient HS.StreamTypeStream True
     let names = T.pack . HS.showStreamName <$> streamNames
     replicationFactors <- sequence $ HS.getStreamReplicaFactor ldClient <$> streamNames
@@ -77,7 +77,7 @@ fetchStreamHandler ldClient = liftIO $ do
            ]
 
 streamServer :: HS.LDClient -> Server StreamsAPI
-streamServer ldClient = fetchStreamHandler ldClient
+streamServer ldClient = listStreamsHandler ldClient
                    :<|> createStreamHandler ldClient
                    :<|> removeStreamHandler ldClient
                    :<|> queryStreamHandler ldClient

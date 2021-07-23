@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 module HStream.HTTP.Server.View (
-  ViewsAPI, viewServer
+  ViewsAPI, viewServer, listViewsHandler
 ) where
 
 import           Control.Monad.IO.Class           (liftIO)
@@ -64,8 +64,8 @@ createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
       putStrLn $ "Client Error: " <> show clientError
       return $ ViewBO Nothing Nothing Nothing sql
 
-listViewHandler :: Client -> Handler [ViewBO]
-listViewHandler hClient = liftIO $ do
+listViewsHandler :: Client -> Handler [ViewBO]
+listViewsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
   let listViewsRequest = ListViewsRequest {}
   resp <- hstreamApiListViews (ClientNormalRequest listViewsRequest 100 (MetadataMap $ Map.empty))
@@ -102,7 +102,7 @@ getViewHandler hClient vid = liftIO $ do
 
 viewServer :: Client -> Server ViewsAPI
 viewServer hClient =
-  (listViewHandler hClient)
+  (listViewsHandler hClient)
   :<|> (createViewHandler hClient)
   :<|> (deleteViewHandler hClient)
   :<|> (getViewHandler hClient)

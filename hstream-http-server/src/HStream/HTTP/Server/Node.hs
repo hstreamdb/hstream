@@ -1,109 +1,79 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeOperators     #-}
 
 module HStream.HTTP.Server.Node (
-  NodesAPI, nodeServer, getNodes
+  NodesAPI, nodeServer, listStoreNodesHandler
 ) where
 
-import           Control.Lens
-import           Control.Monad               (forM)
-import           Control.Monad.IO.Class      (liftIO)
-import           Data.Aeson                  (ToJSON, Value (..))
-import           Data.Aeson.Lens
-import           Data.ByteString             (ByteString)
-import qualified Data.HashMap.Strict         as HM
-import           Data.List                   (find)
-import           Data.Maybe                  (fromMaybe)
-import           Data.Scientific             (floatingOrInteger)
-import           Data.Swagger                (ToSchema)
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           Data.Vector                 (toList)
-import           GHC.Generics                (Generic)
-import           Servant                     (Capture, Get, JSON, type (:>),
-                                              (:<|>) (..))
-import           Servant.Server              (Handler, Server)
+import           Control.Monad.IO.Class           (liftIO)
+import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.Int                         (Int32)
+import qualified Data.Map.Strict                  as Map
+import           Data.Swagger                     (ToSchema)
+import qualified Data.Text                        as T
+import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
+import           GHC.Generics                     (Generic)
+import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.LowLevel.Client     (Client)
+import           Servant                          (Capture, Get, JSON,
+                                                   type (:>), (:<|>) (..))
+import           Servant.Server                   (Handler, Server)
 
-import qualified HStream.Store.Admin.API     as AA
-import qualified HStream.Store.Admin.Command as AC
-import           HStream.Store.Admin.Types   (SimpleNodesFilter (..),
-                                              StatusFormat (..),
-                                              StatusOpts (..),
-                                              fromSimpleNodesFilter)
+import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
 data NodeBO = NodeBO
-  { id      :: Maybe Int
-  , roles   :: Maybe [Int]
-  , address :: Maybe String
-  , status  :: Maybe String
+  { id      :: Int32
+  , roles   :: [Int32]
+  , address :: T.Text
+  , status  :: T.Text
   } deriving (Eq, Show, Generic)
 
 instance ToJSON NodeBO
 instance ToSchema NodeBO
 
-toInt :: Value -> Int
-toInt (Number sci) = case floatingOrInteger sci of
-    Left _  -> 0
-    Right i -> (i :: Int)
-toInt _ = 0
-
-toArrInt :: Value -> [Int]
-toArrInt (Array v) = toList $ fmap toInt v
-toArrInt _         = []
-
-toString :: Value -> String
-toString (String s) = T.unpack s
-toString _          = ""
-
 type NodesAPI =
-  "nodes" :> Get '[JSON] (Maybe [NodeBO])
-  :<|> "nodes" :> Capture "id" Int :> Get '[JSON] (Maybe NodeBO)
+  "nodes" :> Get '[JSON] [NodeBO]
+  :<|> "nodes" :> Capture "id" Int32 :> Get '[JSON] (Maybe NodeBO)
 
-getNodes :: AA.HeaderConfig AA.AdminAPI -> StatusOpts -> IO (Maybe [NodeBO])
-getNodes headerConfig StatusOpts{..} = do
-  states <- AA.sendAdminApiRequest headerConfig $ do
-    case fromSimpleNodesFilter statusFilter of
-      [] -> AA.nodesStateResponse_states <$> AA.getNodesState (AA.NodesStateRequest Nothing (Just statusForce))
-      xs -> do
-        rs <- forM xs $ \x -> AA.nodesStateResponse_states <$> AA.getNodesState (AA.NodesStateRequest (Just x) (Just statusForce))
-        return $ concat rs
+nodeToNodeBO :: Node -> NodeBO
+nodeToNodeBO (Node id' roles address status) =
+  NodeBO (id') (V.toList roles) (TL.toStrict address) (TL.toStrict status)
 
-  let getID = show . AA.nodeConfig_node_index . AA.nodeState_config
-  let getName = T.unpack . AA.nodeConfig_name . AA.nodeState_config
-  let getState = T.unpack . last . T.splitOn "_" . T.pack . show . AA.nodeState_daemon_state
-  let getHealthState = T.unpack . last . T.splitOn "_" . T.pack . show . AA.nodeState_daemon_health_status
-  let collectState s = map ($ s) [getID, getName, getState, getHealthState]
-  let allStatus = map collectState states
+listNodes :: Client -> IO [NodeBO]
+listNodes hClient = do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let listNodeRequest = ListNodesRequest {}
+  resp <- hstreamApiListNodes (ClientNormalRequest listNodeRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 _status _details -> do
+      case x of
+        ListNodesResponse {listNodesResponseNodes = nodes} -> do
+          return $ V.toList $ V.map nodeToNodeBO nodes
+        _ -> return []
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return []
 
-  res <- AC.showConfig headerConfig (StatusNodeIdx [])
-  let nodes = res ^? key "nodes"
-  case nodes of
-    Just (Array arr) -> do
-      let nodes' = fmap (\node -> do
-                            let id' = toInt <$> node ^? key "node_index"
-                                roles = toArrInt <$> node ^? key "roles"
-                                address = toString <$> node ^? key "data_address" . key "address"
-                            let status = (\(_:name:_:[status']) -> status') <$> find (\(id'':_) -> (show <$> id') == Just id'') allStatus
-                            NodeBO id' roles address status
-                        ) arr
-      return $ Just $ toList nodes'
-    _ -> return Nothing
+getStoreNodeHandler :: Client -> Int32 -> Handler (Maybe NodeBO)
+getStoreNodeHandler hClient target = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let getNodeRequest = GetNodeRequest { getNodeRequestId = target}
+  resp <- hstreamApiGetNode (ClientNormalRequest getNodeRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ nodeToNodeBO x
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return Nothing
 
-getNodeHandler :: AA.HeaderConfig AA.AdminAPI -> StatusOpts -> Int -> Handler (Maybe NodeBO)
-getNodeHandler headerConfig statusOpts target = do
-  nodes <- liftIO (getNodes headerConfig statusOpts)
-  let node = (find (\(NodeBO id' _ _ _) -> id' == Just target)) <$> nodes
-  return $ fromMaybe Nothing node
+listStoreNodesHandler :: Client -> Handler [NodeBO]
+listStoreNodesHandler hClient = liftIO $ listNodes hClient
 
-fetchNodeHandler :: AA.HeaderConfig AA.AdminAPI -> StatusOpts -> Handler (Maybe [NodeBO])
-fetchNodeHandler headerConfig statusOpts = liftIO (getNodes headerConfig statusOpts)
-
-nodeServer :: ByteString -> Int -> Server NodesAPI
-nodeServer ldAdminHost ldAdminPort = do
-  let headerConfig = AA.HeaderConfig ldAdminHost ldAdminPort AA.binaryProtocolId 5000 5000 5000
-  let statusOpts = StatusOpts TabularFormat True (StatusNodeIdx []) "ID"
-  fetchNodeHandler headerConfig statusOpts :<|> (getNodeHandler headerConfig statusOpts)
+nodeServer :: Client -> Server NodesAPI
+nodeServer hClient = do
+  listStoreNodesHandler hClient :<|> (getStoreNodeHandler hClient)

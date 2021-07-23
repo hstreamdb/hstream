@@ -50,6 +50,7 @@ import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (Subscription)
 import qualified HStream.Server.Persistence       as HSP
 import qualified HStream.Store                    as HS
+import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
 
@@ -67,6 +68,7 @@ data ServerContext = ServerContext {
   , subscribedReaders        :: SubscribedReaders
   , subscribeHeap            :: TVar (M.Map TL.Text Timestamp)
   , cmpStrategy              :: HS.Compression
+  , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 }
 
 runTaskWrapper :: Bool -> TaskBuilder -> HS.LDClient -> IO ()
@@ -116,6 +118,10 @@ eitherToResponse (Left err) _   =
   returnErrResp StatusInternal $ StatusDetails (C.pack . displayException $ err)
 eitherToResponse (Right _) resp =
   returnResp resp
+
+responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (ServerResponse 'Normal a)
+responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) [] StatusOk ""
+responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing [] errCode msg
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper

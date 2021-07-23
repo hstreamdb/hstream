@@ -30,6 +30,7 @@ library
     HStream.Server.Handler
     HStream.Server.Handler.Common
     HStream.Server.Handler.Connector
+    HStream.Server.Handler.StoreAdmin
     HStream.Server.Handler.Query
     HStream.Server.Handler.View
     HStream.Server.Persistence
@@ -37,6 +38,7 @@ library
 
   hs-source-dirs:   src
   build-depends:
+    , aeson
     , aeson
     , aeson-pretty
     , ansi-terminal
@@ -48,11 +50,14 @@ library
     , grpc-haskell
     , grpc-haskell-core
     , haxl
+    , hstore-admin
     , hstream-common
     , hstream-connector
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , lens
+    , lens-aeson
     , mysql-haskell
     , proto3-suite
     , proto3-wire
@@ -84,6 +89,7 @@ executable hstream-server
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
+    , hstore-admin
     , hstream
     , hstream-common
     , hstream-store
@@ -140,6 +146,7 @@ test-suite hstream-test
     HStream.RegressionSpec
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
+    HStream.RunStoreAdminSpec
     HStream.RunSQLSpec
     HStream.SpecUtils
 

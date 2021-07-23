@@ -12,7 +12,6 @@ import           Servant                       (Proxy (..), (:<|>) (..))
 import           Servant.Server                (Server)
 import           Servant.Swagger               (toSwagger)
 import qualified Z.Data.CBytes                 as ZDC
-import qualified ZooKeeper.Types               as ZK
 
 import           HStream.HTTP.Server.Connector (ConnectorsAPI, connectorServer)
 import           HStream.HTTP.Server.Node      (NodesAPI, nodeServer)
@@ -25,13 +24,7 @@ import qualified HStream.Store                 as HS
 data ServerConfig = ServerConfig
   { _serverHost          :: ZDC.CBytes
   , _serverPort          :: Int
-  , _zkHost              :: ZDC.CBytes
-  , _zkPort              :: ZDC.CBytes
   , _logdeviceConfigPath :: ZDC.CBytes
-  , _checkpointRootPath  :: ZDC.CBytes
-  , _streamRepFactor     :: Int
-  , _ldAdminHost         :: ByteString
-  , _ldAdminPort         :: Int
   , _hstreamHost         :: ByteString
   , _hstreamPort         :: Int
   } deriving (Show)
@@ -47,13 +40,13 @@ type API =
 api :: Proxy API
 api = Proxy
 
-apiServer :: HS.LDClient -> Maybe ZK.ZHandle -> Client -> ServerConfig -> Server API
-apiServer ldClient zk hClient ServerConfig{..} = do
+apiServer :: HS.LDClient -> Client -> Server API
+apiServer ldClient hClient = do
   (streamServer ldClient)
   :<|> (queryServer hClient)
-  :<|> (nodeServer _ldAdminHost _ldAdminPort)
+  :<|> (nodeServer hClient)
   :<|> (connectorServer hClient)
-  :<|> (overviewServer ldClient zk _ldAdminHost _ldAdminPort)
+  :<|> (overviewServer hClient ldClient)
   :<|> (viewServer hClient)
 
 apiSwagger :: Swagger

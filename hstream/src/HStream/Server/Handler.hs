@@ -66,6 +66,8 @@ import           HStream.Server.Handler.Query          (cancelQueryHandler,
                                                         getQueryHandler,
                                                         listQueriesHandler,
                                                         restartQueryHandler)
+import           HStream.Server.Handler.StoreAdmin     (getStoreNodeHandler,
+                                                        listStoreNodesHandler)
 import           HStream.Server.Handler.View           (createViewHandler,
                                                         deleteViewHandler,
                                                         getViewHandler,
@@ -73,6 +75,7 @@ import           HStream.Server.Handler.View           (createViewHandler,
 import qualified HStream.Server.Persistence            as P
 import           HStream.Store                         (ckpReaderStopReading)
 import qualified HStream.Store                         as S
+import qualified HStream.Store.Admin.API               as AA
 import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
 
@@ -98,12 +101,13 @@ checkSubscriptions timeout ServerContext{..} =  do
 
 handlers
   :: S.LDClient
+  -> AA.HeaderConfig AA.AdminAPI
   -> Int
   -> Maybe ZHandle
   -> Int64    -- ^ timer timeout, ms
   -> S.Compression
   -> IO (HStreamApi ServerRequest ServerResponse)
-handlers ldclient repFactor zkHandle timeout compression = do
+handlers ldclient headerConfig repFactor zkHandle timeout compression = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
   readers <- newTVarIO HM.empty
@@ -117,6 +121,7 @@ handlers ldclient repFactor zkHandle timeout compression = do
       , subscribedReaders        = readers
       , subscribeHeap            = readerHeap
       , cmpStrategy              = compression
+      , headerConfig             = headerConfig
       }
   timer <- newTimer
   _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
@@ -155,6 +160,9 @@ handlers ldclient repFactor zkHandle timeout compression = do
     , hstreamApiGetView          = getViewHandler serverContext
     , hstreamApiListViews        = listViewsHandler serverContext
     , hstreamApiDeleteView       = deleteViewHandler serverContext
+
+    , hstreamApiGetNode          = getStoreNodeHandler serverContext
+    , hstreamApiListNodes        = listStoreNodesHandler serverContext
     }
 
 echoHandler

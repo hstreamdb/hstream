@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Exception
+import           Data.ByteString                  (ByteString)
 import           Data.Int                         (Int64)
 import qualified Data.Map.Strict                  as Map
 import           Network.GRPC.HighLevel.Generated
@@ -24,6 +25,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
 import           HStream.Store
+import qualified HStream.Store.Admin.API          as AA
 import qualified HStream.Store.Logger             as Log
 import           HStream.Utils                    (setupSigsegvHandler)
 
@@ -32,15 +34,21 @@ import           HStream.Utils                    (setupSigsegvHandler)
 -- 2. log options
 
 data ServerOpts = ServerOpts
-  { _serverHost       :: CBytes
-  , _serverPort       :: PortNumber
-  , _persistent       :: Bool
-  , _zkUri            :: CBytes
-  , _ldConfigPath     :: CBytes
-  , _topicRepFactor   :: Int
-  , _ckpRepFactor     :: Int
-  , _heartbeatTimeout :: Int64
-  , _compression      :: Compression
+  { _serverHost         :: CBytes
+  , _serverPort         :: PortNumber
+  , _persistent         :: Bool
+  , _zkUri              :: CBytes
+  , _ldConfigPath       :: CBytes
+  , _topicRepFactor     :: Int
+  , _ckpRepFactor       :: Int
+  , _heartbeatTimeout   :: Int64
+  , _compression        :: Compression
+  , _ldAdminHost        :: ByteString
+  , _ldAdminPort        :: Int
+  , _ldAdminProtocolId  :: AA.ProtocolId
+  , _ldAdminConnTimeout :: Int
+  , _ldAdminSendTimeout :: Int
+  , _ldAdminRecvTimeout :: Int
   } deriving (Show)
 
 parseConfig :: Parser ServerOpts
@@ -86,6 +94,27 @@ parseConfig =
                    <> showDefault <> value CompressionLZ4
                    <> help "Specify the compression policy for gdevice"
                     )
+    <*> strOption   ( long "logdevice-admin-host" <> metavar "HOST"
+                   <> showDefault <> value "127.0.0.1" <> help "logdevice admin host value"
+                    )
+    <*> option auto ( long "logdevice-admin-port" <> metavar "INT"
+                   <> showDefault <> value 6440 <> help "logdevice admin port value"
+                    )
+    <*> option auto ( long "header-protocol-id" <> metavar "ProtocolId"
+                   <> showDefault <> value AA.binaryProtocolId <> help "logdevice admin thrift header protocol"
+                    )
+    <*> option auto ( long "header-conn-timeout" <> metavar "INT"
+                   <> showDefault <> value 5000
+                   <> help "the timer timeout in milliseconds"
+                    )
+    <*> option auto ( long "header-send-timeout" <> metavar "INT"
+                   <> showDefault <> value 5000
+                   <> help "the timer timeout in milliseconds"
+                    )
+    <*> option auto ( long "header-recv-timeout" <> metavar "INT"
+                   <> showDefault <> value 5000
+                   <> help "the timer timeout in milliseconds"
+                    )
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
@@ -104,7 +133,8 @@ serve ServerOpts{..} ldclient zk = do
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
-  api <- handlers ldclient _topicRepFactor zk _heartbeatTimeout _compression
+  let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
+  api <- handlers ldclient headerConfig _topicRepFactor zk _heartbeatTimeout _compression
   Log.i $ "Server started on "
        <> CBytes.toBuilder _serverHost <> ":" <> Builder.int _serverPort
   hstreamApiServer api options
