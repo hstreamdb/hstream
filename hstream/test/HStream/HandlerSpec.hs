@@ -106,6 +106,10 @@ basicSpec = describe "HStream.BasicHandlerSpec.basic" $ do
     -- after send heartbeat responsed, resubscribe same subscription should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
 
+    -- after heartbeat timeout, sendHeartbeatRequest should return False
+    threadDelay 2000000
+    sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
+
 -------------------------------------------------------------------------------------------------
 
 createStreamRequest :: Client -> Stream -> IO (Maybe Stream)
@@ -172,8 +176,8 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
     -- resubscribe a subscribed stream should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
-    -- after some delay without send heartbeat, the subscribe should be release and resubscribe should success
-    threadDelay 3000000
+    -- after some delay without send heartbeat, the subscribe should be released and resubscribe should success
+    threadDelay 2000000
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
 
   after (cleanSubscriptionsEnv randomSubsciptionIds randomStreamNames) $ it "test listSubscription request" $ \client -> do
@@ -186,7 +190,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     isJust resp `shouldBe` True
     (V.toList . fromJust $ resp) `shouldMatchList` V.toList subscriptions
 
-  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test deleteSubscribe request" $ \client -> do
+  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test deleteSubscription request" $ \client -> do
     -- delete unsubscribed stream should return false
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` False
     void $ createStreamRequest client $ Stream randomStreamName 1
@@ -194,6 +198,8 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
     -- delete subscribed stream should return true
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
+    -- after delete subscription, send heartbeat shouldReturn False
+    sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
     res <- listSubscriptionRequest client
     V.length (fromJust res) `shouldBe` 0
 
