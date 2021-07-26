@@ -114,132 +114,73 @@ facebook::logdevice::Status logdevice_append_with_attrs_async(
                                payload, offset, length, std::move(attrs));
 }
 
+#define APPEND_BATCH(FuncName, ClassName, PayloadName, Payload, Convert)       \
+facebook::logdevice::Status FuncName(                                          \
+    logdevice_client_t* client, c_logid_t logid,                               \
+    /* Payloads */                                                             \
+    ClassName PayloadName, HsInt* payload_lens, HsInt total_len,               \
+    c_compression_t compression, HsInt zstd_level,                             \
+    /* attr */                                                                 \
+    KeyType keytype, const char* keyval,                                       \
+    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {        \
+  Convert                                                                      \
+  BufferedWriteCodec::Estimator blob_size_estimator;                           \
+  for (int i = 0; i < total_len; ++i) {                                        \
+    auto iobuf = folly::IOBuf::wrapBufferAsValue(Payload,                      \
+                                                 (HsInt)payload_lens[i]);      \
+    blob_size_estimator.append(iobuf);                                         \
+  }                                                                            \
+  const size_t total_blob_bytes =                                              \
+      blob_size_estimator.calculateSize(/* checksum_bits */ 0);                \
+  BufferedWriteCodec::Encoder<BufferedWriteSinglePayloadsCodec::Encoder>       \
+      encoder(/* checksum_bits */ 0, total_len, total_blob_bytes);             \
+                                                                               \
+  for (int i = 0; i < total_len; ++i) {                                        \
+    encoder.append(folly::IOBuf::wrapBufferAsValue(Payload,                    \
+                                                   (HsInt)payload_lens[i]));   \
+  }                                                                            \
+                                                                               \
+  folly::IOBufQueue encoded;                                                   \
+  encoder.encode(encoded, Compression(compression), zstd_level);               \
+  folly::IOBuf blob = encoded.moveAsValue();                                   \
+                                                                               \
+  PayloadHolder payload_holder;                                                \
+  payload_holder = PayloadHolder(std::move(blob));                             \
+                                                                               \
+  auto cb = [cb_data, mvar, cap](facebook::logdevice::Status st,               \
+                                 const DataRecord& r) {                        \
+    if (cb_data) {                                                             \
+      cb_data->st = static_cast<c_error_code_t>(st);                           \
+      cb_data->logid = r.logid.val_;                                           \
+      cb_data->lsn = r.attrs.lsn;                                              \
+      cb_data->timestamp = r.attrs.timestamp.count();                          \
+    }                                                                          \
+    hs_try_putmvar(cap, mvar);                                                 \
+  };                                                                           \
+                                                                               \
+  AppendAttributes attrs;                                                      \
+  if (keytype != KeyType::UNDEFINED) {                                         \
+    attrs.optional_keys[keytype] = keyval;                                     \
+  }                                                                            \
+                                                                               \
+  ClientImpl* client_impl = dynamic_cast<ClientImpl*>(client->rep.get());      \
+  int rv = client_impl->appendBatched(logid_t(logid), std::move(payload_holder),\
+                                      cb, std::move(attrs), worker_id_t{-1});  \
+  if (rv == 0)                                                                 \
+    return facebook::logdevice::E::OK;                                         \
+  return facebook::logdevice::err;                                             \
+}
+
 #if __GLASGOW_HASKELL__ < 810
-facebook::logdevice::Status logdevice_append_batch(
-    logdevice_client_t* client, c_logid_t logid,
-    // Payloads
-    StgMutArrPtrs* payloads_, HsInt* payload_lens, HsInt total_len,
-    c_compression_t compression, HsInt zstd_level,
-    // attr
-    KeyType keytype, const char* keyval,
-    //
-    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
-  StgArrBytes** payloads = (StgArrBytes**)payloads_->payload;
+APPEND_BATCH(logdevice_append_batch, StgMutArrPtrs*, payloads_,
+             ((char*)payloads[i]->payload),
+             (StgArrBytes** payloads = (StgArrBytes**)payloads_->payload;))
 #else
-facebook::logdevice::Status logdevice_append_batch(
-    logdevice_client_t* client, c_logid_t logid,
-    // Payloads
-    StgArrBytes** payloads, HsInt* payload_lens, HsInt total_len,
-    c_compression_t compression, HsInt zstd_level,
-    // attr
-    KeyType keytype, const char* keyval,
-    //
-    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
+APPEND_BATCH(logdevice_append_batch, StgArrBytes**, payloads,
+             ((char*)payloads[i]->payload), ;)
 #endif
-  BufferedWriteCodec::Estimator blob_size_estimator;
-  for (int i = 0; i < total_len; ++i) {
-    auto iobuf = folly::IOBuf::wrapBufferAsValue((char*)payloads[i]->payload,
-                                                 (HsInt)payload_lens[i]);
-    blob_size_estimator.append(iobuf);
-  }
-  const size_t total_blob_bytes =
-      blob_size_estimator.calculateSize(/* checksum_bits */ 0);
-  BufferedWriteCodec::Encoder<BufferedWriteSinglePayloadsCodec::Encoder>
-      encoder(/* checksum_bits */ 0, total_len, total_blob_bytes);
-
-  for (int i = 0; i < total_len; ++i) {
-    encoder.append(folly::IOBuf::wrapBufferAsValue((char*)payloads[i]->payload,
-                                                   (HsInt)payload_lens[i]));
-  }
-
-  folly::IOBufQueue encoded;
-  encoder.encode(encoded, Compression(compression), zstd_level);
-  folly::IOBuf blob = encoded.moveAsValue();
-
-  PayloadHolder payload_holder;
-  payload_holder = PayloadHolder(std::move(blob));
-
-  auto cb = [cb_data, mvar, cap](facebook::logdevice::Status st,
-                                 const DataRecord& r) {
-    if (cb_data) {
-      cb_data->st = static_cast<c_error_code_t>(st);
-      cb_data->logid = r.logid.val_;
-      cb_data->lsn = r.attrs.lsn;
-      cb_data->timestamp = r.attrs.timestamp.count();
-    }
-    hs_try_putmvar(cap, mvar);
-  };
-
-  AppendAttributes attrs;
-  if (keytype != KeyType::UNDEFINED) {
-    attrs.optional_keys[keytype] = keyval;
-  }
-
-  ClientImpl* client_impl = dynamic_cast<ClientImpl*>(client->rep.get());
-  int rv = client_impl->appendBatched(logid_t(logid), std::move(payload_holder),
-                                      cb, std::move(attrs), worker_id_t{-1});
-  if (rv == 0)
-    return facebook::logdevice::E::OK;
-  return facebook::logdevice::err;
-}
-
-facebook::logdevice::Status logdevice_append_batch_safe(
-    logdevice_client_t* client, c_logid_t logid,
-    // Payloads
-    char** payloads, HsInt* payload_lens, HsInt total_len,
-    c_compression_t compression, HsInt zstd_level,
-    // attr
-    KeyType keytype, const char* keyval,
-    //
-    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
-  BufferedWriteCodec::Estimator blob_size_estimator;
-  for (int i = 0; i < total_len; ++i) {
-    auto iobuf = folly::IOBuf::wrapBufferAsValue(payloads[i],
-                                                 (HsInt)payload_lens[i]);
-    blob_size_estimator.append(iobuf);
-  }
-  const size_t total_blob_bytes =
-      blob_size_estimator.calculateSize(/* checksum_bits */ 0);
-  BufferedWriteCodec::Encoder<BufferedWriteSinglePayloadsCodec::Encoder>
-      encoder(/* checksum_bits */ 0, total_len, total_blob_bytes);
-
-  for (int i = 0; i < total_len; ++i) {
-    encoder.append(folly::IOBuf::wrapBufferAsValue(payloads[i],
-                                                   (HsInt)payload_lens[i]));
-    printf("%s\n", payloads[i]);
-  }
-
-  folly::IOBufQueue encoded;
-  encoder.encode(encoded, Compression(compression), zstd_level);
-  folly::IOBuf blob = encoded.moveAsValue();
-
-  PayloadHolder payload_holder;
-  payload_holder = PayloadHolder(std::move(blob));
-
-  auto cb = [cb_data, mvar, cap](facebook::logdevice::Status st,
-                                 const DataRecord& r) {
-    if (cb_data) {
-      cb_data->st = static_cast<c_error_code_t>(st);
-      cb_data->logid = r.logid.val_;
-      cb_data->lsn = r.attrs.lsn;
-      cb_data->timestamp = r.attrs.timestamp.count();
-    }
-    hs_try_putmvar(cap, mvar);
-  };
-
-  AppendAttributes attrs;
-  if (keytype != KeyType::UNDEFINED) {
-    attrs.optional_keys[keytype] = keyval;
-  }
-
-  ClientImpl* client_impl = dynamic_cast<ClientImpl*>(client->rep.get());
-  int rv = client_impl->appendBatched(logid_t(logid), std::move(payload_holder),
-                                      cb, std::move(attrs), worker_id_t{-1});
-  if (rv == 0)
-    return facebook::logdevice::E::OK;
-  return facebook::logdevice::err;
-}
-
+APPEND_BATCH(logdevice_append_batch_safe, char**, payloads,
+             (payloads[i]), ;)
 
 // ----------------------------------------------------------------------------
 

@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP           #-}
 {-# LANGUAGE MagicHash     #-}
 {-# LANGUAGE UnboxedTuples #-}
-{-# LANGUAGE BangPatterns  #-}
 
 module HStream.Store.Internal.LogDevice.Writer where
 
@@ -108,8 +107,7 @@ appendBatchBS
   -> IO AppendCompletion
 appendBatchBS client logid payloads compression m_key_attr = withForeignPtr client $ \client' -> do
   let (fps, lens) = unzip ((\(BS.PS payload _ofs len) -> (payload, len)) <$> payloads)
-  let lens_pa = Z.primArrayFromList lens
-  Z.withPrimArraySafe lens_pa $ \lens' num -> do
+  Z.withPrimArraySafe (Z.primArrayFromList lens) $ \lens' num -> do
     withForeignPtrList fps $ \fps' _num -> do
       let (comp, lvl) = fromCompression compression
       let (keyType, keyVal) = fromMaybe (KeyTypeUndefined, "") m_key_attr
@@ -118,30 +116,6 @@ appendBatchBS client logid payloads compression m_key_attr = withForeignPtr clie
           (c_logdevice_append_batch_safe client' logid fps' lens' num comp lvl keyType keyVal')
       void $ E.throwStreamErrorIfNotOK' appendCbRetCode
       return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
-
-withForeignPtrList :: [ForeignPtr a] -> (Ptr (Ptr a) -> Int -> IO b) -> IO b
-withForeignPtrList fptrs f = do
-  let l = length fptrs
-  ptrs <- newPinnedPrimArray l
-  go ptrs 0 fptrs
-  where
-    go ptrs !_ [] = do
-      pa <- unsafeFreezePrimArray ptrs
-      Z.withPrimArraySafe pa f
-    go ptrs !i (fp:fps) = do
-      withForeignPtr fp $ \p -> do
-        writePrimArray ptrs i p
-        go ptrs (i+1) fps
-
-foreign import ccall unsafe "hs_logdevice.h logdevice_append_batch_safe"
-  c_logdevice_append_batch_safe
-    :: Ptr LogDeviceClient
-    -> C_LogID
-    -> Ptr (Ptr Word8) -> Ptr Int -> Int
-    -> Int -> Int
-    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
-    -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
-    -> IO ErrorCode
 
 appendSync
   :: HasCallStack
@@ -207,6 +181,16 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_batch"
     :: Ptr LogDeviceClient
     -> C_LogID
     -> Z.BAArray# Word8 -> Z.BA# Int -> Int
+    -> Int -> Int
+    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
+    -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
+    -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h logdevice_append_batch_safe"
+  c_logdevice_append_batch_safe
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Ptr (Ptr Word8) -> Ptr Int -> Int
     -> Int -> Int
     -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
     -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData

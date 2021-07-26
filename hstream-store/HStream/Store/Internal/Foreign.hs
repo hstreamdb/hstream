@@ -111,6 +111,20 @@ retryWhileAgain f retries = do
     _ -> E.throwStreamError errno callStack
 {-# INLINE retryWhileAgain #-}
 
+withForeignPtrList :: [ForeignPtr a] -> (Ptr (Ptr a) -> Int -> IO b) -> IO b
+withForeignPtrList fptrs f = do
+  let l = length fptrs
+  ptrs <- newPinnedPrimArray l
+  go ptrs 0 fptrs
+  where
+    go ptrs !_ [] = do
+      pa <- unsafeFreezePrimArray ptrs
+      Z.withPrimArraySafe pa f
+    go ptrs !i (fp:fps) = do
+      withForeignPtr fp $ \p -> do
+        writePrimArray ptrs i p
+        go ptrs (i+1) fps
+
 -------------------------------------------------------------------------------
 
 withPrimSafe' :: forall a b. Prim a => a -> (MBA# a -> IO b) -> IO (a, b)
