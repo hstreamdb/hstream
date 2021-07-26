@@ -33,7 +33,7 @@ returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
 {-# INLINE returnResp #-}
 
-returnStreamingResp :: Monad m => StatusCode -> StatusDetails -> m (ServerResponse 'ServerStreaming Struct)
+returnStreamingResp :: Monad m => StatusCode -> StatusDetails -> m (ServerResponse 'ServerStreaming a)
 returnStreamingResp code = return . ServerWriterResponse mempty code
 {-# INLINE returnStreamingResp #-}
 
