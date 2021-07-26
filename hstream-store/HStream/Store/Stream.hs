@@ -41,6 +41,7 @@ module HStream.Store.Stream
   , LD.append
   , LD.appendBS
   , LD.appendBatch
+  , LD.appendBatchBS
   , LD.AppendCompletion (..)
   , FFI.KeyType
   , FFI.keyTypeFindKey
