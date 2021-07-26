@@ -177,12 +177,12 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     CreateBySelectPlan sources sink taskBuilder _repFactor ->
       create (transToStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
-        (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink))
+        (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink)) False
       >> returnCommandQueryEmptyResp
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
       create (transToViewStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
-        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
+        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema) False
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
@@ -247,12 +247,12 @@ executePushQueryHandler
   -> ServerRequest 'ServerStreaming CommandPushQuery Struct
   -> IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler ServerContext{..}
-  (ServerWriterRequest meta CommandPushQuery{..} streamSend) = do
-  plan' <-  streamCodegen (TL.toStrict commandPushQueryQueryText)
+  (ServerWriterRequest meta CommandPushQuery{..} streamSend) = defaultStreamExceptionHandle $ do
+  plan' <- streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
     SelectPlan sources sink taskBuilder -> do
       exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
-      if (not . and) exists then returnStreamingResp StatusInternal "some source stream do not exist"
+      if (not . and) exists then throwIO StreamNotExist
       else do
         S.createStream scLDClient (transToTempStreamName sink)
           (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
@@ -275,7 +275,7 @@ executePushQueryHandler ServerContext{..}
 
 handleDropPlan :: ServerContext -> Bool -> DropObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
+handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHandle $ do
   case dropObject of
     DStream stream -> handleDrop "stream_" stream transToStreamName
     DView view     -> do
@@ -309,7 +309,7 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject =
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleShowPlan ServerContext{..} showObject =
+handleShowPlan ServerContext{..} showObject = defaultExceptionHandle $ do
   case showObject of
     SStreams -> do
       names <- S.findStreams scLDClient S.StreamTypeStream True

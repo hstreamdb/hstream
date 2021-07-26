@@ -2,7 +2,9 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedLists           #-}
 {-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
+
 module HStream.Server.Exception where
 
 import           Control.Exception                    (Exception (..),
@@ -14,26 +16,36 @@ import           HStream.SQL.Exception                (SomeSQLException,
                                                        formatSomeSQLException)
 import           HStream.Server.Persistence.Exception (PersistenceException)
 import qualified HStream.Store                        as Store
-import           HStream.Utils                        (returnErrResp)
+import           HStream.Utils                        (returnErrResp,
+                                                       returnStreamingResp)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
 
 -- TODO: More exception handle needs specific handling.
-defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-defaultExceptionHandle = flip catches [
+mkExceptionHandle :: (StatusCode -> StatusDetails -> IO (ServerResponse t a))
+                  -> IO (ServerResponse t a)
+                  -> IO (ServerResponse t a)
+mkExceptionHandle retFun = flip catches [
   Handler (\(err :: SomeSQLException) ->
-    returnErrResp StatusInternal $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
+    retFun StatusInternal $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
   Handler (\(_ :: Store.EXISTS) ->
-    returnErrResp StatusInternal "Stream already exists"),
+    retFun StatusInternal "Stream already exists"),
   Handler (\(err :: PersistenceException) ->
-    returnErrResp StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
+    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(_ :: QueryTerminatedOrNotExist) ->
-    returnErrResp StatusInternal "Query is already terminated or does not exist"),
+    retFun StatusInternal "Query is already terminated or does not exist"),
   Handler (\(_ :: SubscriptionIdNotFound) ->
-    returnErrResp StatusInternal "Subscription ID can not be found"),
+    retFun StatusInternal "Subscription ID can not be found"),
   Handler (\(err :: IOException) -> do
-    returnErrResp StatusInternal $ StatusDetails (BS.pack . displayException $ err))
+    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err))
   ]
+
+defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
+defaultExceptionHandle = mkExceptionHandle returnErrResp
+
+defaultStreamExceptionHandle :: IO (ServerResponse 'ServerStreaming a)
+                             -> IO (ServerResponse 'ServerStreaming a)
+defaultStreamExceptionHandle = mkExceptionHandle returnStreamingResp
 
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)

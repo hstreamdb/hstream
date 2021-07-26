@@ -135,11 +135,16 @@ handleCreateSinkConnector sc@ServerContext{..} sql cName sName cConfig = do
   HSP.withMaybeZHandle zkHandle $ HSP.getConnector cid
 
 -- TODO: return info in a more maintainable way
-handleCreateAsSelect :: ServerContext -> TaskBuilder -> TL.Text -> HSP.QueryType -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra = do
+handleCreateAsSelect :: ServerContext
+                     -> TaskBuilder
+                     -> TL.Text
+                     -> HSP.QueryType
+                     -> Bool
+                     -> IO (CB.CBytes, Int64)
+handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra isTemp = do
   (qid, timestamp) <- HSP.createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
   tid <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
-        >> runTaskWrapper False taskBuilder scLDClient
+        >> runTaskWrapper isTemp taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
 
