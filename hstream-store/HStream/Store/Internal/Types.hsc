@@ -5,22 +5,24 @@
 
 module HStream.Store.Internal.Types where
 
-import           Control.Exception     (bracket, finally)
-import           Control.Monad         (forM, when)
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Internal as BS
+import           Control.Exception        (bracket, finally)
+import           Control.Monad            (when)
 import           Data.Int
-import           Data.Map.Strict       (Map)
+import           Data.Map.Strict          (Map)
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc
 import           Foreign.Ptr
 import           Foreign.Storable
-import qualified Text.Read             as Read
-import           Z.Data.CBytes         (CBytes)
-import qualified Z.Data.CBytes         as CBytes
-import           Z.Data.Vector         (Bytes)
-import qualified Z.Data.Vector         as Vec
-import qualified Z.Foreign             as Z
+import qualified Text.Read                as Read
+import           Z.Data.CBytes            (CBytes)
+import qualified Z.Data.CBytes            as CBytes
+import           Z.Data.Vector            (Bytes)
+import qualified Z.Data.Vector            as Vec
+import qualified Z.Foreign                as Z
 
 #include "hs_logdevice.h"
 
@@ -176,13 +178,12 @@ newtype CheckpointStore = CheckpointStore
   { unCheckpointStore :: ForeignPtr LogDeviceCheckpointStore }
   deriving (Show, Eq)
 
-data DataRecord = DataRecord
-  { recordLogID       :: {-# UNPACK #-} !C_LogID
-  , recordLSN         :: {-# UNPACK #-} !LSN
-  , recordTimestamp   :: {-# UNPACK #-} !C_Timestamp
-  , recordBatchOffset :: {-# UNPACK #-} !Int
-  , recordPayload     :: !Bytes
-  , recordByteOffset  :: !RecordByteOffset
+data DataRecordAttr = DataRecordAttr
+  { recordAttrLogID_       :: {-# UNPACK #-} !C_LogID
+  , recordAttrLSN_         :: {-# UNPACK #-} !LSN
+  , recordAttrTimestamp_   :: {-# UNPACK #-} !C_Timestamp
+  , recordAttrBatchOffset_ :: {-# UNPACK #-} !Int
+  , recordAttrByteOffset_  :: !RecordByteOffset
   -- ^ Contains information on the amount of data written to the log
   -- (to which this record belongs) up to this record.
   -- BYTE_OFFSET will be invalid if this attribute was not requested by client
@@ -190,33 +191,68 @@ data DataRecord = DataRecord
   -- storage nodes.
   } deriving (Show, Eq)
 
+recordLogID :: DataRecord a -> C_LogID
+recordLogID = recordAttrLogID_ . recordAttr
+
+recordLSN :: DataRecord a -> LSN
+recordLSN = recordAttrLSN_ . recordAttr
+
+recordTimestamp :: DataRecord a -> C_Timestamp
+recordTimestamp = recordAttrTimestamp_ . recordAttr
+
+recordBatchOffset :: DataRecord a -> Int
+recordBatchOffset = recordAttrBatchOffset_ . recordAttr
+
+recordByteOffset :: DataRecord a -> RecordByteOffset
+recordByteOffset = recordAttrByteOffset_ . recordAttr
+
+data DataRecordInternal
+
+data DataRecord a = DataRecord
+  { recordPayload :: !a
+  , recordAttr    :: !DataRecordAttr
+  } deriving (Show, Eq)
+
 dataRecordSize :: Int
 dataRecordSize = (#size logdevice_data_record_t)
 
-peekDataRecords :: Int -> Ptr DataRecord -> IO [DataRecord]
-peekDataRecords len ptr = forM [0..len-1] (peekDataRecord ptr)
+peekDataRecordAttr :: Ptr DataRecordInternal -> IO DataRecordAttr
+peekDataRecordAttr ptr = do
+  logid <- (#peek logdevice_data_record_t, logid) ptr
+  lsn <- (#peek logdevice_data_record_t, lsn) ptr
+  timestamp <- (#peek logdevice_data_record_t, timestamp) ptr
+  batchOffset <- (#peek logdevice_data_record_t, batch_offset) ptr
+  byteOffset' <- (#peek logdevice_data_record_t, byte_offset) ptr
+  let byteOffset = case byteOffset' of
+                     C_BYTE_OFFSET_INVALID -> RecordByteOffsetInvalid
+                     x -> RecordByteOffset x
+  return $ DataRecordAttr logid lsn timestamp batchOffset byteOffset
 
 -- | Peek data record from a pointer and an offset, then release the payload
 -- ignoring exceptions.
-peekDataRecord :: Ptr DataRecord -> Int -> IO DataRecord
+peekDataRecord :: Ptr DataRecordInternal -> Int -> IO (DataRecord Bytes)
 peekDataRecord ptr offset = finally peekData release
   where
     ptr' = ptr `plusPtr` (offset * dataRecordSize)
     peekData = do
-      logid <- (#peek logdevice_data_record_t, logid) ptr'
-      lsn <- (#peek logdevice_data_record_t, lsn) ptr'
-      timestamp <- (#peek logdevice_data_record_t, timestamp) ptr'
-      batchOffset <- (#peek logdevice_data_record_t, batch_offset) ptr'
       len <- (#peek logdevice_data_record_t, payload_len) ptr'
       payload <- flip Z.fromPtr len =<< (#peek logdevice_data_record_t, payload) ptr'
-      byteOffset' <- (#peek logdevice_data_record_t, byte_offset) ptr'
-      let byteOffset = case byteOffset' of
-                         C_BYTE_OFFSET_INVALID -> RecordByteOffsetInvalid
-                         x -> RecordByteOffset x
-      return $ DataRecord logid lsn timestamp batchOffset payload byteOffset
+      attr <- peekDataRecordAttr ptr'
+      return $ DataRecord payload attr
     release = do
       payload_ptr <- (#peek logdevice_data_record_t, payload) ptr'
       free payload_ptr
+
+peekDataRecordBS :: Ptr DataRecordInternal -> Int -> IO (DataRecord BS.ByteString)
+peekDataRecordBS ptr offset = do
+  let ptr' = ptr `plusPtr` (offset * dataRecordSize)
+  len <- (#peek logdevice_data_record_t, payload_len) ptr'
+  payload_ptr <- newForeignPtr finalizerFree =<<
+                 (#peek logdevice_data_record_t, payload) ptr'
+  -- the offset of bytestring is always zero
+  let payload = BS.PS payload_ptr 0 len
+  attr <- peekDataRecordAttr ptr'
+  return $ DataRecord payload attr
 
 data AppendCallBackData = AppendCallBackData
   { appendCbRetCode   :: !ErrorCode
