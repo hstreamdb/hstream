@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ParallelListComp    #-}
 {-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence
@@ -20,7 +21,6 @@ module HStream.Server.Persistence
   , initializeAncestors
   , withMaybeZHandle
   , ZooException
-  , getSuffix
   , isViewQuery
   , isStreamQuery
   , createInsertPersistentQuery
@@ -36,8 +36,7 @@ import           Data.Text                            (Text, unpack)
 import           Data.Text.Lazy                       (Text, toStrict)
 import           GHC.Generics                         (Generic)
 import           System.IO.Unsafe                     (unsafePerformIO)
-import           Z.Data.CBytes                        (CBytes (..), pack,
-                                                       unpack)
+import           Z.Data.CBytes                        (CBytes (..), pack)
 import           Z.Data.JSON                          (JSON, decode, encode)
 import           Z.Data.Text                          (Text, pack)
 import           Z.Data.Vector                        (Bytes)
@@ -58,34 +57,35 @@ type ViewName = CBytes
 type ViewSchema = [String]
 type RelatedStreams = [StreamName]
 
-data Query = Query {
-    queryId        :: Id
+data Query = Query
+  { queryId        :: Id
   , queryInfo      :: Info
   , queryInfoExtra :: QueryType
   , queryStatus    :: Status
-} deriving (Generic, Show)
+  } deriving (Generic, Show)
 instance JSON Query
 
-data Connector = Connector {
-    connectorId     :: Id
+data Connector = Connector
+  { connectorId     :: Id
   , connectorInfo   :: Info
   , connectorStatus :: Status
-} deriving (Generic, Show)
+  } deriving (Generic, Show)
 instance JSON Connector
 
-data Info = Info {
-    sqlStatement :: SqlStatement
+data Info = Info
+  { sqlStatement :: SqlStatement
   , createdTime  :: TimeStamp
-} deriving (Generic, Show)
+  } deriving (Generic, Show)
 instance JSON Info
 
-data Status = Status {
-    status         :: PStatus
+data Status = Status
+  { status         :: PStatus
   , timeCheckpoint :: TimeStamp
 } deriving (Generic, Show)
 instance JSON Status
 
-data PStatus = Created
+data PStatus
+  = Created
   | Running
   | Terminated
   deriving (Show, Eq, Generic, Enum)
@@ -140,11 +140,7 @@ withMaybeZHandle Nothing   f = f (queryCollection, connectorsCollection)
 createInsertPersistentQuery :: Data.Text.Text -> Data.Text.Lazy.Text -> QueryType -> Maybe ZHandle -> IO (CBytes, Int64)
 createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
-  let qid = case extraInfo of
-        PlainQuery  _            -> ""
-        StreamQuery _ streamName -> "stream_" <> streamName <> "-"
-        ViewQuery   _ viewName _ -> "view_" <> viewName <> "-"
-        <> Z.Data.CBytes.pack (Data.Text.unpack taskName)
+  let qid   = Z.Data.CBytes.pack (Data.Text.unpack taskName)
       qinfo = Info (Z.Data.Text.pack $ Data.Text.unpack $ Data.Text.Lazy.toStrict queryText) timestamp
   withMaybeZHandle zkHandle $ insertQuery qid qinfo extraInfo
   return (qid, timestamp)
@@ -307,14 +303,17 @@ mkConnectorPath x = connectorsPath <> "/" <> x
 ifThrow :: Exception e => e -> IO a -> IO a
 ifThrow e = handle (\(_ :: ZooException) -> throwIO e)
 
-getSuffix :: CBytes -> String
-getSuffix = reverse . drop 1 . dropWhile (/= '-') . reverse . Z.Data.CBytes.unpack
+isViewQuery :: Query -> Bool
+isViewQuery Query{..} =
+  case queryInfoExtra of
+    ViewQuery{} -> True
+    _           -> False
 
-isViewQuery :: CBytes -> Bool
-isViewQuery = (== "view") . take 4 . Z.Data.CBytes.unpack
-
-isStreamQuery :: CBytes -> Bool
-isStreamQuery = (== "stream") . take 6 . Z.Data.CBytes.unpack
+isStreamQuery :: Query -> Bool
+isStreamQuery Query{..} =
+  case queryInfoExtra of
+    StreamQuery{} -> True
+    _             -> False
 
 getRelatedStreams :: QueryType -> RelatedStreams
 getRelatedStreams (PlainQuery ss)    = ss
