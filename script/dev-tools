@@ -307,28 +307,40 @@ def update_images(images=None):
         run_sh(cmd)
 
 
-def get_info(container_bin):
-    if not is_service_started(container_bin, 'store'):
-        logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
-    else:
-        host = get_ldadmin_server_host(container_bin)
-        port = get_ldadmin_server_port(container_bin)
-        if host and port:
-            loginfo(f"dev-cluster host: {host}, port: {port}")
+def get_info(container_bin, service=None, port_only=False):
+    if not service or service == "store":
+        if not is_service_started(container_bin, 'store'):
+            logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
         else:
-            logerr("get dev-cluster address info failed.")
+            host = get_ldadmin_server_host(container_bin)
+            port = get_ldadmin_server_port(container_bin)
+            if host and port:
+                if port_only:
+                    print(port)
+                else:
+                    loginfo(f"dev-cluster admin host: {host}, port: {port}")
+            else:
+                logerr("get dev-cluster address info failed.")
 
     envs = read_env()
 
-    if not is_service_started(container_bin, 'mysql'):
-        logerr("Please start the mysql service first. Run: dev-tools mysql-start")
-    else:
-        loginfo(f"mysql port: {envs.get('mysql')}")
+    if not service or service == "mysql":
+        if not is_service_started(container_bin, 'mysql'):
+            logerr("Please start the mysql service first. Run: dev-tools mysql-start")
+        else:
+            loginfo(f"mysql port: {envs.get(MYSQL_PORT_ENV)}")
 
-    if not is_service_started(container_bin, 'clickhouse'):
-        logerr("Please start the clickhouse service first. Run: dev-tools clickhouse-start")
-    else:
-        loginfo(f"clickhouse port: {envs.get('clickhouse')}")
+    if not service or service == "clickhouse":
+        if not is_service_started(container_bin, 'clickhouse'):
+            logerr("Please start the clickhouse service first. Run: dev-tools clickhouse-start")
+        else:
+            loginfo(f"clickhouse port: {envs.get(CLICKHOUSE_PORT_ENV)}")
+
+    if not service or service == "zookeeper":
+        if not is_service_started(container_bin, 'zookeeper'):
+            logerr("Please start the zookeeper service first. Run: dev-tools zookeeper-start")
+        else:
+            loginfo(f"zookeeper port: {envs.get(ZOOKEEPER_PORT_ENV)}")
 
 
 def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
@@ -477,6 +489,8 @@ if __name__ == '__main__':
     parser_get_info = subparsers.add_parser(
         'get-info', help='Get info about services.')
     parser_get_info.add_argument('--container-bin', default='docker')
+    parser_get_info.add_argument('--service', default=None)
+    parser_get_info.add_argument('--port-only', default=False, action='store_true')
 
     # cluster-start
     parser_cluster_start = subparsers.add_parser(
