@@ -36,9 +36,7 @@ app ServerConfig{..} = do
                             , clientAuthority = Nothing
                             }
   withGRPCClient clientConfig $
-    \hClient -> do
-      ldClient <- liftIO (HS.newLDClient _logdeviceConfigPath)
-      run _serverPort $ serve api $ apiServer ldClient hClient
+    \hClient -> run _serverPort $ serve api $ apiServer hClient
 
 main :: IO ()
 main = do

@@ -1,35 +1,39 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ParallelListComp  #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeOperators     #-}
 
 module HStream.HTTP.Server.Stream (
   StreamsAPI, streamServer, listStreamsHandler
 ) where
 
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.Aeson               (FromJSON, ToJSON)
-import qualified Data.Map.Strict          as Map
-import           Data.Swagger             (ToSchema)
-import           Data.Text                (Text)
-import qualified Data.Text                as T
-import           GHC.Generics             (Generic)
-import           GHC.Int                  (Int64)
-import           Servant                  (Capture, Delete, Get, JSON, Post,
-                                           ReqBody, type (:>), (:<|>) (..))
-import           Servant.Server           (Handler, Server)
-import qualified Z.Data.CBytes            as ZDC
+import           Control.Monad.IO.Class           (liftIO)
+import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.List                        (find)
+import qualified Data.Map.Strict                  as Map
+import           Data.Swagger                     (ToSchema)
+import qualified Data.Text                        as T
+import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
+import           Data.Word                        (Word32)
+import           GHC.Generics                     (Generic)
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
+import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.LowLevel.Client     (Client)
+import           Servant                          (Capture, Delete, Get, JSON,
+                                                   Post, ReqBody, type (:>),
+                                                   (:<|>) (..))
+import           Servant.Server                   (Handler, Server)
 
-import           HStream.Connector.HStore as HCH
-import qualified HStream.Store            as HS
-import           HStream.Utils.Converter  (cBytesToText)
+import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
 data StreamBO = StreamBO
-  { name              :: Text
-  , replicationFactor :: Int
-  , beginTimestamp    :: Maybe Int64
+  { name              :: T.Text
+  , replicationFactor :: Word32
   } deriving (Eq, Show, Generic)
 
 instance ToJSON StreamBO
@@ -40,44 +44,58 @@ type StreamsAPI =
   "streams" :> Get '[JSON] [StreamBO]
   :<|> "streams" :> ReqBody '[JSON] StreamBO :> Post '[JSON] StreamBO
   :<|> "streams" :> Capture "name" String :> Delete '[JSON] Bool
-  :<|> "streams" :> Capture "name" String :> Get '[JSON] (Maybe StreamBO)
+  :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
 
-queryStreamHandler :: HS.LDClient -> String -> Handler (Maybe StreamBO)
-queryStreamHandler ldClient s = liftIO $ do
-  exists <- HS.doesStreamExists ldClient (HS.mkStreamId HS.StreamTypeStream $ ZDC.pack s)
-  if exists
-    then do
-      let streamName = HS.mkStreamId HS.StreamTypeStream $ ZDC.pack s
-      rep <- HS.getStreamReplicaFactor ldClient streamName
-      ts  <- HS.getStreamHeadTimestamp ldClient streamName
-      return $ Just $ StreamBO (T.pack s) rep ts
-    else return Nothing
+streamToStreamBO :: Stream -> StreamBO
+streamToStreamBO (Stream name rep) = StreamBO (TL.toStrict name) rep
 
-removeStreamHandler :: HS.LDClient -> String -> Handler Bool
-removeStreamHandler ldClient s = do
-  liftIO $ HS.removeStream ldClient (HS.mkStreamId HS.StreamTypeStream $ ZDC.pack s)
-  return True
+createStreamHandler :: Client -> StreamBO -> Handler StreamBO
+createStreamHandler hClient (StreamBO sName replicationFactor) = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let createStreamRequest = Stream { streamStreamName = TL.pack $ T.unpack sName
+                                   , streamReplicationFactor = replicationFactor
+                                   }
+  resp <- hstreamApiCreateStream (ClientNormalRequest createStreamRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    -- TODO: should return streambo; but we need to update hstream api first
+    ClientNormalResponse _ _meta1 _meta2 _status _details -> return $ StreamBO sName replicationFactor
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return $ StreamBO sName replicationFactor
 
-createStreamHandler :: HS.LDClient -> StreamBO -> Handler StreamBO
-createStreamHandler ldClient stream = do
-  liftIO $ HS.createStream ldClient (HCH.transToStreamName $ name stream)
-          (HS.LogAttrs $ HS.HsLogAttrs (replicationFactor stream) Map.empty)
-  return stream
+listStreamsHandler :: Client -> Handler [StreamBO]
+listStreamsHandler hClient = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  resp <- hstreamApiListStreams (ClientNormalRequest Empty 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse x@ListStreamsResponse{} _meta1 _meta2 _status _details -> do
+      case x of
+        ListStreamsResponse {listStreamsResponseStreams = streams} -> do
+          return $ V.toList $ V.map streamToStreamBO streams
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return []
 
-listStreamsHandler :: HS.LDClient -> Handler [StreamBO]
-listStreamsHandler ldClient = liftIO $ do
-    streamNames <- HS.findStreams ldClient HS.StreamTypeStream True
-    let names = T.pack . HS.showStreamName <$> streamNames
-    replicationFactors <- sequence $ HS.getStreamReplicaFactor ldClient <$> streamNames
-    timestamps <- sequence $ HS.getStreamHeadTimestamp ldClient <$> streamNames
+deleteStreamHandler :: Client -> String -> Handler Bool
+deleteStreamHandler hClient sName = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  let deleteStreamRequest = DeleteStreamRequest { deleteStreamRequestStreamName = TL.pack sName }
+  resp <- hstreamApiDeleteStream (ClientNormalRequest deleteStreamRequest 100 (MetadataMap $ Map.empty))
+  case resp of
+    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
+    ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return True
+    ClientErrorResponse clientError -> do
+      putStrLn $ "Client Error: " <> show clientError
+      return False
+    _ -> return False
 
-    return [StreamBO n rep ts | n <- names
-                              | rep  <- replicationFactors
-                              | ts   <- timestamps
-           ]
+getStreamHandler :: Client -> T.Text -> Handler (Maybe StreamBO)
+getStreamHandler hClient sName = do
+  streams <- listStreamsHandler hClient
+  return $ find (\StreamBO{..} -> sName == name) streams
 
-streamServer :: HS.LDClient -> Server StreamsAPI
-streamServer ldClient = listStreamsHandler ldClient
-                   :<|> createStreamHandler ldClient
-                   :<|> removeStreamHandler ldClient
-                   :<|> queryStreamHandler ldClient
+streamServer :: Client -> Server StreamsAPI
+streamServer hClient = listStreamsHandler hClient
+                   :<|> createStreamHandler hClient
+                   :<|> deleteStreamHandler hClient
+                   :<|> getStreamHandler hClient
