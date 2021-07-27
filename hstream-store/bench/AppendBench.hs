@@ -7,6 +7,7 @@ import qualified Criterion.Main         as C
 import qualified Criterion.Main.Options as C
 import qualified Data.ByteString        as B
 import qualified Data.ByteString.Lazy   as LB
+import qualified Data.ByteUnits         as BU
 import qualified Options.Applicative    as O
 import           Z.Data.CBytes          (CBytes)
 import           Z.Data.Vector          (Bytes)
@@ -45,42 +46,12 @@ appendBenchParser = AppendBenchOpts
 runAppendBench :: C.Mode -> S.LDClient -> S.C_LogID -> IO ()
 runAppendBench mode client logid = do
   C.runMode mode
-    [ C.bgroup "5 bytes message" $
-      let !bytes = "hello" :: Bytes
-          !bs    = "Hello" :: B.ByteString
-          !lbs   = "Hello" :: LB.ByteString
-      in
-        [ C.bench "vanilla Bytes" $ C.nfIO (vanillaBytes bytes)
-        , C.bench "vanilla ByteString" $ C.nfIO (vanillaByteString bs)
-        , C.bench "ByteString to Bytes" $ C.nfIO (byteStringToBytes bs)
-        , C.bench "Bytes to ByteString" $ C.nfIO (bytesToByteString bytes)
-        , C.bench "LazyByteString to Bytes" $ C.nfIO (lazyByteStringToBytes lbs)
-        , C.bench "LazyByteString to ByteString" $ C.nfIO (lazyByteStringToByteString lbs)
-        ]
-    , C.bgroup "1 kb message" $
-      let !bytes = V.replicate 1024 97
-          !bs    = B.replicate 1024 97
-          !lbs   = LB.replicate 1024 97
-      in
-        [ C.bench "vanilla Bytes" $ C.nfIO (vanillaBytes bytes)
-        , C.bench "vanilla ByteString" $ C.nfIO (vanillaByteString bs)
-        , C.bench "ByteString to Bytes" $ C.nfIO (byteStringToBytes bs)
-        , C.bench "Bytes to ByteString" $ C.nfIO (bytesToByteString bytes)
-        , C.bench "LazyByteString to Bytes" $ C.nfIO (lazyByteStringToBytes lbs)
-        , C.bench "LazyByteString to ByteString" $ C.nfIO (lazyByteStringToByteString lbs)
-        ]
-    , C.bgroup "1 mb message" $
-      let !bytes = V.replicate (1024 * 1024) 97
-          !bs    = B.replicate (1024 * 1024) 97
-          !lbs   = LB.replicate (1024 * 1024) 97
-      in
-        [ C.bench "vanilla Bytes" $ C.nfIO (vanillaBytes bytes)
-        , C.bench "vanilla ByteString" $ C.nfIO (vanillaByteString bs)
-        , C.bench "ByteString to Bytes" $ C.nfIO (byteStringToBytes bs)
-        , C.bench "Bytes to ByteString" $ C.nfIO (bytesToByteString bytes)
-        , C.bench "LazyByteString to Bytes" $ C.nfIO (lazyByteStringToBytes lbs)
-        , C.bench "LazyByteString to ByteString" $ C.nfIO (lazyByteStringToByteString lbs)
-        ]
+    [ let size = 20
+      in C.bgroup (message size) $ benches size
+    , let size = 1024
+      in C.bgroup (message size) $ benches size
+    , let size = 1024 * 1024
+      in C.bgroup (message size) $ benches size
     ]
     where
       vanillaBytes :: Bytes -> IO ()
@@ -100,3 +71,23 @@ runAppendBench mode client logid = do
 
       lazyByteStringToByteString :: LB.ByteString -> IO ()
       lazyByteStringToByteString = vanillaByteString . LB.toStrict
+
+      message :: Int -> String
+      message size = "append single " <> prettySize size <> " message"
+
+      prettySize :: Int -> String
+      prettySize size = BU.getShortHand (BU.getAppropriateUnits (BU.ByteValue (fromIntegral size) BU.Bytes))
+
+      benches :: Int -> [C.Benchmark]
+      benches size =
+        let !bytes = V.replicate size 97
+            !bs    = B.replicate size 97
+            !lbs   = LB.replicate (fromIntegral size) 97
+        in
+          [ C.bench "vanilla Bytes" $ C.nfIO (vanillaBytes bytes)
+          , C.bench "vanilla ByteString" $ C.nfIO (vanillaByteString bs)
+          , C.bench "ByteString to Bytes" $ C.nfIO (byteStringToBytes bs)
+          , C.bench "Bytes to ByteString" $ C.nfIO (bytesToByteString bytes)
+          , C.bench "LazyByteString to Bytes" $ C.nfIO (lazyByteStringToBytes lbs)
+          , C.bench "LazyByteString to ByteString" $ C.nfIO (lazyByteStringToByteString lbs)
+          ]
