@@ -38,6 +38,8 @@ spec:
             - "zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181"
             - "--store-config"
             - "/etc/logdevice/config.json"
+            - "--hadmin-host"
+            - "logdevice-admin-server-service"
             - "--replicate-factor"
             - "3"
           ports:
