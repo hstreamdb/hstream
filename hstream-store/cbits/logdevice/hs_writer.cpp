@@ -174,7 +174,7 @@ facebook::logdevice::Status FuncName(                                          \
 #if __GLASGOW_HASKELL__ < 810
 APPEND_BATCH(logdevice_append_batch, StgMutArrPtrs*, payloads_,
              ((char*)payloads[i]->payload),
-             (StgArrBytes** payloads = (StgArrBytes**)payloads_->payload;))
+             StgArrBytes** payloads = (StgArrBytes**)payloads_->payload;)
 #else
 APPEND_BATCH(logdevice_append_batch, StgArrBytes**, payloads,
              ((char*)payloads[i]->payload), ;)
