@@ -183,6 +183,39 @@ facebook::logdevice::Status logdevice_append_batch(
   return facebook::logdevice::err;
 }
 
+facebook::logdevice::Status logdevice_append_batch_safe(
+    logdevice_client_t* client, c_logid_t logid,
+    // Payloads
+    char** payloads, int* payload_lens, HsInt total_len,
+    c_compression_t compression, HsInt zstd_level,
+    // attr
+    KeyType keytype, const char* keyval,
+    HsStablePtr mvar, HsInt cap, logdevice_append_cb_data_t* cb_data) {
+
+  auto cb = [cb_data, mvar, cap](facebook::logdevice::Status st,
+                                 const DataRecord& r) {
+    if (cb_data) {
+      cb_data->st = static_cast<c_error_code_t>(st);
+      cb_data->logid = r.logid.val_;
+      cb_data->lsn = r.attrs.lsn;
+      cb_data->timestamp = r.attrs.timestamp.count();
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+
+  AppendAttributes attrs;
+  if (keytype != KeyType::UNDEFINED) {
+    attrs.optional_keys[keytype] = keyval;
+  }
+
+  int rv = client->rep->appendBatched(logid_t(logid), payloads, payload_lens,
+                                      total_len, cb, Compression(compression),
+                                      zstd_level, std::move(attrs));
+  if (rv == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
 // ----------------------------------------------------------------------------
 
 [[deprecated]] facebook::logdevice::Status

@@ -20,6 +20,7 @@ import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.Vector                  (Bytes)
 import qualified Z.Data.Vector                  as V
+import           Z.Foreign                      (CInt)
 import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
@@ -97,6 +98,26 @@ appendBatch client logid payloads compression m_key_attr = withForeignPtr client
     return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
 {-# INLINABLE appendBatch #-}
 
+appendBatchBS
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> [BS.ByteString]
+  -> Compression
+  -> Maybe (KeyType, CBytes)
+  -> IO AppendCompletion
+appendBatchBS client logid payloads compression m_key_attr = withForeignPtr client $ \client' -> do
+  let (fps, lens) = unzip ((\(BS.PS payload _ofs len) -> (payload, fromIntegral len)) <$> payloads)
+  Z.withPrimArraySafe (Z.primArrayFromList lens) $ \lens' num -> do
+    withForeignPtrList fps $ \fps' _num -> do
+      let (comp, lvl) = fromCompression compression
+      let (keyType, keyVal) = fromMaybe (KeyTypeUndefined, "") m_key_attr
+      AppendCallBackData{..} <- CBytes.withCBytes keyVal $ \keyVal' -> do
+        withAsync appendCallBackDataSize peekAppendCallBackData
+          (c_logdevice_append_batch_safe client' logid fps' lens' num comp lvl keyType keyVal')
+      void $ E.throwStreamErrorIfNotOK' appendCbRetCode
+      return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
+
 appendSync
   :: HasCallStack
   => LDClient
@@ -161,6 +182,16 @@ foreign import ccall unsafe "hs_logdevice.h logdevice_append_batch"
     :: Ptr LogDeviceClient
     -> C_LogID
     -> Z.BAArray# Word8 -> Z.BA# Int -> Int
+    -> Int -> Int
+    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
+    -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
+    -> IO ErrorCode
+
+foreign import ccall safe "hs_logdevice.h logdevice_append_batch_safe"
+  c_logdevice_append_batch_safe
+    :: Ptr LogDeviceClient
+    -> C_LogID
+    -> Ptr (Ptr Word8) -> Ptr CInt -> Int
     -> Int -> Int
     -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
     -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
