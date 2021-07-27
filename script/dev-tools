@@ -446,16 +446,24 @@ if __name__ == '__main__':
     parser_update_images = subparsers.add_parser(
         'update-images', help='Update all required docker images')
 
-    # start all services
+    # start services
     parser_start_services = subparsers.add_parser(
         'start-services', help="Start all services with default argument")
     parser_start_services.add_argument('--container-bin', default='docker')
+    parser_start_services.add_argument(
+        '--services', default=None, choices=SERVICES.keys(), nargs='*',
+        help="Start services, none means all valid services"
+    )
 
     # stop all services
     parser_stop_services = subparsers.add_parser(
         'stop-services', help="Stop all services"
     )
     parser_stop_services.add_argument('--container-bin', default='docker')
+    parser_stop_services.add_argument(
+        '--services', default=None, choices=SERVICES.keys(), nargs='*',
+        help="Stop services, none means all valid services"
+    )
 
     # shell
     parser_haskell = subparsers.add_parser(
@@ -508,21 +516,11 @@ if __name__ == '__main__':
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_cluster_start.add_argument('--container-bin', default='docker')
 
-    # cluster-stop
-    parser_cluster_stop = subparsers.add_parser(
-        'cluster-stop', help='Stop logdevice dev cluster')
-    parser_cluster_stop.add_argument('--container-bin', default='docker')
-
     # mysql-start
     parser_mysql_start = subparsers.add_parser(
         'mysql-start', help='Start mysql service for testing')
     parser_mysql_start.add_argument('--container-bin', default='docker')
     parser_mysql_start.add_argument('--port', default=3306)
-
-    # mysql-stop
-    parser_mysql_stop = subparsers.add_parser(
-        'mysql-stop', help='Stop mysql service')
-    parser_mysql_stop.add_argument('--container-bin', default='docker')
 
     # clickhouse-start
     parser_clickhouse_start = subparsers.add_parser(
@@ -530,21 +528,11 @@ if __name__ == '__main__':
     parser_clickhouse_start.add_argument('--container-bin', default='docker')
     parser_clickhouse_start.add_argument('--port', default=9000)
 
-    # clickhouse-stop
-    parser_clickhouse_stop = subparsers.add_parser(
-        'clickhouse-stop', help='Stop clickhouse service')
-    parser_clickhouse_stop.add_argument('--container-bin', default='docker')
-
     # zookeeper-start
     parser_zookeeper_start = subparsers.add_parser(
         'zookeeper-start', help='Start zookeeper service for testing')
     parser_zookeeper_start.add_argument('--container-bin', default='docker')
     parser_zookeeper_start.add_argument('--port', default=2181)
-
-    # clickhouse-stop
-    parser_zookeeper_stop = subparsers.add_parser(
-        'zookeeper-stop', help='Stop zookeeper service')
-    parser_zookeeper_stop.add_argument('--container-bin', default='docker')
 
     # swagger-start
     parser_swagger_start = subparsers.add_parser(
@@ -569,6 +557,7 @@ if __name__ == '__main__':
 
     if sub_command == 'update-images':
         update_images()
+    # ---
     elif sub_command == 'start-services':
         service_start(**args)
     elif sub_command == 'stop-services':
@@ -592,20 +581,12 @@ if __name__ == '__main__':
     # ---
     elif sub_command == 'cluster-start':
         service_start(services=["store"], **args)
-    elif sub_command == 'cluster-stop':
-        service_stop(services=["store"], **args)
     elif sub_command == 'mysql-start':
         service_start(services=["mysql"], **args)
-    elif sub_command == 'mysql-stop':
-        service_stop(services=["mysql"], **args)
     elif sub_command == 'clickhouse-start':
         service_start(services=["clickhouse"], **args)
-    elif sub_command == 'clickhouse-stop':
-        service_stop(services=["clickhouse"], **args)
     elif sub_command == 'zookeeper-start':
         service_start(services=["zookeeper"], **args)
-    elif sub_command == 'zookeeper-stop':
-        service_stop(services=["zookeeper"], **args)
     # ---
     elif sub_command == 'swagger-start':
         swagger_ui_start(**args)
