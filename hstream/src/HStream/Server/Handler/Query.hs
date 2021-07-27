@@ -36,8 +36,8 @@ import           HStream.Utils                    (cBytesToLazyText,
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
 
-hstreamQueryToQuery :: P.Query -> Query
-hstreamQueryToQuery (P.Query queryId (P.Info sqlStatement createdTime) _ (P.Status status _)) =
+hstreamQueryToQuery :: P.PersistentQuery -> Query
+hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
   Query
   { queryId = cBytesToLazyText queryId
   , queryStatus = fromIntegral $ fromEnum status
@@ -92,7 +92,7 @@ getQueryHandler
 getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest{..}) = do
   query <- do
     queries <- P.withMaybeZHandle zkHandle P.getQueries
-    return $ find (\P.Query{..} -> cBytesToLazyText queryId == getQueryRequestId) queries
+    return $ find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == getQueryRequestId) queries
   case query of
     Just q -> returnResp $ hstreamQueryToQuery q
     _      -> returnErrResp StatusInternal "Query does not exist"
@@ -113,7 +113,7 @@ restartQueryHandler
   -> IO (ServerResponse 'Normal Empty)
 restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
     queries <- P.withMaybeZHandle zkHandle P.getQueries
-    case find (\P.Query{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
+    case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
       Just query -> do
         P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
         returnResp Empty
@@ -125,7 +125,7 @@ cancelQueryHandler
   -> IO (ServerResponse 'Normal Empty)
 cancelQueryHandler ServerContext{..} (ServerNormalRequest _metadata CancelQueryRequest{..}) = do
   queries <- P.withMaybeZHandle zkHandle P.getQueries
-  case find (\P.Query{..} -> cBytesToLazyText queryId == cancelQueryRequestId) queries of
+  case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == cancelQueryRequestId) queries of
     Just query -> do
       P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Terminated
       returnResp Empty

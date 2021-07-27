@@ -95,12 +95,12 @@ cancelConnectorHandler sc
 
 --------------------------------------------------------------------------------
 
-hstreamConnectorToConnector :: P.Connector -> Connector
-hstreamConnectorToConnector P.Connector {..} =
-  Connector (cBytesToLazyText $ connectorId)
-    (fromIntegral . fromEnum . P.status $ connectorStatus)
-    (P.createdTime connectorInfo)
-    (TL.pack . ZT.unpack . P.sqlStatement $ connectorInfo)
+hstreamConnectorToConnector :: P.PersistentConnector -> Connector
+hstreamConnectorToConnector P.PersistentConnector{..} =
+  Connector (cBytesToLazyText connectorId)
+    (fromIntegral . fromEnum  $ connectorStatus)
+    connectorCreatedTime
+    (TL.pack . ZT.unpack $ connectorBindedSql)
 
 createConnector :: ServerContext -> T.Text -> IO Connector
 createConnector sc@ServerContext{..} sql = do
@@ -118,7 +118,7 @@ createConnector sc@ServerContext{..} sql = do
 
 restartConnector :: ServerContext -> CB.CBytes -> IO ()
 restartConnector sc@ServerContext{..} cid = do
-  P.Connector _ (P.Info sql _) _
+  P.PersistentConnector _ sql _ _ _
     <- P.withMaybeZHandle zkHandle $ P.getConnector cid
   (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
     <- CodeGen.streamCodegen (T.pack . ZT.unpack $ sql)
