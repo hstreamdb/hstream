@@ -20,6 +20,7 @@ import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.Vector                  (Bytes)
 import qualified Z.Data.Vector                  as V
+import           Z.Foreign                      (CInt)
 import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
@@ -106,7 +107,7 @@ appendBatchBS
   -> Maybe (KeyType, CBytes)
   -> IO AppendCompletion
 appendBatchBS client logid payloads compression m_key_attr = withForeignPtr client $ \client' -> do
-  let (fps, lens) = unzip ((\(BS.PS payload _ofs len) -> (payload, len)) <$> payloads)
+  let (fps, lens) = unzip ((\(BS.PS payload _ofs len) -> (payload, fromIntegral len)) <$> payloads)
   Z.withPrimArraySafe (Z.primArrayFromList lens) $ \lens' num -> do
     withForeignPtrList fps $ \fps' _num -> do
       let (comp, lvl) = fromCompression compression
@@ -190,7 +191,7 @@ foreign import ccall safe "hs_logdevice.h logdevice_append_batch_safe"
   c_logdevice_append_batch_safe
     :: Ptr LogDeviceClient
     -> C_LogID
-    -> Ptr (Ptr Word8) -> Ptr Int -> Int
+    -> Ptr (Ptr Word8) -> Ptr CInt -> Int
     -> Int -> Int
     -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
     -> StablePtr PrimMVar -> Int -> Ptr AppendCallBackData
