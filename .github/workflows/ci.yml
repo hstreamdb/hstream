@@ -82,7 +82,7 @@ jobs:
       - name: start hstream server
         run: |
           python3 script/dev-tools cabal --check --no-interactive --detach \
-            -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} run -- -- hstream-server --port $(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
+            -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} run -- -- hstream-server --port $(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2) --logdevice-admin-port $(python3 script/dev-tools get-info --service store --port-only)
           sleep 5
 
       - name: test

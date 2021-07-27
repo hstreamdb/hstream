@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 module HStream.HTTP.Server.Query (
-  QueriesAPI, queryServer
+  QueriesAPI, queryServer, listQueriesHandler
 ) where
 
 import           Control.Monad.IO.Class           (liftIO)

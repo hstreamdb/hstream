@@ -35,12 +35,8 @@ library
     , bytestring
     , clickhouse-haskell
     , containers
-    , hstore-admin
-    , hstream
     , hstream-common
     , hstream-connector
-    , hstream-processing
-    , hstream-sql
     , hstream-store
     , lens
     , lens-aeson
@@ -58,7 +54,6 @@ library
     , warp
     , Z-Data
     , Z-IO
-    , zoovisitor
     , grpc-haskell
     , grpc-haskell-core
 
@@ -80,7 +75,6 @@ executable hstream-http-server
     , servant
     , servant-server
     , warp
-    , zoovisitor
     , grpc-haskell
     , grpc-haskell-core
 
