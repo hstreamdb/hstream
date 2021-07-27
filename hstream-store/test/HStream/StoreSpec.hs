@@ -9,8 +9,8 @@ import qualified Z.Data.Builder          as B
 import qualified Z.Data.CBytes           as CBytes
 import           Z.Data.Vector           (packASCII)
 
+import qualified HStream.Logger          as Log
 import qualified HStream.Store           as S
-import qualified HStream.Store.Logger    as S
 import           HStream.Store.SpecUtils
 
 spec :: Spec
@@ -25,7 +25,7 @@ spec = describe "HStoreSpec" $ do
     S.getMaxPayloadSize client `shouldReturn` 1024
     _ <- S.append client logid (packASCII $ replicate 1024 'a') Nothing
     S.append client logid (packASCII $ replicate 1025 'a') Nothing `shouldThrow` anyException
-    S.d "Reset default payload size"
+    Log.d "Reset default payload size"
     S.setClientSetting client "max-payload-size" $ CBytes.buildCBytes $ B.int @Int (1024 * 1024)
 
   it "get tail sequence number" $ do

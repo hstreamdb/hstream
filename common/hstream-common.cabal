@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Logger
     HStream.Server.HStreamApi
     HStream.ThirdParty.Protobuf
     HStream.Utils

@@ -122,12 +122,13 @@ test-suite hstream-store-test
 
   hs-source-dirs:     test
   build-depends:
-    , base           >=4.11 && <5
-    , bytestring     ^>=0.10
-    , containers     ^>=0.6
+    , base            >=4.11 && <5
+    , bytestring      ^>=0.10
+    , containers      ^>=0.6
     , hspec
+    , hstream-common
     , hstream-store
-    , random         ^>=1.2
+    , random          ^>=1.2
     , Z-Data
     , Z-IO
 
@@ -154,14 +155,13 @@ test-suite hstream-store-test
 benchmark hstore-bench-append
   type:               exitcode-stdio-1.0
   main-is:            AppendBench.hs
-
   hs-source-dirs:     bench
   build-depends:
-    , base           >=4.11 && <5
+    , base                  >=4.11 && <5
+    , bytestring            ^>=0.10
+    , criterion             ^>=1.5
     , hstream-store
     , optparse-applicative  ^>=0.16
-    , criterion      ^>=1.5
-    , bytestring     ^>=0.10 
     , Z-Data
     , Z-IO
 
@@ -183,7 +183,7 @@ benchmark hstore-bench-append
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
     -threaded -rtsopts -with-rtsopts=-N
-                
+
 executable hstore-server
   main-is:          hstore.hs
   hs-source-dirs:   app

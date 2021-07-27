@@ -106,10 +106,10 @@ import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CBytes
 import qualified Z.IO.FileSystem                  as FS
 
+import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
 import qualified HStream.Store.Internal.Types     as FFI
-import qualified HStream.Store.Logger             as Log
 import           HStream.Utils                    (genUnique)
 
 -------------------------------------------------------------------------------

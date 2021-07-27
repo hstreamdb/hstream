@@ -21,12 +21,12 @@ import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
 import           HStream.Store
 import qualified HStream.Store.Admin.API          as AA
-import qualified HStream.Store.Logger             as Log
 import           HStream.Utils                    (setupSigsegvHandler)
 
 -- TODO

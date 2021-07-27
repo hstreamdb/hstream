@@ -25,9 +25,9 @@ import qualified Z.Data.CBytes                as CBytes
 import           Z.Foreign                    (BA#, MBA#)
 import qualified Z.Foreign                    as Z
 
+import qualified HStream.Logger               as Log
 import qualified HStream.Store.Exception      as E
 import           HStream.Store.Internal.Types
-import qualified HStream.Store.Logger         as Log
 
 cbool2bool :: CBool -> Bool
 cbool2bool = (/= 0)
