@@ -392,9 +392,9 @@ consumerHeartbeatHandler
 consumerHeartbeatHandler ServerContext{..} (ServerNormalRequest _metadata ConsumerHeartbeatRequest{..}) = do
   timestamp <- getCurrentTimestamp
   atomically $ do
-    hm <- readTVar subscribedReaders
-    case HM.lookup consumerHeartbeatRequestSubscriptionId hm of
-      Nothing -> returnErrResp StatusInternal "SubscriptionId doesn't exist."
+    hm <- readTVar subscribeHeap
+    case Map.lookup consumerHeartbeatRequestSubscriptionId hm of
+      Nothing -> returnErrResp StatusInternal "Cann't send hearbeat to an unsubscribed stream."
       Just _  -> do
         modifyTVar' subscribeHeap $ \hp ->
           Map.insert consumerHeartbeatRequestSubscriptionId timestamp hp
