@@ -179,11 +179,11 @@ newtype CheckpointStore = CheckpointStore
   deriving (Show, Eq)
 
 data DataRecordAttr = DataRecordAttr
-  { recordAttrLogID_       :: {-# UNPACK #-} !C_LogID
-  , recordAttrLSN_         :: {-# UNPACK #-} !LSN
-  , recordAttrTimestamp_   :: {-# UNPACK #-} !C_Timestamp
-  , recordAttrBatchOffset_ :: {-# UNPACK #-} !Int
-  , recordAttrByteOffset_  :: !RecordByteOffset
+  { recordAttrLogID       :: {-# UNPACK #-} !C_LogID
+  , recordAttrLSN         :: {-# UNPACK #-} !LSN
+  , recordAttrTimestamp   :: {-# UNPACK #-} !C_Timestamp
+  , recordAttrBatchOffset :: {-# UNPACK #-} !Int
+  , recordAttrByteOffset  :: !RecordByteOffset
   -- ^ Contains information on the amount of data written to the log
   -- (to which this record belongs) up to this record.
   -- BYTE_OFFSET will be invalid if this attribute was not requested by client
@@ -192,19 +192,19 @@ data DataRecordAttr = DataRecordAttr
   } deriving (Show, Eq)
 
 recordLogID :: DataRecord a -> C_LogID
-recordLogID = recordAttrLogID_ . recordAttr
+recordLogID = recordAttrLogID . recordAttr
 
 recordLSN :: DataRecord a -> LSN
-recordLSN = recordAttrLSN_ . recordAttr
+recordLSN = recordAttrLSN . recordAttr
 
 recordTimestamp :: DataRecord a -> C_Timestamp
-recordTimestamp = recordAttrTimestamp_ . recordAttr
+recordTimestamp = recordAttrTimestamp . recordAttr
 
 recordBatchOffset :: DataRecord a -> Int
-recordBatchOffset = recordAttrBatchOffset_ . recordAttr
+recordBatchOffset = recordAttrBatchOffset . recordAttr
 
 recordByteOffset :: DataRecord a -> RecordByteOffset
-recordByteOffset = recordAttrByteOffset_ . recordAttr
+recordByteOffset = recordAttrByteOffset . recordAttr
 
 data DataRecordInternal
 

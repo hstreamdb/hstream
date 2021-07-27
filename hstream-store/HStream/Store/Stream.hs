@@ -58,6 +58,7 @@ module HStream.Store.Stream
     -- * Reader
   , FFI.RecordByteOffset (..)
   , FFI.DataRecord (..)
+  , FFI.DataRecordAttr (..)
   , FFI.recordLogID
   , FFI.recordLSN
   , FFI.recordTimestamp
