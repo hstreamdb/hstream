@@ -8,7 +8,6 @@ module HStream.HTTP.Server.Overview (
 ) where
 
 import           Data.Aeson                    (FromJSON, ToJSON)
-import           Data.Maybe                    (fromMaybe)
 import           Data.Swagger                  (ToSchema)
 import           GHC.Generics                  (Generic)
 import           Network.GRPC.LowLevel.Client  (Client)
@@ -20,7 +19,6 @@ import           HStream.HTTP.Server.Node      (listStoreNodesHandler)
 import           HStream.HTTP.Server.Query     (listQueriesHandler)
 import           HStream.HTTP.Server.Stream    (listStreamsHandler)
 import           HStream.HTTP.Server.View      (listViewsHandler)
-import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
 data OverviewBO = OverviewBO
@@ -41,7 +39,7 @@ type OverviewAPI =
 getOverviewHandler :: Client -> Handler OverviewBO
 getOverviewHandler hClient = do
   overview <- do
-    streamCnt <- length <$> listStreamsHandler
+    streamCnt <- length <$> listStreamsHandler hClient
     queryCnt <- length <$> listQueriesHandler hClient
     viewCnt <- length <$> listViewsHandler hClient
     connectorCnt <- length <$> listConnectorsHandler hClient

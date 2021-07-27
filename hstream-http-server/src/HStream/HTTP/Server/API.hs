@@ -21,11 +21,10 @@ import           HStream.HTTP.Server.Stream    (StreamsAPI, streamServer)
 import           HStream.HTTP.Server.View      (ViewsAPI, viewServer)
 
 data ServerConfig = ServerConfig
-  { _serverHost          :: ZDC.CBytes
-  , _serverPort          :: Int
-  , _logdeviceConfigPath :: ZDC.CBytes
-  , _hstreamHost         :: ByteString
-  , _hstreamPort         :: Int
+  { _serverHost  :: ZDC.CBytes
+  , _serverPort  :: Int
+  , _hstreamHost :: ByteString
+  , _hstreamPort :: Int
   } deriving (Show)
 
 type API =

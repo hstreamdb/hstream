@@ -36,8 +36,6 @@ library
     , clickhouse-haskell
     , containers
     , hstream-common
-    , hstream-connector
-    , hstream-store
     , lens
     , lens-aeson
     , mysql-haskell
@@ -70,7 +68,6 @@ executable hstream-http-server
     , hstream
     , hstream-common
     , hstream-http-server
-    , hstream-store
     , optparse-applicative
     , servant
     , servant-server
