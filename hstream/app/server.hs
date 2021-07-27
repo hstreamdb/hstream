@@ -94,26 +94,26 @@ parseConfig =
                    <> showDefault <> value CompressionLZ4
                    <> help "Specify the compression policy for gdevice"
                     )
-    <*> strOption   ( long "logdevice-admin-host" <> metavar "HOST"
-                   <> showDefault <> value "127.0.0.1" <> help "logdevice admin host value"
+    <*> strOption   ( long "hadmin-host" <> metavar "HOST"
+                   <> showDefault <> value "127.0.0.1" <> help "logdevice admin host"
                     )
-    <*> option auto ( long "logdevice-admin-port" <> metavar "INT"
-                   <> showDefault <> value 6440 <> help "logdevice admin port value"
+    <*> option auto ( long "hadmin-port" <> metavar "INT"
+                   <> showDefault <> value 6440 <> help "logdevice admin port"
                     )
-    <*> option auto ( long "header-protocol-id" <> metavar "ProtocolId"
-                   <> showDefault <> value AA.binaryProtocolId <> help "logdevice admin thrift header protocol"
+    <*> option auto ( long "hadmin-protocol-id" <> metavar "ProtocolId"
+                   <> showDefault <> value AA.binaryProtocolId <> help "logdevice admin thrift protocol id"
                     )
-    <*> option auto ( long "header-conn-timeout" <> metavar "INT"
+    <*> option auto ( long "hadmin-conn-timeout" <> metavar "INT"
                    <> showDefault <> value 5000
-                   <> help "the timer timeout in milliseconds"
+                   <> help "logdevice admin thrift connection timeout in milliseconds"
                     )
-    <*> option auto ( long "header-send-timeout" <> metavar "INT"
+    <*> option auto ( long "hadmin-send-timeout" <> metavar "INT"
                    <> showDefault <> value 5000
-                   <> help "the timer timeout in milliseconds"
+                   <> help "logdevice admin thrift sending timeout in milliseconds"
                     )
-    <*> option auto ( long "header-recv-timeout" <> metavar "INT"
+    <*> option auto ( long "hadmin-recv-timeout" <> metavar "INT"
                    <> showDefault <> value 5000
-                   <> help "the timer timeout in milliseconds"
+                   <> help "logdevice admin thrift receiving timeout in milliseconds"
                     )
 
 app :: ServerOpts -> IO ()

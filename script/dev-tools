@@ -45,6 +45,7 @@ SERVICES = {
 }
 
 HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
+STORE_ADMIN_PORT_ENV = "STORE_ADMIN_LOCAL_PORT"
 MYSQL_PORT_ENV = 'MYSQL_LOCAL_PORT'
 CLICKHOUSE_PORT_ENV = 'CLICKHOUSE_LOCAL_PORT'
 ZOOKEEPER_PORT_ENV = 'ZOOKEEPER_LOCAL_PORT'
@@ -256,9 +257,14 @@ def _service_store_(container_bin='docker',
         else:
             loginfo("Starting dev cluster...")
         retries = retries - 1
+
     loginfo("Cluster admin info: ")
     admin_addr(container_bin)
     run_hadmin(image=image, container_bin='docker', command='hadmin', cmd_args=["status"])
+
+    port = get_ldadmin_server_port(container_bin)
+    write_env(STORE_ADMIN_PORT_ENV, port)
+
     loginfo("Done")
 
 
