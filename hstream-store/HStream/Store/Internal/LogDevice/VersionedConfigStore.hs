@@ -16,10 +16,10 @@ import           Z.Data.Vector                  (Bytes)
 import           Z.Foreign                      (BA#)
 import qualified Z.Foreign                      as Z
 
+import qualified HStream.Logger                 as Log
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.Types
-import qualified HStream.Store.Logger           as Log
 
 -------------------------------------------------------------------------------
 
