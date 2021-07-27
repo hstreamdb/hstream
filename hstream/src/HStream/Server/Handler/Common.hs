@@ -30,7 +30,6 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    runOps)
 import           RIO                              (forever, readTVarIO)
 import qualified Z.Data.CBytes                    as CB
-import qualified Z.Data.Text                      as ZT
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 import           ZooKeeper.Types
@@ -48,7 +47,7 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (Subscription)
-import qualified HStream.Server.Persistence       as HSP
+import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (returnErrResp, returnResp,
@@ -97,7 +96,7 @@ runSinkConnector ServerContext{..} cid sName cConfig = do
     ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
     MySqlConnector      config -> mysqlSinkConnector      <$> MySQL.connect config
   tid <- forkIO $ do
-    HSP.withMaybeZHandle zkHandle $ HSP.setConnectorStatus cid HSP.Running
+    P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
     forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
   takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
   where
@@ -131,25 +130,25 @@ handleCreateSinkConnector
   -> T.Text -- ^ SqlStatement
   -> T.Text -- ^ Connector Name
   -> T.Text -- ^ Source Stream Name
-  -> ConnectorConfig -> IO HSP.Connector
+  -> ConnectorConfig -> IO P.PersistentConnector
 handleCreateSinkConnector sc@ServerContext{..} sql cName sName cConfig = do
   MkSystemTime timestamp _ <- getSystemTime'
   let cid = CB.pack $ T.unpack cName
-      cinfo = HSP.Info (ZT.pack $ T.unpack sql) timestamp
-  HSP.withMaybeZHandle zkHandle $ HSP.insertConnector cid cinfo
+  P.withMaybeZHandle zkHandle $ P.insertConnector cid sql timestamp
   runSinkConnector sc cid sName cConfig
-  HSP.withMaybeZHandle zkHandle $ HSP.getConnector cid
+  P.withMaybeZHandle zkHandle $ P.getConnector cid
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
                      -> TaskBuilder
                      -> TL.Text
-                     -> HSP.QueryType
+                     -> P.QueryType
                      -> Bool
                      -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText extra isTemp = do
-  (qid, timestamp) <- HSP.createInsertPersistentQuery (getTaskName taskBuilder) commandQueryStmtText extra zkHandle
-  tid <- forkIO $ HSP.withMaybeZHandle zkHandle (HSP.setQueryStatus qid HSP.Running)
+handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType isTemp = do
+  (qid, timestamp) <- P.createInsertPersistentQuery
+    (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType zkHandle
+  tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
         >> runTaskWrapper isTemp taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
@@ -163,7 +162,7 @@ handleTerminateConnector ServerContext{..} cid = do
     -- TODO: shall we throwIO here
     _        -> return ()
   -- TODO: shall we move this op to Just tid -> killThread tid
-  void $ HSP.withMaybeZHandle zkHandle (HSP.setConnectorStatus cid HSP.Terminated)
+  void $ P.withMaybeZHandle zkHandle (P.setConnectorStatus cid P.Terminated)
 
 --------------------------------------------------------------------------------
 -- Subscription

@@ -30,8 +30,8 @@ import           HStream.Utils                    (cBytesToLazyText,
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
 
-hstreamQueryToView :: P.Query -> View
-hstreamQueryToView (P.Query queryId (P.Info sqlStatement createdTime) (P.ViewQuery _ _ schema) (P.Status status _)) =
+hstreamQueryToView :: P.PersistentQuery -> View
+hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _) =
   View { viewViewId = cBytesToLazyText queryId
        , viewStatus = fromIntegral $ fromEnum status
        , viewCreatedTime = createdTime
@@ -79,7 +79,7 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
   query <- do
     viewQueries <- filter P.isViewQuery <$> P.withMaybeZHandle zkHandle P.getQueries
     return $
-      find (\P.Query{..} -> cBytesToLazyText queryId == getViewRequestViewId) viewQueries
+      find (\P.PersistentQuery {..} -> cBytesToLazyText queryId == getViewRequestViewId) viewQueries
   case query of
     Just q -> returnResp $ hstreamQueryToView q
     _      -> returnErrResp StatusInternal "View does not exist"
@@ -91,5 +91,5 @@ deleteViewHandler
 deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) =
   defaultExceptionHandle $ do
     P.withMaybeZHandle zkHandle $
-      P.removeQuery' (lazyTextToCBytes deleteViewRequestViewId) False
+      P.removeQuery' (lazyTextToCBytes deleteViewRequestViewId)
     returnResp Empty

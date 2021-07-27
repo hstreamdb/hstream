@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -8,11 +9,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence
-  ( Query(..)
-  , Connector(..)
-  , Info(..)
+  ( PersistentQuery(..)
+  , PersistentConnector(..)
   , Status(..)
-  , PStatus(..)
   , QueryType (..)
   , queriesPath
   , connectorsPath
@@ -24,7 +23,8 @@ module HStream.Server.Persistence
   , isViewQuery
   , isStreamQuery
   , createInsertPersistentQuery
-  , getRelatedStreams) where
+  , getRelatedStreams
+  , getQuerySink) where
 
 import           Control.Exception                    (Exception, handle, throw)
 import           Control.Monad                        (void)
@@ -32,13 +32,14 @@ import qualified Data.HashMap.Strict                  as HM
 import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
 import           Data.Int                             (Int64)
-import           Data.Text                            (Text, unpack)
-import           Data.Text.Lazy                       (Text, toStrict)
+import qualified Data.List                            as L
+import qualified Data.Text                            as T
 import           GHC.Generics                         (Generic)
 import           System.IO.Unsafe                     (unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes (..), pack)
 import           Z.Data.JSON                          (JSON, decode, encode)
-import           Z.Data.Text                          (Text, pack)
+import qualified Z.Data.Text                          as ZT
+
 import           Z.Data.Vector                        (Bytes)
 import           Z.IO.Exception                       (HasCallStack, catch)
 import           Z.IO.Time                            (SystemTime (..),
@@ -49,55 +50,42 @@ import           ZooKeeper.Types
 
 import           HStream.Server.Persistence.Exception
 
-type Id = CBytes
-type TimeStamp    = Int64
-type SqlStatement = Z.Data.Text.Text
-type StreamName = CBytes
-type ViewName = CBytes
-type ViewSchema = [String]
-type RelatedStreams = [StreamName]
+--------------------------------------------------------------------------------
+type ViewSchema     = [String]
+type RelatedStreams = [CBytes]
 
-data Query = Query
-  { queryId        :: Id
-  , queryInfo      :: Info
-  , queryInfoExtra :: QueryType
-  , queryStatus    :: Status
+data PersistentQuery = PersistentQuery
+  { queryId          :: CBytes
+  , queryBindedSql   :: ZT.Text
+  , queryCreatedTime :: Int64
+  , queryType        :: QueryType
+  , queryStatus      :: Status
+  , queryTimeCkp     :: Int64
   } deriving (Generic, Show)
-instance JSON Query
+instance JSON PersistentQuery
 
-data Connector = Connector
-  { connectorId     :: Id
-  , connectorInfo   :: Info
-  , connectorStatus :: Status
+data PersistentConnector = PersistentConnector
+  { connectorId          :: CBytes
+  , connectorBindedSql   :: ZT.Text
+  , connectorCreatedTime :: Int64
+  , connectorStatus      :: Status
+  , connectorTimeCkp     :: Int64
   } deriving (Generic, Show)
-instance JSON Connector
+instance JSON PersistentConnector
 
-data Info = Info
-  { sqlStatement :: SqlStatement
-  , createdTime  :: TimeStamp
-  } deriving (Generic, Show)
-instance JSON Info
-
-data Status = Status
-  { status         :: PStatus
-  , timeCheckpoint :: TimeStamp
-} deriving (Generic, Show)
-instance JSON Status
-
-data PStatus
+data Status
   = Created
   | Running
   | Terminated
-  deriving (Show, Eq, Generic, Enum)
-instance JSON PStatus
+  deriving (Show, Eq, Generic, Enum, JSON)
 
 data QueryType
   = PlainQuery  RelatedStreams
-  | StreamQuery RelatedStreams StreamName
-  | ViewQuery   RelatedStreams ViewName ViewSchema
-  deriving (Show, Eq, Generic)
-instance JSON QueryType
+  | StreamQuery RelatedStreams CBytes            -- ^ related streams and the stream it creates
+  | ViewQuery   RelatedStreams CBytes ViewSchema -- ^ related streams and the view it creates
+  deriving (Show, Eq, Generic, JSON)
 
+--------------------------------------------------------------------------------
 queriesPath :: CBytes
 queriesPath = "/hstreamdb/hstream/queries"
 
@@ -105,51 +93,50 @@ connectorsPath :: CBytes
 connectorsPath = "/hstreamdb/hstream/connectors"
 
 class Persistence handle where
-  insertQuery        :: HasCallStack => Id -> Info -> QueryType -> handle -> IO ()
-  insertConnector    :: HasCallStack => Id -> Info -> handle -> IO ()
+  insertQuery        :: HasCallStack => CBytes -> T.Text -> Int64 -> QueryType -> handle -> IO ()
+  insertConnector    :: HasCallStack => CBytes -> T.Text -> Int64 -> handle -> IO ()
 
-  setQueryStatus     :: HasCallStack => Id -> PStatus -> handle -> IO ()
-  setConnectorStatus :: HasCallStack => Id -> PStatus -> handle -> IO ()
+  setQueryStatus     :: HasCallStack => CBytes -> Status -> handle -> IO ()
+  setConnectorStatus :: HasCallStack => CBytes -> Status -> handle -> IO ()
 
   getQueryIds        :: HasCallStack => handle -> IO [CBytes]
-  getQueries         :: HasCallStack => handle -> IO [Query]
-  getQueryStatus     :: HasCallStack => Id -> handle -> IO PStatus
+  getQuery           :: HasCallStack => CBytes -> handle -> IO PersistentQuery
 
-  getConnector       :: HasCallStack => Id -> handle -> IO Connector
+  getQueries         :: HasCallStack => handle -> IO [PersistentQuery]
+  getQueries h = getQueryIds h >>= mapM (`getQuery` h)
+  getQueryStatus     :: HasCallStack => CBytes -> handle -> IO Status
+  getQueryStatus qid h = queryStatus <$> getQuery qid h
+
   getConnectorIds    :: HasCallStack => handle -> IO [CBytes]
+  getConnector       :: HasCallStack => CBytes -> handle -> IO PersistentConnector
 
-  getConnectors      :: HasCallStack => handle -> IO [Connector]
+  getConnectors      :: HasCallStack => handle -> IO [PersistentConnector]
   getConnectors h = getConnectorIds h >>= mapM (`getConnector` h)
-  getConnectorStatus :: HasCallStack => Id -> handle -> IO PStatus
-  getConnectorStatus cid h = status . connectorStatus <$> getConnector cid h
+  getConnectorStatus :: HasCallStack => CBytes -> handle -> IO Status
+  getConnectorStatus cid h = connectorStatus <$> getConnector cid h
 
-  removeQuery'       :: HasCallStack => Id -> Bool -> handle ->  IO ()
-  removeQuery        :: HasCallStack => Id -> handle -> IO ()
-  removeQuery cid = removeQuery' cid True
-  {-# INLINE removeQuery #-}
+  removeQuery'       :: HasCallStack => CBytes -> handle ->  IO ()
+  removeQuery        :: HasCallStack => CBytes -> handle -> IO ()
 
-  removeConnector'   :: HasCallStack => Id -> Bool -> handle ->  IO ()
-  removeConnector    :: HasCallStack => Id -> handle -> IO ()
-  removeConnector cid = removeConnector' cid True
-  {-# INLINE removeConnector #-}
+  removeConnector'   :: HasCallStack => CBytes -> handle ->  IO ()
+  removeConnector    :: HasCallStack => CBytes -> handle -> IO ()
 
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
 withMaybeZHandle Nothing   f = f (queryCollection, connectorsCollection)
 
-createInsertPersistentQuery :: Data.Text.Text -> Data.Text.Lazy.Text -> QueryType -> Maybe ZHandle -> IO (CBytes, Int64)
-createInsertPersistentQuery taskName queryText extraInfo zkHandle = do
+createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> Maybe ZHandle -> IO (CBytes, Int64)
+createInsertPersistentQuery taskName queryText queryType zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
-  let qid   = Z.Data.CBytes.pack (Data.Text.unpack taskName)
-      qinfo = Info (Z.Data.Text.pack $ Data.Text.unpack $ Data.Text.Lazy.toStrict queryText) timestamp
-  withMaybeZHandle zkHandle $ insertQuery qid qinfo extraInfo
+  let qid   = Z.Data.CBytes.pack (T.unpack taskName)
+  withMaybeZHandle zkHandle $ insertQuery qid queryText timestamp queryType
   return (qid, timestamp)
 
 --------------------------------------------------------------------------------
 
 type PStoreMem   = (QueriesM, ConnectorsM)
-type ConnectorsM = IORef (HM.HashMap CBytes Connector)
-type QueriesM    = IORef (HM.HashMap CBytes Query)
+type ConnectorsM = IORef (HM.HashMap CBytes PersistentConnector)
+type QueriesM    = IORef (HM.HashMap CBytes PersistentQuery)
 
 queryCollection :: QueriesM
 queryCollection = unsafePerformIO $ newIORef HM.empty
@@ -160,55 +147,55 @@ connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
 
 instance Persistence PStoreMem where
-  insertQuery qid info extraInfo (refQ, _) = ifThrow FailedToRecordInfo $ do
+  insertQuery qid qSql qTime qType (refQ, _) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    modifyIORef refQ $ HM.insert (mkQueryPath qid) $ Query qid info extraInfo (Status Created timestamp)
+    modifyIORef refQ $
+      HM.insert (mkQueryPath qid) $ PersistentQuery qid (ZT.pack . T.unpack $ qSql) qTime qType Created timestamp
 
-  insertConnector cid info (_, refC) = ifThrow FailedToRecordInfo $ do
+  insertConnector cid cSql cTime (_, refC) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    modifyIORef refC $ HM.insert (mkConnectorPath cid) $ Connector cid info (Status Created timestamp)
+    modifyIORef refC $
+      HM.insert (mkConnectorPath cid) $ PersistentConnector cid (ZT.pack . T.unpack $ cSql) cTime Created timestamp
 
-  setQueryStatus qid statusQ (refQ, _) = ifThrow FailedToSetStatus $ do
+  setQueryStatus qid newStatus (refQ, _) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    let f s query = query {queryStatus = Status s timestamp}
-    modifyIORef refQ $ HM.adjust (f statusQ) (mkQueryPath qid)
+    let f s query = query {queryStatus = s, queryTimeCkp = timestamp}
+    modifyIORef refQ $ HM.adjust (f newStatus) (mkQueryPath qid)
 
   setConnectorStatus qid statusQ (_, refC) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    let f s connector = connector {connectorStatus = Status s timestamp}
+    let f s connector = connector {connectorStatus = s, connectorTimeCkp = timestamp}
     modifyIORef refC $ HM.adjust (f statusQ) (mkConnectorPath qid)
 
-  getQueryStatus qid (refQ, _) = ifThrow FailedToGet $ do
+  getQueryIds = ifThrow FailedToGet . (L.map queryId . HM.elems <$>) . readIORef . fst
+  getQuery qid (refQ, _) = ifThrow FailedToGet $ do
     hmapQ <- readIORef refQ
     case HM.lookup (mkQueryPath qid) hmapQ of
-      Nothing                         -> throwIO QueryNotFound
-      Just (Query _ _ _ (Status x _)) -> return x
+      Nothing    -> throwIO QueryNotFound
+      Just query -> return query
 
-  getQueries = ifThrow FailedToGet . (HM.elems <$>) . readIORef . fst
-
+  getConnectorIds = ifThrow FailedToGet . (L.map connectorId . HM.elems <$>) . readIORef . snd
   getConnector cid (_, refC) = ifThrow FailedToGet $ do
     hmapC <- readIORef refC
     case HM.lookup (mkConnectorPath cid) hmapC of
       Nothing -> throwIO ConnectorNotFound
       Just c  -> return c
 
-  getConnectors = ifThrow FailedToGet . (HM.elems <$>) . readIORef . snd
-
-  getQueryIds = ifThrow FailedToGet . (map queryId <$>) . getQueries
-
-  getConnectorIds = ifThrow FailedToGet . (map connectorId <$>) . getConnectors
-
-  removeQuery' qid ifCheck ref@(refQ, _) = ifThrow FailedToRemove $
-    if ifCheck then getQueryStatus qid ref >>= \case
+  removeQuery qid ref@(refQ, _) = ifThrow FailedToRemove $
+    getQueryStatus qid ref >>= \case
       Terminated -> modifyIORef refQ . HM.delete . mkQueryPath $ qid
       _          -> throwIO QueryStillRunning
-    else modifyIORef refQ $ HM.delete . mkQueryPath $ qid
 
-  removeConnector' cid ifCheck ref@(_, refC) = ifThrow FailedToRemove $
-    if ifCheck then getConnectorStatus cid ref >>= \case
+  removeQuery' qid (refQ, _) = ifThrow FailedToRemove $
+    modifyIORef refQ $ HM.delete . mkQueryPath $ qid
+
+  removeConnector cid ref@(_, refC) = ifThrow FailedToRemove $
+    getConnectorStatus cid ref >>= \case
       Terminated -> modifyIORef refC . HM.delete . mkConnectorPath $ cid
       _          -> throwIO ConnectorStillRunning
-    else modifyIORef refC $ HM.delete . mkConnectorPath $ cid
+
+  removeConnector' cid (_, refC) = ifThrow FailedToRemove $
+    modifyIORef refC $ HM.delete . mkConnectorPath $ cid
 
 --------------------------------------------------------------------------------
 
@@ -216,60 +203,65 @@ defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
 defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 instance Persistence ZHandle where
-  insertQuery qid info@(Info _ timestamp) extraInfo zk = ifThrow FailedToRecordInfo $ do
-    createPath   zk (mkQueryPath qid)
-    createInsert zk (mkQueryPath qid <> "/details") (encode info)
-    createInsert zk (mkQueryPath qid <> "/details/extra") (encode extraInfo)
-    createInsert zk (mkQueryPath qid <> "/status")  (encode $ Status Created timestamp)
-
-  setQueryStatus qid statusQ zk = ifThrow FailedToSetStatus $ do
+  insertQuery qid qSql qTime qType zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    setZkData zk (mkQueryPath qid <> "/status") (encode $ Status statusQ timestamp)
+    createPath   zk (mkQueryPath qid)
+    createInsert zk (mkQueryPath qid <> "/sql") (encode . ZT.pack . T.unpack $ qSql)
+    createInsert zk (mkQueryPath qid <> "/createdTime") (encode qTime)
+    createInsert zk (mkQueryPath qid <> "/type") (encode qType)
+    createInsert zk (mkQueryPath qid <> "/status")  (encode Created)
+    createInsert zk (mkQueryPath qid <> "/timeCkp") (encode timestamp)
 
-  getQueries zk = ifThrow FailedToGet $ do
-    StringsCompletion (StringVector qids) <- zooGetChildren zk queriesPath
-    infos    <- mapM (getThenDecode "/details") qids
-    extras   <- mapM (getThenDecode "/details/extra") qids
-    statuses <- mapM (getThenDecode "/status") qids
-    return [Query qid info extra statusQ
-              | qid    <- qids
-              | info   <- infos
-              | extra  <- extras
-              | statusQ <- statuses]
-    where
-      getThenDecode s = (decodeQ <$>) . zooGet zk . (<> s) . mkQueryPath
-
-  getQueryStatus qid zk = ifThrow FailedToGet $ status . decodeQ <$> zooGet zk (mkQueryPath qid <> "/status")
+  setQueryStatus qid newStatus zk = ifThrow FailedToSetStatus $ do
+    MkSystemTime timestamp _ <- getSystemTime'
+    setZkData zk (mkQueryPath qid <> "/status") (encode newStatus)
+    setZkData zk (mkQueryPath qid <> "/timeCkp") (encode timestamp)
 
   getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
 
-  insertConnector cid info@(Info _ timestamp) zk = ifThrow FailedToRecordInfo $ do
-    createPath   zk (mkConnectorPath cid)
-    createInsert zk (mkConnectorPath cid <> "/details") (encode info)
-    createInsert zk (mkConnectorPath cid <> "/status")  (encode $ Status Created timestamp)
+  getQuery qid zk = ifThrow FailedToGet $ do
+    sql         <- getThenDecode "/sql" qid
+    createdTime <- getThenDecode "/createdTime" qid
+    typ         <- getThenDecode "/type" qid
+    status      <- getThenDecode "/status" qid
+    timeCkp     <- getThenDecode "/timeCkp" qid
+    return $ PersistentQuery qid sql createdTime typ status timeCkp
+    where
+      getThenDecode s = (decodeQ <$>) . zooGet zk . (<> s) . mkQueryPath
 
-  setConnectorStatus cid statusC zk = ifThrow FailedToSetStatus $ do
+  insertConnector cid cSql cTime zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    setZkData zk (mkConnectorPath cid <> "/status") (encode $ Status statusC timestamp)
+    createPath   zk (mkConnectorPath cid)
+    createInsert zk (mkConnectorPath cid <> "/sql") (encode . ZT.pack . T.unpack $ cSql)
+    createInsert zk (mkConnectorPath cid <> "/createdTime") (encode cTime)
+    createInsert zk (mkConnectorPath cid <> "/status") (encode Created)
+    createInsert zk (mkConnectorPath cid <> "/timeCkp") (encode timestamp)
 
-  getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren connectorsPath
+  setConnectorStatus cid newStatus zk = ifThrow FailedToSetStatus $ do
+    MkSystemTime timestamp _ <- getSystemTime'
+    setZkData zk (mkConnectorPath cid <> "/status") (encode newStatus)
+    setZkData zk (mkConnectorPath cid <> "/timeCkp") (encode timestamp)
+
+  getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>) . flip zooGetChildren connectorsPath
 
   getConnector cid zk = ifThrow FailedToGet $ do
-    detailC <- ((decodeQ <$>) . zooGet zk . (<> "/details") . mkConnectorPath) cid
-    statusC <- ((decodeQ <$>) . zooGet zk . (<> "/status")  . mkConnectorPath) cid
-    return (Connector cid detailC statusC)
+    sql         <- ((decodeQ <$>) . zooGet zk . (<> "/sql") . mkConnectorPath) cid
+    createdTime <- ((decodeQ <$>) . zooGet zk . (<> "/createdTime")  . mkConnectorPath) cid
+    status      <- ((decodeQ <$>) . zooGet zk . (<> "/status") . mkConnectorPath) cid
+    timeCkp     <- ((decodeQ <$>) . zooGet zk . (<> "/timeCkp") . mkConnectorPath) cid
+    return $ PersistentConnector cid sql createdTime status timeCkp
 
-  removeQuery' qid ifCheck zk = ifThrow FailedToRemove $
-    if ifCheck then getQueryStatus qid zk >>= \case
+  removeQuery qid zk  = ifThrow FailedToRemove $
+    getQueryStatus qid zk >>= \case
       Terminated -> zooDeleteAll zk (mkQueryPath qid)
       _          -> throwIO QueryStillRunning
-    else zooDeleteAll zk (mkQueryPath qid)
+  removeQuery' qid zk = ifThrow FailedToRemove $ zooDeleteAll zk (mkQueryPath qid)
 
-  removeConnector' cid ifCheck zk = ifThrow FailedToRemove $
-    if ifCheck then getConnectorStatus cid zk >>= \case
+  removeConnector cid zk  = ifThrow FailedToRemove $
+    getConnectorStatus cid zk >>= \case
       Terminated -> zooDeleteAll zk (mkConnectorPath cid)
       _          -> throwIO ConnectorStillRunning
-    else zooDeleteAll zk (mkConnectorPath cid)
+  removeConnector' cid zk = ifThrow FailedToRemove $ zooDeleteAll zk (mkConnectorPath cid)
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath]
@@ -294,28 +286,37 @@ decodeQ :: JSON a => DataCompletion -> a
 decodeQ = (\case { Right x -> x ; _ -> throw FailedToDecode}) . snd . decode
         . (\case { Nothing -> ""; Just x -> x}) . dataCompletionValue
 
-mkQueryPath :: Id -> CBytes
+mkQueryPath :: CBytes -> CBytes
 mkQueryPath x = queriesPath <> "/" <> x
 
-mkConnectorPath :: Id -> CBytes
+mkConnectorPath :: CBytes -> CBytes
 mkConnectorPath x = connectorsPath <> "/" <> x
 
 ifThrow :: Exception e => e -> IO a -> IO a
 ifThrow e = handle (\(_ :: ZooException) -> throwIO e)
 
-isViewQuery :: Query -> Bool
-isViewQuery Query{..} =
-  case queryInfoExtra of
+isViewQuery :: PersistentQuery -> Bool
+isViewQuery PersistentQuery{..} =
+  case queryType of
     ViewQuery{} -> True
     _           -> False
 
-isStreamQuery :: Query -> Bool
-isStreamQuery Query{..} =
-  case queryInfoExtra of
+isStreamQuery :: PersistentQuery -> Bool
+isStreamQuery PersistentQuery{..} =
+  case queryType of
     StreamQuery{} -> True
     _             -> False
 
-getRelatedStreams :: QueryType -> RelatedStreams
-getRelatedStreams (PlainQuery ss)    = ss
-getRelatedStreams (StreamQuery ss _) = ss
-getRelatedStreams (ViewQuery ss _ _) = ss
+getRelatedStreams :: PersistentQuery -> RelatedStreams
+getRelatedStreams PersistentQuery{..} =
+  case queryType of
+    (PlainQuery ss)    -> ss
+    (StreamQuery ss _) -> ss
+    (ViewQuery ss _ _) -> ss
+
+getQuerySink :: PersistentQuery -> CBytes
+getQuerySink PersistentQuery{..} =
+  case queryType of
+    PlainQuery{}      -> ""
+    (StreamQuery _ s) -> s
+    (ViewQuery _ s _) -> s

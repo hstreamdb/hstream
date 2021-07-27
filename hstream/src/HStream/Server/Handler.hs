@@ -266,7 +266,7 @@ executePushQueryHandler ServerContext{..}
           (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
         (qid, _) <- P.createInsertPersistentQuery (getTaskName taskBuilder)
-          commandPushQueryQueryText (P.PlainQuery $ textToCBytes <$> sources) zkHandle
+          (TL.toStrict commandPushQueryQueryText) (P.PlainQuery $ textToCBytes <$> sources) zkHandle
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
           >> runTaskWrapper True taskBuilder scLDClient
@@ -285,15 +285,15 @@ handleDropPlan :: ServerContext -> Bool -> DropObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHandle $ do
   case dropObject of
-    DStream stream -> handleDrop "stream_" stream transToStreamName
+    DStream stream -> handleDrop stream transToStreamName
     DView view     -> do
       atomicModifyIORef' groupbyStores (\hm -> (HM.delete view hm, ()))
-      handleDrop "view_" view transToViewStreamName
+      handleDrop view transToViewStreamName
   where
-    handleDrop object name toSName = do
+    handleDrop name toSName = do
       streamExists <- S.doesStreamExists scLDClient (toSName name)
       if streamExists then
-        terminateQueryAndRemove (textToCBytes (object <> name))
+        terminateQueryAndRemove (textToCBytes name)
         >> terminateRelatedQueries (textToCBytes name)
         >> S.removeStream scLDClient (toSName name)
         >> returnCommandQueryEmptyResp
@@ -301,19 +301,22 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHa
         returnCommandQueryEmptyResp
       else
         returnErrResp StatusInternal "Object does not exist"
-    terminateQueryAndRemove path = do
-      qids <- P.withMaybeZHandle zkHandle P.getQueryIds
-      case L.find (== path) qids of
-        Just x ->
-          handleTerminate sc (OneQuery x)
-          >> P.withMaybeZHandle zkHandle (P.removeQuery' x True)
-        Nothing -> pure ()
+
+    terminateQueryAndRemove objectId = do
+      queries <- P.withMaybeZHandle zkHandle P.getQueries
+      let queryExists = L.find (\query -> P.getQuerySink query == objectId) queries
+      case queryExists of
+        Just query ->
+          handleTerminate sc (OneQuery $ P.queryId query)
+          >> P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
+        Nothing    -> pure ()
+
     terminateRelatedQueries name = do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
       mapM_ (handleTerminate sc . OneQuery) (getRelatedQueries name queries)
+
     getRelatedQueries name queries =
-      [P.queryId query | query <- queries
-                       , name `elem` P.getRelatedStreams (P.queryInfoExtra query)]
+      [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
@@ -336,7 +339,7 @@ handleShowPlan ServerContext{..} showObject = defaultExceptionHandle $ do
       returnResp resp
     SViews -> do
       queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryInfoExtra) $
+      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryType) $
                     filter P.isViewQuery queries
       let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWVIEWS" $
                     cBytesToValue <$> views
