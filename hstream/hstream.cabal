@@ -57,7 +57,7 @@ library
     , hstream-sql
     , hstream-store
     , lens
-    , lens-aeson
+    , microlens-aeson
     , mysql-haskell
     , proto3-suite
     , proto3-wire

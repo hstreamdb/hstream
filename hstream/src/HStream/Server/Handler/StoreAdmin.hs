@@ -11,7 +11,6 @@ module HStream.Server.Handler.StoreAdmin where
 import           Control.Lens
 import           Control.Monad                    (forM)
 import           Data.Aeson                       (Value (..))
-import           Data.Aeson.Lens
 import           Data.Int                         (Int32)
 import           Data.List                        (find)
 import           Data.Maybe                       (fromMaybe)
@@ -19,6 +18,7 @@ import           Data.Scientific                  (floatingOrInteger)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import           Lens.Micro.Aeson
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Server.HStreamApi
@@ -65,18 +65,23 @@ getNodes headerConfig StatusOpts{..} = do
   let allStatus = map collectState states
 
   res <- AC.showConfig headerConfig (StatusNodeIdx [])
-  let nodes = res ^? key "nodes"
-  case nodes of
+  case res ^? key "nodes" of
     Just (Array arr) -> do
-      let nodes' = fmap (\node -> do
-                            let Just id' = toInt <$> node ^? key "node_index"
-                                Just roles = toArrInt <$> node ^? key "roles"
-                                Just address = toString <$> node ^? key "data_address" . key "address"
-                                Just status = (\(_:name:_:[status']) -> status') <$> find (\(id'':_) -> (show id') == id'') allStatus
-                            Node id' roles address (TL.pack status)
-                        ) arr
-      return $ Just nodes'
-    _ -> return Nothing
+      return $ sequenceA (readNode allStatus <$> arr)
+    _                -> return Nothing
+  where
+    readNode statusList node = Node
+      <$> (toInt <$> node ^? key "node_index")
+      <*> (toArrInt <$> node ^? key "roles")
+      <*> (toString <$> node ^? key "data_address" . key "address")
+      <*> getStatus statusList node
+
+    getStatus statusList node = do
+      nodeId <- toInt <$> node ^? key "node_index"
+      info <- find (\(id':_) -> show nodeId == id') statusList
+      case info of
+        _:_:_:[status] -> Just $ TL.pack status
+        _              -> Nothing
 
 listStoreNodesHandler
   :: ServerContext
@@ -92,5 +97,5 @@ getStoreNodeHandler
   -> IO (ServerResponse 'Normal Node)
 getStoreNodeHandler ServerContext{..} (ServerNormalRequest _metadata GetNodeRequest{..}) = do
   nodes <- getNodes headerConfig statusOpts
-  let node = (V.find (\(Node id' _ _ _) -> id' == getNodeRequestId)) <$> nodes
+  let node = V.find (\(Node id' _ _ _) -> id' == getNodeRequestId) <$> nodes
   responseWithErrorMsgIfNothing (fromMaybe Nothing node) StatusInternal "Node not exists"
