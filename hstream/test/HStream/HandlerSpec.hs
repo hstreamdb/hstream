@@ -124,7 +124,7 @@ createStreamRequest client stream = do
 listStreamRequest :: Client -> IO (Maybe (V.Vector Stream))
 listStreamRequest client = do
   HStreamApi{..} <- hstreamApiClient client
-  resp <- hstreamApiListStreams $ ClientNormalRequest Empty requestTimeout $ MetadataMap Map.empty
+  resp <- hstreamApiListStreams $ ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse respStream _meta1 _meta2 StatusOk _details -> do
       return . Just $ listStreamsResponseStreams respStream
@@ -218,7 +218,7 @@ subscribeRequest client subscribeId streamName offset = do
 listSubscriptionRequest :: Client -> IO (Maybe (V.Vector Subscription))
 listSubscriptionRequest client = do
   HStreamApi{..} <- hstreamApiClient client
-  resp <- hstreamApiListSubscriptions $ ClientNormalRequest Empty requestTimeout $ MetadataMap Map.empty
+  resp <- hstreamApiListSubscriptions $ ClientNormalRequest ListSubscriptionsRequest requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse res _meta1 _meta2 StatusOk _details -> do
       return . Just . listSubscriptionsResponseSubscription $ res

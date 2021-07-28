@@ -544,9 +544,9 @@ deleteStreamsHandler ServerContext{..} (ServerNormalRequest _metadata DeleteStre
 
 listStreamsHandler
   :: ServerContext
-  -> ServerRequest 'Normal Empty ListStreamsResponse
+  -> ServerRequest 'Normal ListStreamsRequest ListStreamsResponse
   -> IO (ServerResponse 'Normal ListStreamsResponse)
-listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = defaultExceptionHandle $ do
+listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata ListStreamsRequest) = defaultExceptionHandle $ do
   streams <- S.findStreams scLDClient S.StreamTypeStream True
   res <- V.forM (V.fromList streams) $ \stream -> do
     refactor <- S.getStreamReplicaFactor scLDClient stream
@@ -555,9 +555,9 @@ listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = def
 
 listSubscriptionsHandler
   :: ServerContext
-  -> ServerRequest 'Normal Empty ListSubscriptionsResponse
+  -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
-listSubscriptionsHandler ServerContext{..} (ServerNormalRequest _metadata Empty) = defaultExceptionHandle $ do
+listSubscriptionsHandler ServerContext{..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   hm <- subscribedReadersToMap subscribedReaders
   let resp = ListSubscriptionsResponse $ HM.foldr' (\(_, s) acc -> V.cons s acc) V.empty hm
   return $ ServerNormalResponse (Just resp) [] StatusOk ""

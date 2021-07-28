@@ -29,7 +29,7 @@ service HStreamApi {
 
   rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
 
-  rpc ListSubscriptions(google.protobuf.Empty) returns (ListSubscriptionsResponse) {}
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {}
 
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
 
@@ -39,7 +39,7 @@ service HStreamApi {
 
   rpc DeleteStream(DeleteStreamRequest) returns (google.protobuf.Empty) {}
 
-  rpc ListStreams(google.protobuf.Empty) returns (ListStreamsResponse) {}
+  rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse) {}
 
   rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
 
@@ -183,6 +183,11 @@ message DeleteStreamRequest {
 message ListStreamsResponse {
   repeated Stream streams = 1;
 }
+
+// TODO：Add options for filtering or max_size
+message ListStreamsRequest {}
+
+message ListSubscriptionsRequest {}
 
 message ListSubscriptionsResponse {
   repeated Subscription subscription = 1;

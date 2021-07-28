@@ -66,7 +66,7 @@ createStreamHandler hClient (StreamBO sName replicationFactor) = liftIO $ do
 listStreamsHandler :: Client -> Handler [StreamBO]
 listStreamsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiListStreams (ClientNormalRequest Empty 100 (MetadataMap $ Map.empty))
+  resp <- hstreamApiListStreams $ ClientNormalRequest ListStreamsRequest 100 (MetadataMap Map.empty)
   case resp of
     ClientNormalResponse x@ListStreamsResponse{} _meta1 _meta2 _status _details -> do
       case x of
