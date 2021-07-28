@@ -359,7 +359,7 @@ message RestartConnectorResponse {
 }
 
 message TerminateConnectorRequest {
-  string id = 1;
+  string connectorId = 1;
 }
 
 // View related Request and Response

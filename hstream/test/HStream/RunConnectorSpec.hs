@@ -75,7 +75,7 @@ deleteConnector connectorId = withGRPCClient clientConfig $ \client -> do
 terminateConnector :: TL.Text -> IO Bool
 terminateConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestId = connectorId }
+  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestConnectorId = connectorId }
   resp <- hstreamApiTerminateConnector (ClientNormalRequest terminateConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True

@@ -70,11 +70,12 @@ deleteConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteConnectorHandler ServerContext{..}
+deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
-    P.withMaybeZHandle zkHandle $
-      P.removeConnector (lazyTextToCBytes deleteConnectorRequestId)
-    returnResp Empty
+  let cName = lazyTextToCBytes deleteConnectorRequestId
+  handleTerminateConnector sc cName
+  P.withMaybeZHandle zkHandle $ P.removeConnector cName
+  returnResp Empty
 
 restartConnectorHandler
   :: ServerContext
@@ -94,7 +95,7 @@ terminateConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 terminateConnectorHandler sc
   (ServerNormalRequest _metadata TerminateConnectorRequest{..}) = do
-  let cid = lazyTextToCBytes terminateConnectorRequestId
+  let cid = lazyTextToCBytes terminateConnectorRequestConnectorId
   handleTerminateConnector sc cid
   returnResp Empty
 

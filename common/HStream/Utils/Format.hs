@@ -1,3 +1,6 @@
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -8,7 +11,6 @@ import qualified Data.Aeson.Text                   as A
 import qualified Data.HashMap.Strict               as HM
 import           Data.List                         (sort)
 import qualified Data.Map.Strict                   as M
-import           Data.Maybe                        (maybeToList)
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import           Data.Time.Clock                   (NominalDiffTime)
@@ -20,56 +22,90 @@ import           Text.Layout.Table                 (center, colsAllG, column,
                                                     unicodeRoundS)
 import qualified ThirdParty.Google.Protobuf.Struct as P
 
-import qualified HStream.Server.HStreamApi         as HA
-import           HStream.Utils.Converter           (jsonValueToValue,
-                                                    valueToJsonValue)
+import qualified HStream.Server.HStreamApi         as API
+import           HStream.Utils.Converter           (valueToJsonValue)
+import           Network.GRPC.HighLevel.Generated
+import qualified ThirdParty.Google.Protobuf.Empty  as Protobuf
 
 --------------------------------------------------------------------------------
-
 type Width = Int
 
-formatResult :: Width -> P.Struct -> String
-formatResult width (P.Struct kv) =
-  case M.toList kv of
-    [("SHOWSTREAMS", Just v)] -> emptyNotice . unlines .  words . formatValue $ v
-    [("SHOWVIEWS",   Just v)] -> emptyNotice . unlines .  words . formatValue $ v
-    [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
-    [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
-    [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] -> renderTableResult xs
-    [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] -> renderTableResult xs
-    [("Error Message:", Just v)] -> "Error Message: " ++  formatValue v ++ "\n"
-    [("PLAN",  Just x)] ->
-      case valueToJsonValue x of
-        (A.String s) -> T.unpack s
-        _            -> "Error: invalid data received"
-    x -> show x
-  where
-    renderTableResult = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
-    emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" :: String else xs
+renderTableResult :: Width -> V.Vector P.Value -> String
+renderTableResult width = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
 
-formatCommandQueryResponse :: Width -> HA.CommandQueryResponse -> String
-formatCommandQueryResponse w (HA.CommandQueryResponse x) = case x of
+emptyNotice :: String -> String
+emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" else xs
+
+formatCommandQueryResponse :: Width -> API.CommandQueryResponse -> String
+formatCommandQueryResponse w (API.CommandQueryResponse x) = case x of
   []  -> "Done. No results.\n"
   [y] -> formatResult w y
   ys  -> "unknown behaviour" <> show ys
 
+class Format a where
+  formatResult :: Width -> a -> String
+
+instance Format Protobuf.Empty where
+  formatResult _ = const "Done. No results.\n"
+
+instance Format API.Stream where
+  formatResult _ = (<> "\n") . TL.unpack . API.streamStreamName
+
+instance Format API.View where
+  formatResult _ = show . API.viewViewId
+
+instance Format [API.Stream] where
+  formatResult w = emptyNotice . concatMap (formatResult w)
+
+instance Format [API.View] where
+  formatResult w = emptyNotice . unlines . map (formatResult w)
+
+instance Format [API.Query] where
+  formatResult w = emptyNotice . renderJSONObjectsToTable w . map ((\(A.Object o) -> o) . A.toJSON)
+
+instance Format [API.Connector] where
+  formatResult w = emptyNotice . renderJSONObjectsToTable w . map ((\(A.Object o) -> o) . A.toJSON)
+
+instance Format a => Format (ClientResult 'Normal a) where
+  formatResult w (ClientNormalResponse response _ _ _ _) = formatResult w response
+  formatResult _ (ClientErrorResponse err) = "Server Error: " <> show err <> "\n"
+
+instance Format API.ListStreamsResponse where
+  formatResult w = formatResult w . V.toList . API.listStreamsResponseStreams
+instance Format API.ListViewsResponse where
+  formatResult w = formatResult w . V.toList . API.listViewsResponseViews
+instance Format API.ListQueriesResponse where
+  formatResult w = formatResult w . V.toList . API.listQueriesResponseQueries
+instance Format API.ListConnectorsResponse where
+  formatResult w = formatResult w . V.toList . API.listConnectorsResponseConnectors
+
+instance Format API.AppendResponse where
+  formatResult _ = const "Done. No results.\n"
+
+instance Format API.CreateQueryStreamResponse where
+  formatResult _ = const "Done. No results.\n"
+
+instance Format P.Struct where
+  formatResult _ (P.Struct kv) =
+    case M.toList kv of
+      [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
+      [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
+      [("Error Message:", Just v)] -> "Error Message: " ++ show v ++ "\n"
+      x -> show x
+
 --------------------------------------------------------------------------------
 
-formatStruct :: P.Struct -> String
-formatStruct (P.Struct kv) = unlines . map (\(x, y) -> TL.unpack x ++ (": " <> (concat . maybeToList) y))
-                            . M.toList . fmap (fmap formatValue) $ kv
+formatJSONObject :: A.Object -> String
+formatJSONObject = unlines . map (\(x, y) -> T.unpack x ++ (": " <> y))
+                . HM.toList . fmap formatJSONValue
 
-formatValue :: P.Value -> String
-formatValue (P.Value Nothing)  = ""
-formatValue (P.Value (Just x)) = formatValueKind x
-
-formatValueKind :: P.ValueKind -> String
-formatValueKind (P.ValueKindNullValue _)   = "NULL"
-formatValueKind (P.ValueKindNumberValue n) = show n
-formatValueKind (P.ValueKindStringValue s) = TL.unpack s
-formatValueKind (P.ValueKindBoolValue   b) = show b
-formatValueKind (P.ValueKindStructValue s) = formatStruct s
-formatValueKind (P.ValueKindListValue (P.ListValue vs)) = unwords . map formatValue . V.toList $ vs
+formatJSONValue :: A.Value -> String
+formatJSONValue (A.Object hmap)  = formatJSONObject hmap
+formatJSONValue (A.Array  array) = unwords . V.toList $ formatJSONValue <$> array
+formatJSONValue (A.String text)  = T.unpack text
+formatJSONValue (A.Number sci)   = show sci
+formatJSONValue (A.Bool   bool)  = show bool
+formatJSONValue A.Null           = "NULL"
 
 --------------------------------------------------------------------------------
 
@@ -89,11 +125,7 @@ renderJSONObjectsToTable l os@(o:_) =
       $ column expand left noAlign (singleCutMark "...")
 
 renderContents :: Width -> [A.Value] -> [[String]]
-renderContents width = map $ concatMap (justify width . words') . lines . formatValue . jsonValueToValue
-
-renderJSONToTable :: Width -> A.Value -> String
-renderJSONToTable width (A.Object hmap) = renderJSONObjectToTable width hmap
-renderJSONToTable _ x                   = show x
+renderContents width = map $ concatMap (justify width . words') . lines . formatJSONValue
 
 --------------------------------------------------------------------------------
 

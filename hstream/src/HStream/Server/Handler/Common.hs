@@ -39,6 +39,9 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types
 
+import qualified Data.Aeson                       as Aeson
+import           Data.IORef                       (IORef, atomicModifyIORef',
+                                                   newIORef)
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
 import           HStream.Connector.MySQL
@@ -46,6 +49,7 @@ import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
+import           HStream.Processing.Stream        (Materialized (..))
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
@@ -54,8 +58,17 @@ import           HStream.Server.HStreamApi        (Subscription)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
+import           System.IO.Unsafe                 (unsafePerformIO)
+
+--------------------------------------------------------------------------------
+
+groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
+groupbyStores = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE groupbyStores #-}
+
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
@@ -190,6 +203,21 @@ handleTerminateConnector ServerContext{..} cid = do
       void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
       Log.debug . Log.buildString $ "terminated connector: " <> show cid
     _        -> throwIO ConnectorNotExist
+
+dropHelper :: ServerContext -> T.Text -> Bool -> Bool
+  -> IO (ServerResponse 'Normal Empty)
+dropHelper sc@ServerContext{..} name checkIfExist isView = do
+  when isView $ atomicModifyIORef' groupbyStores (\hm -> (HM.delete name hm, ()))
+  let sName = if isView then HCS.transToViewStreamName name else HCS.transToStreamName name
+  streamExists <- HS.doesStreamExists scLDClient sName
+  if streamExists
+    then terminateQueryAndRemove sc (textToCBytes name)
+      >> terminateRelatedQueries sc (textToCBytes name)
+      >> HS.removeStream scLDClient sName
+      >> returnResp Empty
+      else if checkIfExist
+              then returnResp Empty
+              else returnErrResp StatusInternal "Object does not exist"
 
 --------------------------------------------------------------------------------
 -- Query

@@ -34,6 +34,7 @@ library
     HStream.Server.Handler.View
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
+    HStream.Client.SQLExecution
 
   hs-source-dirs:   src
   build-depends:

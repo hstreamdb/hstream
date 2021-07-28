@@ -1,7 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -21,12 +20,12 @@ import qualified HStream.SQL.Codegen              as HSC
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
+                                                   dropHelper,
                                                    handleCreateAsSelect)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (cBytesToLazyText,
-                                                   lazyTextToCBytes,
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
 
@@ -88,8 +87,6 @@ deleteViewHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteViewRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteViewHandler ServerContext{..} (ServerNormalRequest _metadata DeleteViewRequest{..}) =
-  defaultExceptionHandle $ do
-    P.withMaybeZHandle zkHandle $
-      P.removeQuery' (lazyTextToCBytes deleteViewRequestViewId)
-    returnResp Empty
+deleteViewHandler sc (ServerNormalRequest _metadata DeleteViewRequest{..}) = defaultExceptionHandle $ do
+    let name = TL.toStrict deleteViewRequestViewId
+    dropHelper sc name False True

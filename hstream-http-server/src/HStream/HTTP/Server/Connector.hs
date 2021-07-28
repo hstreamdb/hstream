@@ -118,7 +118,7 @@ restartConnectorHandler hClient cid = liftIO $ do
 terminateConnectorHandler :: Client -> String -> Handler Bool
 terminateConnectorHandler hClient cid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestId = TL.pack cid }
+  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestConnectorId = TL.pack cid }
   resp <- hstreamApiTerminateConnector (ClientNormalRequest terminateConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse _x _meta1 _meta2 StatusOk _details -> return True
