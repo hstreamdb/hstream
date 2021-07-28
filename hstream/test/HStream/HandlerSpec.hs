@@ -85,8 +85,8 @@ basicSpec = describe "HStream.BasicHandlerSpec.basic" $ do
       isJust <$> createStreamRequest client req `shouldReturn` True
     resp <- listStreamRequest client
     isJust resp `shouldBe` True
-    let sortedRes = L.sortBy (\x y -> compare (streamStreamName x) (streamStreamName y)) $ V.toList . fromJust $ resp
-        sortedReqs = L.sortBy (\x y -> compare (streamStreamName x) (streamStreamName y)) $ V.toList createStreamReqs
+    let sortedRes = L.sortOn streamStreamName $ V.toList . fromJust $ resp
+        sortedReqs = L.sortOn streamStreamName $ V.toList createStreamReqs
     sortedRes `shouldMatchList` sortedReqs
 
   it "test delete request" $ \client -> do
@@ -101,7 +101,7 @@ basicSpec = describe "HStream.BasicHandlerSpec.basic" $ do
     void $ createStreamRequest client $ Stream randomStreamName 1
     let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    -- send heartbeat request to an exist subscription should return True
+    -- send heartbeat request to an existing subscription should return True
     sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
     -- after send heartbeat responsed, resubscribe same subscription should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
@@ -169,12 +169,12 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
 
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test subscribe request" $ \client -> do
     let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
-    -- subscribe unexisted stream should return False
+    -- subscribe to a nonexistent stream should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
     void $ createStreamRequest client $ Stream randomStreamName 1
-    -- subscribe existed stream should return True
+    -- subscribe to an existing stream should return True
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    -- resubscribe a subscribed stream should return False
+    -- resubscribe to a subscribed stream should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
     -- after some delay without send heartbeat, the subscribe should be released and resubscribe should success
     threadDelay 2000000
