@@ -29,11 +29,11 @@ library
     HStream.Server.HStreamApi
     HStream.ThirdParty.Protobuf
     HStream.Utils
-    HStream.Utils.Converter
-    HStream.Utils.Format
 
   other-modules:
     HStream.Utils.BuildRecord
+    HStream.Utils.Converter
+    HStream.Utils.Format
     HStream.Utils.RPC
     ThirdParty.Google.Protobuf.Empty
     ThirdParty.Google.Protobuf.Struct

@@ -29,9 +29,9 @@ import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.Server.HStreamApi
-import           HStream.Utils                    (setupSigsegvHandler)
-import           HStream.Utils.Format             (formatCommandQueryResponse,
-                                                   formatResult)
+import           HStream.Utils                    (formatCommandQueryResponse,
+                                                   formatResult,
+                                                   setupSigsegvHandler)
 
 data UserConfig = UserConfig
   { _serverHost :: ByteString

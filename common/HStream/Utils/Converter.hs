@@ -6,20 +6,25 @@ module HStream.Utils.Converter
   , jsonValueToValue
   , structToJsonObject
   , valueToJsonValue
-  , zJsonObjectToStruct
-  , zJsonValueToValue
   , structToZJsonObject
   , valueToZJsonValue
+    --
+  , zJsonObjectToStruct
+  , zJsonValueToValue
   , cBytesToText
   , cBytesToLazyText
   , textToCBytes
+  , textToZBuilder
+  , lazyTextToZBuilder
   , lazyTextToCBytes
   , lazyByteStringToCBytes
   , cBytesToLazyByteString
   , cBytesToValue
+    --
   , stringToValue
   , listToStruct
-  , structToStruct) where
+  , structToStruct
+  ) where
 
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor                    (Bifunctor (bimap))
@@ -32,12 +37,14 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Vector                       as V
 import           Proto3.Suite                      (Enumerated (Enumerated))
-import qualified ThirdParty.Google.Protobuf.Struct as PB
+import qualified Z.Data.Builder                    as Builder
 import qualified Z.Data.CBytes                     as ZCB
 import qualified Z.Data.JSON                       as Z
 import qualified Z.Data.Text                       as ZT
 import qualified Z.Data.Vector                     as ZV
 import qualified Z.Foreign                         as ZF
+
+import qualified ThirdParty.Google.Protobuf.Struct as PB
 
 pattern V :: PB.ValueKind -> PB.Value
 pattern V x = PB.Value (Just x)
@@ -113,11 +120,22 @@ cBytesToText = T.pack . ZCB.unpack
 cBytesToLazyText :: ZCB.CBytes -> TL.Text
 cBytesToLazyText = TL.fromStrict . cBytesToText
 
+cBytesToValue :: ZCB.CBytes -> PB.Value
+cBytesToValue = PB.Value . Just . PB.ValueKindStringValue . TL.fromStrict . cBytesToText
+
 textToCBytes :: T.Text -> ZCB.CBytes
 textToCBytes = ZCB.pack . T.unpack
 
 lazyTextToCBytes :: TL.Text -> ZCB.CBytes
 lazyTextToCBytes = textToCBytes . TL.toStrict
+
+textToZBuilder :: T.Text -> Builder.Builder ()
+textToZBuilder = Builder.stringUTF8 . T.unpack
+{-# INLINE textToZBuilder #-}
+
+lazyTextToZBuilder :: TL.Text -> Builder.Builder ()
+lazyTextToZBuilder = Builder.stringUTF8 . T.unpack . TL.toStrict
+{-# INLINE lazyTextToZBuilder #-}
 
 cBytesToLazyByteString :: ZCB.CBytes -> BL.ByteString
 cBytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
@@ -130,9 +148,6 @@ listToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.Value
 
 structToStruct :: TL.Text -> PB.Struct -> PB.Struct
 structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindStructValue
-
-cBytesToValue :: ZCB.CBytes -> PB.Value
-cBytesToValue = PB.Value . Just . PB.ValueKindStringValue . TL.fromStrict . cBytesToText
 
 stringToValue :: String -> PB.Value
 stringToValue = PB.Value . Just . PB.ValueKindStringValue . TL.pack

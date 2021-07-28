@@ -1,7 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs     #-}
 module HStream.Utils.RPC
-  ( mkServerErrResp
+  ( HStreamClientApi
+
+  , mkServerErrResp
   , returnErrResp
   , returnResp
   , returnStreamingResp
@@ -16,8 +18,10 @@ import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
 import           Z.IO.Time                     (SystemTime (..), getSystemTime')
 
-import           HStream.Server.HStreamApi     (CommandQueryResponse (..))
+import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf   (Struct, Timestamp (..))
+
+type HStreamClientApi = HStreamApi ClientRequest ClientResult
 
 mkServerErrResp :: StatusCode -> StatusDetails -> ServerResponse 'Normal a
 mkServerErrResp = ServerNormalResponse Nothing mempty
