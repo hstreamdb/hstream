@@ -24,12 +24,14 @@ import qualified Data.Map.Strict              as M
 import qualified Data.Map.Strict              as Map
 import           Data.Maybe                   (fromJust, isJust)
 import qualified Data.Text.Lazy               as TL
+import           Proto3.Suite                 (Enumerated (..))
 import           Z.Data.Vector                (Bytes)
 import           Z.Foreign                    (toByteString)
 import qualified Z.IO.Logger                  as Log
 
 import           HStream.Processing.Connector
 import           HStream.Processing.Type      as HPT
+import           HStream.Server.HStreamApi    (HStreamRecordHeader_Flag (..))
 import qualified HStream.Store                as S
 import           HStream.Utils
 
@@ -143,8 +145,8 @@ readRecordsFromHStore' ldclient reader maxlen = do
 
 getJsonFormatRecord :: S.DataRecord Bytes -> Maybe Payload
 getJsonFormatRecord dataRecord
-   | flag == jsonPayloadFlag = Just $ Payload logid payload lsn timestamp
-   | otherwise               = Nothing
+   | flag == Enumerated (Right HStreamRecordHeader_FlagJSON) = Just $ Payload logid payload lsn timestamp
+   | otherwise = Nothing
   where
     record    = decodeRecord $ S.recordPayload dataRecord
     flag      = getPayloadFlag record
@@ -170,9 +172,9 @@ writeRecordToHStore isTemp ldclient SinkRecord{..} = do
     True  -> S.getUnderlyingLogId ldclient (transToTempStreamName snkStream)
     False -> S.getUnderlyingLogId ldclient (transToStreamName snkStream)
   timestamp <- getProtoTimestamp
-  let header = buildRecordHeader jsonPayloadFlag Map.empty timestamp TL.empty
-  let payload = encodeRecord $ buildRecord header snkValue
-  _ <- S.append ldclient logId payload Nothing
+  let header = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+  let payload = encodeRecord $ buildRecord header (BL.toStrict snkValue)
+  _ <- S.appendBS ldclient logId payload Nothing
   return ()
 
 data Payload = Payload
