@@ -6,9 +6,11 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.HTTP.Server.Stream (
-  StreamsAPI, streamServer, listStreamsHandler
-) where
+module HStream.HTTP.Server.Stream
+  ( StreamsAPI
+  , streamServer
+  , listStreamsHandler
+  ) where
 
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       (FromJSON, ToJSON)
@@ -20,7 +22,6 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32)
 import           GHC.Generics                     (Generic)
-import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Client     (Client)
 import           Servant                          (Capture, Delete, Get, JSON,
@@ -29,6 +30,7 @@ import           Servant                          (Capture, Delete, Get, JSON,
 import           Servant.Server                   (Handler, Server)
 
 import           HStream.Server.HStreamApi
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
 -- BO is short for Business Object
 data StreamBO = StreamBO

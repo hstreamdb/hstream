@@ -13,7 +13,6 @@ import           Text.Layout.Table                (asciiS, center, colsAllG,
                                                    left, tableString, titlesH)
 import           Z.Data.CBytes                    (pack, unpack)
 
-import qualified HStream.Store                    as S
 import           HStream.Store.Admin.API
 import           HStream.Store.Admin.Format
 import           HStream.Store.Admin.Types

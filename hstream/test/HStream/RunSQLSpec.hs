@@ -19,8 +19,8 @@ import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
 import           HStream.ThirdParty.Protobuf     (Struct)
-import           HStream.Utils.Converter         (structToStruct)
-import           HStream.Utils.Format            (formatCommandQueryResponse)
+import           HStream.Utils                   (formatCommandQueryResponse,
+                                                  structToStruct)
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
