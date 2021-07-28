@@ -10,7 +10,7 @@
 
 ![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
-The database is built for IoT streaming data storage and real-time stream processing.
+The database built for IoT streaming data storage and real-time stream processing.
 
 ## Main Features
 
