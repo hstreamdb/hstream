@@ -10,13 +10,13 @@
 
 ![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
-The database built for IoT streaming data storage and real-time stream processing.
+The database is built for IoT streaming data storage and real-time stream processing.
 
 ## Main Features
 
 - __Push real-time data to your apps__
 
-    By subscribing to streams in HStreamDB, any update of the data stream will be pushed to your apps in real time, and this promotes your apps to be more responsive.
+    By subscribing to streams in HStreamDB, any update of the data stream will be pushed to your apps in real-time, and this promotes your apps to be more responsive.
 
     You can also replace message brokers with HStreamDB and everything you do with message brokers can be done better with HStreamDB.
 
@@ -82,7 +82,7 @@ Please submit any bugs, issues, and feature requests to [hstreamdb/hstream](http
 
 1. Make sure you have Docker installed, and can run `docker` as a non-root user.
 2. You have `python3` installed.
-3. Your can clone Github repository by ssh key.
+3. You can clone the GitHub repository by ssh key.
 
 **Get the source code**
 
@@ -97,9 +97,15 @@ cd hstream/
 script/dev-tools update-images
 ```
 
-**Start dev-cluster**
+**Start all required services**
 
-*A dev-cluster is required while running tests. All datas are stored under `your-project-root/local-data/logdevice`*
+You must have all required services (including a dev-cluster) started before entering an interactive shell to do further development.
+
+```sh
+script/dev-tools start-services
+```
+
+*A dev-cluster is required while running tests. All data are stored under `your-project-root/local-data/logdevice`*
 
 ```sh
 script/dev-tools cluster-start
@@ -111,7 +117,7 @@ script/dev-tools cluster-start
 script/dev-tools shell
 ```
 
-**Build as other haskell projects**
+**Build as other Haskell projects**
 
 *Inside the interactive shell, you have all extra dependencies installed.*
 
