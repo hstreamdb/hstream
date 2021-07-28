@@ -86,10 +86,10 @@ data ConnectorConfig
 
 data HStreamPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
-  | CreatePlan          StreamName Int
-  | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object)
+  | CreatePlan          StreamName Int
+  | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
@@ -99,42 +99,43 @@ data HStreamPlan
 --------------------------------------------------------------------------------
 
 streamCodegen :: HasCallStack => Text -> IO HStreamPlan
-streamCodegen input = do
-  rsql <- parseAndRefine input
-  case rsql of
-    RQSelect select                     -> do
-      tName <- genTaskName
-      (builder, source, sink, _) <- genStreamBuilderWithStream tName Nothing select
-      return $ SelectPlan source sink (HS.build builder)
-    RQCreate (RCreateAs stream select rOptions) -> do
-      tName <- genTaskName
-      (builder, source, sink, _) <- genStreamBuilderWithStream tName (Just stream) select
-      return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
-    RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
-      tName <- genTaskName
-      (builder, source, sink, Just mat) <- genStreamBuilderWithStream tName (Just view) select
-      let schema = case sel of
-            RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
-            RSelList fields -> map snd fields
-      return $ CreateViewPlan schema source sink (HS.build builder) 1 mat
-    RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
-    RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
-    RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . encode . HM.fromList $ second constantToValue <$> tuples)
-    RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
-    RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat bs
-    RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
-    RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
-    RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
-    RQShow (RShow RShowViews)          -> return $ ShowPlan SViews
-    RQDrop (RDrop RDropConnector x)    -> return $ DropPlan False (DConnector x)
-    RQDrop (RDrop RDropStream x)       -> return $ DropPlan False (DStream x)
-    RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
-    RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
-    RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
-    RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
-    RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
-    RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
-    RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
+streamCodegen input = parseAndRefine input >>= hstreamCodegen
+
+hstreamCodegen :: HasCallStack => RSQL -> IO HStreamPlan
+hstreamCodegen = \case
+  RQSelect select -> do
+    tName <- genTaskName
+    (builder, source, sink, _) <- genStreamBuilderWithStream tName Nothing select
+    return $ SelectPlan source sink (HS.build builder)
+  RQCreate (RCreateAs stream select rOptions) -> do
+    tName <- genTaskName
+    (builder, source, sink, _) <- genStreamBuilderWithStream tName (Just stream) select
+    return $ CreateBySelectPlan source sink (HS.build builder) (rRepFactor rOptions)
+  RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
+    tName <- genTaskName
+    (builder, source, sink, Just mat) <- genStreamBuilderWithStream tName (Just view) select
+    let schema = case sel of
+          RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
+          RSelList fields -> map snd fields
+    return $ CreateViewPlan schema source sink (HS.build builder) 1 mat
+  RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
+  RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
+  RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . encode . HM.fromList $ second constantToValue <$> tuples)
+  RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
+  RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat bs
+  RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
+  RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
+  RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
+  RQShow (RShow RShowViews)          -> return $ ShowPlan SViews
+  RQDrop (RDrop RDropConnector x)    -> return $ DropPlan False (DConnector x)
+  RQDrop (RDrop RDropStream x)       -> return $ DropPlan False (DStream x)
+  RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
+  RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
+  RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
+  RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
+  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
+  RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
+  RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
 
 --------------------------------------------------------------------------------
 

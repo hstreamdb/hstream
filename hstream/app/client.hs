@@ -8,7 +8,7 @@
 
 module Main where
 
-import           Control.Exception                (finally, try)
+import           Control.Exception                (finally, handle)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
 import           Data.Char                        (toUpper)
@@ -26,6 +26,7 @@ import           System.Posix                     (Handler (Catch),
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
 
+import           HStream.Client.SQLExecution
 import qualified HStream.Logger                   as Log
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
@@ -91,12 +92,21 @@ commandExec api xs = case words xs of
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
-  (_:_)       -> liftIO $
-    (try . parseAndRefine . T.pack) xs >>= \case
-      Left e     -> putStrLn . formatSomeSQLException $ (e :: SomeSQLException)
-      Right rsql -> case rsql of
-        RQSelect _ -> sqlStreamAction api (TL.pack xs)
-        _          -> sqlAction       api (TL.pack xs)
+  xs'@(_:_)   -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
+    (parseAndRefine . T.pack) xs >>= \case
+      RQSelect{} -> sqlStreamAction api (TL.pack xs)
+      RQCreate (RCreateAs stream _ rOptions) ->
+        executeCreateBySelect api (TL.fromStrict stream) (rRepFactor rOptions) xs'
+      rSql' -> hstreamCodegen rSql' >>= \case
+        CreatePlan sName rFac -> executeCreatePlan api sName rFac
+        ShowPlan showObj      -> executeShowPlan api showObj
+        TerminatePlan termSel -> executeTerminatePlan api termSel
+        DropPlan checkIfExists dropObj
+          -> executeDropPlan api checkIfExists dropObj
+        InsertPlan sName insertType payload
+          -> executeInsertPlan api sName insertType payload
+        _                     -> sqlAction api (TL.pack xs)
+
   [] -> return ()
 
 sqlStreamAction :: HStreamClientApi -> TL.Text -> IO ()

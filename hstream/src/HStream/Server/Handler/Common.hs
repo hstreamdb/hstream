@@ -55,6 +55,18 @@ import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
+import Data.IORef (atomicModifyIORef', IORef, newIORef)
+import HStream.Processing.Stream (Materialized(..))
+import qualified Data.Aeson as Aeson
+import System.IO.Unsafe (unsafePerformIO)
+
+--------------------------------------------------------------------------------
+
+groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
+groupbyStores = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE groupbyStores #-}
+
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
@@ -168,6 +180,21 @@ handleTerminateConnector ServerContext{..} cid = do
     _        -> return ()
   -- TODO: shall we move this op to Just tid -> killThread tid
   void $ P.withMaybeZHandle zkHandle (P.setConnectorStatus cid P.Terminated)
+
+dropHelper :: ServerContext -> T.Text -> Bool -> Bool
+  -> IO (ServerResponse 'Normal Empty)
+dropHelper sc@ServerContext{..} name checkIfExist isView = do
+  when isView $ atomicModifyIORef' groupbyStores (\hm -> (HM.delete name hm, ()))
+  let sName = if isView then HCS.transToViewStreamName name else HCS.transToStreamName name
+  streamExists <- HS.doesStreamExists scLDClient sName
+  if streamExists
+    then terminateQueryAndRemove sc (textToCBytes name)
+      >> terminateRelatedQueries sc (textToCBytes name)
+      >> HS.removeStream scLDClient sName
+      >> returnResp Empty
+      else if checkIfExist
+              then returnResp Empty
+              else returnErrResp StatusInternal "Object does not exist"
 
 --------------------------------------------------------------------------------
 -- Query
