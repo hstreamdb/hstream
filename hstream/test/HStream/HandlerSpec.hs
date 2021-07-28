@@ -174,6 +174,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     void $ createStreamRequest client $ Stream randomStreamName 1
     -- subscribe to an existing stream should return True
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
+    hasSubscriptionRequest client randomSubsciptionId `shouldReturn` True
     -- resubscribe to a subscribed stream should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
     -- after some delay without send heartbeat, the subscribe should be released and resubscribe should success
@@ -200,6 +201,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
     -- after delete subscription, send heartbeat shouldReturn False
     sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
+    hasSubscriptionRequest client randomSubsciptionId `shouldReturn` False
     res <- listSubscriptionRequest client
     V.length (fromJust res) `shouldBe` 0
 
@@ -234,6 +236,17 @@ deleteSubscriptionRequest client subscribeId = do
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError                        -> do
       putStrLn ("Delete Subscription Error: " <> show clientError) >> return False
+
+hasSubscriptionRequest :: Client -> TL.Text -> IO Bool
+hasSubscriptionRequest client subscribeId = do
+  HStreamApi{..} <- hstreamApiClient client
+  let req = HasSubscriptionRequest subscribeId
+  resp <- hstreamApiHasSubscription $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
+  case resp of
+    ClientNormalResponse res _meta1 _meta2 StatusOk _details ->
+      return $ hasSubscriptionResponseExists res
+    ClientErrorResponse clientError                          -> do
+      putStrLn ("Find Subscription Error: " <> show clientError) >> return False
 
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec

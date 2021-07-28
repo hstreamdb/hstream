@@ -16,6 +16,7 @@ import           Control.Exception                     (handle, throwIO, try)
 import           Control.Monad                         (unless, void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
+import           Data.Function                         (on)
 import qualified Data.HashMap.Strict                   as HM
 import           Data.IORef                            (IORef,
                                                         atomicModifyIORef',
@@ -136,6 +137,7 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
     , hstreamApiSubscribe        = subscribeHandler serverContext
     , hstreamApiDeleteSubscription  = deleteSubscriptionHandler serverContext
     , hstreamApiListSubscriptions = listSubscriptionsHandler serverContext
+    , hstreamApiHasSubscription   = hasSubscriptionHandler serverContext
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
     , hstreamApiDeleteStream     = deleteStreamsHandler serverContext
@@ -397,7 +399,7 @@ consumerHeartbeatHandler ServerContext{..} (ServerNormalRequest _metadata Consum
   atomically $ do
     hm <- readTVar subscribeHeap
     case Map.lookup consumerHeartbeatRequestSubscriptionId hm of
-      Nothing -> returnErrResp StatusInternal "Cann't send hearbeat to an unsubscribed stream."
+      Nothing -> returnErrResp StatusInternal "Can't send hearbeat to an unsubscribed stream."
       Just _  -> do
         modifyTVar' subscribeHeap $ \hp ->
           Map.insert consumerHeartbeatRequestSubscriptionId timestamp hp
@@ -440,7 +442,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
     unless ifExists $ do
       atomically $ deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
       throwIO StreamNotExist
-    doSubscribe scLDClient subscribedReaders subscribeHeap subscription sName
+    doSubscribe scLDClient subscribedReaders subscribeHeap sName
   else do
     currentTime <- getCurrentTimestamp
     status <- atomically $ do checkAndUpdateReaderStatus subscribedReaders currentTime
@@ -458,18 +460,18 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
       SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
 
     checkAndUpdateReaderStatus :: SubscribedReaders -> Int64 -> STM (Either StatusDetails ())
-    checkAndUpdateReaderStatus readers  currentTime = do
+    checkAndUpdateReaderStatus readers currentTime = do
       status <- getReaderStatus readers subscriptionSubscriptionId
       case status of
         Just Occupied -> return $ Left "SubscriptionID has been used."
-        Just Released  -> do
+        Just Released -> do
           updateReaderStatus subscribedReaders Occupied subscriptionSubscriptionId
-          modifyTVar' subscribeHeap $ \hp -> Map.insert subscriptionSubscriptionId currentTime hp
+          modifyTVar' subscribeHeap $ Map.insert subscriptionSubscriptionId currentTime
           return $ Right ()
-        _              -> return $ Left "Unknown error"
+        _             -> return $ Left "Unknown error"
 
-    doSubscribe :: S.LDClient -> SubscribedReaders -> TVar (Map TL.Text Int64) -> Subscription -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
-    doSubscribe client sReaders subscribeHp subscription@Subscription{..} streamName = do
+    doSubscribe :: S.LDClient -> SubscribedReaders -> TVar (Map TL.Text Int64) -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
+    doSubscribe client sReaders subscribeHp streamName = do
       reader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
         S.checkpointStoreLogID 5000 1 Nothing 10
       logId <- S.getUnderlyingLogId client streamName
@@ -481,7 +483,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata subscription@S
           let readerMap = ReaderMap reader subscription Occupied
           atomically $ do
             updateSubscribedReaders sReaders subscriptionSubscriptionId readerMap
-            modifyTVar' subscribeHp $ \hp -> Map.insert subscriptionSubscriptionId currentTime hp
+            modifyTVar' subscribeHp $ Map.insert subscriptionSubscriptionId currentTime
         Left _ -> atomically $ deleteSubscribedReaders sReaders subscriptionSubscriptionId
       eitherToResponse res subscription
 
@@ -497,8 +499,17 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata Delet
   when isExist $ ckpReaderStopReading reader logId
   atomically $ do
     deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
-    modifyTVar' subscribeHeap $ \hm -> Map.delete subscriptionSubscriptionId hm
+    modifyTVar' subscribeHeap $ Map.delete subscriptionSubscriptionId
   returnResp Empty
+
+hasSubscriptionHandler
+  :: ServerContext
+  -> ServerRequest 'Normal HasSubscriptionRequest HasSubscriptionResponse
+  -> IO (ServerResponse 'Normal HasSubscriptionResponse)
+hasSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata HasSubscriptionRequest{..})=
+  defaultExceptionHandle $ do
+  status <- atomically $ getReaderStatus subscribedReaders hasSubscriptionRequestSubscriptionId
+  returnResp $ HasSubscriptionResponse (isJust status)
 
 fetchHandler
   :: ServerContext
@@ -512,7 +523,7 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata FetchRequest{..}) 
   where
     fetchResult :: [S.DataRecord Bytes] -> V.Vector ReceivedRecord
     fetchResult records =
-      let groups = L.groupBy (\x y -> S.recordLSN x == S.recordLSN y) records
+      let groups = L.groupBy ((==) `on` S.recordLSN) records
       in V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
 
     mkReceivedRecord :: Int -> S.DataRecord Bytes -> ReceivedRecord
