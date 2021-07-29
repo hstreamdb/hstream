@@ -8,7 +8,6 @@
 
 module HStream.Server.Handler.StoreAdmin where
 
-import           Control.Lens
 import           Control.Monad                    (forM)
 import           Data.Aeson                       (Value (..))
 import           Data.Int                         (Int32)
@@ -18,6 +17,7 @@ import           Data.Scientific                  (floatingOrInteger)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import           Lens.Micro
 import           Lens.Micro.Aeson
 import           Network.GRPC.HighLevel.Generated
 
