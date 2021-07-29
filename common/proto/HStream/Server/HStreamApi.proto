@@ -13,6 +13,12 @@ option java_outer_classname = "HStreamProto";
 service HStreamApi {
   rpc Echo(EchoRequest) returns (EchoResponse);
 
+  // Stream APIs
+  rpc CreateStream(Stream) returns (Stream) {}
+  rpc DeleteStream(DeleteStreamRequest) returns (google.protobuf.Empty) {}
+  rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse) {}
+  rpc Append(AppendRequest) returns (AppendResponse) {}
+
   // only for push query
   // e.g., create as select
   rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
@@ -22,8 +28,6 @@ service HStreamApi {
   rpc ExecuteQuery(CommandQuery) returns (CommandQueryResponse);
 
   rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
-
-  rpc Append(AppendRequest) returns (AppendResponse) {}
 
   rpc Subscribe(Subscription) returns (Subscription) {}
 
@@ -37,14 +41,6 @@ service HStreamApi {
 
   rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
 
-  rpc CreateStream(Stream) returns (Stream) {}
-
-  rpc DeleteStream(DeleteStreamRequest) returns (google.protobuf.Empty) {}
-
-  rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse) {}
-
-  rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
-
   // query related apis
   rpc CreateQuery(CreateQueryRequest) returns (Query) {}
   rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse) {}
@@ -52,6 +48,7 @@ service HStreamApi {
   rpc DeleteQuery(DeleteQueryRequest) returns (google.protobuf.Empty) {}
   rpc RestartQuery(RestartQueryRequest) returns (google.protobuf.Empty) {}
   rpc CancelQuery(CancelQueryRequest) returns (google.protobuf.Empty) {}
+  rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
 
   // connector related apis
   rpc CreateSinkConnector(CreateSinkConnectorRequest) returns (Connector) {}
@@ -123,8 +120,9 @@ message ConsumerHeartbeatResponse {
 
 message AppendRequest {
   string streamName = 1;
-  repeated bytes records = 2;
+  repeated HStreamRecord records = 2;
 }
+
 message AppendResponse {
   string streamName = 1;
   repeated RecordId recordIds = 2;
@@ -184,6 +182,7 @@ message StreamOffset {
 
 message DeleteStreamRequest {
   string streamName = 1;
+  bool ignoreNonExist = 2;
 }
 
 message ListStreamsResponse {
@@ -220,9 +219,11 @@ message HStreamRecord {
 message HStreamRecordHeader {
   // Required.
   // Flag for payload.
-  // - JSON: 0x01 << 24
-  // - RAW:  0x02 << 24
-  uint32 flag = 1;
+  enum Flag {
+    JSON = 0;
+    RAW  = 1;
+  }
+  Flag flag = 1;
 
   // Optional.
   // Attributes attached to this record.

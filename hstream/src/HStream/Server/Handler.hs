@@ -88,18 +88,6 @@ groupbyStores = unsafePerformIO $ newIORef HM.empty
 
 --------------------------------------------------------------------------------
 
-checkSubscriptions
-  :: Int64    -- ^ timer timeout, ms
-  -> ServerContext
-  -> IO ()
-checkSubscriptions timeout ServerContext{..} =  do
-  currentTime <- getCurrentTimestamp
-  atomically $ do
-    sHeap <- readTVar subscribeHeap
-    let (outDated, remained) = Map.partition (\time -> currentTime - time >= timeout) sHeap
-    mapM_ (updateReaderStatus subscribedReaders Released) $ Map.keys outDated
-    writeTVar subscribeHeap remained
-
 handlers
   :: S.LDClient
   -> AA.HeaderConfig AA.AdminAPI
@@ -129,27 +117,30 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
   return HStreamApi {
       hstreamApiEcho = echoHandler
 
+      -- Streams
+    , hstreamApiCreateStream = createStreamHandler serverContext
+    , hstreamApiDeleteStream = deleteStreamHandler serverContext
+    , hstreamApiListStreams  = listStreamsHandler serverContext
+
     , hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
     , hstreamApiSendConsumerHeartbeat = consumerHeartbeatHandler serverContext
     , hstreamApiAppend           = appendHandler serverContext
-    , hstreamApiCreateStream     = createStreamsHandler serverContext
     , hstreamApiSubscribe        = subscribeHandler serverContext
     , hstreamApiDeleteSubscription  = deleteSubscriptionHandler serverContext
     , hstreamApiListSubscriptions = listSubscriptionsHandler serverContext
     , hstreamApiHasSubscription   = hasSubscriptionHandler serverContext
     , hstreamApiFetch            = fetchHandler serverContext
     , hstreamApiCommitOffset     = commitOffsetHandler serverContext
-    , hstreamApiDeleteStream     = deleteStreamsHandler serverContext
-    , hstreamApiListStreams      = listStreamsHandler serverContext
     , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
 
-    , hstreamApiCreateQuery      = createQueryHandler serverContext
-    , hstreamApiGetQuery         = getQueryHandler serverContext
-    , hstreamApiListQueries      = listQueriesHandler serverContext
-    , hstreamApiDeleteQuery      = deleteQueryHandler serverContext
-    , hstreamApiCancelQuery      = cancelQueryHandler serverContext
-    , hstreamApiRestartQuery     = restartQueryHandler serverContext
+      -- FIXME:
+    , hstreamApiCreateQuery  = createQueryHandler serverContext
+    , hstreamApiGetQuery     = getQueryHandler serverContext
+    , hstreamApiListQueries  = listQueriesHandler serverContext
+    , hstreamApiDeleteQuery  = deleteQueryHandler serverContext
+    , hstreamApiCancelQuery  = cancelQueryHandler serverContext
+    , hstreamApiRestartQuery = restartQueryHandler serverContext
 
     , hstreamApiCreateSinkConnector  = createSinkConnectorHandler serverContext
     , hstreamApiGetConnector         = getConnectorHandler serverContext
@@ -167,11 +158,54 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
     , hstreamApiListNodes        = listStoreNodesHandler serverContext
     }
 
+-------------------------------------------------------------------------------
+
 echoHandler
   :: ServerRequest 'Normal EchoRequest EchoResponse
   -> IO (ServerResponse 'Normal EchoResponse)
 echoHandler (ServerNormalRequest _metadata EchoRequest{..}) = do
   return $ ServerNormalResponse (Just $ EchoResponse echoRequestMsg) [] StatusOk ""
+
+-------------------------------------------------------------------------------
+-- Stream
+
+createStreamHandler
+  :: ServerContext
+  -> ServerRequest 'Normal Stream Stream
+  -> IO (ServerResponse 'Normal Stream)
+createStreamHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
+  S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
+    (S.LogAttrs $ S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+  returnResp stream
+
+deleteStreamHandler
+  :: ServerContext
+  -> ServerRequest 'Normal DeleteStreamRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+deleteStreamHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
+  let name = TL.toStrict deleteStreamRequestStreamName
+  streamExists <- S.doesStreamExists scLDClient (transToStreamName name)
+  if streamExists
+     then terminateQueryAndRemove sc (textToCBytes name)
+       >> terminateRelatedQueries sc (textToCBytes name)
+       >> S.removeStream scLDClient (transToStreamName name)
+       >> returnResp Empty
+     else if deleteStreamRequestIgnoreNonExist
+             then returnResp Empty
+             else returnErrResp StatusInternal "Object does not exist"
+
+listStreamsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListStreamsRequest ListStreamsResponse
+  -> IO (ServerResponse 'Normal ListStreamsResponse)
+listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata ListStreamsRequest) = defaultExceptionHandle $ do
+  streams <- S.findStreams scLDClient S.StreamTypeStream True
+  res <- V.forM (V.fromList streams) $ \stream -> do
+    refactor <- S.getStreamReplicaFactor scLDClient stream
+    return $ Stream (TL.pack . S.showStreamName $ stream) (fromIntegral refactor)
+  returnResp $ ListStreamsResponse res
+
+-------------------------------------------------------------------------------
 
 executeQueryHandler
   :: ServerContext
@@ -184,6 +218,9 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     -- execute plans that can be executed with this method
     CreatePlan stream _repFactor ->
       create (transToStreamName stream) >> returnCommandQueryEmptyResp
+    ShowPlan showObject -> handleShowPlan sc showObject
+    DropPlan checkIfExist dropObject ->
+      handleDropPlan sc checkIfExist dropObject
     CreateBySelectPlan sources sink taskBuilder _repFactor ->
       create (transToStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
@@ -209,16 +246,13 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     InsertPlan stream insertType payload -> do
       timestamp <- getProtoTimestamp
       let header = case insertType of
-            JsonFormat -> buildRecordHeader jsonPayloadFlag Map.empty timestamp TL.empty
-            RawFormat  -> buildRecordHeader rawPayloadFlag Map.empty timestamp TL.empty
+            JsonFormat -> buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+            RawFormat  -> buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
       let record = encodeRecord $ buildRecord header payload
       void $ batchAppend scLDClient (TL.fromStrict stream) [record] cmpStrategy
       returnCommandQueryEmptyResp
-    DropPlan checkIfExist dropObject ->
-      handleDropPlan sc checkIfExist dropObject
-    ShowPlan showObject -> handleShowPlan sc showObject
     TerminatePlan terminationSelection -> do
-      handleTerminate sc terminationSelection
+      handleQueryTerminate sc terminationSelection
       returnCommandQueryEmptyResp
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
@@ -294,31 +328,14 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHa
   where
     handleDrop name toSName = do
       streamExists <- S.doesStreamExists scLDClient (toSName name)
-      if streamExists then
-        terminateQueryAndRemove (textToCBytes name)
-        >> terminateRelatedQueries (textToCBytes name)
-        >> S.removeStream scLDClient (toSName name)
-        >> returnCommandQueryEmptyResp
-      else if checkIfExist then
-        returnCommandQueryEmptyResp
-      else
-        returnErrResp StatusInternal "Object does not exist"
-
-    terminateQueryAndRemove objectId = do
-      queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let queryExists = L.find (\query -> P.getQuerySink query == objectId) queries
-      case queryExists of
-        Just query ->
-          handleTerminate sc (OneQuery $ P.queryId query)
-          >> P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
-        Nothing    -> pure ()
-
-    terminateRelatedQueries name = do
-      queries <- P.withMaybeZHandle zkHandle P.getQueries
-      mapM_ (handleTerminate sc . OneQuery) (getRelatedQueries name queries)
-
-    getRelatedQueries name queries =
-      [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+      if streamExists
+         then terminateQueryAndRemove sc (textToCBytes name)
+           >> terminateRelatedQueries sc (textToCBytes name)
+           >> S.removeStream scLDClient (toSName name)
+           >> returnCommandQueryEmptyResp
+          else if checkIfExist
+                  then returnCommandQueryEmptyResp
+                  else returnErrResp StatusInternal "Object does not exist"
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
@@ -346,19 +363,6 @@ handleShowPlan ServerContext{..} showObject = defaultExceptionHandle $ do
       let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWVIEWS" $
                     cBytesToValue <$> views
       returnResp resp
-
-handleTerminate :: ServerContext -> TerminationSelection -> IO ()
-handleTerminate ServerContext{..} (OneQuery qid) = do
-  hmapQ <- readMVar runningQueries
-  case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
-  void $ swapMVar runningQueries (HM.delete qid hmapQ)
-handleTerminate ServerContext{..} AllQuery = do
-  hmapQ <- readMVar runningQueries
-  mapM_ killThread $ HM.elems hmapQ
-  let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
-  mapM_ f $ HM.keys hmapQ
-  void $ swapMVar runningQueries HM.empty
 
 --------------------------------------------------------------------------------
 
@@ -411,23 +415,22 @@ appendHandler
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) = defaultExceptionHandle $ do
   timestamp <- getProtoTimestamp
-  let payloads = map (buildHStreamRecord timestamp) $ V.toList appendRequestRecords
+  let payloads = V.toList $ (encodeRecord . updateRecordTimestamp timestamp) <$> appendRequestRecords
   S.AppendCompletion{..} <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
   let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
   returnResp $ AppendResponse appendRequestStreamName records
-  where
-    buildHStreamRecord :: PB.Timestamp -> ByteString -> Bytes
-    buildHStreamRecord timestamp payload = encodeRecord $
-      updateRecordTimestamp (decodeByteStringRecord payload) timestamp
 
-createStreamsHandler
-  :: ServerContext
-  -> ServerRequest 'Normal Stream Stream
-  -> IO (ServerResponse 'Normal Stream)
-createStreamsHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
-  S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
-    (S.LogAttrs $ S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
-  returnResp stream
+checkSubscriptions
+  :: Int64    -- ^ timer timeout, ms
+  -> ServerContext
+  -> IO ()
+checkSubscriptions timeout ServerContext{..} =  do
+  currentTime <- getCurrentTimestamp
+  atomically $ do
+    sHeap <- readTVar subscribeHeap
+    let (outDated, remained) = Map.partition (\time -> currentTime - time >= timeout) sHeap
+    mapM_ (updateReaderStatus subscribedReaders Released) $ Map.keys outDated
+    writeTVar subscribeHeap remained
 
 subscribeHandler
   :: ServerContext
@@ -545,25 +548,6 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@Comm
       logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
       S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
-deleteStreamsHandler
-  :: ServerContext
-  -> ServerRequest 'Normal DeleteStreamRequest Empty
-  -> IO (ServerResponse 'Normal Empty)
-deleteStreamsHandler ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
-  S.removeStream scLDClient $ transToStreamName $ TL.toStrict deleteStreamRequestStreamName
-  returnResp Empty
-
-listStreamsHandler
-  :: ServerContext
-  -> ServerRequest 'Normal ListStreamsRequest ListStreamsResponse
-  -> IO (ServerResponse 'Normal ListStreamsResponse)
-listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata ListStreamsRequest) = defaultExceptionHandle $ do
-  streams <- S.findStreams scLDClient S.StreamTypeStream True
-  res <- V.forM (V.fromList streams) $ \stream -> do
-    refactor <- S.getStreamReplicaFactor scLDClient stream
-    return $ Stream (TL.pack . S.showStreamName $ stream) (fromIntegral refactor)
-  returnResp $ ListStreamsResponse res
-
 listSubscriptionsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
@@ -579,10 +563,10 @@ terminateQueryHandler
   -> IO (ServerResponse 'Normal TerminateQueryResponse)
 terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..}) = defaultExceptionHandle $ do
   let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
-  handleTerminate sc (OneQuery queryName)
+  handleQueryTerminate sc (OneQuery queryName)
   return (ServerNormalResponse (Just (TerminateQueryResponse terminateQueryRequestQueryName)) [] StatusOk  "")
 
-batchAppend :: S.LDClient -> TL.Text -> [Bytes] -> S.Compression -> IO S.AppendCompletion
+batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
 batchAppend client streamName payloads strategy = do
   logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
-  S.appendBatch client logId payloads strategy Nothing
+  S.appendBatchBS client logId payloads strategy Nothing

@@ -9,8 +9,7 @@ module HStream.SQL.Codegen where
 import           Data.Aeson                                      (Object,
                                                                   Value (Bool, Number, String),
                                                                   encode)
-import qualified Data.ByteString.Char8                           as BS
-import qualified Data.ByteString.Lazy                            as BSL
+import qualified Data.ByteString.Char8                           as BSC
 import qualified Data.HashMap.Strict                             as HM
 import qualified Data.List                                       as L
 import           Data.Scientific                                 (fromFloatDigits,
@@ -21,12 +20,9 @@ import           Data.Time                                       (diffTimeToPico
                                                                   showGregorian)
 import qualified Database.ClickHouseDriver.Types                 as Clickhouse
 import qualified Database.MySQL.Base                             as MySQL
-import           Numeric                                         (showHex)
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 import qualified Z.Data.CBytes                                   as CB
-import           Z.IO.Time                                       (SystemTime (MkSystemTime),
-                                                                  getSystemTime')
 
 import           HStream.Processing.Processor                    (Record (..),
                                                                   TaskBuilder)
@@ -93,7 +89,7 @@ data ExecutionPlan
   | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object)
-  | InsertPlan          StreamName InsertType BL.ByteString
+  | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
@@ -122,9 +118,9 @@ streamCodegen input = do
       return $ CreateViewPlan schema source sink (HS.build builder) 1 mat
     RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
     RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
-    RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (encode $ HM.fromList $ second constantToValue <$> tuples)
-    RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  (BSL.fromStrict bs)
-    RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BSL.fromStrict bs)
+    RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . encode . HM.fromList $ second constantToValue <$> tuples)
+    RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
+    RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat bs
     RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
     RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
     RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
@@ -149,7 +145,7 @@ genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connecto
     extractInt = \case Just (ConstantInt s) -> Just s; _ -> Nothing
     extractString = \case Just (ConstantString s) -> Just s; _ -> Nothing
     getStringValue field value = fromMaybe value $ extractString (lookup field cOptions)
-    getByteStringValue = (BS.pack .) . getStringValue
+    getByteStringValue = (BSC.pack .) . getStringValue
     createClickhouseSinkConnector = Clickhouse.ConnParams
       (getByteStringValue "username" "default")
       (getByteStringValue "host" "127.0.0.1")

@@ -5,15 +5,13 @@
 module HStream.Utils.BuildRecord where
 
 import           Control.Exception                    (displayException)
-import           Data.Bits                            (shiftL)
+import           Data.ByteString                      (ByteString)
 import qualified Data.ByteString                      as B
-import           Data.ByteString.Lazy                 (ByteString)
 import qualified Data.ByteString.Lazy                 as BL
 import           Data.Int                             (Int64)
 import           Data.Map.Strict                      (Map)
 import           Data.Maybe                           (fromJust)
 import           Data.Text.Lazy                       (Text)
-import           Data.Word                            (Word32)
 import qualified Proto3.Suite                         as PT
 import           Z.Data.Vector                        (Bytes)
 import           Z.Foreign                            (fromByteString,
@@ -22,26 +20,26 @@ import           Z.Foreign                            (fromByteString,
 import           HStream.Server.HStreamApi
 import           ThirdParty.Google.Protobuf.Timestamp
 
-jsonPayloadFlag :: Word32
-jsonPayloadFlag = shiftL 0x01 24
-
-rawPayloadFlag :: Word32
-rawPayloadFlag = shiftL 0x02 24
-
-buildRecordHeader :: Word32 -> Map Text Text -> Timestamp -> Text -> HStreamRecordHeader
+buildRecordHeader
+  :: HStreamRecordHeader_Flag
+  -> Map Text Text
+  -> Timestamp
+  -> Text
+  -> HStreamRecordHeader
 buildRecordHeader flag mp timestamp key =
   HStreamRecordHeader
-    { hstreamRecordHeaderFlag = flag
+    { hstreamRecordHeaderFlag = PT.Enumerated (Right flag)
     , hstreamRecordHeaderAttributes = mp
     , hstreamRecordHeaderPublishTime = Just timestamp
     , hstreamRecordHeaderKey = key
     }
+{-# INLINE buildRecordHeader #-}
 
 buildRecord :: HStreamRecordHeader -> ByteString -> HStreamRecord
-buildRecord header payload = HStreamRecord (Just header) (BL.toStrict payload)
+buildRecord header payload = HStreamRecord (Just header) payload
 
-encodeRecord :: HStreamRecord -> Bytes
-encodeRecord = fromByteString . BL.toStrict . PT.toLazyByteString
+encodeRecord :: HStreamRecord -> ByteString
+encodeRecord = BL.toStrict . PT.toLazyByteString
 
 decodeRecord :: Bytes -> HStreamRecord
 decodeRecord = decodeByteStringRecord . toByteString
@@ -56,7 +54,7 @@ decodeByteStringRecord record =
 getPayload :: HStreamRecord -> Bytes
 getPayload HStreamRecord{..} = fromByteString hstreamRecordPayload
 
-getPayloadFlag :: HStreamRecord -> Word32
+getPayloadFlag :: HStreamRecord -> PT.Enumerated HStreamRecordHeader_Flag
 getPayloadFlag = hstreamRecordHeaderFlag . fromJust . hstreamRecordHeader
 
 getTimeStamp :: HStreamRecord -> Int64
@@ -65,8 +63,8 @@ getTimeStamp HStreamRecord{..} =
       !ts = floor @Double $ (fromIntegral timestampSeconds * 1e3) + (fromIntegral timestampNanos / 1e6)
   in ts
 
-updateRecordTimestamp :: HStreamRecord -> Timestamp -> HStreamRecord
-updateRecordTimestamp HStreamRecord{..} timestamp =
+updateRecordTimestamp :: Timestamp -> HStreamRecord -> HStreamRecord
+updateRecordTimestamp timestamp HStreamRecord{..} =
   let oldHeader = fromJust hstreamRecordHeader
       newHeader = oldHeader { hstreamRecordHeaderPublishTime = Just timestamp }
-  in HStreamRecord (Just newHeader) hstreamRecordPayload
+   in HStreamRecord (Just newHeader) hstreamRecordPayload

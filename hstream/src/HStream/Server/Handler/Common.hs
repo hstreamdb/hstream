@@ -15,26 +15,26 @@ import           Control.Concurrent.STM           (STM, TVar, atomically,
                                                    writeTVar)
 import           Control.Exception                (SomeException,
                                                    displayException, throwIO)
-
-import           Control.Monad                    (void, when)
+import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
+import           Data.List                        (find)
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import           Database.ClickHouseDriver.Client (createClient)
 import qualified Database.MySQL.Base              as MySQL
+import           GHC.Conc                         (readTVarIO)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import           RIO                              (forever, readTVarIO)
 import qualified Z.Data.CBytes                    as CB
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 import           ZooKeeper.Types
 
-import           Database.ClickHouseDriver.Client (createClient)
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCS
@@ -163,6 +163,38 @@ handleTerminateConnector ServerContext{..} cid = do
     _        -> return ()
   -- TODO: shall we move this op to Just tid -> killThread tid
   void $ P.withMaybeZHandle zkHandle (P.setConnectorStatus cid P.Terminated)
+
+--------------------------------------------------------------------------------
+-- Query
+
+terminateQueryAndRemove :: ServerContext -> CB.CBytes -> IO ()
+terminateQueryAndRemove sc@ServerContext{..} objectId = do
+  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  let queryExists = find (\query -> P.getQuerySink query == objectId) queries
+  case queryExists of
+    Just query ->
+      handleQueryTerminate sc (OneQuery $ P.queryId query)
+      >> P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
+    Nothing    -> pure ()
+
+terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
+terminateRelatedQueries sc@ServerContext{..} name = do
+  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  let getRelatedQueries name queries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+  mapM_ (handleQueryTerminate sc . OneQuery) (getRelatedQueries name queries)
+
+handleQueryTerminate :: ServerContext -> TerminationSelection -> IO ()
+handleQueryTerminate ServerContext{..} (OneQuery qid) = do
+  hmapQ <- readMVar runningQueries
+  case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
+  P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
+  void $ swapMVar runningQueries (HM.delete qid hmapQ)
+handleQueryTerminate ServerContext{..} AllQuery = do
+  hmapQ <- readMVar runningQueries
+  mapM_ killThread $ HM.elems hmapQ
+  let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
+  mapM_ f $ HM.keys hmapQ
+  void $ swapMVar runningQueries HM.empty
 
 --------------------------------------------------------------------------------
 -- Subscription

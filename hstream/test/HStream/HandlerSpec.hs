@@ -8,7 +8,7 @@ module HStream.HandlerSpec (spec) where
 
 import           Control.Concurrent               (forkIO, killThread,
                                                    threadDelay)
-import           Control.Monad                    (forM_, forever, void)
+import           Control.Monad                    (forM, forM_, forever, void)
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Lazy             as BL
 import qualified Data.List                        as L
@@ -134,7 +134,9 @@ listStreamRequest client = do
 deleteStreamRequest :: Client -> TL.Text -> IO Bool
 deleteStreamRequest client streamName = do
   HStreamApi{..} <- hstreamApiClient client
-  let req = DeleteStreamRequest streamName
+  let req = DeleteStreamRequest { deleteStreamRequestStreamName = streamName
+                                , deleteStreamRequestIgnoreNonExist = False
+                                }
   resp <- hstreamApiDeleteStream $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
@@ -260,21 +262,21 @@ hasSubscriptionRequest client subscribeId = do
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec
 
-mkConsumerSpecEnv :: ((Client, [ReceivedRecord]) -> IO a) -> Client -> IO ()
+mkConsumerSpecEnv :: ((Client, V.Vector B.ByteString) -> IO a) -> Client -> IO ()
 mkConsumerSpecEnv runTest client = do
   let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
   void $ createStreamRequest client $ Stream randomStreamName 1
   void $ subscribeRequest client randomSubsciptionId randomStreamName offset
 
   timeStamp <- getProtoTimestamp
-  let header = buildRecordHeader rawPayloadFlag Map.empty timeStamp TL.empty
-  batchRecords <- V.forM (V.fromList [1..5]) $ \num -> do
-    records <- V.replicateM num $ newRandomByteString 2
-    let payloads = mkAppendPayload header records
-    AppendResponse{..} <- fromJust <$> appendRequest client randomStreamName payloads
-    return . V.toList $ mkReceivedRecord records appendResponseRecordIds
+  let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+  batchedBS <- forM [1..5] $ \num -> do
+    payloads <- V.replicateM num $ newRandomByteString 2
+    let records = V.map (buildRecord header) payloads
+    AppendResponse{..} <- fromJust <$> appendRequest client randomStreamName records
+    return payloads
 
-  void $ runTest (client, concat batchRecords)
+  void $ runTest (client, V.concat batchedBS)
 
   void $ deleteSubscriptionRequest client randomSubsciptionId
   void $ deleteStreamRequest client randomStreamName
@@ -282,38 +284,39 @@ mkConsumerSpecEnv runTest client = do
 consumerSpec :: SpecWith Client
 consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec.Consumer" $ do
 
+  -- FIXME:
   it "test fetch request" $ \(client, reqPayloads) -> do
     resp <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 100
-    isJust resp `shouldBe` True
     let resPayloads = V.map rebuildReceivedRecord $ fromJust resp
-    reqPayloads `shouldBe` V.toList resPayloads
+    reqPayloads `shouldBe` resPayloads
 
-  it "test commitOffset request" $ \(client, reqPayloads) -> do
-    tid <- forkIO $ do
-      forever $ do
-        void $ sendHeartbeatRequest client randomSubsciptionId
-        threadDelay 500000
+  -- TODO
+  --it "test commitOffset request" $ \(client, reqPayloads) -> do
+  --  tid <- forkIO $ do
+  --    forever $ do
+  --      void $ sendHeartbeatRequest client randomSubsciptionId
+  --      threadDelay 500000
 
-    resp1 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    isJust resp1 `shouldBe` True
-    let receivedRecord1 = V.head . fromJust $ resp1
-    let resPayload1 = rebuildReceivedRecord receivedRecord1
-    resPayload1 `shouldBe` head reqPayloads
+  --  resp1 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
+  --  isJust resp1 `shouldBe` True
+  --  let receivedRecord1 = V.head . fromJust $ resp1
+  --  let resPayload1 = rebuildReceivedRecord receivedRecord1
+  --  resPayload1 `shouldBe` head reqPayloads
 
-    let recordId1 = fromJust . receivedRecordRecordId $ receivedRecord1
-    commitOffsetRequest client randomSubsciptionId randomStreamName recordId1 `shouldReturn` True
+  --  let recordId1 = fromJust . receivedRecordRecordId $ receivedRecord1
+  --  commitOffsetRequest client randomSubsciptionId randomStreamName recordId1 `shouldReturn` True
 
-    resp2 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    isJust resp2 `shouldBe` True
-    let receivedRecord2 = V.head . fromJust $ resp2
-    let resPayload2 = rebuildReceivedRecord receivedRecord2
-    resPayload2 `shouldBe` reqPayloads !! 1
+  --  resp2 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
+  --  isJust resp2 `shouldBe` True
+  --  let receivedRecord2 = V.head . fromJust $ resp2
+  --  let resPayload2 = rebuildReceivedRecord receivedRecord2
+  --  resPayload2 `shouldBe` reqPayloads !! 1
 
-    void $ killThread tid
+  --  void $ killThread tid
 
 ----------------------------------------------------------------------------------------------------------
 
-appendRequest :: Client -> TL.Text -> V.Vector B.ByteString -> IO (Maybe AppendResponse)
+appendRequest :: Client -> TL.Text -> V.Vector HStreamRecord -> IO (Maybe AppendResponse)
 appendRequest client streamName records = do
   HStreamApi{..} <- hstreamApiClient client
   let req = AppendRequest streamName records
@@ -347,13 +350,10 @@ commitOffsetRequest client subscriptionId streamName recordId = do
 requestTimeout :: Int
 requestTimeout = 1000
 
-mkReceivedRecord :: V.Vector B.ByteString -> V.Vector RecordId -> V.Vector ReceivedRecord
-mkReceivedRecord payloads recordId = V.zipWith (ReceivedRecord . Just) recordId payloads
+mkReceivedRecord :: V.Vector HStreamRecord -> V.Vector RecordId -> V.Vector ReceivedRecord
+mkReceivedRecord payloads recordIds =
+  V.zipWith (\offset record -> ReceivedRecord (Just offset) (encodeRecord record)) recordIds payloads
 
-rebuildReceivedRecord :: ReceivedRecord -> ReceivedRecord
+rebuildReceivedRecord :: ReceivedRecord -> B.ByteString
 rebuildReceivedRecord record@ReceivedRecord{..} =
-  let payload = toByteString . getPayload . decodeByteStringRecord $ receivedRecordRecord
-  in record { receivedRecordRecord = payload }
-
-mkAppendPayload :: HStreamRecordHeader -> V.Vector B.ByteString -> V.Vector B.ByteString
-mkAppendPayload header = V.map (toByteString . encodeRecord . buildRecord header . BL.fromStrict)
+  toByteString . getPayload . decodeByteStringRecord $ receivedRecordRecord

@@ -169,7 +169,9 @@ getUnderlyingLogPath StreamId{..} = do
     StreamTypeTemp   -> streamTempLogDir s `FS.join` streamName
 {-# INLINABLE getUnderlyingLogPath #-}
 
-getUnderlyingLogId :: FFI.LDClient -> StreamId -> IO FFI.C_LogID
+getUnderlyingLogId
+  :: HasCallStack
+  => FFI.LDClient -> StreamId -> IO FFI.C_LogID
 getUnderlyingLogId client stream = getUnderlyingLogPath stream >>= getCLogIDByLogGroup client
 {-# INLINABLE getUnderlyingLogId #-}
 
@@ -352,7 +354,7 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
 
 -------------------------------------------------------------------------------
 
-getCLogIDByLogGroup :: FFI.LDClient -> CBytes -> IO FFI.C_LogID
+getCLogIDByLogGroup :: HasCallStack => FFI.LDClient -> CBytes -> IO FFI.C_LogID
 getCLogIDByLogGroup client path = do
   m_v <- Cache.lookup logPathCache path
   case m_v of
