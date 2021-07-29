@@ -14,6 +14,7 @@ import           Data.ByteString                  (ByteString)
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as T
 import qualified Data.Text.Lazy                   as TL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
@@ -25,6 +26,7 @@ import           System.Posix                     (Handler (Catch),
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
 
+import qualified HStream.Logger                   as Log
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
@@ -32,6 +34,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Utils                    (formatCommandQueryResponse,
                                                    formatResult,
                                                    setupSigsegvHandler)
+type API = HStreamApi ClientRequest ClientResult
 
 data UserConfig = UserConfig
   { _serverHost :: ByteString
@@ -64,55 +67,57 @@ main = do
    in app clientConfig
 
 app :: ClientConfig -> IO ()
-app clientConfig = do
-  putStrLn helpInfo
-  H.runInputT H.defaultSettings  loop
+app config@ClientConfig{..} = withGRPCClient config $ \client -> do
+  api@HStreamApi{..} <- hstreamApiClient client
+  resp <- hstreamApiEcho $ ClientNormalRequest EchoRequest{ echoRequestMsg = "Connected" } 1000 (MetadataMap M.empty)
+  case resp of
+    ClientErrorResponse  {} ->
+      Log.e . Log.fromText $ "Can't connect to HStreamDB server at "
+                          <> (T.decodeUtf8 . unHost) clientServerHost
+                          <> " through port " <> (T.pack . show . unPort) clientServerPort
+    ClientNormalResponse {} -> do
+      putStrLn helpInfo
+      H.runInputT H.defaultSettings (loop api)
   where
-    loop :: H.InputT IO ()
-    loop = do
-      H.getInputLine "> " >>= \case
-        Nothing   -> return ()
-        Just str
-          | take 1 (words str) == [":q"] -> return ()
-          | otherwise  -> liftIO (commandExec clientConfig str) >> loop
+    loop :: API -> H.InputT IO ()
+    loop api = H.getInputLine "> " >>= \case
+      Nothing   -> return ()
+      Just str
+        | take 1 (words str) == [":q"] -> return ()
+        | otherwise -> liftIO (commandExec api str) >> loop api
 
-commandExec :: ClientConfig -> String -> IO ()
-commandExec clientConfig xs = case words xs of
-  ":h" : _ -> putStrLn helpInfo
-  [":help"] -> putStr groupedHelpInfo
-  ":help" : x : _ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
-  val@(_ : _) -> do
-    let sql = T.pack (unwords val)
-    (liftIO . try . parseAndRefine $ sql) >>= \case
-      Left (e :: SomeSQLException) -> liftIO . putStrLn . formatSomeSQLException $ e
-      Right rsql                -> case rsql of
-        RQSelect _ -> liftIO $ sqlStreamAction clientConfig (TL.fromStrict sql)
-        _          -> liftIO $ sqlAction       clientConfig (TL.fromStrict sql)
+commandExec :: API -> String -> IO ()
+commandExec api xs = case words xs of
+  ":h": _     -> putStrLn helpInfo
+  [":help"]   -> putStr groupedHelpInfo
+  ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
+  (_:_)       -> liftIO $
+    (try . parseAndRefine . T.pack) xs >>= \case
+      Left e     -> putStrLn . formatSomeSQLException $ (e :: SomeSQLException)
+      Right rsql -> case rsql of
+        RQSelect _ -> sqlStreamAction api (TL.pack xs)
+        _          -> sqlAction       api (TL.pack xs)
   [] -> return ()
 
-sqlStreamAction :: ClientConfig -> TL.Text -> IO ()
-sqlStreamAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
+sqlStreamAction :: API -> TL.Text -> IO ()
+sqlStreamAction HStreamApi{..} sql = do
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ClientReaderResponse _meta _status _details <-
     hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 [] action)
   return ()
   where
-    action call _meta recv =
-      let go = do
-            msg <- withInterrupt (clientCallCancel call) recv
-            case msg of
-              Left err            -> print err
-              Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
-              Right (Just result) -> do
-                width <- getTerminalSize
-                putStr $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
-                go
-      in go
+    action call _meta recv = do
+      msg <- withInterrupt (clientCallCancel call) recv
+      case msg of
+        Left err            -> print err
+        Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
+        Right (Just result) -> do
+          width <- getTerminalSize
+          putStr $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
+          action call _meta recv
 
-sqlAction :: ClientConfig -> TL.Text -> IO ()
-sqlAction clientConfig sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
+sqlAction :: API -> TL.Text -> IO ()
+sqlAction HStreamApi{..} sql = do
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
   case resp of
