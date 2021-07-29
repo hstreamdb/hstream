@@ -107,13 +107,13 @@ spec = describe "HStream.RunQuerySpec" $ do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)
+    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
 
   it "create streams" $
     ( do
         res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)
+    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
 
   it "create query" $
     ( do
@@ -173,4 +173,4 @@ spec = describe "HStream.RunQuerySpec" $ do
         setLogDeviceDbgLevel C_DBG_ERROR
         res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
         return [res1]
-    ) `shouldReturn` L.replicate 1 (Just commandQuerySuccessResp)
+    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
