@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy             as BL
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
+import qualified Data.Set                         as Set
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
@@ -84,9 +85,9 @@ basicSpec = describe "HStream.BasicHandlerSpec.basic" $ do
     V.forM_ createStreamReqs $ \req -> do
       isJust <$> createStreamRequest client req `shouldReturn` True
     resp <- fromJust <$> listStreamRequest client
-    let sortedRes = L.sortOn streamStreamName $ V.toList resp
-        sortedReqs = L.sortOn streamStreamName $ V.toList createStreamReqs
-    sortedRes `shouldContain` sortedReqs
+    let sortedRes = Set.fromList $ V.toList resp
+        sortedReqs = Set.fromList $ V.toList createStreamReqs
+    sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedRes)
 
   it "test delete request" $ \client -> do
     void $ createStreamRequest client $ Stream randomStreamName 1
