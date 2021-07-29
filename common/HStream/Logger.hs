@@ -22,21 +22,22 @@ module HStream.Logger
 
 import qualified Data.Text      as Text
 import qualified Data.Text.Lazy as TL
+import           GHC.Stack      (HasCallStack)
 import           Z.Data.Builder
 import qualified Z.IO.Logger    as Log
 
 import qualified HStream.Utils  as U
 
-d :: Builder () -> IO ()
+d :: HasCallStack => Builder () -> IO ()
 d = Log.withDefaultLogger . Log.debug
 
-i :: Builder () -> IO ()
+i :: HasCallStack => Builder () -> IO ()
 i = Log.withDefaultLogger . Log.info
 
-w :: Builder () -> IO ()
+w :: HasCallStack => Builder () -> IO ()
 w = Log.withDefaultLogger . Log.warning
 
-e :: Builder () -> IO ()
+e :: HasCallStack => Builder () -> IO ()
 e = Log.withDefaultLogger . Log.fatal
 
 fromText :: Text.Text -> Builder ()
