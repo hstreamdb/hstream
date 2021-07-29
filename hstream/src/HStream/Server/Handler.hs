@@ -61,12 +61,12 @@ import           HStream.Server.Handler.Connector      (cancelConnectorHandler,
                                                         getConnectorHandler,
                                                         listConnectorsHandler,
                                                         restartConnectorHandler)
-import           HStream.Server.Handler.Query          (cancelQueryHandler,
-                                                        createQueryHandler,
+import           HStream.Server.Handler.Query          (createQueryHandler,
                                                         deleteQueryHandler,
                                                         getQueryHandler,
                                                         listQueriesHandler,
-                                                        restartQueryHandler)
+                                                        restartQueryHandler,
+                                                        terminateQueriesHandler)
 import           HStream.Server.Handler.StoreAdmin     (getStoreNodeHandler,
                                                         listStoreNodesHandler)
 import           HStream.Server.Handler.View           (createViewHandler,
@@ -137,14 +137,13 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
 
     , hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
-    , hstreamApiTerminateQuery   = terminateQueryHandler serverContext
+    , hstreamApiTerminateQueries   = terminateQueriesHandler serverContext
 
       -- FIXME:
     , hstreamApiCreateQuery  = createQueryHandler serverContext
     , hstreamApiGetQuery     = getQueryHandler serverContext
     , hstreamApiListQueries  = listQueriesHandler serverContext
     , hstreamApiDeleteQuery  = deleteQueryHandler serverContext
-    , hstreamApiCancelQuery  = cancelQueryHandler serverContext
     , hstreamApiRestartQuery = restartQueryHandler serverContext
 
     , hstreamApiCreateSinkConnector  = createSinkConnectorHandler serverContext
@@ -591,15 +590,6 @@ commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@Comm
       S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 --------------------------------------------------------------------------------
-
-terminateQueryHandler
-  :: ServerContext
-  -> ServerRequest 'Normal TerminateQueryRequest TerminateQueryResponse
-  -> IO (ServerResponse 'Normal TerminateQueryResponse)
-terminateQueryHandler sc (ServerNormalRequest _metadata TerminateQueryRequest{..}) = defaultExceptionHandle $ do
-  let queryName = CB.pack $ TL.unpack terminateQueryRequestQueryName
-  handleQueryTerminate sc (OneQuery queryName)
-  return (ServerNormalResponse (Just (TerminateQueryResponse terminateQueryRequestQueryName)) [] StatusOk  "")
 
 batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
 batchAppend client streamName payloads strategy = do

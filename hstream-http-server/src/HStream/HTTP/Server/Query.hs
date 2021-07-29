@@ -124,8 +124,8 @@ restartQueryHandler hClient qid = liftIO $ do
 cancelQueryHandler :: Client -> String -> Handler Bool
 cancelQueryHandler hClient qid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let cancelQueryRequest = CancelQueryRequest { cancelQueryRequestId = TL.pack qid }
-  resp <- hstreamApiCancelQuery (ClientNormalRequest cancelQueryRequest 100 (MetadataMap $ Map.empty))
+  let cancelQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton $ TL.pack qid }
+  resp <- hstreamApiTerminateQueries (ClientNormalRequest cancelQueryRequest 100 (MetadataMap $ Map.empty))
   case resp of
     ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
     ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return False

@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedLists   #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Common where
 
@@ -14,9 +15,11 @@ import           Control.Concurrent.STM           (STM, TVar, atomically,
                                                    modifyTVar', readTVar,
                                                    writeTVar)
 import           Control.Exception                (SomeException,
-                                                   displayException, throwIO)
+                                                   displayException, throwIO,
+                                                   try)
 import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
+import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import           Data.List                        (find)
@@ -179,21 +182,32 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
 terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
   queries <- P.withMaybeZHandle zkHandle P.getQueries
-  let getRelatedQueries name queries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
-  mapM_ (handleQueryTerminate sc . OneQuery) (getRelatedQueries name queries)
+  let getRelatedQueries= [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+  mapM_ (handleQueryTerminate sc . OneQuery) getRelatedQueries
 
-handleQueryTerminate :: ServerContext -> TerminationSelection -> IO ()
+handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [CB.CBytes]
 handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
   P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
-handleQueryTerminate ServerContext{..} AllQuery = do
+  return [qid]
+handleQueryTerminate sc@ServerContext{..} AllQueries = do
   hmapQ <- readMVar runningQueries
-  mapM_ killThread $ HM.elems hmapQ
-  let f qid = P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
-  mapM_ f $ HM.keys hmapQ
-  void $ swapMVar runningQueries HM.empty
+  handleQueryTerminate sc (ManyQueries $ HM.keys hmapQ)
+handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
+  hmapQ <- readMVar runningQueries
+  (qids', hmapQ') <- foldrM action ([], hmapQ) qids
+  void $ swapMVar runningQueries hmapQ'
+  return qids'
+  where
+    action x (terminatedQids, hm) = do
+      result <- try $ do
+        case HM.lookup x hm of Just tid -> killThread tid; _ -> pure ()
+        P.withMaybeZHandle zkHandle (P.setQueryStatus x P.Terminated)
+      case result of
+        Left (_ ::SomeException) -> return (terminatedQids, hm)
+        Right _                  -> return (x:terminatedQids, HM.delete x hm)
 
 --------------------------------------------------------------------------------
 -- Subscription

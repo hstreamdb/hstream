@@ -31,7 +31,7 @@ service HStreamApi {
   rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
 
   // only for push query
-  // e.g., create as select
+  // e.g., select (with emit changes)
   rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
 
   // for execute any sql stmt except push query,
@@ -42,10 +42,9 @@ service HStreamApi {
   rpc CreateQuery(CreateQueryRequest) returns (Query) {}
   rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse) {}
   rpc GetQuery(GetQueryRequest) returns (Query) {}
+  rpc TerminateQueries(TerminateQueriesRequest) returns (TerminateQueriesResponse) {}
   rpc DeleteQuery(DeleteQueryRequest) returns (google.protobuf.Empty) {}
   rpc RestartQuery(RestartQueryRequest) returns (google.protobuf.Empty) {}
-  rpc CancelQuery(CancelQueryRequest) returns (google.protobuf.Empty) {}
-  rpc TerminateQuery(TerminateQueryRequest) returns (TerminateQueryResponse) {}
 
   // connector related apis
   rpc CreateSinkConnector(CreateSinkConnectorRequest) returns (Connector) {}
@@ -251,12 +250,13 @@ message RecordId {
   uint32 batchIndex = 2;
 }
 
-message TerminateQueryRequest {
-  string queryName = 1;
+message TerminateQueriesRequest {
+  repeated string queryId = 1;
+  bool all = 2;
 }
 
-message TerminateQueryResponse {
-  string queryName = 1;
+message TerminateQueriesResponse {
+  repeated string queryId = 1;
 }
 
 // Query realated Request and Response
@@ -295,14 +295,6 @@ message RestartQueryRequest {
 }
 
 message RestartQueryResponse {
-  bool success = 1;
-}
-
-message CancelQueryRequest {
-  string id = 1;
-}
-
-message CancelQueryResponse {
   bool success = 1;
 }
 

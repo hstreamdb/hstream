@@ -1,7 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -217,18 +216,6 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
                   return ()
                 _ -> error "unknown data encountered"
             _ -> return ()
-
-terminateQuery :: TL.Text -> IO (Maybe TerminateQueryResponse)
-terminateQuery queryName = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let terminateQuery' = TerminateQueryRequest{ terminateQueryRequestQueryName = queryName }
-  resp <- hstreamApiTerminateQuery (ClientNormalRequest terminateQuery' 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@TerminateQueryResponse{} _meta1 _meta2 _status _details ->
-      return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
 
 createMysqlTable :: Text -> IO ()
 createMysqlTable source = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn ->
