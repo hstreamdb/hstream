@@ -36,8 +36,6 @@ library
     , clickhouse-haskell
     , containers
     , hstream-common
-    , lens
-    , lens-aeson
     , mysql-haskell
     , optparse-applicative
     , rio
