@@ -176,9 +176,8 @@ getReaderStatus :: SubscribedReaders -> TL.Text -> STM (Maybe ReaderStatus)
 getReaderStatus readers subscriptionId = do
   mp <- readTVar readers
   case HM.lookup subscriptionId mp of
-    Nothing                -> return Nothing
-    Just None              -> return Nothing
     Just (ReaderMap _ _ s) -> return $ Just s
+    _                      -> return Nothing
 
 updateReaderStatus :: SubscribedReaders -> ReaderStatus -> TL.Text -> STM ()
 updateReaderStatus readers status subscriptionId  = do

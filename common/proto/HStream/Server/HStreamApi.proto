@@ -31,6 +31,8 @@ service HStreamApi {
 
   rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {}
 
+  rpc HasSubscription(HasSubscriptionRequest) returns (HasSubscriptionResponse) {}
+
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
 
   rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
@@ -150,6 +152,10 @@ message DeleteSubscriptionRequest {
   string subscriptionId = 1;
 }
 
+message HasSubscriptionRequest {
+  string subscriptionId = 1;
+}
+
 message FetchRequest {
   string subscriptionId = 1;
   uint64 timeout = 2;
@@ -191,6 +197,10 @@ message ListSubscriptionsRequest {}
 
 message ListSubscriptionsResponse {
   repeated Subscription subscription = 1;
+}
+
+message HasSubscriptionResponse {
+  bool exists = 1;
 }
 
 message Stream {

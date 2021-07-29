@@ -167,8 +167,9 @@ cleanSubscriptionsEnv sIds sNames client = do
 subscribeSpec :: SpecWith Client
 subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
 
+  let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
+
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test subscribe request" $ \client -> do
-    let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
     -- subscribe to a nonexistent stream should return False
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
     void $ createStreamRequest client $ Stream randomStreamName 1
@@ -181,8 +182,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
 
   after (cleanSubscriptionsEnv randomSubsciptionIds randomStreamNames) $ it "test listSubscription request" $ \client -> do
-    let offset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
-    let subscriptions = V.zipWith3 Subscription randomSubsciptionIds randomStreamNames $ V.replicate 5 offset
+    let subscriptions = V.zipWith3 Subscription randomSubsciptionIds randomStreamNames $ V.replicate 5 (Just offset)
     forM_ subscriptions $ \Subscription{..} -> do
       isJust <$> createStreamRequest client (Stream subscriptionStreamName 1) `shouldReturn` True
       subscribeRequest client subscriptionSubscriptionId subscriptionStreamName (fromJust subscriptionOffset) `shouldReturn` True
@@ -194,7 +194,6 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     -- delete unsubscribed stream should return false
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` False
     void $ createStreamRequest client $ Stream randomStreamName 1
-    let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
     subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
     -- delete subscribed stream should return true
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
@@ -202,6 +201,18 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
     res <- listSubscriptionRequest client
     V.length (fromJust res) `shouldBe` 0
+
+  after (cleanSubscriptionsEnv randomSubsciptionIds randomStreamNames) $ it "test hasSubscription request" $ \client -> do
+    void $ createStreamRequest client $ Stream randomStreamName 1
+    subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
+    hasSubscriptionRequest client randomSubsciptionId `shouldReturn` True
+    threadDelay 2000000
+    -- the subscription still exists when the reader's status is released
+    hasSubscriptionRequest client randomSubsciptionId `shouldReturn` True
+    -- validate the reader's status is released
+    subscribeRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
+    deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
+    hasSubscriptionRequest client randomSubsciptionId `shouldReturn` False
 
 ----------------------------------------------------------------------------------------------------------
 
@@ -234,6 +245,17 @@ deleteSubscriptionRequest client subscribeId = do
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError                        -> do
       putStrLn ("Delete Subscription Error: " <> show clientError) >> return False
+
+hasSubscriptionRequest :: Client -> TL.Text -> IO Bool
+hasSubscriptionRequest client subscribeId = do
+  HStreamApi{..} <- hstreamApiClient client
+  let req = HasSubscriptionRequest subscribeId
+  resp <- hstreamApiHasSubscription $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
+  case resp of
+    ClientNormalResponse res _meta1 _meta2 StatusOk _details ->
+      return $ hasSubscriptionResponseExists res
+    ClientErrorResponse clientError                          -> do
+      putStrLn ("Find Subscription Error: " <> show clientError) >> return False
 
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec
