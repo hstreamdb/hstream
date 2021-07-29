@@ -19,6 +19,17 @@ service HStreamApi {
   rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse) {}
   rpc Append(AppendRequest) returns (AppendResponse) {}
 
+  // Subscribe APIs
+  rpc CreateSubscription(Subscription) returns (Subscription) {}
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {}
+  rpc CheckSubscriptionExist(CheckSubscriptionExistRequest) returns (CheckSubscriptionExistResponse) {}
+  rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
+
+  rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
+  rpc Fetch(FetchRequest) returns (FetchResponse) {}
+  rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
+
   // only for push query
   // e.g., create as select
   rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
@@ -26,20 +37,6 @@ service HStreamApi {
   // for execute any sql stmt except push query,
   // e.g., insert, create, show/list, select(without emit changes) ...
   rpc ExecuteQuery(CommandQuery) returns (CommandQueryResponse);
-
-  rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
-
-  rpc Subscribe(Subscription) returns (Subscription) {}
-
-  rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
-
-  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {}
-
-  rpc HasSubscription(HasSubscriptionRequest) returns (HasSubscriptionResponse) {}
-
-  rpc Fetch(FetchRequest) returns (FetchResponse) {}
-
-  rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
 
   // query related apis
   rpc CreateQuery(CreateQueryRequest) returns (Query) {}
@@ -146,12 +143,24 @@ message SubscriptionOffset {
   }
 }
 
+message SubscribeRequest {
+  string subscriptionId = 1;
+}
+
+message SubscribeResponse {
+  string subscriptionId = 1;
+}
+
 message DeleteSubscriptionRequest {
   string subscriptionId = 1;
 }
 
-message HasSubscriptionRequest {
+message CheckSubscriptionExistRequest {
   string subscriptionId = 1;
+}
+
+message CheckSubscriptionExistResponse {
+  bool exists = 1;
 }
 
 message FetchRequest {
@@ -196,10 +205,6 @@ message ListSubscriptionsRequest {}
 
 message ListSubscriptionsResponse {
   repeated Subscription subscription = 1;
-}
-
-message HasSubscriptionResponse {
-  bool exists = 1;
 }
 
 message Stream {
