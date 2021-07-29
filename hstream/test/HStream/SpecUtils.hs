@@ -1,13 +1,16 @@
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
 
+-- TODO: consider moving this module to common package
 module HStream.SpecUtils where
 
 import           Control.Concurrent
-import           Control.Exception                (bracket)
+import           Control.Exception                (bracket, bracket_)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString                  as BS
@@ -31,6 +34,7 @@ import           System.Environment               (lookupEnv)
 import qualified System.IO.Streams                as Streams
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
+import           Test.Hspec
 
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct (..), Value (Value),
@@ -112,8 +116,50 @@ newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
 newRandomByteString :: Int -> IO BS.ByteString
 newRandomByteString n = BS.pack <$> replicateM n (BS.c2w <$> randomRIO ('a', 'z'))
 
-commandQuerySuccessResp :: CommandQueryResponse
-commandQuerySuccessResp = CommandQueryResponse V.empty
+-------------------------------------------------------------------------------
+
+provideHstreamApi :: ActionWith (HStreamApi ClientRequest ClientResult) -> IO ()
+provideHstreamApi runTest = withGRPCClient clientConfig $ runTest <=< hstreamApiClient
+
+provideRunTest_
+  :: (HStreamClientApi -> IO a)
+  -> (HStreamClientApi -> IO ())
+  -> ActionWith HStreamClientApi
+  -> HStreamClientApi
+  -> IO ()
+provideRunTest_ setup clean runTest api =
+  bracket_ (setup api) (clean api) (runTest api)
+
+provideRunTest
+  :: (HStreamClientApi -> IO a)
+  -> (HStreamClientApi -> a -> IO ())
+  -> ((HStreamClientApi, a) -> IO ())
+  -> HStreamClientApi
+  -> IO ()
+provideRunTest setup clean runTest api =
+  bracket (setup api) (clean api) (runTest . (api,))
+
+mkQueryReqSimple :: TL.Text -> ClientRequest 'Normal CommandQuery a
+mkQueryReqSimple sql =
+  let req = CommandQuery{ commandQueryStmtText = sql }
+   in ClientNormalRequest req 5 (MetadataMap Map.empty)
+
+runQuerySimple :: HStreamClientApi -> TL.Text -> IO (ClientResult 'Normal CommandQueryResponse)
+runQuerySimple HStreamApi{..} sql = hstreamApiExecuteQuery $ mkQueryReqSimple sql
+
+runQuerySimple_ :: HStreamClientApi -> TL.Text -> IO ()
+runQuerySimple_ HStreamApi{..} sql = do
+  hstreamApiExecuteQuery (mkQueryReqSimple sql) `grpcShouldReturn` querySuccessResp
+
+querySuccessResp :: CommandQueryResponse
+querySuccessResp = CommandQueryResponse V.empty
+
+grpcShouldReturn
+  :: (HasCallStack, Show a, Eq a)
+  => IO (ClientResult 'Normal a) -> a -> Expectation
+grpcShouldReturn api expected = (getServerResp =<< api) `shouldReturn` expected
+
+-------------------------------------------------------------------------------
 
 mkStruct :: [(Text, Aeson.Value)] -> Struct
 mkStruct = jsonObjectToStruct . HM.fromList
@@ -172,8 +218,7 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
                 _ -> error "unknown data encountered"
             _ -> return ()
 
-terminateQuery :: TL.Text
-                    -> IO (Maybe TerminateQueryResponse)
+terminateQuery :: TL.Text -> IO (Maybe TerminateQueryResponse)
 terminateQuery queryName = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let terminateQuery' = TerminateQueryRequest{ terminateQueryRequestQueryName = queryName }

@@ -83,16 +83,16 @@ basicSpec = describe "HStream.BasicHandlerSpec.basic" $ do
     let createStreamReqs = V.zipWith Stream randomStreamNames $ V.fromList [1, 2, 3, 3, 2]
     V.forM_ createStreamReqs $ \req -> do
       isJust <$> createStreamRequest client req `shouldReturn` True
-    resp <- listStreamRequest client
-    isJust resp `shouldBe` True
-    let sortedRes = L.sortOn streamStreamName $ V.toList . fromJust $ resp
+    resp <- fromJust <$> listStreamRequest client
+    let sortedRes = L.sortOn streamStreamName $ V.toList resp
         sortedReqs = L.sortOn streamStreamName $ V.toList createStreamReqs
-    sortedRes `shouldMatchList` sortedReqs
+    sortedRes `shouldContain` sortedReqs
 
   it "test delete request" $ \client -> do
     void $ createStreamRequest client $ Stream randomStreamName 1
     deleteStreamRequest client randomStreamName `shouldReturn` True
-    fromJust <$> listStreamRequest client `shouldReturn` V.empty
+    resp <- fromJust <$> listStreamRequest client
+    V.map streamStreamName resp `shouldNotSatisfy` V.elem randomStreamName
 
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test sendHeartbeat request" $ \client -> do
     -- send heartbeat request to an unsubscribed subscription shoud return false
