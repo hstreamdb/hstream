@@ -38,16 +38,16 @@ createSinkConnectorHandler
   -> ServerRequest 'Normal CreateSinkConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
 createSinkConnectorHandler sc
-  (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = defaultExceptionHandle $
-    createConnector sc (TL.toStrict createSinkConnectorRequestSql)
-      >>= returnResp
+  (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = defaultExceptionHandle $ do
+    connector <- createConnector sc (TL.toStrict createSinkConnectorRequestSql)
+    returnResp connector
 
 listConnectorsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListConnectorsRequest ListConnectorsResponse
   -> IO (ServerResponse 'Normal ListConnectorsResponse)
 listConnectorsHandler ServerContext{..}
-  (ServerNormalRequest _metadata _) = defaultExceptionHandle do
+  (ServerNormalRequest _metadata _) = defaultExceptionHandle $ do
   connectors <- P.withMaybeZHandle zkHandle P.getConnectors
   returnResp $ ListConnectorsResponse .
     V.fromList . map hstreamConnectorToConnector $ connectors

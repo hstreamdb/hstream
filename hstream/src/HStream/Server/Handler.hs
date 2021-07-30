@@ -1,4 +1,3 @@
-{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -328,9 +327,8 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHa
       atomicModifyIORef' groupbyStores (\hm -> (HM.delete view hm, ()))
       handleDropStream view transToViewStreamName
   where
-    handleDropStream :: T.Text
-               -> (T.Text -> S.StreamId)
-               -> IO (ServerResponse 'Normal CommandQueryResponse)
+    handleDropStream :: T.Text -> (T.Text -> S.StreamId)
+                     -> IO (ServerResponse 'Normal CommandQueryResponse)
     handleDropStream name toSName = do
       streamExists <- S.doesStreamExists scLDClient (toSName name)
       if streamExists
@@ -344,8 +342,7 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHa
     handleDropConnector :: T.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
     handleDropConnector name = do
       handleTerminateConnector sc (textToCBytes name)
-      P.withMaybeZHandle zkHandle $
-        P.removeConnector (textToCBytes name)
+      P.withMaybeZHandle zkHandle $ P.removeConnector (textToCBytes name)
       returnCommandQueryEmptyResp
 
 handleShowPlan :: ServerContext -> ShowObject
