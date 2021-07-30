@@ -75,7 +75,10 @@ type ViewSchema = [String]
 type OtherOptions = [(Text,Constant)]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
-data DropObject = DStream Text | DView Text
+data DropObject
+  = DConnector Text
+  | DStream    Text
+  | DView      Text
 data TerminationSelection = AllQuery | OneQuery CB.CBytes
 data InsertType = JsonFormat | RawFormat
 
@@ -125,8 +128,10 @@ streamCodegen input = do
     RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
     RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
     RQShow (RShow RShowViews)          -> return $ ShowPlan SViews
+    RQDrop (RDrop RDropConnector x)    -> return $ DropPlan False (DConnector x)
     RQDrop (RDrop RDropStream x)       -> return $ DropPlan False (DStream x)
     RQDrop (RDrop RDropView x)         -> return $ DropPlan False (DView x)
+    RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
     RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
     RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
     RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)

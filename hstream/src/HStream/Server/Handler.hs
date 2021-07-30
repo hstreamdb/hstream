@@ -321,12 +321,15 @@ handleDropPlan :: ServerContext -> Bool -> DropObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHandle $ do
   case dropObject of
-    DStream stream -> handleDrop stream transToStreamName
-    DView view     -> do
+    DConnector connector -> handleDropConnector connector
+    DStream stream       -> handleDropStream stream transToStreamName
+    DView view           -> do
       atomicModifyIORef' groupbyStores (\hm -> (HM.delete view hm, ()))
-      handleDrop view transToViewStreamName
+      handleDropStream view transToViewStreamName
   where
-    handleDrop name toSName = do
+    handleDropStream :: T.Text -> (T.Text -> S.StreamId)
+                     -> IO (ServerResponse 'Normal CommandQueryResponse)
+    handleDropStream name toSName = do
       streamExists <- S.doesStreamExists scLDClient (toSName name)
       if streamExists
          then terminateQueryAndRemove sc (textToCBytes name)
@@ -336,6 +339,11 @@ handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHa
           else if checkIfExist
                   then returnCommandQueryEmptyResp
                   else returnErrResp StatusInternal "Object does not exist"
+    handleDropConnector :: T.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
+    handleDropConnector name = do
+      handleTerminateConnector sc (textToCBytes name)
+      P.withMaybeZHandle zkHandle $ P.removeConnector (textToCBytes name)
+      returnCommandQueryEmptyResp
 
 handleShowPlan :: ServerContext -> ShowObject
   -> IO (ServerResponse 'Normal CommandQueryResponse)

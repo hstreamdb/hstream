@@ -85,8 +85,9 @@ ShowViews. ShowOption ::= "VIEWS" ;
 DDrop.  Drop ::= "DROP" DropOption Ident ;
 DropIf. Drop ::= "DROP" DropOption Ident "IF" "EXISTS" ;
 
-DropStream. DropOption ::= "STREAM";
-DropView. DropOption ::= "VIEW";
+DropConnector. DropOption ::= "CONNECTOR" ;
+DropStream.    DropOption ::= "STREAM"    ;
+DropView.      DropOption ::= "VIEW"      ;
 
 -- Terminate Query
 TerminateQuery. Terminate ::= "TERMINATE" "QUERY" Integer ;

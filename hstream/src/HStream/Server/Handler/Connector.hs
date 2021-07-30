@@ -39,8 +39,8 @@ createSinkConnectorHandler
   -> IO (ServerResponse 'Normal Connector)
 createSinkConnectorHandler sc
   (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = defaultExceptionHandle $ do
-  connector <- createConnector sc (TL.toStrict createSinkConnectorRequestSql)
-  returnResp connector
+    connector <- createConnector sc (TL.toStrict createSinkConnectorRequestSql)
+    returnResp connector
 
 listConnectorsHandler
   :: ServerContext

@@ -36,7 +36,6 @@ import           Z.IO.Time                        (SystemTime (..),
 import           ZooKeeper.Types
 
 import           HStream.Connector.ClickHouse
-import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCS
 import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
@@ -90,7 +89,7 @@ runSinkConnector
   -> ConnectorConfig -> IO ()
 runSinkConnector ServerContext{..} cid sName cConfig = do
   ldreader <- HS.newLDReader scLDClient 1000 Nothing
-  let sc = hstoreSourceConnectorWithoutCkp scLDClient ldreader
+  let sc = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
   subscribeToStreamWithoutCkp sc sName Latest
   connector <- case cConfig of
     ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config

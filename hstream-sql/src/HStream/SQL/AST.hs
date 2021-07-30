@@ -457,18 +457,20 @@ data RDrop
   | RDropIf RDropOption Text
   deriving (Eq, Show)
 instance Refine Drop where
-  refine (DDrop _ dropOp (Ident x))  = RDrop (refine dropOp) x
+  refine (DDrop  _ dropOp (Ident x)) = RDrop   (refine dropOp) x
   refine (DropIf _ dropOp (Ident x)) = RDropIf (refine dropOp) x
 type instance RefinedType Drop = RDrop
 
 data RDropOption
-  = RDropStream
+  = RDropConnector
+  | RDropStream
   | RDropView
   deriving (Eq, Show)
 
 instance Refine DropOption where
-  refine (DropStream _ ) = RDropStream
-  refine (DropView   _ ) = RDropView
+  refine (DropConnector _) = RDropConnector
+  refine (DropStream _)    = RDropStream
+  refine (DropView   _)    = RDropView
 type instance RefinedType DropOption = RDropOption
 
 ---- Terminate
