@@ -27,7 +27,6 @@ import           HStream.Server.Handler
 import           HStream.Server.Persistence
 import           HStream.Store
 import qualified HStream.Store.Admin.API          as AA
-import           HStream.Store.Logger             as Log
 import           HStream.Utils                    (setupSigsegvHandler)
 
 -- TODO
@@ -145,7 +144,6 @@ initZooKeeper zk = catch (initializeAncestors zk) (\(_ :: ZNODEEXISTS) -> pure (
 
 main :: IO ()
 main = do
-  Log.setLogDeviceDbgLevel Log.C_DBG_ERROR
   config <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "HStream-Server")
   putStrLn [r|
    _  _   __ _____ ___ ___  __  __ __
