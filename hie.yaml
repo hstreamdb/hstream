@@ -79,3 +79,6 @@ cradle:
 
     - path: "hstream-http-server/src"
       component: "lib:hstream-http-server"
+
+    - path: "hstream-connector"
+      component: "lib:hstream-connector"

@@ -15,8 +15,8 @@ import           Data.Scientific              (floatingOrInteger)
 import qualified Data.Text                    as Text
 import           Database.MySQL.Base          as MySQL
 import           HStream.Utils                (flattenJSON)
-import qualified Z.IO.Logger                  as Log
 
+import qualified HStream.Logger               as Log
 import           HStream.Processing.Connector (SinkConnector (..))
 import           HStream.Processing.Type      (SinkRecord (..))
 
@@ -41,6 +41,8 @@ writeRecordToMySQL myClient SinkRecord{..} = do
       let !flattened = flattenJSON l
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = "(" <> (intercalate "," . map toMySQLValue $ HM.elems flattened) <> ")"
-      void $ execute_ myClient $ Query $ DBCL.pack ("INSERT INTO " ++ Text.unpack snkStream ++ " " ++ keys ++ " VALUES " ++ elems)
+      let sentence = "INSERT INTO " ++ Text.unpack snkStream ++ " " ++ keys ++ " VALUES " ++ elems
+      Log.debug $ Log.stringUTF8 sentence
+      void $ execute_ myClient $ Query $ DBCL.pack sentence
     _ -> do
       Log.warning "Invalid Sink Value"
