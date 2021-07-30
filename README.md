@@ -105,6 +105,8 @@ You must have all required services (including a dev-cluster) started before ent
 script/dev-tools start-services
 ```
 
+This script also involves starting a MySQL server. To inspect the server port, use `echo "$MYSQL_LOCAL_PORT"`.
+
 *A dev-cluster is required while running tests. All data are stored under `your-project-root/local-data/logdevice`*
 
 ```sh

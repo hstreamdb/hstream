@@ -57,7 +57,7 @@ getConnectorHandler
   -> ServerRequest 'Normal GetConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
 getConnectorHandler ServerContext{..}
-  (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle do
+  (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   connector <- P.withMaybeZHandle zkHandle $
     P.getConnector (lazyTextToCBytes getConnectorRequestId)
   returnResp $ hstreamConnectorToConnector connector
@@ -67,7 +67,7 @@ deleteConnectorHandler
   -> ServerRequest 'Normal DeleteConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteConnectorHandler ServerContext{..}
-  (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle do
+  (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
     P.withMaybeZHandle zkHandle $
       P.removeConnector (lazyTextToCBytes deleteConnectorRequestId)
     returnResp Empty
@@ -77,7 +77,7 @@ restartConnectorHandler
   -> ServerRequest 'Normal RestartConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 restartConnectorHandler sc@ServerContext{..}
-  (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle do
+  (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle $ do
   let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
   when (cStatus == P.Terminated) $ restartConnector sc cid
