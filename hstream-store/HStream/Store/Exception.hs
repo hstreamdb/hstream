@@ -236,7 +236,8 @@ module HStream.Store.Exception
   , pattern C_WRITE_STREAM_IGNORED
 
   -- * Auxiliary functions
-  , isNotFound
+  , isNOTFOUND
+  , isEXISTS
   ) where
 
 import           Control.Exception            (Exception (..))
@@ -293,16 +294,17 @@ instance T.Print SSEInfo where
 instance Show SSEInfo where
   show = T.toString
 
-#define MAKE_SSE(e) \
-newtype e = e SSEInfo deriving (Show); \
-instance Exception e where                         \
-{ toException = someHStoreExceptionToException;    \
-  fromException = someHStoreExceptionFromException \
+#define MAKE_SSE(e)                                                            \
+newtype e = e SSEInfo deriving (Show);                                         \
+instance Exception e where                                                     \
+{ toException = someHStoreExceptionToException;                                \
+  fromException = someHStoreExceptionFromException                             \
 }
-#define MAKE_THROW_SSE(c, e) \
-throwStreamError c stack = do \
-  name <- T.validate <$> Z.fromNullTerminated (c_show_error_name c); \
-  desc <- T.validate <$> Z.fromNullTerminated (c_show_error_description c); \
+
+#define MAKE_THROW_SSE(c, e)                                                   \
+throwStreamError c stack = do                                                  \
+  name <- T.validate <$> Z.fromNullTerminated (c_show_error_name c);           \
+  desc <- T.validate <$> Z.fromNullTerminated (c_show_error_description c);    \
   E.throwIO $ e (SSEInfo name desc stack)
 
 MAKE_SSE(NOTFOUND         )
@@ -578,5 +580,10 @@ throwStoreError :: T.Text -> CallStack -> IO a
 throwStoreError desc stack =
   E.throwIO $ StoreError (SSEInfo "1000" desc stack)
 
-isNotFound :: NOTFOUND -> Bool
-isNotFound = const True
+-------------------------------------------------------------------------------
+
+isNOTFOUND :: NOTFOUND -> Bool
+isNOTFOUND = const True
+
+isEXISTS :: EXISTS -> Bool
+isEXISTS = const True

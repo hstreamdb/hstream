@@ -1,19 +1,23 @@
 module HStream.Store.LogDeviceSpec where
 
+import           Control.Exception                (bracket)
+import           Control.Monad                    (void)
 import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as Map
 import qualified HStream.Store                    as S
 import qualified HStream.Store.Internal.LogDevice as I
 import           HStream.Store.SpecUtils
 import           Test.Hspec
+import           Z.Data.CBytes                    (CBytes)
 import qualified Z.IO.FileSystem                  as FS
 
 spec :: Spec
 spec = do
-  configType
+  loggroupSpec
+  logdirSpec
 
-configType :: Spec
-configType = describe "LogConfigType" $ do
+logdirSpec :: Spec
+logdirSpec = describe "LogDirectory" $ do
   it "get log directory children name" $ do
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [("A", "B")]
@@ -68,28 +72,38 @@ configType = describe "LogConfigType" $ do
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
 
-  it "log group get attrs" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
-                                        }
-        logid = 104
-    lg <- I.makeLogGroup client "lg" logid logid attrs False
-    _ <- I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
+
+loggroupAround :: SpecWith (CBytes, S.C_LogID) -> Spec
+loggroupAround = aroundAll $ \runTest -> bracket setup clean runTest
+  where
+    setup = do
+      let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                          , S.logExtraAttrs = Map.fromList [("A", "B")]
+                                          }
+          logid = 104
+          logname = "LogDeviceSpec_LogGroupSpec"
+      lg <- I.makeLogGroup client logname logid logid attrs False
+      void $ I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
+      return (logname, logid)
+    clean (logname, _logid) = do
+      I.syncLogsConfigVersion client =<< I.removeLogGroup client logname
+
+loggroupSpec :: Spec
+loggroupSpec = describe "LogGroup" $ loggroupAround $ parallel $ do
+
+  it "log group get attrs" $ \(lgname, _logid) -> do
+    lg <- I.getLogGroup client lgname
     attrs' <- I.logGroupGetHsLogAttrs lg
-    _ <- I.removeLogGroup client "lg"
     S.logReplicationFactor attrs' `shouldBe` 1
     Map.lookup "A" (S.logExtraAttrs attrs') `shouldBe` Just "B"
 
-  it "log group get and set range" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
-                                        }
-        logid = 105
-        logid' = 106
-    lg <- I.makeLogGroup client "lg" logid logid attrs False
-    range <- I.logGroupGetRange lg
-    range `shouldBe` (logid, logid)
-    I.syncLogsConfigVersion client =<< I.logGroupSetRange client "lg" (logid',logid')
-    range' <- I.logGroupGetRange =<< I.getLogGroup client "lg"
-    I.syncLogsConfigVersion client =<< I.removeLogGroup client "lg"
+  it "log group get and set range" $ \(lgname, logid) -> do
+    let logid' = logid + 1
+    lg <- I.getLogGroup client lgname
+    I.logGroupGetRange lg `shouldReturn`(logid, logid)
+    I.syncLogsConfigVersion client =<< I.logGroupSetRange client lgname (logid',logid')
+    range' <- I.logGroupGetRange =<< I.getLogGroup client lgname
     range' `shouldBe` (logid', logid')
+
+  it "get a nonexist loggroup should throw NOTFOUND" $ \(_, _) -> do
+    S.getLogGroup client "this_is_a_non_exist_logroup" `shouldThrow` S.isNOTFOUND

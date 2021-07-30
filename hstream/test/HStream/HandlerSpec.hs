@@ -21,6 +21,7 @@ import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel.Client    (Client)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
+import           Proto3.Suite.Class               (HasDefault (def))
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           Test.Hspec
 import           Z.Foreign                        (toByteString)
@@ -135,9 +136,7 @@ listStreamRequest client = do
 deleteStreamRequest :: Client -> TL.Text -> IO Bool
 deleteStreamRequest client streamName = do
   HStreamApi{..} <- hstreamApiClient client
-  let req = DeleteStreamRequest { deleteStreamRequestStreamName = streamName
-                                , deleteStreamRequestIgnoreNonExist = False
-                                }
+  let req = def { deleteStreamRequestStreamName = streamName }
   resp <- hstreamApiDeleteStream $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True

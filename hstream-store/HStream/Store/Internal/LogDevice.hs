@@ -60,7 +60,6 @@ getTailLSNSync :: LDClient -> C_LogID -> IO LSN
 getTailLSNSync client logid =
   withForeignPtr client $ flip c_ld_client_get_tail_lsn_sync logid
 
-
 -- | Return the sequence number that points to the tail of log `logid`. The
 -- returned LSN is guaranteed to be higher or equal than the LSN of any record
 -- that was successfully acknowledged as appended prior to this call.
@@ -73,7 +72,9 @@ getTailLSNSync client logid =
 -- LSN_OLDEST until the LSN returned by this method. Note that it is not
 -- guaranteed that the full content of the log is immediately available for
 -- reading.
-getTailLSN :: HasCallStack => LDClient
+getTailLSN
+  :: HasCallStack
+  => LDClient
   -> C_LogID
   -- ^ the ID of the log for which to get the tail LSN
   -> IO LSN

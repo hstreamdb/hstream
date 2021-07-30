@@ -7,7 +7,6 @@ import           Control.Applicative  (liftA2)
 import           Data.Maybe           (fromMaybe)
 import           System.IO.Unsafe     (unsafePerformIO)
 import           System.Random        (newStdGen, randomRs)
-import           Test.Hspec
 import           Z.Data.CBytes        (CBytes)
 import qualified Z.Data.CBytes        as CBytes
 import           Z.Data.Vector        (Bytes)
@@ -34,6 +33,3 @@ readPayload' logid m_lsn = do
 
 newRandomName :: Int -> IO CBytes
 newRandomName n = CBytes.pack . take n . randomRs ('a', 'z') <$> newStdGen
-
-existsException :: Selector S.EXISTS
-existsException = const True

@@ -11,11 +11,11 @@ import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
 
 spec :: Spec
-spec = do
+spec = describe "StreamSpec" $ do
   base
 
 base :: Spec
-base = describe "HStream.Store.Stream" $ do
+base = describe "BaseSpec" $ do
   streamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
   logPath <- runIO $ S.getUnderlyingLogPath streamId
   newStreamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
@@ -32,13 +32,13 @@ base = describe "HStream.Store.Stream" $ do
     S.createStream client streamId attrs
     S.doesStreamExists client streamId `shouldReturn` True
 
-  it "create the same stream should throw exception" $ do
+  it "create the same stream should throw EXISTS" $ do
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
                                                                          , ("A", "B")
                                                                          ]
                                         }
-    S.createStream client streamId attrs `shouldThrow` existsException
+    S.createStream client streamId attrs `shouldThrow` S.isEXISTS
 
   it "get full path of loggroup by name or id shoule be equal" $ do
     logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
