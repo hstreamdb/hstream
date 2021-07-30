@@ -36,8 +36,7 @@ import           Z.IO.Time                        (SystemTime (..),
 import           ZooKeeper.Types
 
 import           HStream.Connector.ClickHouse
-import           HStream.Connector.HStore
-import qualified HStream.Connector.HStore         as HCS
+import           HStream.Connector.HStore         as HCS
 import           HStream.Connector.MySQL
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
