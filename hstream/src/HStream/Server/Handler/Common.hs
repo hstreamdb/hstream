@@ -201,6 +201,7 @@ handleQueryTerminate ServerContext{..} AllQuery = do
 data ReaderStatus = Released | Occupied deriving (Show)
 -- | SubscribedReaders is an map, Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
 type SubscribedReaders = TVar (HM.HashMap TL.Text ReaderMap)
+-- When the value of ReaderMap is None, it is used to indicate that the current value is a placeholder
 data ReaderMap = None | ReaderMap HS.LDSyncCkpReader Subscription ReaderStatus deriving (Show)
 
 getReaderStatus :: SubscribedReaders -> TL.Text -> STM (Maybe ReaderStatus)

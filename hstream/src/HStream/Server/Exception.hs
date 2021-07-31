@@ -23,17 +23,23 @@ import           Network.GRPC.HighLevel.Server
 
 -- TODO: More exception handle needs specific handling.
 mkExceptionHandle :: (StatusCode -> StatusDetails -> IO (ServerResponse t a))
+                  -> IO ()
                   -> IO (ServerResponse t a)
                   -> IO (ServerResponse t a)
-mkExceptionHandle retFun = flip catches [
+mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(err :: SomeSQLException) ->
     retFun StatusInternal $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
   Handler (\(_ :: Store.EXISTS) ->
     retFun StatusInternal "Stream already exists"),
+  Handler (\(err :: Store.SomeHStoreException) -> do
+    cleanFun
+    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(err :: PersistenceException) ->
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(_ :: QueryTerminatedOrNotExist) ->
     retFun StatusInternal "Query is already terminated or does not exist"),
+  Handler (\(_ :: SubscriptionIdOccupied) ->
+    retFun StatusInternal "Subscription ID has been occupied"),
   Handler (\(_ :: SubscriptionIdNotFound) ->
     retFun StatusInternal "Subscription ID can not be found"),
   Handler (\(err :: IOException) -> do
@@ -41,11 +47,14 @@ mkExceptionHandle retFun = flip catches [
   ]
 
 defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-defaultExceptionHandle = mkExceptionHandle returnErrResp
+defaultExceptionHandle = mkExceptionHandle returnErrResp $ return ()
+
+defaultExceptionHandle' :: IO () -> IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
+defaultExceptionHandle' = mkExceptionHandle returnErrResp
 
 defaultStreamExceptionHandle :: IO (ServerResponse 'ServerStreaming a)
                              -> IO (ServerResponse 'ServerStreaming a)
-defaultStreamExceptionHandle = mkExceptionHandle returnStreamingResp
+defaultStreamExceptionHandle = mkExceptionHandle returnStreamingResp $ return ()
 
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)
@@ -54,6 +63,10 @@ instance Exception QueryTerminatedOrNotExist
 data SubscriptionIdNotFound = SubscriptionIdNotFound
   deriving (Show)
 instance Exception SubscriptionIdNotFound
+
+data SubscriptionIdOccupied = SubscriptionIdOccupied
+  deriving (Show)
+instance Exception SubscriptionIdOccupied
 
 data StreamNotExist = StreamNotExist
   deriving (Show)
