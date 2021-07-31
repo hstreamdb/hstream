@@ -14,7 +14,12 @@ import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
 
 spec :: Spec
-spec = describe "HStoreSpec" $ do
+spec = describe "StoreSpec" $ do
+  base
+  except
+
+base :: Spec
+base = describe "Base" $ do
   let logid = 1
 
   it "get default payload size for this client" $ do
@@ -32,8 +37,6 @@ spec = describe "HStoreSpec" $ do
     seqNum0 <- S.appendCompLSN <$> S.append client logid "hello" Nothing
     seqNum1 <- S.getTailLSN client logid
     seqNum0 `shouldBe` seqNum1
-    let logid' = 101 -- an unknown logid
-    S.getTailLSN client logid' `shouldThrow` anyException
 
   it "trim record" $ do
     sn0 <- S.appendCompLSN <$> S.append client logid "hello" Nothing
@@ -60,3 +63,10 @@ spec = describe "HStoreSpec" $ do
   --  S.trim client logid sn0
   --  sn2 <- S.findTime client logid maxBound S.FindKeyStrict
   --  sn2 `shouldBe` sn0 + 1
+
+except :: Spec
+except = describe "Except" $ do
+  it "get tailLSN of an unknown logid should throw NOTFOUND" $ do
+    -- Note: this do not fail immediately.
+    let logid' = 10000 -- an unknown logid
+    S.getTailLSN client logid' `shouldThrow` S.isNOTFOUND

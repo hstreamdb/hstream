@@ -144,7 +144,7 @@ runLogsRemove conf RemoveLogsOpts{..} = do
      then do
        let client' = buildLDClientRes conf Map.empty
        withResource client' $ \client -> do
-         res <- tryJust (guard . S.isNotFound) $ S.removeLogDirectory client rmPath rmRecursive
+         res <- tryJust (guard . S.isNOTFOUND) $ S.removeLogDirectory client rmPath rmRecursive
          case res of
            Right version ->
              putStrLn $ "directory " <> show rmPath <> " has been removed in version " <> show version
@@ -163,7 +163,7 @@ runLogsShow conf ShowLogsOpts{..} = do
       (Just logid, _) -> S.getLogGroupByID client logid >>= printLogGroup showVerbose
       -- otherwise, look for a log group or directory according to the path
       (_, Just path)  -> do
-        tryJust (guard . S.isNotFound) (S.getLogGroup client path) >>=
+        tryJust (guard . S.isNOTFOUND) (S.getLogGroup client path) >>=
           (\case
               Right loggroup -> printLogGroup showVerbose loggroup
               Left _         -> S.getLogDirectory client path >>= printLogDir)
