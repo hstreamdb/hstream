@@ -1,16 +1,18 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Query where
 
+import           Control.Concurrent               (readMVar)
 import           Control.Exception                (throwIO)
+import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
+import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
@@ -27,7 +29,8 @@ import           HStream.Server.Exception         (StreamNotExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   handleCreateAsSelect)
+                                                   handleCreateAsSelect,
+                                                   handleQueryTerminate)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
@@ -97,6 +100,20 @@ getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest
     Just q -> returnResp $ hstreamQueryToQuery q
     _      -> returnErrResp StatusInternal "Query does not exist"
 
+terminateQueriesHandler
+  :: ServerContext
+  -> ServerRequest 'Normal TerminateQueriesRequest TerminateQueriesResponse
+  -> IO (ServerResponse 'Normal TerminateQueriesResponse)
+terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueriesRequest{..}) = defaultExceptionHandle $ do
+  qids <-
+    if terminateQueriesRequestAll
+      then HM.keys <$> readMVar runningQueries
+      else return . V.toList $ lazyTextToCBytes <$> terminateQueriesRequestQueryId
+  terminatedQids <- handleQueryTerminate sc (HSC.ManyQueries qids)
+  if length terminatedQids < length qids
+    then returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
+    else returnResp $ TerminateQueriesResponse (V.fromList $ cBytesToLazyText <$> terminatedQids)
+
 deleteQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteQueryRequest Empty
@@ -118,15 +135,3 @@ restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQuer
         P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
         returnResp Empty
       Nothing    -> returnErrResp StatusInternal "Query does not exist"
-
-cancelQueryHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CancelQueryRequest Empty
-  -> IO (ServerResponse 'Normal Empty)
-cancelQueryHandler ServerContext{..} (ServerNormalRequest _metadata CancelQueryRequest{..}) = do
-  queries <- P.withMaybeZHandle zkHandle P.getQueries
-  case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == cancelQueryRequestId) queries of
-    Just query -> do
-      P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Terminated
-      returnResp Empty
-    Nothing    -> returnErrResp StatusInternal "Query does not exist"

@@ -1,6 +1,5 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -73,11 +72,12 @@ deleteQuery qid = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-cancelQuery :: TL.Text -> IO Bool
-cancelQuery qid = withGRPCClient clientConfig $ \client -> do
+terminateQuery :: TL.Text -> IO Bool
+terminateQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let cancelQueryRequest = CancelQueryRequest { cancelQueryRequestId = qid }
-  resp <- hstreamApiCancelQuery (ClientNormalRequest cancelQueryRequest 100 (MetadataMap Map.empty))
+  let terminateQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton qid,
+                                                        terminateQueriesRequestAll = False }
+  resp <- hstreamApiTerminateQueries (ClientNormalRequest terminateQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
@@ -140,9 +140,9 @@ spec = describe "HStream.RunQuerySpec" $ do
           _      -> return False
     ) `shouldReturn` True
 
-  it "cancel query" $
+  it "Terminate query" $
     ( do
-        _ <- cancelQuery queryname1
+        _ <- terminateQuery queryname1
         query <- getQuery queryname1
         case query of
           Just (Query _ 2 _ _ ) -> return True
@@ -160,7 +160,7 @@ spec = describe "HStream.RunQuerySpec" $ do
 
   it "delete query" $
     ( do
-        _ <- cancelQuery queryname1
+        _ <- terminateQuery queryname1
         _ <- deleteQuery queryname1
         query <- getQuery queryname1
         case query of
