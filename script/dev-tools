@@ -45,6 +45,7 @@ SERVICES = {
 }
 
 HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
+HSTREAM_HTTP_PORT_ENV = "HTTP_SERVER_LOCAL_PORT"
 STORE_ADMIN_PORT_ENV = "STORE_ADMIN_LOCAL_PORT"
 MYSQL_PORT_ENV = 'MYSQL_LOCAL_PORT'
 CLICKHOUSE_PORT_ENV = 'CLICKHOUSE_LOCAL_PORT'
@@ -280,6 +281,9 @@ def service_start(services=None, container_bin=None, **kws):
 
     port = find_free_port()
     write_env(HSTREAM_SERVER_PORT_ENV, port)
+
+    port = find_free_port()
+    write_env(HSTREAM_HTTP_PORT_ENV, port)
 
     # here we stop all "shell" containers, because "service_start" will refresh
     # all random ports, the old ports used in "shell" container is obsoleted.

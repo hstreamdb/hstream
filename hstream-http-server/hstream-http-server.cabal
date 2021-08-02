@@ -97,3 +97,34 @@ executable hstream-swagger-json
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
     -threaded -rtsopts -with-rtsopts=-N
+
+
+test-suite hstream-test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    HStream.RunNodeSpec
+    HStream.RunConnectorSpec
+    HStream.RunStreamSpec
+    HStream.RunQuerySpec 
+    HStream.RunViewSpec
+    HStream.SpecUtils
+
+  hs-source-dirs:     test
+  build-depends:
+    , aeson
+    , base                  >=4.11 && <5
+    , bytestring
+    , mysql-haskell
+    , hspec
+    , hstream-http-server
+    , http-client
+    , http-conduit
+    , text
+
+  default-language:   Haskell2010
+  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N

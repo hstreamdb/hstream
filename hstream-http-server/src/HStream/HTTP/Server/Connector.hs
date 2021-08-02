@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 module HStream.HTTP.Server.Connector (
-  ConnectorsAPI, connectorServer, listConnectorsHandler
+  ConnectorsAPI, connectorServer, listConnectorsHandler, ConnectorBO(..)
 ) where
 
 import           Control.Monad.IO.Class           (liftIO)

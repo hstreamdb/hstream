@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeOperators     #-}
 
 module HStream.HTTP.Server.Node (
-  NodesAPI, nodeServer, listStoreNodesHandler
+  NodesAPI, nodeServer, listStoreNodesHandler, NodeBO
 ) where
 
 import           Control.Monad.IO.Class           (liftIO)
@@ -35,6 +35,7 @@ data NodeBO = NodeBO
   } deriving (Eq, Show, Generic)
 
 instance ToJSON NodeBO
+instance FromJSON NodeBO
 instance ToSchema NodeBO
 
 type NodesAPI =

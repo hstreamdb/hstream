@@ -10,6 +10,7 @@ module HStream.HTTP.Server.Stream
   ( StreamsAPI
   , streamServer
   , listStreamsHandler
+  , StreamBO(..)
   ) where
 
 import           Control.Monad.IO.Class           (liftIO)
@@ -30,7 +31,6 @@ import           Servant                          (Capture, Delete, Get, JSON,
 import           Servant.Server                   (Handler, Server)
 
 import           HStream.Server.HStreamApi
-import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
 -- BO is short for Business Object
 data StreamBO = StreamBO
@@ -81,7 +81,7 @@ listStreamsHandler hClient = liftIO $ do
 deleteStreamHandler :: Client -> String -> Handler Bool
 deleteStreamHandler hClient sName = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let deleteStreamRequest = DeleteStreamRequest { deleteStreamRequestStreamName = TL.pack sName }
+  let deleteStreamRequest = DeleteStreamRequest { deleteStreamRequestStreamName = TL.pack sName, deleteStreamRequestIgnoreNonExist = True }
   resp <- hstreamApiDeleteStream (ClientNormalRequest deleteStreamRequest 100 (MetadataMap $ Map.empty))
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
