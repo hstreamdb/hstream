@@ -9,7 +9,7 @@
 module HStream.SpecUtils where
 
 import           Control.Concurrent
-import           Control.Exception                (bracket, bracket_)
+import           Control.Exception                (Exception, bracket, bracket_)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString                  as BS
@@ -113,6 +113,9 @@ createClickHouseConnectorSql name stream
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
 
+newRandomLazyText :: Int -> IO TL.Text
+newRandomLazyText n = TL.fromStrict <$> newRandomText n
+
 newRandomByteString :: Int -> IO BS.ByteString
 newRandomByteString n = BS.pack <$> replicateM n (BS.c2w <$> randomRIO ('a', 'z'))
 
@@ -157,7 +160,12 @@ querySuccessResp = CommandQueryResponse V.empty
 grpcShouldReturn
   :: (HasCallStack, Show a, Eq a)
   => IO (ClientResult 'Normal a) -> a -> Expectation
-grpcShouldReturn api expected = (getServerResp =<< api) `shouldReturn` expected
+action `grpcShouldReturn` expected = (getServerResp =<< action) `shouldReturn` expected
+
+grpcShouldThrow
+  :: (HasCallStack, Exception e)
+  => IO (ClientResult 'Normal a) -> Selector e -> Expectation
+action `grpcShouldThrow` p = (getServerResp =<< action) `shouldThrow` p
 
 -------------------------------------------------------------------------------
 

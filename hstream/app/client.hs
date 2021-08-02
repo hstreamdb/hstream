@@ -31,10 +31,10 @@ import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.Server.HStreamApi
-import           HStream.Utils                    (formatCommandQueryResponse,
+import           HStream.Utils                    (HStreamClientApi,
+                                                   formatCommandQueryResponse,
                                                    formatResult,
                                                    setupSigsegvHandler)
-type API = HStreamApi ClientRequest ClientResult
 
 data UserConfig = UserConfig
   { _serverHost :: ByteString
@@ -79,14 +79,14 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
       putStrLn helpInfo
       H.runInputT H.defaultSettings (loop api)
   where
-    loop :: API -> H.InputT IO ()
+    loop :: HStreamClientApi -> H.InputT IO ()
     loop api = H.getInputLine "> " >>= \case
       Nothing   -> return ()
       Just str
         | take 1 (words str) == [":q"] -> return ()
         | otherwise -> liftIO (commandExec api str) >> loop api
 
-commandExec :: API -> String -> IO ()
+commandExec :: HStreamClientApi -> String -> IO ()
 commandExec api xs = case words xs of
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
@@ -99,7 +99,7 @@ commandExec api xs = case words xs of
         _          -> sqlAction       api (TL.pack xs)
   [] -> return ()
 
-sqlStreamAction :: API -> TL.Text -> IO ()
+sqlStreamAction :: HStreamClientApi -> TL.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ClientReaderResponse _meta _status _details <-
@@ -116,7 +116,7 @@ sqlStreamAction HStreamApi{..} sql = do
           putStr $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
           action call _meta recv
 
-sqlAction :: API -> TL.Text -> IO ()
+sqlAction :: HStreamClientApi -> TL.Text -> IO ()
 sqlAction HStreamApi{..} sql = do
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])

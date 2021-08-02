@@ -28,6 +28,7 @@ import           Z.Foreign                        (toByteString)
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
+import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
 randomStreamNames :: V.Vector TL.Text
@@ -51,48 +52,81 @@ spec =  do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
+  streamSpec
+
   aroundAll (\runTest -> do
              withGRPCClient clientConfig $ \client -> do
                runTest client
             ) $ describe "HStream.BasicHandlerSpec" $ do
-
-    basicSpec
+    baseSpec
     subscribeSpec
     consumerSpec
+
+withRandomStreamName :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
+withRandomStreamName = provideRunTest setup clean
+  where
+    setup _api = TL.fromStrict <$> newRandomText 20
+    clean HStreamApi{..} name = do
+      let req = def { deleteStreamRequestStreamName = name }
+      hstreamApiDeleteStream (ClientNormalRequest req requestTimeout $ MetadataMap Map.empty)
+        `grpcShouldReturn` PB.Empty
+
+withRandomStreamNames :: ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
+withRandomStreamNames = provideRunTest setup clean
+  where
+    setup _api = replicateM 5 $ TL.fromStrict <$> newRandomText 20
+    clean HStreamApi{..} names = forM_ names $ \name -> do
+      let req = def { deleteStreamRequestStreamName = name }
+      hstreamApiDeleteStream (ClientNormalRequest req requestTimeout $ MetadataMap Map.empty)
+        `grpcShouldReturn` PB.Empty
 
 ----------------------------------------------------------------------------------------------------------
 -- StreamSpec
 
-cleanStream :: TL.Text -> Client -> IO ()
-cleanStream name client = void $ deleteStreamRequest client name
+streamSpec :: Spec
+streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
-cleanStreams :: V.Vector TL.Text -> Client -> IO ()
-cleanStreams names client = V.mapM_ (`cleanStream` client) names
+  aroundWith withRandomStreamName $ do
+    it "test CreateStream request" $ \(HStreamApi{..}, name) -> do
+      let stream = Stream name 3
+      hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
+        `grpcShouldReturn` stream
+      -- create an existed stream should fail
+      hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
+        `grpcShouldThrow` anyException
 
-basicSpec :: SpecWith Client
-basicSpec = describe "HStream.BasicHandlerSpec.basic" $ do
+  aroundWith withRandomStreamNames $ do
+    it "test listStream request" $ \(HStreamApi{..}, names) -> do
+      let createStreamReqs = zipWith Stream names [1, 2, 3, 3, 2]
+      forM_ createStreamReqs $ \stream -> do
+        hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
+          `grpcShouldReturn` stream
 
-  after (cleanStream randomStreamName) $ it "test createStream request" $ \client -> do
-    let req = Stream randomStreamName 3
-    -- The first create should success
-    isJust <$> createStreamRequest client req `shouldReturn` True
-    -- The second create should fail
-    isJust <$> createStreamRequest client req `shouldReturn` False
+      resp <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
+      let streamsResp = listStreamsResponseStreams resp
+      let sortedResp = Set.fromList $ V.toList streamsResp
+          sortedReqs = Set.fromList createStreamReqs
+      sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedResp)
 
-  after (cleanStreams randomStreamNames) $ it "test listStream request" $ \client -> do
-    let createStreamReqs = V.zipWith Stream randomStreamNames $ V.fromList [1, 2, 3, 3, 2]
-    V.forM_ createStreamReqs $ \req -> do
-      isJust <$> createStreamRequest client req `shouldReturn` True
-    resp <- fromJust <$> listStreamRequest client
-    let sortedRes = Set.fromList $ V.toList resp
-        sortedReqs = Set.fromList $ V.toList createStreamReqs
-    sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedRes)
+  it "test deleteStream request" $ \HStreamApi{..} -> do
+    name <- TL.fromStrict <$> newRandomText 20
+    let stream = Stream name 1
 
-  it "test deleteStream request" $ \client -> do
-    void $ createStreamRequest client $ Stream randomStreamName 1
-    deleteStreamRequest client randomStreamName `shouldReturn` True
-    resp <- fromJust <$> listStreamRequest client
-    V.map streamStreamName resp `shouldNotSatisfy` V.elem randomStreamName
+    hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
+      `grpcShouldReturn` stream
+
+    resp <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
+    listStreamsResponseStreams resp `shouldSatisfy` V.elem stream
+
+    let req = def { deleteStreamRequestStreamName = name }
+    hstreamApiDeleteStream (ClientNormalRequest req requestTimeout $ MetadataMap Map.empty)
+      `grpcShouldReturn` PB.Empty
+
+    resp' <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
+    listStreamsResponseStreams resp' `shouldNotSatisfy` V.elem stream
+
+baseSpec :: SpecWith Client
+baseSpec = describe "BaseSpec" $ do
 
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test sendHeartbeat request" $ \client -> do
     -- send heartbeat request to an unsubscribed subscription shoud return false
@@ -154,6 +188,9 @@ sendHeartbeatRequest client subscriptionId = do
 
 ----------------------------------------------------------------------------------------------------------
 -- SubscribeSpec
+
+cleanStream :: TL.Text -> Client -> IO ()
+cleanStream name client = void $ deleteStreamRequest client name
 
 -- | cleanSubscriptionEnv will clean both subscription and streams
 cleanSubscriptionEnv :: TL.Text -> TL.Text -> Client -> IO ()
