@@ -5,7 +5,8 @@
 {-# LANGUAGE StrictData          #-}
 
 module HStream.Processing.Processor
-  ( buildTask,
+  ( build,
+    buildTask,
     taskBuilderWithName,
     addSource,
     addProcessor,

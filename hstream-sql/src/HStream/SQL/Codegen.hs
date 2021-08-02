@@ -83,7 +83,7 @@ data ConnectorConfig
   = ClickhouseConnector Clickhouse.ConnParams
   | MySqlConnector MySQL.ConnectInfo
 
-data ExecutionPlan
+data HStreamPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
   | CreatePlan          StreamName Int
   | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
@@ -97,7 +97,7 @@ data ExecutionPlan
 
 --------------------------------------------------------------------------------
 
-streamCodegen :: HasCallStack => Text -> IO ExecutionPlan
+streamCodegen :: HasCallStack => Text -> IO HStreamPlan
 streamCodegen input = do
   rsql <- parseAndRefine input
   case rsql of
@@ -137,7 +137,7 @@ streamCodegen input = do
 
 --------------------------------------------------------------------------------
 
-genCreateSinkConnectorPlan :: RCreate -> ExecutionPlan
+genCreateSinkConnectorPlan :: RCreate -> HStreamPlan
 genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
   case connectorType of
     "clickhouse" -> CreateSinkConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []

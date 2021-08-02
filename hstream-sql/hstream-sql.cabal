@@ -34,6 +34,7 @@ library
     HStream.SQL.Codegen
     HStream.SQL.Exception
     HStream.SQL.Parse
+    HStream.SQL.ExecPlan
 
   other-modules:
     HStream.SQL.Codegen.Boilerplate
@@ -46,6 +47,7 @@ library
     HStream.SQL.Print
     HStream.SQL.Validate
     HStream.SQL.Validate.Utils
+    HStream.SQL.ExecPlan.Utils
 
   hs-source-dirs:     src gen-sql
   build-depends:
