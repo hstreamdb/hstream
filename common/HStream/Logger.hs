@@ -15,15 +15,17 @@ module HStream.Logger
   , d, i, w, e
 
   -- * Builder
-  , module Z.Data.Builder
-  , fromText
-  , fromLazyText
+  , buildInt
+  , buildString
+  , buildText
+  , buildLazyText
   ) where
 
 import qualified Data.Text      as Text
 import qualified Data.Text.Lazy as TL
 import           GHC.Stack      (HasCallStack)
-import           Z.Data.Builder
+import           Z.Data.Builder (Builder)
+import qualified Z.Data.Builder as B
 import qualified Z.IO.Logger    as Log
 
 import qualified HStream.Utils  as U
@@ -40,10 +42,20 @@ w = Log.withDefaultLogger . Log.warning
 e :: HasCallStack => Builder () -> IO ()
 e = Log.withDefaultLogger . Log.fatal
 
-fromText :: Text.Text -> Builder ()
-fromText = U.textToZBuilder
-{-# INLINE fromText #-}
+-------------------------------------------------------------------------------
 
-fromLazyText :: TL.Text -> Builder ()
-fromLazyText = U.lazyTextToZBuilder
-{-# INLINE fromLazyText #-}
+buildInt :: (Integral a, Bounded a) => a -> Builder ()
+buildInt = B.int
+{-# INLINE buildInt #-}
+
+buildString :: String -> Builder ()
+buildString = B.stringUTF8
+{-# INLINE buildString #-}
+
+buildText :: Text.Text -> Builder ()
+buildText = U.textToZBuilder
+{-# INLINE buildText #-}
+
+buildLazyText :: TL.Text -> Builder ()
+buildLazyText = U.lazyTextToZBuilder
+{-# INLINE buildLazyText #-}

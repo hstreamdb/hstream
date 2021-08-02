@@ -72,9 +72,9 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
   resp <- hstreamApiEcho $ ClientNormalRequest EchoRequest{ echoRequestMsg = "Connected" } 1000 (MetadataMap M.empty)
   case resp of
     ClientErrorResponse  {} ->
-      Log.e . Log.fromText $ "Can't connect to HStreamDB server at "
-                          <> (T.decodeUtf8 . unHost) clientServerHost
-                          <> " through port " <> (T.pack . show . unPort) clientServerPort
+      Log.e . Log.buildText $ "Can't connect to HStreamDB server at "
+                           <> (T.decodeUtf8 . unHost) clientServerHost
+                           <> " through port " <> (T.pack . show . unPort) clientServerPort
     ClientNormalResponse {} -> do
       putStrLn helpInfo
       H.runInputT H.defaultSettings (loop api)

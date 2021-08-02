@@ -41,6 +41,7 @@ import           ZooKeeper.Types
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
 import           HStream.Connector.MySQL
+import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
@@ -96,7 +97,9 @@ runSinkConnector ServerContext{..} cid sName cConfig = do
   subscribeToStreamWithoutCkp sc sName Latest
   connector <- case cConfig of
     ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
-    MySqlConnector      config -> mysqlSinkConnector      <$> MySQL.connect config
+    MySqlConnector config -> do
+      Log.debug $ "Connect to mysql with " <> Log.buildString (show config)
+      mysqlSinkConnector <$> MySQL.connect config
   tid <- forkIO $ do
     P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
     forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
