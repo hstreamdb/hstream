@@ -87,6 +87,15 @@ jobs:
                            --hadmin-port $(cat local-data/dev_tools.env|grep STORE_ADMIN_LOCAL_PORT|cut -d '=' -f2)
           sleep 5
 
+      - name: start hstream http server
+        run: |
+          python3 script/dev-tools cabal --check --no-interactive --detach \
+            -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} run -- -- \
+            hstream-http-server:exe:hstream-http-server --port $(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2) \
+                                                        --hstream-port $(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
+                                                        
+          sleep 30
+
       - name: test
         run: |
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
