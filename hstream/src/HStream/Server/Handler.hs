@@ -45,11 +45,14 @@ import           HStream.Processing.Encoding
 import           HStream.Processing.Processor          (getTaskName)
 import           HStream.Processing.Store
 import           HStream.Processing.Stream             (Materialized (..))
+import qualified HStream.Processing.Stream             as Processing
 import           HStream.Processing.Stream.TimeWindows (mkTimeWindow,
                                                         mkTimeWindowKey)
 import           HStream.Processing.Type               hiding (StreamName,
                                                         Timestamp)
 import           HStream.Processing.Util               (getCurrentTimestamp)
+import           HStream.SQL                           (RSQL (RQSelect),
+                                                        parseAndRefine)
 import           HStream.SQL.AST                       (RSelectView (..))
 import           HStream.SQL.Codegen                   hiding (StreamName)
 import           HStream.Server.Exception
@@ -137,7 +140,12 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
 
     , hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
-    , hstreamApiTerminateQueries   = terminateQueriesHandler serverContext
+
+    -- Query
+    , hstreamApiTerminateQueries = terminateQueriesHandler serverContext
+
+    -- Stream with Query
+    , hstreamApiCreateQueryStream = createQueryStreamHandler serverContext
 
       -- FIXME:
     , hstreamApiCreateQuery  = createQueryHandler serverContext
@@ -179,7 +187,7 @@ createStreamHandler
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
   S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
-    (S.LogAttrs $ S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+    $ S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
   returnResp stream
 
 deleteStreamHandler
@@ -221,6 +229,29 @@ appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}
   returnResp $ AppendResponse appendRequestStreamName records
 
 -------------------------------------------------------------------------------
+-- Stream with Select Query
+
+createQueryStreamHandler :: ServerContext
+  -> ServerRequest 'Normal CreateQueryStreamRequest CreateQueryStreamResponse
+  -> IO (ServerResponse 'Normal CreateQueryStreamResponse)
+createQueryStreamHandler sc@ServerContext{..}
+  (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = defaultExceptionHandle $ do
+  RQSelect select <- parseAndRefine $ TL.toStrict createQueryStreamRequestQueryStatements
+  tName <- genTaskName
+  let sName = TL.toStrict . streamStreamName
+          <$> createQueryStreamRequestQueryStream
+      rFac = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
+  (builder, source, sink, _)
+    <- genStreamBuilderWithStream tName sName select
+  S.createStream scLDClient (transToStreamName sink) $ S.LogAttrs (S.HsLogAttrs rFac Map.empty)
+  let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
+  void $ handleCreateAsSelect sc (Processing.build builder)
+    createQueryStreamRequestQueryStatements query False
+  let streamResp = Stream (TL.fromStrict sink) (fromIntegral rFac)
+      queryResp  = Query { queryId = TL.fromStrict tName }
+  returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
+
+--------------------------------------------------------------------------------
 
 executeQueryHandler
   :: ServerContext
