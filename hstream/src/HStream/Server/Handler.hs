@@ -615,8 +615,8 @@ commitOffsetHandler
   -> ServerRequest 'Normal CommittedOffset CommittedOffset
   -> IO (ServerResponse 'Normal CommittedOffset)
 commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@CommittedOffset{..}) = defaultExceptionHandle $ do
-  (reader, _) <- lookupSubscribedReaders subscribedReaders committedOffsetSubscriptionId
-  commitCheckpoint scLDClient reader committedOffsetStreamName (fromJust committedOffsetOffset)
+  (reader, Subscription{..}) <- lookupSubscribedReaders subscribedReaders committedOffsetSubscriptionId
+  commitCheckpoint scLDClient reader subscriptionStreamName (fromJust committedOffsetOffset)
   returnResp offset
   where
     commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
