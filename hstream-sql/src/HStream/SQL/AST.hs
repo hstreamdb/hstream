@@ -17,6 +17,7 @@ import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
+import           HStream.SQL.Print     (printTree)
 
 --------------------------------------------------------------------------------
 type family RefinedType a :: Type
@@ -361,6 +362,17 @@ instance Refine SelectView where
       svWhr = let (RWhere (RCondOp RCompOpEQ (RExprCol _ Nothing field) rexpr)) = refine whr
                in (field, rexpr)
 
+---- EXPLAIN
+type RExplain = Text
+type instance RefinedType Explain = RExplain
+instance Refine Explain where
+  refine (ExplainSelect _ select)                = Text.pack (printTree select) <> ";"
+  refine (ExplainCreate _ create@(CreateAs{}))   = Text.pack (printTree create) <> ";"
+  refine (ExplainCreate _ create@(CreateAsOp{})) = Text.pack (printTree create) <> ";"
+  refine (ExplainCreate _ create@(CreateView{})) = Text.pack (printTree create) <> ";"
+  refine (ExplainCreate pos _)                   =
+    throwSQLException RefineException pos "Impossible happened"
+
 ---- CREATE
 data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
@@ -491,6 +503,7 @@ data RSQL = RQSelect RSelect
           | RQDrop   RDrop
           | RQTerminate RTerminate
           | RQSelectView RSelectView
+          | RQExplain RExplain
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
@@ -501,6 +514,7 @@ instance Refine SQL where
   refine (QDrop   _   drop_)        = RQDrop   (refine drop_)
   refine (QTerminate _ term)        = RQTerminate (refine term)
   refine (QSelectView _ selectView) = RQSelectView (refine selectView)
+  refine (QExplain _ explain)       = RQExplain (refine explain)
 
 --------------------------------------------------------------------------------
 

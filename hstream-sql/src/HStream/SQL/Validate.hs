@@ -599,6 +599,21 @@ instance Validate SelectView where
       validateCond cond@(CondOp pos (ExprColName _ (ColNameSimple _ _)) (CompOpEQ _) vexpr2) = return cond
       validateCond cond = Left $ buildSQLException ParseException (getPos cond) "Only forms like COLUMN = VALUE is allowed in WHERE clause when selecting from a VIEW"
 
+------------------------------------- EXPLAIN ----------------------------------
+instance Validate Explain where
+  validate explain@(ExplainSelect _   select) = validate select >> return explain
+  validate explain@(ExplainCreate pos create) =
+    case create of
+      CreateAs{}   -> validate create >> return explain
+      CreateAsOp{} -> validate create >> return explain
+      CreateView{} -> validate create >> return explain
+      DCreate{}    -> Left $ buildSQLException ParseException pos
+        "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
+      CreateOp{}   -> Left $ buildSQLException ParseException pos
+        "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
+      _            -> Left $ buildSQLException ParseException pos
+        "EXPLAIN can not give any execution plan for CREATE CONNECTOR"
+
 ------------------------------------- CREATE -----------------------------------
 instance Validate Create where
   validate create@(DCreate _ _) = return create
@@ -676,3 +691,4 @@ instance Validate SQL where
   validate sql@(QShow       _  show_)     = validate show_      >> return sql
   validate sql@(QDrop       _  drop_)     = validate drop_      >> return sql
   validate sql@(QTerminate  _ term)       = validate term       >> return sql
+  validate sql@(QExplain    _ explain)    = validate explain    >> return sql
