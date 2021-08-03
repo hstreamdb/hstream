@@ -404,7 +404,7 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     resPayloads1 V.++ resPayloads2 `shouldBe` first2Req
 
     let recordId = fromJust . receivedRecordRecordId $ V.head resp2
-    commitOffsetRequest client randomSubsciptionId randomStreamName recordId `shouldReturn` True
+    commitOffsetRequest client randomSubsciptionId  recordId `shouldReturn` True
     -- commitOffset should not affect the progress of the current reader.
     res <- V.replicateM 2 $ do
       resp <-fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
@@ -445,10 +445,10 @@ fetchRequest client subscribeId timeout maxSize = do
     ClientErrorResponse clientError                          -> do
       putStrLn ("FetchRequest Error: " <> show clientError) >> return V.empty
 
-commitOffsetRequest :: Client -> TL.Text -> TL.Text -> RecordId -> IO Bool
-commitOffsetRequest client subscriptionId streamName recordId = do
+commitOffsetRequest :: Client -> TL.Text -> RecordId -> IO Bool
+commitOffsetRequest client subscriptionId recordId = do
   HStreamApi{..} <- hstreamApiClient client
-  let req = CommittedOffset subscriptionId streamName $ Just recordId
+  let req = CommittedOffset subscriptionId $ Just recordId
   resp <- hstreamApiCommitOffset $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True

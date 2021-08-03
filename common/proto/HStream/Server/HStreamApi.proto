@@ -184,8 +184,7 @@ message ReceivedRecord {
 
 message CommittedOffset {
   string subscriptionId = 1;
-  string streamName = 2;
-  RecordId offset = 3;
+  RecordId offset = 2;
 }
 
 message StreamOffset {
