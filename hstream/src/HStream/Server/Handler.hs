@@ -13,7 +13,7 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.Suspend            (msDelay)
 import           Control.Concurrent.Timer
 import           Control.Exception                     (handle, throwIO)
-import           Control.Monad                         (void, when)
+import           Control.Monad                         (void, when, guard)
 import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
 import           Data.Function                         (on)

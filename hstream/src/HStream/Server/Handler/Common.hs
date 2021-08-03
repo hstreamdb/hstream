@@ -55,6 +55,7 @@ import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
+import qualified HStream.Logger as Log
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
@@ -89,23 +90,19 @@ runTaskWrapper isTemp taskBuilder ldclient = do
 runSinkConnector
   :: ServerContext
   -> CB.CBytes -- ^ Connector Id
-  -> T.Text -- ^ Source Stream Name
-  -> ConnectorConfig -> IO ()
-runSinkConnector ServerContext{..} cid sName cConfig = do
-  ldreader <- HS.newLDReader scLDClient 1000 Nothing
-  let sc = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
-  subscribeToStreamWithoutCkp sc sName Latest
-  connector <- case cConfig of
-    ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
-    MySqlConnector config -> do
-      Log.debug $ "Connect to mysql with " <> Log.buildString (show config)
-      mysqlSinkConnector <$> MySQL.connect config
-  tid <- forkIO $ do
+  -> SourceConnectorWithoutCkp
+  -> SinkConnector
+  -> IO ThreadId
+runSinkConnector ServerContext{..} cid src connector = do
     P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
-    forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
-  takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+    forkIO $ forever (onException run abort)
   where
-    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+    writeToConnector c SourceRecord{..} =
+      writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+    run = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
+    abort = do
+      Log.debug "Sink connector thread died"
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Abort
 
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
@@ -136,12 +133,37 @@ handleCreateSinkConnector
   -> T.Text -- ^ Connector Name
   -> T.Text -- ^ Source Stream Name
   -> ConnectorConfig -> IO P.PersistentConnector
-handleCreateSinkConnector sc@ServerContext{..} sql cName sName cConfig = do
+handleCreateSinkConnector serverCtx@ServerContext{..} sql cName sName cConfig = do
   MkSystemTime timestamp _ <- getSystemTime'
-  let cid = CB.pack $ T.unpack cName
   P.withMaybeZHandle zkHandle $ P.insertConnector cid sql timestamp
-  runSinkConnector sc cid sName cConfig
-  P.withMaybeZHandle zkHandle $ P.getConnector cid
+  onException run abort
+  where
+    cid = CB.pack $ T.unpack cName
+    abort = do
+      Log.debug "Create sink connector failed"
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Abort
+    run = do
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Creating
+      Log.debug "Start creating sink connector"
+      ldreader <- HS.newLDReader scLDClient 1000 Nothing
+      let src = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
+      subscribeToStreamWithoutCkp src sName Latest
+
+      connector <- case cConfig of
+        ClickhouseConnector config -> do
+          Log.debug $ "Connecting to clickhouse with " <> Log.stringUTF8 (show config)
+          clickHouseSinkConnector <$> createClient config
+        MySqlConnector      config -> do
+          Log.debug $ "Connecting to mysql with " <> Log.stringUTF8 (show config)
+          mysqlSinkConnector      <$> MySQL.connect config
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Created
+      Log.debug . Log.stringUTF8 . CB.unpack $ cid <> "Connected"
+
+      tid <- runSinkConnector serverCtx cid src connector
+      Log.debug . Log.stringUTF8 $ "Sink connector started running on thread#" <> show tid
+
+      takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+      P.withMaybeZHandle zkHandle $ P.getConnector cid
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext

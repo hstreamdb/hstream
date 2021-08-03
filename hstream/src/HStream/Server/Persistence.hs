@@ -75,7 +75,9 @@ instance JSON PersistentConnector
 
 data Status
   = Created
+  | Creating
   | Running
+  | Abort
   | Terminated
   deriving (Show, Eq, Generic, Enum, JSON)
 
