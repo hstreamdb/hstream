@@ -70,6 +70,7 @@ binOpOnValue :: HasCallStack => BinaryOp -> Value -> Value -> Value
 binOpOnValue OpAdd (Number n) (Number m) = Number (n+m)
 binOpOnValue OpSub (Number n) (Number m) = Number (n-m)
 binOpOnValue OpMul (Number n) (Number m) = Number (n*m)
+binOpOnValue OpDiv (Number n) (Number m) = Number (n/m)
 binOpOnValue OpAnd (Bool b1)  (Bool b2)  = Bool (b1 && b2)
 binOpOnValue OpOr  (Bool b1)  (Bool b2)  = Bool (b1 || b2)
 binOpOnValue op v1 v2 =

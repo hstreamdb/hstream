@@ -154,6 +154,7 @@ ExprAnd. ValueExpr1 ::= ValueExpr1 "&&" ValueExpr2 ;
 ExprAdd. ValueExpr2 ::= ValueExpr2 "+" ValueExpr3 ;
 ExprSub. ValueExpr2 ::= ValueExpr2 "-" ValueExpr3 ;
 ExprMul. ValueExpr3 ::= ValueExpr3 "*" ValueExpr4 ;
+ExprDiv. ValueExpr3 ::= ValueExpr3 "/" ValueExpr4 ;
 
 -- Scalar Numeric Type
 ExprInt. ValueExpr4 ::= PNInteger ;

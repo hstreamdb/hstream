@@ -82,7 +82,9 @@ data Constant = ConstantInt       Int
               -- TODO: Support Map and Arr
               deriving (Eq, Show)
 
-data BinaryOp = OpAdd | OpSub | OpMul | OpAnd | OpOr deriving (Eq, Show)
+data BinaryOp = OpAdd | OpSub | OpMul | OpDiv
+              | OpAnd | OpOr
+              deriving (Eq, Show)
 
 data UnaryOp  = OpSin     | OpSinh    | OpAsin  | OpAsinh  | OpCos   | OpCosh
               | OpAcos    | OpAcosh   | OpTan   | OpTanh   | OpAtan  | OpAtanh
@@ -122,6 +124,7 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprAdd _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpAdd (refine e1) (refine e2)
     (ExprSub _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpSub (refine e1) (refine e2)
     (ExprMul _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpMul (refine e1) (refine e2)
+    (ExprDiv _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpDiv (refine e1) (refine e2)
     (ExprAnd _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpAnd (refine e1) (refine e2)
     (ExprOr  _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpOr  (refine e1) (refine e2)
     (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n) -- WARNING: May lose presision
