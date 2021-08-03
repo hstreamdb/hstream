@@ -13,7 +13,7 @@ import           HStream.Processing.MockStreamStore
 import           HStream.Processing.Processor
 import           HStream.Processing.Type
 import           HStream.Processing.Util
-import           HStream.SQL.Codegen                (ExecutionPlan (..),
+import           HStream.SQL.Codegen                (HStreamPlan (..),
                                                      streamCodegen)
 import qualified Prelude                            as P
 import           RIO

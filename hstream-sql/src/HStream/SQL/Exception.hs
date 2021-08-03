@@ -30,11 +30,13 @@ data SomeSQLException where
   ParseException   :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
   RefineException  :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
   CodegenException :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
+  GenExecPlanException :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
 
 instance Show SomeSQLException where
   show (ParseException info)   = "ParseException at "   ++ show info ++ "\n" ++ prettyCallStack callStack
   show (RefineException info)  = "RefineException at "  ++ show info ++ "\n" ++ prettyCallStack callStack
   show (CodegenException info) = "CodegenException at " ++ show info ++ "\n" ++ prettyCallStack callStack
+  show (GenExecPlanException info) = "GenExecPlanException at " ++ show info ++ "\n" ++ prettyCallStack callStack
 
 instance Exception SomeSQLException
 
@@ -42,6 +44,7 @@ formatSomeSQLException :: SomeSQLException -> String
 formatSomeSQLException (ParseException   info) = "Parse exception " ++ formatParseExceptionInfo info
 formatSomeSQLException (RefineException  info) = "Refine exception at " ++ show info
 formatSomeSQLException (CodegenException info) = "Codegen exception at " ++ show info
+formatSomeSQLException (GenExecPlanException info) = "Generate execution plan exception at " ++ show info
 
 formatParseExceptionInfo :: SomeSQLExceptionInfo -> String
 formatParseExceptionInfo SomeSQLExceptionInfo{..} =
