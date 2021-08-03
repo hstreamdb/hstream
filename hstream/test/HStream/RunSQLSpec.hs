@@ -53,7 +53,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data
       threadDelay 5000000
-      Log.d $ "Insert into " <> Log.fromLazyText source <> " ..."
+      Log.d $ "Insert into " <> Log.buildLazyText source <> " ..."
       runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
       runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
 
@@ -68,7 +68,7 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- FIXME: requires a notification mechanism to ensure that the task
       -- starts successfully before inserting data
       threadDelay 5000000
-      Log.d $ "Insert into " <> Log.fromLazyText source <> " ..."
+      Log.d $ "Insert into " <> Log.buildLazyText source <> " ..."
       runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (1, 2);")
       runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (2, 2);")
       runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (3, 2);")

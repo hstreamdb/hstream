@@ -248,6 +248,10 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
+      Log.debug $ "CreateConnector CodeGen"
+               <> ", connector name: " <> Log.buildText cName
+               <> ", stream name: " <> Log.buildText sName
+               <> ", config: " <> Log.buildString (show cConfig)
       streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
       connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
       let connectorExists = textToCBytes cName `elem` connectorIds
@@ -450,7 +454,7 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
         S.checkpointStoreLogID 5000 1 Nothing 10
       logId <- S.getUnderlyingLogId client streamName
       startLSN <- getStartLSN (fromJust subscriptionOffset) client logId
-      Log.d $ Log.stringUTF8 "createSubscribe with startLSN: " <> Log.int startLSN
+      Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
       S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
       -- consumer will fetch record from startLSN, so the start checkpoint should in (startLSN - 1)
       S.writeCheckpoints reader (Map.fromList [(logId, startLSN - 1)])

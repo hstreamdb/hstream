@@ -18,6 +18,7 @@ import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
 
 import           HStream.Connector.HStore         (transToStreamName)
+import qualified HStream.Logger                   as Log
 import qualified HStream.SQL.Codegen              as CodeGen
 import           HStream.Server.Exception         (ConnectorAlreadyExists (..),
                                                    StreamNotExist (..),
@@ -105,6 +106,10 @@ hstreamConnectorToConnector P.PersistentConnector{..} =
 createConnector :: ServerContext -> T.Text -> IO Connector
 createConnector sc@ServerContext{..} sql = do
   (CodeGen.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) <- CodeGen.streamCodegen sql
+  Log.debug $ "CreateConnector CodeGen"
+           <> ", connector name: " <> Log.buildText cName
+           <> ", stream name: " <> Log.buildText sName
+           <> ", config: " <> Log.buildString (show cConfig)
   streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
   connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
   let cid = T.unpack cName

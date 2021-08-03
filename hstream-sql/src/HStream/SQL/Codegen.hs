@@ -82,6 +82,7 @@ data InsertType = JsonFormat | RawFormat
 data ConnectorConfig
   = ClickhouseConnector Clickhouse.ConnParams
   | MySqlConnector MySQL.ConnectInfo
+  deriving Show
 
 data ExecutionPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
@@ -144,24 +145,28 @@ genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connecto
     "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName (MySqlConnector createMysqlSinkConnector) []
     _ -> throwSQLException CodegenException Nothing "Connector type not supported"
   where
-    extractInt = \case Just (ConstantInt s) -> Just s; _ -> Nothing
     extractString = \case Just (ConstantString s) -> Just s; _ -> Nothing
     getStringValue field value = fromMaybe value $ extractString (lookup field cOptions)
     getByteStringValue = (BSC.pack .) . getStringValue
     createClickhouseSinkConnector = Clickhouse.ConnParams
       (getByteStringValue "username" "default")
       (getByteStringValue "host" "127.0.0.1")
-      (getByteStringValue "port" "9000")
+      (BSC.pack . show . extractInt "port: " $ lookup "port" cOptions)
       (getByteStringValue "password" "")
       False (getByteStringValue "database" "default")
     createMysqlSinkConnector = MySQL.ConnectInfo
       (getStringValue "host" "127.0.0.1")
-      (fromIntegral . fromMaybe 3306 . extractInt $ lookup "port" cOptions)
+      (fromIntegral . extractInt "port: " $ lookup "port" cOptions)
       (getByteStringValue "database" "mysql")
       (getByteStringValue "username" "root")
       (getByteStringValue "password" "password") 33
 genCreateSinkConnectorPlan _ =
   throwSQLException CodegenException Nothing "Implementation: Wrong function called"
+
+extractInt :: String -> Maybe Constant -> Int
+extractInt errPrefix = \case
+  Just (ConstantInt s) -> s;
+  _ -> throwSQLException CodegenException Nothing $ errPrefix <> "type should be integer."
 
 ----
 type SourceConfigType = HS.StreamSourceConfig Object Object

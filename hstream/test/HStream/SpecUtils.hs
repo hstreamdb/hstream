@@ -14,14 +14,15 @@ import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Char8            as BSC
-import qualified Data.ByteString.Internal         as BS (c2w)
-import qualified Data.ByteString.Lazy.Char8       as DBCL
+import qualified Data.ByteString.Internal         as BS
+import qualified Data.ByteString.Lazy.Char8       as BSCL
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
+import qualified Data.Text.Encoding               as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import qualified Database.ClickHouseDriver.Client as ClickHouse
@@ -102,7 +103,7 @@ createClickHouseConnectorSql :: TL.Text -> TL.Text -> TL.Text
 createClickHouseConnectorSql name stream
   = "CREATE SINK CONNECTOR " <> name <> " WITH (type=clickhouse, "
  <> "host=" <> TL.pack (show $ ClickHouse.host' clickHouseConnectInfo) <> ","
- <> "port=" <> TL.pack (show $ ClickHouse.port' clickHouseConnectInfo) <> ","
+ <> "port=" <> TL.fromStrict (Text.decodeUtf8 $ ClickHouse.port' clickHouseConnectInfo) <> ","
  <> "username=" <> TL.pack (show $ ClickHouse.username' clickHouseConnectInfo) <> ","
  <> "password=" <> TL.pack (show $ ClickHouse.password' clickHouseConnectInfo) <> ","
  <> "database=" <> TL.pack (show $ ClickHouse.database' clickHouseConnectInfo) <> ","
@@ -220,17 +221,17 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
 createMysqlTable :: Text -> IO ()
 createMysqlTable source = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn ->
   void $ MySQL.execute_ conn $
-    MySQL.Query . DBCL.pack $ "CREATE TABLE IF NOT EXISTS "
+    MySQL.Query . BSCL.pack $ "CREATE TABLE IF NOT EXISTS "
                            <> Text.unpack source
                            <> "(temperature INT, humidity INT) CHARACTER SET utf8"
 
 dropMysqlTable :: Text -> IO ()
 dropMysqlTable name = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn ->
-  void $ MySQL.execute_ conn $ MySQL.Query . DBCL.pack $ "DROP TABLE IF EXISTS " <> Text.unpack name
+  void $ MySQL.execute_ conn $ MySQL.Query . BSCL.pack $ "DROP TABLE IF EXISTS " <> Text.unpack name
 
 fetchMysql :: Text -> IO [[MySQL.MySQLValue]]
 fetchMysql source = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn -> do
-  (_, items) <- MySQL.query_ conn $ MySQL.Query . DBCL.pack $ "SELECT * FROM " <> Text.unpack source
+  (_, items) <- MySQL.query_ conn $ MySQL.Query . BSCL.pack $ "SELECT * FROM " <> Text.unpack source
   Streams.fold (\xs x -> xs ++ [x]) [] items
 
 createClickHouseTable :: Text -> IO ()
