@@ -42,7 +42,7 @@ writeRecordToMySQL myClient SinkRecord{..} = do
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = "(" <> (intercalate "," . map toMySQLValue $ HM.elems flattened) <> ")"
       let sentence = "INSERT INTO " ++ Text.unpack snkStream ++ " " ++ keys ++ " VALUES " ++ elems
-      Log.debug $ Log.stringUTF8 sentence
+      Log.debug $ Log.buildString sentence
       void $ execute_ myClient $ Query $ DBCL.pack sentence
     _ -> do
       Log.warning "Invalid Sink Value"

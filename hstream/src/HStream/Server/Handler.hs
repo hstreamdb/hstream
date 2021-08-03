@@ -13,7 +13,7 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.Suspend            (msDelay)
 import           Control.Concurrent.Timer
 import           Control.Exception                     (handle, throwIO)
-import           Control.Monad                         (void, when, guard)
+import           Control.Monad                         (void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
 import           Data.Function                         (on)
@@ -59,6 +59,7 @@ import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector      (cancelConnectorHandler,
+                                                        createConnector,
                                                         createSinkConnectorHandler,
                                                         deleteConnectorHandler,
                                                         getConnectorHandler,
@@ -278,21 +279,8 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
         (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema) False
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnCommandQueryEmptyResp
-    CreateSinkConnectorPlan cName ifNotExist sName cConfig _ -> do
-      Log.debug $ "CreateConnector CodeGen"
-               <> ", connector name: " <> Log.buildText cName
-               <> ", stream name: " <> Log.buildText sName
-               <> ", config: " <> Log.buildString (show cConfig)
-      streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
-      connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
-      let connectorExists = textToCBytes cName `elem` connectorIds
-      if streamExists then
-        if connectorExists then
-          if ifNotExist then returnCommandQueryEmptyResp
-                        else returnErrResp StatusInternal "connector exists"
-        else handleCreateSinkConnector sc (TL.toStrict commandQueryStmtText) cName sName cConfig
-             >> returnCommandQueryEmptyResp
-      else returnErrResp StatusInternal"stream does not exist"
+    CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
+      createConnector sc (TL.toStrict commandQueryStmtText) >> returnCommandQueryEmptyResp
     InsertPlan stream insertType payload -> do
       timestamp <- getProtoTimestamp
       let header = case insertType of
@@ -302,8 +290,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       void $ batchAppend scLDClient (TL.fromStrict stream) [record] cmpStrategy
       returnCommandQueryEmptyResp
     TerminatePlan terminationSelection -> do
-      handleQueryTerminate sc terminationSelection
-      returnCommandQueryEmptyResp
+      handleQueryTerminate sc terminationSelection >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
       case HM.lookup rSelectViewFrom hm of

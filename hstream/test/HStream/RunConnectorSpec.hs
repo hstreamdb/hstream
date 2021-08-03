@@ -121,7 +121,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
         _ <- cancelConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          Just (Connector _ 2 _ _) -> return True
+          -- Terminated
+          Just (Connector _ 5 _ _) -> return True
           _                        -> return False
     ) `shouldReturn` True
 
@@ -130,7 +131,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
         _ <- restartConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          Just (Connector _ 1 _ _) -> return True
+          -- Running
+          Just (Connector _ 2 _ _) -> return True
           _                        -> return False
     ) `shouldReturn` True
 

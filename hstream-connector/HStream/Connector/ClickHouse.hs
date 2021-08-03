@@ -41,7 +41,7 @@ writeRecordToClickHouse ckClient SinkRecord{..} = do
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = map valueToCKType $ HM.elems flattened
       let prefix = "INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES "
-      Log.debug . Log.stringUTF8 $ prefix ++ show elems
+      Log.debug . Log.buildString $ prefix ++ show elems
       void $ CK.insertOneRow ckClient prefix elems
     _ -> do
       Log.warning "Invalid Sink Value"

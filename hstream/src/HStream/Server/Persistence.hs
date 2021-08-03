@@ -77,7 +77,10 @@ data Status
   = Created
   | Creating
   | Running
-  | Abort
+  -- Abort during creating the connector
+  | CreationAbort
+  -- Abort during execution of SQL statements
+  | ConnectionAbort
   | Terminated
   deriving (Show, Eq, Generic, Enum, JSON)
 
@@ -192,9 +195,10 @@ instance Persistence PStoreMem where
     modifyIORef refQ $ HM.delete . mkQueryPath $ qid
 
   removeConnector cid ref@(_, refC) = ifThrow FailedToRemove $
-    getConnectorStatus cid ref >>= \case
-      Terminated -> modifyIORef refC . HM.delete . mkConnectorPath $ cid
-      _          -> throwIO ConnectorStillRunning
+    getConnectorStatus cid ref >>= \st -> do
+    if st `elem` [Terminated, CreationAbort, ConnectionAbort]
+      then modifyIORef refC . HM.delete . mkConnectorPath $ cid
+      else throwIO ConnectorStillRunning
 
   removeConnector' cid (_, refC) = ifThrow FailedToRemove $
     modifyIORef refC $ HM.delete . mkConnectorPath $ cid
