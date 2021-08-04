@@ -43,7 +43,7 @@ library
   cxx-sources:        cbits/utils.cpp
   build-depends:
     , aeson
-    , base
+    , base                  >=4.11 && <5
     , bytestring
     , containers
     , deepseq
