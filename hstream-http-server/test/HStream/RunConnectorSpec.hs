@@ -62,9 +62,9 @@ createConnector sql = do
   response <- httpLBS request
   return (decode (getResponseBody response) :: Maybe ConnectorBO)
 
-cancelConnector :: String -> IO (Maybe Bool)
-cancelConnector cName = do
-  request <- buildRequest "POST" ("connectors/cancel/" <> cName)
+terminateConnector :: String -> IO (Maybe Bool)
+terminateConnector cName = do
+  request <- buildRequest "POST" ("connectors/terminate/" <> cName)
   response <- httpLBS request
   return (decode (getResponseBody response) :: Maybe Bool)
 
@@ -94,8 +94,8 @@ spec = describe "HStream.RunConnectorSpec" $ do
       connector <- getConnector cName
       connector `shouldSatisfy` (connectorWithCorrectSql sql)
 
-    it "cancel connector" $ do
-      res <- cancelConnector cName
+    it "terminate connector" $ do
+      res <- terminateConnector cName
       res `shouldBe` (Just True)
 
     it "delete connector" $ do
