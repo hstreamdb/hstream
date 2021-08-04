@@ -145,7 +145,8 @@ spec = describe "HStream.RunQuerySpec" $ do
         _ <- terminateQuery queryname1
         query <- getQuery queryname1
         case query of
-          Just (Query _ 2 _ _ ) -> return True
+          -- Terminated
+          Just (Query _ 5 _ _ ) -> return True
           _                     -> return False
     ) `shouldReturn` True
 
@@ -154,7 +155,8 @@ spec = describe "HStream.RunQuerySpec" $ do
         _ <- restartQuery queryname1
         query <- getQuery queryname1
         case query of
-          Just (Query _ 1 _ _ ) -> return True
+          -- Running
+          Just (Query _ 2 _ _ ) -> return True
           _                     -> return False
     ) `shouldReturn` True
 

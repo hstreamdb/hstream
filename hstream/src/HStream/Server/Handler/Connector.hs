@@ -8,7 +8,7 @@
 module HStream.Server.Handler.Connector where
 
 import           Control.Exception                (throwIO)
-import           Control.Monad                    (unless, when)
+import           Control.Monad                    (unless, void, when)
 import           Data.Functor                     ((<&>))
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -16,11 +16,14 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
+import           Z.IO.Time                        (SystemTime (MkSystemTime),
+                                                   getSystemTime')
 
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.SQL.Codegen              as CodeGen
 import           HStream.Server.Exception         (ConnectorAlreadyExists (..),
+                                                   ConnectorRestartErr (ConnectorRestartErr),
                                                    StreamNotExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
@@ -81,16 +84,17 @@ restartConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle $ do
   let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
-  when (cStatus == P.Terminated) $ restartConnector sc cid
-  returnResp Empty
+  when (cStatus `elem` [P.Created, P.Creating, P.Running]) $
+    throwIO (ConnectorRestartErr cStatus)
+  restartConnector sc cid >> returnResp Empty
 
-cancelConnectorHandler
+terminateConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal CancelConnectorRequest Empty
+  -> ServerRequest 'Normal TerminateConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-cancelConnectorHandler sc
-  (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
-  let cid = lazyTextToCBytes cancelConnectorRequestId
+terminateConnectorHandler sc
+  (ServerNormalRequest _metadata TerminateConnectorRequest{..}) = do
+  let cid = lazyTextToCBytes terminateConnectorRequestId
   handleTerminateConnector sc cid
   returnResp Empty
 
@@ -112,19 +116,25 @@ createConnector sc@ServerContext{..} sql = do
            <> ", config: " <> Log.buildString (show cConfig)
   streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
   connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
-  let cid = T.unpack cName
-      connectorExists = cid `elem` map CB.unpack connectorIds
+  let cid = CB.pack $ T.unpack cName
+      connectorExists = cid `elem` connectorIds
   unless streamExists $ throwIO StreamNotExist
-  when (connectorExists && not ifNotExist) $ throwIO ConnectorAlreadyExists
+  when (connectorExists && not ifNotExist) $ do
+    cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
+    throwIO (ConnectorAlreadyExists cStatus)
   if connectorExists then do
-    connector <- P.withMaybeZHandle zkHandle $ P.getConnector (CB.pack cid)
+    connector <- P.withMaybeZHandle zkHandle $ P.getConnector cid
     return $ hstreamConnectorToConnector connector
-  else handleCreateSinkConnector sc sql cName sName cConfig <&> hstreamConnectorToConnector
+  else do
+    MkSystemTime timestamp _ <- getSystemTime'
+    P.withMaybeZHandle zkHandle $ P.insertConnector cid sql timestamp
+    handleCreateSinkConnector sc cid sName cConfig <&> hstreamConnectorToConnector
 
 restartConnector :: ServerContext -> CB.CBytes -> IO ()
 restartConnector sc@ServerContext{..} cid = do
-  P.PersistentConnector _ sql _ _ _
-    <- P.withMaybeZHandle zkHandle $ P.getConnector cid
+  P.PersistentConnector _ sql _ _ _ <- P.withMaybeZHandle zkHandle $ P.getConnector cid
   (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
     <- CodeGen.streamCodegen (T.pack . ZT.unpack $ sql)
-  runSinkConnector sc cid sName cConfig
+  streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
+  unless streamExists $ throwIO StreamNotExist
+  void $ handleCreateSinkConnector sc cid sName cConfig

@@ -17,8 +17,8 @@ import qualified Database.ClickHouseDriver       as CK
 import qualified Database.ClickHouseDriver.Types as CK
 import           HStream.Utils                   (flattenJSON)
 import           Haxl.Core                       (Env)
-import qualified Z.IO.Logger                     as Log
 
+import qualified HStream.Logger                  as Log
 import           HStream.Processing.Connector    (SinkConnector (..))
 import           HStream.Processing.Type         (SinkRecord (..))
 
@@ -40,6 +40,8 @@ writeRecordToClickHouse ckClient SinkRecord{..} = do
       let !flattened = flattenJSON l
       let keys = "(" <> (intercalate "," . map Text.unpack $ HM.keys flattened) <> ")"
           elems = map valueToCKType $ HM.elems flattened
-      void $ CK.insertOneRow ckClient ("INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES ") elems
+      let prefix = "INSERT INTO " ++ show snkStream ++ " " ++ keys ++" VALUES "
+      Log.debug . Log.buildString $ prefix ++ show elems
+      void $ CK.insertOneRow ckClient prefix elems
     _ -> do
       Log.warning "Invalid Sink Value"
