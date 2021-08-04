@@ -24,6 +24,7 @@ import qualified System.Console.Haskeline         as H
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
+import           System.Process                   (system)
 import           Text.RawString.QQ                (r)
 
 import qualified HStream.Logger                   as Log
@@ -88,6 +89,7 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
 
 commandExec :: HStreamClientApi -> String -> IO ()
 commandExec api xs = case words xs of
+  ":clc"      -> system "clear" *> pure ()
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
@@ -138,6 +140,7 @@ Command
   :h                           To show these help info
   :q                           To exit command line interface
   :help [sql_operation]        To show full usage of sql statement
+  :clc                         To clear the terminal screen
 
 SQL STATEMENTS:
   To create a simplest stream:
