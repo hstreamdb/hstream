@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -5,174 +6,150 @@
 
 module HStream.RunQuerySpec (spec) where
 
-import qualified Data.List                        as L
+import           Control.Concurrent               (forkIO, threadDelay)
+import           Control.Monad                    (void)
+import qualified Data.Aeson                       as Aeson
+import qualified Data.ByteString.Lazy             as BS
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           Test.Hspec
+import qualified Proto3.Suite                     as PB
+import           Test.Hspec                       (ActionWith, Spec, aroundAll,
+                                                   aroundWith, describe, it,
+                                                   parallel, runIO, shouldBe,
+                                                   shouldReturn)
 
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
+import qualified HStream.ThirdParty.Protobuf      as PB
+import           HStream.Utils                    (HStreamClientApi,
+                                                   buildRecord,
+                                                   buildRecordHeader,
+                                                   getProtoTimestamp,
+                                                   getServerResp)
 
-getQueryResponseIdIs :: TL.Text -> Query -> Bool
-getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
+{-
+  rpc CreateQueryStream(CreateQueryStreamRequest) returns (CreateQueryStreamResponse) {}
+  rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse) {}
+  rpc GetQuery(GetQueryRequest) returns (Query) {}
+  rpc TerminateQueries(TerminateQueriesRequest) returns (TerminateQueriesResponse) {}
+  rpc DeleteQuery(DeleteQueryRequest) returns (google.protobuf.Empty) {}
+-}
 
-createQuery :: TL.Text -> TL.Text -> IO (Maybe Query)
-createQuery qid sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let createQueryRequest = CreateQueryRequest { createQueryRequestId = qid
-                                              , createQueryRequestQueryText = sql
-                                              }
-  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@Query{} _meta1 _meta2 StatusOk _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Create Query Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
-
-
-listQueries :: IO (Maybe ListQueriesResponse)
-listQueries = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let listQueryRequesies = ListQueriesRequest {}
-  resp <- hstreamApiListQueries (ClientNormalRequest listQueryRequesies 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@ListQueriesResponse{} _meta1 _meta2 StatusOk _details -> do
-      return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "List Queries Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
-
-getQuery :: TL.Text -> IO (Maybe Query)
-getQuery qid = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let getQueryRequest = GetQueryRequest { getQueryRequestId = qid }
-  resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@Query{} _meta1 _meta2 StatusOk _details -> do
-      return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Get Query Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
-
-deleteQuery :: TL.Text -> IO Bool
-deleteQuery qid = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let deleteQueryRequest = DeleteQueryRequest { deleteQueryRequestId = qid }
-  resp <- hstreamApiDeleteQuery (ClientNormalRequest deleteQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Delete Query Client Error: " <> show clientError
-      return False
-    _ -> return False
-
-terminateQuery :: TL.Text -> IO Bool
-terminateQuery qid = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let terminateQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton qid,
-                                                        terminateQueriesRequestAll = False }
-  resp <- hstreamApiTerminateQueries (ClientNormalRequest terminateQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Cancel Query Client Error: " <> show clientError
-      return False
-    _ -> return False
-
-restartQuery :: TL.Text -> IO Bool
-restartQuery qid = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let restartQueryRequest = RestartQueryRequest { restartQueryRequestId = qid }
-  resp <- hstreamApiRestartQuery (ClientNormalRequest restartQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Restart Query Client Error: " <> show clientError
-      return False
-    _ -> return False
+mkClientRequest :: a -> ClientRequest 'Normal a b
+mkClientRequest req =
+  ClientNormalRequest req 5 (MetadataMap Map.empty)
 
 spec :: Spec
 spec = describe "HStream.RunQuerySpec" $ do
-  source1 <- runIO $ TL.fromStrict <$> newRandomText 20
-  let queryname1 = "testquery1"
+  runIO $ setLogDeviceDbgLevel C_DBG_ERROR
+  querySpec
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+querySpecAround :: ActionWith (HStreamClientApi, (TL.Text, TL.Text, TL.Text))
+  -> HStreamClientApi -> IO ()
+querySpecAround = provideRunTest setup clean
+  where
+    setup api = do
+      source <- TL.fromStrict <$> newRandomText 20
+      sink   <- TL.fromStrict <$> newRandomText 20
+      createStream api source
+      (sink', qid) <- createQueryStream api sink $ "SELECT * FROM " <> source <> " EMIT CHANGES;"
+      sink' `shouldBe` sink'
+      return (source, sink', qid)
+    clean api (source, sink, _) = do
+      deleteStream api source
+      queries <- listQueries api
+      mapM_ (deleteQuery api) (getRelatedQueries queries sink)
+      queries' <- listQueries api
+      getRelatedQueries queries' sink `shouldBe` []
+      deleteStream api sink
 
-  it "create streams" $
-    ( do
-        res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+querySpec :: Spec
+querySpec = aroundAll provideHstreamApi $ aroundWith querySpecAround $
+  describe "StartQuerySpec" $ parallel $ do
+    -- stream query means the associated select query when send a CreateQueryStreamRequest
 
-  it "create query" $
-    ( do
-        res <- createQuery queryname1 ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
-        case res of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+    it "get query info" $ \(api, (_, _, qid)) ->
+      getQuery api qid
 
-  it "list queries" $
-    ( do
-        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let record = V.find (getQueryResponseIdIs queryname1) queries
-        case record of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+    it "check if the query is running" $ \(api, (source, sink, _)) -> do
+      _ <- forkIO $ do
+        timeStamp <- getProtoTimestamp
+        let header = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timeStamp TL.empty
+            records = buildRecord header $ BS.toStrict $
+              Aeson.encode $ Map.fromList [("temperature" :: String, 22 :: Int), ("humidity", 80)]
+        threadDelay 5000000
+        Log.d $ "Insert into " <> Log.buildLazyText source <> " ..."
+        insertIntoStream api source $ V.singleton records
 
-  it "get query" $
-    ( do
-        query <- getQuery queryname1
-        case query of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+      executeCommandPushQuery ("SELECT * FROM " <> sink <> " EMIT CHANGES;")
+        `shouldReturn`
+          [ mkStruct [("temperature", Aeson.Number 22), ("humidity", Aeson.Number 80)]]
 
-  it "Terminate query" $
-    ( do
-        _ <- terminateQuery queryname1
-        query <- getQuery queryname1
-        case query of
-          -- Terminated
-          Just (Query _ 5 _ _ ) -> return True
-          _                     -> return False
-    ) `shouldReturn` True
+    it "list queries" $ \(api, (_, sink, _)) -> do
+      void $ executeCommandPushQuery ("SELECT * FROM " <> sink <> " EMIT CHANGES;")
+      void $ executeCommandPushQuery ("SELECT * FROM " <> sink <> " EMIT CHANGES;")
+      queries <- listQueries api
+      length (getRelatedQueries queries sink) `shouldBe` 2
 
-  it "restart query" $
-    ( do
-        _ <- restartQuery queryname1
-        query <- getQuery queryname1
-        case query of
-          -- Running
-          Just (Query _ 2 _ _ ) -> return True
-          _                     -> return False
-    ) `shouldReturn` True
+--------------------------------------------------------------------------------
 
-  it "delete query" $
-    ( do
-        _ <- terminateQuery queryname1
-        _ <- deleteQuery queryname1
-        query <- getQuery queryname1
-        case query of
-          Just Query{} -> return True
-          _            -> return False
-    ) `shouldReturn` False
+createStream :: HStreamClientApi -> TL.Text -> IO ()
+createStream HStreamApi{..} source = action `grpcShouldReturn` Stream source 3
+  where
+    action = hstreamApiCreateStream $ mkClientRequest
+      PB.def {streamStreamName = source, streamReplicationFactor = 3}
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+deleteStream :: HStreamClientApi -> TL.Text -> IO ()
+deleteStream HStreamApi{..} source = action `grpcShouldReturn` PB.Empty
+  where
+    action = hstreamApiDeleteStream $ mkClientRequest
+      PB.def {deleteStreamRequestStreamName = source}
+
+insertIntoStream :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO ()
+insertIntoStream HStreamApi{..} sink records = do
+  AppendResponse sName _<- getServerResp =<< action
+  sName `shouldBe` sink
+  where
+    action = hstreamApiAppend $ mkClientRequest
+      PB.def { appendRequestStreamName = sink
+          , appendRequestRecords = records }
+
+getQuery :: HStreamClientApi -> TL.Text -> IO ()
+getQuery HStreamApi{..} qid = do
+  Query {..}<- getServerResp =<< action
+  queryId `shouldBe` qid
+  queryStatus `shouldBe` PB.Enumerated (Right Query_StatusRunning) -- Running FIXME:Status should not be just a number
+  where
+    action = hstreamApiGetQuery $ mkClientRequest PB.def {getQueryRequestId = qid}
+
+createQueryStream :: HStreamClientApi -> TL.Text -> TL.Text -> IO (TL.Text, TL.Text)
+createQueryStream HStreamApi{..} sink sql = do
+  CreateQueryStreamResponse (Just stream) qid <- getServerResp =<< action
+  return (streamStreamName stream, qid)
+  where
+    action = hstreamApiCreateQueryStream $ mkClientRequest
+      PB.def { createQueryStreamRequestQueryStream = Just $
+                 PB.def {streamStreamName = sink, streamReplicationFactor = 3}
+             , createQueryStreamRequestQueryStatements = sql
+             }
+
+listQueries :: HStreamClientApi -> IO [Query]
+listQueries HStreamApi{..} = do
+  ListQueriesResponse queries <- getServerResp =<<
+    hstreamApiListQueries (mkClientRequest PB.def)
+  return . V.toList $ queries
+
+deleteQuery :: HStreamClientApi -> TL.Text -> IO ()
+deleteQuery HStreamApi{..} qid =
+  hstreamApiDeleteQuery (mkClientRequest PB.def {deleteQueryRequestId = qid})
+    `grpcShouldReturn` PB.Empty
+
+getRelatedQueries :: [Query] -> TL.Text -> [TL.Text]
+getRelatedQueries queries sName =
+  [queryId query
+    | query@Query{queryQueryType = Just qType} <- queries
+    , sName `elem` queryTypeSourceStreamNames qType]

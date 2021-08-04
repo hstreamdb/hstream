@@ -18,9 +18,8 @@ import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
 import           Data.Function                         (on)
 import qualified Data.HashMap.Strict                   as HM
-import           Data.IORef                            (IORef,
-                                                        atomicModifyIORef',
-                                                        newIORef, readIORef)
+import           Data.IORef                            (atomicModifyIORef',
+                                                        readIORef)
 import           Data.Int                              (Int64)
 import qualified Data.List                             as L
 import qualified Data.Map.Strict                       as Map
@@ -31,11 +30,12 @@ import qualified Data.Text.Lazy                        as TL
 import qualified Data.Vector                           as V
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                          (Enumerated (..))
-import           System.IO.Unsafe                      (unsafePerformIO)
 import qualified Z.Data.CBytes                         as CB
 import qualified Z.Data.JSON                           as ZJ
 import           Z.Data.Vector                         (Bytes)
 import           Z.Foreign                             (toByteString)
+import           Z.IO.Time                             (SystemTime (MkSystemTime),
+                                                        getSystemTime')
 import           ZooKeeper.Types                       (ZHandle)
 
 import           HStream.Connector.HStore
@@ -44,8 +44,8 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Encoding
 import           HStream.Processing.Processor          (getTaskName)
 import           HStream.Processing.Store
-import           HStream.Processing.Stream             (Materialized (..))
-import qualified HStream.Processing.Stream             as Processing
+import           HStream.Processing.Stream             (Materialized (..),
+                                                        build)
 import           HStream.Processing.Stream.TimeWindows (mkTimeWindow,
                                                         mkTimeWindowKey)
 import           HStream.Processing.Type               hiding (StreamName,
@@ -66,17 +66,14 @@ import           HStream.Server.Handler.Connector      (createConnector,
                                                         listConnectorsHandler,
                                                         restartConnectorHandler,
                                                         terminateConnectorHandler)
-import           HStream.Server.Handler.Query          (createQueryHandler,
-                                                        deleteQueryHandler,
+import           HStream.Server.Handler.Query          (deleteQueryHandler,
                                                         getQueryHandler,
                                                         listQueriesHandler,
-                                                        restartQueryHandler,
                                                         terminateQueriesHandler)
 import           HStream.Server.Handler.StoreAdmin     (getStoreNodeHandler,
                                                         listStoreNodesHandler)
 import           HStream.Server.Handler.View           (createViewHandler,
                                                         deleteViewHandler,
-                                                        getViewHandler,
                                                         listViewsHandler)
 import qualified HStream.Server.Persistence            as P
 import           HStream.Store                         (ckpReaderStopReading)
@@ -85,13 +82,8 @@ import qualified HStream.Store.Admin.API               as AA
 import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
 
---------------------------------------------------------------------------------
 
-groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
-groupbyStores = unsafePerformIO $ newIORef HM.empty
-{-# NOINLINE groupbyStores #-}
-
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 handlers
   :: S.LDClient
@@ -150,11 +142,9 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
     , hstreamApiCreateQueryStream = createQueryStreamHandler serverContext
 
       -- FIXME:
-    , hstreamApiCreateQuery  = createQueryHandler serverContext
     , hstreamApiGetQuery     = getQueryHandler serverContext
     , hstreamApiListQueries  = listQueriesHandler serverContext
     , hstreamApiDeleteQuery  = deleteQueryHandler serverContext
-    , hstreamApiRestartQuery = restartQueryHandler serverContext
 
     , hstreamApiCreateSinkConnector  = createSinkConnectorHandler serverContext
     , hstreamApiGetConnector         = getConnectorHandler serverContext
@@ -164,7 +154,6 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
     , hstreamApiRestartConnector     = restartConnectorHandler serverContext
 
     , hstreamApiCreateView       = createViewHandler serverContext
-    , hstreamApiGetView          = getViewHandler serverContext
     , hstreamApiListViews        = listViewsHandler serverContext
     , hstreamApiDeleteView       = deleteViewHandler serverContext
 
@@ -200,13 +189,13 @@ deleteStreamHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteSt
   let name = TL.toStrict deleteStreamRequestStreamName
   streamExists <- S.doesStreamExists scLDClient (transToStreamName name)
   if streamExists
-     then terminateQueryAndRemove sc (textToCBytes name)
-       >> terminateRelatedQueries sc (textToCBytes name)
-       >> S.removeStream scLDClient (transToStreamName name)
-       >> returnResp Empty
-     else if deleteStreamRequestIgnoreNonExist
-             then returnResp Empty
-             else returnErrResp StatusInternal "Object does not exist"
+    then terminateQueryAndRemove sc (textToCBytes name)
+      >> terminateRelatedQueries sc (textToCBytes name)
+      >> S.removeStream scLDClient (transToStreamName name)
+      >> returnResp Empty
+    else if deleteStreamRequestIgnoreNonExist
+            then returnResp Empty
+            else returnErrResp StatusInternal "Object does not exist"
 
 listStreamsHandler
   :: ServerContext
@@ -247,11 +236,10 @@ createQueryStreamHandler sc@ServerContext{..}
     <- genStreamBuilderWithStream tName sName select
   S.createStream scLDClient (transToStreamName sink) $ S.LogAttrs (S.HsLogAttrs rFac Map.empty)
   let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
-  void $ handleCreateAsSelect sc (Processing.build builder)
+  void $ runUnderlyingSelect sc (build builder)
     createQueryStreamRequestQueryStatements query False
   let streamResp = Stream (TL.fromStrict sink) (fromIntegral rFac)
-      queryResp  = Query { queryId = TL.fromStrict tName }
-  returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
+  returnResp $ CreateQueryStreamResponse (Just streamResp) (TL.fromStrict tName)
 
 --------------------------------------------------------------------------------
 
@@ -271,12 +259,12 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       handleDropPlan sc checkIfExist dropObject
     CreateBySelectPlan sources sink taskBuilder _repFactor ->
       create (transToStreamName sink)
-      >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
+      >> runUnderlyingSelect sc taskBuilder commandQueryStmtText
         (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink)) False
       >> returnCommandQueryEmptyResp
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
       create (transToViewStreamName sink)
-      >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
+      >> runUnderlyingSelect sc taskBuilder commandQueryStmtText
         (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema) False
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnCommandQueryEmptyResp
@@ -343,8 +331,11 @@ executePushQueryHandler ServerContext{..}
         S.createStream scLDClient (transToTempStreamName sink)
           (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
         -- create persistent query
-        (qid, _) <- P.createInsertPersistentQuery (getTaskName taskBuilder)
-          (TL.toStrict commandPushQueryQueryText) (P.PlainQuery $ textToCBytes <$> sources) zkHandle
+        let qid = textToCBytes $ getTaskName taskBuilder
+        MkSystemTime timestamp _ <- getSystemTime'
+        P.withMaybeZHandle zkHandle $
+          P.insertQuery qid (TL.toStrict commandPushQueryQueryText)
+            timestamp (P.PlainQuery $ textToCBytes <$> sources)
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
           >> runTaskWrapper True taskBuilder scLDClient

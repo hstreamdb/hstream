@@ -20,9 +20,11 @@ import           Control.Exception                (Handler (Handler),
                                                    onException, throwIO, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
+import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
+import           Data.IORef                       (IORef, newIORef)
 import           Data.Int                         (Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as M
@@ -36,26 +38,38 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
+import           System.IO.Unsafe                 (unsafePerformIO)
 import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Time                        (SystemTime (MkSystemTime),
+                                                   getSystemTime')
 import           ZooKeeper.Types
 
-import           HStream.Connector.ClickHouse
+import           HStream.Connector.ClickHouse     (clickHouseSinkConnector)
 import qualified HStream.Connector.HStore         as HCS
-import           HStream.Connector.MySQL
+import           HStream.Connector.MySQL          (mysqlSinkConnector)
 import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
+import           HStream.Processing.Stream        (Materialized)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
-import           HStream.SQL.Codegen
-import           HStream.Server.Exception
+import           HStream.SQL.Codegen              (ConnectorConfig (..),
+                                                   TerminationSelection (..))
+import           HStream.Server.Exception         (ConnectorNotExist (..),
+                                                   SubscriptionIdNotFound (..))
 import           HStream.Server.HStreamApi        (Subscription)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
+
+groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
+groupbyStores = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE groupbyStores #-}
+
+--------------------------------------------------------------------------------
 
 checkpointRootPath :: CB.CBytes
 checkpointRootPath = "/tmp/checkpoint"
@@ -168,19 +182,17 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
       P.withMaybeZHandle zkHandle $ P.getConnector cid
 
 -- TODO: return info in a more maintainable way
-handleCreateAsSelect :: ServerContext
-                     -> TaskBuilder
-                     -> TL.Text
-                     -> P.QueryType
-                     -> Bool
-                     -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType isTemp = do
-  (qid, timestamp) <- P.createInsertPersistentQuery
-    (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType zkHandle
+runUnderlyingSelect
+  :: ServerContext -> TaskBuilder -> TL.Text -> P.QueryType -> Bool
+  -> IO ()
+runUnderlyingSelect ServerContext{..} taskBuilder commandQueryStmtText queryType isTemp = do
+  let qid = textToCBytes $ getTaskName taskBuilder
+  MkSystemTime timestamp _ <- getSystemTime'
+  P.withMaybeZHandle zkHandle $
+    P.insertQuery qid (TL.toStrict commandQueryStmtText) timestamp queryType
   tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
         >> runTaskWrapper isTemp taskBuilder scLDClient
-  takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-  return (qid, timestamp)
+  void $ takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
 
 handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
 handleTerminateConnector ServerContext{..} cid = do

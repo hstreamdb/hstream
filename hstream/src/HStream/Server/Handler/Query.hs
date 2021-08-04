@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,75 +9,46 @@
 module HStream.Server.Handler.Query where
 
 import           Control.Concurrent               (readMVar)
-import           Control.Exception                (throwIO)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find)
-import qualified Data.Map.Strict                  as Map
 import           Data.String                      (IsString (fromString))
-import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
+import           Proto3.Suite                     (Enumerated (Enumerated),
+                                                   HasDefault (def))
 import qualified Z.Data.Text                      as ZT
 
-import qualified HStream.Connector.HStore         as HCH
-import           HStream.Processing.Connector     (subscribeToStream)
-import           HStream.Processing.Processor     (getTaskName,
-                                                   taskBuilderWithName)
-import           HStream.Processing.Type          (Offset (..))
 import qualified HStream.SQL.Codegen              as HSC
-import           HStream.Server.Exception         (StreamNotExist (..),
-                                                   defaultExceptionHandle)
+import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   handleCreateAsSelect,
                                                    handleQueryTerminate)
 import qualified HStream.Server.Persistence       as P
-import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (cBytesToLazyText,
                                                    lazyTextToCBytes,
-                                                   returnErrResp, returnResp,
-                                                   textToCBytes)
+                                                   returnErrResp, returnResp)
 
 hstreamQueryToQuery :: P.PersistentQuery -> Query
-hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
-  Query
-  { queryId = cBytesToLazyText queryId
-  , queryStatus = fromIntegral $ fromEnum status
-  , queryCreatedTime = createdTime
-  , queryQueryText = TL.pack $ ZT.unpack sqlStatement
+hstreamQueryToQuery q@P.PersistentQuery {..} = def
+  { queryId     = cBytesToLazyText queryId
+  , queryStatus = pStatusToStatus queryStatus
+  , queryCreatedTime    = queryCreatedTime
+  , queryQueryStatement = TL.pack $ ZT.unpack queryBindedSql
+  , queryQueryType      = Just def
+      { queryTypeSinkStreamName    = cBytesToLazyText $ P.getQuerySink q
+      , queryTypeSourceStreamNames = V.fromList $ cBytesToLazyText <$> P.getRelatedStreams q}
   }
-
-createQueryHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CreateQueryRequest Query
-  -> IO (ServerResponse 'Normal Query)
-createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = defaultExceptionHandle $ do
-  plan <- HSC.streamCodegen (TL.toStrict createQueryRequestQueryText)
-  case plan of
-    HSC.SelectPlan sources sink taskBuilder -> do
-      let taskBuilder' = taskBuilderWithName taskBuilder $ T.pack (TL.unpack createQueryRequestId)
-      exists <- mapM (HS.doesStreamExists scLDClient . HCH.transToStreamName) sources
-      if (not . and) exists then throwIO StreamNotExist
-      else do
-        HS.createStream scLDClient (HCH.transToTempStreamName sink)
-          (HS.LogAttrs $ HS.HsLogAttrs scDefaultStreamRepFactor Map.empty)
-        (qid, timestamp) <- handleCreateAsSelect ctx taskBuilder'
-          createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) True
-        ldreader' <- HS.newLDRsmCkpReader scLDClient
-          (textToCBytes (T.append (getTaskName taskBuilder') "-result"))
-          HS.checkpointStoreLogID 5000 1 Nothing 10
-        let sc = HCH.hstoreTempSourceConnector scLDClient ldreader'
-        subscribeToStream sc sink Latest
-        returnResp $
-          Query
-          { queryId = cBytesToLazyText qid
-          , queryStatus = fromIntegral $ fromEnum P.Running
-          , queryCreatedTime = timestamp
-          , queryQueryText = createQueryRequestQueryText
-          }
-    _ -> returnErrResp StatusInternal "inconsistent method called"
+  where
+    mkEnum = Enumerated . Right
+    pStatusToStatus = \case
+      P.Created         -> mkEnum Query_StatusCreated
+      P.Creating        -> mkEnum Query_StatusCreating
+      P.Running         -> mkEnum Query_StatusRunning
+      P.CreationAbort   -> mkEnum Query_StatusCreationAbort
+      P.ConnectionAbort -> mkEnum Query_StatusConnectionAbort
+      P.Terminated      -> mkEnum Query_StatusTerminated
 
 listQueriesHandler
   :: ServerContext
@@ -122,16 +94,3 @@ deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryR
   defaultExceptionHandle $ do
     P.withMaybeZHandle zkHandle $ P.removeQuery (lazyTextToCBytes deleteQueryRequestId)
     returnResp Empty
-
--- FIXME: Incorrect implementation!
-restartQueryHandler
-  :: ServerContext
-  -> ServerRequest 'Normal RestartQueryRequest Empty
-  -> IO (ServerResponse 'Normal Empty)
-restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
-    queries <- P.withMaybeZHandle zkHandle P.getQueries
-    case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
-      Just query -> do
-        P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
-        returnResp Empty
-      Nothing    -> returnErrResp StatusInternal "Query does not exist"

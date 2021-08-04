@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ParallelListComp    #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -22,7 +21,6 @@ module HStream.Server.Persistence
   , ZooException
   , isViewQuery
   , isStreamQuery
-  , createInsertPersistentQuery
   , getRelatedStreams
   , getQuerySink) where
 
@@ -129,13 +127,6 @@ class Persistence handle where
 withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
 withMaybeZHandle (Just zk) f = f zk
 withMaybeZHandle Nothing   f = f (queryCollection, connectorsCollection)
-
-createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> Maybe ZHandle -> IO (CBytes, Int64)
-createInsertPersistentQuery taskName queryText queryType zkHandle = do
-  MkSystemTime timestamp _ <- getSystemTime'
-  let qid   = Z.Data.CBytes.pack (T.unpack taskName)
-  withMaybeZHandle zkHandle $ insertQuery qid queryText timestamp queryType
-  return (qid, timestamp)
 
 --------------------------------------------------------------------------------
 

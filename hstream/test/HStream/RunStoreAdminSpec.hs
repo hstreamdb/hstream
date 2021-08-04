@@ -45,7 +45,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "list nodes" $ do
     Just ListNodesResponse {listNodesResponseNodes = nodes} <- listNodes
-    (length nodes >= 1) `shouldBe` True
+    not (null nodes) `shouldBe` True
 
   it "get node" $ do
     node <- getNode 0
