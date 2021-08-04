@@ -58,13 +58,13 @@ import           HStream.SQL.Codegen                   hiding (StreamName)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector      (cancelConnectorHandler,
-                                                        createConnector,
+import           HStream.Server.Handler.Connector      (createConnector,
                                                         createSinkConnectorHandler,
                                                         deleteConnectorHandler,
                                                         getConnectorHandler,
                                                         listConnectorsHandler,
-                                                        restartConnectorHandler)
+                                                        restartConnectorHandler,
+                                                        terminateConnectorHandler)
 import           HStream.Server.Handler.Query          (createQueryHandler,
                                                         deleteQueryHandler,
                                                         getQueryHandler,
@@ -159,7 +159,7 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
     , hstreamApiGetConnector         = getConnectorHandler serverContext
     , hstreamApiListConnectors       = listConnectorsHandler serverContext
     , hstreamApiDeleteConnector      = deleteConnectorHandler serverContext
-    , hstreamApiCancelConnector      = cancelConnectorHandler serverContext
+    , hstreamApiTerminateConnector   = terminateConnectorHandler serverContext
     , hstreamApiRestartConnector     = restartConnectorHandler serverContext
 
     , hstreamApiCreateView       = createViewHandler serverContext

@@ -18,7 +18,7 @@ import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    displayException,
                                                    onException, throwIO, try)
-import           Control.Exception.Base           (AsyncException (ThreadKilled))
+import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
@@ -95,17 +95,17 @@ runSinkConnector
   -> IO ThreadId
 runSinkConnector ServerContext{..} cid src connector = do
     P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
-    forkIO $ forever (catches run abort)
+    forkIO $ forever (catches action cleanup)
   where
     writeToConnector c SourceRecord{..} =
       writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
-    run = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
-    abort =
+    action = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
+    cleanup =
       [ Handler (\(_ :: ERRException) ->
                    do Log.debug "Sink connector thread died due to SQL errors"
                       P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.ConnectionAbort)
-      , Handler (\ThreadKilled ->
-                   do Log.debug "Sink connector thread killed"
+      , Handler (\(e :: AsyncException) ->
+                   do Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
                       P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Terminated)
       ]
 
@@ -138,13 +138,13 @@ handleCreateSinkConnector
   -> T.Text -- ^ Source Stream Name
   -> ConnectorConfig -> IO P.PersistentConnector
 handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
-  onException run abort
+  onException action cleanup
   where
-    abort = do
+    cleanup = do
       Log.debug "Create sink connector failed"
       P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.CreationAbort
 
-    run = do
+    action = do
       P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Creating
       Log.debug "Start creating sink connector"
       ldreader <- HS.newLDReader scLDClient 1000 Nothing
@@ -182,16 +182,14 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
 
-handleTerminateConnector :: ServerContext -> CB.CBytes
-  -> IO ()
+handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
 handleTerminateConnector ServerContext{..} cid = do
   hmapC <- readMVar runningConnectors
   case HM.lookup cid hmapC of
     Just tid -> do
       void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
       Log.debug . Log.buildString $ "terminated connector: " <> show cid
-    -- TODO: shall we throwIO here
-    _        -> return ()
+    _        -> throwIO ConnectorNotExist
 
 --------------------------------------------------------------------------------
 -- Query

@@ -84,17 +84,17 @@ restartConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle $ do
   let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
-  when (cStatus == P.Created || cStatus == P.Creating || cStatus == P.Running) $
+  when (cStatus `elem` [P.Created, P.Creating, P.Running]) $
     throwIO (ConnectorRestartErr cStatus)
   restartConnector sc cid >> returnResp Empty
 
-cancelConnectorHandler
+terminateConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal CancelConnectorRequest Empty
+  -> ServerRequest 'Normal TerminateConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-cancelConnectorHandler sc
-  (ServerNormalRequest _metadata CancelConnectorRequest{..}) = do
-  let cid = lazyTextToCBytes cancelConnectorRequestId
+terminateConnectorHandler sc
+  (ServerNormalRequest _metadata TerminateConnectorRequest{..}) = do
+  let cid = lazyTextToCBytes terminateConnectorRequestId
   handleTerminateConnector sc cid
   returnResp Empty
 

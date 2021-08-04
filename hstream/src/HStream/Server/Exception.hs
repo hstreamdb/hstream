@@ -48,13 +48,15 @@ mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(err :: IOException) -> do
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(err :: ERRException) -> do
-    retFun StatusInternal $ StatusDetails ("mysql error " <> BS.pack (show err))),
+    retFun StatusInternal $ StatusDetails ("Mysql error " <> BS.pack (show err))),
   Handler (\(err :: ConnectorAlreadyExists) -> do
     let ConnectorAlreadyExists st = err
-    retFun StatusInternal $ StatusDetails ("connector exists with status  " <> BS.pack (show st))),
+    retFun StatusInternal $ StatusDetails ("Connector exists with status  " <> BS.pack (show st))),
   Handler (\(err :: ConnectorRestartErr) -> do
     let ConnectorRestartErr st = err
-    retFun StatusInternal $ StatusDetails ("cannot restart a connector with status  " <> BS.pack (show st)))
+    retFun StatusInternal $ StatusDetails ("Cannot restart a connector with status  " <> BS.pack (show st))),
+  Handler (\(_ :: ConnectorNotExist) -> do
+    retFun StatusInternal "Connector not found")
   ]
 
 defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
@@ -90,3 +92,7 @@ instance Exception ConnectorAlreadyExists
 newtype ConnectorRestartErr = ConnectorRestartErr Status
   deriving (Show)
 instance Exception ConnectorRestartErr
+
+data ConnectorNotExist = ConnectorNotExist
+  deriving (Show)
+instance Exception ConnectorNotExist

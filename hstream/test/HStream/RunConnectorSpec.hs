@@ -69,15 +69,15 @@ deleteConnector connectorId = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-cancelConnector :: TL.Text -> IO Bool
-cancelConnector connectorId = withGRPCClient clientConfig $ \client -> do
+terminateConnector :: TL.Text -> IO Bool
+terminateConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let cancelConnectorRequest = CancelConnectorRequest { cancelConnectorRequestId = connectorId }
-  resp <- hstreamApiCancelConnector (ClientNormalRequest cancelConnectorRequest 100 (MetadataMap Map.empty))
+  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestId = connectorId }
+  resp <- hstreamApiTerminateConnector (ClientNormalRequest terminateConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
     ClientErrorResponse clientError -> do
-      putStrLn $ "Cancel Connector Client Error: " <> show clientError
+      putStrLn $ "Terminate Connector Client Error: " <> show clientError
       return False
     _ -> return False
 
@@ -116,9 +116,9 @@ spec = describe "HStream.RunConnectorSpec" $ do
   it "get connector" $ do
     getConnector mysqlConnector >>= (`shouldSatisfy` isJust)
 
-  it "cancel connector" $
+  it "terminate connector" $
     ( do
-        _ <- cancelConnector mysqlConnector
+        _ <- terminateConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
           -- Terminated
@@ -138,7 +138,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
 
   it "delete connector" $
     ( do
-        _ <- cancelConnector mysqlConnector
+        _ <- terminateConnector mysqlConnector
         _ <- deleteConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
