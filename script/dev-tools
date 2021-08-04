@@ -398,7 +398,7 @@ def run_ldshell(image, container_bin, command, cmd_args):
 
 def haskell_env(container_bin, image, command, cmd_args, data_dir,
                 tty, interactive, rm, no_services_required, detach, check,
-                network="host", extra_container_options=""):
+                network="host", extra_container_options="", container_name=None):
 
     if not no_services_required and not all(is_service_started(container_bin, k) for k in SERVICES.keys()):
         sys.exit("Please start all required services first. Run: dev-tools start-services")
@@ -411,7 +411,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
     user_path = f"/opt/ghc/bin:/opt/cabal/bin:/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
-    name = f'{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}'
+    container_name = container_name or f'{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}'
     container_opts = " ".join([
         "-t" if tty else "",
         "-i" if interactive else "",
@@ -420,7 +420,7 @@ def haskell_env(container_bin, image, command, cmd_args, data_dir,
         "-u " + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else ""
     ])
     cmd = f'''{container_bin} run {container_opts} \
-                --name {name} \
+                --name {container_name} \
                 -e HOME={HOME} \
                 -e LC_ALL=C.UTF-8 \
                 -e PATH={user_path} \
@@ -475,19 +475,22 @@ if __name__ == '__main__':
     parser_haskell.add_argument(
         '--image', '-i', help='haskell docker images', default=IMAGES['HS_IMAGE'])
     parser_haskell.add_argument('--container-bin', default='docker')
+    parser_haskell.add_argument('--container-name', default=None)
+    parser_haskell.add_argument('--command', default=None)
     parser_haskell.add_argument('--no-interactive', action='store_true')
     parser_haskell.add_argument('--no-tty', action='store_true')
     parser_haskell.add_argument('--no-services-required', action='store_true')
     parser_haskell.add_argument('--detach', action='store_true')
     parser_haskell.add_argument('--check', action='store_true')
-    parser_haskell.add_argument(
-        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_haskell.add_argument('--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_haskell.add_argument('--network', default='host')
     parser_haskell.add_argument('--extra-container-options', default='')
     parser_haskell.add_argument('cmd_args', nargs='*')
 
     # cabal
     parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
+    parser_haskell_cabal.add_argument('--container-bin', default='docker')
+    parser_haskell_cabal.add_argument('--container-name', default=None)
     parser_haskell_cabal.add_argument(
         '--image', '-i', help='haskell docker images', default=IMAGES['HS_IMAGE'])
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
@@ -496,7 +499,6 @@ if __name__ == '__main__':
     parser_haskell_cabal.add_argument('--no-services-required', action='store_true')
     parser_haskell_cabal.add_argument('--detach', action='store_true')
     parser_haskell_cabal.add_argument('--check', action='store_true')
-    parser_haskell_cabal.add_argument('--container-bin', default='docker')
     parser_haskell_cabal.add_argument(
         '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
     parser_haskell_cabal.add_argument('--network', default='host')
@@ -570,11 +572,17 @@ if __name__ == '__main__':
     elif sub_command == 'shell':
         args['interactive'] = not args.pop('no_interactive')
         args['tty'] = not args.pop('no_tty')
-        if args['interactive']:
-            args['cmd_args'] = ''
-            haskell_env(command='bash', rm=True, **args)
+        if args['command'] is None:
+            if args['interactive']:
+                args['command'] = 'bash'
+                args['cmd_args'] = ''
+                haskell_env(rm=True, **args)
+            else:
+                args['command'] = 'bash -c'
+                haskell_env(rm=True, **args)
         else:
-            haskell_env(command='bash -c', rm=True, **args)
+            haskell_env(rm=True, **args)
+    # ---
     elif sub_command == 'cabal':
         args['interactive'] = not args.pop('no_interactive')
         args['tty'] = not args.pop('no_tty')
