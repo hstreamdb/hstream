@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 module HStream.HTTP.Server.Query (
-  QueriesAPI, queryServer, listQueriesHandler
+  QueriesAPI, queryServer, listQueriesHandler, QueryBO(..)
 ) where
 
 import           Control.Monad.IO.Class           (liftIO)
@@ -124,7 +124,7 @@ restartQueryHandler hClient qid = liftIO $ do
 cancelQueryHandler :: Client -> String -> Handler Bool
 cancelQueryHandler hClient qid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let cancelQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton $ TL.pack qid }
+  let cancelQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton $ TL.pack qid, terminateQueriesRequestAll = False }
   resp <- hstreamApiTerminateQueries (ClientNormalRequest cancelQueryRequest 100 (MetadataMap $ Map.empty))
   case resp of
     ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
