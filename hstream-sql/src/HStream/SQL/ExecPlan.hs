@@ -8,6 +8,7 @@ module HStream.SQL.ExecPlan
   , genExecutionPlan
   ) where
 
+import qualified Data.HashMap.Strict                   as HM
 import qualified Data.List                             as L
 import qualified Data.Text                             as T
 import           HStream.Processing.Processor
@@ -37,38 +38,57 @@ instance Show ExecutionPlan where
     "===== SQL =====\n" <> T.unpack execPlanSql <> "\n\n" <>
     "=== Sources ===\n" <> L.concatMap ((<> "\n"). T.unpack) execPlanSources <> "\n" <>
     "==== Sink =====\n" <> sinkInfo <> "\n\n" <>
-    "=== Topology ==\n" <> show execPlanTopology
+    "=== Topology ==\n" <> show execPlanTopology <> "\n"
     where
       sinkInfo = case execPlanSink of
         NormalSink sink -> T.unpack sink
         ViewSink   sink -> T.unpack sink <> " (view)"
         TempSink   sink -> T.unpack sink <> " (temp)"
 
+
+newtype NodeWithStores
+  = NodeWithStores (T.Text, [T.Text]) deriving Eq
+
+instance Show NodeWithStores where
+  show (NodeWithStores (node, stores)) =
+    T.unpack node <> " " <>
+    case stores of
+      [] -> ""
+      xs -> "*" <> T.unpack (T.unwords xs)
+
 newtype ExecutionTopology
-  = ExecutionTopology (([T.Text], [T.Text]), [T.Text]) deriving Eq
+  = ExecutionTopology (([NodeWithStores], [NodeWithStores]), [NodeWithStores]) deriving Eq
 
 instance Show ExecutionTopology where
   show (ExecutionTopology ((l1, l2), common)) = go l1 l2 common (1 :: Int)
     where
       go [] [] common n     =
-        L.concatMap (\(i,x) -> show i <> "   " <> T.unpack x <> "\n") ([n..] `zip` common)
+        L.concatMap (\(i,x) -> show i <> "   " <> show x <> "\n") ([n..] `zip` common)
       go [] (y:ys) common n =
-        printf "%d.2 %s\n" n y <>
+        printf "%d.2 %s\n" n (show y) <>
         go [] ys common (n+1)
       go (x:xs) [] common n =
-        printf "%d.1 %s\n" n x <>
+        printf "%d.1 %s\n" n (show x) <>
         go xs [] common (n+1)
       go (x:xs) (y:ys) common n =
-        printf "%d.1 %s\n" n x <>
-        printf "%d.2 %s\n" n y <>
+        printf "%d.1 %s\n" n (show x) <>
+        printf "%d.2 %s\n" n (show y) <>
         go xs ys common (n+1)
 
 genExecTopology :: Task -> ExecutionTopology
 genExecTopology task =
   case allTraverses task of
-    [l]     -> ExecutionTopology (([], []), l)
-    [l1,l2] -> ExecutionTopology $ l1 `fuseOnEq` l2
+    [l]     -> ExecutionTopology (([], []), attachStores task <$> l)
+    [l1,l2] -> ExecutionTopology $
+               (attachStores task <$> l1) `fuseOnEq` (attachStores task <$> l2)
     _       -> error "impossible happened..."
+  where
+    attachStores :: Task -> T.Text -> NodeWithStores
+    attachStores Task{..} node =
+      let stores = HM.toList taskStores
+       in case L.find (\(_,(_,nodes)) -> node `elem` nodes) stores of
+            Just (store, _) -> NodeWithStores (node, [store])
+            Nothing         -> NodeWithStores (node, [])
 
 genExecutionPlan :: T.Text -> IO ExecutionPlan
 genExecutionPlan sql = do

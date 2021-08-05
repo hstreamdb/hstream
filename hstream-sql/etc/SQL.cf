@@ -44,7 +44,8 @@ QCreate.     SQL ::= Create     ";" ;
 QInsert.     SQL ::= Insert     ";" ;
 QShow.       SQL ::= ShowQ      ";" ;
 QDrop.       SQL ::= Drop       ";" ;
-QTerminate.  SQL ::= Terminate  ";";
+QTerminate.  SQL ::= Terminate  ";" ;
+QExplain.    SQL ::= Explain    ";" ;
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident ;
@@ -95,6 +96,10 @@ TerminateAll. Terminate ::= "TERMINATE" "ALL";
 
 ---- SelectView Query
 DSelectView. SelectView ::= Sel From Where ;
+
+---- Explain
+ExplainSelect. Explain ::= "EXPLAIN" Select ;
+ExplainCreate. Explain ::= "EXPLAIN" Create ;
 
 ---- Select Query
 DSelect. Select ::= Sel From Where GroupBy Having "EMIT" "CHANGES" ;

@@ -95,6 +95,7 @@ data HStreamPlan
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
   | SelectViewPlan      RSelectView
+  | ExplainPlan         Text
 
 --------------------------------------------------------------------------------
 
@@ -135,6 +136,7 @@ streamCodegen input = do
     RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
     RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
     RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
+    RQExplain rexplain                 -> return $ ExplainPlan rexplain
 
 --------------------------------------------------------------------------------
 

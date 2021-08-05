@@ -38,6 +38,10 @@ formatResult width (P.Struct kv) =
     [("SHOWQUERIES", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] -> renderTableResult xs
     [("SHOWCONNECTORS", Just (P.Value (Just (P.ValueKindListValue (P.ListValue xs)))))] -> renderTableResult xs
     [("Error Message:", Just v)] -> "Error Message: " ++  formatValue v ++ "\n"
+    [("PLAN",  Just x)] ->
+      case valueToJsonValue x of
+        (A.String s) -> T.unpack s
+        _            -> "Error: invalid data received"
     x -> show x
   where
     renderTableResult = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList

@@ -55,6 +55,7 @@ import           HStream.SQL                           (RSQL (RQSelect),
                                                         parseAndRefine)
 import           HStream.SQL.AST                       (RSelectView (..))
 import           HStream.SQL.Codegen                   hiding (StreamName)
+import           HStream.SQL.ExecPlan                  (genExecutionPlan)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
@@ -312,6 +313,10 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
               sendResp ma valueSerde
             TimestampedKVStateStore _ ->
               returnErrResp StatusInternal "Impossible happened"
+    ExplainPlan sql -> do
+      execPlan <- genExecutionPlan sql
+      let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
+      returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
   where
     mkLogAttrs = S.LogAttrs . S.HsLogAttrs scDefaultStreamRepFactor
     create sName = S.createStream scLDClient sName (mkLogAttrs Map.empty)
