@@ -238,6 +238,7 @@ module HStream.Store.Exception
   -- * Auxiliary functions
   , isNOTFOUND
   , isEXISTS
+  , isTOOBIG
   ) where
 
 import           Control.Exception            (Exception (..))
@@ -587,3 +588,6 @@ isNOTFOUND = const True
 
 isEXISTS :: EXISTS -> Bool
 isEXISTS = const True
+
+isTOOBIG :: TOOBIG -> Bool
+isTOOBIG = const True

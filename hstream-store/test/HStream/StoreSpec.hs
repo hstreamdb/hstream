@@ -1,7 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-
 module HStream.StoreSpec where
 
 import           Test.Hspec
@@ -21,17 +17,6 @@ spec = describe "StoreSpec" $ do
 base :: Spec
 base = describe "Base" $ do
   let logid = 1
-
-  it "get default payload size for this client" $ do
-    S.getMaxPayloadSize client `shouldReturn` (1024 * 1024)    -- 1MB
-
-  it "modify default payload size for this client" $ do
-    S.setClientSetting client "max-payload-size" "1024" -- minimum value: 16
-    S.getMaxPayloadSize client `shouldReturn` 1024
-    _ <- S.append client logid (packASCII $ replicate 1024 'a') Nothing
-    S.append client logid (packASCII $ replicate 1025 'a') Nothing `shouldThrow` anyException
-    Log.d "Reset default payload size"
-    S.setClientSetting client "max-payload-size" $ CBytes.buildCBytes $ B.int @Int (1024 * 1024)
 
   it "get tail sequence number" $ do
     seqNum0 <- S.appendCompLSN <$> S.append client logid "hello" Nothing
