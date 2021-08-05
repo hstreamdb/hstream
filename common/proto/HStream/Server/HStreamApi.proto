@@ -149,10 +149,12 @@ message SubscriptionOffset {
 
 message SubscribeRequest {
   string subscriptionId = 1;
+  string consumerName = 2;
 }
 
 message SubscribeResponse {
   string subscriptionId = 1;
+  string consumerName = 2;
 }
 
 message DeleteSubscriptionRequest {
@@ -171,6 +173,7 @@ message FetchRequest {
   string subscriptionId = 1;
   uint64 timeout = 2;
   uint32 maxSize = 3;
+  string consumerName = 4;
 }
 
 message FetchResponse {

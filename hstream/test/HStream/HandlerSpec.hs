@@ -47,6 +47,14 @@ randomSubsciptionId :: TL.Text
 randomSubsciptionId = V.head randomSubsciptionIds
 {-# NOINLINE randomSubsciptionId #-}
 
+randomConsumerNames :: V.Vector TL.Text
+randomConsumerNames = unsafePerformIO $ V.replicateM 5 $ ("HandlerSpec_" <>) . TL.fromStrict <$> newRandomText 20
+{-# NOINLINE randomConsumerNames #-}
+
+randomConsumerName :: TL.Text
+randomConsumerName = V.head randomConsumerNames
+{-# NOINLINE randomConsumerName #-}
+
 spec :: Spec
 spec =  do
   runIO setupSigsegvHandler
@@ -135,11 +143,11 @@ baseSpec = describe "BaseSpec" $ do
     void $ createStreamRequest client $ Stream randomStreamName 1
     let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
     createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
+    subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
     -- send heartbeat request to an existing subscription should return True
     sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
     -- after send heartbeat responsed, resubscribe same subscription should return False
-    subscribeRequest client randomSubsciptionId `shouldReturn` False
+    subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` False
 
     -- after heartbeat timeout, sendHeartbeatRequest should return False
     threadDelay 2000000
@@ -225,15 +233,16 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     ) $ it "test subscribe request" $ \client -> do
 
         let sId = V.last randomSubsciptionIds
+            sConsumer = V.last randomConsumerNames
         -- subscribe a nonexistent subscriptionId should return False
-        subscribeRequest client sId `shouldReturn` False
+        subscribeRequest client sId sConsumer `shouldReturn` False
         -- subscribe a Released subscriptionId should return True
-        subscribeRequest client randomSubsciptionId `shouldReturn` True
+        subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
         -- subscribe a Occupied subscriptionId should return False
-        subscribeRequest client randomSubsciptionId `shouldReturn` False
+        subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` False
         threadDelay 2000000
         -- after some delay the subscriptionId should be released and resubscribe should success
-        subscribeRequest client randomSubsciptionId `shouldReturn` True
+        subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
 
   aroundWith
     (\runTest client -> do
@@ -241,7 +250,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
         forM_ subscriptions $ \Subscription{..} -> do
           void $ createStreamRequest client (Stream subscriptionStreamName 1)
           void $ createSubscriptionRequest client subscriptionSubscriptionId subscriptionStreamName (fromJust subscriptionOffset)
-          subscribeRequest client subscriptionSubscriptionId `shouldReturn` True
+          subscribeRequest client subscriptionSubscriptionId randomConsumerName `shouldReturn` True
         runTest (client, subscriptions)
         void $ cleanSubscriptionsEnv randomSubsciptionIds randomStreamNames client
     ) $ it "test listSubscription request" $ \(client, subscriptions) -> do
@@ -257,7 +266,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` False
     void $ createStreamRequest client $ Stream randomStreamName 1
     void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
+    subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
     -- delete subscribed stream should return true
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
     -- after delete subscription, send heartbeat shouldReturn False
@@ -272,7 +281,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
     -- the subscription should exists when the reader's status is released
     checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` True
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
+    subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
     -- the subscription should exists when the reader's status is Occupied
     checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` True
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
@@ -290,10 +299,10 @@ createSubscriptionRequest client subscriptionId streamName offset = do
     ClientErrorResponse clientError                        -> do
       putStrLn ("createSubscribe Error: " <> show clientError) >> return False
 
-subscribeRequest :: Client -> TL.Text -> IO Bool
-subscribeRequest client subscribeId = do
+subscribeRequest :: Client -> TL.Text -> TL.Text -> IO Bool
+subscribeRequest client subscribeId consumerName = do
   HStreamApi{..} <- hstreamApiClient client
-  let req = SubscribeRequest subscribeId
+  let req = SubscribeRequest subscribeId consumerName
   resp <- hstreamApiSubscribe $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
@@ -339,7 +348,7 @@ mkConsumerSpecEnv runTest client = do
   let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
   void $ createStreamRequest client $ Stream randomStreamName 1
   void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
-  void $ subscribeRequest client randomSubsciptionId
+  void $ subscribeRequest client randomSubsciptionId randomConsumerName
 
   timeStamp <- getProtoTimestamp
   let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
@@ -383,7 +392,7 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     threadDelay 2000000
     -- after heartbeat timeout, re-subscribe to origin subscriptionId should success, and
     -- fetch will get from the basic checkpoint
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
+    subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
     resp3 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
     let resPayloads3 = V.head $ V.map getReceivedRecordPayload resp3
     resPayloads3 `shouldBe` V.head reqPayloads
@@ -417,7 +426,7 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     void $ killThread tid
     threadDelay 2000000
     -- when a new client subscribe the same subscriptionId, it should consume from the checkpoint.
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
+    subscribeRequest client randomSubsciptionId randomConsumerName `shouldReturn` True
     resp3 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
     let resPayloads3 = V.head $ V.map getReceivedRecordPayload resp3
     resPayloads3 `shouldBe` V.head remained
@@ -437,7 +446,7 @@ appendRequest client streamName records = do
 fetchRequest :: Client -> TL.Text -> Word64 -> Word32 -> IO (V.Vector ReceivedRecord)
 fetchRequest client subscribeId timeout maxSize = do
   HStreamApi{..} <- hstreamApiClient client
-  let req = FetchRequest subscribeId timeout maxSize
+  let req = FetchRequest subscribeId timeout maxSize randomConsumerName
   resp <- hstreamApiFetch $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
   case resp of
     ClientNormalResponse res _meta1 _meta2 StatusOk _details -> do

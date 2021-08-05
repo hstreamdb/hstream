@@ -527,7 +527,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata SubscribeReque
       S.startReadingFromCheckpoint reader logId S.LSN_MAX
       currentTime <- getCurrentTimestamp
       atomically $ modifyTVar' subscribeHeap $ Map.insert subscribeRequestSubscriptionId currentTime
-      returnResp $ SubscribeResponse subscribeRequestSubscriptionId
+      returnResp $ SubscribeResponse subscribeRequestSubscriptionId subscribeRequestConsumerName
 
     doClean :: IO ()
     doClean = atomically $ updateReaderStatus subscribedReaders Released subscribeRequestSubscriptionId
