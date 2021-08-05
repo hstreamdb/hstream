@@ -14,9 +14,11 @@ import           Control.Concurrent               (MVar, ThreadId, forkIO,
 import           Control.Concurrent.STM           (STM, TVar, atomically,
                                                    modifyTVar', readTVar,
                                                    writeTVar)
-import           Control.Exception                (SomeException,
-                                                   displayException, throwIO,
-                                                   try)
+import           Control.Exception                (Handler (Handler),
+                                                   SomeException (..), catches,
+                                                   displayException,
+                                                   onException, throwIO, try)
+import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
@@ -27,6 +29,7 @@ import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Database.ClickHouseDriver.Client (createClient)
+import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
 import           GHC.Conc                         (readTVarIO)
 import           Network.GRPC.HighLevel.Generated
@@ -34,8 +37,6 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
 import qualified Z.Data.CBytes                    as CB
-import           Z.IO.Time                        (SystemTime (..),
-                                                   getSystemTime')
 import           ZooKeeper.Types
 
 import           HStream.Connector.ClickHouse
@@ -89,23 +90,24 @@ runTaskWrapper isTemp taskBuilder ldclient = do
 runSinkConnector
   :: ServerContext
   -> CB.CBytes -- ^ Connector Id
-  -> T.Text -- ^ Source Stream Name
-  -> ConnectorConfig -> IO ()
-runSinkConnector ServerContext{..} cid sName cConfig = do
-  ldreader <- HS.newLDReader scLDClient 1000 Nothing
-  let sc = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
-  subscribeToStreamWithoutCkp sc sName Latest
-  connector <- case cConfig of
-    ClickhouseConnector config -> clickHouseSinkConnector <$> createClient config
-    MySqlConnector config -> do
-      Log.debug $ "Connect to mysql with " <> Log.buildString (show config)
-      mysqlSinkConnector <$> MySQL.connect config
-  tid <- forkIO $ do
+  -> SourceConnectorWithoutCkp
+  -> SinkConnector
+  -> IO ThreadId
+runSinkConnector ServerContext{..} cid src connector = do
     P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
-    forever (readRecordsWithoutCkp sc >>= mapM_ (writeToConnector connector))
-  takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+    forkIO $ forever (catches action cleanup)
   where
-    writeToConnector c SourceRecord{..} = writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+    writeToConnector c SourceRecord{..} =
+      writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
+    action = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
+    cleanup =
+      [ Handler (\(_ :: ERRException) ->
+                   do Log.debug "Sink connector thread died due to SQL errors"
+                      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.ConnectionAbort)
+      , Handler (\(e :: AsyncException) ->
+                   do Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
+                      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Terminated)
+      ]
 
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
@@ -132,16 +134,38 @@ responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalRespons
 
 handleCreateSinkConnector
   :: ServerContext
-  -> T.Text -- ^ SqlStatement
-  -> T.Text -- ^ Connector Name
+  -> CB.CBytes -- ^ Connector Name
   -> T.Text -- ^ Source Stream Name
   -> ConnectorConfig -> IO P.PersistentConnector
-handleCreateSinkConnector sc@ServerContext{..} sql cName sName cConfig = do
-  MkSystemTime timestamp _ <- getSystemTime'
-  let cid = CB.pack $ T.unpack cName
-  P.withMaybeZHandle zkHandle $ P.insertConnector cid sql timestamp
-  runSinkConnector sc cid sName cConfig
-  P.withMaybeZHandle zkHandle $ P.getConnector cid
+handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
+  onException action cleanup
+  where
+    cleanup = do
+      Log.debug "Create sink connector failed"
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.CreationAbort
+
+    action = do
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Creating
+      Log.debug "Start creating sink connector"
+      ldreader <- HS.newLDReader scLDClient 1000 Nothing
+      let src = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
+      subscribeToStreamWithoutCkp src sName Latest
+
+      connector <- case cConfig of
+        ClickhouseConnector config -> do
+          Log.debug $ "Connecting to clickhouse with " <> Log.buildString (show config)
+          clickHouseSinkConnector <$> createClient config
+        MySqlConnector      config -> do
+          Log.debug $ "Connecting to mysql with " <> Log.buildString (show config)
+          mysqlSinkConnector      <$> MySQL.connect config
+      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Created
+      Log.debug . Log.buildString . CB.unpack $ cid <> "Connected"
+
+      tid <- runSinkConnector serverCtx cid src connector
+      Log.debug . Log.buildString $ "Sink connector started running on thread#" <> show tid
+
+      takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+      P.withMaybeZHandle zkHandle $ P.getConnector cid
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
@@ -158,16 +182,14 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
 
-handleTerminateConnector :: ServerContext -> CB.CBytes
-  -> IO ()
+handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
 handleTerminateConnector ServerContext{..} cid = do
   hmapC <- readMVar runningConnectors
   case HM.lookup cid hmapC of
-    Just tid -> void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
-    -- TODO: shall we throwIO here
-    _        -> return ()
-  -- TODO: shall we move this op to Just tid -> killThread tid
-  void $ P.withMaybeZHandle zkHandle (P.setConnectorStatus cid P.Terminated)
+    Just tid -> do
+      void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
+      Log.debug . Log.buildString $ "terminated connector: " <> show cid
+    _        -> throwIO ConnectorNotExist
 
 --------------------------------------------------------------------------------
 -- Query

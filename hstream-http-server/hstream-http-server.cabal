@@ -35,6 +35,8 @@ library
     , bytestring
     , clickhouse-haskell
     , containers
+    , grpc-haskell
+    , grpc-haskell-core
     , hstream-common
     , mysql-haskell
     , optparse-applicative
@@ -50,8 +52,6 @@ library
     , warp
     , Z-Data
     , Z-IO
-    , grpc-haskell
-    , grpc-haskell-core
 
   hs-source-dirs:   src
   default-language: Haskell2010
@@ -63,6 +63,8 @@ executable hstream-http-server
   main-is:          Main.hs
   build-depends:
     , base                  >=4.11 && <5
+    , grpc-haskell
+    , grpc-haskell-core
     , hstream
     , hstream-common
     , hstream-http-server
@@ -70,8 +72,6 @@ executable hstream-http-server
     , servant
     , servant-server
     , warp
-    , grpc-haskell
-    , grpc-haskell-core
 
   hs-source-dirs:   app
   extra-lib-dirs:   /usr/local/lib
@@ -93,6 +93,36 @@ executable hstream-swagger-json
   hs-source-dirs:   app
   extra-lib-dirs:   /usr/local/lib
   default-language: Haskell2010
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
+test-suite hstream-http-server-test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    HStream.RunConnectorSpec
+    HStream.RunNodeSpec
+    HStream.RunQuerySpec
+    HStream.RunStreamSpec
+    HStream.RunViewSpec
+    HStream.SpecUtils
+
+  hs-source-dirs:     test
+  build-depends:
+    , aeson
+    , base                 >=4.11 && <5
+    , bytestring
+    , hspec
+    , hstream-http-server
+    , http-client
+    , http-conduit
+    , mysql-haskell
+    , text
+
+  default-language:   Haskell2010
+  build-tool-depends: hspec-discover:hspec-discover ==2.*
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints

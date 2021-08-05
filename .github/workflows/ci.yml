@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - id: parser
         run: |
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Cache
         uses: actions/cache@v2
@@ -75,17 +75,38 @@ jobs:
 
       - name: build
         run: |
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} update
-          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} make
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- build --enable-tests --enable-benchmarks all
+          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            update
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            make
+          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
+            build --enable-tests --enable-benchmarks all
+          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
+            install hstream-server hstream-http-server
 
       - name: start hstream server
         run: |
-          python3 script/dev-tools cabal --check --no-interactive --detach \
-            -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} run -- -- \
-            hstream-server --port $(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2) \
-                           --hadmin-port $(cat local-data/dev_tools.env|grep STORE_ADMIN_LOCAL_PORT|cut -d '=' -f2)
+          SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
+          HADMIN_PORT=$(cat local-data/dev_tools.env|grep STORE_ADMIN_LOCAL_PORT|cut -d '=' -f2)
+          NAME="test-hstream-server"
+
+          python3 script/dev-tools shell --check --no-interactive --command "" --detach \
+              --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
+              hstream-server --port $SERVER_PORT --hadmin-port $HADMIN_PORT
           sleep 5
+          docker logs --tail 100 $NAME
+
+      - name: start hstream http server
+        run: |
+          HTTP_PORT=$(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2)
+          SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
+          NAME="test-http-server"
+
+          python3 script/dev-tools shell --check --no-interactive --command "" --detach \
+              --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
+              hstream-http-server --port $HTTP_PORT --hstream-port $SERVER_PORT
+          sleep 5
+          docker logs --tail 100 $NAME
 
       - name: test
         run: |

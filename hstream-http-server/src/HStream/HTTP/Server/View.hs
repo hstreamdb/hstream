@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 module HStream.HTTP.Server.View (
-  ViewsAPI, viewServer, listViewsHandler
+  ViewsAPI, viewServer, listViewsHandler, ViewBO(..)
 ) where
 
 import           Control.Monad.IO.Class           (liftIO)
@@ -59,7 +59,7 @@ createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
   resp <- hstreamApiCreateView (ClientNormalRequest createViewRequest 100 (MetadataMap $ Map.empty))
   -- TODO: should return viewBO; but we need to update the hstream server first.
   case resp of
-    ClientNormalResponse _ _meta1 _meta2 _status _details -> return $ ViewBO Nothing Nothing Nothing sql
+    ClientNormalResponse view _meta1 _meta2 _status _details -> return $ viewToViewBO view
     ClientErrorResponse clientError -> do
       putStrLn $ "Client Error: " <> show clientError
       return $ ViewBO Nothing Nothing Nothing sql
