@@ -833,6 +833,7 @@ maintenanceShowOptsParser = MaintenanceShowOpts
 data StartSQLReplOpts = StartSQLReplOpts
   { startSQLReplTimeout :: Int64
   , startSQLReplUseSsl  :: Bool
+  , startSQLReplSQL     :: Maybe String
   } deriving (Show)
 
 startSQLReplOptsParser :: Parser StartSQLReplOpts
@@ -844,3 +845,8 @@ startSQLReplOptsParser = StartSQLReplOpts
                        <> "through its admin command port, milliseconds"))
   <*> switch ( long "use-ssl"
             <> help "whether ldquery should connect to admin command port using SSL/TLS")
+  <*> optional (strOption ( long "sql"
+                         <> metavar "SQL"
+                         <> short 'e'
+                         <> help "Run sql expression non-interactively."
+                          ))
