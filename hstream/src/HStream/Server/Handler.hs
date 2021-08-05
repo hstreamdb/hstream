@@ -82,6 +82,7 @@ import qualified HStream.Server.Persistence            as P
 import           HStream.Store                         (ckpReaderStopReading)
 import qualified HStream.Store                         as S
 import qualified HStream.Store.Admin.API               as AA
+import qualified HStream.Store.Logger                  as S
 import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
 
@@ -286,8 +287,13 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
     _ -> discard
   where
-    mkLogAttrs = S.LogAttrs . S.HsLogAttrs scDefaultStreamRepFactor
-    create sName = S.createStream scLDClient sName (mkLogAttrs Map.empty)
+    mkLogAttrs = S.HsLogAttrs scDefaultStreamRepFactor
+    create sName = do
+      let attrs = mkLogAttrs Map.empty
+      Log.debug . Log.buildString
+         $ "CREATE: new stream " <> show sName
+        <> " with attributes: " <> show attrs
+      S.createStream scLDClient sName (S.LogAttrs attrs)
     sendResp ma valueSerde = do
       case ma of
         Nothing -> returnCommandQueryResp V.empty
@@ -328,7 +334,6 @@ executePushQueryHandler ServerContext{..}
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
     _ -> returnStreamingResp StatusInternal "inconsistent method called"
-
 
 --------------------------------------------------------------------------------
 

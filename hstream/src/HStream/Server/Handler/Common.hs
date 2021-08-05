@@ -195,10 +195,21 @@ handleCreateAsSelect :: ServerContext
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
     (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType zkHandle
-  tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
-        >> runTaskWrapper HS.StreamTypeStream sinkType taskBuilder scLDClient
+  P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
+  tid <- forkIO $ onException (action qid) (cleanup qid)
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
+  where
+    action qid = do
+      Log.debug . Log.buildString
+        $ "CREATE AS SELECT: query " <> show qid
+       <> " has stared working on " <> show commandQueryStmtText
+      runTaskWrapper isTemp taskBuilder scLDClient
+    cleanup qid = do
+      Log.debug . Log.buildString
+        $ "CREATE AS SELECT: query " <> show qid
+       <> " has died. Change state to ConnectionAbort"
+      P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.ConnectionAbort)
 
 handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
 handleTerminateConnector ServerContext{..} cid = do
@@ -206,7 +217,7 @@ handleTerminateConnector ServerContext{..} cid = do
   case HM.lookup cid hmapC of
     Just tid -> do
       void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
-      Log.debug . Log.buildString $ "terminated connector: " <> show cid
+      Log.debug . Log.buildString $ "TERMINATE: terminated connector: " <> show cid
     _        -> throwIO ConnectorNotExist
 
 dropHelper :: ServerContext -> T.Text -> Bool -> Bool
@@ -232,15 +243,24 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
   queries <- P.withMaybeZHandle zkHandle P.getQueries
   let queryExists = find (\query -> P.getQuerySink query == objectId) queries
   case queryExists of
-    Just query ->
-      handleQueryTerminate sc (OneQuery $ P.queryId query)
-      >> P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
-    Nothing    -> pure ()
+    Just query -> do
+      Log.debug . Log.buildString
+         $ "TERMINATE: found query " <> show (P.queryType query)
+        <> " with query id " <> show (P.queryId query)
+        <> " writes to the terminating stream " <> show objectId
+      void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
+      P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
+    Nothing    -> do
+      Log.debug . Log.buildString
+        $ "TERMINATE: found no query writes to the terminating stream " <> show objectId
 
 terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
   queries <- P.withMaybeZHandle zkHandle P.getQueries
-  let getRelatedQueries= [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+  Log.debug . Log.buildString
+     $ "TERMINATE: the queries related to the terminating stream " <> show name
+    <> ": " <> show getRelatedQueries
   mapM_ (handleQueryTerminate sc . OneQuery) getRelatedQueries
 
 handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [CB.CBytes]
@@ -249,6 +269,7 @@ handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
   P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
+  Log.debug . Log.buildString $ "TERMINATE: removed query " <> show qid
   return [qid]
 handleQueryTerminate sc@ServerContext{..} AllQueries = do
   hmapQ <- readMVar runningQueries
@@ -257,6 +278,7 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
   hmapQ <- readMVar runningQueries
   (qids', hmapQ') <- foldrM action ([], hmapQ) qids
   void $ swapMVar runningQueries hmapQ'
+  Log.debug . Log.buildString $ "TERMINATE: removed queries " <> show qids'
   return qids'
   where
     action x (terminatedQids, hm) = do
@@ -264,6 +286,8 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         case HM.lookup x hm of Just tid -> killThread tid; _ -> pure ()
         P.withMaybeZHandle zkHandle (P.setQueryStatus x P.Terminated)
       case result of
-        Left (_ ::SomeException) -> return (terminatedQids, hm)
+        Left (_ ::SomeException) -> do
+          Log.warning . Log.buildString $ "TERMINATE: unable to remove query " <> show x
+          return (terminatedQids, hm)
         Right _                  -> return (x:terminatedQids, HM.delete x hm)
 
