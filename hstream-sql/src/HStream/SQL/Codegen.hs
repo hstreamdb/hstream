@@ -50,7 +50,9 @@ import qualified HStream.Processing.Type                         as HPT
 import           HStream.SQL.AST                                 hiding
                                                                  (StreamName)
 import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
-import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
+import           HStream.SQL.Exception                           (SomeSQLException (..),
+                                                                  throwSQLException)
+import           HStream.SQL.Internal.Codegen                    (binOpOnValue,
                                                                   compareValue,
                                                                   composeColName,
                                                                   diffTimeToMs,
@@ -58,8 +60,6 @@ import           HStream.SQL.Codegen.Utils                       (binOpOnValue,
                                                                   genRandomSinkStream,
                                                                   getFieldByName,
                                                                   unaryOpOnValue)
-import           HStream.SQL.Exception                           (SomeSQLException (..),
-                                                                  throwSQLException)
 import           HStream.SQL.Parse                               (parseAndRefine)
 import           HStream.Utils                                   (genUnique)
 
