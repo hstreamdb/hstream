@@ -19,9 +19,11 @@ module HStream.SQL.Codegen.Utils
 import           Control.Exception     (throw)
 import           Data.Aeson
 import qualified Data.HashMap.Strict   as HM
+import qualified Data.List             as L
 import           Data.Scientific
 import qualified Data.Text             as T
 import           Data.Time             (DiffTime, diffTimeToPicoseconds)
+import qualified Data.Vector           as V
 import           GHC.Stack             (callStack)
 import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeRuntimeException (..),
@@ -72,6 +74,21 @@ binOpOnValue OpSub (Number n) (Number m) = Number (n-m)
 binOpOnValue OpMul (Number n) (Number m) = Number (n*m)
 binOpOnValue OpAnd (Bool b1)  (Bool b2)  = Bool (b1 && b2)
 binOpOnValue OpOr  (Bool b1)  (Bool b2)  = Bool (b1 || b2)
+binOpOnValue OpContain (Array xs) x      = Bool (x `V.elem` xs)
+binOpOnValue OpExcept    Null       _          = Null
+binOpOnValue OpExcept    _          Null       = Null
+binOpOnValue OpExcept    (Array xs) (Array ys) = Array  (nub xs \\ ys)
+binOpOnValue OpIntersect Null       _          = Null
+binOpOnValue OpIntersect _          Null       = Null
+binOpOnValue OpIntersect (Array xs) (Array ys) = Array  (nub $ xs `intersect`  ys)
+binOpOnValue OpRemove    Null       _          = Null
+binOpOnValue OpRemove    (Array xs) x          = Array  (V.filter (/= x) xs)
+binOpOnValue OpUnion     Null       _          = Null
+binOpOnValue OpUnion     _          Null       = Null
+binOpOnValue OpUnion     (Array xs) (Array ys) = Array  (nub $ xs <> ys)
+binOpOnValue OpArrJoin'  (Array xs) (String s) = String (arrJoinPrim xs (Just s))
+binOpOnValue OpIfNull Null x = x
+binOpOnValue OpNullIf x y = if x == y then Null else x
 binOpOnValue op v1 v2 =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported")
 
@@ -101,6 +118,11 @@ unaryOpOnValue OpCeil    (Number n) = Number (scientific (ceiling n) 0)
 unaryOpOnValue OpFloor   (Number n) = Number (scientific (floor n) 0)
 unaryOpOnValue OpRound   (Number n) = Number (scientific (round n) 0)
 unaryOpOnValue OpSqrt    (Number n) = Number (funcOnScientific sqrt n)
+unaryOpOnValue OpSign    (Number n)
+  | n >  0                          = Number (1)
+  | n == 0                          = Number (0)
+  | n < 0                           = Number (-1)
+unaryOpOnValue OpSign    Null       = Null
 unaryOpOnValue OpLog     (Number n)
   | n > 0                           = Number (funcOnScientific log n)
   | otherwise                       = throwSQLException CodegenException Nothing "Mathematical error"
@@ -135,6 +157,17 @@ unaryOpOnValue OpLTrim   (String s) = String (T.stripStart s)
 unaryOpOnValue OpRTrim   (String s) = String (T.stripEnd s)
 unaryOpOnValue OpReverse (String s) = String (T.reverse s)
 unaryOpOnValue OpStrLen  (String s) = Number (scientific (toInteger (T.length s)) 0)
+unaryOpOnValue OpDistinct(Array xs) = Array  (nub xs)
+unaryOpOnValue OpDistinct Null      = Null
+unaryOpOnValue OpLength   Null      = Null
+unaryOpOnValue OpLength  (Array xs) = Number (scientific (toInteger $ V.length xs) 0)
+unaryOpOnValue OpArrJoin (Array xs) = String (arrJoinPrim xs Nothing)
+unaryOpOnValue OpArrMax  Null       = Null
+unaryOpOnValue OpArrMax  (Array xs) = V.maximum xs
+unaryOpOnValue OpArrMin  Null       = Null
+unaryOpOnValue OpArrMin  (Array xs) = V.minimum xs
+unaryOpOnValue OpSort    Null       = Null
+unaryOpOnValue OpSort    (Array xs) = Array (V.fromList $ L.sort $ V.toList xs)
 unaryOpOnValue op v =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v <> " is not supported")
 
@@ -148,3 +181,52 @@ diffTimeToMs diff = fromInteger $ diffTimeToPicoseconds diff `div` 10^9
 composeColName :: Maybe StreamName -> FieldName -> Text
 composeColName Nothing field       = field
 composeColName (Just stream) field = stream <> "." <> field
+
+--------------------------------------------------------------------------------
+-- | Remove the first occurrence in `xs` of each element of `ys`.
+infix 5 \\
+(\\) :: Eq a => Vector a -> Vector a -> Vector a
+xs \\ ys | null xs   = V.empty
+         | null ys   = xs
+         | otherwise = V.fromList $ V.toList xs L.\\ V.toList ys
+
+-- | The intersect function takes the vector intersection of two vectors.
+-- >>> :set -XOverloadedLists
+-- >>> [1, 2, 3, 4] `intersect` [2, 4, 6, 8]
+-- [2, 4]
+-- >>> [1, 2, 2, 3, 4] `intersect` [6, 4, 4, 2]
+-- [2, 2, 4] -- If the first list contains duplicates, so will the result.
+intersect :: Eq a => Vector a -> Vector a -> Vector a
+intersect xs ys | null xs || null ys = V.empty
+                | otherwise = V.fromList $ V.toList xs `L.intersect` V.toList ys
+
+-- | Removes duplicate elements from a vector.
+nub :: Eq a => Vector a -> Vector a
+nub xs | null xs   = xs
+       | otherwise = V.fromList $ L.nub (V.toList xs)
+
+-- | Creates a flat string representation of all the elements contained in the given array.
+-- Elements in the resulting string are separated by
+-- the chosen 'delimiter :: Text', which is an optional
+-- parameter that falls back to a comma @,@.
+arrJoinPrim :: Vector Value -> Maybe T.Text -> T.Text
+arrJoinPrim xs delimiterM | null xs = T.empty
+  | otherwise = T.dropEnd 1 $ foldl' h T.empty xs where
+  delimiter :: T.Text
+  delimiter = fromMaybe "," delimiterM
+  h :: T.Text -> Value -> T.Text
+  h txt val = txt <> (case val of -- Test whether the given value is a primary value.
+    String str -> str
+    Number n   -> T.pack (show n)
+    Bool   b   -> T.pack (show b)
+    Null       -> "NULL"
+    notPrim    -> throwSQLException CodegenException Nothing
+      ("Operation OpArrJoin on " <> show notPrim <> " is not supported")
+    ) <> delimiter
+
+-- | Where the argument type is complex, for example, 'Array' or 'Map', the
+-- contents of the complex type are not inspected.
+-- Return 'Null' when all arguments are 'Null'.
+ifNull :: Value -> Value -> Value
+ifNull Null = id
+ifNull x    = const x

@@ -68,6 +68,7 @@ library
     , time                  >=1.9.1 && <2
     , unordered-containers
     , uuid
+    , vector
     , Z-Data
     , Z-IO
 

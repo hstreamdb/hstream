@@ -7,7 +7,7 @@
 module HStream.SQL.Codegen where
 
 import           Data.Aeson                                      (Object,
-                                                                  Value (Bool, Number, String),
+                                                                  Value (Bool, Null, Number, String),
                                                                   encode)
 import qualified Data.ByteString.Char8                           as BSC
 import qualified Data.HashMap.Strict                             as HM
@@ -269,6 +269,7 @@ constantToValue :: Constant -> Value
 constantToValue (ConstantInt n)         = Number (scientific (toInteger n) 0)
 constantToValue (ConstantNum n)         = Number (fromFloatDigits n)
 constantToValue (ConstantString s)      = String (pack s)
+constantToValue (ConstantNull)          = Null
 constantToValue (ConstantBool b)        = Bool b
 constantToValue (ConstantDate day)      = String (pack $ showGregorian day) -- FIXME: No suitable type in `Value`
 constantToValue (ConstantTime diff)     = Number (scientific (diffTimeToPicoseconds diff) (-12)) -- FIXME: No suitable type in `Value`
@@ -372,7 +373,7 @@ genMaterialized grp = do
            , mStateStore = aggStore
            }
 
-data AggregateComponents = AggregateCompontnts
+data AggregateComponents = AggregateComponents
   { aggregateInit   :: Object
   , aggregateF      :: Object -> Record Object Object -> Object
   , aggregateMergeF :: Object -> Object -> Object -> Object
@@ -390,7 +391,7 @@ genAggregateComponentsFromDerivedCol :: HasCallStack
 genAggregateComponentsFromDerivedCol (Right agg, alias) =
   case agg of
     Nullary AggCountAll ->
-      AggregateCompontnts
+      AggregateComponents
       { aggregateInit = HM.singleton (pack alias) (Number 0)
       , aggregateF    = \o _ -> HM.update (\(Number n) -> Just (Number $ n+1)) (pack alias) o
       , aggregateMergeF = \_ o1 o2 -> let (Number n1) = (HM.!) o1 (pack alias)
@@ -398,7 +399,7 @@ genAggregateComponentsFromDerivedCol (Right agg, alias) =
                                        in HM.singleton (pack alias) (Number $ n1+n2)
       }
     Unary AggCount (RExprCol _ stream' field) ->
-      AggregateCompontnts
+      AggregateComponents
       { aggregateInit = HM.singleton (pack alias) (Number 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
@@ -409,7 +410,7 @@ genAggregateComponentsFromDerivedCol (Right agg, alias) =
                                        in HM.singleton (pack alias) (Number $ n1+n2)
       }
     Unary AggSum (RExprCol _ stream' field)   ->
-      AggregateCompontnts
+      AggregateComponents
       { aggregateInit = HM.singleton (pack alias) (Number 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
@@ -422,7 +423,7 @@ genAggregateComponentsFromDerivedCol (Right agg, alias) =
                                        in HM.singleton (pack alias) (Number $ n1+n2)
       }
     Unary AggMax (RExprCol _ stream' field)   ->
-      AggregateCompontnts
+      AggregateComponents
       { aggregateInit = HM.singleton (pack alias) (Number $ scientific (toInteger (minBound :: Int)) 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
@@ -435,7 +436,7 @@ genAggregateComponentsFromDerivedCol (Right agg, alias) =
                                        in HM.singleton (pack alias) (Number $ max n1 n2)
       }
     Unary AggMin (RExprCol _ stream' field)   ->
-      AggregateCompontnts
+      AggregateComponents
       { aggregateInit = HM.singleton (pack alias) (Number $ scientific (toInteger (maxBound :: Int)) 0)
       , aggregateF = \o Record{..} ->
           case HM.lookup (composeColName stream' field) recordValue of
@@ -447,10 +448,9 @@ genAggregateComponentsFromDerivedCol (Right agg, alias) =
                                           (Number n2) = (HM.!) o2 (pack alias)
                                        in HM.singleton (pack alias) (Number $ min n1 n2)
       }
-    _                                         ->
-      throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
+    _ -> throwSQLException CodegenException Nothing ("Unsupported aggregate function: " <> show agg)
 genAggregateComponentsFromDerivedCol (Left rexpr, alias) =
-  AggregateCompontnts
+  AggregateComponents
   { aggregateInit = HM.singleton (pack alias) (Number 0)
   , aggregateF = \old record -> HM.adjust (\_ -> updateV record rexpr) (pack alias) old
   , aggregateMergeF = \_ _ o2 -> let v = (HM.!) o2 (pack alias) in HM.singleton (pack alias) v
@@ -459,7 +459,7 @@ genAggregateComponentsFromDerivedCol (Left rexpr, alias) =
 
 fuseAggregateComponents :: [AggregateComponents] -> AggregateComponents
 fuseAggregateComponents components =
-  AggregateCompontnts
+  AggregateComponents
   { aggregateInit = HM.unions (aggregateInit <$> components)
   , aggregateF = \old record -> L.foldr (\f acc -> f acc record) old (aggregateF <$> components)
   , aggregateMergeF = \o o1 o2 -> HM.unions $ [ f o o1 o2 | f <- aggregateMergeF <$> components]
@@ -475,7 +475,7 @@ genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
     (\record -> let col = composeColName stream' field
                  in HM.singleton col $ getFieldByName (recordValue record) col) s
   materialized <- genMaterialized grp
-  let AggregateCompontnts{..} = genAggregateComponents sel
+  let AggregateComponents{..} = genAggregateComponents sel
   case win' of
     Nothing                       -> do
       table  <- HG.aggregate aggregateInit aggregateF materialized grped

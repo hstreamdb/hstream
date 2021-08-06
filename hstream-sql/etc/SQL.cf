@@ -151,6 +151,9 @@ DHaving.      Having ::= "HAVING" SearchCond ;
 --------------------------------------------------------------------------------
 
 ---- Value Expression
+-- Null Expr.
+ExprNull. ValueExpr4 ::= "NULL" ;
+
 -- Boolean Expr
 ExprOr.  ValueExpr  ::= ValueExpr  "||" ValueExpr1 ;
 ExprAnd. ValueExpr1 ::= ValueExpr1 "&&" ValueExpr2 ;
@@ -210,6 +213,10 @@ SetFuncAvg.      SetFunc ::= "AVG("   ValueExpr ")" ;
 SetFuncSum.      SetFunc ::= "SUM("   ValueExpr ")" ;
 SetFuncMax.      SetFunc ::= "MAX("   ValueExpr ")" ;
 SetFuncMin.      SetFunc ::= "MIN("   ValueExpr ")" ;
+
+SetFuncTopK.         SetFunc ::= "TOPK("         ValueExpr "," ValueExpr ")" ;
+SetFuncTopKDistinct. SetFunc ::= "TOPKDISTINCT(" ValueExpr "," ValueExpr ")" ;
+
 ExprSetFunc. ValueExpr4 ::= SetFunc ;
 
 -- Scalar Functions
@@ -231,6 +238,7 @@ ScalarFuncCeil.  ScalarFunc ::= "CEIL("  ValueExpr ")" ;
 ScalarFuncFloor. ScalarFunc ::= "FLOOR(" ValueExpr ")" ;
 ScalarFuncRound. ScalarFunc ::= "ROUND(" ValueExpr ")" ;
 
+ScalarFuncSign.  ScalarFunc ::= "SIGN("  ValueExpr ")" ;
 ScalarFuncSqrt.  ScalarFunc ::= "SQRT("  ValueExpr ")" ;
 ScalarFuncLog.   ScalarFunc ::= "LOG("   ValueExpr ")" ;
 ScalarFuncLog2.  ScalarFunc ::= "LOG2("  ValueExpr ")" ;
@@ -256,6 +264,22 @@ ScalarFuncLTrim.   ScalarFunc ::= "LEFT_TRIM("  ValueExpr ")" ;
 ScalarFuncRTrim.   ScalarFunc ::= "RIGHT_TRIM(" ValueExpr ")" ;
 ScalarFuncRev.     ScalarFunc ::= "REVERSE("    ValueExpr ")" ;
 ScalarFuncStrlen.  ScalarFunc ::= "STRLEN("     ValueExpr ")" ;
+
+ScalarFuncIfNull. ScalarFunc ::= "IFNULL(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncNullIf. ScalarFunc ::= "NULLIF(" ValueExpr "," ValueExpr ")" ;
+
+ArrayFuncContain.   ScalarFunc ::= "ARRAY_CONTAIN("   ValueExpr "," ValueExpr ")" ;
+ArrayFuncDistinct.  ScalarFunc ::= "ARRAY_DISTINCT("                ValueExpr ")" ;
+ArrayFuncExcept.    ScalarFunc ::= "ARRAY_EXCEPT("    ValueExpr "," ValueExpr ")" ;
+ArrayFuncIntersect. ScalarFunc ::= "ARRAY_INTERSECT(" ValueExpr "," ValueExpr ")" ;
+ArrayFuncLength.    ScalarFunc ::= "ARRAY_LENGTH("                  ValueExpr ")" ;
+ArrayFuncRemove.    ScalarFunc ::= "ARRAY_REMOVE("    ValueExpr "," ValueExpr ")" ;
+ArrayFuncUnion.     ScalarFunc ::= "ARRAY_UNION("     ValueExpr "," ValueExpr ")" ;
+ArrayFuncJoin.      ScalarFunc ::= "ARRAY_JOIN("                    ValueExpr ")" ;
+ArrayFuncJoinWith.  ScalarFunc ::= "ARRAY_JOIN("      ValueExpr "," ValueExpr ")" ;
+ArrayFuncMax.       ScalarFunc ::= "ARRAY_MAX("                     ValueExpr ")" ;
+ArrayFuncMin.       ScalarFunc ::= "ARRAY_MIN("                     ValueExpr ")" ;
+ArrayFuncSort.      ScalarFunc ::= "ARRAY_SORT("                    ValueExpr ")" ;
 
 ExprScalarFunc. ValueExpr ::= ScalarFunc ;
 
