@@ -247,12 +247,15 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
       Log.debug . Log.buildString
          $ "TERMINATE: found query " <> show (P.queryType query)
         <> " with query id " <> show (P.queryId query)
-        <> " writes to the terminating stream " <> show objectId
+        <> " writes to the stream being dropped " <> show objectId
       void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
       P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
+      Log.debug . Log.buildString
+         $ "TERMINATE: query " <> show (P.queryType query)
+        <> " has been removed"
     Nothing    -> do
       Log.debug . Log.buildString
-        $ "TERMINATE: found no query writes to the terminating stream " <> show objectId
+        $ "TERMINATE: found no query writes to the stream being dropped " <> show objectId
 
 terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
@@ -269,7 +272,7 @@ handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
   P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
-  Log.debug . Log.buildString $ "TERMINATE: removed query " <> show qid
+  Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
   return [qid]
 handleQueryTerminate sc@ServerContext{..} AllQueries = do
   hmapQ <- readMVar runningQueries
@@ -278,7 +281,7 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
   hmapQ <- readMVar runningQueries
   (qids', hmapQ') <- foldrM action ([], hmapQ) qids
   void $ swapMVar runningQueries hmapQ'
-  Log.debug . Log.buildString $ "TERMINATE: removed queries " <> show qids'
+  Log.debug . Log.buildString $ "TERMINATE: terminated queries: " <> show qids'
   return qids'
   where
     action x (terminatedQids, hm) = do
@@ -287,7 +290,7 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         P.withMaybeZHandle zkHandle (P.setQueryStatus x P.Terminated)
       case result of
         Left (_ ::SomeException) -> do
-          Log.warning . Log.buildString $ "TERMINATE: unable to remove query " <> show x
+          Log.warning . Log.buildString $ "TERMINATE: unable to terminate query: " <> show x
           return (terminatedQids, hm)
         Right _                  -> return (x:terminatedQids, HM.delete x hm)
 
