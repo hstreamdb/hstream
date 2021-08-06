@@ -73,7 +73,8 @@ instance Refine Interval where
   refine (DInterval _ n (TimeUnitMonth _)) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 30
   refine (DInterval _ n (TimeUnitYear _ )) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 365
 
-data Constant = ConstantInt       Int
+data Constant = ConstantNull
+              | ConstantInt       Int
               | ConstantNum       Double
               | ConstantString    String
               | ConstantBool      Bool
@@ -83,22 +84,27 @@ data Constant = ConstantInt       Int
               -- TODO: Support Map and Arr
               deriving (Eq, Show)
 
-data BinaryOp = OpAdd | OpSub | OpMul | OpAnd | OpOr deriving (Eq, Show)
+data BinaryOp = OpAdd | OpSub | OpMul
+              | OpAnd | OpOr
+              | OpContain | OpExcept | OpIntersect | OpRemove | OpUnion | OpArrJoin'
+              | OpIfNull  | OpNullIf
+              deriving (Eq, Show)
 
-data UnaryOp  = OpSin     | OpSinh    | OpAsin  | OpAsinh  | OpCos   | OpCosh
-              | OpAcos    | OpAcosh   | OpTan   | OpTanh   | OpAtan  | OpAtanh
-              | OpAbs     | OpCeil    | OpFloor | OpRound
-              | OpSqrt    | OpLog     | OpLog2  | OpLog10  | OpExp
-              | OpIsInt   | OpIsFloat | OpIsNum | OpIsBool | OpIsStr | OpIsMap
-              | OpIsArr   | OpIsDate  | OpIsTime
+data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
+              | OpAcos     | OpAcosh   | OpTan    | OpTanh   | OpAtan  | OpAtanh
+              | OpAbs      | OpCeil    | OpFloor  | OpRound  | OpSign
+              | OpSqrt     | OpLog     | OpLog2   | OpLog10  | OpExp
+              | OpIsInt    | OpIsFloat | OpIsNum  | OpIsBool | OpIsStr | OpIsMap
+              | OpIsArr    | OpIsDate  | OpIsTime
               | OpToStr
-              | OpToLower | OpToUpper | OpTrim  | OpLTrim  | OpRTrim
-              | OpReverse | OpStrLen
+              | OpToLower  | OpToUpper | OpTrim   | OpLTrim  | OpRTrim
+              | OpReverse  | OpStrLen
+              | OpDistinct | OpArrJoin | OpLength | OpArrMax | OpArrMin | OpSort
               deriving (Eq, Show)
 
 data Aggregate = Nullary NullaryAggregate
-               | Unary   UnaryAggregate RValueExpr
-               -- TODO: Add BinaryAggregate if needed
+               | Unary   UnaryAggregate  RValueExpr
+               | Binary  BinaryAggregate RValueExpr RValueExpr
                deriving (Eq, Show)
 
 data NullaryAggregate = AggCountAll deriving (Eq, Show)
@@ -108,6 +114,8 @@ data UnaryAggregate   = AggCount
                       | AggMax
                       | AggMin
                       deriving (Eq, Show)
+data BinaryAggregate = AggTopK | AggTopKDistinct
+                     deriving (Eq, Show)
 
 type ExprName = String
 data RValueExpr = RExprCol       ExprName (Maybe StreamName) FieldName
@@ -125,10 +133,19 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprMul _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpMul (refine e1) (refine e2)
     (ExprAnd _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpAnd (refine e1) (refine e2)
     (ExprOr  _ e1 e2)         -> RExprBinOp (trimSpacesPrint expr) OpOr  (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncIfNull   _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpIfNull    (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncNullIf   _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpNullIf    (refine e1) (refine e2)
+    (ExprScalarFunc _ (ArrayFuncContain   _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpContain   (refine e1) (refine e2)
+    (ExprScalarFunc _ (ArrayFuncExcept    _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpExcept    (refine e1) (refine e2)
+    (ExprScalarFunc _ (ArrayFuncIntersect _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpIntersect (refine e1) (refine e2)
+    (ExprScalarFunc _ (ArrayFuncRemove    _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpRemove    (refine e1) (refine e2)
+    (ExprScalarFunc _ (ArrayFuncUnion     _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpUnion     (refine e1) (refine e2)
+    (ExprScalarFunc _ (ArrayFuncJoinWith  _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpArrJoin'  (refine e1) (refine e2)
     (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n) -- WARNING: May lose presision
     (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantNum $ refine n)
     (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantString s)
     (ExprRaw _ s)             -> RExprCol (Text.unpack $ refine s) Nothing (refine s) -- WARNING: Spaces are not trimmed
+    (ExprNull _)              -> RExprConst (trimSpacesPrint expr) (ConstantNull)
     (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBool $ refine b)
     (ExprDate _ date)         -> RExprConst (trimSpacesPrint expr) (ConstantDate $ refine date)
     (ExprTime _ time)         -> RExprConst (trimSpacesPrint expr) (ConstantTime $ refine time)
@@ -143,6 +160,8 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprSetFunc _ (SetFuncSum _ e )) -> RExprAggregate (trimSpacesPrint expr) (Unary AggSum $ refine e)
     (ExprSetFunc _ (SetFuncMax _ e )) -> RExprAggregate (trimSpacesPrint expr) (Unary AggMax $ refine e)
     (ExprSetFunc _ (SetFuncMin _ e )) -> RExprAggregate (trimSpacesPrint expr) (Unary AggMin $ refine e)
+    (ExprSetFunc _ (SetFuncTopK         _ e1 e2)) -> RExprAggregate (trimSpacesPrint expr) (Binary AggTopK         (refine e1) (refine e2))
+    (ExprSetFunc _ (SetFuncTopKDistinct _ e1 e2)) -> RExprAggregate (trimSpacesPrint expr) (Binary AggTopKDistinct (refine e1) (refine e2))
     (ExprArr pos _) -> throwSQLException RefineException pos "Array constant is not supported yet"
     (ExprMap pos _) -> throwSQLException RefineException pos "Map constant is not supported yet"
     (ExprScalarFunc _ (ScalarFuncSin     _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpSin     (refine e)
@@ -161,6 +180,7 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprScalarFunc _ (ScalarFuncCeil    _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpCeil    (refine e)
     (ExprScalarFunc _ (ScalarFuncFloor   _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpFloor   (refine e)
     (ExprScalarFunc _ (ScalarFuncRound   _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpRound   (refine e)
+    (ExprScalarFunc _ (ScalarFuncSign    _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpSign    (refine e)
     (ExprScalarFunc _ (ScalarFuncSqrt    _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpSqrt    (refine e)
     (ExprScalarFunc _ (ScalarFuncLog     _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpLog     (refine e)
     (ExprScalarFunc _ (ScalarFuncLog2    _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpLog2    (refine e)
@@ -183,6 +203,12 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprScalarFunc _ (ScalarFuncRTrim   _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpRTrim   (refine e)
     (ExprScalarFunc _ (ScalarFuncRev     _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpReverse (refine e)
     (ExprScalarFunc _ (ScalarFuncStrlen  _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpStrLen  (refine e)
+    (ExprScalarFunc _ (ArrayFuncDistinct _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpDistinct(refine e)
+    (ExprScalarFunc _ (ArrayFuncLength   _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpLength  (refine e)
+    (ExprScalarFunc _ (ArrayFuncJoin     _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpArrJoin (refine e)
+    (ExprScalarFunc _ (ArrayFuncMax      _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpArrMax  (refine e)
+    (ExprScalarFunc _ (ArrayFuncMin      _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpArrMin  (refine e)
+    (ExprScalarFunc _ (ArrayFuncSort     _ e)) -> RExprUnaryOp (trimSpacesPrint expr) OpSort    (refine e)
 
 ---- Sel
 type FieldAlias = String

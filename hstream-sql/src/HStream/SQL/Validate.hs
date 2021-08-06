@@ -108,6 +108,10 @@ instance Validate SetFunc where
     (SetFuncMax _ e) -> isOrdExpr e  >> validate e >> return f
     (SetFuncMin pos (ExprSetFunc _ _))   -> Left $ buildSQLException ParseException pos "Nested set functions are not supported"
     (SetFuncMin _ e) -> isOrdExpr e  >> validate e >> return f
+    (SetFuncTopK         pos (ExprSetFunc _ _) _) -> Left $ buildSQLException ParseException pos "Nested set functions are not supported"
+    (SetFuncTopK         _ e _) -> isOrdExpr e  >> validate e >> return f
+    (SetFuncTopKDistinct pos (ExprSetFunc _ _) _) -> Left $ buildSQLException ParseException pos "Nested set functions are not supported"
+    (SetFuncTopKDistinct _ e _) -> isOrdExpr e  >> validate e >> return f
 
 -- 1. numeral expressions only
 -- 2. scalar functions should not be applied to aggregates
@@ -142,6 +146,7 @@ instance Validate ValueExpr where
   validate expr@ExprNum{}    = Right expr
   validate expr@ExprString{} = Right expr
   validate expr@ExprRaw{}    = Right expr
+  validate expr@ExprNull{}   = Right expr
   validate expr@ExprBool{}   = Right expr
   validate expr@(ExprDate _ date) = validate date >> return expr
   validate expr@(ExprTime _ time) = validate time >> return expr
@@ -167,6 +172,7 @@ isNumExpr expr = case expr of
   (ExprInt _ _)        -> Right expr
   (ExprNum _ _)        -> Right expr
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a String"
+  (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Time"
@@ -181,6 +187,8 @@ isNumExpr expr = case expr of
   (ExprSetFunc _ (SetFuncSum _ _))    -> return expr
   (ExprSetFunc _ (SetFuncMax _ e))    -> isNumExpr e >> return expr
   (ExprSetFunc _ (SetFuncMin _ e))    -> isNumExpr e >> return expr
+  (ExprSetFunc _ (SetFuncTopK         _ e1 e2)) -> isNumExpr e1 >> isNumExpr e2 >> return expr
+  (ExprSetFunc _ (SetFuncTopKDistinct _ e1 e2)) -> isNumExpr e1 >> isNumExpr e2 >> return expr
   (ExprScalarFunc _ f) ->
     let funcType = getScalarFuncType f
      in if isTypeNum funcType then return expr
@@ -196,6 +204,7 @@ isFloatExpr expr = case expr of
   (ExprInt pos _)        -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
   (ExprNum _ _)        -> Right expr
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a float expression but got a String"
+  (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Time"
@@ -210,6 +219,8 @@ isFloatExpr expr = case expr of
   (ExprSetFunc _ (SetFuncSum _ e))    -> isFloatExpr e >> return expr
   (ExprSetFunc _ (SetFuncMax _ e))    -> isFloatExpr e >> return expr
   (ExprSetFunc _ (SetFuncMin _ e))    -> isFloatExpr e >> return expr
+  (ExprSetFunc _ (SetFuncTopK         _ e1 e2)) -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
+  (ExprSetFunc _ (SetFuncTopKDistinct _ e1 e2)) -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
   (ExprScalarFunc _ f) ->
     let funcType = getScalarFuncType f
      in if isTypeFloat funcType then return expr
@@ -225,6 +236,7 @@ isOrdExpr expr = case expr of
   ExprInt{}    -> Right expr
   ExprNum{}    -> Right expr
   ExprString{} -> Right expr
+  (ExprNull _)         -> Right expr
   (ExprBool pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
   (ExprDate _ date) -> validate date >> return expr
   (ExprTime _ time) -> validate time >> return expr
@@ -239,6 +251,8 @@ isOrdExpr expr = case expr of
   (ExprSetFunc _ (SetFuncSum _ _))    -> return expr
   (ExprSetFunc _ (SetFuncMax _ _))    -> return expr
   (ExprSetFunc _ (SetFuncMin _ _))    -> return expr
+  (ExprSetFunc _ (SetFuncTopK         _ _ _)) -> return expr
+  (ExprSetFunc _ (SetFuncTopKDistinct _ _ _)) -> return expr
   (ExprScalarFunc _ f) ->
     let funcType = getScalarFuncType f
      in if isTypeOrd funcType then return expr
@@ -254,6 +268,7 @@ isBoolExpr expr = case expr of
   (ExprInt pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprNum pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+  (ExprNull _)         -> Right expr
   (ExprBool _ _)       -> Right expr
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -268,6 +283,8 @@ isBoolExpr expr = case expr of
   (ExprSetFunc pos (SetFuncSum _ _))    -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSetFunc pos (SetFuncMax _ _))    -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSetFunc pos (SetFuncMin _ _))    -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+  (ExprSetFunc pos (SetFuncTopK         _ _ _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+  (ExprSetFunc pos (SetFuncTopKDistinct _ _ _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprScalarFunc pos (ScalarFuncSin _ _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprScalarFunc pos (ScalarFuncAbs _ _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprScalarFunc _ f) ->
@@ -285,6 +302,7 @@ isIntExpr expr = case expr of
   (ExprInt _ _)        -> Right expr
   (ExprNum pos _)        -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a numeric"
   (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a String"
+  (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Time"
@@ -299,6 +317,8 @@ isIntExpr expr = case expr of
   (ExprSetFunc _ (SetFuncSum _ e))       -> isIntExpr e >> return expr
   (ExprSetFunc _ (SetFuncMax _ e))       -> isIntExpr e >> return expr
   (ExprSetFunc _ (SetFuncMin _ e))       -> isIntExpr e >> return expr
+  (ExprSetFunc _ (SetFuncTopK         _ e1 e2)) -> isIntExpr e1 >> isIntExpr e2 >> return expr
+  (ExprSetFunc _ (SetFuncTopKDistinct _ e1 e2)) -> isIntExpr e1 >> isIntExpr e2 >> return expr
   (ExprScalarFunc _ f) ->
     let funcType = getScalarFuncType f
      in if isTypeInt funcType then return expr
@@ -314,6 +334,7 @@ isStringExpr expr = case expr of
   (ExprInt pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
   (ExprNum pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprString _ _)     -> return expr
+  (ExprNull _)         -> Right expr
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Time"
@@ -328,6 +349,8 @@ isStringExpr expr = case expr of
   (ExprSetFunc pos (SetFuncSum _ _))       -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprSetFunc _ (SetFuncMax _ e))       -> isStringExpr e >> return expr
   (ExprSetFunc _ (SetFuncMin _ e))       -> isStringExpr e >> return expr
+  (ExprSetFunc _ (SetFuncTopK         _ e1 e2)) -> isStringExpr e1 >> isStringExpr e2 >> return expr
+  (ExprSetFunc _ (SetFuncTopKDistinct _ e1 e2)) -> isStringExpr e1 >> isStringExpr e2 >> return expr
   (ExprScalarFunc _ f) ->
     let funcType = getScalarFuncType f
      in if isTypeString funcType then return expr
@@ -353,11 +376,41 @@ isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isConstExpr expr@ExprInt{}      = Right expr
 isConstExpr expr@ExprNum{}      = Right expr
 isConstExpr expr@ExprString{}   = Right expr
+isConstExpr expr@ExprNull{}     = Right expr
 isConstExpr expr@ExprBool{}     = Right expr
 isConstExpr expr@ExprDate{}     = Right expr
 isConstExpr expr@ExprTime{}     = Right expr
 isConstExpr expr@ExprInterval{} = Right expr
+isConstExpr expr@ExprArr{}      = isConstExprArr expr
+isConstExpr expr@ExprMap{}      = isConstExprMap expr
 isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only supports constant values"
+
+-- If all elements in an array are const expr, the array is a const expr.
+isConstExprArr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
+isConstExprArr expr@(ExprArr a xs) = h xs where
+  h :: [ValueExpr] -> Either SomeSQLException ValueExpr
+  h [] = pure expr
+  h (x : xs) = do
+    x  <- isConstExpr x
+    xs <- h xs
+    case xs of
+      ExprArr _ xs -> pure $ ExprArr a (x : xs)
+      _ -> Left $ buildSQLException ParseException Nothing "Impossible happened"
+isConstExprArr _ = Left $ buildSQLException ParseException Nothing "Impossible happened"
+
+-- If all elements in an map are const expr, the map is a const expr.
+isConstExprMap :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
+isConstExprMap expr@(ExprMap a xs) = h xs where
+  h :: [LabelledValueExpr] -> Either SomeSQLException ValueExpr
+  h [] = pure expr
+  h (x : xs) = do
+    let DLabelledValueExpr _ _ val = x
+    val <- isConstExpr val
+    xs  <- h xs
+    case xs of
+      ExprMap _ xs -> pure $ ExprMap a (x : xs)
+      _ -> Left $ buildSQLException ParseException Nothing "Impossible happened"
+isConstExprMap _ = Left $ buildSQLException ParseException Nothing "Impossible happened"
 
 ------------------------------------- SELECT -----------------------------------
 -- Sel
