@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -14,7 +15,9 @@ import           Test.Hspec
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
-import           HStream.Store.Logger
+import           HStream.Store.Logger             (pattern C_DBG_ERROR,
+                                                   setLogDeviceDbgLevel)
+import           HStream.Utils                    (setupSigsegvHandler)
 
 getQueryResponseIdIs :: TL.Text -> Query -> Bool
 getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
@@ -99,6 +102,9 @@ restartQuery qid = withGRPCClient clientConfig $ \client -> do
 
 spec :: Spec
 spec = describe "HStream.RunQuerySpec" $ do
+  runIO setupSigsegvHandler
+  runIO $ setLogDeviceDbgLevel C_DBG_ERROR
+
   source1 <- runIO $ TL.fromStrict <$> newRandomText 20
   let queryname1 = "testquery1"
 

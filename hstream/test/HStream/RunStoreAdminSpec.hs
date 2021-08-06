@@ -14,6 +14,7 @@ import           Test.Hspec
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger
+import           HStream.Utils                    (setupSigsegvHandler)
 
 
 listNodes :: IO (Maybe ListNodesResponse)
@@ -41,6 +42,7 @@ getNode nodeId = withGRPCClient clientConfig $ \client -> do
 
 spec :: Spec
 spec = describe "HStream.RunConnectorSpec" $ do
+  runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   it "list nodes" $ do
