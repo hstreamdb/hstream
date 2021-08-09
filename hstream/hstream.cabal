@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Client.Action
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -34,7 +35,6 @@ library
     HStream.Server.Handler.View
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
-    HStream.Client.SQLExecution
 
   hs-source-dirs:   src
   build-depends:
@@ -162,6 +162,7 @@ test-suite hstream-test
     , hstream
     , hstream-common
     , hstream-store
+    , hstream-sql
     , io-streams
     , mysql-haskell
     , proto3-suite

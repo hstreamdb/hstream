@@ -24,7 +24,8 @@ import qualified ThirdParty.Google.Protobuf.Struct as P
 
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Utils.Converter           (valueToJsonValue)
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel.Generated  (ClientResult (..),
+                                                    GRPCMethodType (..))
 import qualified ThirdParty.Google.Protobuf.Empty  as Protobuf
 
 --------------------------------------------------------------------------------
@@ -83,6 +84,9 @@ instance Format API.AppendResponse where
   formatResult _ = const "Done. No results.\n"
 
 instance Format API.CreateQueryStreamResponse where
+  formatResult _ = const "Done. No results.\n"
+
+instance Format API.TerminateQueriesResponse where
   formatResult _ = const "Done. No results.\n"
 
 instance Format P.Struct where

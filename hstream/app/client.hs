@@ -26,13 +26,14 @@ import           System.Posix                     (Handler (Catch),
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
 
-import           HStream.Client.SQLExecution
+import           Data.Functor                     ((<&>))
+import           HStream.Client.Action
 import qualified HStream.Logger                   as Log
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.Server.HStreamApi
-import           HStream.Utils                    (HStreamClientApi,
+import           HStream.Utils                    (Format, HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
                                                    setupSigsegvHandler)
@@ -96,16 +97,20 @@ commandExec api xs = case words xs of
     (parseAndRefine . T.pack) xs >>= \case
       RQSelect{} -> sqlStreamAction api (TL.pack xs)
       RQCreate (RCreateAs stream _ rOptions) ->
-        executeCreateBySelect api (TL.fromStrict stream) (rRepFactor rOptions) xs'
+        createStreamBySelect api (TL.fromStrict stream) (rRepFactor rOptions) xs'
+        >>= printResult
       rSql' -> hstreamCodegen rSql' >>= \case
-        CreatePlan sName rFac -> executeCreatePlan api sName rFac
-        ShowPlan showObj      -> executeShowPlan api showObj
-        TerminatePlan termSel -> executeTerminatePlan api termSel
+        CreatePlan sName rFac
+          -> createStream api sName rFac >>= printResult
+        ShowPlan showObj
+          -> executeShowPlan api showObj
+        TerminatePlan termSel
+          -> terminateQueries api termSel >>= printResult
         DropPlan checkIfExists dropObj
-          -> executeDropPlan api checkIfExists dropObj
+          -> dropAction api checkIfExists dropObj >>= printResult
         InsertPlan sName insertType payload
-          -> executeInsertPlan api sName insertType payload
-        _                     -> sqlAction api (TL.pack xs)
+          -> insertIntoStream api sName insertType payload >>= printResult
+        _ -> sqlAction api (TL.pack xs)
 
   [] -> return ()
 
@@ -195,3 +200,17 @@ helpInfos = M.fromList [
 
 groupedHelpInfo :: String
 groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ helpInfos
+
+executeShowPlan :: HStreamClientApi -> ShowObject -> IO ()
+executeShowPlan api showObject =
+  case showObject of
+    SStreams    -> listStreams    api >>= printResult
+    SViews      -> listViews      api >>= printResult
+    SQueries    -> listQueries    api >>= printResult
+    SConnectors -> listConnectors api >>= printResult
+
+printResult :: Format a => a -> IO ()
+printResult resp = getWidth >>= putStr . flip formatResult resp
+
+getWidth :: IO Int
+getWidth = getTerminalSize <&> (\case Nothing -> 80; Just (_, w) -> w)

@@ -29,8 +29,7 @@ import           HStream.Server.Exception         (ConnectorAlreadyExists (..),
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    handleCreateSinkConnector,
-                                                   handleTerminateConnector,
-                                                   runSinkConnector)
+                                                   handleTerminateConnector)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
@@ -73,7 +72,6 @@ deleteConnectorHandler
 deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   let cName = lazyTextToCBytes deleteConnectorRequestId
-  handleTerminateConnector sc cName
   P.withMaybeZHandle zkHandle $ P.removeConnector cName
   returnResp Empty
 

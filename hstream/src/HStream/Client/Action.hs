@@ -1,84 +1,83 @@
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module HStream.Client.SQLExecution where
+module HStream.Client.Action where
 
 import qualified Data.ByteString                  as BS
-import           Data.Functor                     ((<&>))
 import qualified Data.Map                         as Map
 import qualified Data.Text.Lazy                   as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientRequest (ClientNormalRequest),
+                                                   ClientResult,
                                                    GRPCMethodType (Normal),
                                                    MetadataMap (MetadataMap))
 import           Proto3.Suite.Class               (HasDefault, def)
-import qualified Proto3.Suite.Class               ()
-import           System.Console.ANSI              (getTerminalSize)
 
 import           Data.Char                        (toUpper)
-import qualified HStream.Logger                   as Log
 import           HStream.SQL.Codegen              (DropObject (..),
-                                                   InsertType (..),
-                                                   ShowObject (..), StreamName,
+                                                   InsertType (..), StreamName,
                                                    TerminationSelection (..))
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Utils                    (Format (..),
-                                                   HStreamClientApi,
+import           HStream.ThirdParty.Protobuf      (Empty)
+import           HStream.Utils                    (HStreamClientApi,
                                                    buildRecord,
                                                    buildRecordHeader,
                                                    cBytesToLazyText,
                                                    getProtoTimestamp)
 
-executeCreatePlan :: HStreamClientApi -> StreamName -> Int -> IO ()
-executeCreatePlan API.HStreamApi{..} sName rFac =
+createStream :: HStreamClientApi -> StreamName -> Int -> IO (ClientResult 'Normal API.Stream)
+createStream API.HStreamApi{..} sName rFac =
   hstreamApiCreateStream (mkClientNormalRequest def
     { API.streamStreamName        = TL.fromStrict sName
     , API.streamReplicationFactor = fromIntegral rFac})
-  >>= printResult
 
-executeShowPlan :: HStreamClientApi -> ShowObject -> IO ()
-executeShowPlan API.HStreamApi{..} showObject =
-  case showObject of
-    SStreams    -> hstreamApiListStreams requestDefault >>= printResult
-    SViews      -> hstreamApiListViews   requestDefault >>= printResult
-    SQueries    -> hstreamApiListQueries requestDefault >>= printResult
-    SConnectors -> hstreamApiListConnectors requestDefault >>= printResult
+listStreams :: HStreamClientApi -> IO (ClientResult 'Normal API.ListStreamsResponse)
+listStreams API.HStreamApi{..} = hstreamApiListStreams requestDefault
+listViews :: HStreamClientApi -> IO (ClientResult 'Normal API.ListViewsResponse)
+listViews API.HStreamApi{..} = hstreamApiListViews requestDefault
+listQueries :: HStreamClientApi -> IO (ClientResult 'Normal API.ListQueriesResponse)
+listQueries API.HStreamApi{..} = hstreamApiListQueries requestDefault
+listConnectors :: HStreamClientApi -> IO (ClientResult 'Normal API.ListConnectorsResponse)
+listConnectors API.HStreamApi{..} = hstreamApiListConnectors requestDefault
 
-executeTerminatePlan :: HStreamClientApi -> TerminationSelection -> IO ()
-executeTerminatePlan API.HStreamApi{..} (OneQuery qid) =
+terminateQueries :: HStreamClientApi
+  -> TerminationSelection
+  -> IO (ClientResult 'Normal API.TerminateQueriesResponse )
+terminateQueries API.HStreamApi{..} (OneQuery qid) =
   hstreamApiTerminateQueries
     (mkClientNormalRequest def{API.terminateQueriesRequestQueryId = V.singleton $ cBytesToLazyText qid})
-  >> putStr "Done. No results.\n"
-executeTerminatePlan API.HStreamApi{..} AllQueries =
+terminateQueries API.HStreamApi{..} AllQueries =
   hstreamApiTerminateQueries
     (mkClientNormalRequest def{API.terminateQueriesRequestAll = True})
-  >> putStr "Done. No results.\n"
-executeTerminatePlan _ (ManyQueries _) = Log.e $ Log.buildText "Not Supported.\n"
+terminateQueries API.HStreamApi{..} (ManyQueries qids) =
+  hstreamApiTerminateQueries
+    (mkClientNormalRequest
+      def {API.terminateQueriesRequestQueryId = V.fromList $ cBytesToLazyText <$> qids})
 
-executeDropPlan :: HStreamClientApi -> Bool -> DropObject -> IO ()
-executeDropPlan API.HStreamApi{..} checkIfExist dropObject = do
+dropAction :: HStreamClientApi -> Bool -> DropObject -> IO (ClientResult 'Normal Empty)
+dropAction API.HStreamApi{..} checkIfExist dropObject = do
   case dropObject of
     DStream    txt -> hstreamApiDeleteStream (mkClientNormalRequest def
                       { API.deleteStreamRequestStreamName     = T.fromStrict txt
                       , API.deleteStreamRequestIgnoreNonExist = checkIfExist
                       })
-      >>= printResult
+
     DView      txt -> hstreamApiDeleteView (mkClientNormalRequest def
                       { API.deleteViewRequestViewId = T.fromStrict txt
                       -- , API.deleteViewRequestIgnoreNonExist = checkIfExist
                       })
-      >>= printResult
+
     DConnector txt -> hstreamApiDeleteConnector (mkClientNormalRequest def
                       { API.deleteConnectorRequestId = T.fromStrict txt
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
-      >>= printResult
 
-executeInsertPlan :: HStreamClientApi -> StreamName -> InsertType -> BS.ByteString -> IO ()
-executeInsertPlan API.HStreamApi{..} sName insertType payload = do
+insertIntoStream :: HStreamClientApi
+  -> StreamName -> InsertType -> BS.ByteString
+  -> IO (ClientResult 'Normal API.AppendResponse)
+insertIntoStream API.HStreamApi{..} sName insertType payload = do
   timestamp <- getProtoTimestamp
   let header = case insertType of
         JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
@@ -88,27 +87,19 @@ executeInsertPlan API.HStreamApi{..} sName insertType payload = do
     { API.appendRequestStreamName = TL.fromStrict sName
     , API.appendRequestRecords    = V.singleton record
     })
-  >>= printResult
 
---------------------------------------------------------------------------------
-
-executeCreateBySelect :: HStreamClientApi -> T.Text -> Int -> [String] -> IO ()
-executeCreateBySelect API.HStreamApi{..} sName rFac sql =
+createStreamBySelect :: HStreamClientApi
+  -> T.Text -> Int -> [String]
+  -> IO (ClientResult 'Normal API.CreateQueryStreamResponse)
+createStreamBySelect API.HStreamApi{..} sName rFac sql =
   hstreamApiCreateQueryStream (mkClientNormalRequest def
     { API.createQueryStreamRequestQueryStream
         = Just def
         { API.streamStreamName        = sName
         , API.streamReplicationFactor = fromIntegral rFac}
     , API.createQueryStreamRequestQueryStatements = extractSelect sql})
-  >>= printResult
 
 --------------------------------------------------------------------------------
-
-getWidth :: IO Int
-getWidth = getTerminalSize <&> (\case Nothing -> 80; Just (_, w) -> w)
-
-printResult :: Format a => a -> IO ()
-printResult resp = getWidth >>= putStr . flip formatResult resp
 
 requestDefault :: HasDefault a => ClientRequest 'Normal a b
 requestDefault = mkClientNormalRequest def

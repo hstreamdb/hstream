@@ -58,7 +58,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
     _ -> returnErrResp StatusInternal (StatusDetails $ BSC.pack "inconsistent method called")
   where
     mkLogAttrs = HS.LogAttrs . HS.HsLogAttrs scDefaultStreamRepFactor
-    create sName = HS.createStream scLDClient (HCH.transToStreamName sName) (mkLogAttrs Map.empty)
+    create sName = HS.createStream scLDClient (HCH.transToViewStreamName sName) (mkLogAttrs Map.empty)
 
 listViewsHandler
   :: ServerContext

@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 
+
 -- TODO: consider moving this module to common package
 module HStream.SpecUtils where
 
@@ -30,14 +31,18 @@ import qualified Database.ClickHouseDriver.Types  as ClickHouse
 import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
+import           Proto3.Suite                     (def)
 import           System.Environment               (lookupEnv)
 import qualified System.IO.Streams                as Streams
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
 
+import           HStream.Client.Action
+import           HStream.SQL
 import           HStream.Server.HStreamApi
-import           HStream.ThirdParty.Protobuf      (Struct (..), Value (Value),
+import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
+                                                   Value (Value),
                                                    ValueKind (ValueKindStructValue))
 import           HStream.Utils
 
@@ -260,3 +265,41 @@ fetchClickHouse source =
     case q of
       Right res -> return res
       _         -> return V.empty
+
+--------------------------------------------------------------------------------
+
+runCreateStreamSql :: HStreamClientApi -> TL.Text -> Expectation
+runCreateStreamSql api sql = do
+  CreatePlan sName rFac <- streamCodegen $ TL.toStrict sql
+  createStream api sName rFac `grpcShouldReturn`
+    def { streamStreamName = TL.fromStrict sName,
+          streamReplicationFactor = fromIntegral rFac}
+
+runInsertSql :: HStreamClientApi -> TL.Text -> Expectation
+runInsertSql api sql = do
+  InsertPlan sName insertType payload <- streamCodegen $ TL.toStrict sql
+  resp <- getServerResp =<< insertIntoStream api sName insertType payload
+  appendResponseStreamName resp `shouldBe` TL.fromStrict sName
+
+runCreateWithSelectSql :: HStreamClientApi -> TL.Text -> Expectation
+runCreateWithSelectSql api sql = do
+  RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine $ TL.toStrict sql
+  resp <- getServerResp =<< createStreamBySelect api (TL.fromStrict stream) (rRepFactor rOptions) (words $ TL.unpack sql)
+  createQueryStreamResponseQueryStream resp `shouldBe`
+    Just def { streamStreamName = TL.fromStrict stream
+             , streamReplicationFactor = fromIntegral $ rRepFactor rOptions}
+
+runShowStreamsSql :: HStreamClientApi -> TL.Text -> IO String
+runShowStreamsSql api sql = do
+  ShowPlan SStreams <- streamCodegen $ TL.toStrict sql
+  formatResult 0 <$> listStreams api
+
+runShowViewsSql :: HStreamClientApi -> TL.Text -> IO String
+runShowViewsSql api sql = do
+  ShowPlan SViews <- streamCodegen $ TL.toStrict sql
+  formatResult 0 <$> listViews api
+
+runDropSql :: HStreamClientApi -> TL.Text -> Expectation
+runDropSql api sql = do
+  DropPlan checkIfExists dropObj <- streamCodegen $ TL.toStrict sql
+  dropAction api checkIfExists dropObj `grpcShouldReturn` Empty
