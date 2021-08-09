@@ -314,7 +314,24 @@ message RestartQueryResponse {
 
 // Connector Related Request and Response
 message CreateSinkConnectorRequest {
-  string sql = 1;
+  string id = 1;
+  bool ifNotExist = 2;
+  string source = 3;
+  string sinkType = 4;
+  BaseConnectorOpts opts = 5;
+}
+
+message BaseConnectorOpts {
+  // Optional.
+  string host = 1;
+  // Required.
+  int32  port = 2;
+  // Optional.
+  string database = 3;
+  // Optional.
+  string username = 4;
+  // Optional.
+  string password = 5;
 }
 
 message ListConnectorsRequest {}
@@ -331,7 +348,9 @@ message Connector {
   string id = 1;
   int32 status = 2;
   int64 createdTime = 3;
-  string sql = 4;
+  string sinkType = 4;
+  string source = 5;
+  BaseConnectorOpts opts = 6;
 }
 
 message DeleteConnectorRequest {

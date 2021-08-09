@@ -9,10 +9,14 @@ module HStream.Server.Handler.Connector where
 
 import           Control.Exception                (throwIO)
 import           Control.Monad                    (unless, void, when)
+import qualified Data.ByteString.Char8            as BSC
 import           Data.Functor                     ((<&>))
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import qualified Database.ClickHouseDriver.Client as ClickHouse
+import qualified Database.ClickHouseDriver.Types  as ClickHouse
+import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
@@ -37,14 +41,43 @@ import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (cBytesToLazyText,
                                                    lazyTextToCBytes, returnResp)
 
+buildConnectorConfig :: String -> BaseConnectorOpts -> CodeGen.ConnectorConfig
+buildConnectorConfig cType opts =
+  case cType of
+    "clickhouse" -> Codegen.ClickhouseConnector createClickhouseSinkConnector
+    "mysql"      -> Codegen.MySqlConnector createMysqlSinkConnector
+  where
+    getByteStringWithDefault def val = if val == "" then def else BSC.pack . TL.unpack $ val
+    createClickhouseSinkConnector = ClickHouse.ConnParams
+      (getByteStringWithDefault "default" (baseConnectorOptsUsername opts))
+      (getByteStringWithDefault "127.0.0.1" (baseConnectorOptsHost opts))
+      (BSC.pack . show $ baseConnectorOptsPort opts)
+      (getByteStringWithDefault "" (baseConnectorOptsPassword opts))
+      False (getByteStringWithDefault "default" (baseConnectorOptsDatabase opts))
+    createMysqlSinkConnector = MySQL.ConnectInfo
+      (getByteStringWithDefault "127.0.0.1" (baseConnectorOptsHost opts))
+      (BSC.pack . show $ baseConnectorOptsPort opts)
+      False (getByteStringWithDefault "mysql" (baseConnectorOptsDatabase opts))
+      (getByteStringWithDefault "root" (baseConnectorOptsUsername opts))
+      (getByteStringWithDefault "password" (baseConnectorOptsPassword opts)) 33
+
 createSinkConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateSinkConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
 createSinkConnectorHandler sc
   (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = defaultExceptionHandle $ do
-    connector <- createConnector sc (TL.toStrict createSinkConnectorRequestSql)
-    returnResp connector
+    case createSinkConnectorRequestOpts of
+      Just createSinkConnectorRequestOpts -> do
+        let connectorConfig = buildConnectorConfig (TL.unpack createSinkConnectorRequestSinkType) createSinkConnectorRequestOpts
+        connector <- createConnector
+                      sc
+                      (TL.toStrict createSinkConnectorRequestId)
+                      createSinkConnectorRequestIfNotExist
+                      (TL.toStrict createSinkConnectorRequestSource)
+                      connectorConfig
+        returnResp connector
+      _ -> returnErrResp StatusInternal "createSinkConnectorRequestOpts is required"
 
 listConnectorsHandler
   :: ServerContext
@@ -105,11 +138,20 @@ hstreamConnectorToConnector P.PersistentConnector{..} =
   Connector (cBytesToLazyText connectorId)
     (fromIntegral . fromEnum  $ connectorStatus)
     connectorCreatedTime
-    (TL.pack . ZT.unpack $ connectorBindedSql)
+    (TL.pack connectorSinkType)
+    (TL.pack connectorSourceStream)
+    baseConnectorOpts
+  where
+    baseConnectorOpts = BaseConnectorOpts
+      { baseConnectorOptsHost = (TL.pack . host $ connectorOpts)
+      , baseConnectorOptsPort = (fromIntegral . port $ connectorOpts)
+      , baseConnectorOptsDatabase = (TL.pack . database $ connectorOpts)
+      , baseConnectorOptsUsername = (TL.pack . username $ connectorOpts)
+      , baseConnectorOptsPassword = (TL.pack . password $ connectorOpts)
+      } 
 
-createConnector :: ServerContext -> T.Text -> IO Connector
-createConnector sc@ServerContext{..} sql = do
-  (CodeGen.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) <- CodeGen.streamCodegen sql
+createConnector :: ServerContext -> T.Text -> Bool -> T.Text -> CodeGen.ConnectorConfig -> IO Connector
+createConnector sc@ServerContext{..} cName ifNotExist sName cConfig = do
   Log.debug $ "CreateConnector CodeGen"
            <> ", connector name: " <> Log.buildText cName
            <> ", stream name: " <> Log.buildText sName
@@ -127,14 +169,13 @@ createConnector sc@ServerContext{..} sql = do
     return $ hstreamConnectorToConnector connector
   else do
     MkSystemTime timestamp _ <- getSystemTime'
-    P.withMaybeZHandle zkHandle $ P.insertConnector cid sql timestamp
+    P.withMaybeZHandle zkHandle $ P.insertConnector cid  sql timestamp
     handleCreateSinkConnector sc cid sName cConfig <&> hstreamConnectorToConnector
 
 restartConnector :: ServerContext -> CB.CBytes -> IO ()
 restartConnector sc@ServerContext{..} cid = do
-  P.PersistentConnector _ sql _ _ _ <- P.withMaybeZHandle zkHandle $ P.getConnector cid
-  (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
-    <- CodeGen.streamCodegen (T.pack . ZT.unpack $ sql)
+  P.PersistentConnector cName sinkType sName cOpts ifNotExist _ _ _ <- P.withMaybeZHandle zkHandle $ P.getConnector cid
   streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
   unless streamExists $ throwIO StreamNotExist
+  let cConfig = buildConnectorConfig sinkType cOpts
   void $ handleCreateSinkConnector sc cid sName cConfig

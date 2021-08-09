@@ -21,18 +21,25 @@ getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
 getConnectorResponseIdIs targetId (Connector connectorId _ _ _ ) = connectorId == targetId
 
 -- TODO: mv to hstream-client library
-
-createSinkConnector :: TL.Text -> IO (Maybe Connector)
-createSinkConnector sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let createSinkConnectorRequest = CreateSinkConnectorRequest { createSinkConnectorRequestSql = sql }
-  resp <- hstreamApiCreateSinkConnector (ClientNormalRequest createSinkConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Create Connector Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
+createMysqlSinkConnector :: TL.Text -> Bool -> TL.Text -> TL.Text -> IO (Maybe Connector)
+createMysqlSinkConnector cName ifNotExist sName cType = withGRPCClient clientConfig $ \client -> do
+    HStreamApi{..} <- hstreamApiClient client
+    let createSinkConnectorRequest = CreateSinkConnectorRequest
+                                      { createSinkConnectorRequestId = cName
+                                      , createSinkConnectorRequestIfNotExist = ifNotExist
+                                      , createSinkConnectorRequestSource = sName
+                                      , createSinkConnectorRequestSinkType = cType
+                                      , createSinkConnectorRequestOpts = connectorOpts
+                                      }
+    resp <- hstreamApiCreateSinkConnector (ClientNormalRequest createSinkConnectorRequest 100 (MetadataMap Map.empty))
+    case resp of
+      ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just x
+      ClientErrorResponse clientError -> do
+        putStrLn $ "Create Connector Client Error: " <> show clientError
+        return Nothing
+      _ -> return Nothing
+  where
+    connectorOpts = BaseConnectorOpts { baseConnectorOptsPort = read . fromMaybe "3306" <$> lookupEnv "MYSQL_LOCAL_PORT" }
 
 listConnectors :: IO (Maybe ListConnectorsResponse)
 listConnectors = withGRPCClient clientConfig $ \client -> do
@@ -105,7 +112,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
     executeCommandQuery' ("CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);")
       `shouldReturn` querySuccessResp
 
-    createSinkConnector (createMySqlConnectorSql mysqlConnector source1)
+    createMysqlSinkConnector mysqlConnector True source1 mysqlConnector
       >>= (`shouldSatisfy` isJust)
 
   it "list connectors" $ do

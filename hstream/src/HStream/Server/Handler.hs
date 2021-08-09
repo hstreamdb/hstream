@@ -280,7 +280,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
-      createConnector sc (TL.toStrict commandQueryStmtText) >> returnCommandQueryEmptyResp
+      createConnector sc _cName _ifNotExist _sName _cConfig >> returnCommandQueryEmptyResp
     InsertPlan stream insertType payload -> do
       timestamp <- getProtoTimestamp
       let header = case insertType of

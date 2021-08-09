@@ -68,6 +68,7 @@ import           HStream.Utils                                   (genUnique)
 type StreamName     = HPT.StreamName
 type ViewName = T.Text
 type ConnectorName  = T.Text
+type ConnectorType = T.Text
 type SourceStream   = [StreamName]
 type SinkStream     = StreamName
 type CheckIfExist  = Bool
@@ -87,7 +88,7 @@ data ConnectorConfig
 data HStreamPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
   | CreatePlan          StreamName Int
-  | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
+  | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorType ConnectorConfig OtherOptions
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object)
   | InsertPlan          StreamName InsertType ByteString
@@ -141,8 +142,8 @@ streamCodegen input = do
 genCreateSinkConnectorPlan :: RCreate -> HStreamPlan
 genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
   case connectorType of
-    "clickhouse" -> CreateSinkConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []
-    "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName (MySqlConnector createMysqlSinkConnector) []
+    "clickhouse" -> CreateSinkConnectorPlan cName ifNotExist sName connectorType (ClickhouseConnector createClickhouseSinkConnector) []
+    "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName connectorType (MySqlConnector createMysqlSinkConnector) []
     _ -> throwSQLException CodegenException Nothing "Connector type not supported"
   where
     extractString = \case Just (ConstantString s) -> Just s; _ -> Nothing
