@@ -86,8 +86,10 @@ data Constant = ConstantNull
 
 data BinaryOp = OpAdd | OpSub | OpMul
               | OpAnd | OpOr
-              | OpContain | OpExcept | OpIntersect | OpRemove | OpUnion | OpArrJoin'
-              | OpIfNull  | OpNullIf
+              | OpContain | OpExcept  | OpIntersect | OpRemove | OpUnion | OpArrJoin'
+              | OpIfNull  | OpNullIf  | OpDateStr   | OpStrDate
+              | OpSplit   | OpChunksOf
+              | OpTake    | OpTakeEnd | OpDrop      | OpDropEnd
               deriving (Eq, Show)
 
 data UnaryOp  = OpSin      | OpSinh    | OpAsin   | OpAsinh  | OpCos   | OpCosh
@@ -141,6 +143,14 @@ instance Refine ValueExpr where -- FIXME: Inconsistent form (Position instead of
     (ExprScalarFunc _ (ArrayFuncRemove    _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpRemove    (refine e1) (refine e2)
     (ExprScalarFunc _ (ArrayFuncUnion     _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpUnion     (refine e1) (refine e2)
     (ExprScalarFunc _ (ArrayFuncJoinWith  _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpArrJoin'  (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncDateStr  _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpDateStr   (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncStrDate  _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpStrDate   (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncSplit    _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpSplit     (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncChunksOf _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpChunksOf  (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncTake     _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpTake      (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncTakeEnd  _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpTakeEnd   (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncDrop     _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpDrop      (refine e1) (refine e2)
+    (ExprScalarFunc _ (ScalarFuncDropEnd  _ e1 e2)) -> RExprBinOp (trimSpacesPrint expr) OpDropEnd   (refine e1) (refine e2)
     (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n) -- WARNING: May lose presision
     (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantNum $ refine n)
     (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantString s)

@@ -29,8 +29,13 @@ import           HStream.SQL.AST
 import           HStream.SQL.Exception (SomeRuntimeException (..),
                                         SomeSQLException (..),
                                         throwSQLException)
+import           HStream.Utils
+import qualified Prelude               as Prelude
 import           RIO
 import           Text.StringRandom     (stringRandomIO)
+import qualified Z.Data.CBytes         as ZCB
+import qualified Z.Data.Text           as ZT
+import           Z.IO.Time
 
 --------------------------------------------------------------------------------
 getFieldByName :: HasCallStack => Object -> Text -> Value
@@ -88,7 +93,46 @@ binOpOnValue OpUnion     _          Null       = Null
 binOpOnValue OpUnion     (Array xs) (Array ys) = Array  (nub $ xs <> ys)
 binOpOnValue OpArrJoin'  (Array xs) (String s) = String (arrJoinPrim xs (Just s))
 binOpOnValue OpIfNull Null x = x
+binOpOnValue OpIfNull x    _ = x
 binOpOnValue OpNullIf x y = if x == y then Null else x
+binOpOnValue OpDateStr (Number date) (String fmt) = String $ dateToStrGMT date fmt
+binOpOnValue OpStrDate (String date) (String fmt) = Number $ strToDateGMT date fmt
+binOpOnValue OpSplit Null _    = Null
+binOpOnValue OpSplit _    Null = Null
+binOpOnValue OpSplit (String x) (String xs) = Array . V.fromList $ String <$>
+  (if T.length x == 1
+    then T.split (== T.head x)
+    else T.splitOn x) xs
+binOpOnValue OpChunksOf _ Null = Null
+binOpOnValue OpChunksOf (Number n) (String xs) = Array . V.fromList $ String <$>
+  T.chunksOf (case toBoundedInteger n of
+    Just x -> x
+    _ -> throwSQLException CodegenException Nothing
+      ("Operation OpChunksOf on chunks of size " ++ show n ++ " is not supported")) xs
+binOpOnValue OpTake _ Null = Null
+binOpOnValue OpTake (Number n) (String xs) = String $
+  T.take (case toBoundedInteger n of
+    Just x -> x
+    _ -> throwSQLException CodegenException Nothing
+      ("Operation OpTake on size " ++ show n ++ " is not supported")) xs
+binOpOnValue OpTakeEnd _ Null = Null
+binOpOnValue OpTakeEnd (Number n) (String xs) = String $
+  T.takeEnd (case toBoundedInteger n of
+    Just x -> x
+    _ -> throwSQLException CodegenException Nothing
+      ("Operation OpTakeEnd on size " ++ show n ++ " is not supported")) xs
+binOpOnValue OpDrop _ Null = Null
+binOpOnValue OpDrop (Number n) (String xs) = String $
+  T.drop (case toBoundedInteger n of
+    Just x -> x
+    _ -> throwSQLException CodegenException Nothing
+      ("Operation OpDrop on size " ++ show n ++ " is not supported")) xs
+binOpOnValue OpDropEnd _ Null = Null
+binOpOnValue OpDropEnd (Number n) (String xs) = String $
+  T.dropEnd (case toBoundedInteger n of
+    Just x -> x
+    _ -> throwSQLException CodegenException Nothing
+      ("Operation OpDropEnd on size " ++ show n ++ " is not supported")) xs
 binOpOnValue op v1 v2 =
   throwSQLException CodegenException Nothing ("Operation " <> show op <> " on " <> show v1 <> " and " <> show v2 <> " is not supported")
 
@@ -230,3 +274,29 @@ arrJoinPrim xs delimiterM | null xs = T.empty
 ifNull :: Value -> Value -> Value
 ifNull Null = id
 ifNull x    = const x
+
+strToDateGMT :: T.Text -> T.Text -> Scientific
+strToDateGMT date fmt = parseSystemTimeGMT (case timeFmt fmt of
+  Just x -> x
+  _ -> throwSQLException CodegenException Nothing
+    ("Operation OpStrDate on time format " <> show fmt <> " is not supported")) (textToCBytes date)
+      & systemSeconds & Prelude.toInteger & flip scientific 0
+
+dateToStrGMT :: Scientific -> T.Text -> T.Text
+dateToStrGMT date fmt =
+  let sysTime = MkSystemTime (case toBoundedInteger date of
+        Just x -> x
+        _ -> throwSQLException CodegenException Nothing "Impossible happened...") 0
+  in formatSystemTimeGMT (case timeFmt fmt of
+  Just x -> x
+  _ -> throwSQLException CodegenException Nothing
+    ("Operation OpDateStr on time format " <> show fmt <> " is not supported")) sysTime
+      & cBytesToText
+
+timeFmt :: T.Text -> Maybe ZCB.CBytes
+timeFmt fmt
+  | textToCBytes fmt == simpleDateFormat  = Just simpleDateFormat
+  | textToCBytes fmt == iso8061DateFormat = Just iso8061DateFormat
+  | textToCBytes fmt == webDateFormat     = Just webDateFormat
+  | textToCBytes fmt == mailDateFormat    = Just mailDateFormat
+  | otherwise                             = Nothing
