@@ -6,7 +6,6 @@
 
 module HStream.RunQuerySpec (spec) where
 
-import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
@@ -101,27 +100,21 @@ restartQuery qid = withGRPCClient clientConfig $ \client -> do
     _ -> return False
 
 spec :: Spec
-spec = describe "HStream.RunQuerySpec" $ do
+spec = aroundAll provideHstreamApi $
+  describe "HStream.RunQuerySpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   source1 <- runIO $ TL.fromStrict <$> newRandomText 20
   let queryname1 = "testquery1"
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+  it "clean streams" $ \api -> do
+    runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
 
-  it "create streams" $
-    ( do
-        res1 <- executeCommandQuery $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+  it "create streams" $ \api ->
+    runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
 
-  it "create query" $
+  it "create query" $ \_ ->
     ( do
         res <- createQuery queryname1 ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
         case res of
@@ -129,7 +122,7 @@ spec = describe "HStream.RunQuerySpec" $ do
           _      -> return False
     ) `shouldReturn` True
 
-  it "list queries" $
+  it "list queries" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
         let record = V.find (getQueryResponseIdIs queryname1) queries
@@ -138,7 +131,7 @@ spec = describe "HStream.RunQuerySpec" $ do
           _      -> return False
     ) `shouldReturn` True
 
-  it "get query" $
+  it "get query" $ \_ ->
     ( do
         query <- getQuery queryname1
         case query of
@@ -146,7 +139,7 @@ spec = describe "HStream.RunQuerySpec" $ do
           _      -> return False
     ) `shouldReturn` True
 
-  it "Terminate query" $
+  it "Terminate query" $ \_ ->
     ( do
         _ <- terminateQuery queryname1
         query <- getQuery queryname1
@@ -156,7 +149,7 @@ spec = describe "HStream.RunQuerySpec" $ do
           _                     -> return False
     ) `shouldReturn` True
 
-  it "restart query" $
+  it "restart query" $ \_ ->
     ( do
         _ <- restartQuery queryname1
         query <- getQuery queryname1
@@ -166,7 +159,7 @@ spec = describe "HStream.RunQuerySpec" $ do
           _                     -> return False
     ) `shouldReturn` True
 
-  it "delete query" $
+  it "delete query" $ \_ ->
     ( do
         _ <- terminateQuery queryname1
         _ <- deleteQuery queryname1
@@ -176,9 +169,5 @@ spec = describe "HStream.RunQuerySpec" $ do
           _            -> return False
     ) `shouldReturn` False
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+  it "clean streams" $ \api -> do
+    runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"

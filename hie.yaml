@@ -13,7 +13,7 @@ cradle:
 
     - path: "common/gen-src"
       component: "lib:hstream-common"
-    - path: "common"
+    - path: "common/HStream"
       component: "lib:hstream-common"
     - path: "common/test"
       component: "hstream-common:test:hstream-common-test"

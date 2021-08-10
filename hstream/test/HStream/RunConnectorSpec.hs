@@ -6,7 +6,7 @@
 
 module HStream.RunConnectorSpec (spec) where
 
-import qualified Data.List                        as L
+import           Control.Concurrent               (threadDelay)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (isJust)
 import qualified Data.Text.Lazy                   as TL
@@ -75,7 +75,7 @@ deleteConnector connectorId = withGRPCClient clientConfig $ \client -> do
 terminateConnector :: TL.Text -> IO Bool
 terminateConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestId = connectorId }
+  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestConnectorId = connectorId }
   resp <- hstreamApiTerminateConnector (ClientNormalRequest terminateConnectorRequest 100 (MetadataMap Map.empty))
   case resp of
     ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
@@ -97,30 +97,29 @@ restartConnector connectorId = withGRPCClient clientConfig $ \client -> do
     _ -> return False
 
 spec :: Spec
-spec = describe "HStream.RunConnectorSpec" $ do
+spec = aroundAll provideHstreamApi $
+  describe "HStream.RunConnectorSpec" $ do
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
   runIO setupSigsegvHandler
   source1 <- runIO $ TL.fromStrict <$> newRandomText 20
   let mysqlConnector = "mysql"
 
-  it "create mysql sink connector" $ do
-    executeCommandQuery' ("DROP STREAM " <> source1 <> " IF EXISTS ;")
-      `shouldReturn` querySuccessResp
-    executeCommandQuery' ("CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);")
-      `shouldReturn` querySuccessResp
+  it "create mysql sink connector" $ \api -> do
+    runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS ;"
+    runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
 
     createSinkConnector (createMySqlConnectorSql mysqlConnector source1)
       >>= (`shouldSatisfy` isJust)
 
-  it "list connectors" $ do
+  it "list connectors" $ \_ -> do
     Just ListConnectorsResponse {listConnectorsResponseConnectors = connectors} <- listConnectors
     let record = V.find (getConnectorResponseIdIs mysqlConnector) connectors
     record `shouldSatisfy` isJust
 
-  it "get connector" $ do
+  it "get connector" $ \_ -> do
     getConnector mysqlConnector >>= (`shouldSatisfy` isJust)
 
-  it "terminate connector" $
+  it "terminate connector" $ \_ ->
     ( do
         _ <- terminateConnector mysqlConnector
         connector <- getConnector mysqlConnector
@@ -130,7 +129,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
           _                        -> return False
     ) `shouldReturn` True
 
-  it "restart connector" $
+  it "restart connector" $ \_ ->
     ( do
         _ <- restartConnector mysqlConnector
         connector <- getConnector mysqlConnector
@@ -140,8 +139,9 @@ spec = describe "HStream.RunConnectorSpec" $ do
           _                        -> return False
     ) `shouldReturn` True
 
-  it "delete connector" $
+  it "delete connector" $ \_ ->
     ( do
+        threadDelay 4000000
         _ <- terminateConnector mysqlConnector
         _ <- deleteConnector mysqlConnector
         connector <- getConnector mysqlConnector
@@ -150,9 +150,5 @@ spec = describe "HStream.RunConnectorSpec" $ do
           _                -> return False
     ) `shouldReturn` False
 
-  it "clean streams" $
-    ( do
-        setLogDeviceDbgLevel C_DBG_ERROR
-        res1 <- executeCommandQuery $ "DROP STREAM " <> source1 <> " IF EXISTS ;"
-        return [res1]
-    ) `shouldReturn` L.replicate 1 (Just querySuccessResp)
+  it "clean streams" $ \api -> do
+    runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS ;"

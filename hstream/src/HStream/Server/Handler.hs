@@ -11,16 +11,15 @@ module HStream.Server.Handler where
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Suspend            (msDelay)
-import           Control.Concurrent.Timer
+import           Control.Concurrent.Timer              (newTimer, repeatedStart)
 import           Control.Exception                     (handle, throwIO)
 import           Control.Monad                         (void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.ByteString                       (ByteString)
 import           Data.Function                         (on)
 import qualified Data.HashMap.Strict                   as HM
-import           Data.IORef                            (IORef,
-                                                        atomicModifyIORef',
-                                                        newIORef, readIORef)
+import           Data.IORef                            (atomicModifyIORef',
+                                                        readIORef)
 import           Data.Int                              (Int64)
 import qualified Data.List                             as L
 import qualified Data.Map.Strict                       as Map
@@ -30,18 +29,19 @@ import qualified Data.Text                             as T
 import qualified Data.Text.Lazy                        as TL
 import qualified Data.Vector                           as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                          (Enumerated (..))
-import           System.IO.Unsafe                      (unsafePerformIO)
+import           Proto3.Suite                          (Enumerated (..),
+                                                        HasDefault (def))
 import qualified Z.Data.CBytes                         as CB
-import qualified Z.Data.JSON                           as ZJ
 import           Z.Data.Vector                         (Bytes)
 import           Z.Foreign                             (toByteString)
 import           ZooKeeper.Types                       (ZHandle)
 
 import           HStream.Connector.HStore
 import qualified HStream.Logger                        as Log
-import           HStream.Processing.Connector
-import           HStream.Processing.Encoding
+import           HStream.Processing.Connector          (SourceConnector (..))
+import           HStream.Processing.Encoding           (Deserializer (..),
+                                                        Serde (..),
+                                                        Serializer (..))
 import           HStream.Processing.Processor          (getTaskName)
 import           HStream.Processing.Store
 import           HStream.Processing.Stream             (Materialized (..))
@@ -87,12 +87,6 @@ import           HStream.Utils
 
 --------------------------------------------------------------------------------
 
-groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
-groupbyStores = unsafePerformIO $ newIORef HM.empty
-{-# NOINLINE groupbyStores #-}
-
---------------------------------------------------------------------------------
-
 handlers
   :: S.LDClient
   -> AA.HeaderConfig AA.AdminAPI
@@ -130,14 +124,14 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
 
     -- Subscribe
     , hstreamApiCreateSubscription = createSubscriptionHandler serverContext
-    , hstreamApiSubscribe        = subscribeHandler serverContext
-    , hstreamApiDeleteSubscription  = deleteSubscriptionHandler serverContext
-    , hstreamApiListSubscriptions = listSubscriptionsHandler serverContext
-    , hstreamApiCheckSubscriptionExist   = checkSubscriptionExistHandler serverContext
+    , hstreamApiSubscribe          = subscribeHandler serverContext
+    , hstreamApiDeleteSubscription = deleteSubscriptionHandler serverContext
+    , hstreamApiListSubscriptions  = listSubscriptionsHandler serverContext
+    , hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext
 
     -- Consume
-    , hstreamApiFetch            = fetchHandler serverContext
-    , hstreamApiCommitOffset     = commitOffsetHandler serverContext
+    , hstreamApiFetch        = fetchHandler serverContext
+    , hstreamApiCommitOffset = commitOffsetHandler serverContext
     , hstreamApiSendConsumerHeartbeat = consumerHeartbeatHandler serverContext
 
     , hstreamApiExecuteQuery     = executeQueryHandler serverContext
@@ -196,17 +190,9 @@ deleteStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteStreamHandler sc@ServerContext{..} (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
+deleteStreamHandler sc (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
   let name = TL.toStrict deleteStreamRequestStreamName
-  streamExists <- S.doesStreamExists scLDClient (transToStreamName name)
-  if streamExists
-     then terminateQueryAndRemove sc (textToCBytes name)
-       >> terminateRelatedQueries sc (textToCBytes name)
-       >> S.removeStream scLDClient (transToStreamName name)
-       >> returnResp Empty
-     else if deleteStreamRequestIgnoreNonExist
-             then returnResp Empty
-             else returnErrResp StatusInternal "Object does not exist"
+  dropHelper sc name deleteStreamRequestIgnoreNonExist False
 
 listStreamsHandler
   :: ServerContext
@@ -250,7 +236,8 @@ createQueryStreamHandler sc@ServerContext{..}
   void $ handleCreateAsSelect sc (Processing.build builder)
     createQueryStreamRequestQueryStatements query False
   let streamResp = Stream (TL.fromStrict sink) (fromIntegral rFac)
-      queryResp  = Query { queryId = TL.fromStrict tName }
+  -- FIXME: The value query returned should have been fully assigned
+      queryResp  = def { queryId = TL.fromStrict tName }
   returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
 
 --------------------------------------------------------------------------------
@@ -262,18 +249,8 @@ executeQueryHandler
 executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = defaultExceptionHandle $ do
   plan' <- streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
-    SelectPlan{}           -> returnErrResp StatusInternal "inconsistent method called"
+    SelectPlan{} -> returnErrResp StatusInternal "inconsistent method called"
     -- execute plans that can be executed with this method
-    CreatePlan stream _repFactor ->
-      create (transToStreamName stream) >> returnCommandQueryEmptyResp
-    ShowPlan showObject -> handleShowPlan sc showObject
-    DropPlan checkIfExist dropObject ->
-      handleDropPlan sc checkIfExist dropObject
-    CreateBySelectPlan sources sink taskBuilder _repFactor ->
-      create (transToStreamName sink)
-      >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
-        (P.StreamQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink)) False
-      >> returnCommandQueryEmptyResp
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
       create (transToViewStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
@@ -282,16 +259,6 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
       createConnector sc (TL.toStrict commandQueryStmtText) >> returnCommandQueryEmptyResp
-    InsertPlan stream insertType payload -> do
-      timestamp <- getProtoTimestamp
-      let header = case insertType of
-            JsonFormat -> buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
-            RawFormat  -> buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
-      let record = encodeRecord $ buildRecord header payload
-      void $ batchAppend scLDClient (TL.fromStrict stream) [record] cmpStrategy
-      returnCommandQueryEmptyResp
-    TerminatePlan terminationSelection -> do
-      handleQueryTerminate sc terminationSelection >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView{..} -> do
       hm <- readIORef groupbyStores
       case HM.lookup rSelectViewFrom hm of
@@ -317,6 +284,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
       execPlan <- genExecutionPlan sql
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
+    _ -> discard
   where
     mkLogAttrs = S.LogAttrs . S.HsLogAttrs scDefaultStreamRepFactor
     create sName = S.createStream scLDClient sName (mkLogAttrs Map.empty)
@@ -327,6 +295,8 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
           let result = runDeser (deserializer valueSerde) x
           returnCommandQueryResp
             (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
+    discard = (Log.e . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
+
 
 executePushQueryHandler
   :: ServerContext
@@ -359,60 +329,6 @@ executePushQueryHandler ServerContext{..}
         sendToClient zkHandle qid sc streamSend
     _ -> returnStreamingResp StatusInternal "inconsistent method called"
 
-handleDropPlan :: ServerContext -> Bool -> DropObject
-  -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleDropPlan sc@ServerContext{..} checkIfExist dropObject = defaultExceptionHandle $ do
-  case dropObject of
-    DConnector connector -> handleDropConnector connector
-    DStream stream       -> handleDropStream stream transToStreamName
-    DView view           -> do
-      atomicModifyIORef' groupbyStores (\hm -> (HM.delete view hm, ()))
-      handleDropStream view transToViewStreamName
-  where
-    handleDropStream :: T.Text -> (T.Text -> S.StreamId)
-                     -> IO (ServerResponse 'Normal CommandQueryResponse)
-    handleDropStream name toSName = do
-      streamExists <- S.doesStreamExists scLDClient (toSName name)
-      if streamExists
-         then terminateQueryAndRemove sc (textToCBytes name)
-           >> terminateRelatedQueries sc (textToCBytes name)
-           >> S.removeStream scLDClient (toSName name)
-           >> returnCommandQueryEmptyResp
-          else if checkIfExist
-                  then returnCommandQueryEmptyResp
-                  else returnErrResp StatusInternal "Object does not exist"
-    handleDropConnector :: T.Text -> IO (ServerResponse 'Normal CommandQueryResponse)
-    handleDropConnector name = do
-      handleTerminateConnector sc (textToCBytes name)
-      P.withMaybeZHandle zkHandle $ P.removeConnector (textToCBytes name)
-      returnCommandQueryEmptyResp
-
-handleShowPlan :: ServerContext -> ShowObject
-  -> IO (ServerResponse 'Normal CommandQueryResponse)
-handleShowPlan ServerContext{..} showObject = defaultExceptionHandle $ do
-  case showObject of
-    SStreams -> do
-      names <- S.findStreams scLDClient S.StreamTypeStream True
-      let resp = CommandQueryResponse . V.singleton . listToStruct "SHOWSTREAMS" . L.sort $
-            stringToValue . S.showStreamName <$> names
-      returnResp resp
-    SQueries -> do
-      queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWQUERIES" $
-            zJsonValueToValue . ZJ.toValue <$> queries
-      returnResp resp
-    SConnectors -> do
-      connectors <- P.withMaybeZHandle zkHandle P.getConnectors
-      let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWCONNECTORS" $
-            zJsonValueToValue . ZJ.toValue <$> connectors
-      returnResp resp
-    SViews -> do
-      queries <- P.withMaybeZHandle zkHandle P.getQueries
-      let views = map ((\(P.ViewQuery _ name _) -> name) . P.queryType) $
-                    filter P.isViewQuery queries
-      let resp =  CommandQueryResponse . V.singleton . listToStruct "SHOWVIEWS" $
-                    cBytesToValue <$> views
-      returnResp resp
 
 --------------------------------------------------------------------------------
 
@@ -469,12 +385,12 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
   res <- insertSubscribedReaders subscribedReaders subscriptionSubscriptionId None
   if res
-     then do
-       let sName = transToStreamName $ TL.toStrict subscriptionStreamName
-       createSubscribe scLDClient subscribedReaders sName
-     else do
-       -- subscriptionId has been used, return an error response
-       returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
+    then do
+      let sName = transToStreamName $ TL.toStrict subscriptionStreamName
+      createSubscribe scLDClient subscribedReaders sName
+    else do
+    -- subscriptionId has been used, return an error response
+    returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
   where
     createSubscribe :: S.LDClient -> SubscribedReaders -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
     createSubscribe client sReaders streamName = do
