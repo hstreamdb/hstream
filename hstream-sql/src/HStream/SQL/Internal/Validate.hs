@@ -6,7 +6,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.SQL.Validate
+module HStream.SQL.Internal.Validate
   ( Validate (..)
   ) where
 
