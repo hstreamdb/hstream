@@ -11,6 +11,10 @@ option java_multiple_files = true;
 option java_outer_classname = "HStreamProto";
 
 service HStreamApi {
+  // ---------------------------------------------------------------------------
+  // Stable APIs
+  // ---------------------------------------------------------------------------
+
   rpc Echo(EchoRequest) returns (EchoResponse);
 
   // Stream APIs
@@ -34,6 +38,10 @@ service HStreamApi {
   rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
   rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
+
+  // ---------------------------------------------------------------------------
+  // Developing APIs
+  // ---------------------------------------------------------------------------
 
   // only for push query
   // e.g., select (with emit changes)
