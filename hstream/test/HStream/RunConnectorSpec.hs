@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -15,7 +16,9 @@ import           Test.Hspec
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
-import           HStream.Store.Logger
+import           HStream.Store.Logger             (pattern C_DBG_ERROR,
+                                                   setLogDeviceDbgLevel)
+import           HStream.Utils                    (setupSigsegvHandler)
 
 getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
 getConnectorResponseIdIs targetId (Connector connectorId _ _ _ ) = connectorId == targetId
@@ -95,8 +98,9 @@ restartConnector connectorId = withGRPCClient clientConfig $ \client -> do
 
 spec :: Spec
 spec = describe "HStream.RunConnectorSpec" $ do
-  source1 <- runIO $ TL.fromStrict <$> newRandomText 20
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
+  runIO setupSigsegvHandler
+  source1 <- runIO $ TL.fromStrict <$> newRandomText 20
   let mysqlConnector = "mysql"
 
   it "create mysql sink connector" $ do

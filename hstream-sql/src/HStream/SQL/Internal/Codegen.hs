@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE StrictData        #-}
 
-module HStream.SQL.Codegen.Utils
+module HStream.SQL.Internal.Codegen
   ( getFieldByName
   , getFieldByName'
   , genRandomSinkStream

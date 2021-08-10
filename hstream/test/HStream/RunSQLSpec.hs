@@ -26,7 +26,9 @@ import           HStream.Utils
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
+  runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
+
   baseSpec
   connectorSpec
   viewSpec

@@ -9,7 +9,7 @@ module HStream.HandlerSpec (spec) where
 import           Control.Concurrent               (forkIO, killThread,
                                                    threadDelay)
 import           Control.Monad                    (forM_, forever, replicateM,
-                                                   void)
+                                                   unless, void, when)
 import qualified Data.ByteString                  as B
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
@@ -25,9 +25,11 @@ import           System.IO.Unsafe                 (unsafePerformIO)
 import           Test.Hspec
 import           Z.Foreign                        (toByteString)
 
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
-import           HStream.Store.Logger
+import           HStream.Store.Logger             (pattern C_DBG_ERROR,
+                                                   setLogDeviceDbgLevel)
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
@@ -58,9 +60,9 @@ spec =  do
              withGRPCClient clientConfig $ \client -> do
                runTest client
             ) $ describe "HStream.BasicHandlerSpec" $ do
-    baseSpec
-    subscribeSpec
-    consumerSpec
+   baseSpec
+   subscribeSpec
+   consumerSpec
 
 withRandomStreamName :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
 withRandomStreamName = provideRunTest setup clean
@@ -144,6 +146,7 @@ baseSpec = describe "BaseSpec" $ do
     -- after heartbeat timeout, sendHeartbeatRequest should return False
     threadDelay 2000000
     sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
+
 
 -------------------------------------------------------------------------------------------------
 
@@ -359,17 +362,18 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
 
   -- FIXME:
   it "test fetch request" $ \(client, reqPayloads) -> do
-    putStrLn $ "reqPayloads = " <> show reqPayloads
+    Log.debug $ Log.buildString "reqPayloads = " <> Log.buildString (show reqPayloads)
     resp <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 100
     let resPayloads = V.map getReceivedRecordPayload resp
-    putStrLn $ "respPayload = " <> show resPayloads
+    Log.debug $ Log.buildString "respPayload = " <> Log.buildString (show resPayloads)
     resPayloads `shouldBe` reqPayloads
 
   it "test multi consumer without commit" $ \(client, reqPayloads) -> do
-    putStrLn $ "payloads = " <> show reqPayloads
+    Log.debug $ Log.buildString "payloads = " <> Log.buildString (show reqPayloads)
     tid <- forkIO $ do
       forever $ do
-        void $ sendHeartbeatRequest client randomSubsciptionId
+        sRes <- sendHeartbeatRequest client randomSubsciptionId
+        unless sRes $ Log.e "sendHeartbeatRequest get an error!"
         threadDelay 500000
 
     resp1 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
@@ -378,6 +382,7 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     let resPayloads2 =  V.map getReceivedRecordPayload resp2
     let (first2Req, _) = V.splitAt 2 reqPayloads
     resPayloads1 V.++ resPayloads2 `shouldBe` first2Req
+    Log.debug "Kill the heartbeat thread."
     void $ killThread tid
 
     threadDelay 2000000
@@ -385,14 +390,16 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     -- fetch will get from the basic checkpoint
     subscribeRequest client randomSubsciptionId `shouldReturn` True
     resp3 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
+    V.length resp3 `shouldNotBe` 0
     let resPayloads3 = V.head $ V.map getReceivedRecordPayload resp3
     resPayloads3 `shouldBe` V.head reqPayloads
 
   it "test commitOffset request" $ \(client, reqPayloads) -> do
-    putStrLn $ "payloads = " <> show reqPayloads
+    Log.debug $ "payloads = " <> Log.buildString (show reqPayloads)
     tid <- forkIO $ do
       forever $ do
-        void $ sendHeartbeatRequest client randomSubsciptionId
+        sRes <- sendHeartbeatRequest client randomSubsciptionId
+        unless sRes $ Log.e "sendHeartbeatRequest get an error"
         threadDelay 500000
 
     resp1 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
@@ -400,7 +407,7 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     let resPayloads1 =  V.map getReceivedRecordPayload resp1
     let resPayloads2 =  V.map getReceivedRecordPayload resp2
     let (first2Req, remained) = V.splitAt 2 reqPayloads
-    putStrLn $ "first2Req = " <> show first2Req <> ", remained: " <> show remained
+    Log.debug . mconcat $ map Log.buildString ["first2Req = ", show first2Req, ", remained: ", show remained]
     resPayloads1 V.++ resPayloads2 `shouldBe` first2Req
 
     let recordId = fromJust . receivedRecordRecordId $ V.head resp2
@@ -409,16 +416,27 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     res <- V.replicateM 2 $ do
       resp <-fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
       return $ getReceivedRecordPayload . V.head $ resp
-    putStrLn $ "res = " <> show res
-    let (another2Req , _) = V.splitAt 2 remained
-    putStrLn $ "another2Req = " <> show another2Req
+    Log.debug $ "res = " <> Log.buildString (show res)
+    let (another2Req, _) = V.splitAt 2 remained
+    Log.debug $ "another2Req = " <> Log.buildString (show another2Req)
     res `shouldBe` another2Req
 
+    Log.debug "Kill the heartbeat thread."
     void $ killThread tid
     threadDelay 2000000
     -- when a new client subscribe the same subscriptionId, it should consume from the checkpoint.
     subscribeRequest client randomSubsciptionId `shouldReturn` True
     resp3 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
+    when (V.length resp3 == 0) $ do
+      Log.e "fetch after re-subscribe get an empty list."
+      sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
+      resp4 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
+      Log.debug $ "fetch again, resp4 = " <> Log.buildString (show resp4)
+      sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
+      subscriptions <- listSubscriptionRequest client
+      Log.debug $ "subscriptionId = " <> Log.buildLazyText randomSubsciptionId
+      Log.debug $ "current subscriptions: " <> Log.buildString (show subscriptions)
+    V.length resp3 `shouldNotBe` 0
     let resPayloads3 = V.head $ V.map getReceivedRecordPayload resp3
     resPayloads3 `shouldBe` V.head remained
 

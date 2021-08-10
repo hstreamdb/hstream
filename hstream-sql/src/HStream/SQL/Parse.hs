@@ -3,18 +3,18 @@ module HStream.SQL.Parse
   , parseAndRefine
   ) where
 
-import           Control.Exception      (throw)
-import           Data.Functor           ((<&>))
-import           Data.Text              (Text)
-import           GHC.Stack              (HasCallStack)
-import           HStream.SQL.AST        (RSQL, Refine (refine))
-import           HStream.SQL.Abs        (SQL)
-import           HStream.SQL.Exception  (SomeSQLException (..),
-                                         throwSQLException)
-import           HStream.SQL.Lex        (tokens)
-import           HStream.SQL.Par        (pSQL)
-import           HStream.SQL.Preprocess (preprocess)
-import           HStream.SQL.Validate   (Validate (validate))
+import           Control.Exception             (throw)
+import           Data.Functor                  ((<&>))
+import           Data.Text                     (Text)
+import           GHC.Stack                     (HasCallStack)
+import           HStream.SQL.AST               (RSQL, Refine (refine))
+import           HStream.SQL.Abs               (SQL)
+import           HStream.SQL.Exception         (SomeSQLException (..),
+                                                throwSQLException)
+import           HStream.SQL.Internal.Validate (Validate (validate))
+import           HStream.SQL.Lex               (tokens)
+import           HStream.SQL.Par               (pSQL)
+import           HStream.SQL.Preprocess        (preprocess)
 
 parse :: HasCallStack => Text -> IO SQL
 parse input = do
