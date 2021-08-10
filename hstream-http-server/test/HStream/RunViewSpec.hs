@@ -56,19 +56,18 @@ spec = describe "HStream.RunViewSpec" $ do
   it "view crud test" $ do
     -- clear streams
     _ <- deleteStream sName
-    _ <- deleteStream vName
+    _ <- deleteView vName
     -- create source stream
     _ <- createStream sName 3
     view <- createView sql
     view `shouldSatisfy` isJust
     views <- listViews
-    (length views >= 1) `shouldBe` True
-    case (head views) of
+    not (null views) `shouldBe` True
+    case head views of
       (ViewBO (Just vid) _ _ _) -> do
         view' <- getView (T.unpack vid)
         view' `shouldSatisfy` isJust
-        res <- deleteView (T.unpack vid)
+        res <- deleteView vName
         _ <- deleteStream sName
-        _ <- deleteStream vName
-        res `shouldBe` (Just True)
+        res `shouldBe` Just True
       (ViewBO vid _ _ _) -> vid `shouldSatisfy` isJust

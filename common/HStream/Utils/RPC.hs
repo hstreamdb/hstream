@@ -11,6 +11,7 @@ module HStream.Utils.RPC
   , returnCommandQueryEmptyResp
   , getServerResp
   , getProtoTimestamp
+  , isSuccessful
   ) where
 
 import qualified Data.Vector                   as V
@@ -68,3 +69,7 @@ getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do
   MkSystemTime sec nano <- getSystemTime'
   return $ Timestamp sec (fromIntegral nano)
+
+isSuccessful :: ClientResult 'Normal a -> Bool
+isSuccessful (ClientNormalResponse _ _ _ StatusOk _) = True
+isSuccessful _                                       = False

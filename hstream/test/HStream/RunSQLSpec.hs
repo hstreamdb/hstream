@@ -1,13 +1,11 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
-import           Control.Monad
 import qualified Data.Aeson                      as Aeson
 import qualified Data.List                       as L
 import qualified Data.Text.Lazy                  as TL
@@ -41,10 +39,10 @@ baseSpecAround = provideRunTest setup clean
   where
     setup api = do
       source <- TL.fromStrict <$> newRandomText 20
-      runQuerySimple_ api $ "CREATE STREAM " <> source <> " WITH (REPLICATE = 3);"
+      runCreateStreamSql api $ "CREATE STREAM " <> source <> " WITH (REPLICATE = 3);"
       return source
     clean api source =
-      runQuerySimple_ api $ "DROP STREAM " <> source <> " IF EXISTS;"
+      runDropSql api $ "DROP STREAM " <> source <> " IF EXISTS;"
 
 baseSpec :: Spec
 baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
@@ -56,8 +54,8 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- starts successfully before inserting data
       threadDelay 5000000
       Log.d $ "Insert into " <> Log.buildLazyText source <> " ..."
-      runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
-      runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
+      runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 80);")
+      runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (15, 10);")
 
     -- TODO
     executeCommandPushQuery ("SELECT * FROM " <> source <> " EMIT CHANGES;")
@@ -71,10 +69,10 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
       -- starts successfully before inserting data
       threadDelay 5000000
       Log.d $ "Insert into " <> Log.buildLazyText source <> " ..."
-      runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (1, 2);")
-      runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (2, 2);")
-      runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (3, 2);")
-      runQuerySimple_ api ("INSERT INTO " <> source <> " (a, b) VALUES (4, 3);")
+      runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (1, 2);")
+      runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (2, 2);")
+      runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (3, 2);")
+      runInsertSql api ("INSERT INTO " <> source <> " (a, b) VALUES (4, 3);")
 
     -- TODO
     executeCommandPushQuery ("SELECT SUM(a) AS result FROM " <> source <> " GROUP BY b EMIT CHANGES;")
@@ -92,12 +90,12 @@ connectorSpecAround = provideRunTest setup clean
   where
     setup api = do
       source <- TL.fromStrict <$> newRandomText 20
-      runQuerySimple_ api $ "CREATE STREAM " <> source <> ";"
+      runCreateStreamSql api $ "CREATE STREAM " <> source <> ";"
       createMysqlTable $ TL.toStrict source
       createClickHouseTable $ TL.toStrict source
       return source
     clean api source = do
-      runQuerySimple_ api $ "DROP STREAM " <> source <> " IF EXISTS;"
+      runDropSql api $ "DROP STREAM " <> source <> " IF EXISTS;"
       dropMysqlTable $ TL.toStrict source
       dropClickHouseTable $ TL.toStrict source
       -- TODO: drop connector
@@ -108,10 +106,10 @@ connectorSpec = aroundAll provideHstreamApi $ aroundWith connectorSpecAround $
 
   it "mysql connector" $ \(api, source) -> do
     runQuerySimple_ api (createMySqlConnectorSql ("mysql_" <> source) source)
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (12, 84);")
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 83);")
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (32, 82);")
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (42, 81);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (12, 84);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 83);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (32, 82);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (42, 81);")
     threadDelay 5000000
     fetchMysql (TL.toStrict source) `shouldReturn` [ [MySQLInt32 12, MySQLInt32 84]
                                                    , [MySQLInt32 22, MySQLInt32 83]
@@ -121,10 +119,10 @@ connectorSpec = aroundAll provideHstreamApi $ aroundWith connectorSpecAround $
 
   it "clickhouse connector" $ \(api, source) -> do
     runQuerySimple_ api (createClickHouseConnectorSql ("clickhouse_" <> source) source)
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (12, 84);")
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 83);")
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (32, 82);")
-    runQuerySimple_ api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (42, 81);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (12, 84);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 83);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (32, 82);")
+    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (42, 81);")
     threadDelay 5000000
     -- Note: ClickHouse does not return data in deterministic order by default,
     --       see [this answer](https://stackoverflow.com/questions/54786494/clickhouse-query-row-order-behaviour).
@@ -147,10 +145,10 @@ viewSpecAround = provideRunTest setup clean
       source1 <- ("runsql_view_source1_" <>) . TL.fromStrict <$> newRandomText 20
       source2 <- ("runsql_view_source2_" <>) . TL.fromStrict <$> newRandomText 20
       viewName <- ("runsql_view_view_" <>) . TL.fromStrict <$> newRandomText 20
-      runQuerySimple_ api $ "CREATE STREAM " <> source1 <> ";"
-      runQuerySimple_ api $ "CREATE STREAM " <> source2
-                         <> " AS SELECT a, 1 AS b FROM " <> source1
-                         <> " EMIT CHANGES;"
+      runCreateStreamSql     api $ "CREATE STREAM " <> source1 <> ";"
+      runCreateWithSelectSql api $ "CREATE STREAM " <> source2
+                                <> " AS SELECT a, 1 AS b FROM " <> source1
+                                <> " EMIT CHANGES;"
       runQuerySimple_ api $ "CREATE VIEW " <> viewName
                          <> " AS SELECT SUM(a) FROM " <> source2
                          <> " GROUP BY b EMIT CHANGES;"
@@ -158,9 +156,9 @@ viewSpecAround = provideRunTest setup clean
       threadDelay 2000000
       return (source1, source2, viewName)
     clean api (source1, source2, viewName) = do
-      runQuerySimple_ api $ "DROP VIEW " <> viewName <> " IF EXISTS;"
-      runQuerySimple_ api $ "DROP STREAM " <> source2 <> " IF EXISTS;"
-      runQuerySimple_ api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
+      runDropSql api $ "DROP VIEW " <> viewName <> " IF EXISTS;"
+      runDropSql api $ "DROP STREAM " <> source2 <> " IF EXISTS;"
+      runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
 
 viewSpec :: Spec
 viewSpec =
@@ -168,24 +166,24 @@ viewSpec =
   describe "ViewSpec" $ parallel $ do
 
   it "show streams should not include views" $ \(api, (_s1, _s2, view)) -> do
-    res <- getServerResp =<< runQuerySimple api "SHOW STREAMS;"
-    L.sort (words (formatCommandQueryResponse 0 res))
+    res <- runShowStreamsSql api "SHOW STREAMS;"
+    L.sort (words res)
       `shouldNotContain` map TL.unpack (L.sort [view])
 
   it "show views should not include streams" $ \(api, (s1, s2, _view)) -> do
-    res <- getServerResp =<< runQuerySimple api "SHOW VIEWS;"
-    L.sort (words (formatCommandQueryResponse 0 res))
+    res <- runShowViewsSql api "SHOW VIEWS;"
+    L.sort (words res)
       `shouldNotContain` map TL.unpack (L.sort [s1, s2])
 
   it "select from view" $ \(api, (source1, _source2, viewName)) -> do
-    runQuerySimple_ api $ "INSERT INTO " <> source1 <> " (a) VALUES (1);"
-    runQuerySimple_ api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
+    runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (1);"
+    runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
     threadDelay 4000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 3)])
 
-    void $ runQuerySimple api $ "INSERT INTO " <> source1 <> " (a) VALUES (3);"
-    void $ runQuerySimple api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
+    runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (3);"
+    runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
     threadDelay 4000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 10)])
