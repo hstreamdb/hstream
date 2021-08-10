@@ -32,20 +32,20 @@ library
     HStream.SQL.Abs
     HStream.SQL.AST
     HStream.SQL.Codegen
+    HStream.SQL.Internal.Codegen
+    HStream.SQL.Internal.Validate
     HStream.SQL.Exception
     HStream.SQL.Parse
     HStream.SQL.ExecPlan
 
   other-modules:
     HStream.SQL.Codegen.Boilerplate
-    HStream.SQL.Codegen.Utils
     HStream.SQL.ErrM
     HStream.SQL.Extra
     HStream.SQL.Lex
     HStream.SQL.Par
     HStream.SQL.Preprocess
     HStream.SQL.Print
-    HStream.SQL.Validate
     HStream.SQL.Validate.Utils
     HStream.SQL.ExecPlan.Utils
 
@@ -97,3 +97,34 @@ executable sql-example-mock
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates -threaded
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+test-suite hstream-sql-test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    HStream.SQL.CodegenSpec
+    HStream.SQL.ParseRefineSpec
+    HStream.SQL.ValidateSpec
+  hs-source-dirs:     test
+  build-depends:
+    , aeson
+    , base                  >=4.11 && <5
+    , bytestring
+    , containers
+    , hspec
+    , hstream-sql
+    , hstream-common
+    , hstream-processing
+    , random                ^>=1.2
+    , scientific
+    , text
+    , unordered-containers
+    , vector
+    , Z-Data
+
+  default-language:   Haskell2010
+  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
