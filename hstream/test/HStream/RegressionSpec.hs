@@ -1,18 +1,24 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.RegressionSpec (spec) where
 
 import           Control.Concurrent
-import qualified Data.Aeson         as Aeson
+import qualified Data.Aeson           as Aeson
 import           Test.Hspec
 
 import           HStream.SpecUtils
+import           HStream.Store.Logger (pattern C_DBG_ERROR,
+                                       setLogDeviceDbgLevel)
+import           HStream.Utils        (setupSigsegvHandler)
 
 spec :: Spec
 spec = describe "HStream.RegressionSpec" $ do
+  runIO setupSigsegvHandler
+  runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   it "#391_JOIN" $
     (do
