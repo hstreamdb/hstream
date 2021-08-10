@@ -21,7 +21,7 @@ HStream-SQL
 ### src: source files
 
 - `HStream/SQL/Preprocess.hs`: user input preprocessing module
-- `HStream/SQL/Validate.hs`: AST validation module
+- `HStream/SQL/Internal/Validate.hs`: AST validation module
 - `HStream/SQL/AST.hs`: Refined-AST definition and AST to Refined-AST transformation
 - `HStream/SQL/Parse.hs`: user input to AST/Refined-AST functions
 - `HStream/SQL/Codegen.hs`: Refined-AST to task AST transformation
