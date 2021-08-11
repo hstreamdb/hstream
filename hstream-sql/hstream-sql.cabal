@@ -116,6 +116,7 @@ test-suite hstream-sql-test
     , hstream-sql
     , hstream-common
     , hstream-processing
+    , HUnit
     , random                ^>=1.2
     , scientific
     , text
