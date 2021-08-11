@@ -96,7 +96,7 @@ spec = describe "Array Scalar Functions" do
       `shouldBe` A.Array [A.String "Bar", A.String "Foo", A.String "baz", A.Null]
 
   it "ARRAY_UNION__0" do
-    binOpOnValue OpUnion `on` (\xs -> A.Number <$> xs & A.Array)
+    (binOpOnValue OpUnion `on` (\xs -> A.Number <$> xs & A.Array))
       [1, 2, 3, 1, 2] [4, 1] `shouldBe` (\xs -> A.Number <$> xs & A.Array) [1, 2, 3, 4]
 
   it "ARRAY_UNION__1" do
