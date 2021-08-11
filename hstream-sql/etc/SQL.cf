@@ -272,7 +272,7 @@ ScalarFuncDateStr. ScalarFunc ::= "DATETOSTRING(" ValueExpr "," ValueExpr ")" ;
 ScalarFuncStrDate. ScalarFunc ::= "STRINGTODATE(" ValueExpr "," ValueExpr ")" ;
 
 ScalarFuncSplit.    ScalarFunc ::= "SPLIT("    ValueExpr "," ValueExpr ")" ;
-ScalarFuncChunksOf. ScalarFunc ::= "ChunksOf(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncChunksOf. ScalarFunc ::= "CHUNKSOF(" ValueExpr "," ValueExpr ")" ;
 
 ScalarFuncTake.    ScalarFunc ::= "TAKE("    ValueExpr "," ValueExpr ")" ;
 ScalarFuncTakeEnd. ScalarFunc ::= "TAKEEND(" ValueExpr "," ValueExpr ")" ;
