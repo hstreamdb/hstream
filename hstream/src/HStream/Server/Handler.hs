@@ -462,9 +462,10 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
   (reader, Subscription{..}) <- lookupSubscribedReaders subscribedReaders deleteSubscriptionRequestSubscriptionId
   let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-  logId <- S.getUnderlyingLogId scLDClient streamName
   isExist <- S.doesStreamExists scLDClient streamName
-  when isExist $ ckpReaderStopReading reader logId
+  when isExist $ do
+      logId <- S.getUnderlyingLogId scLDClient streamName
+      ckpReaderStopReading reader logId
   atomically $ do
     deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
     modifyTVar' subscribeHeap $ Map.delete subscriptionSubscriptionId
