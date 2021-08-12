@@ -48,7 +48,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   case plan of
     HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _ -> do
       create sink
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) False
+      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) HS.StreamTypeView
       returnResp $ View { viewViewId = cBytesToLazyText qid
                         , viewStatus = fromIntegral $ fromEnum P.Running
                         , viewCreatedTime = timestamp

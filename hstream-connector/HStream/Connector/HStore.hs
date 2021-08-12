@@ -8,9 +8,7 @@
 module HStream.Connector.HStore
   ( hstoreSourceConnector
   , hstoreSourceConnectorWithoutCkp
-  , hstoreTempSourceConnector
   , hstoreSinkConnector
-  , hstoreTempSinkConnector
   , transToStreamName
   , transToTempStreamName
   , transToViewStreamName
@@ -35,12 +33,18 @@ import           HStream.Server.HStreamApi    (HStreamRecordHeader_Flag (..))
 import qualified HStream.Store                as S
 import           HStream.Utils
 
-hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> SourceConnector
-hstoreSourceConnector ldclient reader = SourceConnector {
-  subscribeToStream = subscribeToHStoreStream False ldclient reader,
-  unSubscribeToStream = unSubscribeToHStoreStream False ldclient reader,
-  readRecords = readRecordsFromHStore ldclient reader 100,
-  commitCheckpoint = commitCheckpointToHStore False ldclient reader
+hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> S.StreamType -> SourceConnector
+hstoreSourceConnector ldclient reader streamType = SourceConnector {
+  subscribeToStream   = \streamName ->
+      subscribeToHStoreStream ldclient reader
+        (S.mkStreamId streamType (textToCBytes streamName)),
+  unSubscribeToStream = \streamName ->
+      unSubscribeToHStoreStream ldclient reader
+        (S.mkStreamId streamType (textToCBytes streamName)),
+  readRecords         = readRecordsFromHStore ldclient reader 100,
+  commitCheckpoint    = \streamName ->
+      commitCheckpointToHStore ldclient reader
+      (S.mkStreamId streamType (textToCBytes streamName))
 }
 
 hstoreSourceConnectorWithoutCkp :: S.LDClient -> S.LDReader -> SourceConnectorWithoutCkp
@@ -50,22 +54,9 @@ hstoreSourceConnectorWithoutCkp ldclient reader = SourceConnectorWithoutCkp {
   readRecordsWithoutCkp = readRecordsFromHStore' ldclient reader 100
 }
 
-hstoreTempSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> SourceConnector
-hstoreTempSourceConnector ldclient reader = SourceConnector {
-  subscribeToStream = subscribeToHStoreStream True ldclient reader,
-  unSubscribeToStream = unSubscribeToHStoreStream True ldclient reader,
-  readRecords = readRecordsFromHStore ldclient reader 100,
-  commitCheckpoint = commitCheckpointToHStore True ldclient reader
-}
-
-hstoreSinkConnector :: S.LDClient -> SinkConnector
-hstoreSinkConnector ldclient = SinkConnector {
-  writeRecord = writeRecordToHStore False ldclient
-}
-
-hstoreTempSinkConnector :: S.LDClient -> SinkConnector
-hstoreTempSinkConnector ldclient = SinkConnector {
-  writeRecord = writeRecordToHStore True ldclient
+hstoreSinkConnector :: S.LDClient -> S.StreamType -> SinkConnector
+hstoreSinkConnector ldclient streamType = SinkConnector {
+  writeRecord = writeRecordToHStore ldclient streamType
 }
 
 --------------------------------------------------------------------------------
@@ -81,16 +72,13 @@ transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
 
 --------------------------------------------------------------------------------
 
-subscribeToHStoreStream :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
-subscribeToHStoreStream isTemp ldclient reader stream startOffset = do
-  logId <- case isTemp of
-    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName stream)
-    False -> S.getUnderlyingLogId ldclient (transToStreamName stream)
-  startLSN <-
-        case startOffset of
-          Earlist    -> return S.LSN_MIN
-          Latest     -> fmap (+1) (S.getTailLSN ldclient logId)
-          Offset lsn -> return lsn
+subscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Offset -> IO ()
+subscribeToHStoreStream ldclient reader streamId startOffset = do
+  logId <- S.getUnderlyingLogId ldclient streamId
+  startLSN <- case startOffset of
+    Earlist    -> return S.LSN_MIN
+    Latest     -> fmap (+1) (S.getTailLSN ldclient logId)
+    Offset lsn -> return lsn
   S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
 
 subscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> Offset -> IO ()
@@ -103,11 +91,9 @@ subscribeToHStoreStream' ldclient reader stream startOffset = do
           Offset lsn -> return lsn
   S.readerStartReading reader logId startLSN S.LSN_MAX
 
-unSubscribeToHStoreStream :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> IO ()
-unSubscribeToHStoreStream isTemp ldclient reader streamName = do
-  logId <- case isTemp of
-    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName streamName)
-    False -> S.getUnderlyingLogId ldclient (transToStreamName streamName)
+unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> IO ()
+unSubscribeToHStoreStream ldclient reader streamId = do
+  logId <- S.getUnderlyingLogId ldclient streamId
   S.ckpReaderStopReading reader logId
 
 unSubscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> IO ()
@@ -155,22 +141,19 @@ getJsonFormatRecord dataRecord
     lsn       = S.recordLSN dataRecord
     timestamp = getTimeStamp record
 
-commitCheckpointToHStore :: Bool -> S.LDClient -> S.LDSyncCkpReader -> HPT.StreamName -> Offset -> IO ()
-commitCheckpointToHStore isTemp ldclient reader streamName offset = do
-  logId <- case isTemp of
-    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName streamName)
-    False -> S.getUnderlyingLogId ldclient (transToStreamName streamName)
+commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Offset -> IO ()
+commitCheckpointToHStore ldclient reader streamId offset = do
+  logId <- S.getUnderlyingLogId ldclient streamId
   case offset of
     Earlist    -> error "expect normal offset, but get Earlist"
     Latest     -> error "expect normal offset, but get Latest"
     Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn)
 
-writeRecordToHStore :: Bool -> S.LDClient -> SinkRecord -> IO ()
-writeRecordToHStore isTemp ldclient SinkRecord{..} = do
+writeRecordToHStore :: S.LDClient -> S.StreamType -> SinkRecord -> IO ()
+writeRecordToHStore ldclient streamType SinkRecord{..} = do
+  let streamId = S.mkStreamId streamType (textToCBytes snkStream)
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
-  logId <- case isTemp of
-    True  -> S.getUnderlyingLogId ldclient (transToTempStreamName snkStream)
-    False -> S.getUnderlyingLogId ldclient (transToStreamName snkStream)
+  logId <- S.getUnderlyingLogId ldclient streamId
   timestamp <- getProtoTimestamp
   let header = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
   let payload = encodeRecord $ buildRecord header (BL.toStrict snkValue)

@@ -56,6 +56,7 @@ class KVStore s where
   ksGet :: Ord k => k -> s k v -> IO (Maybe v)
   ksPut :: Ord k => k -> v -> s k v -> IO ()
   ksRange :: Ord k => k -> k -> s k v -> IO [(k, v)]
+  ksDump :: Ord k => s k v -> IO (Map.Map k v)
 
 instance KVStore InMemoryKVStore where
   ksGet k InMemoryKVStore {..} = do
@@ -77,6 +78,8 @@ instance KVStore InMemoryKVStore where
       Just rm -> return $ Map.toAscList rm
       Nothing -> return $ Map.toAscList sm
 
+  ksDump InMemoryKVStore {..} = readIORef imksData
+
 data EKVStore k v
   = forall s.
     KVStore s =>
@@ -95,6 +98,8 @@ instance KVStore EKVStore where
   ksPut k v (EKVStore s) = ksPut k v s
 
   ksRange fromKey toKey (EKVStore s) = ksRange fromKey toKey s
+
+  ksDump (EKVStore s) = ksDump s
 
 mkDEKVStore ::
   (KVStore s, Typeable k, Typeable v, Ord k) =>
