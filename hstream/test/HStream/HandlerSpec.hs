@@ -268,6 +268,15 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     res <- fromJust <$> listSubscriptionRequest client
     V.find (\Subscription{..} -> subscriptionSubscriptionId == randomSubsciptionId) res `shouldBe` Nothing
 
+  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "delete a subscription with underlying stream deleted should success" $ \client -> do
+    void $ createStreamRequest client $ Stream randomStreamName 1
+    void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
+    subscribeRequest client randomSubsciptionId `shouldReturn` True
+    deleteStreamRequest client randomStreamName `shouldReturn` True
+    deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
+    res <- fromJust <$> listSubscriptionRequest client
+    V.find (\Subscription{..} -> subscriptionSubscriptionId == randomSubsciptionId) res `shouldBe` Nothing
+
   after (cleanStream randomStreamName) $ it "test hasSubscription request" $ \client -> do
     void $ createStreamRequest client $ Stream randomStreamName 1
     -- check a nonexistent subscriptionId should return False

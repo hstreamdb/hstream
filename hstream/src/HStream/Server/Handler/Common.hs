@@ -215,9 +215,9 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
       >> terminateRelatedQueries sc (textToCBytes name)
       >> HS.removeStream scLDClient sName
       >> returnResp Empty
-      else if checkIfExist
-              then returnResp Empty
-              else returnErrResp StatusInternal "Object does not exist"
+    else if checkIfExist
+           then returnResp Empty
+           else returnErrResp StatusInternal "Object does not exist"
 
 --------------------------------------------------------------------------------
 -- Query
