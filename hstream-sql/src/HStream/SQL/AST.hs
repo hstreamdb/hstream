@@ -1,7 +1,5 @@
 {-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
 
 module HStream.SQL.AST where
@@ -391,7 +389,8 @@ instance Refine SelectView where
       svSel = case sel of
         (DSel _ (SelListAsterisk _)) -> SVSelectAll
         (DSel _ (SelListSublist _ dcols)) ->
-          let (f :: DerivedCol -> (FieldName, FieldAlias)) = \case
+          let f :: DerivedCol -> (FieldName, FieldAlias)
+              f docl = case docl of
                 (DerivedColSimpl _ expr@(ExprColName _ (ColNameSimple _ (Ident col))))       ->
                   (col, trimSpacesPrint expr)
                 (DerivedColSimpl _ expr@(ExprRaw _ (RawColumn col)))                         ->
