@@ -87,16 +87,16 @@ data ServerContext = ServerContext {
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 }
 
-runTaskWrapper :: Bool -> TaskBuilder -> HS.LDClient -> IO ()
-runTaskWrapper isTemp taskBuilder ldclient = do
+runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
+runTaskWrapper sourceType sinkType taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
   let readerName = textToCBytes (getTaskName taskBuilder)
   -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
   ldreader <- HS.newLDRsmCkpReader ldclient readerName HS.checkpointStoreLogID 5000 1000 Nothing 10
   -- create a new sourceConnector
-  let sourceConnector = HCS.hstoreSourceConnector ldclient ldreader
+  let sourceConnector = HCS.hstoreSourceConnector ldclient ldreader sourceType
   -- create a new sinkConnector
-  let sinkConnector = if isTemp then HCS.hstoreTempSinkConnector ldclient else HCS.hstoreSinkConnector ldclient
+  let sinkConnector = HCS.hstoreSinkConnector ldclient sinkType
   -- RUN TASK
   runTask sourceConnector sinkConnector taskBuilder
 
@@ -185,13 +185,13 @@ handleCreateAsSelect :: ServerContext
                      -> TaskBuilder
                      -> TL.Text
                      -> P.QueryType
-                     -> Bool
+                     -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType isTemp = do
+handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
     (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType zkHandle
   tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
-        >> runTaskWrapper isTemp taskBuilder scLDClient
+        >> runTaskWrapper HS.StreamTypeStream sinkType taskBuilder scLDClient
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
 
@@ -215,9 +215,9 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
       >> terminateRelatedQueries sc (textToCBytes name)
       >> HS.removeStream scLDClient sName
       >> returnResp Empty
-      else if checkIfExist
-              then returnResp Empty
-              else returnErrResp StatusInternal "Object does not exist"
+    else if checkIfExist
+           then returnResp Empty
+           else returnErrResp StatusInternal "Object does not exist"
 
 --------------------------------------------------------------------------------
 -- Query

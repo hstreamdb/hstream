@@ -234,7 +234,7 @@ createQueryStreamHandler sc@ServerContext{..}
   S.createStream scLDClient (transToStreamName sink) $ S.LogAttrs (S.HsLogAttrs rFac Map.empty)
   let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
   void $ handleCreateAsSelect sc (Processing.build builder)
-    createQueryStreamRequestQueryStatements query False
+    createQueryStreamRequestQueryStatements query S.StreamTypeStream
   let streamResp = Stream (TL.fromStrict sink) (fromIntegral rFac)
   -- FIXME: The value query returned should have been fully assigned
       queryResp  = def { queryId = TL.fromStrict tName }
@@ -254,7 +254,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
       create (transToViewStreamName sink)
       >> handleCreateAsSelect sc taskBuilder commandQueryStmtText
-        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema) False
+        (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema) S.StreamTypeView
       >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
@@ -317,14 +317,14 @@ executePushQueryHandler ServerContext{..}
           (TL.toStrict commandPushQueryQueryText) (P.PlainQuery $ textToCBytes <$> sources) zkHandle
         -- run task
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
-          >> runTaskWrapper True taskBuilder scLDClient
+          >> runTaskWrapper S.StreamTypeStream S.StreamTypeTemp taskBuilder scLDClient
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
         _ <- forkIO $ handlePushQueryCanceled meta
           (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
         ldreader' <- S.newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
           S.checkpointStoreLogID 5000 1 Nothing 10
-        let sc = hstoreTempSourceConnector scLDClient ldreader'
+        let sc = hstoreSourceConnector scLDClient ldreader' S.StreamTypeTemp
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
     _ -> returnStreamingResp StatusInternal "inconsistent method called"
@@ -462,9 +462,10 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
   (reader, Subscription{..}) <- lookupSubscribedReaders subscribedReaders deleteSubscriptionRequestSubscriptionId
   let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-  logId <- S.getUnderlyingLogId scLDClient streamName
   isExist <- S.doesStreamExists scLDClient streamName
-  when isExist $ ckpReaderStopReading reader logId
+  when isExist $ do
+      logId <- S.getUnderlyingLogId scLDClient streamName
+      ckpReaderStopReading reader logId
   atomically $ do
     deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
     modifyTVar' subscribeHeap $ Map.delete subscriptionSubscriptionId
