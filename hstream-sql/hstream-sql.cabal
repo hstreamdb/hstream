@@ -102,7 +102,8 @@ test-suite hstream-sql-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:
-    HStream.SQL.CodegenSpec
+    HStream.SQL.Codegen.ArraySpec
+    HStream.SQL.Codegen.MathSpec
     HStream.SQL.ParseRefineSpec
     HStream.SQL.ValidateSpec
   hs-source-dirs:     test
@@ -115,6 +116,7 @@ test-suite hstream-sql-test
     , hstream-sql
     , hstream-common
     , hstream-processing
+    , HUnit
     , random                ^>=1.2
     , scientific
     , text

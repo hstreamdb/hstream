@@ -268,6 +268,17 @@ ScalarFuncStrlen.  ScalarFunc ::= "STRLEN("     ValueExpr ")" ;
 ScalarFuncIfNull. ScalarFunc ::= "IFNULL(" ValueExpr "," ValueExpr ")" ;
 ScalarFuncNullIf. ScalarFunc ::= "NULLIF(" ValueExpr "," ValueExpr ")" ;
 
+ScalarFuncDateStr. ScalarFunc ::= "DATETOSTRING(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncStrDate. ScalarFunc ::= "STRINGTODATE(" ValueExpr "," ValueExpr ")" ;
+
+ScalarFuncSplit.    ScalarFunc ::= "SPLIT("    ValueExpr "," ValueExpr ")" ;
+ScalarFuncChunksOf. ScalarFunc ::= "CHUNKSOF(" ValueExpr "," ValueExpr ")" ;
+
+ScalarFuncTake.    ScalarFunc ::= "TAKE("    ValueExpr "," ValueExpr ")" ;
+ScalarFuncTakeEnd. ScalarFunc ::= "TAKEEND(" ValueExpr "," ValueExpr ")" ;
+ScalarFuncDrop.    ScalarFunc ::= "DROP("    ValueExpr "," ValueExpr ")" ;
+ScalarFuncDropEnd. ScalarFunc ::= "DROPEND(" ValueExpr "," ValueExpr ")" ;
+
 ArrayFuncContain.   ScalarFunc ::= "ARRAY_CONTAIN("   ValueExpr "," ValueExpr ")" ;
 ArrayFuncDistinct.  ScalarFunc ::= "ARRAY_DISTINCT("                ValueExpr ")" ;
 ArrayFuncExcept.    ScalarFunc ::= "ARRAY_EXCEPT("    ValueExpr "," ValueExpr ")" ;

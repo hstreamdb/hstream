@@ -72,6 +72,14 @@ instance HaveValueExpr ScalarFunc where
     (ArrayFuncMax         _ e) -> e
     (ArrayFuncMin         _ e) -> e
     (ArrayFuncSort        _ e) -> e
+    (ScalarFuncDateStr  _ e _) -> e
+    (ScalarFuncStrDate  _ e _) -> e
+    (ScalarFuncSplit    _ e _) -> e
+    (ScalarFuncChunksOf _ e _) -> e
+    (ScalarFuncTake     _ e _) -> e
+    (ScalarFuncTakeEnd  _ e _) -> e
+    (ScalarFuncDrop     _ e _) -> e
+    (ScalarFuncDropEnd  _ e _) -> e
 
 class HavePos a where
   getPos :: a -> BNFC'Position
@@ -131,6 +139,14 @@ instance HavePos ScalarFunc where
     (ArrayFuncMax         pos _) -> pos
     (ArrayFuncMin         pos _) -> pos
     (ArrayFuncSort        pos _) -> pos
+    (ScalarFuncDateStr  pos _ _) -> pos
+    (ScalarFuncStrDate  pos _ _) -> pos
+    (ScalarFuncSplit    pos _ _) -> pos
+    (ScalarFuncChunksOf pos _ _) -> pos
+    (ScalarFuncTake     pos _ _) -> pos
+    (ScalarFuncTakeEnd  pos _ _) -> pos
+    (ScalarFuncDrop     pos _ _) -> pos
+    (ScalarFuncDropEnd  pos _ _) -> pos
 
 instance HavePos SearchCond where
   getPos cond = case cond of
@@ -214,6 +230,14 @@ getScalarFuncType f = case f of
   (ArrayFuncMax         _ _) -> 0b0100_0000
   (ArrayFuncMin         _ _) -> 0b0100_0000
   (ArrayFuncSort        _ _) -> 0b0100_0000
+  (ScalarFuncDateStr  _ _ _) -> 0b0010_0000
+  (ScalarFuncStrDate  _ _ _) -> 0b0000_0100
+  (ScalarFuncSplit    _ _ _) -> 0b0100_0000
+  (ScalarFuncChunksOf _ _ _) -> 0b0100_0000
+  (ScalarFuncTake     _ _ _) -> 0b0010_0000
+  (ScalarFuncTakeEnd  _ _ _) -> 0b0010_0000
+  (ScalarFuncDrop     _ _ _) -> 0b0010_0000
+  (ScalarFuncDropEnd  _ _ _) -> 0b0010_0000
 
 getScalarArgType :: ScalarFunc -> Word8
 getScalarArgType f = case f of
@@ -270,6 +294,14 @@ getScalarArgType f = case f of
   (ArrayFuncMax         _ _) -> anyMask
   (ArrayFuncMin         _ _) -> anyMask
   (ArrayFuncSort        _ _) -> anyMask
+  (ScalarFuncDateStr  _ _ _) -> numMask
+  (ScalarFuncStrDate  _ _ _) -> stringMask
+  (ScalarFuncSplit    _ _ _) -> stringMask
+  (ScalarFuncChunksOf _ _ _) -> stringMask
+  (ScalarFuncTake     _ _ _) -> anyMask
+  (ScalarFuncTakeEnd  _ _ _) -> anyMask
+  (ScalarFuncDrop     _ _ _) -> anyMask
+  (ScalarFuncDropEnd  _ _ _) -> anyMask
 
 isTypeInt, isTypeFloat, isTypeNum, isTypeOrd, isTypeBool, isTypeString :: Word8 -> Bool
 isTypeInt    n = n .&. intMask    /= 0
