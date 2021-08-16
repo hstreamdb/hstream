@@ -75,17 +75,22 @@ checkpointRootPath = "/tmp/checkpoint"
 
 type Timestamp = Int64
 
+
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , subscribedReaders        :: SubscribedReaders
-  , subscribeHeap            :: TVar (M.Map TL.Text Timestamp)
+  , subscriptions            :: TVar (HM.HashMap SubscriptionId Subscription)
+  , subscribeRuntimeInfo     :: TVar (HM.HashMap SubscriptionId HS.LDSyncCkpReader)
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 }
+
+type SubscriptionId = TL.Text
+
+--------------------------------------------------------------------------------
 
 runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
 runTaskWrapper sourceType sinkType taskBuilder ldclient = do
@@ -262,64 +267,3 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         Left (_ ::SomeException) -> return (terminatedQids, hm)
         Right _                  -> return (x:terminatedQids, HM.delete x hm)
 
---------------------------------------------------------------------------------
--- Subscription
-
-data ReaderStatus = Released | Occupied deriving (Show)
--- | SubscribedReaders is an map, Map: { subscriptionId : (LDSyncCkpReader, Subscription) }
-type SubscribedReaders = TVar (HM.HashMap TL.Text ReaderMap)
--- When the value of ReaderMap is None, it is used to indicate that the current value is a placeholder
-data ReaderMap = None | ReaderMap HS.LDSyncCkpReader Subscription ReaderStatus deriving (Show)
-
-getReaderStatus :: SubscribedReaders -> TL.Text -> STM (Maybe ReaderStatus)
-getReaderStatus readers subscriptionId = do
-  mp <- readTVar readers
-  case HM.lookup subscriptionId mp of
-    Just (ReaderMap _ _ s) -> return $ Just s
-    _                      -> return Nothing
-
-updateReaderStatus :: SubscribedReaders -> ReaderStatus -> TL.Text -> STM ()
-updateReaderStatus readers status subscriptionId  = do
-  hm <- readTVar readers
-  case HM.lookup subscriptionId hm of
-    Just (ReaderMap rd sId _) -> do
-      let newMap = HM.insert subscriptionId (ReaderMap rd sId status) hm
-      writeTVar readers newMap
-    _ -> return ()
-
-lookupSubscribedReaders :: SubscribedReaders -> TL.Text -> IO (HS.LDSyncCkpReader, Subscription)
-lookupSubscribedReaders readers subscriptionId = do
-  hm <- readTVarIO readers
-  case HM.lookup subscriptionId hm of
-    Just (ReaderMap reader subscription _) -> return (reader, subscription)
-    _                                      -> throwIO SubscriptionIdNotFound
-
--- | Modify the SubscribedReaders strictly. If key exist in map, return false, otherwise insert the key value pair
-insertSubscribedReaders :: SubscribedReaders -> TL.Text -> ReaderMap -> IO Bool
-insertSubscribedReaders readers subscriptionId readerMap = atomically $ do
-  hm <- readTVar readers
-  case HM.lookup subscriptionId hm of
-    Just _ -> return False
-    Nothing -> do
-      let newMap = HM.insert subscriptionId readerMap hm
-      writeTVar readers newMap
-      return True
-
--- | Update the subscribedReaders. If key is existed in map, the old value will be replaced by new value
-updateSubscribedReaders :: SubscribedReaders -> TL.Text -> ReaderMap -> STM ()
-updateSubscribedReaders readers subscriptionId readerMap = do
-  modifyTVar' readers $ \hm -> HM.insert subscriptionId readerMap hm
-
-deleteSubscribedReaders :: SubscribedReaders -> TL.Text -> STM ()
-deleteSubscribedReaders readers subscriptionId = do
-  modifyTVar' readers $ \hm -> HM.delete subscriptionId hm
-
-subscribedReadersToMap :: SubscribedReaders -> IO (HM.HashMap TL.Text (HS.LDSyncCkpReader, Subscription))
-subscribedReadersToMap readers = atomically $ do
-  hm <- readTVar readers
-  if HM.null hm
-  then return HM.empty
-  else return $
-    HM.mapMaybe (\case None                   -> Nothing
-                       ReaderMap reader sId _ -> Just (reader, sId)
-                ) hm
