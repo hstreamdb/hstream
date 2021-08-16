@@ -22,23 +22,25 @@ import           HStream.Processing.Table
 import           RIO
 import qualified RIO.Text                                 as T
 
-data SessionWindowedStream k v = SessionWindowedStream
-  { swsKeySerde :: Maybe (Serde k),
-    swsValueSerde :: Maybe (Serde v),
+data SessionWindowedStream k v s = SessionWindowedStream
+  { swsKeySerde :: Maybe (Serde k s),
+    swsValueSerde :: Maybe (Serde v s),
     swsProcessorName :: T.Text,
     swsSessionWindows :: SessionWindows,
     swsInternalBuilder :: InternalStreamBuilder
   }
 
 aggregate ::
-  (Typeable k, Typeable v, Ord k, Typeable a) =>
+  (Typeable k, Typeable v, Ord k, Typeable a, Ord s1, Typeable s1, Serialized s1, Ord s2, Typeable s2, Serialized s2) =>
   a ->
   (a -> Record k v -> a) ->
   (k -> a -> a -> a) ->
-  Materialized k a ->
-  SessionWindowedStream k v ->
-  IO (Table (TimeWindowKey k) a)
-aggregate initialValue aggF sessionMergeF Materialized {..} SessionWindowedStream {..} = do
+  Serde TimeWindow s2 ->
+  Serde a s2 ->
+  Materialized k a s1 ->
+  SessionWindowedStream k v s2 ->
+  IO (Table (TimeWindowKey k) a s2)
+aggregate initialValue aggF sessionMergeF twSerde2 aSerde2 Materialized {..} SessionWindowedStream {..} = do
   processorName <- mkInternalProcessorName "SESSION-WINDOWED-STREAM-AGGREGATE-" swsInternalBuilder
   let storeName = mkInternalStoreName processorName
   let p = aggregateProcessor storeName initialValue aggF sessionMergeF mKeySerde mValueSerde swsSessionWindows
@@ -48,17 +50,21 @@ aggregate initialValue aggF sessionMergeF Materialized {..} SessionWindowedStrea
     Table
       { tableInternalBuilder = newBuilder,
         tableProcessorName = processorName,
-        tableKeySerde = Just (sessionWindowKeySerde mKeySerde),
-        tableValueSerde = Just mValueSerde,
+        tableKeySerde = case swsKeySerde of
+          Nothing -> Nothing
+          Just serde -> Just $ sessionWindowKeySerde serde twSerde2,
+        tableValueSerde = Just aSerde2,
         tableStoreName = storeName
       }
 
 count ::
-  (Typeable k, Typeable v, Ord k) =>
-  Materialized k Int ->
-  SessionWindowedStream k v ->
-  IO (Table (TimeWindowKey k) Int)
-count = aggregate 0 aggF sessionMergeF
+  (Typeable k, Typeable v, Ord k, Ord s, Typeable s, Serialized s) =>
+  Materialized k Int s ->
+  Serde TimeWindow s ->
+  Serde Int s ->
+  SessionWindowedStream k v s ->
+  IO (Table (TimeWindowKey k) Int s)
+count mat twSerde intSerde = aggregate 0 aggF sessionMergeF twSerde intSerde mat
   where
     aggF :: Int -> Record k v -> Int
     aggF acc _ = acc + 1
@@ -66,13 +72,13 @@ count = aggregate 0 aggF sessionMergeF
     sessionMergeF _ acc1 acc2 = acc1 + acc2
 
 aggregateProcessor ::
-  (Typeable k, Typeable v, Ord k, Typeable a) =>
+  (Typeable k, Typeable v, Ord k, Typeable a, Ord s, Typeable s) =>
   T.Text ->
   a ->
   (a -> Record k v -> a) ->
   (k -> a -> a -> a) ->
-  Serde k ->
-  Serde a ->
+  Serde k s ->
+  Serde a s ->
   SessionWindows ->
   Processor k v
 aggregateProcessor storeName initialValue aggF sessionMergeF keySerde accSerde SessionWindows {..} = Processor $ \r@Record {..} -> do

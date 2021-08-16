@@ -152,23 +152,23 @@ validateTopology TaskTopologyConfig {..} =
         then throw $ TaskTopologyBuildError "task build error: no valid sink config"
         else ()
 
-data SourceConfig k v = SourceConfig
+data SourceConfig k v s = SourceConfig
   { sourceName :: T.Text,
     sourceStreamName :: T.Text,
-    keyDeserializer :: Maybe (Deserializer k),
-    valueDeserializer :: Deserializer v
+    keyDeserializer :: Maybe (Deserializer k s),
+    valueDeserializer :: Deserializer v s
   }
 
-data SinkConfig k v = SinkConfig
+data SinkConfig k v s = SinkConfig
   { sinkName :: T.Text,
     sinkStreamName :: T.Text,
-    keySerializer :: Maybe (Serializer k),
-    valueSerializer :: Serializer v
+    keySerializer :: Maybe (Serializer k s),
+    valueSerializer :: Serializer v s
   }
 
 addSource ::
-  (Typeable k, Typeable v) =>
-  SourceConfig k v ->
+  (Typeable k, Typeable v, Typeable s) =>
+  SourceConfig k v s ->
   TaskBuilder
 addSource cfg@SourceConfig {..} =
   mempty
@@ -187,8 +187,8 @@ addSource cfg@SourceConfig {..} =
 
 buildSourceProcessor ::
   (Typeable k, Typeable v) =>
-  SourceConfig k v ->
-  Processor BL.ByteString BL.ByteString
+  SourceConfig k v s ->
+  Processor s s-- BL.ByteString BL.ByteString
 buildSourceProcessor SourceConfig {..} = Processor $ \r@Record {..} -> do
   -- deserialize and forward
   logDebug "enter source processor"
@@ -215,8 +215,8 @@ addProcessor name processor parentNames =
     }
 
 buildSinkProcessor ::
-  (Typeable k, Typeable v) =>
-  SinkConfig k v ->
+  (Typeable k, Typeable v, Typeable s) =>
+  SinkConfig k v s ->
   Processor k v
 buildSinkProcessor SinkConfig {..} = Processor $ \r@Record {..} -> do
   logDebug $ "enter sink serializer processor for stream " <> display sinkName
@@ -230,8 +230,8 @@ serializerNameSuffix :: T.Text
 serializerNameSuffix = "-SERIALIZER"
 
 addSink ::
-  (Typeable k, Typeable v) =>
-  SinkConfig k v ->
+  (Typeable k, Typeable v, Typeable s) =>
+  SinkConfig k v s ->
   [T.Text] ->
   TaskBuilder
 addSink cfg@SinkConfig {..} parentNames =
