@@ -6,6 +6,9 @@
 
 import           Data.Aeson
 import qualified Data.Binary                                  as B
+import           Data.Binary.Get
+import qualified Data.ByteString.Builder                      as BB
+import qualified Data.ByteString.Lazy                         as BL
 import           Data.Maybe
 import qualified Data.Text.Lazy                               as TL
 import qualified Data.Text.Lazy.Encoding                      as TLE
@@ -47,19 +50,33 @@ main = do
           { serializer = Serializer TLE.encodeUtf8,
             deserializer = Deserializer TLE.decodeUtf8
           } ::
-          Serde TL.Text
+          Serde TL.Text BL.ByteString
   let rSerde =
         Serde
           { serializer = Serializer encode,
             deserializer = Deserializer $ fromJust . decode
           } ::
-          Serde R
+          Serde R BL.ByteString
   let intSerde =
         Serde
           { serializer = Serializer B.encode,
             deserializer = Deserializer B.decode
           } ::
-          Serde Int
+          Serde Int BL.ByteString
+  let timeWindowSerde windowSize =
+        Serde
+        { serializer = Serializer $ \TimeWindow{..} ->
+            let winStartBuilder = BB.int64BE tWindowStart
+                blankBuilder = BB.int64BE 0
+             in BB.toLazyByteString $ winStartBuilder <> blankBuilder
+        , deserializer = Deserializer $ runGet decodeTimeWindow
+        }
+        where
+          decodeTimeWindow = do
+            startTs <- getInt64be
+            _       <- getInt64be
+            return TimeWindow {tWindowStart = startTs, tWindowEnd = startTs + windowSize}
+
   let streamSourceConfig =
         HS.StreamSourceConfig
           { sscStreamName = "demo-source",
@@ -70,7 +87,7 @@ main = do
   let streamSinkConfig =
         HS.StreamSinkConfig
           { sicStreamName = "demo-sink",
-            sicKeySerde = timeWindowKeySerde textSerde timeWindowSize,
+            sicKeySerde = timeWindowKeySerde textSerde (timeWindowSerde timeWindowSize) timeWindowSize,
             sicValueSerde = intSerde
           }
   aggStore <- mkInMemoryStateKVStore
@@ -86,7 +103,7 @@ main = do
       >>= HS.filter filterR
       >>= HS.groupBy (fromJust . recordKey)
       >>= HG.timeWindowedBy (mkHoppingWindow timeWindowSize 1000)
-      >>= HTW.count materialized
+      >>= HTW.count materialized (timeWindowSerde timeWindowSize) (timeWindowSerde timeWindowSize) intSerde
       >>= HT.toStream
       >>= HS.to streamSinkConfig
 
@@ -110,7 +127,7 @@ main = do
         subscribeToStream sourceConnector1 "demo-sink" Earlist
         records <- readRecords sourceConnector1
         forM_ records $ \SourceRecord {..} -> do
-          let k = runDeser (timeWindowKeyDeserializer (deserializer textSerde) timeWindowSize) (fromJust srcKey)
+          let k = runDeser (timeWindowKeyDeserializer (deserializer textSerde) (deserializer $ timeWindowSerde timeWindowSize) timeWindowSize) (fromJust srcKey)
           P.putStrLn $
             ">>> count: key: "
               ++ show k

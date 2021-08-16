@@ -51,19 +51,19 @@ main = do
           { serializer = Serializer TLE.encodeUtf8,
             deserializer = Deserializer TLE.decodeUtf8
           } ::
-          Serde TL.Text
+          Serde TL.Text BL.ByteString
   let rSerde =
         Serde
           { serializer = Serializer encode,
             deserializer = Deserializer $ fromJust . decode
           } ::
-          Serde R
+          Serde R BL.ByteString
   let r1Serde =
         Serde
           { serializer = Serializer encode,
             deserializer = Deserializer $ fromJust . decode
           } ::
-          Serde R1
+          Serde R1 BL.ByteString
   let streamSourceConfig =
         HS.StreamSourceConfig
           { sscStreamName = "demo-source",

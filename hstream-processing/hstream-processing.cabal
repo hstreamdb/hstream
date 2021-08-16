@@ -46,13 +46,16 @@ library
 
   hs-source-dirs:   src
   build-depends:
+      aeson
     , base              >=4.11 && <5
     , binary
     , bytestring
     , data-default
     , rio
+    , scientific
     , template-haskell
     , time
+    , unordered-containers
 
   -- hstream-store
   default-language: Haskell2010
@@ -93,6 +96,8 @@ executable stream-example0
   build-depends:
     , aeson
     , base                >=4.11 && <5
+    , binary
+    , bytestring
     , hstream-processing
     , random
     , rio
@@ -108,6 +113,7 @@ executable stream-example1
     , aeson
     , base                >=4.11 && <5
     , binary
+    , bytestring
     , hstream-processing
     , random
     , rio
@@ -123,6 +129,7 @@ executable stream-example2
     , aeson
     , base                >=4.11 && <5
     , binary
+    , bytestring
     , hstream-processing
     , random
     , rio
@@ -138,6 +145,7 @@ executable stream-example3
     , aeson
     , base                >=4.11 && <5
     , binary
+    , bytestring
     , hstream-processing
     , random
     , rio
@@ -153,6 +161,7 @@ executable stream-example4
     , aeson
     , base                >=4.11 && <5
     , binary
+    , bytestring
     , hstream-processing
     , random
     , rio
@@ -168,6 +177,7 @@ executable stream-example5
     , aeson
     , base                >=4.11 && <5
     , binary
+    , bytestring
     , hstream-processing
     , random
     , rio
