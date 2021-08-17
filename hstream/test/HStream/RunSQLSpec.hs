@@ -187,6 +187,3 @@ viewSpec =
     threadDelay 4000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
       `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 10)])
-
-mkViewResponse :: Struct -> CommandQueryResponse
-mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"
