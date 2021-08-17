@@ -521,6 +521,7 @@ listSubscriptionsHandler ServerContext{..} (ServerNormalRequest _metadata ListSu
 --------------------------------------------------------------------------------
 -- Comsumer
 
+-- do nothing now
 consumerHeartbeatHandler
   :: ServerContext
   -> ServerRequest 'Normal ConsumerHeartbeatRequest ConsumerHeartbeatResponse
@@ -528,16 +529,6 @@ consumerHeartbeatHandler
 consumerHeartbeatHandler ServerContext{..} (ServerNormalRequest _metadata ConsumerHeartbeatRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive heartbeat msg for " <> Log.buildLazyText consumerHeartbeatRequestSubscriptionId
   returnResp $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
-
-  -- timestamp <- getCurrentTimestamp
-  -- atomically $ do
-  --   hm <- readTVar subscribeHeap
-  --   case Map.lookup consumerHeartbeatRequestSubscriptionId hm of
-  --     Nothing -> do
-  --       returnErrResp StatusInternal "Can't send hearbeat to an unsubscribed stream."
-  --     Just _  -> do
-  --       modifyTVar' subscribeHeap $ Map.insert consumerHeartbeatRequestSubscriptionId timestamp
-  --       returnResp $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
 
 fetchHandler
   :: ServerContext
@@ -569,23 +560,14 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{.
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
+-- do nothing for now, later will fix it
 commitOffsetHandler
   :: ServerContext
   -> ServerRequest 'Normal CommittedOffset CommittedOffset
   -> IO (ServerResponse 'Normal CommittedOffset)
 commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@CommittedOffset{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive commitOffset request: " <> Log.buildString (show offset)
-  -- empty
   returnResp offset
-  -- (reader, Subscription{..}) <- lookupSubscribedReaders subscribedReaders committedOffsetSubscriptionId
-  -- commitCheckpoint scLDClient reader subscriptionStreamName (fromJust committedOffsetOffset)
-  -- returnResp offset
-  -- where
-  --   commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
-  --   commitCheckpoint client reader streamName RecordId{..} = do
-  --     logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
-  --     S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
-
 --------------------------------------------------------------------------------
 
 batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
