@@ -60,7 +60,6 @@ spec =  do
              withGRPCClient clientConfig $ \client -> do
                runTest client
             ) $ describe "HStream.BasicHandlerSpec" $ do
-   baseSpec
    subscribeSpec
    consumerSpec
 
@@ -126,27 +125,6 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
     resp' <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
     listStreamsResponseStreams resp' `shouldNotSatisfy` V.elem stream
-
-baseSpec :: SpecWith Client
-baseSpec = describe "BaseSpec" $ do
-
-  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test sendHeartbeat request" $ \client -> do
-    -- send heartbeat request to an unsubscribed subscription shoud return false
-    sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
-
-    void $ createStreamRequest client $ Stream randomStreamName 1
-    let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
-    createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
-    -- send heartbeat request to an existing subscription should return True
-    sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
-    -- after send heartbeat responsed, resubscribe same subscription should return False
-    subscribeRequest client randomSubsciptionId `shouldReturn` False
-
-    -- after heartbeat timeout, sendHeartbeatRequest should return False
-    threadDelay 2000000
-    sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
-
 
 -------------------------------------------------------------------------------------------------
 
@@ -216,8 +194,6 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     isJust <$> createStreamRequest client (Stream randomStreamName 1) `shouldReturn` True
     -- createSubscribe with an existing stream should return True
     createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    -- re-createSubscribe with a used subscriptionId should return False
-    createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
 
   aroundWith
     (\runTest client -> do
@@ -230,12 +206,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
         let sId = V.last randomSubsciptionIds
         -- subscribe a nonexistent subscriptionId should return False
         subscribeRequest client sId `shouldReturn` False
-        -- subscribe a Released subscriptionId should return True
-        subscribeRequest client randomSubsciptionId `shouldReturn` True
-        -- subscribe a Occupied subscriptionId should return False
-        subscribeRequest client randomSubsciptionId `shouldReturn` False
-        threadDelay 2000000
-        -- after some delay the subscriptionId should be released and resubscribe should success
+        -- subscribe an existed subscriptionId should return True
         subscribeRequest client randomSubsciptionId `shouldReturn` True
 
   aroundWith
@@ -256,17 +227,11 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
         reqSet `shouldSatisfy` (`Set.isSubsetOf` respSet)
 
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test deleteSubscription request" $ \client -> do
-    -- delete unsubscribed stream should return false
-    deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` False
     void $ createStreamRequest client $ Stream randomStreamName 1
     void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
     subscribeRequest client randomSubsciptionId `shouldReturn` True
     -- delete subscribed stream should return true
     deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
-    -- after delete subscription, send heartbeat shouldReturn False
-    sendHeartbeatRequest client randomSubsciptionId `shouldReturn` False
-    res <- fromJust <$> listSubscriptionRequest client
-    V.find (\Subscription{..} -> subscriptionSubscriptionId == randomSubsciptionId) res `shouldBe` Nothing
 
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "delete a subscription with underlying stream deleted should success" $ \client -> do
     void $ createStreamRequest client $ Stream randomStreamName 1
@@ -281,14 +246,9 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
     void $ createStreamRequest client $ Stream randomStreamName 1
     -- check a nonexistent subscriptionId should return False
     checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` False
+    -- check an existed subscriptionId should return True
     createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    -- the subscription should exists when the reader's status is released
     checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` True
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
-    -- the subscription should exists when the reader's status is Occupied
-    checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` True
-    deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
-    checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` False
 
 ----------------------------------------------------------------------------------------------------------
 
@@ -376,79 +336,6 @@ consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec
     let resPayloads = V.map getReceivedRecordPayload resp
     Log.debug $ Log.buildString "respPayload = " <> Log.buildString (show resPayloads)
     resPayloads `shouldBe` reqPayloads
-
-  it "test multi consumer without commit" $ \(client, reqPayloads) -> do
-    Log.debug $ Log.buildString "payloads = " <> Log.buildString (show reqPayloads)
-    tid <- forkIO $ do
-      forever $ do
-        sRes <- sendHeartbeatRequest client randomSubsciptionId
-        unless sRes $ Log.e "sendHeartbeatRequest get an error!"
-        threadDelay 500000
-
-    resp1 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    resp2 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    let resPayloads1 =  V.map getReceivedRecordPayload resp1
-    let resPayloads2 =  V.map getReceivedRecordPayload resp2
-    let (first2Req, _) = V.splitAt 2 reqPayloads
-    resPayloads1 V.++ resPayloads2 `shouldBe` first2Req
-    Log.debug "Kill the heartbeat thread."
-    void $ killThread tid
-
-    threadDelay 2000000
-    -- after heartbeat timeout, re-subscribe to origin subscriptionId should success, and
-    -- fetch will get from the basic checkpoint
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
-    resp3 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    V.length resp3 `shouldNotBe` 0
-    let resPayloads3 = V.head $ V.map getReceivedRecordPayload resp3
-    resPayloads3 `shouldBe` V.head reqPayloads
-
-  it "test commitOffset request" $ \(client, reqPayloads) -> do
-    Log.debug $ "payloads = " <> Log.buildString (show reqPayloads)
-    tid <- forkIO $ do
-      forever $ do
-        sRes <- sendHeartbeatRequest client randomSubsciptionId
-        unless sRes $ Log.e "sendHeartbeatRequest get an error"
-        threadDelay 500000
-
-    resp1 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    resp2 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    let resPayloads1 =  V.map getReceivedRecordPayload resp1
-    let resPayloads2 =  V.map getReceivedRecordPayload resp2
-    let (first2Req, remained) = V.splitAt 2 reqPayloads
-    Log.debug . mconcat $ map Log.buildString ["first2Req = ", show first2Req, ", remained: ", show remained]
-    resPayloads1 V.++ resPayloads2 `shouldBe` first2Req
-
-    let recordId = fromJust . receivedRecordRecordId $ V.head resp2
-    commitOffsetRequest client randomSubsciptionId  recordId `shouldReturn` True
-    -- commitOffset should not affect the progress of the current reader.
-    res <- V.replicateM 2 $ do
-      resp <-fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-      return $ getReceivedRecordPayload . V.head $ resp
-    Log.debug $ "res = " <> Log.buildString (show res)
-    let (another2Req, _) = V.splitAt 2 remained
-    Log.debug $ "another2Req = " <> Log.buildString (show another2Req)
-    res `shouldBe` another2Req
-
-    Log.debug "Kill the heartbeat thread."
-    void $ killThread tid
-    threadDelay 2000000
-    -- when a new client subscribe the same subscriptionId, it should consume from the checkpoint.
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
-    resp3 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-    when (V.length resp3 == 0) $ do
-      Log.e "fetch after re-subscribe get an empty list."
-      sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
-      resp4 <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 1
-      Log.debug $ "fetch again, resp4 = " <> Log.buildString (show resp4)
-      sendHeartbeatRequest client randomSubsciptionId `shouldReturn` True
-      subscriptions <- listSubscriptionRequest client
-      Log.debug $ "subscriptionId = " <> Log.buildLazyText randomSubsciptionId
-      Log.debug $ "current subscriptions: " <> Log.buildString (show subscriptions)
-    V.length resp3 `shouldNotBe` 0
-    let resPayloads3 = V.head $ V.map getReceivedRecordPayload resp3
-    resPayloads3 `shouldBe` V.head remained
-
 ----------------------------------------------------------------------------------------------------------
 
 appendRequest :: Client -> TL.Text -> V.Vector HStreamRecord -> IO (Maybe AppendResponse)
