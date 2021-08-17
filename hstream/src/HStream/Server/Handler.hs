@@ -368,12 +368,18 @@ createSubscriptionHandler
 createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) = do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
 
+  logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict subscriptionStreamName))
+  let subOffset = fromJust subscriptionOffset
+  recordId <- toConcreteRecordId subOffset scLDClient logId
+
+  let newsub = subscription {subscriptionOffset = Just $ SubscriptionOffset (Just $ SubscriptionOffsetOffsetRecordOffset recordId)}
+
   success <- atomically $ do
     store <- readTVar subscriptions
     if HM.member subscriptionSubscriptionId store
     then return False
     else do
-      let newStore = HM.insert subscriptionSubscriptionId subscription store
+      let newStore = HM.insert subscriptionSubscriptionId newsub store
       writeTVar subscriptions newStore
       return True
 
@@ -381,6 +387,20 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
   then returnResp subscription
   else
      returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
+  where
+    toConcreteRecordId :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO RecordId
+    toConcreteRecordId SubscriptionOffset{..} client logId =
+      case fromJust subscriptionOffsetOffset of
+        SubscriptionOffsetOffsetSpecialOffset subOffset ->
+          case subOffset of
+            Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) ->
+              return $ RecordId S.LSN_MIN 0
+            Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> do
+              tailLSN <- S.getTailLSN client logId
+              return $ RecordId (tailLSN + 1) 0
+            Enumerated _                                               ->
+              error "Wrong SpecialOffset!"
+        SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
 subscribeHandler
   :: ServerContext
@@ -405,7 +425,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
     streamName <- getStreamName subscribeRequestSubscriptionId subscriptions
     logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict streamName))
     startOffset <- getSubscriptionOffset subscribeRequestSubscriptionId
-    startLSN <- getStartLSN startOffset scLDClient logId
+    let startLSN = getStartLSN startOffset
     S.ckpReaderStartReading ldreader logId startLSN S.LSN_MAX
     Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
     -- insert to runtime info
@@ -422,17 +442,10 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
       let Subscription{..} = fromJust $ HM.lookup subscriptionId store
       return $ fromJust subscriptionOffset
 
-    getStartLSN :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO S.LSN
-    getStartLSN SubscriptionOffset{..} client logId = case fromJust subscriptionOffsetOffset of
-      SubscriptionOffsetOffsetSpecialOffset subOffset -> do
-        case subOffset of
-          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) ->
-            return S.LSN_MIN
-          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  ->
-            (+1) <$> S.getTailLSN client logId
-          Enumerated _                                               ->
-            error "Wrong SpecialOffset!"
-      SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
+    getStartLSN :: SubscriptionOffset -> S.LSN
+    getStartLSN SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
+      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+      SubscriptionOffsetOffsetRecordOffset RecordId{..} -> recordIdBatchId
 
 getStreamName :: SubscriptionId -> TVar (HM.HashMap SubscriptionId Subscription)-> IO TL.Text
 getStreamName subscriptionId tStore = atomically $ do
