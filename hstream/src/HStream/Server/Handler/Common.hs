@@ -113,19 +113,24 @@ runSinkConnector
   -> IO ThreadId
 runSinkConnector ServerContext{..} cid src connector = do
     P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Running
-    forkIO $ forever (catches action cleanup)
+    forkIO $ catches (forever action) cleanup
   where
     writeToConnector c SourceRecord{..} =
       writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
     action = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
     cleanup =
-      [ Handler (\(_ :: ERRException) ->
-                   do Log.debug "Sink connector thread died due to SQL errors"
-                      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.ConnectionAbort)
-      , Handler (\(e :: AsyncException) ->
-                   do Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
-                      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Terminated)
+      [ Handler (\(_ :: ERRException) -> do
+                    Log.debug "Sink connector thread died due to SQL errors"
+                    P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.ConnectionAbort
+                    void releasePid)
+      , Handler (\(e :: AsyncException) -> do
+                    Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
+                    P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Terminated
+                    void releasePid)
       ]
+    releasePid = do
+      hmapC <- readMVar runningConnectors
+      swapMVar runningConnectors $ HM.delete cid hmapC
 
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
@@ -196,7 +201,7 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
   (qid, timestamp) <- P.createInsertPersistentQuery
     (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType zkHandle
   P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
-  tid <- forkIO $ onException (action qid) (cleanup qid)
+  tid <- forkIO $ catches (action qid) (cleanup qid)
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
   where
@@ -204,19 +209,32 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper isTemp taskBuilder scLDClient
-    cleanup qid = do
-      Log.debug . Log.buildString
-        $ "CREATE AS SELECT: query " <> show qid
-       <> " has died. Change state to ConnectionAbort"
-      P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.ConnectionAbort)
+      runTaskWrapper HS.StreamTypeStream sinkType taskBuilder scLDClient
+    cleanup qid =
+      [ Handler (\(e :: AsyncException) -> do
+                    Log.debug . Log.buildString
+                       $ "CREATE AS SELECT: query " <> show qid
+                      <> " is killed because of " <> show e
+                    P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.Terminated
+                    void $ releasePid qid)
+      , Handler (\(e :: SomeException) -> do
+                    Log.debug . Log.buildString
+                       $ "CREATE AS SELECT: query " <> show qid
+                      <> " died because of " <> show e
+                    P.withMaybeZHandle zkHandle $ P.setQueryStatus qid P.ConnectionAbort
+                    void $ releasePid qid)
+      ]
+    releasePid qid = do
+      hmapC <- readMVar runningQueries
+      swapMVar runningQueries $ HM.delete qid hmapC
+
 
 handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
 handleTerminateConnector ServerContext{..} cid = do
   hmapC <- readMVar runningConnectors
   case HM.lookup cid hmapC of
     Just tid -> do
-      void $ killThread tid >> swapMVar runningConnectors (HM.delete cid hmapC)
+      void $ killThread tid
       Log.debug . Log.buildString $ "TERMINATE: terminated connector: " <> show cid
     _        -> throwIO ConnectorNotExist
 
@@ -279,18 +297,20 @@ handleQueryTerminate sc@ServerContext{..} AllQueries = do
   handleQueryTerminate sc (ManyQueries $ HM.keys hmapQ)
 handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
   hmapQ <- readMVar runningQueries
-  (qids', hmapQ') <- foldrM action ([], hmapQ) qids
-  void $ swapMVar runningQueries hmapQ'
+  qids' <- foldrM (action hmapQ) [] qids
   Log.debug . Log.buildString $ "TERMINATE: terminated queries: " <> show qids'
   return qids'
   where
-    action x (terminatedQids, hm) = do
+    action hm x terminatedQids = do
       result <- try $ do
-        case HM.lookup x hm of Just tid -> killThread tid; _ -> pure ()
-        P.withMaybeZHandle zkHandle (P.setQueryStatus x P.Terminated)
+        case HM.lookup x hm of
+          Just tid -> killThread tid
+          _        -> pure ()
       case result of
-        Left (_ ::SomeException) -> do
-          Log.warning . Log.buildString $ "TERMINATE: unable to terminate query: " <> show x
-          return (terminatedQids, hm)
-        Right _                  -> return (x:terminatedQids, HM.delete x hm)
+        Left (e ::SomeException) -> do
+          Log.warning . Log.buildString
+            $ "TERMINATE: unable to terminate query: " <> show x
+           <> "because of " <> show e
+          return terminatedQids
+        Right _                  -> return (x:terminatedQids)
 

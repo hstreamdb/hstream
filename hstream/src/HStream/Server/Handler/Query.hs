@@ -129,9 +129,10 @@ restartQueryHandler
   -> ServerRequest 'Normal RestartQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
-    queries <- P.withMaybeZHandle zkHandle P.getQueries
-    case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
-      Just query -> do
-        P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
-        returnResp Empty
-      Nothing    -> returnErrResp StatusInternal "Query does not exist"
+  returnErrResp StatusInternal "restart query not suppported yet"
+    -- queries <- P.withMaybeZHandle zkHandle P.getQueries
+    -- case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
+    --   Just query -> do
+    --     P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
+    --     returnResp Empty
+      -- Nothing    -> returnErrResp StatusInternal "Query does not exist"
