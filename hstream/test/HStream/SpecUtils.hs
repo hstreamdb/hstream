@@ -177,6 +177,9 @@ action `grpcShouldThrow` p = (getServerResp =<< action) `shouldThrow` p
 mkStruct :: [(Text, Aeson.Value)] -> Struct
 mkStruct = jsonObjectToStruct . HM.fromList
 
+mkViewResponse :: Struct -> CommandQueryResponse
+mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"
+
 executeCommandQuery :: TL.Text -> IO (Maybe CommandQueryResponse)
 executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client

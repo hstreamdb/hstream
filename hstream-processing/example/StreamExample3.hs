@@ -6,6 +6,9 @@
 
 import           Data.Aeson
 import qualified Data.Binary                                     as B
+import           Data.Binary.Get
+import qualified Data.ByteString.Builder                         as BB
+import qualified Data.ByteString.Lazy                            as BL
 import           Data.Maybe
 import qualified Data.Text.Lazy                                  as TL
 import qualified Data.Text.Lazy.Encoding                         as TLE
@@ -18,6 +21,7 @@ import qualified HStream.Processing.Stream                       as HS
 import qualified HStream.Processing.Stream.GroupedStream         as HG
 import           HStream.Processing.Stream.SessionWindowedStream as HSW
 import           HStream.Processing.Stream.SessionWindows
+import           HStream.Processing.Stream.TimeWindows
 import qualified HStream.Processing.Table                        as HT
 import           HStream.Processing.Type
 import           HStream.Processing.Util
@@ -47,19 +51,32 @@ main = do
           { serializer = Serializer TLE.encodeUtf8,
             deserializer = Deserializer TLE.decodeUtf8
           } ::
-          Serde TL.Text
+          Serde TL.Text BL.ByteString
   let rSerde =
         Serde
           { serializer = Serializer encode,
             deserializer = Deserializer $ fromJust . decode
           } ::
-          Serde R
+          Serde R BL.ByteString
   let intSerde =
         Serde
           { serializer = Serializer B.encode,
             deserializer = Deserializer B.decode
           } ::
-          Serde Int
+          Serde Int BL.ByteString
+  let sessionWindowSerde =
+        Serde
+        { serializer = Serializer $ \TimeWindow{..} ->
+            let winStartBuilder = BB.int64BE tWindowStart
+                winEndBuilder   = BB.int64BE tWindowEnd
+             in BB.toLazyByteString $ winStartBuilder <> winEndBuilder
+        , deserializer = Deserializer $ runGet decodeTimeWindow
+        }
+        where
+          decodeTimeWindow = do
+            startTs <- getInt64be
+            endTs   <- getInt64be
+            return TimeWindow {tWindowStart = startTs, tWindowEnd = endTs}
   let streamSourceConfig =
         HS.StreamSourceConfig
           { sscStreamName = "demo-source",
@@ -69,7 +86,7 @@ main = do
   let streamSinkConfig =
         HS.StreamSinkConfig
           { sicStreamName = "demo-sink",
-            sicKeySerde = sessionWindowKeySerde textSerde,
+            sicKeySerde = sessionWindowKeySerde textSerde sessionWindowSerde,
             sicValueSerde = intSerde
           }
   aggStore <- mkInMemoryStateSessionStore
@@ -85,7 +102,7 @@ main = do
       >>= HS.filter filterR
       >>= HS.groupBy (fromJust . recordKey)
       >>= HG.sessionWindowedBy (mkSessionWindows 10000)
-      >>= HSW.count materialized
+      >>= HSW.count materialized sessionWindowSerde intSerde
       >>= HT.toStream
       >>= HS.to streamSinkConfig
 
@@ -109,7 +126,7 @@ main = do
         subscribeToStream sourceConnector1 "demo-sink" Earlist
         records <- readRecords sourceConnector1
         forM_ records $ \SourceRecord {..} -> do
-          let k = runDeser (sessionWindowKeyDeserializer (deserializer textSerde)) (fromJust srcKey)
+          let k = runDeser (sessionWindowKeyDeserializer (deserializer textSerde) (deserializer sessionWindowSerde)) (fromJust srcKey)
           P.putStrLn $
             ">>> count: key: "
               ++ show k

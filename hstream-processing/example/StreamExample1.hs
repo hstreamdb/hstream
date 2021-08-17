@@ -6,6 +6,7 @@
 
 import           Data.Aeson
 import qualified Data.Binary                             as B
+import qualified Data.ByteString.Lazy                    as BL
 import           Data.Maybe
 import qualified Data.Text.Lazy                          as TL
 import qualified Data.Text.Lazy.Encoding                 as TLE
@@ -45,19 +46,19 @@ main = do
           { serializer = Serializer TLE.encodeUtf8,
             deserializer = Deserializer TLE.decodeUtf8
           } ::
-          Serde TL.Text
+          Serde TL.Text BL.ByteString
   let rSerde =
         Serde
           { serializer = Serializer encode,
             deserializer = Deserializer $ fromJust . decode
           } ::
-          Serde R
+          Serde R BL.ByteString
   let intSerde =
         Serde
           { serializer = Serializer B.encode,
             deserializer = Deserializer $ B.decode
           } ::
-          Serde Int
+          Serde Int BL.ByteString
   let streamSourceConfig =
         HS.StreamSourceConfig
           { sscStreamName = "demo-source",
@@ -82,7 +83,7 @@ main = do
       >>= HS.stream streamSourceConfig
       >>= HS.filter filterR
       >>= HS.groupBy (fromJust . recordKey)
-      >>= HG.count materialized
+      >>= HG.count materialized textSerde intSerde
       >>= HT.toStream
       >>= HS.to streamSinkConfig
 

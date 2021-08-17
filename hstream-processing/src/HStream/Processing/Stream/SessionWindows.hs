@@ -13,8 +13,6 @@ module HStream.Processing.Stream.SessionWindows
   )
 where
 
-import           Data.Binary.Get
-import qualified Data.ByteString.Builder               as BB
 import           HStream.Processing.Encoding
 import           HStream.Processing.Stream.TimeWindows
 import           RIO
@@ -33,28 +31,28 @@ mkSessionWindows inactivityGap =
 
 type SessionWindowKey k = TimeWindowKey k
 
-sessionWindowKeySerializer :: Serializer k -> Serializer (TimeWindowKey k)
-sessionWindowKeySerializer kSerializer = Serializer $ \TimeWindowKey {..} ->
-  let keyBytes = runSer kSerializer twkKey
-      bytesBuilder = BB.int64BE (tWindowStart twkWindow) <> BB.int64BE (tWindowEnd twkWindow) <> BB.lazyByteString keyBytes
-   in BB.toLazyByteString bytesBuilder
+sessionWindowKeySerializer :: Serialized s =>
+  Serializer k s -> Serializer TimeWindow s -> Serializer (TimeWindowKey k) s
+sessionWindowKeySerializer kSerializer winSerializer = Serializer $ \TimeWindowKey{..} ->
+  let keySer = runSer kSerializer twkKey
+      winSer = runSer winSerializer twkWindow
+   in compose (winSer, keySer)
 
-sessionWindowKeyDeserializer :: Deserializer k -> Deserializer (TimeWindowKey k)
-sessionWindowKeyDeserializer kDeserializer = Deserializer $ runGet decodeWindowKey
-  where
-    decodeWindowKey = do
-      startTs <- getInt64be
-      endTs <- getInt64be
-      keyBytes <- getRemainingLazyByteString
-      return
-        TimeWindowKey
-          { twkKey = runDeser kDeserializer keyBytes,
-            twkWindow = mkTimeWindow startTs endTs
-          }
+sessionWindowKeyDeserializer :: Serialized s =>
+  Deserializer k s -> Deserializer TimeWindow s -> Deserializer (TimeWindowKey k) s
+sessionWindowKeyDeserializer kDeserializer winDeserializer = Deserializer $ \s ->
+  let (winSer, keySer) = separate s
+      win = runDeser winDeserializer winSer
+      key = runDeser kDeserializer   keySer
+   in TimeWindowKey
+      { twkKey = key
+      , twkWindow = win
+      }
 
-sessionWindowKeySerde :: Serde k -> Serde (TimeWindowKey k)
-sessionWindowKeySerde kSerde =
+sessionWindowKeySerde :: Serialized s =>
+  Serde k s -> Serde TimeWindow s -> Serde (TimeWindowKey k) s
+sessionWindowKeySerde kSerde winSerde =
   Serde
-    { serializer = sessionWindowKeySerializer $ serializer kSerde,
-      deserializer = sessionWindowKeyDeserializer (deserializer kSerde)
+    { serializer = sessionWindowKeySerializer (serializer kSerde) (serializer winSerde),
+      deserializer = sessionWindowKeyDeserializer (deserializer kSerde) (deserializer winSerde)
     }

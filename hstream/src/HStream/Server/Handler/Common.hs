@@ -65,7 +65,7 @@ import           System.IO.Unsafe                 (unsafePerformIO)
 
 --------------------------------------------------------------------------------
 
-groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object))
+groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object SerMat))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
 

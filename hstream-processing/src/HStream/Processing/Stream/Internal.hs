@@ -26,20 +26,20 @@ import           RIO
 import qualified RIO.ByteString.Lazy          as BL
 import qualified RIO.Text                     as T
 
-data Stream k v = Stream
-  { streamKeySerde :: Maybe (Serde k),
-    streamValueSerde :: Maybe (Serde v),
+data Stream k v s = Stream
+  { streamKeySerde :: Maybe (Serde k s),
+    streamValueSerde :: Maybe (Serde v s),
     streamProcessorName :: T.Text,
     streamInternalBuilder :: InternalStreamBuilder
   }
 
 mkStream ::
   (Typeable k, Typeable v) =>
-  Maybe (Serde k) ->
-  Maybe (Serde v) ->
+  Maybe (Serde k s) ->
+  Maybe (Serde v s) ->
   T.Text ->
   InternalStreamBuilder ->
-  Stream k v
+  Stream k v s
 mkStream keySerde valueSerde processorName builder =
   Stream
     { streamKeySerde = keySerde,
@@ -70,8 +70,8 @@ mergeInternalStreamBuilder builder1 builder2 =
     }
 
 addSourceInternal ::
-  (Typeable k, Typeable v) =>
-  SourceConfig k v ->
+  (Typeable k, Typeable v, Typeable s) =>
+  SourceConfig k v s ->
   InternalStreamBuilder ->
   InternalStreamBuilder
 addSourceInternal sourceCfg builder@InternalStreamBuilder {..} =
@@ -90,8 +90,8 @@ addProcessorInternal processorName processor parents builder@InternalStreamBuild
    in builder {isbTaskBuilder = taskBuilder}
 
 addSinkInternal ::
-  (Typeable k, Typeable v) =>
-  SinkConfig k v ->
+  (Typeable k, Typeable v, Typeable s) =>
+  SinkConfig k v s ->
   [T.Text] ->
   InternalStreamBuilder ->
   InternalStreamBuilder
@@ -120,9 +120,9 @@ mkInternalStoreName :: T.Text -> T.Text
 mkInternalStoreName namePrefix =
   namePrefix `T.append` "-STORE"
 
-data Materialized k v = Materialized
-  { mKeySerde :: Serde k,
-    mValueSerde :: Serde v,
-    mStateStore :: StateStore BL.ByteString BL.ByteString
-    -- mStateStore :: StateStore k v
+data Materialized k v s = Materialized
+  { mKeySerde :: Serde k s,
+    mValueSerde :: Serde v s,
+    -- mStateStore :: StateStore BL.ByteString BL.ByteString
+    mStateStore :: StateStore k v
   }

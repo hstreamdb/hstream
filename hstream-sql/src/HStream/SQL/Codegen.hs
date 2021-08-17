@@ -49,7 +49,11 @@ import qualified HStream.Processing.Table                        as HT
 import qualified HStream.Processing.Type                         as HPT
 import           HStream.SQL.AST                                 hiding
                                                                  (StreamName)
-import           HStream.SQL.Codegen.Boilerplate                 (objectSerde)
+import           HStream.SQL.Codegen.Boilerplate                 (objectObjectSerde,
+                                                                  objectSerde,
+                                                                  sessionWindowSerde,
+                                                                  timeWindowObjectSerde,
+                                                                  timeWindowSerde)
 import           HStream.SQL.Exception                           (SomeSQLException (..),
                                                                   throwSQLException)
 import           HStream.SQL.Internal.Codegen                    (binOpOnValue,
@@ -64,6 +68,9 @@ import           HStream.SQL.Parse                               (parseAndRefine
 import           HStream.Utils                                   (genUnique)
 
 --------------------------------------------------------------------------------
+
+type SerMat  = Object
+type SerPipe = BL.ByteString
 
 type StreamName     = HPT.StreamName
 type ViewName = T.Text
@@ -87,7 +94,7 @@ data ConnectorConfig
 data HStreamPlan
   = SelectPlan          SourceStream SinkStream TaskBuilder
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
-  | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object)
+  | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object SerMat)
   | CreatePlan          StreamName Int
   | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
   | InsertPlan          StreamName InsertType ByteString
@@ -172,7 +179,7 @@ extractInt errPrefix = \case
   _ -> throwSQLException CodegenException Nothing $ errPrefix <> "type should be integer."
 
 ----
-type SourceConfigType = HS.StreamSourceConfig Object Object
+type SourceConfigType = HS.StreamSourceConfig Object Object SerPipe
 genStreamSourceConfig :: RFrom -> (SourceConfigType, Maybe SourceConfigType)
 genStreamSourceConfig frm =
   let boilerplate = HS.StreamSourceConfig "" objectSerde objectSerde
@@ -186,8 +193,8 @@ genStreamSourceConfig frm =
 defaultTimeWindowSize :: Int64
 defaultTimeWindowSize = 3000
 
-data SinkConfigType = SinkConfigType SinkStream (HS.StreamSinkConfig Object Object)
-                    | SinkConfigTypeWithWindow SinkStream (HS.StreamSinkConfig (TimeWindowKey Object) Object)
+data SinkConfigType = SinkConfigType SinkStream (HS.StreamSinkConfig Object Object SerPipe)
+                    | SinkConfigTypeWithWindow SinkStream (HS.StreamSinkConfig (TimeWindowKey Object) Object SerPipe)
 
 genStreamSinkConfig :: Maybe StreamName -> RGroupBy -> IO SinkConfigType
 genStreamSinkConfig sinkStream' grp = do
@@ -196,7 +203,7 @@ genStreamSinkConfig sinkStream' grp = do
     RGroupBy _ _ (Just _) ->
       return $ SinkConfigTypeWithWindow stream HS.StreamSinkConfig
       { sicStreamName = stream
-      , sicKeySerde = timeWindowKeySerde objectSerde defaultTimeWindowSize
+      , sicKeySerde = timeWindowKeySerde objectSerde (timeWindowSerde defaultTimeWindowSize) defaultTimeWindowSize
       , sicValueSerde = objectSerde
       }
     _ ->
@@ -206,7 +213,7 @@ genStreamSinkConfig sinkStream' grp = do
       , sicValueSerde = objectSerde
       }
 
-genStreamJoinedConfig :: IO (HS.StreamJoined Object Object Object Object)
+genStreamJoinedConfig :: IO (HS.StreamJoined Object Object Object Object SerPipe)
 genStreamJoinedConfig = do
   store1 <- mkInMemoryStateTimestampedKVStore
   store2 <- mkInMemoryStateTimestampedKVStore
@@ -234,7 +241,7 @@ genKeySelector field Record{..} =
   HM.singleton "SelectedKey" $ (HM.!) recordValue field
 
 type TaskName = Text
-genStreamWithSourceStream :: HasCallStack => TaskName -> RFrom -> IO (Stream Object Object, SourceStream)
+genStreamWithSourceStream :: HasCallStack => TaskName -> RFrom -> IO (Stream Object Object SerPipe, SourceStream)
 genStreamWithSourceStream taskName frm = do
   let (srcConfig1, srcConfig2') = genStreamSourceConfig frm
   baseStream <- HS.mkStreamBuilder taskName >>= HS.stream srcConfig1
@@ -330,7 +337,7 @@ genFilterR (RWhere cond) record@Record{..} =
                     GT -> False
                     _  -> True
 
-genFilterNode :: RWhere -> Stream Object Object -> IO (Stream Object Object)
+genFilterNode :: RWhere -> Stream Object Object SerPipe -> IO (Stream Object Object SerPipe)
 genFilterNode = HS.filter . genFilterR
 
 ----
@@ -350,16 +357,16 @@ genTimeWindowKeyMapR (RSelList exprsWithAlias) record@Record{..} =
   record { recordValue = HM.filterWithKey (\k _ -> k `L.elem` aliases) recordValue }
   where aliases = pack <$> (snd <$> exprsWithAlias)
 
-genMapNode :: RSel -> Stream Object Object -> IO (Stream Object Object)
+genMapNode :: RSel -> Stream Object Object SerPipe -> IO (Stream Object Object SerPipe)
 genMapNode = HS.map . genMapR
 
 genTimeWindowKeyMapNode :: RSel
-                        -> Stream (TimeWindowKey Object) Object
-                        -> IO (Stream (TimeWindowKey Object) Object)
+                        -> Stream (TimeWindowKey Object) Object SerPipe
+                        -> IO (Stream (TimeWindowKey Object) Object SerPipe)
 genTimeWindowKeyMapNode rsel = HS.map (genTimeWindowKeyMapR rsel)
 
 ----
-genMaterialized :: HasCallStack => RGroupBy -> IO (HS.Materialized Object Object)
+genMaterialized :: HasCallStack => RGroupBy -> IO (HS.Materialized Object Object SerMat)
 genMaterialized grp = do
   aggStore <- case grp of
     RGroupByEmpty     ->
@@ -369,8 +376,8 @@ genMaterialized grp = do
         Just (RSessionWindow _) -> mkInMemoryStateSessionStore
         _                       -> mkInMemoryStateKVStore
   return $ HS.Materialized
-           { mKeySerde   = objectSerde
-           , mValueSerde = objectSerde
+           { mKeySerde   = objectObjectSerde
+           , mValueSerde = objectObjectSerde
            , mStateStore = aggStore
            }
 
@@ -467,8 +474,8 @@ fuseAggregateComponents components =
   }
 
 genGroupByNode :: RSelect
-               -> Stream Object Object
-               -> IO (Either (Stream Object Object) (Stream (TimeWindowKey Object) Object), Materialized Object Object)
+               -> Stream Object Object SerPipe
+               -> IO (Either (Stream Object Object SerPipe) (Stream (TimeWindowKey Object) Object SerPipe), Materialized Object Object SerMat)
 genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) s =
   throwSQLException CodegenException Nothing "Impossible happened"
 genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
@@ -479,22 +486,34 @@ genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
   let AggregateComponents{..} = genAggregateComponents sel
   case win' of
     Nothing                       -> do
-      table  <- HG.aggregate aggregateInit aggregateF materialized grped
+      table  <- HG.aggregate aggregateInit aggregateF
+        objectSerde objectSerde
+        materialized grped
       stream <- HT.toStream table
       return (Left stream, materialized)
     Just (RTumblingWindow diff)   -> do
       timed  <- HG.timeWindowedBy (mkTumblingWindow (diffTimeToMs diff)) grped
-      table  <- HTW.aggregate aggregateInit aggregateF materialized timed
+      table  <- HTW.aggregate aggregateInit aggregateF
+        (timeWindowObjectSerde $ diffTimeToMs diff) -- Serde TimeWindow s1, node store, Object
+        (timeWindowSerde $ diffTimeToMs diff)       -- Serde TimeWindow s2, source & sink, BL
+        objectSerde                                 -- Serde a s2, source & sink, BL
+        materialized timed
       stream <- HT.toStream table
       return (Right stream, materialized)
     Just (RHoppingWIndow len hop) -> do
       timed  <- HG.timeWindowedBy (mkHoppingWindow (diffTimeToMs len) (diffTimeToMs hop)) grped
-      table  <- HTW.aggregate aggregateInit aggregateF materialized timed
+      table  <- HTW.aggregate aggregateInit aggregateF
+        (timeWindowObjectSerde $ diffTimeToMs len) -- Serde TimeWindow s1, node store, Object
+        (timeWindowSerde $ diffTimeToMs len)       -- Serde TimeWindow s2, source & sink, BL
+        objectSerde                                -- Serde a s2, source & sink, BL
+        materialized timed
       stream <-  HT.toStream table
       return (Right stream, materialized)
     Just (RSessionWindow diff)    -> do
       timed  <- HG.sessionWindowedBy (mkSessionWindows (diffTimeToMs diff)) grped
-      table  <- HSW.aggregate aggregateInit aggregateF aggregateMergeF materialized timed
+      table  <- HSW.aggregate aggregateInit aggregateF aggregateMergeF
+        sessionWindowSerde objectSerde
+        materialized timed
       stream <- HT.toStream table
       return (Right stream, materialized)
 
@@ -503,7 +522,7 @@ genFilterRFromHaving :: RHaving -> Record Object Object -> Bool
 genFilterRFromHaving RHavingEmpty   = const True
 genFilterRFromHaving (RHaving cond) = genFilterR (RWhere cond)
 
-genFilteRNodeFromHaving :: RHaving -> Stream Object Object -> IO (Stream Object Object)
+genFilteRNodeFromHaving :: RHaving -> Stream Object Object SerPipe -> IO (Stream Object Object SerPipe)
 genFilteRNodeFromHaving = HS.filter . genFilterRFromHaving
 
 ----
@@ -511,7 +530,7 @@ genStreamBuilderWithStream :: HasCallStack
                            => TaskName
                            -> Maybe StreamName
                            -> RSelect
-                           -> IO (StreamBuilder, SourceStream, SinkStream, Maybe (Materialized Object Object))
+                           -> IO (StreamBuilder, SourceStream, SinkStream, Maybe (Materialized Object Object SerMat))
 genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp hav) = do
   streamSinkConfig <- genStreamSinkConfig sinkStream' grp
   (s0, source)     <- genStreamWithSourceStream taskName frm
