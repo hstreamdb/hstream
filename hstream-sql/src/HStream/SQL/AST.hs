@@ -385,13 +385,19 @@ instance Refine SelectView where
     RSelectView svSel svFrm svWhr
     where
       -- TODO: use `refine` instance of `Sel`
+      svSel :: SelectViewSelect
       svSel = case sel of
         (DSel _ (SelListAsterisk _)) -> SVSelectAll
         (DSel _ (SelListSublist _ dcols)) ->
-          let f dcol = case dcol of
+          let f :: DerivedCol -> (FieldName, FieldAlias)
+              f docl = case docl of
                 (DerivedColSimpl _ expr@(ExprColName _ (ColNameSimple _ (Ident col))))       ->
                   (col, trimSpacesPrint expr)
+                (DerivedColSimpl _ expr@(ExprRaw _ (RawColumn col)))                         ->
+                  (col, trimSpacesPrint expr)
                 (DerivedColAs _ (ExprColName _ (ColNameSimple _ (Ident col))) (Ident alias)) ->
+                  (col, Text.unpack alias)
+                (DerivedColAs _ (ExprRaw _ (RawColumn col)) (Ident alias))                   ->
                   (col, Text.unpack alias)
            in SVSelectFields (f <$> dcols)
       svFrm = let (RFromSingle stream) = refine frm in stream
