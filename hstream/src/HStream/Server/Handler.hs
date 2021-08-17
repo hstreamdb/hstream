@@ -406,8 +406,8 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
     logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict streamName))
     startOffset <- getSubscriptionOffset subscribeRequestSubscriptionId
     startLSN <- getStartLSN startOffset scLDClient logId
-    Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
     S.ckpReaderStartReading ldreader logId startLSN S.LSN_MAX
+    Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
     -- insert to runtime info
     atomically $ do
       store <- readTVar subscribeRuntimeInfo
@@ -426,9 +426,12 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
     getStartLSN SubscriptionOffset{..} client logId = case fromJust subscriptionOffsetOffset of
       SubscriptionOffsetOffsetSpecialOffset subOffset -> do
         case subOffset of
-          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> return S.LSN_MIN
-          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> (+1) <$> S.getTailLSN client logId
-          Enumerated _                                               -> error "Wrong SpecialOffset!"
+          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) ->
+            return S.LSN_MIN
+          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  ->
+            (+1) <$> S.getTailLSN client logId
+          Enumerated _                                               ->
+            error "Wrong SpecialOffset!"
       SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
 
 getStreamName :: SubscriptionId -> TVar (HM.HashMap SubscriptionId Subscription)-> IO TL.Text
@@ -444,32 +447,34 @@ deleteSubscriptionHandler
 deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
 
-  exists <- atomically $ do
+  mSubscription <- atomically $ do
     store <- readTVar subscriptions
-    if HM.member deleteSubscriptionRequestSubscriptionId store
-    then do
-      let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
-      writeTVar subscriptions newStore
-      return True
-    else return False
+    case HM.lookup deleteSubscriptionRequestSubscriptionId store of
+      Just sub -> do
+        let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
+        writeTVar subscriptions newStore
+        return (Just sub)
+      Nothing -> return Nothing
 
-  when exists $ do
-    mRes <- atomically $ do
-      store <- readTVar subscribeRuntimeInfo
-      case HM.lookup deleteSubscriptionRequestSubscriptionId store of
+  case mSubscription of
+    Just Subscription{..} -> do
+      mRes <- atomically $ do
+        store <- readTVar subscribeRuntimeInfo
+        case HM.lookup deleteSubscriptionRequestSubscriptionId store of
+          Just ldreader -> do
+            let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
+            writeTVar subscribeRuntimeInfo newStore
+            return (Just ldreader)
+          Nothing -> return Nothing
+
+      case mRes of
         Just ldreader -> do
-          let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
-          writeTVar subscribeRuntimeInfo newStore
-          return (Just ldreader)
-        Nothing -> return Nothing
+          -- stop ldreader
+          logId <- S.getUnderlyingLogId scLDClient (transToStreamName $ TL.toStrict subscriptionStreamName)
+          ckpReaderStopReading ldreader logId
+        Nothing -> return ()
 
-    case mRes of
-      Just ldreader -> do
-        -- stop ldreader
-        streamName <- getStreamName deleteSubscriptionRequestSubscriptionId subscriptions
-        logId <- S.getUnderlyingLogId scLDClient (transToStreamName $ TL.toStrict streamName)
-        ckpReaderStopReading ldreader logId
-      Nothing -> return ()
+    Nothing -> return ()
 
   returnResp Empty
 
@@ -528,7 +533,7 @@ fetchHandler
 fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{..}) = defaultExceptionHandle $  do
   Log.debug $ "Receive fetch request: " <> Log.buildString (show req)
 
-  -- get ldreder from subscriptionId
+  -- get ldreader from subscriptionId
   mRes <- atomically $ do
     store <- readTVar subscribeRuntimeInfo
     return $ HM.lookup fetchRequestSubscriptionId store
