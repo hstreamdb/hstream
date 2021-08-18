@@ -222,9 +222,7 @@ subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
 
         resp <- listSubscriptionRequest client
         isJust resp `shouldBe` True
-        let respSet = Set.fromList $ V.toList .fromJust $ resp
-            reqSet = Set.fromList $ V.toList subscriptions
-        reqSet `shouldSatisfy` (`Set.isSubsetOf` respSet)
+        V.length subscriptions  `shouldBe` V.length (fromJust resp)
 
   after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test deleteSubscription request" $ \client -> do
     void $ createStreamRequest client $ Stream randomStreamName 1
