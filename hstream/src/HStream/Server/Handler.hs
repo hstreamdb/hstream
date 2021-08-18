@@ -98,21 +98,21 @@ handlers
 handlers ldclient headerConfig repFactor zkHandle timeout compression = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
-  readers <- newTVarIO HM.empty
-  readerHeap <- newTVarIO Map.empty
+  subscriptions <- newTVarIO HM.empty
+  subscribeRuntimeInfo <- newTVarIO HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
       , scDefaultStreamRepFactor = repFactor
       , zkHandle                 = zkHandle
       , runningQueries           = runningQs
       , runningConnectors        = runningCs
-      , subscribedReaders        = readers
-      , subscribeHeap            = readerHeap
+      , subscriptions            = subscriptions
+      , subscribeRuntimeInfo     = subscribeRuntimeInfo
       , cmpStrategy              = compression
       , headerConfig             = headerConfig
       }
-  timer <- newTimer
-  _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
+  -- timer <- newTimer
+  -- _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
   return HStreamApi {
       hstreamApiEcho = echoHandler
 
@@ -361,98 +361,103 @@ sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = do
 --------------------------------------------------------------------------------
 -- Subscribe
 
-checkSubscriptions
-  :: Int64    -- ^ timer timeout, ms
-  -> ServerContext
-  -> IO ()
-checkSubscriptions timeout ServerContext{..} = do
-  currentTime <- getCurrentTimestamp
-  Log.debug $ "Timeout fire, checkSubscriptions begin, currentTimeStamp = " <> Log.buildInt currentTime
-  (heapRemain, subReader) <- atomically $ do
-    sHeap <- readTVar subscribeHeap
-    let (outDated, remained) = Map.partition (\time -> currentTime - time >= timeout) sHeap
-    mapM_ (updateReaderStatus subscribedReaders Released) $ Map.keys outDated
-    writeTVar subscribeHeap remained
-    readers <- readTVar subscribedReaders
-    return (remained, readers)
-  Log.debug $ "After checkSubscriptions:\n==heapRemain: " <> Log.buildString (show heapRemain) <> "\n==subReader: " <> Log.buildString (show subReader)
-
 createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) = defaultExceptionHandle' doClean $ do
+createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) =  defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
-  res <- insertSubscribedReaders subscribedReaders subscriptionSubscriptionId None
-  if res
-    then do
-      let sName = transToStreamName $ TL.toStrict subscriptionStreamName
-      createSubscribe scLDClient subscribedReaders sName
-    else do
-    -- subscriptionId has been used, return an error response
-    returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
+
+  let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
+  exists <- S.doesStreamExists scLDClient streamName
+  if not exists
+  then
+     returnErrResp StatusInternal $ StatusDetails "stream not exist"
+  else do
+    logId <- S.getUnderlyingLogId scLDClient streamName
+    let subOffset = fromJust subscriptionOffset
+    recordId <- toConcreteRecordId subOffset scLDClient logId
+
+    let newsub = subscription {subscriptionOffset = Just $ SubscriptionOffset (Just $ SubscriptionOffsetOffsetRecordOffset recordId)}
+
+    success <- atomically $ do
+      store <- readTVar subscriptions
+      if HM.member subscriptionSubscriptionId store
+      then return False
+      else do
+        let newStore = HM.insert subscriptionSubscriptionId newsub store
+        writeTVar subscriptions newStore
+        return True
+
+    if success
+    then returnResp subscription
+    else
+       returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
   where
-    createSubscribe :: S.LDClient -> SubscribedReaders -> S.StreamId -> IO (ServerResponse 'Normal Subscription)
-    createSubscribe client sReaders streamName = do
-      reader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscriptionSubscriptionId)
-        S.checkpointStoreLogID 5000 1 Nothing 10
-      logId <- S.getUnderlyingLogId client streamName
-      startLSN <- getStartLSN (fromJust subscriptionOffset) client logId
-      Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
-      S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
-      -- consumer will fetch record from startLSN, so the start checkpoint should in (startLSN - 1)
-      S.writeCheckpoints reader (Map.fromList [(logId, startLSN - 1)])
-      -- If createSubscribe success, update the subscriptionId to Released status, and return success response
-      let readerMap = ReaderMap reader subscription Released
-      atomically $ do
-        updateSubscribedReaders sReaders subscriptionSubscriptionId readerMap
-      returnResp subscription
-
-    doClean :: IO ()
-    doClean = atomically $ deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
-
-    getStartLSN :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO S.LSN
-    getStartLSN SubscriptionOffset{..} client logId = case fromJust subscriptionOffsetOffset of
-      SubscriptionOffsetOffsetSpecialOffset subOffset -> do
-        case subOffset of
-          Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> return S.LSN_MIN
-          Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> (+1) <$> S.getTailLSN client logId
-          Enumerated _                                               -> error "Wrong SpecialOffset!"
-      SubscriptionOffsetOffsetRecordOffset RecordId{..} -> return recordIdBatchId
+    toConcreteRecordId :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO RecordId
+    toConcreteRecordId SubscriptionOffset{..} client logId =
+      case fromJust subscriptionOffsetOffset of
+        SubscriptionOffsetOffsetSpecialOffset subOffset ->
+          case subOffset of
+            Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) ->
+              return $ RecordId S.LSN_MIN 0
+            Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> do
+              tailLSN <- S.getTailLSN client logId
+              return $ RecordId (tailLSN + 1) 0
+            Enumerated _                                               ->
+              error "Wrong SpecialOffset!"
+        SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
 subscribeHandler
   :: ServerContext
   -> ServerRequest 'Normal SubscribeRequest SubscribeResponse
   -> IO (ServerResponse 'Normal SubscribeResponse)
-subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeRequest{..}) = defaultExceptionHandle' doClean $ do
+subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive subscribe request: " <> Log.buildString (show req)
-  (reader, Subscription{..}) <- doCheck subscribedReaders subscribeRequestSubscriptionId
-  let sName = transToStreamName $ TL.toStrict subscriptionStreamName
-  doSubscribe scLDClient reader sName
+
+  isInited <- atomically $ do
+    store <- readTVar subscribeRuntimeInfo
+    if HM.member subscribeRequestSubscriptionId store
+    then return True
+    else return False
+
+  if isInited
+  then returnResp (SubscribeResponse subscribeRequestSubscriptionId)
+  else do
+    -- create a new ldreader for subscription
+    ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscribeRequestSubscriptionId)
+        S.checkpointStoreLogID 5000 1 Nothing 10
+    -- seek ldreader to start offset
+    streamName <- getStreamName subscribeRequestSubscriptionId subscriptions
+    logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict streamName))
+    startOffset <- getSubscriptionOffset subscribeRequestSubscriptionId
+    let startLSN = getStartLSN startOffset
+    S.ckpReaderStartReading ldreader logId startLSN S.LSN_MAX
+    Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
+    -- insert to runtime info
+    atomically $ do
+      store <- readTVar subscribeRuntimeInfo
+      let newStore = HM.insert subscribeRequestSubscriptionId ldreader store
+      writeTVar subscribeRuntimeInfo newStore
+    -- return resp
+    returnResp (SubscribeResponse subscribeRequestSubscriptionId)
   where
-    -- Confirm subscriptionId exist, and the reader status should be Released, then update the reader status to Occupied.
-    doCheck :: SubscribedReaders -> TL.Text -> IO (S.LDSyncCkpReader, Subscription)
-    doCheck readers subscriptionId = atomically $ do
-      hm <- readTVar readers
-      case HM.lookup subscriptionId hm of
-        Just (ReaderMap rd sId Released) -> do
-          let newMap = HM.insert subscriptionId (ReaderMap rd sId Occupied) hm
-          writeTVar readers newMap
-          return (rd, sId)
-        Just (ReaderMap _ _ Occupied) -> throwSTM SubscriptionIdOccupied
-        Just None -> error "reader status shouldn't be None in subscribeHandler, but get None."
-        Nothing -> throwSTM SubscriptionIdNotFound
+    getSubscriptionOffset :: SubscriptionId -> IO SubscriptionOffset
+    getSubscriptionOffset subscriptionId = atomically $ do
+      store <- readTVar subscriptions
+      let Subscription{..} = fromJust $ HM.lookup subscriptionId store
+      return $ fromJust subscriptionOffset
 
-    doSubscribe :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> IO (ServerResponse 'Normal SubscribeResponse)
-    doSubscribe client reader streamName = do
-      logId <- S.getUnderlyingLogId client streamName
-      S.startReadingFromCheckpoint reader logId S.LSN_MAX
-      currentTime <- getCurrentTimestamp
-      atomically $ modifyTVar' subscribeHeap $ Map.insert subscribeRequestSubscriptionId currentTime
-      returnResp $ SubscribeResponse subscribeRequestSubscriptionId
+    getStartLSN :: SubscriptionOffset -> S.LSN
+    getStartLSN SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
+      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+      SubscriptionOffsetOffsetRecordOffset RecordId{..} -> recordIdBatchId
 
-    doClean :: IO ()
-    doClean = atomically $ updateReaderStatus subscribedReaders Released subscribeRequestSubscriptionId
+getStreamName :: SubscriptionId -> TVar (HM.HashMap SubscriptionId Subscription)-> IO TL.Text
+getStreamName subscriptionId tStore = atomically $ do
+  store <- readTVar tStore
+  let Subscription{..} = fromJust $ HM.lookup subscriptionId store
+  return subscriptionStreamName
 
 deleteSubscriptionHandler
   :: ServerContext
@@ -460,26 +465,55 @@ deleteSubscriptionHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
-  (reader, Subscription{..}) <- lookupSubscribedReaders subscribedReaders deleteSubscriptionRequestSubscriptionId
-  let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-  isExist <- S.doesStreamExists scLDClient streamName
-  when isExist $ do
-      logId <- S.getUnderlyingLogId scLDClient streamName
-      ckpReaderStopReading reader logId
-  atomically $ do
-    deleteSubscribedReaders subscribedReaders subscriptionSubscriptionId
-    modifyTVar' subscribeHeap $ Map.delete subscriptionSubscriptionId
+
+  mSubscription <- atomically $ do
+    store <- readTVar subscriptions
+    case HM.lookup deleteSubscriptionRequestSubscriptionId store of
+      Just sub -> do
+        let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
+        writeTVar subscriptions newStore
+        return (Just sub)
+      Nothing -> return Nothing
+
+  case mSubscription of
+    Just Subscription{..} -> do
+      mRes <- atomically $ do
+        store <- readTVar subscribeRuntimeInfo
+        case HM.lookup deleteSubscriptionRequestSubscriptionId store of
+          Just ldreader -> do
+            let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
+            writeTVar subscribeRuntimeInfo newStore
+            return (Just ldreader)
+          Nothing -> return Nothing
+
+      case mRes of
+        Just ldreader -> do
+          -- stop ldreader
+          let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
+          exists <- S.doesStreamExists scLDClient streamName
+          when exists $ do
+            logId <- S.getUnderlyingLogId scLDClient streamName
+            ckpReaderStopReading ldreader logId
+        Nothing -> return ()
+
+    Nothing -> return ()
+
   returnResp Empty
 
 checkSubscriptionExistHandler
   :: ServerContext
   -> ServerRequest 'Normal CheckSubscriptionExistRequest CheckSubscriptionExistResponse
   -> IO (ServerResponse 'Normal CheckSubscriptionExistResponse)
-checkSubscriptionExistHandler ServerContext{..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest{..})=
-  defaultExceptionHandle $ do
+checkSubscriptionExistHandler ServerContext{..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest{..})= do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
-  status <- atomically $ getReaderStatus subscribedReaders checkSubscriptionExistRequestSubscriptionId
-  returnResp $ CheckSubscriptionExistResponse (isJust status)
+
+  exists <- atomically $ do
+    store <- readTVar subscriptions
+    if HM.member checkSubscriptionExistRequestSubscriptionId store
+    then return True
+    else return False
+
+  returnResp $ CheckSubscriptionExistResponse exists
 
 listSubscriptionsHandler
   :: ServerContext
@@ -487,28 +521,23 @@ listSubscriptionsHandler
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsHandler ServerContext{..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
-  hm <- subscribedReadersToMap subscribedReaders
-  let resp = ListSubscriptionsResponse $ HM.foldr' (\(_, s) acc -> V.cons s acc) V.empty hm
-  return $ ServerNormalResponse (Just resp) [] StatusOk ""
+
+  atomically $ do
+    store <- readTVar subscriptions
+    let resp = ListSubscriptionsResponse $ HM.foldl' V.snoc V.empty store
+    returnResp resp
 
 --------------------------------------------------------------------------------
 -- Comsumer
 
+-- do nothing now
 consumerHeartbeatHandler
   :: ServerContext
   -> ServerRequest 'Normal ConsumerHeartbeatRequest ConsumerHeartbeatResponse
   -> IO (ServerResponse 'Normal ConsumerHeartbeatResponse)
 consumerHeartbeatHandler ServerContext{..} (ServerNormalRequest _metadata ConsumerHeartbeatRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive heartbeat msg for " <> Log.buildLazyText consumerHeartbeatRequestSubscriptionId
-  timestamp <- getCurrentTimestamp
-  atomically $ do
-    hm <- readTVar subscribeHeap
-    case Map.lookup consumerHeartbeatRequestSubscriptionId hm of
-      Nothing -> do
-        returnErrResp StatusInternal "Can't send hearbeat to an unsubscribed stream."
-      Just _  -> do
-        modifyTVar' subscribeHeap $ Map.insert consumerHeartbeatRequestSubscriptionId timestamp
-        returnResp $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
+  returnResp $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
 
 fetchHandler
   :: ServerContext
@@ -516,10 +545,19 @@ fetchHandler
   -> IO (ServerResponse 'Normal FetchResponse)
 fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{..}) = defaultExceptionHandle $  do
   Log.debug $ "Receive fetch request: " <> Log.buildString (show req)
-  (reader, _) <- lookupSubscribedReaders subscribedReaders fetchRequestSubscriptionId
-  void $ S.ckpReaderSetTimeout reader (fromIntegral fetchRequestTimeout)
-  res <- S.ckpReaderRead reader (fromIntegral fetchRequestMaxSize)
-  returnResp $ FetchResponse (fetchResult res)
+
+  -- get ldreader from subscriptionId
+  mRes <- atomically $ do
+    store <- readTVar subscribeRuntimeInfo
+    return $ HM.lookup fetchRequestSubscriptionId store
+
+  case mRes of
+    Just ldreader -> do
+      void $ S.ckpReaderSetTimeout ldreader (fromIntegral fetchRequestTimeout)
+      res <- S.ckpReaderRead ldreader (fromIntegral fetchRequestMaxSize)
+      returnResp $ FetchResponse (fetchResult res)
+    Nothing ->
+      returnErrResp StatusInternal (StatusDetails "subscription do not exist")
   where
     fetchResult :: [S.DataRecord Bytes] -> V.Vector ReceivedRecord
     fetchResult records =
@@ -531,21 +569,14 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{.
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
+-- do nothing for now, later will fix it
 commitOffsetHandler
   :: ServerContext
   -> ServerRequest 'Normal CommittedOffset CommittedOffset
   -> IO (ServerResponse 'Normal CommittedOffset)
 commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@CommittedOffset{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive commitOffset request: " <> Log.buildString (show offset)
-  (reader, Subscription{..}) <- lookupSubscribedReaders subscribedReaders committedOffsetSubscriptionId
-  commitCheckpoint scLDClient reader subscriptionStreamName (fromJust committedOffsetOffset)
   returnResp offset
-  where
-    commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
-    commitCheckpoint client reader streamName RecordId{..} = do
-      logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
-      S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
-
 --------------------------------------------------------------------------------
 
 batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
