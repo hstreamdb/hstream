@@ -251,7 +251,10 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
       >> returnResp Empty
     else if checkIfExist
            then returnResp Empty
-           else returnErrResp StatusInternal "Object does not exist"
+           else do
+           Log.fatal $ "Drop: tried to remove a nonexistent object: "
+             <> Log.buildString (T.unpack name)
+           returnErrResp StatusInternal "Object does not exist"
 
 --------------------------------------------------------------------------------
 -- Query
@@ -313,4 +316,3 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
-

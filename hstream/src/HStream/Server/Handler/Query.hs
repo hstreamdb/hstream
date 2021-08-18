@@ -10,7 +10,7 @@ module HStream.Server.Handler.Query where
 import           Control.Concurrent               (readMVar)
 import           Control.Exception                (throwIO)
 import qualified Data.HashMap.Strict              as HM
-import           Data.List                        (find)
+import           Data.List                        (find, (\\))
 import qualified Data.Map.Strict                  as Map
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
@@ -38,6 +38,7 @@ import           HStream.Utils                    (cBytesToLazyText,
                                                    lazyTextToCBytes,
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
+import qualified HStream.Logger as Log
 
 hstreamQueryToQuery :: P.PersistentQuery -> Query
 hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
@@ -53,12 +54,19 @@ createQueryHandler
   -> ServerRequest 'Normal CreateQueryRequest Query
   -> IO (ServerResponse 'Normal Query)
 createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Create Query Request."
+    <> "Query ID: " <> Log.buildString (TL.unpack createQueryRequestId)
+    <> "Query Command: " <> Log.buildString (TL.unpack createQueryRequestQueryText)
   plan <- HSC.streamCodegen (TL.toStrict createQueryRequestQueryText)
   case plan of
     HSC.SelectPlan sources sink taskBuilder -> do
       let taskBuilder' = taskBuilderWithName taskBuilder $ T.pack (TL.unpack createQueryRequestId)
       exists <- mapM (HS.doesStreamExists scLDClient . HCH.transToStreamName) sources
-      if (not . and) exists then throwIO StreamNotExist
+      if (not . and) exists
+      then do
+        Log.fatal $ "At least one of the streams do not exist: "
+          <> Log.buildString (show sources)
+        throwIO StreamNotExist
       else do
         HS.createStream scLDClient (HCH.transToTempStreamName sink)
           (HS.LogAttrs $ HS.HsLogAttrs scDefaultStreamRepFactor Map.empty)
@@ -76,13 +84,16 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
           , queryCreatedTime = timestamp
           , queryQueryText = createQueryRequestQueryText
           }
-    _ -> returnErrResp StatusInternal "inconsistent method called"
+    _ -> do
+      Log.fatal "Push Query: Inconsistent Method Called"
+      returnErrResp StatusInternal "inconsistent method called"
 
 listQueriesHandler
   :: ServerContext
   -> ServerRequest 'Normal ListQueriesRequest ListQueriesResponse
   -> IO (ServerResponse 'Normal ListQueriesResponse)
 listQueriesHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
+  Log.debug "Receive List Query Request"
   queries <- P.withMaybeZHandle zkHandle P.getQueries
   let records = map hstreamQueryToQuery queries
   let resp = ListQueriesResponse . V.fromList $ records
@@ -93,6 +104,8 @@ getQueryHandler
   -> ServerRequest 'Normal GetQueryRequest Query
   -> IO (ServerResponse 'Normal Query)
 getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest{..}) = do
+  Log.debug $ "Receive Get Query Request. "
+    <> "Query ID: " <> Log.buildString (TL.unpack getQueryRequestId)
   query <- do
     queries <- P.withMaybeZHandle zkHandle P.getQueries
     return $ find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == getQueryRequestId) queries
@@ -105,13 +118,18 @@ terminateQueriesHandler
   -> ServerRequest 'Normal TerminateQueriesRequest TerminateQueriesResponse
   -> IO (ServerResponse 'Normal TerminateQueriesResponse)
 terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueriesRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Terminate Query Request. "
+    <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
   qids <-
     if terminateQueriesRequestAll
       then HM.keys <$> readMVar runningQueries
       else return . V.toList $ lazyTextToCBytes <$> terminateQueriesRequestQueryId
   terminatedQids <- handleQueryTerminate sc (HSC.ManyQueries qids)
   if length terminatedQids < length qids
-    then returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
+    then do
+      Log.warning $ "Following queries cannot be terminated: "
+        <> Log.buildString (show $ qids \\ terminatedQids)
+      returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
     else returnResp $ TerminateQueriesResponse (V.fromList $ cBytesToLazyText <$> terminatedQids)
 
 deleteQueryHandler
@@ -120,6 +138,8 @@ deleteQueryHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) =
   defaultExceptionHandle $ do
+    Log.debug $ "Receive Delete Query Request. "
+      <> "Query ID: " <> Log.buildString (TL.unpack deleteQueryRequestId)
     P.withMaybeZHandle zkHandle $ P.removeQuery (lazyTextToCBytes deleteQueryRequestId)
     returnResp Empty
 
@@ -129,6 +149,7 @@ restartQueryHandler
   -> ServerRequest 'Normal RestartQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
+  Log.fatal "Restart Query Not Supported"
   returnErrResp StatusInternal "restart query not suppported yet"
     -- queries <- P.withMaybeZHandle zkHandle P.getQueries
     -- case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of

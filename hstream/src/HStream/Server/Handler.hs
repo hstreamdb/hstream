@@ -183,6 +183,8 @@ createStreamHandler
   -> ServerRequest 'Normal Stream Stream
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Create Stream Request: New Stream Name: "
+    <> Log.buildString (TL.unpack streamStreamName)
   S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
     $ S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
   returnResp stream
@@ -192,6 +194,8 @@ deleteStreamHandler
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteStreamHandler sc (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Delete Stream Request: Stream to Delete: "
+    <> Log.buildString (TL.unpack deleteStreamRequestStreamName)
   let name = TL.toStrict deleteStreamRequestStreamName
   dropHelper sc name deleteStreamRequestIgnoreNonExist False
 
@@ -200,6 +204,7 @@ listStreamsHandler
   -> ServerRequest 'Normal ListStreamsRequest ListStreamsResponse
   -> IO (ServerResponse 'Normal ListStreamsResponse)
 listStreamsHandler ServerContext{..} (ServerNormalRequest _metadata ListStreamsRequest) = defaultExceptionHandle $ do
+  Log.debug "Receive List Stream Request"
   streams <- S.findStreams scLDClient S.StreamTypeStream True
   res <- V.forM (V.fromList streams) $ \stream -> do
     refactor <- S.getStreamReplicaFactor scLDClient stream
@@ -211,6 +216,8 @@ appendHandler
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Append Stream Request. Append Data to the Stream: "
+    <> Log.buildString (TL.unpack appendRequestStreamName)
   timestamp <- getProtoTimestamp
   let payloads = V.toList $ encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
   S.AppendCompletion{..} <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
@@ -248,6 +255,7 @@ executeQueryHandler
   -> ServerRequest 'Normal CommandQuery CommandQueryResponse
   -> IO (ServerResponse 'Normal CommandQueryResponse)
 executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQuery{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Query Request: " <> Log.buildString (TL.unpack commandQueryStmtText)
   plan' <- streamCodegen (TL.toStrict commandQueryStmtText)
   case plan' of
     SelectPlan{} -> returnErrResp StatusInternal "inconsistent method called"
@@ -310,11 +318,16 @@ executePushQueryHandler
   -> IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler ServerContext{..}
   (ServerWriterRequest meta CommandPushQuery{..} streamSend) = defaultStreamExceptionHandle $ do
+  Log.debug $ "Receive Push Query Request: " <> Log.buildString (TL.unpack commandPushQueryQueryText)
   plan' <- streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
     SelectPlan sources sink taskBuilder -> do
       exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
-      if (not . and) exists then throwIO StreamNotExist
+      if (not . and) exists
+      then do
+        Log.fatal $ "At least one of the streams do not exist: "
+          <> Log.buildString (show sources)
+        throwIO StreamNotExist
       else do
         S.createStream scLDClient (transToTempStreamName sink)
           (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
@@ -322,6 +335,7 @@ executePushQueryHandler ServerContext{..}
         (qid, _) <- P.createInsertPersistentQuery (getTaskName taskBuilder)
           (TL.toStrict commandPushQueryQueryText) (P.PlainQuery $ textToCBytes <$> sources) zkHandle
         -- run task
+        -- FIXME: take care of the life cycle of the thread and global state
         tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
           >> runTaskWrapper S.StreamTypeStream S.StreamTypeTemp taskBuilder scLDClient
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
@@ -333,7 +347,9 @@ executePushQueryHandler ServerContext{..}
         let sc = hstoreSourceConnector scLDClient ldreader' S.StreamTypeTemp
         subscribeToStream sc sink Latest
         sendToClient zkHandle qid sc streamSend
-    _ -> returnStreamingResp StatusInternal "inconsistent method called"
+    _ -> do
+      Log.fatal "Push Query: Inconsistent Method Called"
+      returnStreamingResp StatusInternal "inconsistent method called"
 
 --------------------------------------------------------------------------------
 
@@ -342,8 +358,9 @@ sendToClient :: Maybe ZHandle
              -> SourceConnector
              -> (Struct -> IO (Either GRPCIOError ()))
              -> IO (ServerResponse 'ServerStreaming Struct)
-sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = do
-  let f (_ :: P.ZooException) =
+sendToClient zkHandle qid sc@SourceConnector{..} streamSend = do
+  let f (e :: P.ZooException) = do
+        Log.fatal $ "ZooKeeper Exception: " <> Log.buildString (show e)
         return $ ServerWriterResponse [] StatusAborted "failed to get status"
   handle f $ do
     P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
@@ -357,9 +374,9 @@ sendToClient zkHandle qid sc@SourceConnector {..} ss@streamSend = do
         streamSendMany structs
   where
     streamSendMany = \case
-      []      -> sendToClient zkHandle qid sc ss
+      []      -> sendToClient zkHandle qid sc streamSend
       (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
-        Left err -> do print err
+        Left err -> do Log.fatal $ "Send Stream Error: " <> Log.buildString (show err)
                        return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
 
