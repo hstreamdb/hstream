@@ -20,6 +20,7 @@ import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.Text                      as ZT
 
 import qualified HStream.Connector.HStore         as HCH
+import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector     (subscribeToStream)
 import           HStream.Processing.Processor     (getTaskName,
                                                    taskBuilderWithName)
@@ -38,7 +39,6 @@ import           HStream.Utils                    (cBytesToLazyText,
                                                    lazyTextToCBytes,
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
-import qualified HStream.Logger as Log
 
 hstreamQueryToQuery :: P.PersistentQuery -> Query
 hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
