@@ -365,28 +365,34 @@ createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) = do
+createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subscription@Subscription{..}) =  defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
 
-  logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict subscriptionStreamName))
-  let subOffset = fromJust subscriptionOffset
-  recordId <- toConcreteRecordId subOffset scLDClient logId
+  let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
+  exists <- S.doesStreamExists scLDClient streamName
+  if not exists
+  then
+     returnErrResp StatusInternal $ StatusDetails "stream not exist"
+  else do
+    logId <- S.getUnderlyingLogId scLDClient streamName
+    let subOffset = fromJust subscriptionOffset
+    recordId <- toConcreteRecordId subOffset scLDClient logId
 
-  let newsub = subscription {subscriptionOffset = Just $ SubscriptionOffset (Just $ SubscriptionOffsetOffsetRecordOffset recordId)}
+    let newsub = subscription {subscriptionOffset = Just $ SubscriptionOffset (Just $ SubscriptionOffsetOffsetRecordOffset recordId)}
 
-  success <- atomically $ do
-    store <- readTVar subscriptions
-    if HM.member subscriptionSubscriptionId store
-    then return False
-    else do
-      let newStore = HM.insert subscriptionSubscriptionId newsub store
-      writeTVar subscriptions newStore
-      return True
+    success <- atomically $ do
+      store <- readTVar subscriptions
+      if HM.member subscriptionSubscriptionId store
+      then return False
+      else do
+        let newStore = HM.insert subscriptionSubscriptionId newsub store
+        writeTVar subscriptions newStore
+        return True
 
-  if success
-  then returnResp subscription
-  else
-     returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
+    if success
+    then returnResp subscription
+    else
+       returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
   where
     toConcreteRecordId :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO RecordId
     toConcreteRecordId SubscriptionOffset{..} client logId =
