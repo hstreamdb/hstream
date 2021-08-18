@@ -483,8 +483,11 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
       case mRes of
         Just ldreader -> do
           -- stop ldreader
-          logId <- S.getUnderlyingLogId scLDClient (transToStreamName $ TL.toStrict subscriptionStreamName)
-          ckpReaderStopReading ldreader logId
+          let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
+          exists <- S.doesStreamExists scLDClient streamName
+          when exists $ do
+            logId <- S.getUnderlyingLogId scLDClient streamName
+            ckpReaderStopReading ldreader logId
         Nothing -> return ()
 
     Nothing -> return ()
