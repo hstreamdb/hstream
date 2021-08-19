@@ -92,7 +92,7 @@ restartConnectorHandler sc@ServerContext{..}
   let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
   when (cStatus `elem` [P.Created, P.Creating, P.Running]) $ do
-    Log.fatal . Log.buildString $ "The connector " <> show cid
+    Log.warning . Log.buildString $ "The connector " <> show cid
       <> "cannot be restarted because it has state " <> show cStatus
     throwIO (ConnectorRestartErr cStatus)
   restartConnector sc cid >> returnResp Empty

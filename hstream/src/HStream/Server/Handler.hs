@@ -325,7 +325,7 @@ executePushQueryHandler ServerContext{..}
       exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
       if (not . and) exists
       then do
-        Log.fatal $ "At least one of the streams do not exist: "
+        Log.warning $ "At least one of the streams do not exist: "
           <> Log.buildString (show sources)
         throwIO StreamNotExist
       else do
@@ -376,7 +376,7 @@ sendToClient zkHandle qid sc@SourceConnector{..} streamSend = do
     streamSendMany = \case
       []      -> sendToClient zkHandle qid sc streamSend
       (x:xs') -> streamSend (structToStruct "SELECT" x) >>= \case
-        Left err -> do Log.fatal $ "Send Stream Error: " <> Log.buildString (show err)
+        Left err -> do Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
                        return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
         Right _  -> streamSendMany xs'
 

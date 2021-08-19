@@ -87,7 +87,7 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
   case query of
     Just q -> returnResp $ hstreamQueryToView q
     _      -> do
-      Log.fatal $ "Cannot Find View with ID: " <> Log.buildString (TL.unpack getViewRequestViewId)
+      Log.warning $ "Cannot Find View with ID: " <> Log.buildString (TL.unpack getViewRequestViewId)
       returnErrResp StatusInternal "View does not exist"
 
 deleteViewHandler

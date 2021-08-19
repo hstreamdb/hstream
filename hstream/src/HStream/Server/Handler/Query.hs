@@ -64,7 +64,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
       exists <- mapM (HS.doesStreamExists scLDClient . HCH.transToStreamName) sources
       if (not . and) exists
       then do
-        Log.fatal $ "At least one of the streams do not exist: "
+        Log.warning $ "At least one of the streams do not exist: "
           <> Log.buildString (show sources)
         throwIO StreamNotExist
       else do

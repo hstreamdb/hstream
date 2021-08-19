@@ -252,7 +252,7 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
     else if checkIfExist
            then returnResp Empty
            else do
-           Log.fatal $ "Drop: tried to remove a nonexistent object: "
+           Log.warning $ "Drop: tried to remove a nonexistent object: "
              <> Log.buildString (T.unpack name)
            returnErrResp StatusInternal "Object does not exist"
 
