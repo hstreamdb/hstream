@@ -175,7 +175,7 @@ WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
         fprintf(stderr, "warning: DATALOSS gaps for LSN range [%ld, %ld]\n",   \
                 gap.lo, gap.hi);                                               \
       }                                                                        \
-      if (gap_out != nullptr) {                                                \
+      if (gap_out) {                                                           \
         gap_out->logid = gap.logid.val_;                                       \
         gap_out->gaptype = static_cast<uint8_t>(gap.type);                     \
         gap_out->lo = gap.lo;                                                  \
