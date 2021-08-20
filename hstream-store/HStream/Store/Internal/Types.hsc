@@ -254,6 +254,58 @@ peekDataRecordBS ptr offset = do
   attr <- peekDataRecordAttr ptr'
   return $ DataRecord payload attr
 
+data GapRecord = GapRecord
+  { gapLogID :: {-# UNPACK #-} !C_LogID
+  , gapType  :: {-# UNPACK #-} !GapType
+  , gapHiLSN :: {-# UNPACK #-} !LSN
+  , gapLoLSN :: {-# UNPACK #-} !LSN
+  } deriving (Show, Eq)
+
+type GapType = Word8
+-- | Default gap type; used by storage nodes when they don't have enough
+-- information to determine gap type
+pattern GapTypeUnknown :: GapType
+pattern GapTypeUnknown = (#const static_cast<HsInt>(facebook::logdevice::GapType::UNKNOWN))
+-- | A "bridge" that completes an epoch. This is benign and could be a result of
+-- sequencer failover or log reconfiguration. There is no data loss.
+pattern GapTypeBridge :: GapType
+pattern GapTypeBridge = (#const static_cast<HsInt>(facebook::logdevice::GapType::BRIDGE))
+-- | A hole in the numbering sequence that appeared due to a sequencer crash. No
+-- acknowledged records were lost.
+pattern GapTypeHole :: GapType
+pattern GapTypeHole = (#const static_cast<HsInt>(facebook::logdevice::GapType::HOLE))
+-- | All records in the gap were permanently lost
+pattern GapTypeDataloss :: GapType
+pattern GapTypeDataloss = (#const static_cast<HsInt>(facebook::logdevice::GapType::DATALOSS))
+-- | A gap caused by trimming the log
+pattern GapTypeTrim :: GapType
+pattern GapTypeTrim = (#const static_cast<HsInt>(facebook::logdevice::GapType::TRIM))
+-- | A gap sent when the client does not have the required permissions
+pattern GapTypeAccess :: GapType
+pattern GapTypeAccess = (#const static_cast<HsInt>(facebook::logdevice::GapType::ACCESS))
+-- | A gap issued up to until_lsn if the log was removed from the config
+pattern GapTypeNotInConfig :: GapType
+pattern GapTypeNotInConfig = (#const static_cast<HsInt>(facebook::logdevice::GapType::NOTINCONFIG))
+-- | A gap issued when this record is filtered out by server side filtering feature
+pattern GapTypeFilteredOut :: GapType
+pattern GapTypeFilteredOut = (#const static_cast<HsInt>(facebook::logdevice::GapType::FILTERED_OUT))
+
+pattern GapTypeMax :: GapType
+pattern GapTypeMax = (#const static_cast<HsInt>(facebook::logdevice::GapType::MAX))
+
+gapRecordSize :: Int
+gapRecordSize = (#size logdevice_gap_record_t)
+
+peekGapRecord :: Ptr GapRecord -> IO GapRecord
+peekGapRecord ptr = do
+  logid <- (#peek logdevice_gap_record_t, logid) ptr
+  gaptype <- (#peek logdevice_gap_record_t, gaptype) ptr
+  lo <- (#peek logdevice_gap_record_t, lo) ptr
+  hi <- (#peek logdevice_gap_record_t, hi) ptr
+  return $ GapRecord logid gaptype lo hi
+
+type LogRecord a = Either GapRecord [DataRecord a]
+
 data AppendCallBackData = AppendCallBackData
   { appendCbRetCode   :: !ErrorCode
   , appendCbLogID     :: !C_LogID
