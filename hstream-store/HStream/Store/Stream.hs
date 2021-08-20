@@ -61,6 +61,7 @@ module HStream.Store.Stream
   , FFI.DataRecordAttr (..)
   , FFI.LogRecord
   , FFI.GapRecord (..)
+  , FFI.GapType (..)
   , FFI.recordLogID
   , FFI.recordLSN
   , FFI.recordTimestamp

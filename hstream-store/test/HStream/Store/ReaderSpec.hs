@@ -124,7 +124,7 @@ misc = do
     S.readerStartReading reader logid sn0 sn2
     (log1 :: S.LogRecord Bytes) <- S.readerReadAllowGap reader 10
     (log2 :: S.LogRecord Bytes) <- S.readerReadAllowGap reader 10
-    log1 `shouldBe` Left (S.GapRecord logid 4 sn0 sn1)
+    log1 `shouldBe` Left (S.GapRecord logid (S.GapType 4) sn0 sn1)
     (fmap S.recordPayload <$> log2) `shouldBe` Right ["three" :: Bytes]
 
   -- TODO

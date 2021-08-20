@@ -124,25 +124,25 @@ readerRead :: DataRecordFormat a => LDReader -> Int -> IO [DataRecord a]
 readerRead reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-  allocaBytes gapRecordSize $ \gap -> go reader' payload' gap
+    go reader' payload'
   where
-    go !rp !pp !gp = do
-      m_records <- tryReaderRead' rp nullPtr pp gp maxlen
+    go !rp !pp = do
+      m_records <- tryReaderRead' rp nullPtr pp nullPtr maxlen
       case m_records of
         Right rs -> return rs
-        Left _   -> go rp pp gp
+        Left _   -> go rp pp
 
 ckpReaderRead :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO [DataRecord a]
 ckpReaderRead reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-  allocaBytes gapRecordSize $ \gap -> go reader' payload' gap
+    go reader' payload'
   where
-    go !rp !pp !gp = do
-      m_records <- tryReaderRead' nullPtr rp pp gp maxlen
+    go !rp !pp = do
+      m_records <- tryReaderRead' nullPtr rp pp nullPtr maxlen
       case m_records of
         Right rs -> return rs
-        Left _   -> go rp pp gp
+        Left _   -> go rp pp
 
 -- | Attempts to read a batch of records.
 --
@@ -298,16 +298,18 @@ tryReaderRead' reader chkReader record gap maxlen =
   if reader /= nullPtr
      then do (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
                 c_logdevice_reader_read_safe reader (fromIntegral maxlen) record gap len'
-             hdResult record nread
+             hdResult nread
      else do (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
                 c_logdevice_checkpointed_reader_read_safe chkReader (fromIntegral maxlen) record gap len'
-             hdResult record nread
+             hdResult nread
   where
-    hdResult p nread
-      | nread >  0 = Right <$> peekDataRecords nread p
+    hdResult nread
+      | nread >  0 = Right <$> peekDataRecords nread record
       | nread == 0 = return $ Right []
-      | nread <  0 = Left <$> peekGapRecord gap
-    hdResult _ _   = error "Unexpected Error!"
+      | nread <  0 = Left <$> if gap == nullPtr
+                              then pure (error "Impossible happened: Try to read from nullPtr")
+                              else peekGapRecord gap
+    hdResult _     = error "Unexpected Error!"
 
 -------------------------------------------------------------------------------
 -- Reader C API
