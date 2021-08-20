@@ -6,22 +6,17 @@
 
 module HStream.HandlerSpec (spec) where
 
-import           Control.Concurrent               (forkIO, killThread,
-                                                   threadDelay)
-import           Control.Monad                    (forM_, forever, replicateM,
-                                                   unless, void, when)
+import           Control.Monad                    (forM_, replicateM, void)
 import qualified Data.ByteString                  as B
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, isJust)
+import           Data.Maybe                       (fromJust)
 import qualified Data.Set                         as Set
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
-import           Network.GRPC.HighLevel.Client    (Client)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
 import           Proto3.Suite.Class               (HasDefault (def))
-import           System.IO.Unsafe                 (unsafePerformIO)
 import           Test.Hspec
 import           Z.Foreign                        (toByteString)
 
@@ -33,339 +28,277 @@ import           HStream.Store.Logger             (pattern C_DBG_ERROR,
 import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
-randomStreamNames :: V.Vector TL.Text
-randomStreamNames = unsafePerformIO $ V.replicateM 5 $ ("StreamSpec_" <>) . TL.fromStrict <$> newRandomText 20
-{-# NOINLINE randomStreamNames #-}
-
-randomStreamName :: TL.Text
-randomStreamName = V.head randomStreamNames
-{-# NOINLINE randomStreamName #-}
-
-randomSubsciptionIds :: V.Vector TL.Text
-randomSubsciptionIds = unsafePerformIO $ V.replicateM 5 $ ("SubscribeSpec_" <>) . TL.fromStrict <$> newRandomText 20
-{-# NOINLINE randomSubsciptionIds #-}
-
-randomSubsciptionId :: TL.Text
-randomSubsciptionId = V.head randomSubsciptionIds
-{-# NOINLINE randomSubsciptionId #-}
-
 spec :: Spec
 spec =  do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   streamSpec
+  subscribeSpec
+  consumerSpec
 
-  aroundAll (\runTest -> do
-             withGRPCClient clientConfig $ \client -> do
-               runTest client
-            ) $ describe "HStream.BasicHandlerSpec" $ do
-   subscribeSpec
-   consumerSpec
+----------------------------------------------------------------------------------------------------------
+-- StreamSpec
 
 withRandomStreamName :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
 withRandomStreamName = provideRunTest setup clean
   where
-    setup _api = TL.fromStrict <$> newRandomText 20
-    clean HStreamApi{..} name = do
-      let req = def { deleteStreamRequestStreamName = name }
-      hstreamApiDeleteStream (ClientNormalRequest req requestTimeout $ MetadataMap Map.empty)
-        `grpcShouldReturn` PB.Empty
+    setup _api = ("StreamSpec_" <>) . TL.fromStrict <$> newRandomText 20
+    clean api name = deleteStreamRequest_ api name `shouldReturn` PB.Empty
 
 withRandomStreamNames :: ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
 withRandomStreamNames = provideRunTest setup clean
   where
     setup _api = replicateM 5 $ TL.fromStrict <$> newRandomText 20
-    clean HStreamApi{..} names = forM_ names $ \name -> do
-      let req = def { deleteStreamRequestStreamName = name }
-      hstreamApiDeleteStream (ClientNormalRequest req requestTimeout $ MetadataMap Map.empty)
-        `grpcShouldReturn` PB.Empty
-
-----------------------------------------------------------------------------------------------------------
--- StreamSpec
+    clean api names = forM_ names $ \name -> do
+      deleteStreamRequest_ api name `shouldReturn` PB.Empty
 
 streamSpec :: Spec
 streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
   aroundWith withRandomStreamName $ do
-    it "test CreateStream request" $ \(HStreamApi{..}, name) -> do
+    it "test CreateStream request" $ \(api, name) -> do
       let stream = Stream name 3
-      hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
-        `grpcShouldReturn` stream
+      createStreamRequest api stream `shouldReturn` stream
       -- create an existed stream should fail
-      hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
-        `grpcShouldThrow` anyException
+      createStreamRequest api stream `shouldThrow` anyException
 
   aroundWith withRandomStreamNames $ do
-    it "test listStream request" $ \(HStreamApi{..}, names) -> do
+    it "test listStream request" $ \(api, names) -> do
       let createStreamReqs = zipWith Stream names [1, 2, 3, 3, 2]
       forM_ createStreamReqs $ \stream -> do
-        hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
-          `grpcShouldReturn` stream
+        createStreamRequest api stream `shouldReturn` stream
 
-      resp <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
-      let streamsResp = listStreamsResponseStreams resp
-      let sortedResp = Set.fromList $ V.toList streamsResp
+      resp <- listStreamRequest api
+      let sortedResp = Set.fromList $ V.toList resp
           sortedReqs = Set.fromList createStreamReqs
       sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedResp)
 
-  it "test deleteStream request" $ \HStreamApi{..} -> do
-    name <- TL.fromStrict <$> newRandomText 20
-    let stream = Stream name 1
-
-    hstreamApiCreateStream (ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty)
-      `grpcShouldReturn` stream
-
-    resp <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
-    listStreamsResponseStreams resp `shouldSatisfy` V.elem stream
-
-    let req = def { deleteStreamRequestStreamName = name }
-    hstreamApiDeleteStream (ClientNormalRequest req requestTimeout $ MetadataMap Map.empty)
-      `grpcShouldReturn` PB.Empty
-
-    resp' <- getServerResp =<< hstreamApiListStreams (ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty)
-    listStreamsResponseStreams resp' `shouldNotSatisfy` V.elem stream
+  aroundWith withRandomStreamName $ do
+    it "test deleteStream request" $ \(api, name) -> do
+      let stream = Stream name 1
+      createStreamRequest api stream `shouldReturn` stream
+      resp <- listStreamRequest api
+      resp `shouldSatisfy` V.elem stream
+      deleteStreamRequest api name `shouldReturn` PB.Empty
+      resp' <- listStreamRequest api
+      resp' `shouldNotSatisfy`  V.elem stream
 
 -------------------------------------------------------------------------------------------------
 
-createStreamRequest :: Client -> Stream -> IO (Maybe Stream)
-createStreamRequest client stream = do
-  HStreamApi{..} <- hstreamApiClient client
-  resp <- hstreamApiCreateStream $ ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse respStream _meta1 _meta2 StatusOk _details -> return $ Just respStream
-    ClientErrorResponse clientError                                 -> do
-      putStrLn ("Create Stream Error: " <> show clientError) >> return Nothing
+createStreamRequest :: HStreamClientApi -> Stream -> IO Stream
+createStreamRequest HStreamApi{..} stream =
+  let req = ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiCreateStream req
 
-listStreamRequest :: Client -> IO (Maybe (V.Vector Stream))
-listStreamRequest client = do
-  HStreamApi{..} <- hstreamApiClient client
-  resp <- hstreamApiListStreams $ ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse respStream _meta1 _meta2 StatusOk _details -> do
-      return . Just $ listStreamsResponseStreams respStream
-    ClientErrorResponse clientError                                 -> do
-      putStrLn ("List Stream Error: " <> show clientError) >> return Nothing
+listStreamRequest :: HStreamClientApi -> IO (V.Vector Stream)
+listStreamRequest HStreamApi{..} =
+  let req = ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty
+  in listStreamsResponseStreams <$> (getServerResp =<< hstreamApiListStreams req)
 
-deleteStreamRequest :: Client -> TL.Text -> IO Bool
-deleteStreamRequest client streamName = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = def { deleteStreamRequestStreamName = streamName }
-  resp <- hstreamApiDeleteStream $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("Delete Stream Error: " <> show clientError) >> return False
+deleteStreamRequest :: HStreamClientApi -> TL.Text -> IO PB.Empty
+deleteStreamRequest HStreamApi{..} streamName =
+  let delReq = def { deleteStreamRequestStreamName = streamName }
+      req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiDeleteStream req
 
-sendHeartbeatRequest :: Client -> TL.Text -> IO Bool
-sendHeartbeatRequest client subscriptionId = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = ConsumerHeartbeatRequest subscriptionId
-  resp <- hstreamApiSendConsumerHeartbeat $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("Send Heartbeat Error: " <> show clientError) >> return False
+-- This request is mainly used for cleaning up after testing
+deleteStreamRequest_ :: HStreamClientApi -> TL.Text -> IO PB.Empty
+deleteStreamRequest_ HStreamApi{..} streamName =
+  let delReq = def { deleteStreamRequestStreamName = streamName
+                   , deleteStreamRequestIgnoreNonExist = True }
+      req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiDeleteStream req
 
 ----------------------------------------------------------------------------------------------------------
 -- SubscribeSpec
 
-cleanStream :: TL.Text -> Client -> IO ()
-cleanStream name client = void $ deleteStreamRequest client name
+withSubscription :: ActionWith (HStreamClientApi, (TL.Text, TL.Text)) -> HStreamClientApi -> IO ()
+withSubscription = provideRunTest setup clean
+  where
+    setup _api = do
+      stream <- TL.fromStrict <$> newRandomText 5
+      subscription <- TL.fromStrict <$> newRandomText 5
+      return ("StreamSpec_" <> stream, "SubscriptionSpec_" <> subscription)
+    clean api (streamName, subscriptionName) = do
+      deleteSubscriptionRequest api subscriptionName `shouldReturn` True
+      deleteStreamRequest_ api streamName `shouldReturn` PB.Empty
 
--- | cleanSubscriptionEnv will clean both subscription and streams
-cleanSubscriptionEnv :: TL.Text -> TL.Text -> Client -> IO ()
-cleanSubscriptionEnv sId sName client = do
-  void $ deleteSubscriptionRequest client sId
-  cleanStream sName client
+withSubscriptions :: ActionWith (HStreamClientApi, (V.Vector TL.Text, V.Vector TL.Text))
+                  -> HStreamClientApi -> IO ()
+withSubscriptions = provideRunTest setup clean
+  where
+    setup _api = do
+      stream <- V.replicateM 5 $ TL.fromStrict <$> newRandomText 5
+      subscription <- V.replicateM 5 $ TL.fromStrict <$> newRandomText 5
+      return (("StreamSpec_" <>) <$> stream, ("SubscriptionSpec_" <>) <$> subscription)
+    clean api (streamNames, subscriptionNames) = do
+      forM_ streamNames $ \name -> do
+        deleteStreamRequest_ api name `shouldReturn` PB.Empty
+      forM_ subscriptionNames $ \name -> do
+        deleteSubscriptionRequest api name `shouldReturn` True
 
-cleanSubscriptionsEnv :: V.Vector TL.Text -> V.Vector TL.Text -> Client -> IO ()
-cleanSubscriptionsEnv sIds sNames client = do
-  V.zipWithM_ (\subId subName -> cleanSubscriptionEnv subId subName client) sIds sNames
+subscribeSpec :: Spec
+subscribeSpec = aroundAll provideHstreamApi $
+  describe "SubscribeSpec" $ parallel $ do
 
-subscribeSpec :: SpecWith Client
-subscribeSpec = describe "HStream.BasicHandlerSpec.Subscribe" $ do
+  let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset
+               . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
 
-  let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
+  aroundWith withSubscription $ do
+    it "test createSubscribe request" $ \(api, (streamName, subscriptionName)) -> do
+      -- createSubscribe with a nonexistent stream should throw an exception
+      createSubscriptionRequest api subscriptionName streamName offset `shouldThrow` anyException
+      let stream = Stream streamName 1
+      createStreamRequest api stream `shouldReturn` stream
+      -- createSubscribe with an existing stream should return True
+      createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
 
-  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test createSubscribe request" $ \client -> do
-    -- createSubscribe with a nonexistent stream should return False
-    createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` False
-    isJust <$> createStreamRequest client (Stream randomStreamName 1) `shouldReturn` True
-    -- createSubscribe with an existing stream should return True
-    createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
+  aroundWith withSubscription $ do
+    it "test subscribe request" $ \(api, (streamName, subscriptionName)) -> do
+      let stream = Stream streamName 1
+      let subscriptionName' = subscriptionName <> "___"
+      createStreamRequest api stream `shouldReturn` stream
+      createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
+      -- subscribe a nonexistent subscriptionId should throw exception
+      subscribeRequest api subscriptionName' `shouldThrow` anyException
+      -- subscribe an existing subscriptionId should return True
+      subscribeRequest api subscriptionName `shouldReturn` True
 
-  aroundWith
-    (\runTest client -> do
-        void $ createStreamRequest client $ Stream randomStreamName 1
-        void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
-        runTest client
-        void $ cleanSubscriptionEnv randomSubsciptionId randomStreamName client
-    ) $ it "test subscribe request" $ \client -> do
+  aroundWith withSubscriptions $ do
+    it "test listSubscription request" $ \(api, (streamNames, subscriptionNames)) -> do
+      let subscriptions = V.zipWith3 Subscription  subscriptionNames streamNames  $ V.replicate 5 (Just offset)
+      forM_ subscriptions $ \Subscription{..} -> do
+        let stream = Stream subscriptionStreamName 1
+        createStreamRequest api stream `shouldReturn` stream
+        createSubscriptionRequest api subscriptionSubscriptionId subscriptionStreamName
+          (fromJust subscriptionOffset) `shouldReturn` True
+        subscribeRequest api subscriptionSubscriptionId `shouldReturn` True
+      resp <- listSubscriptionRequest api
+      V.length subscriptions  `shouldBe` V.length resp
 
-        let sId = V.last randomSubsciptionIds
-        -- subscribe a nonexistent subscriptionId should return False
-        subscribeRequest client sId `shouldReturn` False
-        -- subscribe an existed subscriptionId should return True
-        subscribeRequest client randomSubsciptionId `shouldReturn` True
+  aroundWith withSubscription $ do
+    it "test deleteSubscription request" $ \(api, (streamName, subscriptionName)) -> do
+      let stream = Stream streamName 1
+      createStreamRequest api stream `shouldReturn` stream
+      createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
+      subscribeRequest api subscriptionName `shouldReturn` True
+      -- delete a subscribed stream should return true
+      deleteSubscriptionRequest api subscriptionName `shouldReturn` True
 
-  aroundWith
-    (\runTest client -> do
-        let subscriptions = V.zipWith3 Subscription randomSubsciptionIds randomStreamNames $ V.replicate 5 (Just offset)
-        forM_ subscriptions $ \Subscription{..} -> do
-          void $ createStreamRequest client (Stream subscriptionStreamName 1)
-          void $ createSubscriptionRequest client subscriptionSubscriptionId subscriptionStreamName (fromJust subscriptionOffset)
-          subscribeRequest client subscriptionSubscriptionId `shouldReturn` True
-        runTest (client, subscriptions)
-        void $ cleanSubscriptionsEnv randomSubsciptionIds randomStreamNames client
-    ) $ it "test listSubscription request" $ \(client, subscriptions) -> do
+  aroundWith withSubscription $ do
+    it "test listSubscription request" $ \(api, (streamName, subscriptionName)) -> do
+      let stream = Stream streamName 1
+      createStreamRequest api stream `shouldReturn` stream
+      createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
+      -- delete a subscription with underlying stream deleted should success
+      subscribeRequest api subscriptionName `shouldReturn` True
+      deleteStreamRequest api streamName `shouldReturn` PB.Empty
+      deleteSubscriptionRequest api subscriptionName `shouldReturn` True
+      resp <- listSubscriptionRequest api
+      V.find (\Subscription{..} -> subscriptionSubscriptionId == subscriptionName) resp `shouldBe` Nothing
 
-        resp <- listSubscriptionRequest client
-        isJust resp `shouldBe` True
-        V.length subscriptions  `shouldBe` V.length (fromJust resp)
-
-  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "test deleteSubscription request" $ \client -> do
-    void $ createStreamRequest client $ Stream randomStreamName 1
-    void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
-    -- delete subscribed stream should return true
-    deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
-
-  after (cleanSubscriptionEnv randomSubsciptionId randomStreamName) $ it "delete a subscription with underlying stream deleted should success" $ \client -> do
-    void $ createStreamRequest client $ Stream randomStreamName 1
-    void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
-    subscribeRequest client randomSubsciptionId `shouldReturn` True
-    deleteStreamRequest client randomStreamName `shouldReturn` True
-    deleteSubscriptionRequest client randomSubsciptionId `shouldReturn` True
-    res <- fromJust <$> listSubscriptionRequest client
-    V.find (\Subscription{..} -> subscriptionSubscriptionId == randomSubsciptionId) res `shouldBe` Nothing
-
-  after (cleanStream randomStreamName) $ it "test hasSubscription request" $ \client -> do
-    void $ createStreamRequest client $ Stream randomStreamName 1
-    -- check a nonexistent subscriptionId should return False
-    checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` False
-    -- check an existed subscriptionId should return True
-    createSubscriptionRequest client randomSubsciptionId randomStreamName offset `shouldReturn` True
-    checkSubscriptionExistRequest client randomSubsciptionId `shouldReturn` True
+  aroundWith withSubscription $ do
+    it "test hasSubscription request" $ \(api, (streamName, subscriptionName)) -> do
+      void $ createStreamRequest api $ Stream streamName 1
+      -- check a nonexistent subscriptionId should return False
+      checkSubscriptionExistRequest api subscriptionName `shouldReturn` False
+      -- check an existing subscriptionId should return True
+      createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
+      checkSubscriptionExistRequest api subscriptionName `shouldReturn` True
 
 ----------------------------------------------------------------------------------------------------------
 
-createSubscriptionRequest :: Client -> TL.Text -> TL.Text -> SubscriptionOffset -> IO Bool
-createSubscriptionRequest client subscriptionId streamName offset = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = Subscription subscriptionId streamName $ Just offset
-  resp <- hstreamApiCreateSubscription $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("createSubscribe Error: " <> show clientError) >> return False
+createSubscriptionRequest :: HStreamClientApi -> TL.Text -> TL.Text -> SubscriptionOffset -> IO Bool
+createSubscriptionRequest HStreamApi{..} subscriptionId streamName offset =
+  let subscription = Subscription subscriptionId streamName $ Just offset
+      req = ClientNormalRequest subscription requestTimeout $ MetadataMap Map.empty
+  in True <$ (getServerResp =<< hstreamApiCreateSubscription req)
 
-subscribeRequest :: Client -> TL.Text -> IO Bool
-subscribeRequest client subscribeId = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = SubscribeRequest subscribeId
-  resp <- hstreamApiSubscribe $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("Subscribe Error: " <> show clientError) >> return False
+subscribeRequest :: HStreamClientApi -> TL.Text -> IO Bool
+subscribeRequest HStreamApi{..} subscribeId =
+  let subReq = SubscribeRequest subscribeId
+      req = ClientNormalRequest subReq requestTimeout $ MetadataMap Map.empty
+  in True <$ (getServerResp =<< hstreamApiSubscribe req)
 
-listSubscriptionRequest :: Client -> IO (Maybe (V.Vector Subscription))
-listSubscriptionRequest client = do
-  HStreamApi{..} <- hstreamApiClient client
-  resp <- hstreamApiListSubscriptions $ ClientNormalRequest ListSubscriptionsRequest requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse res _meta1 _meta2 StatusOk _details -> do
-      return . Just . listSubscriptionsResponseSubscription $ res
-    ClientErrorResponse clientError                          -> do
-      putStrLn ("List Subscription Error: " <> show clientError) >> return Nothing
+listSubscriptionRequest :: HStreamClientApi -> IO (V.Vector Subscription)
+listSubscriptionRequest HStreamApi{..} =
+  let req = ClientNormalRequest ListSubscriptionsRequest requestTimeout $ MetadataMap Map.empty
+  in listSubscriptionsResponseSubscription <$> (getServerResp =<< hstreamApiListSubscriptions req)
 
-deleteSubscriptionRequest :: Client -> TL.Text -> IO Bool
-deleteSubscriptionRequest client subscribeId = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = DeleteSubscriptionRequest subscribeId
-  resp <- hstreamApiDeleteSubscription $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("Delete Subscription Error: " <> show clientError) >> return False
+deleteSubscriptionRequest :: HStreamClientApi -> TL.Text -> IO Bool
+deleteSubscriptionRequest HStreamApi{..} subscribeId =
+  let delReq = DeleteSubscriptionRequest subscribeId
+      req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
+  in True <$ (getServerResp =<< hstreamApiDeleteSubscription req)
 
-checkSubscriptionExistRequest :: Client -> TL.Text -> IO Bool
-checkSubscriptionExistRequest client subscribeId = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = CheckSubscriptionExistRequest subscribeId
-  resp <- hstreamApiCheckSubscriptionExist $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse res _meta1 _meta2 StatusOk _details ->
-      return $ checkSubscriptionExistResponseExists res
-    ClientErrorResponse clientError                          -> do
-      putStrLn ("Find Subscription Error: " <> show clientError) >> return False
+checkSubscriptionExistRequest :: HStreamClientApi -> TL.Text -> IO Bool
+checkSubscriptionExistRequest HStreamApi{..} subscribeId =
+  let checkReq = CheckSubscriptionExistRequest subscribeId
+      req = ClientNormalRequest checkReq requestTimeout $ MetadataMap Map.empty
+  in checkSubscriptionExistResponseExists <$> (getServerResp =<< hstreamApiCheckSubscriptionExist req)
 
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec
 
-mkConsumerSpecEnv :: ((Client, V.Vector B.ByteString) -> IO a) -> Client -> IO ()
-mkConsumerSpecEnv runTest client = do
-  let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
-  void $ createStreamRequest client $ Stream randomStreamName 1
-  void $ createSubscriptionRequest client randomSubsciptionId randomStreamName offset
-  void $ subscribeRequest client randomSubsciptionId
+withConsumerSpecEnv :: ActionWith (HStreamClientApi, (V.Vector B.ByteString, TL.Text, TL.Text))
+                    -> HStreamClientApi -> IO ()
+withConsumerSpecEnv = provideRunTest setup clean
+  where
+    setup api = do
+      streamName <-  ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
+      subName <- ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
 
-  timeStamp <- getProtoTimestamp
-  let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
-  batchedBS <- replicateM 5 $ do
-    payloads <- newRandomByteString 2
-    let records = buildRecord header payloads
-    void $ appendRequest client randomStreamName $ V.singleton records
-    return payloads
+      let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset
+                   . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
+      let stream = Stream streamName 1
+      createStreamRequest api stream `shouldReturn` stream
+      createSubscriptionRequest api subName streamName offset `shouldReturn` True
+      subscribeRequest api subName `shouldReturn` True
+      timeStamp <- getProtoTimestamp
+      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+      payloads <- V.replicateM 5 $ do
+        payload <- newRandomByteString 2
+        let record = buildRecord header payload
+        void $ appendRequest api streamName $ V.singleton record
+        return payload
+      return (payloads, streamName, subName)
 
-  void $ runTest (client, V.fromList batchedBS)
+    clean api (_payloads, streamName, subName) = do
+      deleteSubscriptionRequest api subName `shouldReturn` True
+      deleteStreamRequest_ api streamName `shouldReturn` PB.Empty
 
-  void $ deleteSubscriptionRequest client randomSubsciptionId
-  void $ deleteStreamRequest client randomStreamName
+consumerSpec :: Spec
+consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 
-consumerSpec :: SpecWith Client
-consumerSpec = aroundWith mkConsumerSpecEnv $ describe "HStream.BasicHandlerSpec.Consumer" $ do
+  aroundWith withConsumerSpecEnv $ do
+    -- FIXME:
+    it "test fetch request" $ \(api, (reqPayloads, _streamName, subName)) -> do
+      Log.debug $ Log.buildString "reqPayloads = " <> Log.buildString (show reqPayloads)
+      resp <- fetchRequest api subName (fromIntegral requestTimeout) 100
+      let respPayloads = V.map getReceivedRecordPayload resp
+      Log.debug $ Log.buildString "respPayload = " <> Log.buildString (show respPayloads)
+      respPayloads `shouldBe` reqPayloads
 
-  -- FIXME:
-  it "test fetch request" $ \(client, reqPayloads) -> do
-    Log.debug $ Log.buildString "reqPayloads = " <> Log.buildString (show reqPayloads)
-    resp <- fetchRequest client randomSubsciptionId (fromIntegral requestTimeout) 100
-    let resPayloads = V.map getReceivedRecordPayload resp
-    Log.debug $ Log.buildString "respPayload = " <> Log.buildString (show resPayloads)
-    resPayloads `shouldBe` reqPayloads
 ----------------------------------------------------------------------------------------------------------
 
-appendRequest :: Client -> TL.Text -> V.Vector HStreamRecord -> IO (Maybe AppendResponse)
-appendRequest client streamName records = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = AppendRequest streamName records
-  resp <- hstreamApiAppend $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse resp' _meta1 _meta2 StatusOk _details -> return $ Just resp'
-    ClientErrorResponse clientError                           -> do
-      putStrLn ("AppendRequest Error: " <> show clientError) >> return Nothing
+appendRequest :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO AppendResponse
+appendRequest HStreamApi{..} streamName records =
+  let appReq = AppendRequest streamName records
+      req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiAppend req
 
-fetchRequest :: Client -> TL.Text -> Word64 -> Word32 -> IO (V.Vector ReceivedRecord)
-fetchRequest client subscribeId timeout maxSize = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = FetchRequest subscribeId timeout maxSize
-  resp <- hstreamApiFetch $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse res _meta1 _meta2 StatusOk _details -> do
-      return $ fetchResponseReceivedRecords res
-    ClientErrorResponse clientError                          -> do
-      putStrLn ("FetchRequest Error: " <> show clientError) >> return V.empty
+fetchRequest :: HStreamClientApi -> TL.Text -> Word64 -> Word32 -> IO (V.Vector ReceivedRecord)
+fetchRequest HStreamApi{..} subscribeId timeout maxSize =
+  let fetReq = FetchRequest subscribeId timeout maxSize
+      req = ClientNormalRequest fetReq requestTimeout $ MetadataMap Map.empty
+  in fetchResponseReceivedRecords <$> (getServerResp =<< hstreamApiFetch req)
 
-commitOffsetRequest :: Client -> TL.Text -> RecordId -> IO Bool
-commitOffsetRequest client subscriptionId recordId = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = CommittedOffset subscriptionId $ Just recordId
-  resp <- hstreamApiCommitOffset $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("Commite Error: " <> show clientError) >> return False
+commitOffsetRequest :: HStreamClientApi -> TL.Text -> RecordId -> IO Bool
+commitOffsetRequest HStreamApi{..} subscriptionId recordId =
+  let cmtReq = CommittedOffset subscriptionId $ Just recordId
+      req = ClientNormalRequest cmtReq requestTimeout $ MetadataMap Map.empty
+  in True <$ (getServerResp =<< hstreamApiCommitOffset req)
 
 requestTimeout :: Int
 requestTimeout = 5
