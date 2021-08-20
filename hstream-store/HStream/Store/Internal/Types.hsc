@@ -325,8 +325,6 @@ peekGapRecord ptr = do
   hi <- (#peek logdevice_gap_record_t, hi) ptr
   return $ GapRecord logid (GapType gaptype) lo hi
 
-type LogRecord a = Either GapRecord [DataRecord a]
-
 data AppendCallBackData = AppendCallBackData
   { appendCbRetCode   :: !ErrorCode
   , appendCbLogID     :: !C_LogID

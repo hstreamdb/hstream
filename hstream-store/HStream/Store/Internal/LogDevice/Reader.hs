@@ -123,8 +123,7 @@ ckpReaderStopReading reader logid =
 readerRead :: DataRecordFormat a => LDReader -> Int -> IO [DataRecord a]
 readerRead reader maxlen =
   withForeignPtr reader $ \reader' ->
-  allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-    go reader' payload'
+  allocaBytes (maxlen * dataRecordSize) $ go reader'
   where
     go !rp !pp = do
       m_records <- tryReaderRead' rp nullPtr pp nullPtr maxlen
@@ -135,8 +134,7 @@ readerRead reader maxlen =
 ckpReaderRead :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO [DataRecord a]
 ckpReaderRead reader maxlen =
   withForeignPtr reader $ \reader' ->
-  allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-    go reader' payload'
+  allocaBytes (maxlen * dataRecordSize) $ go reader'
   where
     go !rp !pp = do
       m_records <- tryReaderRead' nullPtr rp pp nullPtr maxlen
@@ -151,17 +149,24 @@ ckpReaderRead reader maxlen =
 --
 -- The call returns when a gap in sequence numbers is encountered or any of the
 -- situations mentioned in `readerRead` happens
-readerReadAllowGap :: DataRecordFormat a => LDReader -> Int -> IO (LogRecord a)
+readerReadAllowGap :: DataRecordFormat a => LDReader -> Int -> IO (Either GapRecord [DataRecord a])
 readerReadAllowGap reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-  allocaBytes gapRecordSize $ \gap -> tryReaderRead' reader' nullPtr payload' gap maxlen
+  allocaBytes gapRecordSize $ \gap ->
+    refineLogRecord <$> tryReaderRead' reader' nullPtr payload' gap maxlen
 
-ckpReaderReadAllowGap :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO (LogRecord a)
+ckpReaderReadAllowGap :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO (Either GapRecord [DataRecord a])
 ckpReaderReadAllowGap reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-  allocaBytes gapRecordSize $ \gap -> tryReaderRead' nullPtr reader' payload' gap maxlen
+  allocaBytes gapRecordSize $ \gap ->
+    refineLogRecord <$> tryReaderRead' nullPtr reader' payload' gap maxlen
+
+refineLogRecord :: Either (Maybe GapRecord) [DataRecord a] -> Either GapRecord [DataRecord a]
+refineLogRecord (Left (Just gap)) = Left gap
+refineLogRecord (Left Nothing)    = error "Unexpected Error!"
+refineLogRecord (Right payload)   = Right payload
 
 readerIsReading :: LDReader -> C_LogID -> IO Bool
 readerIsReading reader logid =
@@ -293,7 +298,7 @@ tryReaderRead'
   -> Ptr DataRecordInternal
   -> Ptr GapRecord
   -> Int
-  -> IO (LogRecord a)
+  -> IO (Either (Maybe GapRecord) [DataRecord a])
 tryReaderRead' reader chkReader record gap maxlen =
   if reader /= nullPtr
      then do (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
@@ -307,8 +312,8 @@ tryReaderRead' reader chkReader record gap maxlen =
       | nread >  0 = Right <$> peekDataRecords nread record
       | nread == 0 = return $ Right []
       | nread <  0 = Left <$> if gap == nullPtr
-                              then pure (error "Impossible happened: Try to read from nullPtr")
-                              else peekGapRecord gap
+                              then pure Nothing
+                              else Just <$> peekGapRecord gap
     hdResult _     = error "Unexpected Error!"
 
 -------------------------------------------------------------------------------

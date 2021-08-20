@@ -59,7 +59,6 @@ module HStream.Store.Stream
   , FFI.RecordByteOffset (..)
   , FFI.DataRecord (..)
   , FFI.DataRecordAttr (..)
-  , FFI.LogRecord
   , FFI.GapRecord (..)
   , FFI.GapType (..)
   , FFI.recordLogID
