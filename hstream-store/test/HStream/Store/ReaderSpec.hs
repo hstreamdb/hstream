@@ -114,6 +114,19 @@ misc = do
     void $ S.readerSetTimeout reader 0
     timeout 1000000 (S.readerRead reader 1) `shouldReturn` Just ([] :: [S.DataRecord Bytes])
 
+  it "read a gap" $ do
+    sn0 <- S.appendCompLSN <$> S.append client logid "one" Nothing
+    sn1 <- S.appendCompLSN <$> S.append client logid "two" Nothing
+    sn2 <- S.appendCompLSN <$> S.append client logid "three" Nothing
+    S.trim client logid sn1
+
+    reader <- S.newLDReader client 1 Nothing
+    S.readerStartReading reader logid sn0 sn2
+    log1 <- S.readerReadAllowGap @Bytes reader 10
+    log2 <- S.readerReadAllowGap @Bytes reader 10
+    log1 `shouldBe` Left (S.GapRecord logid (S.GapType 4) sn0 sn1)
+    (fmap S.recordPayload <$> log2) `shouldBe` Right ["three" :: Bytes]
+
   -- TODO
   -- it "Set IncludeByteOffset" $ do
   --   reader <- S.newLDReader client 1 Nothing

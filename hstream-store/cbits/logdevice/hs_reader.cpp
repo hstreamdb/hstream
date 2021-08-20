@@ -142,6 +142,7 @@ WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
 #define READ(FuncName, ClassName)                                              \
   facebook::logdevice::Status FuncName(ClassName* reader, size_t maxlen,       \
                                        logdevice_data_record_t* data_out,      \
+                                       logdevice_gap_record_t* gap_out,        \
                                        ssize_t* len_out) {                     \
     std::vector<std::unique_ptr<DataRecord>> data;                             \
     facebook::logdevice::GapRecord gap;                                        \
@@ -173,7 +174,12 @@ WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
       if (gap.type == facebook::logdevice::GapType::DATALOSS) {                \
         fprintf(stderr, "warning: DATALOSS gaps for LSN range [%ld, %ld]\n",   \
                 gap.lo, gap.hi);                                               \
-        return facebook::logdevice::E::DATALOSS;                               \
+      }                                                                        \
+      if (gap_out) {                                                           \
+        gap_out->logid = gap.logid.val_;                                       \
+        gap_out->gaptype = static_cast<uint8_t>(gap.type);                     \
+        gap_out->lo = gap.lo;                                                  \
+        gap_out->hi = gap.hi;                                                  \
       }                                                                        \
     }                                                                          \
                                                                                \

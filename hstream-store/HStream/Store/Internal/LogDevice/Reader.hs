@@ -99,7 +99,8 @@ ckpReaderStopReading reader logid =
   withForeignPtr reader $ \ptr -> void $
     E.throwStreamErrorIfNotOK $ c_ld_checkpointed_reader_stop_reading ptr logid
 
--- | Read a batch of records synchronously until there is some data received.
+-- | Read a batch of records synchronously until there is some data
+-- received. Gaps are ignored
 --
 -- If read timeouts, you will get an empty list.
 --
@@ -110,7 +111,6 @@ ckpReaderStopReading reader logid =
 --   specified by 'readerSetTimeout' has been reached
 -- * there are no more records to deliver at the moment and
 --   'readerSetWaitOnlyWhenNoData' was called
--- * a gap in sequence numbers is encountered
 -- * `until` LSN for some log was reached
 -- * not reading any logs, possibly because the ends of all logs have been
 --   reached (returns 0 quickly)
@@ -123,37 +123,50 @@ ckpReaderStopReading reader logid =
 readerRead :: DataRecordFormat a => LDReader -> Int -> IO [DataRecord a]
 readerRead reader maxlen =
   withForeignPtr reader $ \reader' ->
-  allocaBytes (maxlen * dataRecordSize) $ \payload' -> go reader' payload'
+  allocaBytes (maxlen * dataRecordSize) $ go reader'
   where
     go !rp !pp = do
-      m_records <- tryReaderRead' rp nullPtr pp maxlen
+      m_records <- tryReaderRead' rp nullPtr pp nullPtr maxlen
       case m_records of
-        Just rs -> return rs
-        Nothing -> go rp pp
+        Right rs -> return rs
+        Left _   -> go rp pp
 
 ckpReaderRead :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO [DataRecord a]
 ckpReaderRead reader maxlen =
   withForeignPtr reader $ \reader' ->
-  allocaBytes (maxlen * dataRecordSize) $ \payload' -> go reader' payload'
+  allocaBytes (maxlen * dataRecordSize) $ go reader'
   where
     go !rp !pp = do
-      m_records <- tryReaderRead' nullPtr rp pp maxlen
+      m_records <- tryReaderRead' nullPtr rp pp nullPtr maxlen
       case m_records of
-        Just rs -> return rs
-        Nothing -> go rp pp
+        Right rs -> return rs
+        Left _   -> go rp pp
 
--- | Attempts to read a batch of records synchronously.
-tryReaderRead :: DataRecordFormat a => LDReader -> Int -> IO (Maybe [DataRecord a])
-tryReaderRead reader maxlen =
+-- | Attempts to read a batch of records.
+--
+-- The call either delivers 0 or more (up to `maxlen`) data records, or
+-- one gap record.
+--
+-- The call returns when a gap in sequence numbers is encountered or any of the
+-- situations mentioned in `readerRead` happens
+readerReadAllowGap :: DataRecordFormat a => LDReader -> Int -> IO (Either GapRecord [DataRecord a])
+readerReadAllowGap reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-    tryReaderRead' reader' nullPtr payload' maxlen
+  allocaBytes gapRecordSize $ \gap ->
+    refineLogRecord <$> tryReaderRead' reader' nullPtr payload' gap maxlen
 
-tryCheckpointedReaderRead :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO (Maybe [DataRecord a])
-tryCheckpointedReaderRead reader maxlen =
+ckpReaderReadAllowGap :: DataRecordFormat a => LDSyncCkpReader -> Int -> IO (Either GapRecord [DataRecord a])
+ckpReaderReadAllowGap reader maxlen =
   withForeignPtr reader $ \reader' ->
   allocaBytes (maxlen * dataRecordSize) $ \payload' ->
-    tryReaderRead' nullPtr reader' payload' maxlen
+  allocaBytes gapRecordSize $ \gap ->
+    refineLogRecord <$> tryReaderRead' nullPtr reader' payload' gap maxlen
+
+refineLogRecord :: Either (Maybe GapRecord) [DataRecord a] -> Either GapRecord [DataRecord a]
+refineLogRecord (Left (Just gap)) = Left gap
+refineLogRecord (Left Nothing)    = error "Unexpected Error!"
+refineLogRecord (Right payload)   = Right payload
 
 readerIsReading :: LDReader -> C_LogID -> IO Bool
 readerIsReading reader logid =
@@ -283,22 +296,25 @@ tryReaderRead'
   => Ptr LogDeviceReader
   -> Ptr LogDeviceSyncCheckpointedReader
   -> Ptr DataRecordInternal
+  -> Ptr GapRecord
   -> Int
-  -> IO (Maybe [DataRecord a])
-tryReaderRead' reader chkReader record maxlen =
+  -> IO (Either (Maybe GapRecord) [DataRecord a])
+tryReaderRead' reader chkReader record gap maxlen =
   if reader /= nullPtr
      then do (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
-                c_logdevice_reader_read_safe reader (fromIntegral maxlen) record len'
-             hdResult record nread
+                c_logdevice_reader_read_safe reader (fromIntegral maxlen) record gap len'
+             hdResult nread
      else do (nread, _) <- Z.withPrimSafe 0 $ \len' -> void $ E.throwStreamErrorIfNotOK $
-                c_logdevice_checkpointed_reader_read_safe chkReader (fromIntegral maxlen) record len'
-             hdResult record nread
+                c_logdevice_checkpointed_reader_read_safe chkReader (fromIntegral maxlen) record gap len'
+             hdResult nread
   where
-    hdResult p nread
-      | nread >  0 = Just <$> peekDataRecords nread p
-      | nread == 0 = return $ Just []
-      | nread <  0 = return Nothing
-    hdResult _ _   = error "Unexpected Error!"
+    hdResult nread
+      | nread >  0 = Right <$> peekDataRecords nread record
+      | nread == 0 = return $ Right []
+      | nread <  0 = Left <$> if gap == nullPtr
+                              then pure Nothing
+                              else Just <$> peekGapRecord gap
+    hdResult _     = error "Unexpected Error!"
 
 -------------------------------------------------------------------------------
 -- Reader C API
@@ -377,6 +393,7 @@ foreign import ccall safe "hs_logdevice.h logdevice_reader_read"
     :: Ptr LogDeviceReader
     -> CSize
     -> Ptr DataRecordInternal
+    -> Ptr GapRecord
     -> Ptr Int
     -> IO ErrorCode
 foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
@@ -384,6 +401,7 @@ foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
     :: Ptr LogDeviceSyncCheckpointedReader
     -> CSize
     -> Ptr DataRecordInternal
+    -> Ptr GapRecord
     -> Ptr Int
     -> IO ErrorCode
 
