@@ -82,7 +82,6 @@ import qualified HStream.Server.Persistence            as P
 import           HStream.Store                         (ckpReaderStopReading)
 import qualified HStream.Store                         as S
 import qualified HStream.Store.Admin.API               as AA
-import qualified HStream.Store.Logger                  as S
 import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
 
