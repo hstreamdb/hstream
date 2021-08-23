@@ -42,6 +42,7 @@ createSinkConnectorHandler
   -> IO (ServerResponse 'Normal Connector)
 createSinkConnectorHandler sc
   (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = defaultExceptionHandle $ do
+    Log.debug "Receive Create Sink Connector Request"
     connector <- createConnector sc (TL.toStrict createSinkConnectorRequestSql)
     returnResp connector
 
@@ -51,6 +52,7 @@ listConnectorsHandler
   -> IO (ServerResponse 'Normal ListConnectorsResponse)
 listConnectorsHandler ServerContext{..}
   (ServerNormalRequest _metadata _) = defaultExceptionHandle $ do
+  Log.debug "Receive List Connector Request"
   connectors <- P.withMaybeZHandle zkHandle P.getConnectors
   returnResp $ ListConnectorsResponse .
     V.fromList . map hstreamConnectorToConnector $ connectors
@@ -61,6 +63,8 @@ getConnectorHandler
   -> IO (ServerResponse 'Normal Connector)
 getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Get Connector Request. "
+    <> "Connector ID: " <> Log.buildString (TL.unpack getConnectorRequestId)
   connector <- P.withMaybeZHandle zkHandle $
     P.getConnector (lazyTextToCBytes getConnectorRequestId)
   returnResp $ hstreamConnectorToConnector connector
@@ -71,6 +75,8 @@ deleteConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Delete Connector Request. "
+    <> "Connector ID: " <> Log.buildString (TL.unpack deleteConnectorRequestId)
   let cName = lazyTextToCBytes deleteConnectorRequestId
   P.withMaybeZHandle zkHandle $ P.removeConnector cName
   returnResp Empty
@@ -81,9 +87,13 @@ restartConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 restartConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Restart Connector Request. "
+    <> "Connector ID: " <> Log.buildString (TL.unpack restartConnectorRequestId)
   let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
-  when (cStatus `elem` [P.Created, P.Creating, P.Running]) $
+  when (cStatus `elem` [P.Created, P.Creating, P.Running]) $ do
+    Log.warning . Log.buildString $ "The connector " <> show cid
+      <> "cannot be restarted because it has state " <> show cStatus
     throwIO (ConnectorRestartErr cStatus)
   restartConnector sc cid >> returnResp Empty
 
@@ -93,6 +103,8 @@ terminateConnectorHandler
   -> IO (ServerResponse 'Normal Empty)
 terminateConnectorHandler sc
   (ServerNormalRequest _metadata TerminateConnectorRequest{..}) = do
+  Log.debug $ "Receive Terminate Connector Request. "
+    <> "Connector ID: " <> Log.buildString (TL.unpack terminateConnectorRequestConnectorId)
   let cid = lazyTextToCBytes terminateConnectorRequestConnectorId
   handleTerminateConnector sc cid
   returnResp Empty

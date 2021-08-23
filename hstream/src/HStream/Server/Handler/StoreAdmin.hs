@@ -21,6 +21,7 @@ import           Lens.Micro
 import           Lens.Micro.Aeson
 import           Network.GRPC.HighLevel.Generated
 
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (ServerContext (..),
                                                    responseWithErrorMsgIfNothing)
@@ -88,6 +89,7 @@ listStoreNodesHandler
   -> ServerRequest 'Normal ListNodesRequest ListNodesResponse
   -> IO (ServerResponse 'Normal ListNodesResponse)
 listStoreNodesHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
+  Log.debug "Receive List Store Nodes Request"
   nodes <- getNodes headerConfig statusOpts
   responseWithErrorMsgIfNothing (ListNodesResponse <$> nodes) StatusInternal "Get Nodes Info failed"
 
@@ -96,6 +98,8 @@ getStoreNodeHandler
   -> ServerRequest 'Normal GetNodeRequest Node
   -> IO (ServerResponse 'Normal Node)
 getStoreNodeHandler ServerContext{..} (ServerNormalRequest _metadata GetNodeRequest{..}) = do
+  Log.debug $ "Receive Get Store Node Request. "
+    <> "Node ID: " <> Log.buildInt getNodeRequestId
   nodes <- getNodes headerConfig statusOpts
   let node = V.find (\(Node id' _ _ _) -> id' == getNodeRequestId) <$> nodes
   responseWithErrorMsgIfNothing (fromMaybe Nothing node) StatusInternal "Node not exists"

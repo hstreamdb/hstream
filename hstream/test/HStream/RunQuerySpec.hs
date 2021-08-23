@@ -139,7 +139,7 @@ spec = aroundAll provideHstreamApi $
           _      -> return False
     ) `shouldReturn` True
 
-  it "Terminate query" $ \_ ->
+  it "terminate query" $ \_ ->
     ( do
         _ <- terminateQuery queryname1
         query <- getQuery queryname1
@@ -149,15 +149,15 @@ spec = aroundAll provideHstreamApi $
           _                     -> return False
     ) `shouldReturn` True
 
-  it "restart query" $ \_ ->
-    ( do
-        _ <- restartQuery queryname1
-        query <- getQuery queryname1
-        case query of
-          -- Running
-          Just (Query _ 2 _ _ ) -> return True
-          _                     -> return False
-    ) `shouldReturn` True
+  -- it "restart query" $ \_ ->
+  --   ( do
+  --       _ <- restartQuery queryname1
+  --       query <- getQuery queryname1
+  --       case query of
+  --         -- Running
+  --         Just (Query _ 2 _ _ ) -> return True
+  --         _                     -> return False
+  --   ) `shouldReturn` True
 
   it "delete query" $ \_ ->
     ( do

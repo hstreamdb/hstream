@@ -16,6 +16,7 @@ import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.Text                      as ZT
 
 import qualified HStream.Connector.HStore         as HCH
+import qualified HStream.Logger                   as Log
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
@@ -44,6 +45,7 @@ createViewHandler
   -> ServerRequest 'Normal CreateViewRequest View
   -> IO (ServerResponse 'Normal View)
 createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Create View Request: " <> Log.buildString (TL.unpack createViewRequestSql)
   plan <- HSC.streamCodegen $ TL.toStrict createViewRequestSql
   case plan of
     HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _ -> do
@@ -65,6 +67,7 @@ listViewsHandler
   -> ServerRequest 'Normal ListViewsRequest ListViewsResponse
   -> IO (ServerResponse 'Normal ListViewsResponse)
 listViewsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
+  Log.debug "Receive List View Request"
   queries <- P.withMaybeZHandle zkHandle P.getQueries
   let records = map hstreamQueryToView $ filter P.isViewQuery queries
   let resp = ListViewsResponse . V.fromList $ records
@@ -75,18 +78,24 @@ getViewHandler
   -> ServerRequest 'Normal GetViewRequest View
   -> IO (ServerResponse 'Normal View)
 getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{..}) = do
+  Log.debug $ "Receive Get View Request. "
+    <> "View ID:" <> Log.buildString (TL.unpack getViewRequestViewId)
   query <- do
     viewQueries <- filter P.isViewQuery <$> P.withMaybeZHandle zkHandle P.getQueries
     return $
       find (\P.PersistentQuery {..} -> cBytesToLazyText queryId == getViewRequestViewId) viewQueries
   case query of
     Just q -> returnResp $ hstreamQueryToView q
-    _      -> returnErrResp StatusInternal "View does not exist"
+    _      -> do
+      Log.warning $ "Cannot Find View with ID: " <> Log.buildString (TL.unpack getViewRequestViewId)
+      returnErrResp StatusInternal "View does not exist"
 
 deleteViewHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteViewRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteViewHandler sc (ServerNormalRequest _metadata DeleteViewRequest{..}) = defaultExceptionHandle $ do
+    Log.debug $ "Receive Delete View Request. "
+      <> "View ID:" <> Log.buildString (TL.unpack deleteViewRequestViewId)
     let name = TL.toStrict deleteViewRequestViewId
     dropHelper sc name False True
