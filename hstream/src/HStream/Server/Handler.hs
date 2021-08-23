@@ -28,6 +28,7 @@ import           Data.String                           (fromString)
 import qualified Data.Text                             as T
 import qualified Data.Text.Lazy                        as TL
 import qualified Data.Vector                           as V
+import           Data.Word                             (Word32)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                          (Enumerated (..),
                                                         HasDefault (def))
@@ -131,8 +132,8 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
 
     -- Consume
     , hstreamApiFetch        = fetchHandler serverContext
-    , hstreamApiCommitOffset = commitOffsetHandler serverContext
     , hstreamApiSendConsumerHeartbeat = consumerHeartbeatHandler serverContext
+    , hstreamApiAcknowledge = ackHandler serverContext
 
     , hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
@@ -458,7 +459,15 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
     -- insert to runtime info
     atomically $ do
       store <- readTVar subscribeRuntimeInfo
-      let newStore = HM.insert subscribeRequestSubscriptionId ldreader store
+
+      let info = SubscribeRuntimeInfo {
+                  sriLdreader = ldreader
+                , sriWindowLowerBound = getStartOffset startOffset
+                , sriWindowUpperBound = maxBound
+                , sriAckedRanges = Map.empty
+                , sriBatchNumMap = Map.empty
+                }
+      let newStore = HM.insert subscribeRequestSubscriptionId info store
       writeTVar subscribeRuntimeInfo newStore
     -- return resp
     returnResp (SubscribeResponse subscribeRequestSubscriptionId)
@@ -468,6 +477,11 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
       store <- readTVar subscriptions
       let Subscription{..} = fromJust $ HM.lookup subscriptionId store
       return $ fromJust subscriptionOffset
+
+    getStartOffset:: SubscriptionOffset -> RecordId
+    getStartOffset SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
+      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+      SubscriptionOffsetOffsetRecordOffset r  -> r
 
     getStartLSN :: SubscriptionOffset -> S.LSN
     getStartLSN SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
@@ -501,10 +515,10 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
       mRes <- atomically $ do
         store <- readTVar subscribeRuntimeInfo
         case HM.lookup deleteSubscriptionRequestSubscriptionId store of
-          Just ldreader -> do
+          Just SubscribeRuntimeInfo{..} -> do
             let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
             writeTVar subscribeRuntimeInfo newStore
-            return (Just ldreader)
+            return (Just sriLdreader)
           Nothing -> return Nothing
 
       case mRes of
@@ -573,31 +587,61 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{.
     return $ HM.lookup fetchRequestSubscriptionId store
 
   case mRes of
-    Just ldreader -> do
-      void $ S.ckpReaderSetTimeout ldreader (fromIntegral fetchRequestTimeout)
-      res <- S.ckpReaderRead ldreader (fromIntegral fetchRequestMaxSize)
-      returnResp $ FetchResponse (fetchResult res)
+    Just runtimeInfo -> do
+      void $ S.ckpReaderSetTimeout (sriLdreader runtimeInfo) (fromIntegral fetchRequestTimeout)
+      res <- S.ckpReaderReadAllowGap (sriLdreader runtimeInfo) (fromIntegral fetchRequestMaxSize)
+      case res of
+        Left S.GapRecord{..} -> do
+          atomically $ do
+            -- insert gap range to ackedRanges
+            store <- readTVar subscribeRuntimeInfo
+            case HM.lookup fetchRequestSubscriptionId store of
+              Nothing -> error "should not reach here"
+              Just info -> do
+                let gapLoRecordId = RecordId gapLoLSN minBound
+                let gapHiRecordId = RecordId gapHiLSN maxBound
+                let newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) (sriAckedRanges info)
+                let newStore = HM.insert fetchRequestSubscriptionId (info {sriAckedRanges = newRanges}) store
+                writeTVar subscribeRuntimeInfo newStore
+
+          returnResp $ FetchResponse (V.empty)
+        Right dataRecords -> do
+          let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
+          let lastBatch = last groups
+          let groupNums = map (\group -> ((S.recordLSN $ head lastBatch), (fromIntegral $ length group) :: Word32)) groups
+          let maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
+          atomically $ do
+            store <- readTVar subscribeRuntimeInfo
+            case HM.lookup fetchRequestSubscriptionId store of
+              Nothing -> error "should not reach here"
+              Just info -> do
+                -- update window upper bound
+                -- update batchNumMap
+                let newBatchNumMap = Map.union (sriBatchNumMap info) (Map.fromList groupNums)
+                let newStore = HM.insert fetchRequestSubscriptionId (info {sriBatchNumMap = newBatchNumMap, sriWindowUpperBound = maxRecordId}) store
+                writeTVar subscribeRuntimeInfo newStore
+
+
+          returnResp $ FetchResponse (fetchResult groups)
     Nothing ->
       returnErrResp StatusInternal (StatusDetails "subscription do not exist")
   where
-    fetchResult :: [S.DataRecord Bytes] -> V.Vector ReceivedRecord
-    fetchResult records =
-      let groups = L.groupBy ((==) `on` S.recordLSN) records
-      in V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
+    fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
+    fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
 
     mkReceivedRecord :: Int -> S.DataRecord Bytes -> ReceivedRecord
     mkReceivedRecord index record =
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
--- do nothing for now, later will fix it
-commitOffsetHandler
+ackHandler
   :: ServerContext
-  -> ServerRequest 'Normal CommittedOffset CommittedOffset
-  -> IO (ServerResponse 'Normal CommittedOffset)
-commitOffsetHandler ServerContext{..} (ServerNormalRequest _metadata offset@CommittedOffset{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive commitOffset request: " <> Log.buildString (show offset)
-  returnResp offset
+  -> ServerRequest 'Normal AcknowledgeRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeRequest{..}) = defaultExceptionHandle $  do
+  Log.debug $ "Receive ack request: " <> Log.buildString (show req)
+  returnResp Empty
+
 --------------------------------------------------------------------------------
 
 batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion

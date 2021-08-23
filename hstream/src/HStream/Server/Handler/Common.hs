@@ -25,9 +25,10 @@ import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import           Data.List                        (find)
-import qualified Data.Map.Strict                  as M
+import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
@@ -54,7 +55,7 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
-import           HStream.Server.HStreamApi        (Subscription)
+import           HStream.Server.HStreamApi        (RecordId (..), Subscription)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
@@ -83,15 +84,76 @@ data ServerContext = ServerContext {
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscriptions            :: TVar (HM.HashMap SubscriptionId Subscription)
-  , subscribeRuntimeInfo     :: TVar (HM.HashMap SubscriptionId HS.LDSyncCkpReader)
+  , subscribeRuntimeInfo     :: TVar (HM.HashMap SubscriptionId SubscribeRuntimeInfo)
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 }
 
 type SubscriptionId = TL.Text
 
+instance Bounded RecordId where
+  minBound = RecordId minBound minBound
+  maxBound = RecordId maxBound maxBound
+
+data RecordIdRange = RecordIdRange
+  { startRecordId :: RecordId,
+    endRecordId   :: RecordId
+  } deriving (Show, Eq)
+
+data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
+    sriLdreader         :: HS.LDSyncCkpReader
+  , sriWindowLowerBound :: RecordId
+  , sriWindowUpperBound :: RecordId
+  , sriAckedRanges      :: Map.Map RecordId RecordIdRange
+  , sriBatchNumMap      :: Map.Map Word64 Word32
+}
+
 --------------------------------------------------------------------------------
 
+insertAckedRecordId :: RecordId -> Map.Map RecordId RecordIdRange -> Map.Map Word64 Word32 -> Map.Map RecordId RecordIdRange
+insertAckedRecordId recordId ackedRanges batchNumMap =
+  let leftRange = lookupLTWithDefault recordId ackedRanges
+      rightRange = lookupGTWithDefault recordId ackedRanges
+      canMergeToLeft = isSuccessor recordId (endRecordId leftRange) batchNumMap
+      canMergeToRight = isPrecursor recordId (startRecordId rightRange) batchNumMap
+   in f leftRange rightRange canMergeToLeft canMergeToRight
+  where
+    f leftRange rightRange canMergeToLeft canMergeToRight
+      | canMergeToLeft && canMergeToRight =
+        let m1 = Map.delete (startRecordId rightRange) ackedRanges
+         in Map.adjust (const leftRange {endRecordId = endRecordId rightRange}) (startRecordId leftRange) m1
+      | canMergeToLeft = Map.adjust (const leftRange {endRecordId = recordId}) (startRecordId leftRange) ackedRanges
+      | canMergeToRight =
+        let m1 = Map.delete (startRecordId rightRange) ackedRanges
+         in Map.insert recordId (rightRange {startRecordId = recordId}) m1
+      | otherwise = Map.insert recordId (RecordIdRange recordId recordId) ackedRanges
+
+lookupLTWithDefault :: RecordId -> Map.Map RecordId RecordIdRange -> RecordIdRange
+lookupLTWithDefault recordId ranges = maybe (RecordIdRange minBound minBound) snd $ Map.lookupLT recordId ranges
+
+lookupGTWithDefault :: RecordId -> Map.Map RecordId RecordIdRange -> RecordIdRange
+lookupGTWithDefault recordId ranges = maybe (RecordIdRange maxBound maxBound) snd $ Map.lookupGT recordId ranges
+
+-- is r1 the successor of r2
+isSuccessor :: RecordId -> RecordId -> Map.Map Word64 Word32 -> Bool
+isSuccessor r1 r2 batchNumMap
+  | r2 == minBound = False
+  | r1 <= r2 = False
+  | recordIdBatchId r1 == recordIdBatchId r2 = recordIdBatchIndex r1 == recordIdBatchIndex r2 + 1
+  | recordIdBatchId r1 > recordIdBatchId r2 = isLastInBatch r2 batchNumMap && (recordIdBatchId r1 == recordIdBatchId r2 + 1) && (recordIdBatchIndex r1 == 0)
+
+isPrecursor :: RecordId -> RecordId -> Map.Map Word64 Word32 -> Bool
+isPrecursor r1 r2 batchNumMap
+  | r2 == maxBound = False
+  | otherwise = isSuccessor r2 r1 batchNumMap
+
+isLastInBatch :: RecordId -> Map.Map Word64 Word32 -> Bool
+isLastInBatch recordId batchNumMap =
+  case Map.lookup (recordIdBatchId recordId) batchNumMap of
+    Nothing  -> error "no recordIdBatchId found"
+    Just num -> recordIdBatchIndex recordId == num - 1
+
+--------------------------------------------------------------------------------
 runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
 runTaskWrapper sourceType sinkType taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
