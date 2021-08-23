@@ -15,6 +15,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
 
 import           HStream.Server.HStreamApi
+import qualified HStream.Server.Persistence       as P
 import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,
                                                    setLogDeviceDbgLevel)
@@ -124,9 +125,8 @@ spec = aroundAll provideHstreamApi $
         _ <- terminateConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          -- Terminated
-          Just (Connector _ 5 _ _) -> return True
-          _                        -> return False
+          Just (Connector _ P.Terminated _ _) -> return True
+          _                                   -> return False
     ) `shouldReturn` True
 
   it "restart connector" $ \_ ->
@@ -134,9 +134,8 @@ spec = aroundAll provideHstreamApi $
         _ <- restartConnector mysqlConnector
         connector <- getConnector mysqlConnector
         case connector of
-          -- Running
-          Just (Connector _ 2 _ _) -> return True
-          _                        -> return False
+          Just (Connector _ P.Running _ _) -> return True
+          _                                -> return False
     ) `shouldReturn` True
 
   it "delete connector" $ \_ ->

@@ -44,7 +44,7 @@ hstreamQueryToQuery :: P.PersistentQuery -> Query
 hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
   Query
   { queryId = cBytesToLazyText queryId
-  , queryStatus = fromIntegral $ fromEnum status
+  , queryStatus = status
   , queryCreatedTime = createdTime
   , queryQueryText = TL.pack $ ZT.unpack sqlStatement
   }
@@ -80,7 +80,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
         returnResp $
           Query
           { queryId = cBytesToLazyText qid
-          , queryStatus = fromIntegral $ fromEnum P.Running
+          , queryStatus = P.Running
           , queryCreatedTime = timestamp
           , queryQueryText = createQueryRequestQueryText
           }

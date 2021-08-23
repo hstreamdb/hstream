@@ -33,7 +33,7 @@ import           HStream.Utils                    (cBytesToLazyText,
 hstreamQueryToView :: P.PersistentQuery -> View
 hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _) =
   View { viewViewId = cBytesToLazyText queryId
-       , viewStatus = fromIntegral $ fromEnum status
+       , viewStatus = status
        , viewCreatedTime = createdTime
        , viewSql = TL.pack $ ZT.unpack sqlStatement
        , viewSchema = V.fromList $ TL.pack <$> schema
@@ -52,7 +52,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
       create sink
       (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) HS.StreamTypeView
       returnResp $ View { viewViewId = cBytesToLazyText qid
-                        , viewStatus = fromIntegral $ fromEnum P.Running
+                        , viewStatus = P.Running
                         , viewCreatedTime = timestamp
                         , viewSql = createViewRequestSql
                         , viewSchema = V.fromList $ TL.pack <$> schema

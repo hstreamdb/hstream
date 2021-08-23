@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ParallelListComp    #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,7 +12,13 @@
 module HStream.Server.Persistence
   ( PersistentQuery(..)
   , PersistentConnector(..)
-  , Status(..)
+  , Status
+  , pattern Creating
+  , pattern Created
+  , pattern Running
+  , pattern CreationAbort
+  , pattern ConnectionAbort
+  , pattern Terminated
   , QueryType (..)
   , queriesPath
   , connectorsPath
@@ -48,7 +55,9 @@ import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
+import qualified HStream.Server.HStreamApi            as PB
 import           HStream.Server.Persistence.Exception
+import qualified Proto3.Suite                         as PB
 
 --------------------------------------------------------------------------------
 type ViewSchema     = [String]
@@ -61,8 +70,7 @@ data PersistentQuery = PersistentQuery
   , queryType        :: QueryType
   , queryStatus      :: Status
   , queryTimeCkp     :: Int64
-  } deriving (Generic, Show)
-instance JSON PersistentQuery
+  } deriving (Generic, Show, JSON)
 
 data PersistentConnector = PersistentConnector
   { connectorId          :: CBytes
@@ -70,19 +78,29 @@ data PersistentConnector = PersistentConnector
   , connectorCreatedTime :: Int64
   , connectorStatus      :: Status
   , connectorTimeCkp     :: Int64
-  } deriving (Generic, Show)
-instance JSON PersistentConnector
+  } deriving (Generic, Show, JSON)
 
-data Status
-  = Created
-  | Creating
-  | Running
-  -- Abort during creating the connector
-  | CreationAbort
-  -- Abort during execution of SQL statements
-  | ConnectionAbort
-  | Terminated
-  deriving (Show, Eq, Generic, Enum, JSON)
+type Status = PB.Enumerated PB.Status
+instance JSON Status
+instance JSON PB.Status
+
+pattern Created :: Status
+pattern Created = (PB.Enumerated (Right PB.StatusCREATED))
+
+pattern Creating :: Status
+pattern Creating = (PB.Enumerated (Right PB.StatusCREATING))
+
+pattern Running :: Status
+pattern Running = (PB.Enumerated (Right PB.StatusRUNNING))
+-- Abort during creating the connector
+pattern CreationAbort :: Status
+pattern CreationAbort = (PB.Enumerated (Right PB.StatusCREATIONABORT))
+-- Abort during execution of SQL statements
+pattern ConnectionAbort :: Status
+pattern ConnectionAbort = (PB.Enumerated (Right PB.StatusCONNECTIONABORT))
+
+pattern Terminated :: Status
+pattern Terminated = (PB.Enumerated (Right PB.StatusTERMINATED))
 
 data QueryType
   = PlainQuery  RelatedStreams

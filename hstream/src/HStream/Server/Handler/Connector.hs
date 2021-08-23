@@ -114,8 +114,7 @@ terminateConnectorHandler sc
 hstreamConnectorToConnector :: P.PersistentConnector -> Connector
 hstreamConnectorToConnector P.PersistentConnector{..} =
   Connector (cBytesToLazyText connectorId)
-    (fromIntegral . fromEnum  $ connectorStatus)
-    connectorCreatedTime
+    connectorStatus connectorCreatedTime
     (TL.pack . ZT.unpack $ connectorBindedSql)
 
 createConnector :: ServerContext -> T.Text -> IO Connector
