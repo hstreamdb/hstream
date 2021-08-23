@@ -18,3 +18,6 @@ spec = describe "HStream.Utils" $ do
       putMVar (results !! idx) r
     rs <- concat <$> forM [0..maxInflights-1] (takeMVar . (results !!))
     length rs `shouldBe` Set.size (Set.fromList rs)
+
+  -- TODO
+  it "setupSigsegvHandler" $ setupSigsegvHandler `shouldReturn` ()

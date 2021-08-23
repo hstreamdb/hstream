@@ -40,7 +40,7 @@ library
     ThirdParty.Google.Protobuf.Timestamp
 
   hs-source-dirs:     . gen-src
-  cxx-sources:        cbits/utils.cpp
+  cxx-sources:        cbits/hs_utils.cpp
   build-depends:
     , aeson
     , base                  >=4.11 && <5
