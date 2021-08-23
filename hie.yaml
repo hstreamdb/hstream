@@ -17,6 +17,8 @@ cradle:
       component: "lib:hstream-common"
     - path: "common/test"
       component: "hstream-common:test:hstream-common-test"
+    - path: "common/bench"
+      component: "hstream-common:bench:common-bench-stats"
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"

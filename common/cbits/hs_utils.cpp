@@ -1,5 +1,6 @@
+#include "hs_common.h"
+
 #include <boost/stacktrace.hpp>
-#include <iostream>
 #include <signal.h>
 
 extern "C" {

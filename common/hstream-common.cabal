@@ -1,6 +1,6 @@
-cabal-version: 2.2
-name:          hstream-common
-version:       0.1.0.0
+cabal-version:      2.2
+name:               hstream-common
+version:            0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
 
@@ -8,16 +8,25 @@ description:
   Please see the README on Github at
   <https://github.com/hstreamdb/hstream#readme>
 
-license:       BSD-3-Clause
-license-file:  LICENSE
-copyright:     Copyright (c) 2020 EMQ Technologies Co., Ltd.
-author:        Feng Lee <feng@emqx.io>
-maintainer:    lambda@emqx.io, wangbin@emqx.io, comonad@emqx.io
-tested-with:   GHC ==8.8.4 || ==8.10.4
-category:      Database
-homepage:      https://github.com/hstreamdb/hstream
-bug-reports:   https://github.com/hstreamdb/hstream/issues
-build-type:    Simple
+license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:             Feng Lee <feng@emqx.io>
+maintainer:         lambda@emqx.io, wangbin@emqx.io, comonad@emqx.io
+tested-with:        GHC ==8.8.4 || ==8.10.4
+category:           Database
+homepage:           https://github.com/hstreamdb/hstream
+bug-reports:        https://github.com/hstreamdb/hstream/issues
+build-type:         Custom
+extra-source-files:
+  clib/*.h
+  include/*.h
+  include/*.inc
+
+custom-setup
+  setup-depends:
+    , base   >=4.5 && <5
+    , Cabal  >=2.4 && <4
 
 source-repository head
   type:     git
@@ -27,11 +36,13 @@ library
   exposed-modules:
     HStream.Logger
     HStream.Server.HStreamApi
+    HStream.Stats
     HStream.ThirdParty.Protobuf
     HStream.Utils
 
   other-modules:
     HStream.Utils.BuildRecord
+    HStream.Utils.Concurrent
     HStream.Utils.Converter
     HStream.Utils.Format
     HStream.Utils.RPC
@@ -40,15 +51,24 @@ library
     ThirdParty.Google.Protobuf.Timestamp
 
   hs-source-dirs:     . gen-src
-  cxx-sources:        cbits/hs_utils.cpp
+  include-dirs:       include clib /usr/local/include
+  includes:           hs_common.h
+  cxx-sources:
+    cbits/hs_stats.cpp
+    cbits/hs_utils.cpp
+    clib/stats.cpp
+
+  build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
     , aeson
     , base                  >=4.11 && <5
     , bytestring
     , containers
     , deepseq
+    , ghc-prim              >=0.5  && <1.0
     , grpc-haskell
     , grpc-haskell-core
+    , primitive             ^>=0.7
     , proto3-suite
     , proto3-wire
     , random
@@ -64,9 +84,16 @@ library
     , Z-IO
 
   cxx-options:        -std=c++17
-  cpp-options:        -std=c++17
   extra-lib-dirs:     /usr/local/lib
-  include-dirs:       include /usr/local/include
+  extra-libraries:
+    stdc++
+    atomic
+    fmt
+    folly
+    logdevice
+    glog
+    boost_context
+
   default-language:   Haskell2010
   default-extensions:
     EmptyDataDeriving
@@ -76,6 +103,7 @@ library
     RecordWildCards
     ScopedTypeVariables
     TypeApplications
+    UnliftedFFITypes
 
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -85,7 +113,10 @@ test-suite hstream-common-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:      HStream.UtilsSpec
+  other-modules:
+    HStream.StatsSpec
+    HStream.UtilsSpec
+
   build-depends:
     , base            >=4.11 && <5
     , containers      ^>=0.6
@@ -109,6 +140,36 @@ test-suite hstream-common-test
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+    -threaded -rtsopts -with-rtsopts=-N
+
+benchmark common-bench-stats
+  type:               exitcode-stdio-1.0
+  main-is:            stats.hs
+  hs-source-dirs:     bench
+  build-depends:
+    , base            >=4.11 && <5
+    , bytestring      ^>=0.10
+    , criterion       ^>=1.5
+    , hstream-common
+    , Z-Data
+
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    UnliftedFFITypes
+
+  default-language:   Haskell2010
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
