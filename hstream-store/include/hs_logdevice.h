@@ -208,6 +208,15 @@ typedef struct logdevice_data_record_t {
   uint64_t byte_offset;
 } logdevice_data_record_t;
 
+typedef uint8_t c_gaptype_t;
+
+typedef struct logdevice_gap_record_t {
+  c_logid_t logid;
+  c_gaptype_t gaptype;
+  c_lsn_t lo;
+  c_lsn_t hi;
+} logdevice_gap_record_t;
+
 // ----------------------------------------------------------------------------
 // LogTailAttributes
 typedef struct logdevice_log_tail_attributes_t {
@@ -576,10 +585,12 @@ int ld_checkpointed_reader_set_timeout(
 
 facebook::logdevice::Status
 logdevice_reader_read(logdevice_reader_t* reader, size_t maxlen,
-                      logdevice_data_record_t* data_out, ssize_t* len_out);
+                      logdevice_data_record_t* data_out,
+                      logdevice_gap_record_t* gap_out, ssize_t* len_out);
 facebook::logdevice::Status logdevice_checkpointed_reader_read(
     logdevice_sync_checkpointed_reader_t* reader, size_t maxlen,
-    logdevice_data_record_t* data_out, ssize_t* len_out);
+    logdevice_data_record_t* data_out, logdevice_gap_record_t* gap_out,
+    ssize_t* len_out);
 
 facebook::logdevice::Status
 sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,

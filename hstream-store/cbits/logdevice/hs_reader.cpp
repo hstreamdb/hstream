@@ -116,7 +116,7 @@ WITHOUT_PAYLOAD(ld_ckp_reader_without_payload,
   void FuncName(ClassName* reader) { return reader->rep->includeByteOffset(); }
 INCLUDE_BYTEOFFSET(ld_reader_include_byteoffset, logdevice_reader_t)
 INCLUDE_BYTEOFFSET(ld_ckp_reader_include_byteoffset,
-                logdevice_sync_checkpointed_reader_t)
+                   logdevice_sync_checkpointed_reader_t)
 
 /**
  * If called, whenever read() can return some records but not the number
@@ -140,9 +140,9 @@ WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
                        logdevice_sync_checkpointed_reader_t)
 
 #define READ(FuncName, ClassName)                                              \
-  facebook::logdevice::Status FuncName(ClassName* reader, size_t maxlen,       \
-                                       logdevice_data_record_t* data_out,      \
-                                       ssize_t* len_out) {                     \
+  facebook::logdevice::Status FuncName(                                        \
+      ClassName* reader, size_t maxlen, logdevice_data_record_t* data_out,     \
+      logdevice_gap_record_t* gap_out, ssize_t* len_out) {                     \
     std::vector<std::unique_ptr<DataRecord>> data;                             \
     facebook::logdevice::GapRecord gap;                                        \
                                                                                \
@@ -166,14 +166,21 @@ WAIT_ONLY_WHEN_NO_DATA(ld_ckp_reader_wait_only_when_no_data,
             attrs.offsets.getCounter(facebook::logdevice::BYTE_OFFSET);        \
         ++i;                                                                   \
       }                                                                        \
-    } /* A gap in the numbering sequence. Warn about data loss but ignore      \
-         other types of gaps. */                                               \
+    } /* A gap in the numbering sequence. */                                   \
     else {                                                                     \
       assert(facebook::logdevice::err == facebook::logdevice::E::GAP);         \
-      if (gap.type == facebook::logdevice::GapType::DATALOSS) {                \
-        fprintf(stderr, "warning: DATALOSS gaps for LSN range [%ld, %ld]\n",   \
-                gap.lo, gap.hi);                                               \
-        return facebook::logdevice::E::DATALOSS;                               \
+      if (gap_out) {                                                           \
+        gap_out->logid = gap.logid.val_;                                       \
+        gap_out->gaptype = static_cast<uint8_t>(gap.type);                     \
+        gap_out->lo = gap.lo;                                                  \
+        gap_out->hi = gap.hi;                                                  \
+      } else {                                                                 \
+        /* Warn about data loss but ignore other types of gaps. */             \
+        if (gap.type == facebook::logdevice::GapType::DATALOSS) {              \
+          fprintf(stderr, "warning: DATALOSS gaps for LSN range [%ld, %ld]\n", \
+                  gap.lo, gap.hi);                                             \
+          return facebook::logdevice::E::DATALOSS;                             \
+        }                                                                      \
       }                                                                        \
     }                                                                          \
                                                                                \

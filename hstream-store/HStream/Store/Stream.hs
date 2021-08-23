@@ -59,6 +59,8 @@ module HStream.Store.Stream
   , FFI.RecordByteOffset (..)
   , FFI.DataRecord (..)
   , FFI.DataRecordAttr (..)
+  , FFI.GapRecord (..)
+  , FFI.GapType (..)
   , FFI.recordLogID
   , FFI.recordLSN
   , FFI.recordTimestamp
@@ -68,6 +70,7 @@ module HStream.Store.Stream
   , LD.newLDReader
   , LD.readerStartReading
   , LD.readerRead
+  , LD.readerReadAllowGap
   , LD.readerSetTimeout
   , LD.readerSetWithoutPayload
   , LD.readerSetIncludeByteOffset
@@ -82,6 +85,7 @@ module HStream.Store.Stream
   , LD.ckpReaderStartReading
   , LD.startReadingFromCheckpoint
   , LD.ckpReaderRead
+  , LD.ckpReaderReadAllowGap
   , LD.ckpReaderSetTimeout
   , LD.ckpReaderSetWithoutPayload
   , LD.ckpReaderSetIncludeByteOffset
