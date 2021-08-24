@@ -55,10 +55,9 @@ spec = describe "Create" $ do
     parseAndRefine "SELECT COUNT(*) FROM weather GROUP BY cityId, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES;"
       `shouldReturn` RQSelect (RSelect (RSelList [(Right (Nullary AggCountAll),"COUNT(*)")]) (RFromSingle "weather") RWhereEmpty (RGroupBy Nothing "cityId" (Just (RTumblingWindow (fromInteger 10)))) RHavingEmpty)
 
-  -- #TODO: bug
-  -- it "SELECT (View)" $ do
-  --   parseAndRefine "SELECT `SUM(a)`, cnt, a FROM my_view WHERE b = 1;"
-  --     `shouldReturn`
+  it "SELECT (View)" $ do
+    parseAndRefine "SELECT `SUM(a)`, cnt, a FROM my_view WHERE b = 1;"
+      `shouldReturn` RQSelectView (RSelectView {rSelectViewSelect = SVSelectFields [("`SUM(a)`","`SUM(a)`"),("cnt","cnt"),("a","a")], rSelectViewFrom = "my_view", rSelectViewWhere = ("b",RExprConst "1" (ConstantInt 1))})
 
   it "INSERT" $ do
     parseAndRefine "INSERT INTO weather (cityId, temperature, humidity) VALUES (11254469, 12, 65);"
