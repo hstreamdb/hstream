@@ -357,16 +357,6 @@ fetchRequest client subscribeId timeout maxSize = do
     ClientErrorResponse clientError                          -> do
       putStrLn ("FetchRequest Error: " <> show clientError) >> return V.empty
 
-commitOffsetRequest :: Client -> TL.Text -> RecordId -> IO Bool
-commitOffsetRequest client subscriptionId recordId = do
-  HStreamApi{..} <- hstreamApiClient client
-  let req = CommittedOffset subscriptionId $ Just recordId
-  resp <- hstreamApiCommitOffset $ ClientNormalRequest req requestTimeout $ MetadataMap Map.empty
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientErrorResponse clientError                        -> do
-      putStrLn ("Commite Error: " <> show clientError) >> return False
-
 requestTimeout :: Int
 requestTimeout = 5
 
