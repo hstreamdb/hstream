@@ -607,8 +607,8 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{.
           returnResp $ FetchResponse (V.empty)
         Right dataRecords -> do
           let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
+          let groupNums = map (\group -> ((S.recordLSN $ head group), (fromIntegral $ length group) :: Word32)) groups
           let lastBatch = last groups
-          let groupNums = map (\group -> ((S.recordLSN $ head lastBatch), (fromIntegral $ length group) :: Word32)) groups
           let maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
           atomically $ do
             store <- readTVar subscribeRuntimeInfo
