@@ -1,4 +1,5 @@
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module HStream.Logger
   ( Log.debug
@@ -24,7 +25,7 @@ module HStream.Logger
 
   -- * Log Level
   , setLogLevel
-  , Log.Level
+  , Level (..)
   , pattern Log.CRITICAL
   , pattern Log.FATAL
   , pattern Log.WARNING
@@ -36,6 +37,7 @@ module HStream.Logger
 import qualified Data.Text      as Text
 import qualified Data.Text.Lazy as TL
 import           GHC.Stack      (HasCallStack)
+import qualified Text.Read      as Read
 import           Z.Data.Builder (Builder)
 import qualified Z.Data.Builder as B
 import qualified Z.IO.Logger    as Log
@@ -72,10 +74,35 @@ buildLazyText :: TL.Text -> Builder ()
 buildLazyText = U.lazyTextToZBuilder
 {-# INLINE buildLazyText #-}
 
-setLogLevel :: Log.Level -> IO ()
-setLogLevel level = do
+setLogLevel :: Level -> Bool -> IO ()
+setLogLevel level withColor = do
   let config = Log.defaultLoggerConfig
-        { Log.loggerLevel = level
-        , Log.loggerFormatter = Log.defaultColoredFmt
+        { Log.loggerLevel = unLevel level
+        , Log.loggerFormatter = if withColor
+                                then Log.defaultColoredFmt
+                                else Log.defaultFmt
         }
   Log.setDefaultLogger =<< Log.newStdLogger config
+
+newtype Level = Level {unLevel :: Log.Level}
+
+instance Show Level where
+  show (Level Log.CRITICAL) = "critical"
+  show (Level Log.FATAL)    = "fatal"
+  show (Level Log.WARNING)  = "warning"
+  show (Level Log.INFO)     = "info"
+  show (Level Log.DEBUG)    = "debug"
+  show (Level Log.NOTSET)   = "notset"
+  show _                    = "unknown log level"
+
+instance Read Level where
+  readPrec = do
+    l <- Read.lexP
+    return . Level $
+      case l of
+        Read.Ident "critical" -> Log.CRITICAL
+        Read.Ident "fatal"    -> Log.FATAL
+        Read.Ident "warning"  -> Log.WARNING
+        Read.Ident "info"     -> Log.INFO
+        Read.Ident "debug"    -> Log.DEBUG
+        x -> errorWithoutStackTrace $ "cannot parse log level" <> show x
