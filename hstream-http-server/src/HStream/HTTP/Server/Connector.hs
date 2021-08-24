@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DoAndIfThenElse     #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -23,6 +24,7 @@ import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Client     (Client)
+import qualified Proto3.Suite                     as PB
 import           Servant                          (Capture, Delete, Get, JSON,
                                                    Post, ReqBody, type (:>),
                                                    (:<|>) (..))
@@ -33,7 +35,7 @@ import           HStream.Server.HStreamApi
 -- BO is short for Business Object
 data ConnectorBO = ConnectorBO
   { id          :: Maybe T.Text
-  , status      :: Maybe Int
+  , status      :: Maybe (PB.Enumerated Status)
   , createdTime :: Maybe Int64
   , sql         :: T.Text
   } deriving (Eq, Show, Generic)
@@ -41,6 +43,8 @@ data ConnectorBO = ConnectorBO
 instance ToJSON ConnectorBO
 instance FromJSON ConnectorBO
 instance ToSchema ConnectorBO
+instance ToJSON (PB.Enumerated Status)
+instance FromJSON (PB.Enumerated Status)
 
 type ConnectorsAPI =
   "connectors" :> Get '[JSON] [ConnectorBO]
@@ -52,7 +56,7 @@ type ConnectorsAPI =
 
 connectorToConnectorBO :: Connector -> ConnectorBO
 connectorToConnectorBO (Connector id' status createdTime queryText) =
-  ConnectorBO (Just $ TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
+  ConnectorBO (Just $ TL.toStrict id') (Just status) (Just createdTime) (TL.toStrict queryText)
 
 createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
 createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do

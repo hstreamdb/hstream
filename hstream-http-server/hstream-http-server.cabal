@@ -40,6 +40,7 @@ library
     , hstream-common
     , mysql-haskell
     , optparse-applicative
+    , proto3-suite
     , rio
     , scientific
     , servant

@@ -42,11 +42,11 @@ import           Data.Int                             (Int64)
 import qualified Data.List                            as L
 import qualified Data.Text                            as T
 import           GHC.Generics                         (Generic)
+import qualified Proto3.Suite                         as PB
 import           System.IO.Unsafe                     (unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes (..), pack)
 import           Z.Data.JSON                          (JSON, decode, encode)
 import qualified Z.Data.Text                          as ZT
-
 import           Z.Data.Vector                        (Bytes)
 import           Z.IO.Exception                       (HasCallStack, catch)
 import           Z.IO.Time                            (SystemTime (..),
@@ -57,7 +57,6 @@ import           ZooKeeper.Types
 
 import qualified HStream.Server.HStreamApi            as PB
 import           HStream.Server.Persistence.Exception
-import qualified Proto3.Suite                         as PB
 
 --------------------------------------------------------------------------------
 type ViewSchema     = [String]

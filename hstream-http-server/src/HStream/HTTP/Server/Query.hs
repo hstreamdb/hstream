@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DoAndIfThenElse     #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -23,6 +24,7 @@ import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Client     (Client)
+import qualified Proto3.Suite                     as PB
 import           Servant                          (Capture, Delete, Get, JSON,
                                                    Post, ReqBody, type (:>),
                                                    (:<|>) (..))
@@ -34,7 +36,7 @@ import           HStream.Server.HStreamApi
 -- BO is short for Business Object
 data QueryBO = QueryBO
   { id          :: T.Text
-  , status      :: Maybe Int
+  , status      :: Maybe (PB.Enumerated Status)
   , createdTime :: Maybe Int64
   , queryText   :: T.Text
   } deriving (Eq, Show, Generic)
@@ -42,6 +44,8 @@ data QueryBO = QueryBO
 instance ToJSON QueryBO
 instance FromJSON QueryBO
 instance ToSchema QueryBO
+instance ToJSON (PB.Enumerated Status)
+instance FromJSON (PB.Enumerated Status)
 
 type QueriesAPI =
   "queries" :> Get '[JSON] [QueryBO]
@@ -53,7 +57,7 @@ type QueriesAPI =
 
 queryToQueryBO :: Query -> QueryBO
 queryToQueryBO (Query id' status createdTime queryText) =
-  QueryBO (TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
+  QueryBO (TL.toStrict id') (Just status) (Just createdTime) (TL.toStrict queryText)
 
 createQueryHandler :: Client -> QueryBO -> Handler QueryBO
 createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
