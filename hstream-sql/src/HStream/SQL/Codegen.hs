@@ -88,7 +88,7 @@ data InsertType = JsonFormat | RawFormat
 
 data ConnectorConfig
   = ClickhouseConnector Clickhouse.ConnParams
-  | MySqlConnector MySQL.ConnectInfo
+  | MySqlConnector T.Text MySQL.ConnectInfo
   deriving Show
 
 data HStreamPlan
@@ -152,7 +152,7 @@ genCreateSinkConnectorPlan :: RCreate -> HStreamPlan
 genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
   case connectorType of
     "clickhouse" -> CreateSinkConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []
-    "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName (MySqlConnector createMysqlSinkConnector) []
+    "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName (MySqlConnector tableName createMysqlSinkConnector) []
     _ -> throwSQLException CodegenException Nothing "Connector type not supported"
   where
     extractString = \case Just (ConstantString s) -> Just s; _ -> Nothing
@@ -170,6 +170,9 @@ genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connecto
       (getByteStringValue "database" "mysql")
       (getByteStringValue "username" "root")
       (getByteStringValue "password" "password") 33
+    -- The table name is the same as the source stream name if not provided
+    tableName = maybe sName T.pack (extractString (lookup "table" cOptions))
+
 genCreateSinkConnectorPlan _ =
   throwSQLException CodegenException Nothing "Implementation: Wrong function called"
 
