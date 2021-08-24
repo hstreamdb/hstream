@@ -242,12 +242,12 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
       subscribeToStreamWithoutCkp src sName Latest
 
       connector <- case cConfig of
-        ClickhouseConnector config -> do
+        ClickhouseConnector config  -> do
           Log.debug $ "Connecting to clickhouse with " <> Log.buildString (show config)
-          clickHouseSinkConnector <$> createClient config
-        MySqlConnector      config -> do
+          clickHouseSinkConnector  <$> createClient config
+        MySqlConnector table config -> do
           Log.debug $ "Connecting to mysql with " <> Log.buildString (show config)
-          mysqlSinkConnector      <$> MySQL.connect config
+          mysqlSinkConnector table <$> MySQL.connect config
       P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid P.Created
       Log.debug . Log.buildString . CB.unpack $ cid <> "Connected"
 
