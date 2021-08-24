@@ -294,12 +294,6 @@ fetchRequest HStreamApi{..} subscribeId timeout maxSize =
       req = ClientNormalRequest fetReq requestTimeout $ MetadataMap Map.empty
   in fetchResponseReceivedRecords <$> (getServerResp =<< hstreamApiFetch req)
 
-commitOffsetRequest :: HStreamClientApi -> TL.Text -> RecordId -> IO Bool
-commitOffsetRequest HStreamApi{..} subscriptionId recordId =
-  let cmtReq = CommittedOffset subscriptionId $ Just recordId
-      req = ClientNormalRequest cmtReq requestTimeout $ MetadataMap Map.empty
-  in True <$ (getServerResp =<< hstreamApiCommitOffset req)
-
 requestTimeout :: Int
 requestTimeout = 5
 

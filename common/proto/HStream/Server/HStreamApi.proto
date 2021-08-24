@@ -37,7 +37,7 @@ service HStreamApi {
 
   rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
-  rpc CommitOffset(CommittedOffset) returns (CommittedOffset) {}
+  rpc Acknowledge(AcknowledgeRequest) returns (google.protobuf.Empty) {}
 
   // ---------------------------------------------------------------------------
   // Developing APIs
@@ -190,9 +190,9 @@ message ReceivedRecord {
   bytes record = 2;
 }
 
-message CommittedOffset {
+message AcknowledgeRequest {
   string subscriptionId = 1;
-  RecordId offset = 2;
+  repeated RecordId ackIds = 2; 
 }
 
 message StreamOffset {
@@ -406,3 +406,4 @@ message Node {
   string address = 3;
   string status = 4;
 }
+
