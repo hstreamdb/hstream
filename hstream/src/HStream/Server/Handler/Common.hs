@@ -153,6 +153,11 @@ isLastInBatch recordId batchNumMap =
     Nothing  -> error "no recordIdBatchId found"
     Just num -> recordIdBatchIndex recordId == num - 1
 
+getSuccessor :: RecordId -> Map.Map Word64 Word32 -> RecordId
+getSuccessor r@RecordId{..} batchNumMap =
+  if isLastInBatch r batchNumMap
+  then RecordId (recordIdBatchId + 1) 0
+  else r {recordIdBatchIndex = recordIdBatchIndex + 1}
 --------------------------------------------------------------------------------
 runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
 runTaskWrapper sourceType sinkType taskBuilder ldclient = do

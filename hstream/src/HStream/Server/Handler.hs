@@ -640,9 +640,44 @@ ackHandler
   -> IO (ServerResponse 'Normal Empty)
 ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeRequest{..}) = defaultExceptionHandle $  do
   Log.debug $ "Receive ack request: " <> Log.buildString (show req)
+
+  mRes <- atomically $ do
+    store <- readTVar subscribeRuntimeInfo
+    case HM.lookup acknowledgeRequestSubscriptionId store of
+      Nothing -> error "should not reach here"
+      Just info@SubscribeRuntimeInfo{..} -> do
+        let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges acknowledgeRequestAckIds
+        case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+          Just (ranges, newLowerBound, checkpointRecordId) -> do
+            let newStore = HM.insert acknowledgeRequestSubscriptionId (info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}) store
+            writeTVar subscribeRuntimeInfo newStore
+            return $ Just (checkpointRecordId, sriLdreader)
+          Nothing -> return Nothing
+
+  case mRes of
+    Just (checkpointRecordId, ldreader) -> do
+      streamName <- getStreamName acknowledgeRequestSubscriptionId subscriptions
+      commitCheckpoint scLDClient ldreader streamName checkpointRecordId
+    Nothing -> return ()
+
   returnResp Empty
+  where
+    tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
+      let (_, RecordIdRange minStartRecordId minEndRecordId) = Map.findMin ackedRanges
+      in
+          if minStartRecordId == lowerBoundRecordId
+          then
+            Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
+          else
+            Nothing
+
+    commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
+    commitCheckpoint client reader streamName RecordId{..} = do
+      logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
+      S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 --------------------------------------------------------------------------------
+--
 
 batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
 batchAppend client streamName payloads strategy = do
