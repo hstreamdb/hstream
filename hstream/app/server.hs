@@ -152,4 +152,5 @@ main = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
+  Log.setLogLevel Log.INFO
   app config

@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module HStream.Logger
   ( Log.debug
   , Log.info
@@ -19,6 +21,16 @@ module HStream.Logger
   , buildString
   , buildText
   , buildLazyText
+
+  -- * Log Level
+  , setLogLevel
+  , Log.Level
+  , pattern Log.CRITICAL
+  , pattern Log.FATAL
+  , pattern Log.WARNING
+  , pattern Log.INFO
+  , pattern Log.DEBUG
+  , pattern Log.NOTSET
   ) where
 
 import qualified Data.Text      as Text
@@ -59,3 +71,11 @@ buildText = U.textToZBuilder
 buildLazyText :: TL.Text -> Builder ()
 buildLazyText = U.lazyTextToZBuilder
 {-# INLINE buildLazyText #-}
+
+setLogLevel :: Log.Level -> IO ()
+setLogLevel level = do
+  let config = Log.defaultLoggerConfig
+        { Log.loggerLevel = level
+        , Log.loggerFormatter = Log.defaultColoredFmt
+        }
+  Log.setDefaultLogger =<< Log.newStdLogger config
