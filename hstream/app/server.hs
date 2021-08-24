@@ -117,7 +117,7 @@ parseConfig =
                    <> showDefault <> value 5000
                    <> help "logdevice admin thrift receiving timeout in milliseconds"
                     )
-    <*> option auto ( long "log-level" <> metavar "[critical|fatal|warning|debug]"
+    <*> option auto ( long "log-level" <> metavar "[critical|fatal|warning|info|debug]"
                    <> showDefault <> value (Log.Level Log.INFO)
                    <> help "server log level"
                     )
