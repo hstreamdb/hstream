@@ -99,7 +99,7 @@ instance FromJSON (PB.Enumerated TaskStatusPB)
 -- | A task for running connectors, views, and queries has one of the following
 -- states:
 --
--- * Running: A thread running the task is working normally
+-- * Running: The task is running on a working thread
 --
 -- * Terminated: The task has stopped as per user request and the thread running
 -- the task is killed
@@ -110,13 +110,13 @@ instance FromJSON (PB.Enumerated TaskStatusPB)
 --
 -- The rest of the states are specific to connectors:
 --
--- * Creating: The server has received the task and started creating the
--- connection
+-- * Creating: The server has received the task and started connecting to the
+-- external database system
 --
 -- * Created: The connection with the external database system has been
 -- established but the worker thread has not started running yet
 --
--- * CreationAbort: An error occurred during connecting to the external database
+-- * CreationAbort: An error occurred when connecting to the external database
 
 pattern Running :: TaskStatus
 pattern Running = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RUNNING))
