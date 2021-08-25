@@ -83,8 +83,8 @@ data ServerContext = ServerContext {
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , subscriptions            :: TVar (HM.HashMap SubscriptionId Subscription)
-  , subscribeRuntimeInfo     :: TVar (HM.HashMap SubscriptionId SubscribeRuntimeInfo)
+  , subscriptions            :: MVar (HM.HashMap SubscriptionId Subscription)
+  , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
 }
