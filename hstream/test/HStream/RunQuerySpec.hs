@@ -16,7 +16,8 @@ import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,
                                                    setLogDeviceDbgLevel)
-import           HStream.Utils                    (setupSigsegvHandler)
+import           HStream.Utils                    (TaskStatus (..),
+                                                   setupSigsegvHandler)
 
 getQueryResponseIdIs :: TL.Text -> Query -> Bool
 getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
@@ -143,10 +144,10 @@ spec = aroundAll provideHstreamApi $
     ( do
         _ <- terminateQuery queryname1
         query <- getQuery queryname1
+        let terminated = getPBStatus Terminated
         case query of
-          -- Terminated
-          Just (Query _ 5 _ _ ) -> return True
-          _                     -> return False
+          Just (Query _ status _ _ ) -> return (status == terminated)
+          _                          -> return False
     ) `shouldReturn` True
 
   -- it "restart query" $ \_ ->
@@ -154,9 +155,8 @@ spec = aroundAll provideHstreamApi $
   --       _ <- restartQuery queryname1
   --       query <- getQuery queryname1
   --       case query of
-  --         -- Running
-  --         Just (Query _ 2 _ _ ) -> return True
-  --         _                     -> return False
+  --         Just (Query _ P.Running _ _ ) -> return True
+  --         _                             -> return False
   --   ) `shouldReturn` True
 
   it "delete query" $ \_ ->

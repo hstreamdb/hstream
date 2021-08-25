@@ -29,11 +29,12 @@ import           Servant                          (Capture, Delete, Get, JSON,
 import           Servant.Server                   (Handler, Server)
 
 import           HStream.Server.HStreamApi
+import           HStream.Utils                    (TaskStatus (..))
 
 -- BO is short for Business Object
 data ConnectorBO = ConnectorBO
   { id          :: Maybe T.Text
-  , status      :: Maybe Int
+  , status      :: Maybe TaskStatus
   , createdTime :: Maybe Int64
   , sql         :: T.Text
   } deriving (Eq, Show, Generic)
@@ -52,7 +53,7 @@ type ConnectorsAPI =
 
 connectorToConnectorBO :: Connector -> ConnectorBO
 connectorToConnectorBO (Connector id' status createdTime queryText) =
-  ConnectorBO (Just $ TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
+  ConnectorBO (Just $ TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict queryText)
 
 createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
 createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do

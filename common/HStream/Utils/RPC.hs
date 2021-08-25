@@ -1,5 +1,11 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs     #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module HStream.Utils.RPC
   ( HStreamClientApi
 
@@ -12,11 +18,17 @@ module HStream.Utils.RPC
   , getServerResp
   , getProtoTimestamp
   , isSuccessful
+  , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
   ) where
 
+import           Data.Aeson                    (FromJSON, ToJSON)
+import           Data.Swagger                  (ToSchema)
 import qualified Data.Vector                   as V
+import           GHC.Generics                  (Generic)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
+import qualified Proto3.Suite                  as PB
+import           Z.Data.JSON                   (JSON)
 import           Z.IO.Time                     (SystemTime (..), getSystemTime')
 
 import           HStream.Server.HStreamApi
@@ -73,3 +85,53 @@ getProtoTimestamp = do
 isSuccessful :: ClientResult 'Normal a -> Bool
 isSuccessful (ClientNormalResponse _ _ _ StatusOk _) = True
 isSuccessful _                                       = False
+
+-- A type synonym could also work but the pattern synonyms defined below cannot
+-- be bundled with a type synonym when other modules import these definitions
+newtype TaskStatus = TaskStatus { getPBStatus :: PB.Enumerated TaskStatusPB}
+  deriving (Generic, Show, JSON, Eq, ToJSON, FromJSON, ToSchema)
+
+instance JSON (PB.Enumerated TaskStatusPB)
+instance JSON TaskStatusPB
+instance ToJSON (PB.Enumerated TaskStatusPB)
+instance FromJSON (PB.Enumerated TaskStatusPB)
+
+-- | A task for running connectors, views, and queries has one of the following
+-- states:
+--
+-- * Running: The task is running on a working thread
+--
+-- * Terminated: The task has stopped as per user request and the thread running
+-- the task is killed
+--
+-- * ConnectionAbort: The task has stopped due to an error occurred when the
+-- thread is running, e.g. the execution of a SQL command by the connector
+-- failed
+--
+-- The rest of the states are specific to connectors:
+--
+-- * Creating: The server has received the task and started connecting to the
+-- external database system
+--
+-- * Created: The connection with the external database system has been
+-- established but the worker thread has not started running yet
+--
+-- * CreationAbort: An error occurred when connecting to the external database
+
+pattern Running :: TaskStatus
+pattern Running = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_RUNNING))
+
+pattern Terminated :: TaskStatus
+pattern Terminated = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_TERMINATED))
+
+pattern ConnectionAbort :: TaskStatus
+pattern ConnectionAbort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CONNECTION_ABORT))
+
+pattern Creating :: TaskStatus
+pattern Creating = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATING))
+
+pattern Created :: TaskStatus
+pattern Created = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATED))
+
+pattern CreationAbort :: TaskStatus
+pattern CreationAbort = TaskStatus (PB.Enumerated (Right TaskStatusPBTASK_CREATION_ABORT))

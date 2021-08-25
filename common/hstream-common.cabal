@@ -54,6 +54,7 @@ library
     , random
     , raw-strings-qq
     , scientific
+    , swagger2
     , table-layout
     , text
     , time

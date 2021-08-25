@@ -17,12 +17,11 @@ import           HStream.SQL.Exception                (SomeSQLException,
                                                        formatSomeSQLException)
 import           HStream.Server.Persistence.Exception (PersistenceException)
 import qualified HStream.Store                        as Store
-import           HStream.Utils                        (returnErrResp,
+import           HStream.Utils                        (TaskStatus,
+                                                       returnErrResp,
                                                        returnStreamingResp)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
-
-import           HStream.Server.Persistence           (Status)
 
 -- TODO: More exception handle needs specific handling.
 mkExceptionHandle :: (StatusCode -> StatusDetails -> IO (ServerResponse t a))
@@ -85,11 +84,11 @@ data StreamNotExist = StreamNotExist
   deriving (Show)
 instance Exception StreamNotExist
 
-newtype ConnectorAlreadyExists = ConnectorAlreadyExists Status
+newtype ConnectorAlreadyExists = ConnectorAlreadyExists TaskStatus
   deriving (Show)
 instance Exception ConnectorAlreadyExists
 
-newtype ConnectorRestartErr = ConnectorRestartErr Status
+newtype ConnectorRestartErr = ConnectorRestartErr TaskStatus
   deriving (Show)
 instance Exception ConnectorRestartErr
 

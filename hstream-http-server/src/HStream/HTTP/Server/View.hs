@@ -29,11 +29,12 @@ import           Servant                          (Capture, Delete, Get, JSON,
 import           Servant.Server                   (Handler, Server)
 
 import           HStream.Server.HStreamApi
+import           HStream.Utils                    (TaskStatus (..))
 
 -- BO is short for Business Object
 data ViewBO = ViewBO
   { id          :: Maybe T.Text
-  , status      :: Maybe Int
+  , status      :: Maybe TaskStatus
   , createdTime :: Maybe Int64
   , sql         :: T.Text
   } deriving (Eq, Show, Generic)
@@ -50,7 +51,7 @@ type ViewsAPI =
 
 viewToViewBO :: View -> ViewBO
 viewToViewBO (View id' status createdTime sql _) =
-  ViewBO (Just $ TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict sql)
+  ViewBO (Just $ TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict sql)
 
 createViewHandler :: Client -> ViewBO -> Handler ViewBO
 createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
