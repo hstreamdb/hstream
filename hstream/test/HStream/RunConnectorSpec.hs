@@ -15,11 +15,11 @@ import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
 
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
 import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,
                                                    setLogDeviceDbgLevel)
-import           HStream.Utils                    (setupSigsegvHandler)
+import           HStream.Utils                    (TaskStatus (..),
+                                                   setupSigsegvHandler)
 
 getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
 getConnectorResponseIdIs targetId (Connector connectorId _ _ _ ) = connectorId == targetId
@@ -124,18 +124,20 @@ spec = aroundAll provideHstreamApi $
     ( do
         _ <- terminateConnector mysqlConnector
         connector <- getConnector mysqlConnector
+        let terminated = getPBStatus Terminated
         case connector of
-          Just (Connector _ P.Terminated _ _) -> return True
-          _                                   -> return False
+          Just (Connector _ status _ _) -> return (status == terminated)
+          _                             -> return False
     ) `shouldReturn` True
 
   it "restart connector" $ \_ ->
     ( do
         _ <- restartConnector mysqlConnector
         connector <- getConnector mysqlConnector
+        let running = getPBStatus Running
         case connector of
-          Just (Connector _ P.Running _ _) -> return True
-          _                                -> return False
+          Just (Connector _ status _ _) -> return (status == running)
+          _                             -> return False
     ) `shouldReturn` True
 
   it "delete connector" $ \_ ->

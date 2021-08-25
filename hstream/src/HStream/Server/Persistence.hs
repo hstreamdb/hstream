@@ -4,7 +4,6 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ParallelListComp    #-}
-{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -12,13 +11,6 @@
 module HStream.Server.Persistence
   ( PersistentQuery(..)
   , PersistentConnector(..)
-  , Status
-  , pattern Creating
-  , pattern Created
-  , pattern Running
-  , pattern CreationAbort
-  , pattern ConnectionAbort
-  , pattern Terminated
   , QueryType (..)
   , queriesPath
   , connectorsPath
@@ -42,7 +34,6 @@ import           Data.Int                             (Int64)
 import qualified Data.List                            as L
 import qualified Data.Text                            as T
 import           GHC.Generics                         (Generic)
-import qualified Proto3.Suite                         as PB
 import           System.IO.Unsafe                     (unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes (..), pack)
 import           Z.Data.JSON                          (JSON, decode, encode)
@@ -55,8 +46,8 @@ import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
-import qualified HStream.Server.HStreamApi            as PB
 import           HStream.Server.Persistence.Exception
+import           HStream.Utils                        (TaskStatus (..))
 
 --------------------------------------------------------------------------------
 type ViewSchema     = [String]
@@ -67,7 +58,7 @@ data PersistentQuery = PersistentQuery
   , queryBindedSql   :: ZT.Text
   , queryCreatedTime :: Int64
   , queryType        :: QueryType
-  , queryStatus      :: Status
+  , queryStatus      :: TaskStatus
   , queryTimeCkp     :: Int64
   } deriving (Generic, Show, JSON)
 
@@ -75,31 +66,9 @@ data PersistentConnector = PersistentConnector
   { connectorId          :: CBytes
   , connectorBindedSql   :: ZT.Text
   , connectorCreatedTime :: Int64
-  , connectorStatus      :: Status
+  , connectorStatus      :: TaskStatus
   , connectorTimeCkp     :: Int64
   } deriving (Generic, Show, JSON)
-
-type Status = PB.Enumerated PB.Status
-instance JSON Status
-instance JSON PB.Status
-
-pattern Created :: Status
-pattern Created = (PB.Enumerated (Right PB.StatusCREATED))
-
-pattern Creating :: Status
-pattern Creating = (PB.Enumerated (Right PB.StatusCREATING))
-
-pattern Running :: Status
-pattern Running = (PB.Enumerated (Right PB.StatusRUNNING))
--- Abort during creating the connector
-pattern CreationAbort :: Status
-pattern CreationAbort = (PB.Enumerated (Right PB.StatusCREATIONABORT))
--- Abort during execution of SQL statements
-pattern ConnectionAbort :: Status
-pattern ConnectionAbort = (PB.Enumerated (Right PB.StatusCONNECTIONABORT))
-
-pattern Terminated :: Status
-pattern Terminated = (PB.Enumerated (Right PB.StatusTERMINATED))
 
 data QueryType
   = PlainQuery  RelatedStreams
@@ -118,15 +87,15 @@ class Persistence handle where
   insertQuery        :: HasCallStack => CBytes -> T.Text -> Int64 -> QueryType -> handle -> IO ()
   insertConnector    :: HasCallStack => CBytes -> T.Text -> Int64 -> handle -> IO ()
 
-  setQueryStatus     :: HasCallStack => CBytes -> Status -> handle -> IO ()
-  setConnectorStatus :: HasCallStack => CBytes -> Status -> handle -> IO ()
+  setQueryStatus     :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
+  setConnectorStatus :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
 
   getQueryIds        :: HasCallStack => handle -> IO [CBytes]
   getQuery           :: HasCallStack => CBytes -> handle -> IO PersistentQuery
 
   getQueries         :: HasCallStack => handle -> IO [PersistentQuery]
   getQueries h = getQueryIds h >>= mapM (`getQuery` h)
-  getQueryStatus     :: HasCallStack => CBytes -> handle -> IO Status
+  getQueryStatus     :: HasCallStack => CBytes -> handle -> IO TaskStatus
   getQueryStatus qid h = queryStatus <$> getQuery qid h
 
   getConnectorIds    :: HasCallStack => handle -> IO [CBytes]
@@ -134,7 +103,7 @@ class Persistence handle where
 
   getConnectors      :: HasCallStack => handle -> IO [PersistentConnector]
   getConnectors h = getConnectorIds h >>= mapM (`getConnector` h)
-  getConnectorStatus :: HasCallStack => CBytes -> handle -> IO Status
+  getConnectorStatus :: HasCallStack => CBytes -> handle -> IO TaskStatus
   getConnectorStatus cid h = connectorStatus <$> getConnector cid h
 
   removeQuery'       :: HasCallStack => CBytes -> handle ->  IO ()

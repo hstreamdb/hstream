@@ -26,14 +26,15 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (cBytesToLazyText,
+import           HStream.Utils                    (TaskStatus (..),
+                                                   cBytesToLazyText,
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
 
 hstreamQueryToView :: P.PersistentQuery -> View
 hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _) =
   View { viewViewId = cBytesToLazyText queryId
-       , viewStatus = status
+       , viewStatus = getPBStatus status
        , viewCreatedTime = createdTime
        , viewSql = TL.pack $ ZT.unpack sqlStatement
        , viewSchema = V.fromList $ TL.pack <$> schema
@@ -52,7 +53,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
       create sink
       (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) HS.StreamTypeView
       returnResp $ View { viewViewId = cBytesToLazyText qid
-                        , viewStatus = P.Running
+                        , viewStatus = getPBStatus Running
                         , viewCreatedTime = timestamp
                         , viewSql = createViewRequestSql
                         , viewSchema = V.fromList $ TL.pack <$> schema
