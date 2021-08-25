@@ -49,6 +49,8 @@ data ServerOpts = ServerOpts
   , _ldAdminConnTimeout :: Int
   , _ldAdminSendTimeout :: Int
   , _ldAdminRecvTimeout :: Int
+  , _serverLogLevel     :: Log.Level
+  , _serverLogWithColor :: Bool
   } deriving (Show)
 
 parseConfig :: Parser ServerOpts
@@ -115,9 +117,16 @@ parseConfig =
                    <> showDefault <> value 5000
                    <> help "logdevice admin thrift receiving timeout in milliseconds"
                     )
+    <*> option auto ( long "log-level" <> metavar "[critical|fatal|warning|info|debug]"
+                   <> showDefault <> value (Log.Level Log.INFO)
+                   <> help "server log level"
+                    )
+    <*> switch ( long "log-with-color"
+              <> help "print logs with color or not" )
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
+  Log.setLogLevel _serverLogLevel _serverLogWithColor
   setupSigsegvHandler
   ldclient <- newLDClient _ldConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
