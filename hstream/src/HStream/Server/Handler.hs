@@ -424,7 +424,9 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
   let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
   exists <- S.doesStreamExists scLDClient streamName
   if not exists
-  then
+  then do
+     Log.warning $ "Try to create a subscription to a nonexistent stream"
+                <> "Stream Name: " <> Log.buildString (show streamName)
      returnErrResp StatusInternal $ StatusDetails "stream not exist"
   else
     modifyMVar
