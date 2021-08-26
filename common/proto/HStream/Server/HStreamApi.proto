@@ -297,9 +297,18 @@ message GetQueryRequest {
   string id = 1;
 }
 
+enum TaskStatusPB {
+  TASK_CREATING = 0;
+  TASK_CREATED = 1;
+  TASK_RUNNING = 2;
+  TASK_CREATION_ABORT = 3;
+  TASK_CONNECTION_ABORT = 4;
+  TASK_TERMINATED = 5;
+}
+
 message Query {
   string id = 1;
-  int32 status = 2;
+  TaskStatusPB status = 2;
   int64 createdTime = 3;
   string queryText = 4;
 }
@@ -337,7 +346,7 @@ message GetConnectorRequest {
 
 message Connector {
   string id = 1;
-  int32 status = 2;
+  TaskStatusPB status = 2;
   int64 createdTime = 3;
   string sql = 4;
 }
@@ -383,7 +392,7 @@ message CreateViewRequest {
 
 message View {
   string viewId = 1;
-  int32 status = 2;
+  TaskStatusPB status = 2;
   int64 createdTime = 3;
   string sql = 4;
   repeated string schema = 5;

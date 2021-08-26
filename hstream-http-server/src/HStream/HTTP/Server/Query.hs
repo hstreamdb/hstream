@@ -27,14 +27,14 @@ import           Servant                          (Capture, Delete, Get, JSON,
                                                    Post, ReqBody, type (:>),
                                                    (:<|>) (..))
 import           Servant.Server                   (Handler, Server)
-import qualified Z.IO.Logger                      as Log
 
 import           HStream.Server.HStreamApi
+import           HStream.Utils                    (TaskStatus (..))
 
 -- BO is short for Business Object
 data QueryBO = QueryBO
   { id          :: T.Text
-  , status      :: Maybe Int
+  , status      :: Maybe TaskStatus
   , createdTime :: Maybe Int64
   , queryText   :: T.Text
   } deriving (Eq, Show, Generic)
@@ -53,7 +53,7 @@ type QueriesAPI =
 
 queryToQueryBO :: Query -> QueryBO
 queryToQueryBO (Query id' status createdTime queryText) =
-  QueryBO (TL.toStrict id') (Just $ fromIntegral status) (Just createdTime) (TL.toStrict queryText)
+  QueryBO (TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict queryText)
 
 createQueryHandler :: Client -> QueryBO -> Handler QueryBO
 createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do

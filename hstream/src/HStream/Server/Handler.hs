@@ -362,11 +362,11 @@ executePushQueryHandler ServerContext{..}
           (TL.toStrict commandPushQueryQueryText) (P.PlainQuery $ textToCBytes <$> sources) zkHandle
         -- run task
         -- FIXME: take care of the life cycle of the thread and global state
-        tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Running)
+        tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid Running)
           >> runTaskWrapper S.StreamTypeStream S.StreamTypeTemp taskBuilder scLDClient
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
         _ <- forkIO $ handlePushQueryCanceled meta
-          (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid P.Terminated))
+          (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid Terminated))
         ldreader' <- S.newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
           S.checkpointStoreLogID 5000 1 Nothing 10
@@ -391,9 +391,9 @@ sendToClient zkHandle qid sc@SourceConnector{..} streamSend = do
   handle f $ do
     P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
     >>= \case
-      P.Terminated -> return (ServerWriterResponse [] StatusUnknown "")
-      P.Created    -> return (ServerWriterResponse [] StatusUnknown "")
-      P.Running    -> do
+      Terminated -> return (ServerWriterResponse [] StatusUnknown "")
+      Created    -> return (ServerWriterResponse [] StatusUnknown "")
+      Running    -> do
         sourceRecords <- readRecords
         let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
             structs = jsonObjectToStruct . fromJust <$> filter isJust objects'

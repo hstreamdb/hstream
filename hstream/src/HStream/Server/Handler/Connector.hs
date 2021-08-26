@@ -33,7 +33,8 @@ import           HStream.Server.Handler.Common    (ServerContext (..),
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (cBytesToLazyText,
+import           HStream.Utils                    (TaskStatus (..),
+                                                   cBytesToLazyText,
                                                    lazyTextToCBytes, returnResp)
 
 createSinkConnectorHandler
@@ -91,7 +92,7 @@ restartConnectorHandler sc@ServerContext{..}
     <> "Connector ID: " <> Log.buildString (TL.unpack restartConnectorRequestId)
   let cid = lazyTextToCBytes restartConnectorRequestId
   cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
-  when (cStatus `elem` [P.Created, P.Creating, P.Running]) $ do
+  when (cStatus `elem` [Created, Creating, Running]) $ do
     Log.warning . Log.buildString $ "The connector " <> show cid
       <> "cannot be restarted because it has state " <> show cStatus
     throwIO (ConnectorRestartErr cStatus)
@@ -114,8 +115,7 @@ terminateConnectorHandler sc
 hstreamConnectorToConnector :: P.PersistentConnector -> Connector
 hstreamConnectorToConnector P.PersistentConnector{..} =
   Connector (cBytesToLazyText connectorId)
-    (fromIntegral . fromEnum  $ connectorStatus)
-    connectorCreatedTime
+    (getPBStatus connectorStatus) connectorCreatedTime
     (TL.pack . ZT.unpack $ connectorBindedSql)
 
 createConnector :: ServerContext -> T.Text -> IO Connector
