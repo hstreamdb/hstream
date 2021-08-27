@@ -208,7 +208,9 @@ subscribeSpec = aroundAll provideHstreamApi $
           (fromJust subscriptionOffset) `shouldReturn` True
         subscribeRequest api subscriptionSubscriptionId `shouldReturn` True
       resp <- listSubscriptionRequest api
-      V.length subscriptions  `shouldBe` V.length resp
+      let respSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList resp
+          reqsSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList subscriptions
+      reqsSet `shouldSatisfy` (`Set.isSubsetOf` respSet)
 
   aroundWith withSubscription $ do
     it "test deleteSubscription request" $ \(api, (streamName, subscriptionName)) -> do
