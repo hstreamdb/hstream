@@ -224,7 +224,7 @@ subscribeSpec = aroundAll provideHstreamApi $
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
 
   aroundWith withSubscription $ do
-    it "test deleteSubscription request" $ \(api, (streamName, subscriptionName)) -> do
+    it "deleteSubscription request with removed stream should success" $ \(api, (streamName, subscriptionName)) -> do
       let stream = Stream streamName 1
       createStreamRequest api stream `shouldReturn` stream
       createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
