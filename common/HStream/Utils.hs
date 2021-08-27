@@ -6,6 +6,7 @@ module HStream.Utils
   , module HStream.Utils.Format
   , module HStream.Utils.BuildRecord
   , module HStream.Utils.RPC
+  , module HStream.Utils.Concurrent
 
   , getKeyWordFromException
   , flattenJSON
@@ -28,6 +29,7 @@ import           System.Random             (randomRIO)
 import           Z.IO.Time                 (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
+import           HStream.Utils.Concurrent
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
 import           HStream.Utils.RPC
@@ -73,5 +75,5 @@ genUnique = do
        .|. fromIntegral rdmBit
 {-# INLINE genUnique #-}
 
-foreign import ccall unsafe "setup_sigsegv_handler"
+foreign import ccall unsafe "hs_common.h setup_sigsegv_handler"
   setupSigsegvHandler :: IO ()
