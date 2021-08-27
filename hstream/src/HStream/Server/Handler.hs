@@ -12,7 +12,7 @@ module HStream.Server.Handler where
 
 import           Control.Concurrent
 import           Control.Exception                     (handle, throwIO)
-import           Control.Monad                         (forM, void, when)
+import           Control.Monad                         (forM, join, void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.Bifunctor
 import           Data.ByteString                       (ByteString)
@@ -308,11 +308,16 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
                           & fromJust & Aeson.Object)
                   sendResp (Just $ HM.fromList grped) valueSerde
                 else ksGet key store >>= flip sendResp valueSerde
-            SessionStateStore store   -> do
-              timestamp <- getCurrentTimestamp
-              let ssKey = mkTimeWindowKey key (mkTimeWindow timestamp timestamp)
-              ma <- ssGet ssKey store
-              sendResp ma valueSerde
+            SessionStateStore store -> do
+              dropSurfaceTimeStamp <- ssDump store <&> Map.elems
+              let subset = dropSurfaceTimeStamp <&> Map.elems .
+                    Map.filterWithKey \k _ -> all (`elem` HM.toList k) (HM.toList key)
+              let res = subset
+                     &  filter (not . null) . join
+                    <&> Map.toList
+                     &  L.sortBy (compare `on` fst) . filter (not . null) . join
+              flip sendResp valueSerde $ Just . HM.fromList $
+                res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, Aeson.Object v)
             TimestampedKVStateStore _ ->
               returnErrResp StatusInternal "Impossible happened"
     ExplainPlan sql -> do
