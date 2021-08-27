@@ -11,6 +11,8 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
+import           Control.Concurrent.STM
+import           Control.Concurrent.Suspend            (msDelay)
 import           Control.Exception                     (handle, throwIO)
 import           Control.Monad                         (forM, join, void, when)
 import qualified Data.Aeson                            as Aeson
@@ -86,6 +88,7 @@ import           Proto3.Suite                          (Enumerated (..),
 import qualified Z.Data.CBytes                         as CB
 import           Z.Data.Vector                         (Bytes)
 import           Z.Foreign                             (toByteString)
+import           Z.IO.LowResTimer                      (registerLowResTimer)
 import qualified Z.IO.Time                             as ZT
 import           ZooKeeper.Types                       (ZHandle)
 
@@ -713,6 +716,200 @@ ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeReque
     commitCheckpoint client reader streamName RecordId{..} = do
       logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
       S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
+
+streamingFetchHandler
+  :: ServerContext
+  -> ServerRequest 'BiDiStreaming  StreamingFetchRequest StreamingFetchResponse
+  -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
+streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv streamSend) = do
+  Log.debug "Receive streamingFetch request"
+  handleRequest
+  where
+    handleRequest = do
+      eRes <- streamRecv
+      case eRes of
+        Left grpcIOError -> do
+          Log.fatal "streamRecv error"
+          -- fixme here
+          return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
+        Right ma ->
+          case ma of
+            Just req@StreamingFetchRequest{..} -> do
+              -- TODO: check subscription whether exsits first
+
+              isInited <- withMVar
+                subscribeRuntimeInfo
+                (
+                  return . (HM.member streamingFetchRequestSubscriptionId)
+                )
+
+              -- avoid nested locks for preventing deadlock
+              mRes <-
+                if isInited
+                then return Nothing
+                else do
+                  withMVar
+                    subscriptions
+                    (
+                      \store ->
+                        case HM.lookup streamingFetchRequestSubscriptionId store of
+                          Just Subscription{..} ->
+                            return $ Just (subscriptionStreamName, getStartRecordId $ fromJust subscriptionOffset)
+                    )
+
+              case mRes of
+                Nothing -> return ()
+                Just (streamName, startRecordId) ->
+                  modifyMVar_
+                    subscribeRuntimeInfo
+                    (
+                      \store ->
+                        case HM.lookup streamingFetchRequestSubscriptionId store of
+                          Just _ -> return store
+                          Nothing -> do
+                            newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId streamName startRecordId streamSend
+                            return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                    )
+
+              infoMVar <-
+                withMVar
+                  subscribeRuntimeInfo
+                  (
+                    -- At this point, the corresponding subscribeRuntimeInfo must be
+                    -- present, unless the subscription has been removed
+                    -- forcely, which we will handle later(TODO).
+                    return . fromJust . (HM.lookup streamingFetchRequestSubscriptionId)
+                  )
+
+              -- TODO: handle ack
+              -- modifyMVar_
+              --   infoMVar
+              --   (
+              --     \info -> do
+              --       handleAck
+              --       return newInfo
+              --   )
+
+              handleRequest
+
+            Nothing ->
+              -- This means that the consumer finished sending acks actively,
+              -- in fact, it should never happen.
+              return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
+
+    -- return: IO (MVar SubscribeRuntimeInfo)
+    initSubscribe ldclient subscriptionId streamName startRecordId streamSend = do
+      -- create a ldCkpReader for reading new records
+      ldCkpReader <-
+        S.newLDRsmCkpReader
+          ldclient
+          (textToCBytes $ TL.toStrict subscriptionId)
+          S.checkpointStoreLogID 5000 1 Nothing 10
+      -- seek ldCkpReader to start offset
+      logId <- S.getUnderlyingLogId ldclient (transToStreamName (TL.toStrict streamName))
+      let startLSN = recordIdBatchId startRecordId
+      S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
+      -- set ldCkpReader timeout to 0
+      S.ckpReaderSetTimeout ldCkpReader 0
+      Log.d $ Log.buildString "created a ldCkpReader for subscription {" <> Log.buildLazyText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
+
+      -- create a ldReader for rereading unacked records(TODO)
+      -- ldReader <-
+      --   S.newLDReader
+      --     ldclient
+      --     (textToCBytes $ TL.toStrict subscriptionId)
+      -- Log.d $ Log.buildString "created a ldReader for subscription {" <> subscriptionId <> "}"
+
+      -- init SubscribeRuntimeInfo
+      let info = SubscribeRuntimeInfo {
+                  sriLdreader = ldCkpReader
+                , sriWindowLowerBound = startRecordId
+                , sriWindowUpperBound = maxBound
+                , sriAckedRanges = Map.empty
+                , sriBatchNumMap = Map.empty
+                , sriStreamSends = V.singleton streamSend
+                }
+
+      infoMVar <- newMVar info
+      -- create a task for reading and dispatching records periodicly
+      forkIO $ readAndDispatchRecords infoMVar
+      return infoMVar
+
+    readAndDispatchRecords runtimeInfoMVar = do
+      -- register for next readAndDispatch
+      _ <- registerLowResTimer 1
+        (
+          do
+            _ <- forkIO $ readAndDispatchRecords runtimeInfoMVar
+            return ()
+        )
+      modifyMVar_
+        runtimeInfoMVar
+        (
+          \info@SubscribeRuntimeInfo{..} -> do
+            res <- S.ckpReaderReadAllowGap sriLdreader 1000
+            case res of
+              Left S.GapRecord{..} -> do
+                -- insert gap range to ackedRanges
+                let gapLoRecordId = RecordId gapLoLSN minBound
+                let gapHiRecordId = RecordId gapHiLSN maxBound
+                let newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) sriAckedRanges
+                let newInfo = info {sriAckedRanges = newRanges}
+                return newInfo
+              Right dataRecords -> do
+                let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
+                let groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
+                let lastBatch = last groups
+                let maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
+                -- update window upper bound
+                -- update batchNumMap
+                let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
+                let newInfo = info {sriBatchNumMap = newBatchNumMap, sriWindowUpperBound = maxRecordId}
+                -- dispatch records to consumers
+                dispatchRecords (fetchResult groups) sriStreamSends
+                -- register task for ack timeout resend(TODO)
+
+                return newInfo
+
+        )
+
+    -- round-robin dispatch
+    dispatchRecords records streamSends = do
+      let slen = V.length streamSends
+      let initVec = V.replicate slen V.empty
+      let recordGroups =
+            V.ifoldl'
+              (
+                \v i r ->
+                  let ci = i `mod` slen
+                      og = v V.! ci
+                      ng = V.snoc og r
+                  in
+                      V.update v $ V.singleton (ci, ng)
+              )
+              initVec
+              records
+
+      V.imapM_
+        (
+          \ i group -> do
+            let ss = streamSends V.! i
+            ss $ StreamingFetchResponse group
+        )
+        recordGroups
+
+    getStartRecordId :: SubscriptionOffset -> RecordId
+    getStartRecordId SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
+      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+      SubscriptionOffsetOffsetRecordOffset r  -> r
+
+    fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
+    fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
+
+    mkReceivedRecord :: Int -> S.DataRecord Bytes -> ReceivedRecord
+    mkReceivedRecord index record =
+      let recordId = RecordId (S.recordLSN record) (fromIntegral index)
+      in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
 --------------------------------------------------------------------------------
 --

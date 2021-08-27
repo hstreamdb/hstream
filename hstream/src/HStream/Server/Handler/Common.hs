@@ -28,11 +28,13 @@ import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
 import           GHC.Conc                         (readTVarIO)
+import           Network.GRPC.HighLevel           (StreamSend)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
@@ -55,7 +57,9 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
-import           HStream.Server.HStreamApi        (RecordId (..), Subscription)
+import           HStream.Server.HStreamApi        (RecordId (..),
+                                                   StreamingFetchResponse,
+                                                   Subscription)
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
@@ -107,6 +111,7 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriWindowUpperBound :: RecordId
   , sriAckedRanges      :: Map.Map RecordId RecordIdRange
   , sriBatchNumMap      :: Map.Map Word64 Word32
+  , sriStreamSends      :: V.Vector (StreamSend StreamingFetchResponse)
 }
 
 --------------------------------------------------------------------------------
@@ -160,6 +165,7 @@ getSuccessor r@RecordId{..} batchNumMap =
   then RecordId (recordIdBatchId + 1) 0
   else r {recordIdBatchIndex = recordIdBatchIndex + 1}
 --------------------------------------------------------------------------------
+
 runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
 runTaskWrapper sourceType sinkType taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
