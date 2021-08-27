@@ -57,7 +57,7 @@ streamSpec :: Spec
 streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
   aroundWith withRandomStreamName $ do
-    it "test CreateStream request" $ \(api, name) -> do
+    it "test createStream request" $ \(api, name) -> do
       let stream = Stream name 3
       createStreamRequest api stream `shouldReturn` stream
       -- create an existed stream should fail
@@ -83,6 +83,26 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       deleteStreamRequest api name `shouldReturn` PB.Empty
       resp' <- listStreamRequest api
       resp' `shouldNotSatisfy`  V.elem stream
+      -- delete a nonexistent stream without ignoreNonExist set should throw an exception
+      deleteStreamRequest api name `shouldThrow` anyException
+      -- delete a nonexistent stream with ignoreNonExist set should be okay
+      deleteStreamRequest_ api name `shouldReturn` PB.Empty
+
+  aroundWith withRandomStreamName $ do
+    it "test append request" $ \(api, name) -> do
+      payload1 <- newRandomByteString 5
+      payload2 <- newRandomByteString 5
+      timeStamp <- getProtoTimestamp
+      let stream = Stream name 1
+          header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+          record1 = buildRecord header payload1
+          record2 = buildRecord header payload2
+      -- append to a nonexistent stream should throw exception
+      appendRequest api name (V.fromList [record1, record2]) `shouldThrow` anyException
+      createStreamRequest api stream `shouldReturn` stream
+      resp <- appendRequest api name (V.fromList [record1, record2])
+      appendResponseStreamName resp `shouldBe` name
+      recordIdBatchIndex <$> appendResponseRecordIds resp `shouldBe` V.fromList [0, 1]
 
 -------------------------------------------------------------------------------------------------
 
@@ -109,6 +129,12 @@ deleteStreamRequest_ HStreamApi{..} streamName =
                    , deleteStreamRequestIgnoreNonExist = True }
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiDeleteStream req
+
+appendRequest :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO AppendResponse
+appendRequest HStreamApi{..} streamName records =
+  let appReq = AppendRequest streamName records
+      req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiAppend req
 
 ----------------------------------------------------------------------------------------------------------
 -- SubscribeSpec
@@ -153,6 +179,8 @@ subscribeSpec = aroundAll provideHstreamApi $
       createStreamRequest api stream `shouldReturn` stream
       -- createSubscribe with an existing stream should return True
       createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
+      -- createSubscribe fails if the subscriptionName has been used
+      createSubscriptionRequest api subscriptionName streamName offset `shouldThrow` anyException
 
   aroundWith withSubscription $ do
     it "test subscribe request" $ \(api, (streamName, subscriptionName)) -> do
@@ -163,6 +191,11 @@ subscribeSpec = aroundAll provideHstreamApi $
       -- subscribe a nonexistent subscriptionId should throw exception
       subscribeRequest api subscriptionName' `shouldThrow` anyException
       -- subscribe an existing subscriptionId should return True
+      subscribeRequest api subscriptionName `shouldReturn` True
+      -- re-subscribe is okay
+      subscribeRequest api subscriptionName `shouldReturn` True
+      -- subscribe is okay even though the stream has been deleted
+      deleteStreamRequest api streamName `shouldReturn` PB.Empty
       subscribeRequest api subscriptionName `shouldReturn` True
 
   aroundWith withSubscriptions $ do
@@ -175,7 +208,9 @@ subscribeSpec = aroundAll provideHstreamApi $
           (fromJust subscriptionOffset) `shouldReturn` True
         subscribeRequest api subscriptionSubscriptionId `shouldReturn` True
       resp <- listSubscriptionRequest api
-      V.length subscriptions  `shouldBe` V.length resp
+      let respSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList resp
+          reqsSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList subscriptions
+      reqsSet `shouldSatisfy` (`Set.isSubsetOf` respSet)
 
   aroundWith withSubscription $ do
     it "test deleteSubscription request" $ \(api, (streamName, subscriptionName)) -> do
@@ -185,9 +220,11 @@ subscribeSpec = aroundAll provideHstreamApi $
       subscribeRequest api subscriptionName `shouldReturn` True
       -- delete a subscribed stream should return true
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
+      -- double deletion is okay
+      deleteSubscriptionRequest api subscriptionName `shouldReturn` True
 
   aroundWith withSubscription $ do
-    it "test listSubscription request" $ \(api, (streamName, subscriptionName)) -> do
+    it "deleteSubscription request with removed stream should success" $ \(api, (streamName, subscriptionName)) -> do
       let stream = Stream streamName 1
       createStreamRequest api stream `shouldReturn` stream
       createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
@@ -282,12 +319,6 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 
 ----------------------------------------------------------------------------------------------------------
 
-appendRequest :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO AppendResponse
-appendRequest HStreamApi{..} streamName records =
-  let appReq = AppendRequest streamName records
-      req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
-  in getServerResp =<< hstreamApiAppend req
-
 fetchRequest :: HStreamClientApi -> TL.Text -> Word64 -> Word32 -> IO (V.Vector ReceivedRecord)
 fetchRequest HStreamApi{..} subscribeId timeout maxSize =
   let fetReq = FetchRequest subscribeId timeout maxSize
@@ -295,7 +326,7 @@ fetchRequest HStreamApi{..} subscribeId timeout maxSize =
   in fetchResponseReceivedRecords <$> (getServerResp =<< hstreamApiFetch req)
 
 requestTimeout :: Int
-requestTimeout = 5
+requestTimeout = 10
 
 getReceivedRecordPayload :: ReceivedRecord -> B.ByteString
 getReceivedRecordPayload ReceivedRecord{..} =
