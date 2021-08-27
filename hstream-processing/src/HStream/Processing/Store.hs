@@ -137,9 +137,10 @@ wrapStateStore stateStore =
     TimestampedKVStateStore timestampedKVStore -> ETimestampedKVStateStore (DETimestampedKVStore timestampedKVStore)
 
 class SessionStore s where
-  ssGet :: (Typeable k, Ord k) => SessionWindowKey k -> s k v -> IO (Maybe v)
-  ssPut :: (Typeable k, Ord k) => SessionWindowKey k -> v -> s k v -> IO ()
-  ssRemove :: (Typeable k, Ord k) => SessionWindowKey k -> s k v -> IO ()
+  ssGet        :: (Typeable k, Ord k) => SessionWindowKey k ->          s k v -> IO (Maybe v)
+  ssPut        :: (Typeable k, Ord k) => SessionWindowKey k -> v ->     s k v -> IO ()
+  ssRemove     :: (Typeable k, Ord k) => SessionWindowKey k ->          s k v -> IO ()
+  ssDump       :: (Typeable k, Ord k) =>                                s k v -> IO (Map Timestamp (Map k (Map Timestamp v)))
   findSessions :: (Typeable k, Ord k) => k -> Timestamp -> Timestamp -> s k v -> IO [(SessionWindowKey k, v)]
 
 data ESessionStore k v
@@ -149,12 +150,10 @@ data ESessionStore k v
       (s k v)
 
 instance SessionStore ESessionStore where
-  ssGet k (ESessionStore s) = ssGet k s
-
-  ssPut k v (ESessionStore s) = ssPut k v s
-
-  ssRemove k (ESessionStore s) = ssRemove k s
-
+  ssGet    k   (ESessionStore s) = ssGet    k   s
+  ssPut    k v (ESessionStore s) = ssPut    k v s
+  ssRemove k   (ESessionStore s) = ssRemove k   s
+  ssDump       (ESessionStore s) = ssDump       s
   findSessions k ts1 ts2 (ESessionStore s) = findSessions k ts1 ts2 s
 
 data DESessionStore
@@ -234,6 +233,12 @@ instance SessionStore InMemorySessionStore where
             writeIORef rd1 (Map.delete ws dict2)
           Nothing -> return ()
       Nothing -> return ()
+
+  -- do nothing but lift nested IO and Map
+  ssDump store = do
+    store <- imssData store & readIORef
+    store <- (fmap . fmap) readIORef <$> readIORef <$> store & sequence
+    sequence <$> store & sequence
 
   findSessions key earliestSessionEndTime latestSessionStartTime InMemorySessionStore {..} = do
     dict0 <- readIORef imssData

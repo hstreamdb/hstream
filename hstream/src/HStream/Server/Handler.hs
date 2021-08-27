@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -5,38 +6,33 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Concurrent.STM
-import           Control.Concurrent.Suspend            (msDelay)
-import           Control.Concurrent.Timer              (newTimer, repeatedStart)
 import           Control.Exception                     (handle, throwIO)
-import           Control.Monad                         (void, when)
+import           Control.Monad                         (forM, void, when)
 import qualified Data.Aeson                            as Aeson
+import           Data.Bifunctor
 import           Data.ByteString                       (ByteString)
-import           Data.Function                         (on)
+import           Data.Function                         (on, (&))
+import           Data.Functor
 import qualified Data.HashMap.Strict                   as HM
 import           Data.IORef                            (atomicModifyIORef',
                                                         readIORef)
 import           Data.Int                              (Int64)
 import qualified Data.List                             as L
 import qualified Data.Map.Strict                       as Map
-import           Data.Maybe                            (fromJust, isJust)
+import           Data.Maybe                            (catMaybes, fromJust,
+                                                        isJust)
+import           Data.Scientific
 import           Data.String                           (fromString)
 import qualified Data.Text                             as T
 import qualified Data.Text.Lazy                        as TL
+import qualified Data.Time                             as Time
 import qualified Data.Vector                           as V
 import           Data.Word                             (Word32)
-import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                          (Enumerated (..),
-                                                        HasDefault (def))
-import qualified Z.Data.CBytes                         as CB
-import           Z.Data.Vector                         (Bytes)
-import           Z.Foreign                             (toByteString)
-import           ZooKeeper.Types                       (ZHandle)
-
 import           HStream.Connector.HStore
 import qualified HStream.Logger                        as Log
 import           HStream.Processing.Connector          (SourceConnector (..))
@@ -52,9 +48,8 @@ import           HStream.Processing.Stream.TimeWindows (mkTimeWindow,
 import           HStream.Processing.Type               hiding (StreamName,
                                                         Timestamp)
 import           HStream.Processing.Util               (getCurrentTimestamp)
-import           HStream.SQL                           (RSQL (RQSelect),
-                                                        parseAndRefine)
-import           HStream.SQL.AST                       (RSelectView (..))
+import           HStream.SQL                           (parseAndRefine)
+import           HStream.SQL.AST
 import           HStream.SQL.Codegen                   hiding (StreamName)
 import           HStream.SQL.ExecPlan                  (genExecutionPlan)
 import           HStream.Server.Exception
@@ -85,6 +80,14 @@ import qualified HStream.Store                         as S
 import qualified HStream.Store.Admin.API               as AA
 import           HStream.ThirdParty.Protobuf           as PB
 import           HStream.Utils
+import           Network.GRPC.HighLevel.Generated
+import           Proto3.Suite                          (Enumerated (..),
+                                                        HasDefault (def))
+import qualified Z.Data.CBytes                         as CB
+import           Z.Data.Vector                         (Bytes)
+import           Z.Foreign                             (toByteString)
+import qualified Z.IO.Time                             as ZT
+import           ZooKeeper.Types                       (ZHandle)
 
 --------------------------------------------------------------------------------
 
@@ -279,9 +282,32 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
               valueSerde = mValueSerde materialized
           let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
           case mStateStore materialized of
-            KVStateStore store        -> do
-              ma <- ksGet key store
-              sendResp ma valueSerde
+            KVStateStore store -> do
+              queries <- P.withMaybeZHandle zkHandle P.getQueries
+              sizeM   <- getFixedWinSize queries rSelectViewFrom
+                <&> fmap diffTimeToScientific
+              if isJust sizeM
+                then do
+                  let size = fromJust sizeM & fromJust . toBoundedInteger @Int64
+                  subset <- ksDump store
+                    <&> Map.filterWithKey
+                      (\k _ -> all (`elem` HM.toList k) (HM.toList key))
+                    <&> Map.toList
+                  let winStarts = subset
+                        <&> (lookup "winStart" . HM.toList) . fst
+                         &  L.sort . L.nub . catMaybes
+                      singlWinStart = subset
+                        <&> first (filter (\(k, _) -> k == "winStart") . HM.toList)
+                        <&> first HM.fromList
+                      grped = winStarts <&> \winStart ->
+                        let Aeson.Number winStart'' = winStart
+                            winStart' = fromJust . toBoundedInteger @Int64 $ winStart'' in
+                        ("winStart = " <>
+                          (T.pack . show) winStart' <> " ,winEnd = " <> (T.pack . show) (winStart' + size)
+                        , lookup (HM.fromList [("winStart", winStart)]) singlWinStart
+                          & fromJust & Aeson.Object)
+                  sendResp (Just $ HM.fromList grped) valueSerde
+                else ksGet key store >>= flip sendResp valueSerde
             SessionStateStore store   -> do
               timestamp <- getCurrentTimestamp
               let ssKey = mkTimeWindowKey key (mkTimeWindow timestamp timestamp)
@@ -688,3 +714,35 @@ batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.Ap
 batchAppend client streamName payloads strategy = do
   logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
   S.appendBatchBS client logId payloads strategy Nothing
+
+--------------------------------------------------------------------------------
+
+getFixedWinSize :: [P.PersistentQuery] -> T.Text -> IO (Maybe Time.DiffTime)
+getFixedWinSize [] _ = pure Nothing
+getFixedWinSize queries viewNameRaw = do
+  sizes <- queries <&> P.queryBindedSql
+    <&> parseAndRefine . cBytesToText . CB.fromText
+     &  sequence
+    <&> filter \case
+      RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
+        viewNameRaw == viewNameSQL && isFixedWin rWin
+      _ -> False
+    <&> map \case
+      RQCreate (RCreateView _ (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
+        coeRWindowToDiffTime rWin
+      _ -> error "Impossible happened..."
+  pure case sizes of
+    []       -> Nothing
+    size : _ -> Just size
+  where
+    isFixedWin :: RWindow -> Bool = \case
+      RTumblingWindow  _ -> True
+      RHoppingWIndow _ _ -> True
+      RSessionWindow   _ -> False
+    coeRWindowToDiffTime :: RWindow -> Time.DiffTime = \case
+      RTumblingWindow  size -> size
+      RHoppingWIndow size _ -> size
+      RSessionWindow      _ -> error "Impossible happened..."
+
+diffTimeToScientific :: Time.DiffTime -> Scientific
+diffTimeToScientific = flip scientific (-9) . Time.diffTimeToPicoseconds
