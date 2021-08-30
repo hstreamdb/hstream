@@ -13,23 +13,24 @@ module HStream.HTTP.Server.Stream
   , StreamBO(..)
   ) where
 
-import           Control.Monad.IO.Class           (liftIO)
-import           Data.Aeson                       (FromJSON, ToJSON)
-import           Data.List                        (find)
-import qualified Data.Map.Strict                  as Map
-import           Data.Swagger                     (ToSchema)
-import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
-import qualified Data.Vector                      as V
-import           Data.Word                        (Word32)
-import           GHC.Generics                     (Generic)
-import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Client     (Client)
-import           Servant                          (Capture, Delete, Get, JSON,
-                                                   Post, ReqBody, type (:>),
-                                                   (:<|>) (..))
-import           Servant.Server                   (Handler, Server)
+import           Control.Monad.IO.Class       (liftIO)
+import           Data.Aeson                   (FromJSON, ToJSON)
+import           Data.List                    (find)
+import           Data.Maybe                   (isJust)
+import           Data.Swagger                 (ToSchema)
+import qualified Data.Text                    as T
+import qualified Data.Text.Lazy               as TL
+import qualified Data.Vector                  as V
+import           Data.Word                    (Word32)
+import           GHC.Generics                 (Generic)
+import           Network.GRPC.LowLevel.Client (Client)
+import           Proto3.Suite                 (def)
+import           Servant                      (Capture, Delete, Get, JSON, Post,
+                                               ReqBody, type (:>), (:<|>) (..))
+import           Servant.Server               (Handler, Server)
 
+import           HStream.HTTP.Server.Utils    (getServerResp,
+                                               mkClientNormalRequest)
 import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
@@ -51,45 +52,31 @@ type StreamsAPI =
 streamToStreamBO :: Stream -> StreamBO
 streamToStreamBO (Stream name rep) = StreamBO (TL.toStrict name) rep
 
+streamBOTOStream :: StreamBO -> Stream
+streamBOTOStream (StreamBO name rep) = Stream (TL.fromStrict name) rep
+
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO
-createStreamHandler hClient (StreamBO sName replicationFactor) = liftIO $ do
+createStreamHandler hClient streamBO = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let createStreamRequest = Stream { streamStreamName = TL.pack $ T.unpack sName
-                                   , streamReplicationFactor = replicationFactor
-                                   }
-  resp <- hstreamApiCreateStream (ClientNormalRequest createStreamRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    -- TODO: should return streambo; but we need to update hstream api first
-    ClientNormalResponse _ _meta1 _meta2 _status _details -> return $ StreamBO sName replicationFactor
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return $ StreamBO sName replicationFactor
+  resp <- hstreamApiCreateStream
+    (mkClientNormalRequest (streamBOTOStream streamBO))
+  -- FIXME: return Nothing when failed
+  maybe (StreamBO "" 0) streamToStreamBO <$> getServerResp resp
 
 listStreamsHandler :: Client -> Handler [StreamBO]
 listStreamsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiListStreams $ ClientNormalRequest ListStreamsRequest 100 (MetadataMap Map.empty)
-  case resp of
-    ClientNormalResponse x@ListStreamsResponse{} _meta1 _meta2 _status _details -> do
-      case x of
-        ListStreamsResponse {listStreamsResponseStreams = streams} -> do
-          return $ V.toList $ V.map streamToStreamBO streams
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return []
+  resp <- hstreamApiListStreams $ mkClientNormalRequest ListStreamsRequest
+  maybe [] (V.toList . V.map streamToStreamBO . listStreamsResponseStreams) <$> getServerResp resp
 
 deleteStreamHandler :: Client -> String -> Handler Bool
 deleteStreamHandler hClient sName = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let deleteStreamRequest = DeleteStreamRequest { deleteStreamRequestStreamName = TL.pack sName, deleteStreamRequestIgnoreNonExist = False }
-  resp <- hstreamApiDeleteStream (ClientNormalRequest deleteStreamRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse _ _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
-    _ -> return False
+  resp <- hstreamApiDeleteStream
+    (mkClientNormalRequest def
+      { deleteStreamRequestStreamName = TL.pack sName
+      , deleteStreamRequestIgnoreNonExist = False } )
+  isJust <$> getServerResp resp
 
 getStreamHandler :: Client -> T.Text -> Handler (Maybe StreamBO)
 getStreamHandler hClient sName = do
@@ -98,6 +85,6 @@ getStreamHandler hClient sName = do
 
 streamServer :: Client -> Server StreamsAPI
 streamServer hClient = listStreamsHandler hClient
-                   :<|> createStreamHandler hClient
-                   :<|> deleteStreamHandler hClient
-                   :<|> getStreamHandler hClient
+                  :<|> createStreamHandler hClient
+                  :<|> deleteStreamHandler hClient
+                  :<|> getStreamHandler hClient

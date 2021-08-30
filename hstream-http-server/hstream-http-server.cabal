@@ -27,6 +27,7 @@ library
     HStream.HTTP.Server.Overview
     HStream.HTTP.Server.Query
     HStream.HTTP.Server.Stream
+    HStream.HTTP.Server.Utils
     HStream.HTTP.Server.View
 
   build-depends:
@@ -40,6 +41,7 @@ library
     , hstream-common
     , mysql-haskell
     , optparse-applicative
+    , proto3-suite
     , rio
     , scientific
     , servant
