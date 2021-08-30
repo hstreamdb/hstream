@@ -182,9 +182,9 @@ createStreamHandler
   -> ServerRequest 'Normal Stream Stream
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Create Stream Request: New Stream Name: "
-    <> Log.buildString (TL.unpack streamStreamName)
-  S.createStream scLDClient (transToStreamName $ TL.toStrict streamStreamName)
+  let streamName = TL.toStrict streamStreamName
+  Log.debug $ "Receive Create Stream Request: New Stream Name: " <> Log.buildText streamName
+  S.createStream scLDClient (transToStreamName streamName)
     $ S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
   returnResp stream
 
@@ -193,10 +193,9 @@ deleteStreamHandler
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteStreamHandler sc (ServerNormalRequest _metadata DeleteStreamRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Delete Stream Request: Stream to Delete: "
-    <> Log.buildString (TL.unpack deleteStreamRequestStreamName)
-  let name = TL.toStrict deleteStreamRequestStreamName
-  dropHelper sc name deleteStreamRequestIgnoreNonExist False
+  let streamName = TL.toStrict deleteStreamRequestStreamName
+  Log.debug $ "Receive Delete Stream Request: Stream to Delete: " <> Log.buildText streamName
+  dropHelper sc streamName deleteStreamRequestIgnoreNonExist False
 
 listStreamsHandler
   :: ServerContext
@@ -215,8 +214,7 @@ appendHandler
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Append Stream Request. Append Data to the Stream: "
-    <> Log.buildString (TL.unpack appendRequestStreamName)
+  Log.debug $ "Receive Append Stream Request. Append Data to the Stream: " <> Log.buildText (TL.toStrict appendRequestStreamName)
   timestamp <- getProtoTimestamp
   let payloads = V.toList $ encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
   S.AppendCompletion{..} <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
@@ -336,8 +334,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
           let result = runDeser (deserializer valueSerde) x
           returnCommandQueryResp
             (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
-    discard = (Log.e . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
-
+    discard = (Log.w . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
 
 executePushQueryHandler
   :: ServerContext
@@ -418,44 +415,15 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
 
   let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-  exists <- S.doesStreamExists scLDClient streamName
-  if not exists
-  then do
-     Log.warning $ "Try to create a subscription to a nonexistent stream"
-                <> "Stream Name: " <> Log.buildString (show streamName)
-     returnErrResp StatusInternal $ StatusDetails "stream not exist"
-  else
-    modifyMVar
-      subscriptions
-      (
-        \store ->
-          if HM.member subscriptionSubscriptionId store
-          then do
-            errResp <- returnErrResp StatusInternal $ StatusDetails "SubscriptionId has been used."
-            return (store, errResp)
-          else do
-            logId <- S.getUnderlyingLogId scLDClient streamName
-            let subOffset = fromJust subscriptionOffset
-            recordId <- toConcreteRecordId subOffset scLDClient logId
-            let newsub = subscription {subscriptionOffset = Just $ SubscriptionOffset (Just $ SubscriptionOffsetOffsetRecordOffset recordId)}
-            let newStore = HM.insert subscriptionSubscriptionId newsub store
-            resp <- returnResp subscription
-            return (newStore, resp)
-      )
-  where
-    toConcreteRecordId :: SubscriptionOffset -> S.LDClient -> S.C_LogID -> IO RecordId
-    toConcreteRecordId SubscriptionOffset{..} client logId =
-      case fromJust subscriptionOffsetOffset of
-        SubscriptionOffsetOffsetSpecialOffset subOffset ->
-          case subOffset of
-            Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) ->
-              return $ RecordId S.LSN_MIN 0
-            Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST)  -> do
-              tailLSN <- S.getTailLSN client logId
-              return $ RecordId (tailLSN + 1) 0
-            Enumerated _                                               ->
-              error "Wrong SpecialOffset!"
-        SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
+  streamExists <- S.doesStreamExists scLDClient streamName
+  if not streamExists
+     then do
+       Log.warning $ "Try to create a subscription to a nonexistent stream"
+                   <> "Stream Name: " <> Log.buildString (show streamName)
+       returnErrResp StatusInternal $ StatusDetails "stream not exist"
+     else do
+       P.storeSubscription subscription (fromJust zkHandle)
+       returnResp subscription
 
 subscribeHandler
   :: ServerContext
@@ -464,69 +432,109 @@ subscribeHandler
 subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive subscribe request: " <> Log.buildString (show req)
 
-  modifyMVar
-    subscribeRuntimeInfo
-    (
-      \store ->
-        if HM.member subscribeRequestSubscriptionId store
-        then do
-          resp <- returnResp (SubscribeResponse subscribeRequestSubscriptionId)
-          return (store, resp)
-        else do
-          -- create a new ldreader for subscription
-          ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscribeRequestSubscriptionId)
-              S.checkpointStoreLogID 5000 1 Nothing 10
-          -- seek ldreader to start offset
-          streamName <- getStreamName subscribeRequestSubscriptionId subscriptions
-          logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict streamName))
-          startOffset <- getSubscriptionOffset subscribeRequestSubscriptionId
-          let startLSN = getStartLSN startOffset
-          S.ckpReaderStartReading ldreader logId startLSN S.LSN_MAX
-          Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
-          -- insert to runtime info
-          let info = SubscribeRuntimeInfo {
-                      sriLdreader = ldreader
-                    , sriWindowLowerBound = getStartOffset startOffset
-                    , sriWindowUpperBound = maxBound
-                    , sriAckedRanges = Map.empty
-                    , sriBatchNumMap = Map.empty
-                    , sriStreamSends = V.empty
-                    }
-          mvar <- newMVar info
-          let newStore = HM.insert subscribeRequestSubscriptionId mvar store
-          resp <- returnResp (SubscribeResponse subscribeRequestSubscriptionId)
-          return (newStore, resp)
-    )
+--  modifyMVar
+--    subscribeRuntimeInfo
+--    (
+--      \store ->
+--        if HM.member subscribeRequestSubscriptionId store
+--        then do
+--          resp <- returnResp (SubscribeResponse subscribeRequestSubscriptionId)
+--          return (store, resp)
+--        else do
+--          -- create a new ldreader for subscription
+--          ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes $ TL.toStrict subscribeRequestSubscriptionId)
+--              S.checkpointStoreLogID 5000 1 Nothing 10
+--          -- seek ldreader to start offset
+--          streamName <- getStreamName subscribeRequestSubscriptionId subscriptions
+--          logId <- S.getUnderlyingLogId scLDClient (transToStreamName (TL.toStrict streamName))
+--          startOffset <- getSubscriptionOffset subscribeRequestSubscriptionId
+--          let startLSN = getStartLSN startOffset
+--          S.ckpReaderStartReading ldreader logId startLSN S.LSN_MAX
+--          Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt startLSN
+--          -- insert to runtime info
+--          let info = SubscribeRuntimeInfo {
+--                      sriLdreader = ldreader
+--                    , sriWindowLowerBound = getStartOffset startOffset
+--                    , sriWindowUpperBound = maxBound
+--                    , sriAckedRanges = Map.empty
+--                    , sriBatchNumMap = Map.empty
+--                    , sriStreamSends = V.empty
+--                    }
+--          mvar <- newMVar info
+--          let newStore = HM.insert subscribeRequestSubscriptionId mvar store
+--          resp <- returnResp (SubscribeResponse subscribeRequestSubscriptionId)
+--          return (newStore, resp)
+--    )
+--  where
+--    getSubscriptionOffset :: SubscriptionId -> IO SubscriptionOffset
+--    getSubscriptionOffset subscriptionId =
+--      withMVar
+--        subscriptions
+--        (
+--          \store -> do
+--            let Subscription{..} = fromJust $ HM.lookup subscriptionId store
+--            return $ fromJust subscriptionOffset
+--        )
+--
+--    getStartOffset:: SubscriptionOffset -> RecordId
+--    getStartOffset SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
+--      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+--      SubscriptionOffsetOffsetRecordOffset r  -> r
+  -- first, check if the subscription exist. If not, return err
+  isExist <- P.checkIfExist sId (fromJust zkHandle)
+  unless isExist $ do
+    Log.w . Log.buildString $ "Can not subscribe an unexisted subscription, subscriptionId = " <> show sId
+    throwIO SubscriptionIdNotFound
+
+  modifyMVar subscribeRuntimeInfo $ \store ->
+    if HM.member subscribeRequestSubscriptionId store
+       then do
+         -- if the subscription has a reader bind to stream, just return
+         Log.d . Log.buildString $ "subscribe subscription " <> show sId <> " success"
+         resp <- returnResp $ SubscribeResponse subscribeRequestSubscriptionId
+         return (store, resp)
+       else do
+         sub <- P.getSubscription sId (fromJust zkHandle)
+         doSubscribe sub store
   where
-    getSubscriptionOffset :: SubscriptionId -> IO SubscriptionOffset
-    getSubscriptionOffset subscriptionId =
-      withMVar
-        subscriptions
-        (
-          \store -> do
-            let Subscription{..} = fromJust $ HM.lookup subscriptionId store
-            return $ fromJust subscriptionOffset
-        )
+    sId = TL.toStrict subscribeRequestSubscriptionId
 
-    getStartOffset:: SubscriptionOffset -> RecordId
-    getStartOffset SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
-      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
-      SubscriptionOffsetOffsetRecordOffset r  -> r
+    doSubscribe (Just (streamName, rid)) store = do
+      -- if the underlying stream does not exist, the getUnderlyingLogId method will throw an exception,
+      -- and all follows steps will not be executed.
+      Log.d $ "get subscription info from zk, streamName: " <> Log.buildText streamName <> " offset: " <> Log.buildString (show rid)
+      logId <- S.getUnderlyingLogId scLDClient (transToStreamName streamName)
+      ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes sId) S.checkpointStoreLogID 5000 1 Nothing 10
+      Log.d . Log.buildString $ "create ld reader to stream " <> show streamName
+      (isUpdated, newRecordId@RecordId{..}) <- checkLSN rid logId
+      S.ckpReaderStartReading ldreader logId recordIdBatchId S.LSN_MAX
+      when isUpdated $
+        P.updateSubscriptionOffset sId newRecordId (fromJust zkHandle)
+      Log.d $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt recordIdBatchId
+      -- insert to runtime info
+      let info = SubscribeRuntimeInfo
+                  { sriLdreader = ldreader
+                  , sriStreamName = streamName
+                  , sriWindowLowerBound = newRecordId
+                  , sriWindowUpperBound = maxBound
+                  , sriAckedRanges = Map.empty
+                  , sriBatchNumMap = Map.empty
+                  }
+      mvar <- newMVar info
+      let newStore = HM.insert subscribeRequestSubscriptionId mvar store
+      resp <- returnResp (SubscribeResponse subscribeRequestSubscriptionId)
+      return (newStore, resp)
+    doSubscribe Nothing store = do
+      Log.w . Log.buildString $ "can not get subscription " <> show sId <> " from zk."
+      resErr <- returnErrResp StatusInternal $ StatusDetails "Can not get subscription from zk"
+      return (store, resErr)
 
-    getStartLSN :: SubscriptionOffset -> S.LSN
-    getStartLSN SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
-      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
-      SubscriptionOffsetOffsetRecordOffset RecordId{..} -> recordIdBatchId
-
-getStreamName :: SubscriptionId -> MVar (HM.HashMap SubscriptionId Subscription)-> IO TL.Text
-getStreamName subscriptionId mStore =
-  withMVar
-    mStore
-    (
-      \store -> do
-        let Subscription{..} = fromJust $ HM.lookup subscriptionId store
-        return subscriptionStreamName
-    )
+    checkLSN rId@RecordId{..} logId = do
+      if recordIdBatchId == S.LSN_MAX
+         then do
+           lsn <- (+1) <$> S.getTailLSN scLDClient logId
+           return (True, rId {recordIdBatchId = lsn})
+         else return (False, rId)
 
 deleteSubscriptionHandler
   :: ServerContext
@@ -535,41 +543,28 @@ deleteSubscriptionHandler
 deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
 
-  mSubscription <- modifyMVar
-    subscriptions
-    (
-      \store -> do
-        case HM.lookup deleteSubscriptionRequestSubscriptionId store of
-          Just sub -> do
-            let newStore = HM.delete deleteSubscriptionRequestSubscriptionId store
-            return (newStore, Just sub)
-          Nothing -> return (store, Nothing)
-    )
+  let sid = TL.toStrict deleteSubscriptionRequestSubscriptionId
+  P.removeSubscription sid (fromJust zkHandle)
 
-  case mSubscription of
-    Just Subscription{..} -> do
-      modifyMVar_
-        subscribeRuntimeInfo
-        (
-          \store ->
-            case HM.lookup deleteSubscriptionRequestSubscriptionId store of
-              Just infoMVar -> do
-                withMVar
-                  infoMVar
-                  (
-                    \SubscribeRuntimeInfo{..} -> do
-                      -- stop ldreader
-                      let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-                      exists <- S.doesStreamExists scLDClient streamName
-                      when exists $ do
-                        logId <- S.getUnderlyingLogId scLDClient streamName
-                        ckpReaderStopReading sriLdreader logId
-                  )
-                return $ HM.delete deleteSubscriptionRequestSubscriptionId store
-              Nothing -> return store
-        )
-    Nothing -> return ()
-
+  modifyMVar_ subscribeRuntimeInfo $ \store -> do
+    case HM.lookup deleteSubscriptionRequestSubscriptionId store of
+      Just infoMVar -> do
+        withMVar infoMVar
+          (
+            \SubscribeRuntimeInfo{..} -> do
+              -- stop ldreader
+              let streamName = transToStreamName sriStreamName
+              exists <- S.doesStreamExists scLDClient streamName
+              if exists
+                 then do
+                   logId <- S.getUnderlyingLogId scLDClient streamName
+                   ckpReaderStopReading sriLdreader logId
+                 else do
+                   Log.w . Log.buildString $ "underlying stream " <> show sriStreamName <> " has been deleted before delete subscription"
+          )
+        return $ HM.delete deleteSubscriptionRequestSubscriptionId store
+      Nothing -> do
+        return store
   returnResp Empty
 
 checkSubscriptionExistHandler
@@ -578,12 +573,9 @@ checkSubscriptionExistHandler
   -> IO (ServerResponse 'Normal CheckSubscriptionExistResponse)
 checkSubscriptionExistHandler ServerContext{..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest{..})= do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
-
-  withMVar
-    subscriptions
-    (
-        returnResp . CheckSubscriptionExistResponse . HM.member checkSubscriptionExistRequestSubscriptionId
-    )
+  let sid = TL.toStrict checkSubscriptionExistRequestSubscriptionId
+  res <- P.checkIfExist sid (fromJust zkHandle)
+  returnResp . CheckSubscriptionExistResponse $ res
 
 listSubscriptionsHandler
   :: ServerContext
@@ -591,12 +583,9 @@ listSubscriptionsHandler
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsHandler ServerContext{..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
-
-  withMVar
-    subscriptions
-    (
-        returnResp . ListSubscriptionsResponse . HM.foldl' V.snoc V.empty
-    )
+  res <- ListSubscriptionsResponse . V.fromList <$> P.listSubscriptions (fromJust zkHandle)
+  Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
+  returnResp res
 
 --------------------------------------------------------------------------------
 -- Comsumer
@@ -617,16 +606,11 @@ fetchHandler
 fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{..}) = defaultExceptionHandle $  do
   Log.debug $ "Receive fetch request: " <> Log.buildString (show req)
 
-  mRes <- withMVar
-    subscribeRuntimeInfo
-    (
-        return . HM.lookup fetchRequestSubscriptionId
-    )
+  mRes <- withMVar subscribeRuntimeInfo $ return . HM.lookup fetchRequestSubscriptionId
 
   case mRes of
     Just infoMVar ->
-      modifyMVar
-        infoMVar
+      modifyMVar infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
             void $ S.ckpReaderSetTimeout sriLdreader (fromIntegral fetchRequestTimeout)
@@ -652,7 +636,8 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{.
                 resp <- returnResp $ FetchResponse (fetchResult groups)
                 return (newInfo, resp)
         )
-    Nothing ->
+    Nothing -> do
+      Log.w . Log.buildString $ "fetch request error, subscriptionId " <> show fetchRequestSubscriptionId <> " not exist."
       returnErrResp StatusInternal (StatusDetails "subscription do not exist")
   where
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
@@ -670,27 +655,24 @@ ackHandler
 ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeRequest{..}) = defaultExceptionHandle $  do
   Log.debug $ "Receive ack request: " <> Log.buildString (show req)
 
-  mRes <- withMVar
-    subscribeRuntimeInfo
-    (
-        return . HM.lookup acknowledgeRequestSubscriptionId
-    )
+  mRes <- withMVar subscribeRuntimeInfo $ return . HM.lookup acknowledgeRequestSubscriptionId
 
   case mRes of
     Just infoMVar ->
-      modifyMVar
-        infoMVar
+      modifyMVar infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges acknowledgeRequestAckIds
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
-                streamName <- getStreamName acknowledgeRequestSubscriptionId subscriptions
-                commitCheckpoint scLDClient sriLdreader streamName checkpointRecordId
+                Log.d . Log.buildString $ "update ackedRanges " <> show newAckedRanges <> " update window lower bound to " <> show newLowerBound
+                commitCheckpoint scLDClient sriLdreader (TL.fromStrict sriStreamName) checkpointRecordId
+                Log.d . Log.buildString $ "commit checkpoint " <> show checkpointRecordId <> " to stream " <> show sriStreamName
                 let newInfo = info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
                 resp <- returnResp Empty
                 return (newInfo, resp)
               Nothing -> do
+                Log.d . Log.buildString $ "update ackedRanges " <> show newAckedRanges
                 let newInfo = info {sriAckedRanges = newAckedRanges}
                 resp <- returnResp Empty
                 return (newInfo, resp)
@@ -700,7 +682,7 @@ ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeReque
     tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
       let (_, RecordIdRange minStartRecordId minEndRecordId) = Map.findMin ackedRanges
       in
-          if minStartRecordId == lowerBoundRecordId
+        if minStartRecordId == lowerBoundRecordId
           then
             Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
           else

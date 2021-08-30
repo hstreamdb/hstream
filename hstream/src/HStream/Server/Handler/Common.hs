@@ -107,6 +107,7 @@ data RecordIdRange = RecordIdRange
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
     sriLdreader         :: HS.LDSyncCkpReader
+  , sriStreamName       :: T.Text
   , sriWindowLowerBound :: RecordId
   , sriWindowUpperBound :: RecordId
   , sriAckedRanges      :: Map.Map RecordId RecordIdRange
