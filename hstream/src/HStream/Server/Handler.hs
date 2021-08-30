@@ -140,6 +140,7 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
     , hstreamApiFetch        = fetchHandler serverContext
     , hstreamApiSendConsumerHeartbeat = consumerHeartbeatHandler serverContext
     , hstreamApiAcknowledge = ackHandler serverContext
+    , hstreamApiStreamingFetch = streamingFetchHandler serverContext
 
     , hstreamApiExecuteQuery     = executeQueryHandler serverContext
     , hstreamApiExecutePushQuery = executePushQueryHandler serverContext
