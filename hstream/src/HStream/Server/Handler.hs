@@ -725,9 +725,10 @@ streamingFetchHandler
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
-  handleRequest
+
+  handleRequest True
   where
-    handleRequest = do
+    handleRequest isFirst = do
       eRes <- streamRecv
       case eRes of
         Left grpcIOError -> do
@@ -737,62 +738,79 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
         Right ma ->
           case ma of
             Just req@StreamingFetchRequest{..} -> do
-              -- TODO: check subscription whether exsits first
-
-              isInited <- withMVar
-                subscribeRuntimeInfo
-                (
-                  return . (HM.member streamingFetchRequestSubscriptionId)
-                )
-
-              -- avoid nested locks for preventing deadlock
-              mRes <-
-                if isInited
-                then return Nothing
-                else do
-                  withMVar
-                    subscriptions
-                    (
-                      \store ->
-                        case HM.lookup streamingFetchRequestSubscriptionId store of
-                          Just Subscription{..} ->
-                            return $ Just (subscriptionStreamName, getStartRecordId $ fromJust subscriptionOffset)
-                    )
-
-              case mRes of
-                Nothing -> return ()
-                Just (streamName, startRecordId) ->
-                  modifyMVar_
-                    subscribeRuntimeInfo
-                    (
-                      \store ->
-                        case HM.lookup streamingFetchRequestSubscriptionId store of
-                          Just _ -> return store
-                          Nothing -> do
-                            newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId streamName startRecordId streamSend
-                            return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                    )
-
-              infoMVar <-
-                withMVar
+              if isFirst
+              then do
+                -- TODO: check subscription whether exsits first
+                --
+                isInited <- withMVar
                   subscribeRuntimeInfo
                   (
-                    -- At this point, the corresponding subscribeRuntimeInfo must be
-                    -- present, unless the subscription has been removed
-                    -- forcely, which we will handle later(TODO).
-                    return . fromJust . (HM.lookup streamingFetchRequestSubscriptionId)
+                    return . (HM.member streamingFetchRequestSubscriptionId)
                   )
 
-              -- TODO: handle ack
-              -- modifyMVar_
-              --   infoMVar
-              --   (
-              --     \info -> do
-              --       handleAck
-              --       return newInfo
-              --   )
+                -- avoid nested locks for preventing deadlock
+                mRes <-
+                  if isInited
+                  then return Nothing
+                  else do
+                    withMVar
+                      subscriptions
+                      (
+                        \store ->
+                          case HM.lookup streamingFetchRequestSubscriptionId store of
+                            Just Subscription{..} ->
+                              return $ Just (subscriptionStreamName, getStartRecordId $ fromJust subscriptionOffset)
+                      )
 
-              handleRequest
+                case mRes of
+                  Nothing -> do
+                    infoMVar <- withMVar
+                      subscribeRuntimeInfo
+                      (
+                        return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                      )
+
+                    modifyMVar_
+                      infoMVar
+                      (
+                        \info@SubscribeRuntimeInfo{..} -> do
+                          let newSends = V.snoc sriStreamSends streamSend
+                          return $ info {sriStreamSends = newSends}
+                      )
+
+                  Just (streamName, startRecordId) ->
+                    modifyMVar_
+                      subscribeRuntimeInfo
+                      (
+                        \store ->
+                          case HM.lookup streamingFetchRequestSubscriptionId store of
+                            Just _ -> return store
+                            Nothing -> do
+                              newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId streamName startRecordId streamSend
+                              return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                      )
+              else do
+                -- TODO: handle ack
+                return ()
+                -- infoMVar <-
+                --   withMVar
+                --     subscribeRuntimeInfo
+                --     (
+                --       -- At this point, the corresponding subscribeRuntimeInfo must be
+                --       -- present, unless the subscription has been removed
+                --       -- forcely, which we will handle later(TODO).
+                --       return . fromJust . (HM.lookup streamingFetchRequestSubscriptionId)
+                --     )
+
+                -- modifyMVar_
+                --   infoMVar
+                --   (
+                --     \info -> do
+                --       handleAck
+                --       return newInfo
+                --   )
+
+              handleRequest False
 
             Nothing ->
               -- This means that the consumer finished sending acks actively,
@@ -800,7 +818,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
               return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
 
     -- return: IO (MVar SubscribeRuntimeInfo)
-    initSubscribe ldclient subscriptionId streamName startRecordId streamSend = do
+    initSubscribe ldclient subscriptionId streamName startRecordId sSend = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
         S.newLDRsmCkpReader
@@ -829,7 +847,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                 , sriWindowUpperBound = maxBound
                 , sriAckedRanges = Map.empty
                 , sriBatchNumMap = Map.empty
-                , sriStreamSends = V.singleton streamSend
+                , sriStreamSends = V.singleton sSend
                 }
 
       infoMVar <- newMVar info
