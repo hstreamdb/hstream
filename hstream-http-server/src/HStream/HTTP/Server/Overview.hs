@@ -38,14 +38,12 @@ type OverviewAPI =
 
 getOverviewHandler :: Client -> Handler OverviewBO
 getOverviewHandler hClient = do
-  overview <- do
-    streamCnt <- length <$> listStreamsHandler hClient
-    queryCnt <- length <$> listQueriesHandler hClient
-    viewCnt <- length <$> listViewsHandler hClient
+    streamCnt    <- length <$> listStreamsHandler hClient
+    queryCnt     <- length <$> listQueriesHandler hClient
+    viewCnt      <- length <$> listViewsHandler hClient
     connectorCnt <- length <$> listConnectorsHandler hClient
-    nodeCnt <- length <$> listStoreNodesHandler hClient
+    nodeCnt      <- length <$> listStoreNodesHandler hClient
     return $ OverviewBO streamCnt queryCnt viewCnt connectorCnt nodeCnt
-  return overview
 
 overviewServer :: Client -> Server OverviewAPI
 overviewServer = getOverviewHandler

@@ -16,6 +16,7 @@ import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Int                         (Int64)
 import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (isJust)
 import           Data.Swagger                     (ToSchema)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -23,11 +24,14 @@ import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Client     (Client)
+import           Proto3.Suite.Class               (def)
 import           Servant                          (Capture, Delete, Get, JSON,
                                                    Post, ReqBody, type (:>),
                                                    (:<|>) (..))
 import           Servant.Server                   (Handler, Server)
 
+import           HStream.HTTP.Server.Utils        (getServerResp,
+                                                   mkClientNormalRequest)
 import           HStream.Server.HStreamApi
 import           HStream.Utils                    (TaskStatus (..))
 
@@ -52,16 +56,21 @@ type QueriesAPI =
   :<|> "queries" :> Capture "name" String :> Get '[JSON] (Maybe QueryBO)
 
 queryToQueryBO :: Query -> QueryBO
-queryToQueryBO (Query id' status createdTime queryText) =
-  QueryBO (TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict queryText)
+queryToQueryBO Query{..} = QueryBO
+  { id = TL.toStrict queryId
+  , status = Just . TaskStatus $ queryStatus
+  , createdTime = Just queryCreatedTime
+  , queryText = TL.toStrict queryQueryText}
 
+-- FIXME: This is broken
 createQueryHandler :: Client -> QueryBO -> Handler QueryBO
 createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let createQueryRequest = CreateQueryRequest { createQueryRequestId = TL.pack $ T.unpack qid
-                                              , createQueryRequestQueryText = TL.pack $ T.unpack queryText
-                                              }
-  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap $ Map.empty))
+  let createQueryRequest = def
+        { createQueryRequestId = TL.fromStrict qid
+        , createQueryRequestQueryText = TL.fromStrict queryText
+        }
+  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
   case resp of
     -- TODO: should return querybo; but we need to update hstream api first
     ClientNormalResponse _ _meta1 _meta2 _status _details -> return $ QueryBO qid Nothing Nothing queryText
@@ -72,72 +81,44 @@ createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
 listQueriesHandler :: Client -> Handler [QueryBO]
 listQueriesHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let listQueriesRequest = ListQueriesRequest {}
-  resp <- hstreamApiListQueries (ClientNormalRequest listQueriesRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x@ListQueriesResponse{} _meta1 _meta2 _status _details -> do
-      case x of
-        ListQueriesResponse {listQueriesResponseQueries = queries} -> do
-          return $ V.toList $ V.map queryToQueryBO queries
-        _ -> return []
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return []
+  resp <- hstreamApiListQueries (mkClientNormalRequest def)
+  maybe [] (V.toList . V.map queryToQueryBO . listQueriesResponseQueries) <$> getServerResp resp
 
 deleteQueryHandler :: Client -> String -> Handler Bool
 deleteQueryHandler hClient qid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let deleteQueryRequest = DeleteQueryRequest { deleteQueryRequestId = TL.pack qid }
-  resp <- hstreamApiDeleteQuery (ClientNormalRequest deleteQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
-    _ -> return False
+  resp <- hstreamApiDeleteQuery
+    (mkClientNormalRequest def { deleteQueryRequestId = TL.pack qid })
+  isJust <$> getServerResp resp
 
 getQueryHandler :: Client -> String -> Handler (Maybe QueryBO)
 getQueryHandler hClient qid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let getQueryRequest = GetQueryRequest { getQueryRequestId = TL.pack qid }
-  resp <- hstreamApiGetQuery (ClientNormalRequest getQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ queryToQueryBO x
-    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return Nothing
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+  resp <- hstreamApiGetQuery
+    (mkClientNormalRequest def { getQueryRequestId = TL.pack qid })
+  (queryToQueryBO <$>) <$> getServerResp resp
 
 restartQueryHandler :: Client -> String -> Handler Bool
 restartQueryHandler hClient qid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let restartQueryRequest = RestartQueryRequest { restartQueryRequestId = TL.pack qid }
-  resp <- hstreamApiRestartQuery (ClientNormalRequest restartQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return False
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
+  resp <- hstreamApiRestartQuery
+    (mkClientNormalRequest def { restartQueryRequestId = TL.pack qid })
+  isJust <$> getServerResp resp
 
 cancelQueryHandler :: Client -> String -> Handler Bool
 cancelQueryHandler hClient qid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let cancelQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton $ TL.pack qid, terminateQueriesRequestAll = False }
-  resp <- hstreamApiTerminateQueries (ClientNormalRequest cancelQueryRequest 100 (MetadataMap $ Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse x _meta1 _meta2 StatusInternal _details -> return False
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
+  resp <- hstreamApiTerminateQueries
+    (mkClientNormalRequest def
+    { terminateQueriesRequestQueryId = V.singleton $ TL.pack qid
+    , terminateQueriesRequestAll = False })
+  isJust <$> getServerResp resp
 
 queryServer :: Client -> Server QueriesAPI
 queryServer hClient =
-  (listQueriesHandler hClient)
-  :<|> (restartQueryHandler hClient)
-  :<|> (cancelQueryHandler hClient)
-  :<|> (createQueryHandler hClient)
-  :<|> (deleteQueryHandler hClient)
-  :<|> (getQueryHandler hClient)
+  listQueriesHandler hClient
+  :<|> restartQueryHandler hClient
+  :<|> cancelQueryHandler hClient
+  :<|> createQueryHandler hClient
+  :<|> deleteQueryHandler hClient
+  :<|> getQueryHandler hClient

@@ -12,24 +12,25 @@ module HStream.HTTP.Server.Connector (
   ConnectorsAPI, connectorServer, listConnectorsHandler, ConnectorBO(..)
 ) where
 
-import           Control.Monad.IO.Class           (liftIO)
-import           Data.Aeson                       (FromJSON, ToJSON)
-import           Data.Int                         (Int64)
-import qualified Data.Map.Strict                  as Map
-import           Data.Swagger                     (ToSchema)
-import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
-import qualified Data.Vector                      as V
-import           GHC.Generics                     (Generic)
-import           Network.GRPC.HighLevel.Generated
-import           Network.GRPC.LowLevel.Client     (Client)
-import           Servant                          (Capture, Delete, Get, JSON,
-                                                   Post, ReqBody, type (:>),
-                                                   (:<|>) (..))
-import           Servant.Server                   (Handler, Server)
+import           Control.Monad.IO.Class       (liftIO)
+import           Data.Aeson                   (FromJSON, ToJSON)
+import           Data.Int                     (Int64)
+import           Data.Maybe                   (isJust)
+import           Data.Swagger                 (ToSchema)
+import qualified Data.Text                    as T
+import qualified Data.Text.Lazy               as TL
+import qualified Data.Vector                  as V
+import           GHC.Generics                 (Generic)
+import           Network.GRPC.LowLevel.Client (Client)
+import           Proto3.Suite                 (def)
+import           Servant                      (Capture, Delete, Get, JSON, Post,
+                                               ReqBody, type (:>), (:<|>) (..))
+import           Servant.Server               (Handler, Server)
 
+import           HStream.HTTP.Server.Utils    (getServerResp,
+                                               mkClientNormalRequest)
 import           HStream.Server.HStreamApi
-import           HStream.Utils                    (TaskStatus (..))
+import           HStream.Utils                (TaskStatus (..))
 
 -- BO is short for Business Object
 data ConnectorBO = ConnectorBO
@@ -52,81 +53,55 @@ type ConnectorsAPI =
   :<|> "connectors" :> Capture "name" String :> Get '[JSON] (Maybe ConnectorBO)
 
 connectorToConnectorBO :: Connector -> ConnectorBO
-connectorToConnectorBO (Connector id' status createdTime queryText) =
-  ConnectorBO (Just $ TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict queryText)
+connectorToConnectorBO Connector{..} = ConnectorBO
+  { id = Just $ TL.toStrict connectorId
+  , status = Just (TaskStatus connectorStatus)
+  , createdTime = Just connectorCreatedTime
+  , sql = TL.toStrict connectorSql }
 
 createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
 createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let createSinkConnectorRequest = CreateSinkConnectorRequest { createSinkConnectorRequestSql = TL.pack $ T.unpack sql }
-  resp <- hstreamApiCreateSinkConnector (ClientNormalRequest createSinkConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    -- TODO: should return connectorBO; but we need to update hstream api first
-    ClientNormalResponse _ _meta1 _meta2 _status _details -> return $ ConnectorBO Nothing Nothing Nothing sql
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return $ ConnectorBO Nothing Nothing Nothing sql
+  resp <- hstreamApiCreateSinkConnector
+    (mkClientNormalRequest def { createSinkConnectorRequestSql = TL.fromStrict sql } )
+  maybe (ConnectorBO Nothing Nothing Nothing sql) connectorToConnectorBO <$> getServerResp resp
 
 listConnectorsHandler :: Client -> Handler [ConnectorBO]
 listConnectorsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let listConnectorRequest = ListConnectorsRequest {}
-  resp <- hstreamApiListConnectors (ClientNormalRequest listConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse ListConnectorsResponse{..} _meta1 _meta2 _status _details -> do
-          return $ V.toList $ V.map connectorToConnectorBO listConnectorsResponseConnectors
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return []
+  resp <- hstreamApiListConnectors
+    (mkClientNormalRequest ListConnectorsRequest)
+  maybe []
+    (V.toList . V.map connectorToConnectorBO . listConnectorsResponseConnectors)
+    <$> getServerResp resp
 
 deleteConnectorHandler :: Client -> String -> Handler Bool
 deleteConnectorHandler hClient cid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let deleteConnectorRequest = DeleteConnectorRequest { deleteConnectorRequestId = TL.pack cid }
-  resp <- hstreamApiDeleteConnector (ClientNormalRequest deleteConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _x _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse _x _meta1 _meta2 StatusInternal _details -> return True
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
-    _ -> return False
+  resp <- hstreamApiDeleteConnector
+    (mkClientNormalRequest def { deleteConnectorRequestId = TL.pack cid } )
+  isJust <$> getServerResp resp
 
 getConnectorHandler :: Client -> String -> Handler (Maybe ConnectorBO)
 getConnectorHandler hClient cid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let getConnectorRequest = GetConnectorRequest { getConnectorRequestId = TL.pack cid }
-  resp <- hstreamApiGetConnector (ClientNormalRequest getConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return $ Just $ connectorToConnectorBO x
-    ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return Nothing
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return Nothing
+  resp <- hstreamApiGetConnector
+    (mkClientNormalRequest def { getConnectorRequestId = TL.pack cid })
+  (connectorToConnectorBO <$>) <$> getServerResp resp
 
 restartConnectorHandler :: Client -> String -> Handler Bool
 restartConnectorHandler hClient cid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let restartConnectorRequest = RestartConnectorRequest { restartConnectorRequestId = TL.pack cid }
-  resp <- hstreamApiRestartConnector (ClientNormalRequest restartConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _x _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse _ _meta1 _meta2 StatusInternal _details -> return False
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
+  resp <- hstreamApiRestartConnector
+    (mkClientNormalRequest def { restartConnectorRequestId = TL.pack cid })
+  isJust <$> getServerResp resp
 
 terminateConnectorHandler :: Client -> String -> Handler Bool
 terminateConnectorHandler hClient cid = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
-  let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestConnectorId = TL.pack cid }
-  resp <- hstreamApiTerminateConnector (ClientNormalRequest terminateConnectorRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse _x _meta1 _meta2 StatusOk _details -> return True
-    ClientNormalResponse _x _meta1 _meta2 StatusInternal _details -> return False
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
-      return False
+  resp <- hstreamApiTerminateConnector
+    (mkClientNormalRequest def { terminateConnectorRequestConnectorId = TL.pack cid })
+  isJust <$> getServerResp resp
 
 connectorServer :: Client -> Server ConnectorsAPI
 connectorServer hClient =
