@@ -11,8 +11,6 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Concurrent.STM
-import           Control.Concurrent.Suspend            (msDelay)
 import           Control.Exception                     (handle, throwIO)
 import           Control.Monad                         (forM, join, unless,
                                                         void, when)
