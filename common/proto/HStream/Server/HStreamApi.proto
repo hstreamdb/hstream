@@ -39,6 +39,8 @@ service HStreamApi {
   rpc Fetch(FetchRequest) returns (FetchResponse) {}
   rpc Acknowledge(AcknowledgeRequest) returns (google.protobuf.Empty) {}
 
+  rpc StreamingFetch(stream StreamingFetchRequest) returns (stream StreamingFetchResponse) {}
+
   // ---------------------------------------------------------------------------
   // Developing APIs
   // ---------------------------------------------------------------------------
@@ -182,6 +184,16 @@ message FetchRequest {
 }
 
 message FetchResponse {
+  repeated ReceivedRecord receivedRecords = 1;
+}
+
+message StreamingFetchRequest {
+  string subscriptionId = 1;
+
+  repeated RecordId ack_ids = 2;
+}
+
+message StreamingFetchResponse {
   repeated ReceivedRecord receivedRecords = 1;
 }
 
