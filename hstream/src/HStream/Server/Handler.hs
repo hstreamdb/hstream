@@ -880,6 +880,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
     -- round-robin dispatch
     dispatchRecords records streamSends = do
       let slen = V.length streamSends
+      Log.d $ Log.buildString "ready to dispatchRecords to " <> Log.buildInt slen <> " consumers"
       let initVec = V.replicate slen V.empty
       let recordGroups =
             V.ifoldl'
@@ -894,9 +895,11 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
               initVec
               records
 
+
       V.imapM_
         (
           \ i group -> do
+            Log.d $ Log.buildString "dispatch " <> Log.buildInt (V.length group) <>  " records to " <> "consumer " <> Log.buildInt i
             let ss = streamSends V.! i
             ss $ StreamingFetchResponse group
         )
