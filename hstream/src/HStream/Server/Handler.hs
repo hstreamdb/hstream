@@ -14,7 +14,8 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Suspend            (msDelay)
 import           Control.Exception                     (handle, throwIO)
-import           Control.Monad                         (forM, join, void, when)
+import           Control.Monad                         (forM, join, unless,
+                                                        void, when)
 import qualified Data.Aeson                            as Aeson
 import           Data.Bifunctor
 import           Data.ByteString                       (ByteString)
@@ -837,6 +838,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
       return infoMVar
 
     readAndDispatchRecords runtimeInfoMVar = do
+      Log.d $ Log.buildString "enter readAndDispatchRecords"
       -- register for next readAndDispatch
       _ <- registerLowResTimer 1
         (
@@ -867,7 +869,8 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                 let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
                 let newInfo = info {sriBatchNumMap = newBatchNumMap, sriWindowUpperBound = maxRecordId}
                 -- dispatch records to consumers
-                dispatchRecords (fetchResult groups) sriStreamSends
+                unless (null dataRecords) $
+                  dispatchRecords (fetchResult groups) sriStreamSends
                 -- register task for ack timeout resend(TODO)
 
                 return newInfo
