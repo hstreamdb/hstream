@@ -96,7 +96,6 @@ handlers
 handlers ldclient headerConfig repFactor zkHandle timeout compression = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
-  subscriptions <- newMVar HM.empty
   subscribeRuntimeInfo <- newMVar HM.empty
   let serverContext = ServerContext {
         scLDClient               = ldclient
@@ -104,7 +103,6 @@ handlers ldclient headerConfig repFactor zkHandle timeout compression = do
       , zkHandle                 = zkHandle
       , runningQueries           = runningQs
       , runningConnectors        = runningCs
-      , subscriptions            = subscriptions
       , subscribeRuntimeInfo     = subscribeRuntimeInfo
       , cmpStrategy              = compression
       , headerConfig             = headerConfig
@@ -649,58 +647,42 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming  StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv streamSend) = do
+streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
   handleRequest True
   where
+    handler = fromJust zkHandle
     handleRequest isFirst = do
       eRes <- streamRecv
       case eRes of
-        Left grpcIOError -> do
-          Log.fatal "streamRecv error"
+        Left (err :: grpcIOError) -> do
+          Log.fatal . Log.buildString $ "streamRecv error" <> show err
           -- fixme here
           return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
         Right ma ->
           case ma of
-            Just req@StreamingFetchRequest{..} -> do
+            Just StreamingFetchRequest{..} -> do
               when isFirst $ do
                 -- TODO: check subscription whether exsits first
                 --
-                isInited <- withMVar
-                  subscribeRuntimeInfo
-                  (
-                    return . HM.member streamingFetchRequestSubscriptionId
-                  )
+                isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
 
                 -- avoid nested locks for preventing deadlock
                 mRes <-
                   if isInited
                   then return Nothing
-                  else do
-                    withMVar
-                      subscriptions
-                      (
-                        \store ->
-                          case HM.lookup streamingFetchRequestSubscriptionId store of
-                            Just Subscription{..} ->
-                              return $ Just (subscriptionStreamName, getStartRecordId $ fromJust subscriptionOffset)
-                          -- At this point, the corresponding subscribeRuntimeInfo must be
-                          -- present, unless the subscription has been removed
-                          -- forcely, which we will handle later(TODO).
-                            Nothing -> error "should not reach here"
-                      )
+                  else
+                    -- At this point, the corresponding subscribeRuntimeInfo must be
+                    -- present, unless the subscription has been removed
+                    -- forcely, which we will handle later(TODO).
+                    P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
 
                 case mRes of
                   Nothing -> do
-                    infoMVar <- withMVar
-                      subscribeRuntimeInfo
-                      (
-                        return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
-                      )
+                    infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
 
-                    modifyMVar_
-                      infoMVar
+                    modifyMVar_ infoMVar
                       (
                         \info@SubscribeRuntimeInfo{..} -> do
                           let newSends = V.snoc sriStreamSends streamSend
@@ -708,21 +690,19 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                       )
 
                   Just (streamName, startRecordId) ->
-                    modifyMVar_
-                      subscribeRuntimeInfo
+                    modifyMVar_ subscribeRuntimeInfo
                       (
                         \store ->
                           case HM.lookup streamingFetchRequestSubscriptionId store of
                             Just _ -> return store
                             Nothing -> do
-                              newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId streamName startRecordId streamSend
+                              newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId (TL.fromStrict streamName) startRecordId streamSend
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
 
               Log.debug $ "ready to handle acks, receviced " <> Log.buildInt (V.length streamingFetchRequestAckIds) <> " acks"
               infoMVar <-
-                withMVar
-                  subscribeRuntimeInfo
+                withMVar subscribeRuntimeInfo
                   (
                       -- At this point, the corresponding subscribeRuntimeInfo must be
                       -- present, unless the subscription has been removed
@@ -731,26 +711,18 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                   )
 
               -- avoid nested locks for preventing deadlock
-              streamName  <-
-                withMVar
-                  subscriptions
-                  (
-                    \store -> do
-                      -- At this point, the corresponding subscribeRuntimeInfo must be
-                      -- present, unless the subscription has been removed
-                      -- forcely, which we will handle later(TODO).
-                      let Subscription{..} = fromJust $ HM.lookup streamingFetchRequestSubscriptionId store
-                      return subscriptionStreamName
-                  )
+              -- At this point, the corresponding subscribeRuntimeInfo must be
+              -- present, unless the subscription has been removed
+              -- forcely, which we will handle later(TODO).
+              (streamName, _) <- fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
 
-              modifyMVar_
-                infoMVar
+              modifyMVar_ infoMVar
                 (
                   \info@SubscribeRuntimeInfo{..} -> do
                     let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
                     case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
                       Just (ranges, newLowerBound, checkpointRecordId) -> do
-                        commitCheckpoint scLDClient sriLdreader streamName checkpointRecordId
+                        commitCheckpoint scLDClient sriLdreader (TL.fromStrict streamName) checkpointRecordId
                         Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
                           <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
                         return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
@@ -797,6 +769,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                 , sriAckedRanges = Map.empty
                 , sriBatchNumMap = Map.empty
                 , sriStreamSends = V.singleton sSend
+                , sriStreamName = TL.toStrict streamName
                 }
 
       infoMVar <- newMVar info
@@ -871,11 +844,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
             ss $ StreamingFetchResponse group
         )
         recordGroups
-
-    getStartRecordId :: SubscriptionOffset -> RecordId
-    getStartRecordId SubscriptionOffset{..} = case fromJust subscriptionOffsetOffset of
-      SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
-      SubscriptionOffsetOffsetRecordOffset r  -> r
 
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
     fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
