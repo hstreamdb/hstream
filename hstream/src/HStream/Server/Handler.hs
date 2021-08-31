@@ -785,6 +785,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
 
+              Log.debug $ "ready to handle acks, receviced " <> Log.buildInt (V.length streamingFetchRequestAckIds) <> " acks"
               infoMVar <-
                 withMVar
                   subscribeRuntimeInfo
@@ -816,11 +817,14 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                     case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
                       Just (ranges, newLowerBound, checkpointRecordId) -> do
                         commitCheckpoint scLDClient sriLdreader streamName checkpointRecordId
+                        Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
+                          <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
                         return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
                       Nothing ->
                         return $ info {sriAckedRanges = newAckedRanges}
                 )
 
+              Log.debug "update acked ranges in window"
               handleRequest False
 
             Nothing ->
