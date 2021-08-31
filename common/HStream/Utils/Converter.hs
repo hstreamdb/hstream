@@ -20,6 +20,8 @@ module HStream.Utils.Converter
   , lazyByteStringToCBytes
   , cBytesToLazyByteString
   , cBytesToValue
+  , lazyByteStringToBytes
+  , bytesToLaztByteString
     --
   , stringToValue
   , listToStruct
@@ -151,3 +153,9 @@ structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.Val
 
 stringToValue :: String -> PB.Value
 stringToValue = PB.Value . Just . PB.ValueKindStringValue . TL.pack
+
+lazyByteStringToBytes :: BL.ByteString -> ZV.Bytes
+lazyByteStringToBytes = ZV.pack . BL.unpack
+
+bytesToLaztByteString :: ZV.Bytes -> BL.ByteString
+bytesToLaztByteString = BL.pack . ZV.unpack
