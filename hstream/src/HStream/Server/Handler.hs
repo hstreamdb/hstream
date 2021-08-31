@@ -11,85 +11,78 @@
 module HStream.Server.Handler where
 
 import           Control.Concurrent
-import           Control.Exception                     (handle, throwIO)
-import           Control.Monad                         (forM, join, unless,
-                                                        void, when)
-import qualified Data.Aeson                            as Aeson
+import           Control.Exception                 (handle, throwIO)
+import           Control.Monad                     (join, unless, when)
+import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor
-import           Data.ByteString                       (ByteString)
-import           Data.Function                         (on, (&))
+import           Data.ByteString                   (ByteString)
+import           Data.Function                     (on, (&))
 import           Data.Functor
-import qualified Data.HashMap.Strict                   as HM
-import           Data.IORef                            (atomicModifyIORef',
-                                                        readIORef)
-import           Data.Int                              (Int64)
-import qualified Data.List                             as L
-import qualified Data.Map.Strict                       as Map
-import           Data.Maybe                            (catMaybes, fromJust,
-                                                        isJust)
+import qualified Data.HashMap.Strict               as HM
+import           Data.IORef                        (atomicModifyIORef',
+                                                    readIORef)
+import           Data.Int                          (Int64)
+import qualified Data.List                         as L
+import qualified Data.Map.Strict                   as Map
+import           Data.Maybe                        (catMaybes, fromJust, isJust)
 import           Data.Scientific
-import           Data.String                           (fromString)
-import qualified Data.Text                             as T
-import qualified Data.Text.Lazy                        as TL
-import qualified Data.Time                             as Time
-import qualified Data.Vector                           as V
-import           Data.Word                             (Word32)
+import           Data.String                       (fromString)
+import qualified Data.Text                         as T
+import qualified Data.Text.Lazy                    as TL
+import qualified Data.Time                         as Time
+import qualified Data.Vector                       as V
+import           Data.Word                         (Word32)
 import           HStream.Connector.HStore
-import qualified HStream.Logger                        as Log
-import           HStream.Processing.Connector          (SourceConnector (..))
-import           HStream.Processing.Encoding           (Deserializer (..),
-                                                        Serde (..),
-                                                        Serializer (..))
-import           HStream.Processing.Processor          (getTaskName)
+import qualified HStream.Logger                    as Log
+import           HStream.Processing.Connector      (SourceConnector (..))
+import           HStream.Processing.Encoding       (Deserializer (..),
+                                                    Serde (..), Serializer (..))
+import           HStream.Processing.Processor      (getTaskName)
 import           HStream.Processing.Store
-import           HStream.Processing.Stream             (Materialized (..))
-import qualified HStream.Processing.Stream             as Processing
-import           HStream.Processing.Stream.TimeWindows (mkTimeWindow,
-                                                        mkTimeWindowKey)
-import           HStream.Processing.Type               hiding (StreamName,
-                                                        Timestamp)
-import           HStream.Processing.Util               (getCurrentTimestamp)
-import           HStream.SQL                           (parseAndRefine)
+import           HStream.Processing.Stream         (Materialized (..))
+import qualified HStream.Processing.Stream         as Processing
+import           HStream.Processing.Type           hiding (StreamName,
+                                                    Timestamp)
+import           HStream.SQL                       (parseAndRefine)
 import           HStream.SQL.AST
-import           HStream.SQL.Codegen                   hiding (StreamName)
-import           HStream.SQL.ExecPlan                  (genExecutionPlan)
+import           HStream.SQL.Codegen               hiding (StreamName)
+import           HStream.SQL.ExecPlan              (genExecutionPlan)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector      (createConnector,
-                                                        createSinkConnectorHandler,
-                                                        deleteConnectorHandler,
-                                                        getConnectorHandler,
-                                                        listConnectorsHandler,
-                                                        restartConnectorHandler,
-                                                        terminateConnectorHandler)
-import           HStream.Server.Handler.Query          (createQueryHandler,
-                                                        deleteQueryHandler,
-                                                        getQueryHandler,
-                                                        listQueriesHandler,
-                                                        restartQueryHandler,
-                                                        terminateQueriesHandler)
-import           HStream.Server.Handler.StoreAdmin     (getStoreNodeHandler,
-                                                        listStoreNodesHandler)
-import           HStream.Server.Handler.View           (createViewHandler,
-                                                        deleteViewHandler,
-                                                        getViewHandler,
-                                                        listViewsHandler)
-import qualified HStream.Server.Persistence            as P
-import           HStream.Store                         (ckpReaderStopReading)
-import qualified HStream.Store                         as S
-import qualified HStream.Store.Admin.API               as AA
-import           HStream.ThirdParty.Protobuf           as PB
+import           HStream.Server.Handler.Connector  (createConnector,
+                                                    createSinkConnectorHandler,
+                                                    deleteConnectorHandler,
+                                                    getConnectorHandler,
+                                                    listConnectorsHandler,
+                                                    restartConnectorHandler,
+                                                    terminateConnectorHandler)
+import           HStream.Server.Handler.Query      (createQueryHandler,
+                                                    deleteQueryHandler,
+                                                    getQueryHandler,
+                                                    listQueriesHandler,
+                                                    restartQueryHandler,
+                                                    terminateQueriesHandler)
+import           HStream.Server.Handler.StoreAdmin (getStoreNodeHandler,
+                                                    listStoreNodesHandler)
+import           HStream.Server.Handler.View       (createViewHandler,
+                                                    deleteViewHandler,
+                                                    getViewHandler,
+                                                    listViewsHandler)
+import qualified HStream.Server.Persistence        as P
+import           HStream.Store                     (ckpReaderStopReading)
+import qualified HStream.Store                     as S
+import qualified HStream.Store.Admin.API           as AA
+import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                          (Enumerated (..),
-                                                        HasDefault (def))
-import qualified Z.Data.CBytes                         as CB
-import           Z.Data.Vector                         (Bytes)
-import           Z.Foreign                             (toByteString)
-import           Z.IO.LowResTimer                      (registerLowResTimer)
-import qualified Z.IO.Time                             as ZT
-import           ZooKeeper.Types                       (ZHandle)
+import           Proto3.Suite                      (Enumerated (..),
+                                                    HasDefault (def))
+import qualified Z.Data.CBytes                     as CB
+import           Z.Data.Vector                     (Bytes)
+import           Z.Foreign                         (toByteString)
+import           Z.IO.LowResTimer                  (registerLowResTimer)
+import           ZooKeeper.Types                   (ZHandle)
 
 --------------------------------------------------------------------------------
 
@@ -497,6 +490,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
                     , sriWindowUpperBound = maxBound
                     , sriAckedRanges = Map.empty
                     , sriBatchNumMap = Map.empty
+                    , sriStreamSends = V.empty
                     }
           mvar <- newMVar info
           let newStore = HM.insert subscribeRequestSubscriptionId mvar store
@@ -736,14 +730,13 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
         Right ma ->
           case ma of
             Just req@StreamingFetchRequest{..} -> do
-              if isFirst
-              then do
+              when isFirst $ do
                 -- TODO: check subscription whether exsits first
                 --
                 isInited <- withMVar
                   subscribeRuntimeInfo
                   (
-                    return . (HM.member streamingFetchRequestSubscriptionId)
+                    return . HM.member streamingFetchRequestSubscriptionId
                   )
 
                 -- avoid nested locks for preventing deadlock
@@ -758,6 +751,10 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                           case HM.lookup streamingFetchRequestSubscriptionId store of
                             Just Subscription{..} ->
                               return $ Just (subscriptionStreamName, getStartRecordId $ fromJust subscriptionOffset)
+                          -- At this point, the corresponding subscribeRuntimeInfo must be
+                          -- present, unless the subscription has been removed
+                          -- forcely, which we will handle later(TODO).
+                            Nothing -> error "should not reach here"
                       )
 
                 case mRes of
@@ -787,26 +784,42 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
                               newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId streamName startRecordId streamSend
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
-              else do
-                -- TODO: handle ack
-                return ()
-                -- infoMVar <-
-                --   withMVar
-                --     subscribeRuntimeInfo
-                --     (
-                --       -- At this point, the corresponding subscribeRuntimeInfo must be
-                --       -- present, unless the subscription has been removed
-                --       -- forcely, which we will handle later(TODO).
-                --       return . fromJust . (HM.lookup streamingFetchRequestSubscriptionId)
-                --     )
 
-                -- modifyMVar_
-                --   infoMVar
-                --   (
-                --     \info -> do
-                --       handleAck
-                --       return newInfo
-                --   )
+              infoMVar <-
+                withMVar
+                  subscribeRuntimeInfo
+                  (
+                      -- At this point, the corresponding subscribeRuntimeInfo must be
+                      -- present, unless the subscription has been removed
+                      -- forcely, which we will handle later(TODO).
+                    return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                  )
+
+              -- avoid nested locks for preventing deadlock
+              streamName  <-
+                withMVar
+                  subscriptions
+                  (
+                    \store -> do
+                      -- At this point, the corresponding subscribeRuntimeInfo must be
+                      -- present, unless the subscription has been removed
+                      -- forcely, which we will handle later(TODO).
+                      let Subscription{..} = fromJust $ HM.lookup streamingFetchRequestSubscriptionId store
+                      return subscriptionStreamName
+                  )
+
+              modifyMVar_
+                infoMVar
+                (
+                  \info@SubscribeRuntimeInfo{..} -> do
+                    let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
+                    case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+                      Just (ranges, newLowerBound, checkpointRecordId) -> do
+                        commitCheckpoint scLDClient sriLdreader streamName checkpointRecordId
+                        return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+                      Nothing ->
+                        return $ info {sriAckedRanges = newAckedRanges}
+                )
 
               handleRequest False
 
@@ -828,7 +841,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
       let startLSN = recordIdBatchId startRecordId
       S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
       -- set ldCkpReader timeout to 0
-      S.ckpReaderSetTimeout ldCkpReader 0
+      _ <- S.ckpReaderSetTimeout ldCkpReader 0
       Log.d $ Log.buildString "created a ldCkpReader for subscription {" <> Log.buildLazyText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
 
       -- create a ldReader for rereading unacked records(TODO)
@@ -850,7 +863,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
 
       infoMVar <- newMVar info
       -- create a task for reading and dispatching records periodicly
-      forkIO $ readAndDispatchRecords infoMVar
+      _ <- forkIO $ readAndDispatchRecords infoMVar
       return infoMVar
 
     readAndDispatchRecords runtimeInfoMVar = do
@@ -933,6 +946,20 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest metadata streamRecv s
     mkReceivedRecord index record =
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
+
+    tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
+      let (_, RecordIdRange minStartRecordId minEndRecordId) = Map.findMin ackedRanges
+      in
+          if minStartRecordId == lowerBoundRecordId
+          then
+            Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
+          else
+            Nothing
+
+    commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
+    commitCheckpoint client reader streamName RecordId{..} = do
+      logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
+      S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 --------------------------------------------------------------------------------
 --
