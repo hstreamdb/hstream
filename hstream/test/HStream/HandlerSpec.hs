@@ -54,7 +54,7 @@ withRandomStreamNames = provideRunTest setup clean
       deleteStreamRequest_ api name `shouldReturn` PB.Empty
 
 streamSpec :: Spec
-streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
+streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ do
 
   aroundWith withRandomStreamName $ do
     it "test createStream request" $ \(api, name) -> do
@@ -72,7 +72,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       resp <- listStreamRequest api
       let sortedResp = Set.fromList $ V.toList resp
           sortedReqs = Set.fromList createStreamReqs
-      sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedResp)
+      sortedReqs `shouldBe` sortedResp
 
   aroundWith withRandomStreamName $ do
     it "test deleteStream request" $ \(api, name) -> do
@@ -166,7 +166,7 @@ withSubscriptions = provideRunTest setup clean
 
 subscribeSpec :: Spec
 subscribeSpec = aroundAll provideHstreamApi $
-  describe "SubscribeSpec" $ parallel $ do
+  describe "SubscribeSpec" $ do
 
   let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset
                . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
@@ -208,9 +208,9 @@ subscribeSpec = aroundAll provideHstreamApi $
           (fromJust subscriptionOffset) `shouldReturn` True
         subscribeRequest api subscriptionSubscriptionId `shouldReturn` True
       resp <- listSubscriptionRequest api
-      let respSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList resp
-          reqsSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList subscriptions
-      reqsSet `shouldSatisfy` (`Set.isSubsetOf` respSet)
+      let sortedResp = Set.fromList $ subscriptionSubscriptionId <$> V.toList resp
+          sortedReqs = Set.fromList $ subscriptionSubscriptionId <$> V.toList subscriptions
+      sortedReqs `shouldBe` sortedResp
 
   aroundWith withSubscription $ do
     it "test deleteSubscription request" $ \(api, (streamName, subscriptionName)) -> do
