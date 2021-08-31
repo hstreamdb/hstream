@@ -29,6 +29,7 @@ import           Servant.Server               (Handler, Server)
 
 import           HStream.HTTP.Server.Utils    (getServerResp,
                                                mkClientNormalRequest)
+import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 import           HStream.Utils                (TaskStatus (..))
 
@@ -56,6 +57,8 @@ viewToViewBO (View id' status createdTime sql _) =
 
 createViewHandler :: Client -> ViewBO -> Handler ViewBO
 createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
+  Log.debug $ "Send create view request to HStream server. "
+    <> "SQL Statement: " <> Log.buildText sql
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiCreateView
     (mkClientNormalRequest def {createViewRequestSql = TL.pack $ T.unpack sql})
@@ -63,6 +66,7 @@ createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
 
 listViewsHandler :: Client -> Handler [ViewBO]
 listViewsHandler hClient = liftIO $ do
+  Log.debug "Send list views request to HStream server. "
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiListViews (mkClientNormalRequest def)
   maybe [] (V.toList . V.map viewToViewBO . listViewsResponseViews)
@@ -70,6 +74,8 @@ listViewsHandler hClient = liftIO $ do
 
 deleteViewHandler :: Client -> String -> Handler Bool
 deleteViewHandler hClient vid = liftIO $ do
+  Log.debug $ "Send delete view request to HStream server. "
+    <> "View ID: " <> Log.buildString vid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiDeleteView
     (mkClientNormalRequest def { deleteViewRequestViewId = TL.pack vid })
@@ -77,6 +83,8 @@ deleteViewHandler hClient vid = liftIO $ do
 
 getViewHandler :: Client -> String -> Handler (Maybe ViewBO)
 getViewHandler hClient vid = liftIO $ do
+  Log.debug $ "Send get view request to HStream server. "
+    <> "View ID: " <> Log.buildString vid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiGetView (mkClientNormalRequest def { getViewRequestViewId = TL.pack vid })
   (viewToViewBO <$>) <$> getServerResp resp
