@@ -26,7 +26,10 @@ module HStream.Server.Persistence
   , getRelatedStreams
   , getQuerySink) where
 
-import           Control.Exception                    (Exception, handle, throw)
+import           Control.Concurrent                   (forkIO)
+import           Control.Concurrent.MVar
+import           Control.Exception                    (Exception (..), handle,
+                                                       throw)
 import           Control.Monad                        (forM, void)
 import           Data.ByteString.Lazy                 as BSL hiding (elem)
 import qualified Data.HashMap.Strict                  as HM
@@ -301,7 +304,10 @@ instance SubPersistence ZHandle where
     ops2 <- createInsertOp (subPath <> "/streamName") $ lazyTextToBytes subscriptionStreamName
     ops3 <- createInsertOp (subPath <> "/offset") . encodeSubOffset $ offset
 
-    void $ zooMulti zk [ops1, ops2, ops3]
+    catch (void $ zooMulti zk [ops1, ops2, ops3]) $
+      \(e::ZooException) -> do
+         Log.warning . Log.buildString $ "storeSubscription to zk error: " <> show e
+         throwIO e
     where
       sid = TL.toStrict subscriptionSubscriptionId
       subPath = mkSubscriptionPath sid
@@ -326,30 +332,74 @@ instance SubPersistence ZHandle where
       returnSub (Just name) (Just offset) = do
         let sName = bytesToText name
             recordId = decodeSubOffset offset
-        Log.d $ "streamName = " <> Log.buildText sName <> " offset = " <> Log.buildString (show recordId)
+        Log.debug $ "streamName = " <> Log.buildText sName <> " offset = " <> Log.buildString (show recordId)
         return . Just $ (sName, recordId)
       returnSub _ _ = do
-        Log.w . Log.buildString $ "getSubscription from " <> show sid <> " will return Nothing, something wrong. "
+        Log.warning . Log.buildString $ "getSubscription from " <> show sid <> " will return Nothing, something wrong. "
         return Nothing
 
   checkIfExist sid zk = isJust <$> zooExists zk (mkSubscriptionPath sid)
 
-  -- TODO:
-  --  1. maybe just persistent the hole subscription object so that we just need to check single path
-  --  2. what if another client delete/modify some node while listSubscriptions execution ? a watcher is neccessary
   listSubscriptions zk = do
-    sIds <- (fmap cBytesToText . unStrVec . strsCompletionValues <$>) $ zooGetChildren zk subscriptionPath
-    forM sIds $ \sid -> do
-      sub <- getSubscription sid zk
-      case sub of
-        Just (sName, offset) ->
-            return $ Api.Subscription (TL.fromStrict sid) (TL.fromStrict sName)
-              (Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset)
-        Nothing -> error $ "get subscription error, subscriptionId = " <> show sid
+    ret <- newEmptyMVar
+    _ <- forkIO $ listSubscriptionsWithWatcher zk ret
+    takeMVar ret
+    where
+      listSubscriptionsWithWatcher zkhandle ret = do
+        zooWatchGetChildren zkhandle subscriptionPath (watcher ret) (callback ret)
+
+      watcher ret HsWatcherCtx{..} = do
+        case watcherCtxType of
+          ZooChangedEvent -> do
+            Log.debug "receive ZooChangedEvent notify when do listSubscriptions."
+            listSubscriptionsWithWatcher watcherCtxZHandle ret
+          ZooChildEvent -> do
+            Log.debug "receive ZooChildEvent notify when do listSubscriptions."
+            listSubscriptionsWithWatcher watcherCtxZHandle ret
+          event -> do
+            Log.warning . Log.buildString $ "receive " <> show event <> " notify when do listSubscriptions."
+            putMVar ret []
+
+      callback ret StringsCompletion{..} = do
+        let sIds = L.map cBytesToText . unStrVec $ strsCompletionValues
+        res <- forM sIds $ \sid -> do
+          sub <- getSubscription sid zk
+          case sub of
+            Just (sName, offset) ->
+              return $ Api.Subscription (TL.fromStrict sid) (TL.fromStrict sName)
+                (Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset)
+            Nothing ->
+              -- FIXME:
+              error $ "get subscription error, subscriptionId = " <> show sid
+        putMVar ret res
 
   updateSubscriptionOffset sid offset zk = do
-    let path = mkSubscriptionPath sid <> "/offset"
-    void $ zooSet zk path (Just . encodeSubOffset $ offset) Nothing
+    signal <- newEmptyMVar
+    _ <- forkIO $ zooWatchExists zk path (watcher signal) (callback signal)
+    someErr <- takeMVar signal
+    case someErr of
+      Left err -> throwIO err
+      Right _  -> return ()
+    where
+      path = mkSubscriptionPath sid
+      offsetPath = path <> "/offset"
+
+      watcher signal HsWatcherCtx{..} = do
+        case watcherCtxType of
+          ZooDeleteEvent -> do
+            Log.debug $ Log.buildString "receive ZooDeleteEvent notify when do updateSubscriptionOffset with sid "
+                 <> Log.buildText sid
+            putMVar signal (Left . toException $ SubscriptionRemoved)
+          ZooChildEvent -> do
+            Log.debug $ Log.buildString "receive ZooChildEvent notify when do updateSubscriptionOffset with sid "
+                 <> Log.buildText sid
+            updateSubscriptionOffset sid offset watcherCtxZHandle
+          event -> do
+            Log.warning . Log.buildString $ "Watched event: " <> show event
+            putMVar signal (Left . toException $ UnexpectedZkEvent)
+
+      callback signal _ = do
+        zooSet zk offsetPath (Just . encodeSubOffset $ offset) Nothing >> putMVar signal (Right ())
 
   removeSubscription subscriptionID zk = tryDeleteAllPath zk $ mkSubscriptionPath subscriptionID
 
@@ -358,12 +408,12 @@ instance SubPersistence ZHandle where
 --------------------------------------------------------------------------------
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents = do
-  Log.d . Log.buildString $ "create path " <> show path <> " with value"
+  Log.debug . Log.buildString $ "create path " <> show path <> " with value"
   void $ zooCreate zk path (Just contents) zooOpenAclUnsafe ZooPersistent
 
 createInsertOp :: HasCallStack => CBytes -> Bytes -> IO ZooOp
 createInsertOp path contents = do
-  Log.d . Log.buildString $ "create path " <> show path <> " with value"
+  Log.debug . Log.buildString $ "create path " <> show path <> " with value"
   return $ zooCreateOpInit path (Just contents) 64 zooOpenAclUnsafe ZooPersistent
 
 setZkData :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
@@ -373,39 +423,39 @@ setZkData zk path contents =
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
   \(_ :: ZNODEEXISTS) -> do
-    Log.w . Log.buildString $ "create path failed: " <> show path <> " has existed in zk"
+    Log.warning . Log.buildString $ "create path failed: " <> show path <> " has existed in zk"
     pure ()
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path = do
-  Log.d . Log.buildString $ "create path " <> show path
+  Log.debug . Log.buildString $ "create path " <> show path
   void $ zooCreate zk path Nothing zooOpenAclUnsafe ZooPersistent
 
 createPathOp :: HasCallStack => CBytes -> IO ZooOp
 createPathOp path = do
-  Log.d . Log.buildString $ "create path " <> show path
+  Log.debug . Log.buildString $ "create path " <> show path
   return $ zooCreateOpInit path Nothing 64 zooOpenAclUnsafe ZooPersistent
 
 deletePath :: HasCallStack => ZHandle -> CBytes -> IO ()
 deletePath zk path = do
-  Log.d . Log.buildString $ "delete path " <> show path
+  Log.debug . Log.buildString $ "delete path " <> show path
   void $ zooDelete zk path Nothing
 
 deleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 deleteAllPath zk path = do
-  Log.d . Log.buildString $ "delete all path " <> show path
+  Log.debug . Log.buildString $ "delete all path " <> show path
   void $ zooDeleteAll zk path
 
 tryDeletePath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeletePath zk path = catch (deletePath zk path) $
   \(_ :: ZNONODE) -> do
-    Log.w . Log.buildString $ "delete path error: " <> show path <> " not exist."
+    Log.warning . Log.buildString $ "delete path error: " <> show path <> " not exist."
     pure ()
 
 tryDeleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
   \(_ :: ZNONODE) -> do
-    Log.w . Log.buildString $ "delete all path error: " <> show path <> " not exist."
+    Log.warning . Log.buildString $ "delete all path error: " <> show path <> " not exist."
     pure ()
 
 decodeQ :: JSON a => DataCompletion -> a
