@@ -37,9 +37,9 @@ import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
 import           Data.Int                             (Int64)
 import qualified Data.List                            as L
-import           Data.Maybe                           (fromJust, isJust)
+import           Data.Maybe                           (catMaybes, fromJust,
+                                                       isJust)
 import qualified Data.Text                            as T
-import qualified Data.Text.Encoding                   as TE
 import qualified Data.Text.Lazy                       as TL
 import           GHC.Generics                         (Generic)
 import           Proto3.Suite                         (Enumerated (..))
@@ -283,7 +283,7 @@ class SubPersistence handle where
   -- | persistent a subscription to store
   storeSubscription :: HasCallStack => Api.Subscription -> handle -> IO()
   -- | getSubscription will return (StreamName, RecordId)
-  getSubscription :: HasCallStack => T.Text -> handle -> IO (Maybe (T.Text, Api.RecordId))
+  getSubscription :: HasCallStack => T.Text -> handle -> IO (Maybe Api.Subscription)
   -- | check if specified subscription exist
   checkIfExist :: HasCallStack => T.Text -> handle -> IO Bool
   -- | return all subscriptions
@@ -299,15 +299,9 @@ class SubPersistence handle where
 -------------------------------------------------------------------------------
 
 instance SubPersistence ZHandle where
-  storeSubscription Api.Subscription{..} zk = do
-    ops1 <- createPathOp subPath
-    ops2 <- createInsertOp (subPath <> "/streamName") $ lazyTextToBytes subscriptionStreamName
-    ops3 <- createInsertOp (subPath <> "/offset") . encodeSubOffset $ offset
-
-    catch (void $ zooMulti zk [ops1, ops2, ops3]) $
-      \(e::ZooException) -> do
-         Log.warning . Log.buildString $ "storeSubscription to zk error: " <> show e
-         throwIO e
+  storeSubscription sub@Api.Subscription{..} zk = do
+      createInsert zk subPath . encodeSubscription $
+        sub {Api.subscriptionOffset = Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset}
     where
       sid = TL.toStrict subscriptionSubscriptionId
       subPath = mkSubscriptionPath sid
@@ -324,54 +318,19 @@ instance SubPersistence ZHandle where
         Api.SubscriptionOffsetOffsetRecordOffset recordId -> recordId
 
   getSubscription sid zk = do
-    streamName <- getNodeValue zk "/streamName" sid
-    offset <- getNodeValue zk "/offset" sid
-    returnSub streamName offset
-    where
-      returnSub :: Maybe Bytes -> Maybe Bytes -> IO (Maybe (T.Text, Api.RecordId))
-      returnSub (Just name) (Just offset) = do
-        let sName = bytesToText name
-            recordId = decodeSubOffset offset
-        Log.debug $ "streamName = " <> Log.buildText sName <> " offset = " <> Log.buildString (show recordId)
-        return . Just $ (sName, recordId)
-      returnSub _ _ = do
-        Log.warning . Log.buildString $ "getSubscription from " <> show sid <> " will return Nothing, something wrong. "
+    res <- getNodeValue zk sid
+    case res of
+      Just value -> do
+        return $ decodeSubscription value
+      Nothing -> do
+        Log.debug $ "getSubscription get nothing, subscriptionID = " <> Log.buildText sid
         return Nothing
 
   checkIfExist sid zk = isJust <$> zooExists zk (mkSubscriptionPath sid)
 
   listSubscriptions zk = do
-    ret <- newEmptyMVar
-    _ <- forkIO $ listSubscriptionsWithWatcher zk ret
-    takeMVar ret
-    where
-      listSubscriptionsWithWatcher zkhandle ret = do
-        zooWatchGetChildren zkhandle subscriptionPath (watcher ret) (callback ret)
-
-      watcher ret HsWatcherCtx{..} = do
-        case watcherCtxType of
-          ZooChangedEvent -> do
-            Log.debug "receive ZooChangedEvent notify when do listSubscriptions."
-            listSubscriptionsWithWatcher watcherCtxZHandle ret
-          ZooChildEvent -> do
-            Log.debug "receive ZooChildEvent notify when do listSubscriptions."
-            listSubscriptionsWithWatcher watcherCtxZHandle ret
-          event -> do
-            Log.warning . Log.buildString $ "receive " <> show event <> " notify when do listSubscriptions."
-            putMVar ret []
-
-      callback ret StringsCompletion{..} = do
-        let sIds = L.map cBytesToText . unStrVec $ strsCompletionValues
-        res <- forM sIds $ \sid -> do
-          sub <- getSubscription sid zk
-          case sub of
-            Just (sName, offset) ->
-              return $ Api.Subscription (TL.fromStrict sid) (TL.fromStrict sName)
-                (Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset)
-            Nothing ->
-              -- FIXME:
-              error $ "get subscription error, subscriptionId = " <> show sid
-        putMVar ret res
+    sIds <- L.map cBytesToText . unStrVec . strsCompletionValues <$> zooGetChildren zk subscriptionPath
+    catMaybes <$> forM sIds (`getSubscription` zk)
 
   updateSubscriptionOffset sid offset zk = do
     signal <- newEmptyMVar
@@ -382,26 +341,27 @@ instance SubPersistence ZHandle where
       Right _  -> return ()
     where
       path = mkSubscriptionPath sid
-      offsetPath = path <> "/offset"
 
       watcher signal HsWatcherCtx{..} = do
         case watcherCtxType of
           ZooDeleteEvent -> do
             Log.debug $ Log.buildString "receive ZooDeleteEvent notify when do updateSubscriptionOffset with sid "
-                 <> Log.buildText sid
+                     <> Log.buildText sid
             putMVar signal (Left . toException $ SubscriptionRemoved)
           ZooChildEvent -> do
             Log.debug $ Log.buildString "receive ZooChildEvent notify when do updateSubscriptionOffset with sid "
-                 <> Log.buildText sid
+                     <> Log.buildText sid
             updateSubscriptionOffset sid offset watcherCtxZHandle
           event -> do
             Log.warning . Log.buildString $ "Watched event: " <> show event
             putMVar signal (Left . toException $ UnexpectedZkEvent)
 
       callback signal _ = do
-        zooSet zk offsetPath (Just . encodeSubOffset $ offset) Nothing >> putMVar signal (Right ())
+        sub <- fromJust <$> getSubscription sid zk
+        let newSub = sub{Api.subscriptionOffset = Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset}
+        zooSet zk path (Just . encodeSubscription $ newSub) Nothing >> putMVar signal (Right ())
 
-  removeSubscription subscriptionID zk = tryDeleteAllPath zk $ mkSubscriptionPath subscriptionID
+  removeSubscription subscriptionID zk = tryDeletePath zk $ mkSubscriptionPath subscriptionID
 
   removeAllSubscriptions zk = tryDeleteAllPath zk subscriptionPath
 
@@ -500,22 +460,20 @@ getQuerySink PersistentQuery{..} =
     (StreamQuery _ s) -> s
     (ViewQuery _ s _) -> s
 
-getNodeValue :: ZHandle -> CBytes -> T.Text -> IO (Maybe Bytes)
-getNodeValue zk path = (dataCompletionValue <$>) . zooGet zk . (<> path) . mkSubscriptionPath
+getNodeValue :: ZHandle -> T.Text -> IO (Maybe Bytes)
+getNodeValue zk sid = do
+  let path = mkSubscriptionPath sid
+  catch ((dataCompletionValue <$>) . zooGet zk $ path) $ \(err::ZooException) -> do
+    Log.warning . Log.buildString $ "get node value from " <> show path <> "err: " <> show err
+    return Nothing
 
-lazyTextToBytes :: TL.Text -> Bytes
-lazyTextToBytes = ZF.fromByteString . TE.encodeUtf8 . TL.toStrict
+encodeSubscription :: Api.Subscription -> Bytes
+encodeSubscription = ZF.fromByteString . BSL.toStrict . Pb.toLazyByteString
 
-bytesToText :: Bytes -> T.Text
-bytesToText = TE.decodeUtf8 . ZF.toByteString
-
-encodeSubOffset :: Api.RecordId -> Bytes
-encodeSubOffset = ZF.fromByteString . BSL.toStrict . Pb.toLazyByteString
-
-decodeSubOffset :: Bytes -> Api.RecordId
-decodeSubOffset offset =
-  let recordId = Pb.fromByteString . ZF.toByteString $ offset
-   in case recordId of
-        Right res -> res
-        Left _    -> error "parse offset error"
+decodeSubscription :: Bytes -> Maybe Api.Subscription
+decodeSubscription origin =
+  let sub = Pb.fromByteString . ZF.toByteString $ origin
+   in case sub of
+        Right res -> Just res
+        Left _    -> Nothing
 

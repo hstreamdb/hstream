@@ -448,7 +448,8 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
   where
     sId = TL.toStrict subscribeRequestSubscriptionId
 
-    doSubscribe (Just (streamName, rid)) store = do
+    doSubscribe (Just sub) store = do
+      let (streamName, rid) = convertSubscription sub
       -- if the underlying stream does not exist, the getUnderlyingLogId method will throw an exception,
       -- and all follows steps will not be executed.
       Log.debug $ "get subscription info from zk, streamName: " <> Log.buildText streamName <> " offset: " <> Log.buildString (show rid)
@@ -689,10 +690,11 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                           return $ info {sriStreamSends = newSends}
                       )
 
-                  Just (streamName, startRecordId) ->
+                  Just sub ->
                     modifyMVar_ subscribeRuntimeInfo
                       (
-                        \store ->
+                        \store -> do
+                          let (streamName, startRecordId) = convertSubscription sub
                           case HM.lookup streamingFetchRequestSubscriptionId store of
                             Just _ -> return store
                             Nothing -> do
@@ -715,7 +717,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                 -- At this point, the corresponding subscribeRuntimeInfo must be
                 -- present, unless the subscription has been removed
                 -- forcely, which we will handle later(TODO).
-                (streamName, _) <- fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
+                (streamName, _) <- convertSubscription . fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
 
                 modifyMVar_ infoMVar
                   (

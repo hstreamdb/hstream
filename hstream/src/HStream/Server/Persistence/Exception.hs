@@ -95,4 +95,3 @@ data UnexpectedZkEvent = UnexpectedZkEvent
 instance Exception UnexpectedZkEvent where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
-
