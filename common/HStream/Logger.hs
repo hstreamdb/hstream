@@ -44,18 +44,6 @@ import qualified Z.IO.Logger    as Log
 
 import qualified HStream.Utils  as U
 
-d :: HasCallStack => Builder () -> IO ()
-d = Log.withDefaultLogger . Log.debug
-
-i :: HasCallStack => Builder () -> IO ()
-i = Log.withDefaultLogger . Log.info
-
-w :: HasCallStack => Builder () -> IO ()
-w = Log.withDefaultLogger . Log.warning
-
-e :: HasCallStack => Builder () -> IO ()
-e = Log.withDefaultLogger . Log.fatal
-
 -------------------------------------------------------------------------------
 
 buildInt :: (Integral a, Bounded a) => a -> Builder ()
@@ -106,3 +94,15 @@ instance Read Level where
         Read.Ident "info"     -> Log.INFO
         Read.Ident "debug"    -> Log.DEBUG
         x -> errorWithoutStackTrace $ "cannot parse log level" <> show x
+
+d :: HasCallStack => Builder () -> IO ()
+d = Log.withDefaultLogger . Log.debug
+
+i :: HasCallStack => Builder () -> IO ()
+i = Log.withDefaultLogger . Log.info
+
+w :: HasCallStack => Builder () -> IO ()
+w = Log.withDefaultLogger . Log.warning
+
+e :: HasCallStack => Builder () -> IO ()
+e = Log.withDefaultLogger . Log.fatal
