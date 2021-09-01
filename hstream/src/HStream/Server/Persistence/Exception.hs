@@ -81,3 +81,18 @@ data ConnectorStillRunning = ConnectorStillRunning
 instance Exception ConnectorStillRunning where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
+
+data SubscriptionRemoved = SubscriptionRemoved
+  deriving Show
+
+instance Exception SubscriptionRemoved where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+data UnexpectedZkEvent = UnexpectedZkEvent
+  deriving Show
+
+instance Exception UnexpectedZkEvent where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+

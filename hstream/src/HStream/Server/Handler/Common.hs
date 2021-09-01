@@ -88,7 +88,6 @@ data ServerContext = ServerContext {
   , zkHandle                 :: Maybe ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , subscriptions            :: MVar (HM.HashMap SubscriptionId Subscription)
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
@@ -107,6 +106,7 @@ data RecordIdRange = RecordIdRange
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
     sriLdreader         :: HS.LDSyncCkpReader
+  , sriStreamName       :: T.Text
   , sriWindowLowerBound :: RecordId
   , sriWindowUpperBound :: RecordId
   , sriAckedRanges      :: Map.Map RecordId RecordIdRange

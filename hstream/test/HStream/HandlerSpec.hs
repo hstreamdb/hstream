@@ -29,7 +29,7 @@ import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
 spec :: Spec
-spec =  do
+spec =  describe "HStream.HandlerSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
@@ -228,12 +228,10 @@ subscribeSpec = aroundAll provideHstreamApi $
       let stream = Stream streamName 1
       createStreamRequest api stream `shouldReturn` stream
       createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
-      -- delete a subscription with underlying stream deleted should success
       subscribeRequest api subscriptionName `shouldReturn` True
+      -- delete a subscription with underlying stream deleted should success
       deleteStreamRequest api streamName `shouldReturn` PB.Empty
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
-      resp <- listSubscriptionRequest api
-      V.find (\Subscription{..} -> subscriptionSubscriptionId == subscriptionName) resp `shouldBe` Nothing
 
   aroundWith withSubscription $ do
     it "test hasSubscription request" $ \(api, (streamName, subscriptionName)) -> do
