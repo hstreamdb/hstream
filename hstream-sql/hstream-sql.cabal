@@ -13,7 +13,7 @@ license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Feng Lee <feng@emqx.io>
 maintainer:         maosics@gmail.com
-tested-with:        GHC ==8.8.4 || ==8.10.4
+tested-with:        GHC ==8.10.4
 category:           Language
 homepage:           https://github.com/hstream-io/hstream
 bug-reports:        https://github.com/hstream-io/hstream/issues
@@ -32,22 +32,22 @@ library
     HStream.SQL.Abs
     HStream.SQL.AST
     HStream.SQL.Codegen
+    HStream.SQL.Exception
+    HStream.SQL.ExecPlan
     HStream.SQL.Internal.Codegen
     HStream.SQL.Internal.Validate
-    HStream.SQL.Exception
     HStream.SQL.Parse
-    HStream.SQL.ExecPlan
 
   other-modules:
     HStream.SQL.Codegen.Boilerplate
     HStream.SQL.ErrM
+    HStream.SQL.ExecPlan.Utils
     HStream.SQL.Extra
     HStream.SQL.Lex
     HStream.SQL.Par
     HStream.SQL.Preprocess
     HStream.SQL.Print
     HStream.SQL.Validate.Utils
-    HStream.SQL.ExecPlan.Utils
 
   hs-source-dirs:     src gen-sql
   build-depends:
@@ -106,6 +106,7 @@ test-suite hstream-sql-test
     HStream.SQL.Codegen.MathSpec
     HStream.SQL.ParseRefineSpec
     HStream.SQL.ValidateSpec
+
   hs-source-dirs:     test
   build-depends:
     , aeson
@@ -113,9 +114,9 @@ test-suite hstream-sql-test
     , bytestring
     , containers
     , hspec
-    , hstream-sql
     , hstream-common
     , hstream-processing
+    , hstream-sql
     , HUnit
     , random                ^>=1.2
     , scientific
