@@ -32,6 +32,7 @@ import           Servant.Server                   (Handler, Server)
 
 import           HStream.HTTP.Server.Utils        (getServerResp,
                                                    mkClientNormalRequest)
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.Utils                    (TaskStatus (..))
 
@@ -80,12 +81,15 @@ createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
 
 listQueriesHandler :: Client -> Handler [QueryBO]
 listQueriesHandler hClient = liftIO $ do
+  Log.debug "Send list queries request to HStream server. "
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiListQueries (mkClientNormalRequest def)
   maybe [] (V.toList . V.map queryToQueryBO . listQueriesResponseQueries) <$> getServerResp resp
 
 deleteQueryHandler :: Client -> String -> Handler Bool
 deleteQueryHandler hClient qid = liftIO $ do
+  Log.debug $ "Send delete query request to HStream server. "
+    <> "Query ID: " <> Log.buildString qid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiDeleteQuery
     (mkClientNormalRequest def { deleteQueryRequestId = TL.pack qid })
@@ -93,6 +97,8 @@ deleteQueryHandler hClient qid = liftIO $ do
 
 getQueryHandler :: Client -> String -> Handler (Maybe QueryBO)
 getQueryHandler hClient qid = liftIO $ do
+  Log.debug $ "Send get query request to HStream server. "
+    <> "Query ID: " <> Log.buildString qid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiGetQuery
     (mkClientNormalRequest def { getQueryRequestId = TL.pack qid })
@@ -100,6 +106,8 @@ getQueryHandler hClient qid = liftIO $ do
 
 restartQueryHandler :: Client -> String -> Handler Bool
 restartQueryHandler hClient qid = liftIO $ do
+  Log.debug $ "Send restart query request to HStream server. "
+    <> "Query ID: " <> Log.buildString qid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiRestartQuery
     (mkClientNormalRequest def { restartQueryRequestId = TL.pack qid })
@@ -107,6 +115,8 @@ restartQueryHandler hClient qid = liftIO $ do
 
 cancelQueryHandler :: Client -> String -> Handler Bool
 cancelQueryHandler hClient qid = liftIO $ do
+  Log.debug $ "Send cancel query request to HStream server. "
+    <> "Query ID: " <> Log.buildString qid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiTerminateQueries
     (mkClientNormalRequest def

@@ -25,6 +25,7 @@ import           Servant.Server               (Handler, Server)
 
 import           HStream.HTTP.Server.Utils    (getServerResp,
                                                mkClientNormalRequest)
+import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
@@ -47,21 +48,21 @@ nodeToNodeBO :: Node -> NodeBO
 nodeToNodeBO (Node id' roles address status) =
   NodeBO id' (V.toList roles) (TL.toStrict address) (TL.toStrict status)
 
-listNodes :: Client -> IO [NodeBO]
-listNodes hClient = do
+listStoreNodesHandler :: Client -> Handler [NodeBO]
+listStoreNodesHandler hClient = liftIO $ do
+  Log.debug "Send list nodes request to HStream server. "
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiListNodes (mkClientNormalRequest ListNodesRequest)
   maybe [] (V.toList . V.map nodeToNodeBO . listNodesResponseNodes) <$> getServerResp resp
 
 getStoreNodeHandler :: Client -> Int32 -> Handler (Maybe NodeBO)
 getStoreNodeHandler hClient target = liftIO $ do
+  Log.debug $ "Send get store node request to HStream server. "
+    <> "Node ID: " <> Log.buildString (show target)
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiGetNode
     (mkClientNormalRequest def { getNodeRequestId = target})
   (nodeToNodeBO <$>) <$> getServerResp resp
-
-listStoreNodesHandler :: Client -> Handler [NodeBO]
-listStoreNodesHandler hClient = liftIO $ listNodes hClient
 
 nodeServer :: Client -> Server NodesAPI
 nodeServer hClient = listStoreNodesHandler hClient
