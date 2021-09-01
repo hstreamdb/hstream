@@ -29,6 +29,7 @@ import           Servant.Server               (Handler, Server)
 
 import           HStream.HTTP.Server.Utils    (getServerResp,
                                                mkClientNormalRequest)
+import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 import           HStream.Utils                (TaskStatus (..))
 
@@ -61,6 +62,8 @@ connectorToConnectorBO Connector{..} = ConnectorBO
 
 createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
 createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do
+  Log.debug $ "Send create connector request to HStream server. "
+    <> "SQL statement: " <> Log.buildText sql
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiCreateSinkConnector
     (mkClientNormalRequest def { createSinkConnectorRequestSql = TL.fromStrict sql } )
@@ -69,6 +72,7 @@ createConnectorHandler hClient (ConnectorBO _ _ _ sql) = liftIO $ do
 listConnectorsHandler :: Client -> Handler [ConnectorBO]
 listConnectorsHandler hClient = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
+  Log.debug "Send list connector request to HStream server. "
   resp <- hstreamApiListConnectors
     (mkClientNormalRequest ListConnectorsRequest)
   maybe []
@@ -77,6 +81,8 @@ listConnectorsHandler hClient = liftIO $ do
 
 deleteConnectorHandler :: Client -> String -> Handler Bool
 deleteConnectorHandler hClient cid = liftIO $ do
+  Log.debug $ "Send create connector request to HStream server. "
+    <> "SQL statement: " <> Log.buildString cid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiDeleteConnector
     (mkClientNormalRequest def { deleteConnectorRequestId = TL.pack cid } )
@@ -84,6 +90,8 @@ deleteConnectorHandler hClient cid = liftIO $ do
 
 getConnectorHandler :: Client -> String -> Handler (Maybe ConnectorBO)
 getConnectorHandler hClient cid = liftIO $ do
+  Log.debug $ "Send create connector request to HStream server. "
+    <> "Connector ID: " <> Log.buildString cid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiGetConnector
     (mkClientNormalRequest def { getConnectorRequestId = TL.pack cid })
@@ -91,6 +99,8 @@ getConnectorHandler hClient cid = liftIO $ do
 
 restartConnectorHandler :: Client -> String -> Handler Bool
 restartConnectorHandler hClient cid = liftIO $ do
+  Log.debug $ "Send restart connector request to HStream server. "
+    <> "Connector ID: " <> Log.buildString cid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiRestartConnector
     (mkClientNormalRequest def { restartConnectorRequestId = TL.pack cid })
@@ -98,6 +108,8 @@ restartConnectorHandler hClient cid = liftIO $ do
 
 terminateConnectorHandler :: Client -> String -> Handler Bool
 terminateConnectorHandler hClient cid = liftIO $ do
+  Log.debug $ "Send termiante connector request to HStream server. "
+    <> "Connector ID: " <> Log.buildString cid
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiTerminateConnector
     (mkClientNormalRequest def { terminateConnectorRequestConnectorId = TL.pack cid })

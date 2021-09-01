@@ -31,6 +31,7 @@ import           Servant.Server               (Handler, Server)
 
 import           HStream.HTTP.Server.Utils    (getServerResp,
                                                mkClientNormalRequest)
+import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 
 -- BO is short for Business Object
@@ -57,6 +58,8 @@ streamBOTOStream (StreamBO name rep) = Stream (TL.fromStrict name) rep
 
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO
 createStreamHandler hClient streamBO = liftIO $ do
+  Log.debug $ "Send create stream request to HStream server. "
+    <> "Stream Name: " <> Log.buildText (name streamBO)
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiCreateStream
     (mkClientNormalRequest (streamBOTOStream streamBO))
@@ -65,12 +68,15 @@ createStreamHandler hClient streamBO = liftIO $ do
 
 listStreamsHandler :: Client -> Handler [StreamBO]
 listStreamsHandler hClient = liftIO $ do
+  Log.debug "Send list streams request to HStream server. "
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiListStreams $ mkClientNormalRequest ListStreamsRequest
   maybe [] (V.toList . V.map streamToStreamBO . listStreamsResponseStreams) <$> getServerResp resp
 
 deleteStreamHandler :: Client -> String -> Handler Bool
 deleteStreamHandler hClient sName = liftIO $ do
+  Log.debug $ "Send delete stream request to HStream server. "
+    <> "Stream Name: " <> Log.buildString sName
   HStreamApi{..} <- hstreamApiClient hClient
   resp <- hstreamApiDeleteStream
     (mkClientNormalRequest def
@@ -78,8 +84,11 @@ deleteStreamHandler hClient sName = liftIO $ do
       , deleteStreamRequestIgnoreNonExist = False } )
   isJust <$> getServerResp resp
 
+-- FIXME: This is broken.
 getStreamHandler :: Client -> T.Text -> Handler (Maybe StreamBO)
 getStreamHandler hClient sName = do
+  liftIO . Log.debug $ "Send get stream request to HStream server. "
+    <> "Stream Name: " <> Log.buildText sName
   streams <- listStreamsHandler hClient
   return $ find (\StreamBO{..} -> sName == name) streams
 
