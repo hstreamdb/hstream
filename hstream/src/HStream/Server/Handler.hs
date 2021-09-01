@@ -12,7 +12,7 @@ module HStream.Server.Handler where
 
 import           Control.Concurrent
 import           Control.Exception                 (handle, throwIO)
-import           Control.Monad                     (join, unless, when)
+import           Control.Monad                     (join, unless, void, when)
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor
 import           Data.ByteString                   (ByteString)
@@ -478,7 +478,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
       Log.debug $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt recordIdBatchId
       -- insert to runtime info
       let info = SubscribeRuntimeInfo
-                  { sriLdreader = ldreader
+                  { sriLdCkpReader = ldreader
                   , sriStreamName = streamName
                   , sriWindowLowerBound = rid
                   , sriWindowUpperBound = maxBound
@@ -517,7 +517,7 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
               if exists
                  then do
                    logId <- S.getUnderlyingLogId scLDClient streamName
-                   ckpReaderStopReading sriLdreader logId
+                   ckpReaderStopReading sriLdCkpReader logId
                  else do
                    Log.warning . Log.buildString $ "underlying stream " <> show sriStreamName <> " has been deleted before delete subscription"
           )
@@ -572,8 +572,8 @@ fetchHandler ServerContext{..} (ServerNormalRequest _metadata req@FetchRequest{.
       modifyMVar infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
-            void $ S.ckpReaderSetTimeout sriLdreader (fromIntegral fetchRequestTimeout)
-            res <- S.ckpReaderReadAllowGap sriLdreader (fromIntegral fetchRequestMaxSize)
+            void $ S.ckpReaderSetTimeout sriLdCkpReader (fromIntegral fetchRequestTimeout)
+            res <- S.ckpReaderReadAllowGap sriLdCkpReader (fromIntegral fetchRequestMaxSize)
             case res of
               Left S.GapRecord{..} -> do
                 -- insert gap range to ackedRanges
@@ -625,7 +625,7 @@ ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeReque
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
                 Log.debug . Log.buildString $ "update ackedRanges " <> show newAckedRanges <> " update window lower bound to " <> show newLowerBound
-                commitCheckpoint scLDClient sriLdreader (TL.fromStrict sriStreamName) checkpointRecordId
+                commitCheckpoint scLDClient sriLdCkpReader (TL.fromStrict sriStreamName) checkpointRecordId
                 Log.debug . Log.buildString $ "commit checkpoint " <> show checkpointRecordId <> " to stream " <> show sriStreamName
                 let newInfo = info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
                 resp <- returnResp Empty
@@ -704,6 +704,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                         \store -> do
                           let (streamName, startRecordId) = convertSubscription sub
                           case HM.lookup streamingFetchRequestSubscriptionId store of
+                            -- subscribeRuntimeInfo has been inited by others.
                             Just _ -> return store
                             Nothing -> do
                               newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId (TL.fromStrict streamName) startRecordId streamSend
@@ -721,19 +722,13 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                       return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
                     )
 
-                -- avoid nested locks for preventing deadlock
-                -- At this point, the corresponding subscribeRuntimeInfo must be
-                -- present, unless the subscription has been removed
-                -- forcely, which we will handle later(TODO).
-                (streamName, _) <- convertSubscription . fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
-
                 modifyMVar_ infoMVar
                   (
                     \info@SubscribeRuntimeInfo{..} -> do
                       let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
                       case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
                         Just (ranges, newLowerBound, checkpointRecordId) -> do
-                          commitCheckpoint scLDClient sriLdreader (TL.fromStrict streamName) checkpointRecordId
+                          commitCheckpoint scLDClient sriLdCkpReader sriStreamName checkpointRecordId
                           Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
                             <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
                           return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
@@ -765,16 +760,15 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       _ <- S.ckpReaderSetTimeout ldCkpReader 0
       Log.debug $ Log.buildString "created a ldCkpReader for subscription {" <> Log.buildLazyText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
 
-      -- create a ldReader for rereading unacked records(TODO)
-      -- ldReader <-
-      --   S.newLDReader
-      --     ldclient
-      --     (textToCBytes $ TL.toStrict subscriptionId)
-      -- Log.debug $ Log.buildString "created a ldReader for subscription {" <> subscriptionId <> "}"
+      -- create a ldReader for rereading unacked records
+      ldReader <- S.newLDReader ldclient 1 Nothing
+      Log.debug $ Log.buildString "created a ldReader for subscription {" <> Log.buildLazyText subscriptionId <> "}"
 
       -- init SubscribeRuntimeInfo
       let info = SubscribeRuntimeInfo {
-                  sriLdreader = ldCkpReader
+                  sriLdCkpReader = ldCkpReader
+                , sriLdReader = ldReader
+                , sriLogId = logId
                 , sriWindowLowerBound = startRecordId
                 , sriWindowUpperBound = maxBound
                 , sriAckedRanges = Map.empty
@@ -791,7 +785,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
     readAndDispatchRecords runtimeInfoMVar = do
       Log.debug $ Log.buildString "enter readAndDispatchRecords"
       -- register for next readAndDispatch
-      _ <- registerLowResTimer 1
+      _ <- registerLowResTimer 10
         (
           do
             _ <- forkIO $ readAndDispatchRecords runtimeInfoMVar
@@ -801,7 +795,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         runtimeInfoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
-            res <- S.ckpReaderReadAllowGap sriLdreader 1000
+            res <- S.ckpReaderReadAllowGap sriLdCkpReader 1000
             case res of
               Left S.GapRecord{..} -> do
                 -- insert gap range to ackedRanges
@@ -820,9 +814,15 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                 let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
                 let newInfo = info {sriBatchNumMap = newBatchNumMap, sriWindowUpperBound = maxRecordId}
                 -- dispatch records to consumers
-                unless (null dataRecords) $
-                  dispatchRecords (fetchResult groups) sriStreamSends
-                -- register task for ack timeout resend(TODO)
+                unless (null dataRecords) $ do
+                  let receivedRecords = fetchResult groups
+                  dispatchRecords receivedRecords sriStreamSends
+                  -- register task for resending timeout records
+                  let receivedRecordIds = V.map (fromJust . receivedRecordRecordId) receivedRecords
+                  void $ registerLowResTimer 30
+                    (
+                      void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar
+                    )
 
                 return newInfo
 
@@ -856,6 +856,70 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         )
         recordGroups
 
+    -- After finishing dispatch records,
+    -- we need register a timer task to check if these records have been acked after
+    -- ack timeout.
+    --
+    -- Which input info do we need?
+    -- 1. recordIds for check
+    -- 2. ackedRanges
+    -- 3. streamSends
+    -- 4. ldReader
+    --
+    -- After resend, we still need to register the same timer task to check if
+    -- records resent have been acked.
+
+    filterUnackedRecordIds recordIds ackedRanges =
+      V.filter
+        (
+          \recordId ->
+            case Map.lookupLT  recordId ackedRanges of
+              Nothing                               -> True
+              Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
+        )
+        recordIds
+
+    tryResendTimeoutRecords recordIds logId infoMVar = do
+      Log.debug "enter tryResendTimeoutRecords"
+      resentRecordIds <- withMVar
+        infoMVar
+        (
+          \SubscribeRuntimeInfo{..} -> do
+            let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges
+            Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
+            let consumerNum = V.length sriStreamSends
+            V.imapM_
+              (
+                \ i RecordId{..} -> do
+                  S.readerStartReading sriLdReader logId recordIdBatchId recordIdBatchId
+                  dataRecords <- S.readerRead sriLdReader 1
+                  if null dataRecords
+                  then do
+                    -- TODO: retry or error
+                    Log.fatal $ "can not read log " <> Log.buildString (show logId) <> " at " <> Log.buildString (show recordIdBatchId)
+                  else do
+                    let ci = i `mod` consumerNum
+                    let cs = sriStreamSends V.! ci
+                    let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
+                    res <- cs $ StreamingFetchResponse $ V.singleton rr
+                    case res of
+                      Left grpcIOError ->
+                        -- TODO: retry or error
+                        Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
+                      Right _ -> return ()
+
+
+              )
+              unackedRecordIds
+
+            return unackedRecordIds
+        )
+
+      void $ registerLowResTimer 30
+        (
+          void $ forkIO $ tryResendTimeoutRecords resentRecordIds logId infoMVar
+        )
+
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
     fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
 
@@ -873,9 +937,9 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
           else
             Nothing
 
-    commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
+    commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> T.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
-      logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
+      logId <- S.getUnderlyingLogId client $ transToStreamName streamName
       S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 --------------------------------------------------------------------------------
