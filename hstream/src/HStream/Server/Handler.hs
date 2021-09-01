@@ -700,37 +700,38 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
 
-              Log.debug $ "ready to handle acks, receviced " <> Log.buildInt (V.length streamingFetchRequestAckIds) <> " acks"
-              infoMVar <-
-                withMVar subscribeRuntimeInfo
+              unless (V.null streamingFetchRequestAckIds) $ do
+                Log.debug $ "ready to handle acks, receviced " <> Log.buildInt (V.length streamingFetchRequestAckIds) <> " acks"
+                infoMVar <-
+                  withMVar subscribeRuntimeInfo
+                    (
+                        -- At this point, the corresponding subscribeRuntimeInfo must be
+                        -- present, unless the subscription has been removed
+                        -- forcely, which we will handle later(TODO).
+                      return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                    )
+
+                -- avoid nested locks for preventing deadlock
+                -- At this point, the corresponding subscribeRuntimeInfo must be
+                -- present, unless the subscription has been removed
+                -- forcely, which we will handle later(TODO).
+                (streamName, _) <- fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
+
+                modifyMVar_ infoMVar
                   (
-                      -- At this point, the corresponding subscribeRuntimeInfo must be
-                      -- present, unless the subscription has been removed
-                      -- forcely, which we will handle later(TODO).
-                    return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                    \info@SubscribeRuntimeInfo{..} -> do
+                      let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
+                      case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+                        Just (ranges, newLowerBound, checkpointRecordId) -> do
+                          commitCheckpoint scLDClient sriLdreader (TL.fromStrict streamName) checkpointRecordId
+                          Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
+                            <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
+                          return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+                        Nothing ->
+                          return $ info {sriAckedRanges = newAckedRanges}
                   )
 
-              -- avoid nested locks for preventing deadlock
-              -- At this point, the corresponding subscribeRuntimeInfo must be
-              -- present, unless the subscription has been removed
-              -- forcely, which we will handle later(TODO).
-              (streamName, _) <- fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
-
-              modifyMVar_ infoMVar
-                (
-                  \info@SubscribeRuntimeInfo{..} -> do
-                    let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
-                    case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-                      Just (ranges, newLowerBound, checkpointRecordId) -> do
-                        commitCheckpoint scLDClient sriLdreader (TL.fromStrict streamName) checkpointRecordId
-                        Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
-                          <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
-                        return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
-                      Nothing ->
-                        return $ info {sriAckedRanges = newAckedRanges}
-                )
-
-              Log.debug "update acked ranges in window"
+                Log.debug "update acked ranges in window"
               handleRequest False
 
             Nothing ->
