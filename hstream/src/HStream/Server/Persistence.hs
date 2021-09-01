@@ -16,6 +16,7 @@ module HStream.Server.Persistence
   , connectorsPath
   , defaultHandle
   , Persistence (..)
+  , SubPersistence (..)
   , initializeAncestors
   , withMaybeZHandle
   , ZooException
@@ -25,20 +26,30 @@ module HStream.Server.Persistence
   , getRelatedStreams
   , getQuerySink) where
 
-import           Control.Exception                    (Exception, handle, throw)
-import           Control.Monad                        (void)
+import           Control.Concurrent                   (forkIO)
+import           Control.Concurrent.MVar
+import           Control.Exception                    (Exception (..), handle,
+                                                       throw)
+import           Control.Monad                        (forM, void)
+import           Data.ByteString.Lazy                 as BSL hiding (elem)
 import qualified Data.HashMap.Strict                  as HM
 import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
 import           Data.Int                             (Int64)
 import qualified Data.List                            as L
+import           Data.Maybe                           (fromJust, isJust)
 import qualified Data.Text                            as T
+import qualified Data.Text.Encoding                   as TE
+import qualified Data.Text.Lazy                       as TL
 import           GHC.Generics                         (Generic)
+import           Proto3.Suite                         (Enumerated (..))
+import qualified Proto3.Suite                         as Pb
 import           System.IO.Unsafe                     (unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes (..), pack)
 import           Z.Data.JSON                          (JSON, decode, encode)
 import qualified Z.Data.Text                          as ZT
 import           Z.Data.Vector                        (Bytes)
+import           Z.Foreign                            as ZF
 import           Z.IO.Exception                       (HasCallStack, catch)
 import           Z.IO.Time                            (SystemTime (..),
                                                        getSystemTime')
@@ -46,8 +57,13 @@ import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
+import qualified HStream.Logger                       as Log
+import qualified HStream.Server.HStreamApi            as Api
 import           HStream.Server.Persistence.Exception
-import           HStream.Utils                        (TaskStatus (..))
+import qualified HStream.Store                        as S
+import           HStream.Utils                        (TaskStatus (..),
+                                                       cBytesToText,
+                                                       textToCBytes)
 
 --------------------------------------------------------------------------------
 type ViewSchema     = [String]
@@ -256,23 +272,191 @@ instance Persistence ZHandle where
   removeConnector' cid zk = ifThrow FailedToRemove $ zooDeleteAll zk (mkConnectorPath cid)
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
-initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath]
+initializeAncestors zk = mapM_ (tryCreate zk) ["/hstreamdb", "/hstreamdb/hstream", queriesPath, connectorsPath, subscriptionPath]
+
+--------------------------------------------------------------------------------
+
+subscriptionPath :: CBytes
+subscriptionPath = "/hstreamdb/hstream/subscription"
+
+class SubPersistence handle where
+  -- | persistent a subscription to store
+  storeSubscription :: HasCallStack => Api.Subscription -> handle -> IO()
+  -- | getSubscription will return (StreamName, RecordId)
+  getSubscription :: HasCallStack => T.Text -> handle -> IO (Maybe (T.Text, Api.RecordId))
+  -- | check if specified subscription exist
+  checkIfExist :: HasCallStack => T.Text -> handle -> IO Bool
+  -- | return all subscriptions
+  listSubscriptions :: HasCallStack => handle -> IO [Api.Subscription]
+  -- | remove specified subscripion
+  removeSubscription :: HasCallStack => T.Text -> handle -> IO()
+  -- | remove all subscriptions
+  removeAllSubscriptions :: HasCallStack => handle -> IO ()
+
+  -- helper function
+  updateSubscriptionOffset :: HasCallStack => T.Text -> Api.RecordId -> handle -> IO()
+
+-------------------------------------------------------------------------------
+
+instance SubPersistence ZHandle where
+  storeSubscription Api.Subscription{..} zk = do
+    ops1 <- createPathOp subPath
+    ops2 <- createInsertOp (subPath <> "/streamName") $ lazyTextToBytes subscriptionStreamName
+    ops3 <- createInsertOp (subPath <> "/offset") . encodeSubOffset $ offset
+
+    catch (void $ zooMulti zk [ops1, ops2, ops3]) $
+      \(e::ZooException) -> do
+         Log.warning . Log.buildString $ "storeSubscription to zk error: " <> show e
+         throwIO e
+    where
+      sid = TL.toStrict subscriptionSubscriptionId
+      subPath = mkSubscriptionPath sid
+      Api.SubscriptionOffset{..} = fromJust subscriptionOffset
+      sOffset = fromJust subscriptionOffsetOffset
+      offset = case sOffset of
+        Api.SubscriptionOffsetOffsetSpecialOffset subOffset ->
+          case subOffset of
+            Enumerated (Right Api.SubscriptionOffset_SpecialOffsetEARLIST) -> do
+              Api.RecordId S.LSN_MIN 0
+            Enumerated (Right Api.SubscriptionOffset_SpecialOffsetLATEST) -> do
+              Api.RecordId S.LSN_MAX 0
+            Enumerated _ -> error "Wrong SpecialOffset!"
+        Api.SubscriptionOffsetOffsetRecordOffset recordId -> recordId
+
+  getSubscription sid zk = do
+    streamName <- getNodeValue zk "/streamName" sid
+    offset <- getNodeValue zk "/offset" sid
+    returnSub streamName offset
+    where
+      returnSub :: Maybe Bytes -> Maybe Bytes -> IO (Maybe (T.Text, Api.RecordId))
+      returnSub (Just name) (Just offset) = do
+        let sName = bytesToText name
+            recordId = decodeSubOffset offset
+        Log.debug $ "streamName = " <> Log.buildText sName <> " offset = " <> Log.buildString (show recordId)
+        return . Just $ (sName, recordId)
+      returnSub _ _ = do
+        Log.warning . Log.buildString $ "getSubscription from " <> show sid <> " will return Nothing, something wrong. "
+        return Nothing
+
+  checkIfExist sid zk = isJust <$> zooExists zk (mkSubscriptionPath sid)
+
+  listSubscriptions zk = do
+    ret <- newEmptyMVar
+    _ <- forkIO $ listSubscriptionsWithWatcher zk ret
+    takeMVar ret
+    where
+      listSubscriptionsWithWatcher zkhandle ret = do
+        zooWatchGetChildren zkhandle subscriptionPath (watcher ret) (callback ret)
+
+      watcher ret HsWatcherCtx{..} = do
+        case watcherCtxType of
+          ZooChangedEvent -> do
+            Log.debug "receive ZooChangedEvent notify when do listSubscriptions."
+            listSubscriptionsWithWatcher watcherCtxZHandle ret
+          ZooChildEvent -> do
+            Log.debug "receive ZooChildEvent notify when do listSubscriptions."
+            listSubscriptionsWithWatcher watcherCtxZHandle ret
+          event -> do
+            Log.warning . Log.buildString $ "receive " <> show event <> " notify when do listSubscriptions."
+            putMVar ret []
+
+      callback ret StringsCompletion{..} = do
+        let sIds = L.map cBytesToText . unStrVec $ strsCompletionValues
+        res <- forM sIds $ \sid -> do
+          sub <- getSubscription sid zk
+          case sub of
+            Just (sName, offset) ->
+              return $ Api.Subscription (TL.fromStrict sid) (TL.fromStrict sName)
+                (Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset)
+            Nothing ->
+              -- FIXME:
+              error $ "get subscription error, subscriptionId = " <> show sid
+        putMVar ret res
+
+  updateSubscriptionOffset sid offset zk = do
+    signal <- newEmptyMVar
+    _ <- forkIO $ zooWatchExists zk path (watcher signal) (callback signal)
+    someErr <- takeMVar signal
+    case someErr of
+      Left err -> throwIO err
+      Right _  -> return ()
+    where
+      path = mkSubscriptionPath sid
+      offsetPath = path <> "/offset"
+
+      watcher signal HsWatcherCtx{..} = do
+        case watcherCtxType of
+          ZooDeleteEvent -> do
+            Log.debug $ Log.buildString "receive ZooDeleteEvent notify when do updateSubscriptionOffset with sid "
+                 <> Log.buildText sid
+            putMVar signal (Left . toException $ SubscriptionRemoved)
+          ZooChildEvent -> do
+            Log.debug $ Log.buildString "receive ZooChildEvent notify when do updateSubscriptionOffset with sid "
+                 <> Log.buildText sid
+            updateSubscriptionOffset sid offset watcherCtxZHandle
+          event -> do
+            Log.warning . Log.buildString $ "Watched event: " <> show event
+            putMVar signal (Left . toException $ UnexpectedZkEvent)
+
+      callback signal _ = do
+        zooSet zk offsetPath (Just . encodeSubOffset $ offset) Nothing >> putMVar signal (Right ())
+
+  removeSubscription subscriptionID zk = tryDeleteAllPath zk $ mkSubscriptionPath subscriptionID
+
+  removeAllSubscriptions zk = tryDeleteAllPath zk subscriptionPath
 
 --------------------------------------------------------------------------------
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
-createInsert zk path contents =
+createInsert zk path contents = do
+  Log.debug . Log.buildString $ "create path " <> show path <> " with value"
   void $ zooCreate zk path (Just contents) zooOpenAclUnsafe ZooPersistent
+
+createInsertOp :: HasCallStack => CBytes -> Bytes -> IO ZooOp
+createInsertOp path contents = do
+  Log.debug . Log.buildString $ "create path " <> show path <> " with value"
+  return $ zooCreateOpInit path (Just contents) 64 zooOpenAclUnsafe ZooPersistent
 
 setZkData :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 setZkData zk path contents =
   void $ zooSet zk path (Just contents) Nothing
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
-tryCreate zk path = catch (createPath zk path) (\(_ :: ZNODEEXISTS) -> pure ())
+tryCreate zk path = catch (createPath zk path) $
+  \(_ :: ZNODEEXISTS) -> do
+    Log.warning . Log.buildString $ "create path failed: " <> show path <> " has existed in zk"
+    pure ()
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
-createPath zk path =
+createPath zk path = do
+  Log.debug . Log.buildString $ "create path " <> show path
   void $ zooCreate zk path Nothing zooOpenAclUnsafe ZooPersistent
+
+createPathOp :: HasCallStack => CBytes -> IO ZooOp
+createPathOp path = do
+  Log.debug . Log.buildString $ "create path " <> show path
+  return $ zooCreateOpInit path Nothing 64 zooOpenAclUnsafe ZooPersistent
+
+deletePath :: HasCallStack => ZHandle -> CBytes -> IO ()
+deletePath zk path = do
+  Log.debug . Log.buildString $ "delete path " <> show path
+  void $ zooDelete zk path Nothing
+
+deleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
+deleteAllPath zk path = do
+  Log.debug . Log.buildString $ "delete all path " <> show path
+  void $ zooDeleteAll zk path
+
+tryDeletePath :: HasCallStack => ZHandle -> CBytes -> IO ()
+tryDeletePath zk path = catch (deletePath zk path) $
+  \(_ :: ZNONODE) -> do
+    Log.warning . Log.buildString $ "delete path error: " <> show path <> " not exist."
+    pure ()
+
+tryDeleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
+tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
+  \(_ :: ZNONODE) -> do
+    Log.warning . Log.buildString $ "delete all path error: " <> show path <> " not exist."
+    pure ()
 
 decodeQ :: JSON a => DataCompletion -> a
 decodeQ = (\case { Right x -> x ; _ -> throw FailedToDecode}) . snd . decode
@@ -283,6 +467,9 @@ mkQueryPath x = queriesPath <> "/" <> x
 
 mkConnectorPath :: CBytes -> CBytes
 mkConnectorPath x = connectorsPath <> "/" <> x
+
+mkSubscriptionPath :: T.Text -> CBytes
+mkSubscriptionPath x = subscriptionPath <> "/" <> textToCBytes x
 
 ifThrow :: Exception e => e -> IO a -> IO a
 ifThrow e = handle (\(_ :: ZooException) -> throwIO e)
@@ -312,3 +499,23 @@ getQuerySink PersistentQuery{..} =
     PlainQuery{}      -> ""
     (StreamQuery _ s) -> s
     (ViewQuery _ s _) -> s
+
+getNodeValue :: ZHandle -> CBytes -> T.Text -> IO (Maybe Bytes)
+getNodeValue zk path = (dataCompletionValue <$>) . zooGet zk . (<> path) . mkSubscriptionPath
+
+lazyTextToBytes :: TL.Text -> Bytes
+lazyTextToBytes = ZF.fromByteString . TE.encodeUtf8 . TL.toStrict
+
+bytesToText :: Bytes -> T.Text
+bytesToText = TE.decodeUtf8 . ZF.toByteString
+
+encodeSubOffset :: Api.RecordId -> Bytes
+encodeSubOffset = ZF.fromByteString . BSL.toStrict . Pb.toLazyByteString
+
+decodeSubOffset :: Bytes -> Api.RecordId
+decodeSubOffset offset =
+  let recordId = Pb.fromByteString . ZF.toByteString $ offset
+   in case recordId of
+        Right res -> res
+        Left _    -> error "parse offset error"
+

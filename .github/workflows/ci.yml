@@ -86,12 +86,13 @@ jobs:
         run: |
           SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
           HADMIN_PORT=$(cat local-data/dev_tools.env|grep STORE_ADMIN_LOCAL_PORT|cut -d '=' -f2)
+          ZOOKEEPER_PORT=$(cat local-data/dev_tools.env|grep ZOOKEEPER_LOCAL_PORT|cut -d '=' -f2)
           NAME="test-hstream-server"
           EXE=$(find dist-newstyle -name "hstream-server" -type f)
 
           python3 script/dev-tools shell --check --no-interactive --command "" --detach \
               --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-              $EXE --port $SERVER_PORT --hadmin-port $HADMIN_PORT
+              $EXE --port $SERVER_PORT --hadmin-port $HADMIN_PORT --persistent --zkuri "127.0.0.1:$ZOOKEEPER_PORT"
           sleep 5
           docker logs --tail 100 $NAME
 
