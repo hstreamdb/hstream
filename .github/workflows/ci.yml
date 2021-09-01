@@ -45,6 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     name: GHC-${{ matrix.ghc }}
     strategy:
+      fail-fast: false
       matrix:
         ghc: ${{ fromJson(needs.pre-build.outputs.ghc) }}
     steps:
