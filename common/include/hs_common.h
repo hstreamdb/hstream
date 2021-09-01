@@ -1,5 +1,7 @@
 #pragma once
 
+#include <HsFFI.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -17,11 +19,7 @@ void setup_sigsegv_handler();
 // ----------------------------------------------------------------------------
 // Stats
 
-struct Stats;
 struct StatsHolder;
-
-Stats* new_stats();
-void delete_stats(Stats* s);
 
 // ----------------------------------------------------------------------------
 #ifdef __cplusplus

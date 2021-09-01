@@ -34,6 +34,7 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Foreign
     HStream.Logger
     HStream.Server.HStreamApi
     HStream.Stats
@@ -41,6 +42,7 @@ library
     HStream.Utils
 
   other-modules:
+    HStream.Stats.Internal
     HStream.Utils.BuildRecord
     HStream.Utils.Concurrent
     HStream.Utils.Converter
@@ -53,10 +55,12 @@ library
   hs-source-dirs:     . gen-src
   include-dirs:       include clib /usr/local/include
   includes:           hs_common.h
+  install-includes:   hs_cpp_lib.h
   cxx-sources:
     cbits/hs_stats.cpp
     cbits/hs_utils.cpp
     clib/stats.cpp
+    clib/struct.cpp
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
@@ -88,7 +92,6 @@ library
   extra-libraries:
     stdc++
     atomic
-    fmt
     folly
     logdevice
     glog
@@ -104,6 +107,7 @@ library
     ScopedTypeVariables
     TypeApplications
     UnliftedFFITypes
+    UnliftedNewtypes
 
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates

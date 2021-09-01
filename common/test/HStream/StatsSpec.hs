@@ -1,40 +1,66 @@
 module HStream.StatsSpec (spec) where
 
+import           Control.Concurrent
+import qualified Data.Map.Strict    as Map
+import           Data.Maybe         (fromJust)
 import           Test.Hspec
 
 import           HStream.Stats
-import           HStream.Utils (runConc)
+import           HStream.Utils      (runConc, setupSigsegvHandler)
 
 spec :: Spec
 spec = do
+  runIO setupSigsegvHandler
+
   statsSpec
   threadedStatsSpec
 
 statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats counter" $ do
-    s <- newStats
-    streamStatAdd_append_payload_bytes s "/topic_1" 100
-    streamStatAdd_append_payload_bytes s "/topic_1" 100
-    streamStatAdd_append_payload_bytes s "/topic_2" 100
+    h <- newStatsHolder
+    stream_stat_add_append_payload_bytes h "/topic_1" 100
+    stream_stat_add_append_payload_bytes h "/topic_1" 100
+    stream_stat_add_append_payload_bytes h "/topic_2" 100
 
-    streamStatGet_append_payload_bytes s "/topic_1" `shouldReturn` 200
-    streamStatGet_append_payload_bytes s "/topic_2" `shouldReturn` 100
+    s <- newAggregateStats h
+    stream_stat_get_append_payload_bytes s "/topic_1" `shouldReturn` 200
+    stream_stat_get_append_payload_bytes s "/topic_2" `shouldReturn` 100
 
   it "pre stream stats time series" $ do
-    s <- newStats
-    streamTimeSeriesAdd_append_in_bytes s "/topic_1" 1000
-    streamTimeSeriesAdd_append_in_bytes s "/topic_1" 1000
-    streamTimeSeriesFlush_append_in_bytes s "/topic_1"
-    streamTimeSeriesGetRate_append_in_bytes s "/topic_1" 0 `shouldReturn` 2000
+    h <- newStatsHolder
+    stream_time_series_add_append_in_bytes h "/topic_1" 1000
+    -- NOTE: we choose to sleep 1sec so that we can assume the speed won't be
+    -- faster than 2000B/s
+    threadDelay 1000000
+    stream_time_series_add_append_in_bytes h "/topic_1" 1000
+    m <- stream_time_series_getall_by_name h "appends" [10 * 1000]  -- 10 sec
+    Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> head s > 0 && head s <= 2000) . fromJust)
 
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
   it "pre stream stats counter (threaded)" $ do
-    holder <- newStatsHolder
+    h <- newStatsHolder
     runConc 10 $ runConc 1000 $ do
-      streamStatHolderAdd_append_payload_bytes holder "a_stream" 1
-      streamStatHolderAdd_append_payload_bytes holder "b_stream" 1
+      stream_stat_add_append_payload_bytes h "a_stream" 1
+      stream_stat_add_append_payload_bytes h "b_stream" 1
 
-    streamStatGetAll_append_payload_bytes holder "a_stream" `shouldReturn` 10000
-    streamStatGetAll_append_payload_bytes holder "b_stream" `shouldReturn` 10000
+    s <- newAggregateStats h
+    stream_stat_get_append_payload_bytes s "a_stream" `shouldReturn` 10000
+    stream_stat_get_append_payload_bytes s "b_stream" `shouldReturn` 10000
+
+    m <- stream_stat_getall_append_payload_bytes s
+    Map.lookup "a_stream" m `shouldBe` Just 10000
+    Map.lookup "b_stream" m `shouldBe` Just 10000
+
+  it "pre stream stats time series (threaded)" $ do
+    h <- newStatsHolder
+    runConc 10 $ runConc 1000 $ do
+      stream_time_series_add_append_in_bytes h "a_stream" 1000
+      stream_time_series_add_append_in_bytes h "b_stream" 1000
+
+    m <- stream_time_series_getall_by_name h "appends" [10 * 1000]  -- 10 sec
+    Map.lookup "non-existed-stream-name" m `shouldBe` Nothing
+    -- FIXME: Unfortunately, there is no easy way to test with real speed. So we just
+    -- check the speed is positive.
+    Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
