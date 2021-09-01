@@ -1,6 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module HStream.Utils
   ( module HStream.Utils.Converter
   , module HStream.Utils.Format

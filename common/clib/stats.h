@@ -1,16 +1,20 @@
 #pragma once
 
 #include <folly/dynamic.h>
+#include <folly/experimental/StringKeyedUnorderedMap.h>
 #include <folly/json.h>
+#include <folly/small_vector.h>
 #include <folly/stats/BucketedTimeSeries.h>
 #include <folly/stats/MultiLevelTimeSeries.h>
 
+#include <logdevice/common/UpdateableSharedPtr.h>
 #include <logdevice/common/checks.h>
 #include <logdevice/common/stats/Stats.h>
 #include <logdevice/common/stats/StatsCounter.h>
 
 // ----------------------------------------------------------------------------
 
+using facebook::logdevice::FastUpdateableSharedPtr;
 using facebook::logdevice::StatsAgg;
 using facebook::logdevice::StatsAggOptional;
 using facebook::logdevice::StatsCounter;
@@ -66,8 +70,6 @@ struct PerStreamStats {
   std::string toJson();
 
 #define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
-  std::vector<std::chrono::milliseconds> time_intervals_##name = t;            \
-  size_t num_buckets_##name = buckets;                                         \
   std::shared_ptr<PerStreamTimeSeries> name;
 #include "per_stream_time_series.inc"
 
@@ -79,9 +81,19 @@ struct PerStreamStats {
 // ----------------------------------------------------------------------------
 // All Stats
 
+struct StatsParams {
+#define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
+  std::vector<std::chrono::milliseconds> time_intervals_##name = t;            \
+  size_t num_buckets_##name = buckets;
+#include "per_stream_time_series.inc"
+
+  // Get MaxInterval of StreamStats by string(command) name
+  PerStreamTimeSeries::Duration maxInterval(std::string string_name);
+};
+
 struct Stats {
 
-  explicit Stats();
+  explicit Stats(const FastUpdateableSharedPtr<StatsParams>* params);
 
   ~Stats();
 
@@ -156,6 +168,8 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerStreamStats>>>
       per_stream_stats;
+
+  const FastUpdateableSharedPtr<StatsParams>* params;
 };
 
 /**
@@ -165,13 +179,15 @@ struct Stats {
  */
 class StatsHolder {
 public:
-  explicit StatsHolder();
+  explicit StatsHolder(StatsParams params);
   ~StatsHolder();
 
   /**
-   * Collect stats from all threads.
+   * Collect stats from all threads. It's your duty to delete the returned ptr.
    */
-  Stats aggregate() const;
+  Stats* aggregate() const;
+
+  void aggregateStreamTimeSeries();
 
   /**
    * Reset stats on all threads.
@@ -192,6 +208,8 @@ public:
    * Executes a function on each thread's Stats object.
    */
   template <typename Func> void runForEach(const Func& func);
+
+  FastUpdateableSharedPtr<StatsParams> params_;
 
 private:
   // Destructor adds stats to dead_stats_.
@@ -242,7 +260,8 @@ struct StatsHolder::StatsWrapper {
   Stats stats;
   StatsHolder* owner;
 
-  explicit StatsWrapper(StatsHolder* owner) : stats(), owner(owner) {}
+  explicit StatsWrapper(StatsHolder* owner)
+      : stats(&owner->params_), owner(owner) {}
 
   ~StatsWrapper() {
     if (owner) {
@@ -316,8 +335,8 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
         std::lock_guard<std::mutex> guard(stats_it->second->mutex);            \
         if (UNLIKELY(!stats_it->second->stat_name)) {                          \
           stats_it->second->stat_name = std::make_shared<PerStreamTimeSeries>( \
-              stats_it->second->num_buckets_##stat_name,                       \
-              stats_it->second->time_intervals_##stat_name);                   \
+              (stats_struct)->params->get()->num_buckets_##stat_name,          \
+              (stats_struct)->params->get()->time_intervals_##stat_name);      \
         }                                                                      \
         stats_it->second->stat_name->addValue(val);                            \
       }                                                                        \

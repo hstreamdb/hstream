@@ -54,11 +54,25 @@ std::string PerStreamStats::toJson() {
 // ----------------------------------------------------------------------------
 // All Stats
 
-Stats::Stats() = default;
+PerStreamTimeSeries::Duration
+StatsParams::maxInterval(std::string string_name) {
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == string_name) {                                                  \
+      return this->time_intervals_##name.back();                               \
+    }                                                                          \
+  }
+#include "per_stream_time_series.inc"
+  ld_check(false);
+  return PerStreamTimeSeries::Duration{};
+}
+
+Stats::Stats(const FastUpdateableSharedPtr<StatsParams>* params)
+    : params(params) {}
 
 Stats::~Stats() = default;
 
-Stats::Stats(const Stats& other) : Stats() {
+Stats::Stats(const Stats& other) : Stats(other.params) {
   aggregate(other, StatsAgg::ASSIGN);
 }
 
@@ -123,20 +137,22 @@ std::string Stats::toJson() { return folly::toJson(this->toJsonObj()); }
 
 // ----------------------------------------------------------------------------
 
-StatsHolder::StatsHolder() : dead_stats_() {}
+StatsHolder::StatsHolder(StatsParams params)
+    : params_(std::make_shared<StatsParams>(std::move(params))),
+      dead_stats_(&params_) {}
 
-Stats StatsHolder::aggregate() const {
-  Stats result;
+Stats* StatsHolder::aggregate() const {
+  Stats* result = new Stats(&params_);
 
   {
     auto accessor = thread_stats_.accessAllThreads();
-    result.aggregate(dead_stats_);
+    result->aggregate(dead_stats_);
     for (const auto& x : accessor) {
-      result.aggregate(x.stats);
+      result->aggregate(x.stats);
     }
   }
 
-  result.deriveStats();
+  result->deriveStats();
 
   return result;
 }
