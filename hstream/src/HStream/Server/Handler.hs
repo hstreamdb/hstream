@@ -856,19 +856,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         )
         recordGroups
 
-    -- After finishing dispatch records,
-    -- we need register a timer task to check if these records have been acked after
-    -- ack timeout.
-    --
-    -- Which input info do we need?
-    -- 1. recordIds for check
-    -- 2. ackedRanges
-    -- 3. streamSends
-    -- 4. ldReader
-    --
-    -- After resend, we still need to register the same timer task to check if
-    -- records resent have been acked.
-
     filterUnackedRecordIds recordIds ackedRanges =
       V.filter
         (
