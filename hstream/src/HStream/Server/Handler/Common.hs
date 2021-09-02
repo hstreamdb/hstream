@@ -232,8 +232,6 @@ convertSubscription Api.Subscription{..} =
                Api.SubscriptionOffsetOffsetRecordOffset r  -> r
     in (streamName, rid)
 
-
-
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
 

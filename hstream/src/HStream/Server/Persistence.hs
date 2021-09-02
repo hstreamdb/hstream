@@ -26,8 +26,6 @@ module HStream.Server.Persistence
   , getRelatedStreams
   , getQuerySink) where
 
-import           Control.Concurrent                   (forkIO)
-import           Control.Concurrent.MVar
 import           Control.Exception                    (Exception (..), handle,
                                                        throw)
 import           Control.Monad                        (forM, void)
@@ -37,12 +35,10 @@ import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
 import           Data.Int                             (Int64)
 import qualified Data.List                            as L
-import           Data.Maybe                           (catMaybes, fromJust,
-                                                       isJust)
+import           Data.Maybe                           (catMaybes, isJust)
 import qualified Data.Text                            as T
 import qualified Data.Text.Lazy                       as TL
 import           GHC.Generics                         (Generic)
-import           Proto3.Suite                         (Enumerated (..))
 import qualified Proto3.Suite                         as Pb
 import           System.IO.Unsafe                     (unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes (..), pack)
@@ -60,7 +56,6 @@ import           ZooKeeper.Types
 import qualified HStream.Logger                       as Log
 import qualified HStream.Server.HStreamApi            as Api
 import           HStream.Server.Persistence.Exception
-import qualified HStream.Store                        as S
 import           HStream.Utils                        (TaskStatus (..),
                                                        cBytesToText,
                                                        textToCBytes)
@@ -282,7 +277,8 @@ subscriptionPath = "/hstreamdb/hstream/subscription"
 class SubPersistence handle where
   -- | persistent a subscription to store
   storeSubscription :: HasCallStack => Api.Subscription -> handle -> IO()
-  -- | getSubscription will return (StreamName, RecordId)
+  -- | if specific subscription exist, getSubscription will return the subscription, else it
+  --   will return nothing
   getSubscription :: HasCallStack => T.Text -> handle -> IO (Maybe Api.Subscription)
   -- | check if specified subscription exist
   checkIfExist :: HasCallStack => T.Text -> handle -> IO Bool
@@ -293,29 +289,13 @@ class SubPersistence handle where
   -- | remove all subscriptions
   removeAllSubscriptions :: HasCallStack => handle -> IO ()
 
-  -- helper function
-  updateSubscriptionOffset :: HasCallStack => T.Text -> Api.RecordId -> handle -> IO()
-
 -------------------------------------------------------------------------------
 
 instance SubPersistence ZHandle where
-  storeSubscription sub@Api.Subscription{..} zk = do
-      createInsert zk subPath . encodeSubscription $
-        sub {Api.subscriptionOffset = Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset}
+  storeSubscription sub@Api.Subscription{..} zk = createInsert zk subPath . encodeSubscription $ sub
     where
       sid = TL.toStrict subscriptionSubscriptionId
       subPath = mkSubscriptionPath sid
-      Api.SubscriptionOffset{..} = fromJust subscriptionOffset
-      sOffset = fromJust subscriptionOffsetOffset
-      offset = case sOffset of
-        Api.SubscriptionOffsetOffsetSpecialOffset subOffset ->
-          case subOffset of
-            Enumerated (Right Api.SubscriptionOffset_SpecialOffsetEARLIST) -> do
-              Api.RecordId S.LSN_MIN 0
-            Enumerated (Right Api.SubscriptionOffset_SpecialOffsetLATEST) -> do
-              Api.RecordId S.LSN_MAX 0
-            Enumerated _ -> error "Wrong SpecialOffset!"
-        Api.SubscriptionOffsetOffsetRecordOffset recordId -> recordId
 
   getSubscription sid zk = do
     res <- getNodeValue zk sid
@@ -331,35 +311,6 @@ instance SubPersistence ZHandle where
   listSubscriptions zk = do
     sIds <- L.map cBytesToText . unStrVec . strsCompletionValues <$> zooGetChildren zk subscriptionPath
     catMaybes <$> forM sIds (`getSubscription` zk)
-
-  updateSubscriptionOffset sid offset zk = do
-    signal <- newEmptyMVar
-    _ <- forkIO $ zooWatchExists zk path (watcher signal) (callback signal)
-    someErr <- takeMVar signal
-    case someErr of
-      Left err -> throwIO err
-      Right _  -> return ()
-    where
-      path = mkSubscriptionPath sid
-
-      watcher signal HsWatcherCtx{..} = do
-        case watcherCtxType of
-          ZooDeleteEvent -> do
-            Log.debug $ Log.buildString "receive ZooDeleteEvent notify when do updateSubscriptionOffset with sid "
-                     <> Log.buildText sid
-            putMVar signal (Left . toException $ SubscriptionRemoved)
-          ZooChildEvent -> do
-            Log.debug $ Log.buildString "receive ZooChildEvent notify when do updateSubscriptionOffset with sid "
-                     <> Log.buildText sid
-            updateSubscriptionOffset sid offset watcherCtxZHandle
-          event -> do
-            Log.warning . Log.buildString $ "Watched event: " <> show event
-            putMVar signal (Left . toException $ UnexpectedZkEvent)
-
-      callback signal _ = do
-        sub <- fromJust <$> getSubscription sid zk
-        let newSub = sub{Api.subscriptionOffset = Just . Api.SubscriptionOffset . Just . Api.SubscriptionOffsetOffsetRecordOffset $ offset}
-        zooSet zk path (Just . encodeSubscription $ newSub) Nothing >> putMVar signal (Right ())
 
   removeSubscription subscriptionID zk = tryDeletePath zk $ mkSubscriptionPath subscriptionID
 
