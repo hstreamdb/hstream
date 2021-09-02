@@ -36,7 +36,6 @@ import           HStream.Utils                    (setupSigsegvHandler)
 data ServerOpts = ServerOpts
   { _serverHost         :: CBytes
   , _serverPort         :: PortNumber
-  , _persistent         :: Bool
   , _zkUri              :: CBytes
   , _ldConfigPath       :: CBytes
   , _topicRepFactor     :: Int
@@ -64,9 +63,6 @@ parseConfig =
                    <> showDefault <> value 6570
                    <> help "server port value"
                     )
-    <*> flag False True ( long "persistent"
-                       <> help "set flag to store queries in zookeeper"
-                        )
     <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault
                  <> value "127.0.0.1:2181"
@@ -130,13 +126,11 @@ app config@ServerOpts{..} = do
   setupSigsegvHandler
   ldclient <- newLDClient _ldConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
-  if _persistent
-     then withResource (defaultHandle _zkUri) $ \zk -> do
-       initZooKeeper zk
-       serve config ldclient (Just zk)
-     else serve config ldclient Nothing
+  withResource (defaultHandle _zkUri) $ \zk -> do
+    initZooKeeper zk
+    serve config ldclient zk
 
-serve :: ServerOpts -> LDClient -> Maybe ZHandle -> IO ()
+serve :: ServerOpts -> LDClient -> ZHandle -> IO ()
 serve ServerOpts{..} ldclient zk = do
   let options = defaultServiceOptions
                 { serverHost = Host . toByteString . toBytes $ _serverHost

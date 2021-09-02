@@ -54,7 +54,7 @@ listConnectorsHandler
 listConnectorsHandler ServerContext{..}
   (ServerNormalRequest _metadata _) = defaultExceptionHandle $ do
   Log.debug "Receive List Connector Request"
-  connectors <- P.withMaybeZHandle zkHandle P.getConnectors
+  connectors <- P.getConnectors zkHandle
   returnResp $ ListConnectorsResponse .
     V.fromList . map hstreamConnectorToConnector $ connectors
 
@@ -66,20 +66,19 @@ getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get Connector Request. "
     <> "Connector ID: " <> Log.buildString (TL.unpack getConnectorRequestId)
-  connector <- P.withMaybeZHandle zkHandle $
-    P.getConnector (lazyTextToCBytes getConnectorRequestId)
+  connector <- P.getConnector (lazyTextToCBytes getConnectorRequestId) zkHandle
   returnResp $ hstreamConnectorToConnector connector
 
 deleteConnectorHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteConnectorHandler sc@ServerContext{..}
+deleteConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
     <> "Connector ID: " <> Log.buildString (TL.unpack deleteConnectorRequestId)
   let cName = lazyTextToCBytes deleteConnectorRequestId
-  P.withMaybeZHandle zkHandle $ P.removeConnector cName
+  P.removeConnector cName zkHandle
   returnResp Empty
 
 restartConnectorHandler
@@ -91,7 +90,7 @@ restartConnectorHandler sc@ServerContext{..}
   Log.debug $ "Receive Restart Connector Request. "
     <> "Connector ID: " <> Log.buildString (TL.unpack restartConnectorRequestId)
   let cid = lazyTextToCBytes restartConnectorRequestId
-  cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
+  cStatus <- P.getConnectorStatus cid zkHandle
   when (cStatus `elem` [Created, Creating, Running]) $ do
     Log.warning . Log.buildString $ "The connector " <> show cid
       <> "cannot be restarted because it has state " <> show cStatus
@@ -126,24 +125,24 @@ createConnector sc@ServerContext{..} sql = do
            <> ", stream name: " <> Log.buildText sName
            <> ", config: " <> Log.buildString (show cConfig)
   streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
-  connectorIds <- P.withMaybeZHandle zkHandle P.getConnectorIds
+  connectorIds <- P.getConnectorIds zkHandle
   let cid = CB.pack $ T.unpack cName
       connectorExists = cid `elem` connectorIds
   unless streamExists $ throwIO StreamNotExist
   when (connectorExists && not ifNotExist) $ do
-    cStatus <- P.withMaybeZHandle zkHandle $ P.getConnectorStatus cid
+    cStatus <- P.getConnectorStatus cid zkHandle
     throwIO (ConnectorAlreadyExists cStatus)
   if connectorExists then do
-    connector <- P.withMaybeZHandle zkHandle $ P.getConnector cid
+    connector <- P.getConnector cid zkHandle
     return $ hstreamConnectorToConnector connector
   else do
     MkSystemTime timestamp _ <- getSystemTime'
-    P.withMaybeZHandle zkHandle $ P.insertConnector cid sql timestamp
+    P.insertConnector cid sql timestamp zkHandle
     handleCreateSinkConnector sc cid sName cConfig <&> hstreamConnectorToConnector
 
 restartConnector :: ServerContext -> CB.CBytes -> IO ()
 restartConnector sc@ServerContext{..} cid = do
-  P.PersistentConnector _ sql _ _ _ <- P.withMaybeZHandle zkHandle $ P.getConnector cid
+  P.PersistentConnector _ sql _ _ _ <- P.getConnector cid zkHandle
   (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
     <- CodeGen.streamCodegen (T.pack . ZT.unpack $ sql)
   streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
