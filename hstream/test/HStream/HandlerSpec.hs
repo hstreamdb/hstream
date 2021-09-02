@@ -1,4 +1,6 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -6,9 +8,13 @@
 
 module HStream.HandlerSpec (spec) where
 
-import           Control.Concurrent               (threadDelay)
-import           Control.Monad                    (forM_, replicateM, void)
+import           Control.Concurrent
+import           Control.Concurrent.Async         (race)
+import           Control.Monad                    (forM_, replicateM,
+                                                   replicateM_, void, when)
 import qualified Data.ByteString                  as B
+import           Data.Int                         (Int32)
+import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
 import qualified Data.Set                         as Set
@@ -16,8 +22,10 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Proto3.Suite                     (Enumerated (..))
 import           Proto3.Suite.Class               (HasDefault (def))
+import           System.Random
 import           Test.Hspec
 import           Z.Foreign                        (toByteString)
 
@@ -251,7 +259,7 @@ subscribeSpec = aroundAll provideHstreamApi $
 
 createSubscriptionRequest :: HStreamClientApi -> TL.Text -> TL.Text -> SubscriptionOffset -> IO Bool
 createSubscriptionRequest HStreamApi{..} subscriptionId streamName offset =
-  let subscription = Subscription subscriptionId streamName (Just offset) 30
+  let subscription = Subscription subscriptionId streamName (Just offset) streamingAckTimeout
       req = ClientNormalRequest subscription requestTimeout $ MetadataMap Map.empty
   in True <$ (getServerResp =<< hstreamApiCreateSubscription req)
 
@@ -281,12 +289,12 @@ checkSubscriptionExistRequest HStreamApi{..} subscribeId =
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec
 
-withConsumerSpecEnv :: ActionWith (HStreamClientApi, (V.Vector B.ByteString, TL.Text, TL.Text))
+withConsumerSpecEnv :: ActionWith (HStreamClientApi, (TL.Text, TL.Text))
                     -> HStreamClientApi -> IO ()
 withConsumerSpecEnv = provideRunTest setup clean
   where
     setup api = do
-      streamName <-  ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
+      streamName <- ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
       subName <- ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
 
       let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset
@@ -294,17 +302,9 @@ withConsumerSpecEnv = provideRunTest setup clean
       let stream = Stream streamName 1
       createStreamRequest api stream `shouldReturn` stream
       createSubscriptionRequest api subName streamName offset `shouldReturn` True
-      subscribeRequest api subName `shouldReturn` True
-      timeStamp <- getProtoTimestamp
-      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
-      payloads <- V.replicateM 5 $ do
-        payload <- newRandomByteString 2
-        let record = buildRecord header payload
-        void $ appendRequest api streamName $ V.singleton record
-        return payload
-      return (payloads, streamName, subName)
+      return (streamName, subName)
 
-    clean api (_payloads, streamName, subName) = do
+    clean api (streamName, subName) = do
       deleteSubscriptionRequest api subName `shouldReturn` True
       deleteStreamRequest_ api streamName `shouldReturn` PB.Empty
 
@@ -312,13 +312,89 @@ consumerSpec :: Spec
 consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 
   aroundWith withConsumerSpecEnv $ do
-    -- FIXME:
-    it "test fetch request" $ \(api, (reqPayloads, _streamName, subName)) -> do
-      Log.debug $ Log.buildString "reqPayloads = " <> Log.buildString (show reqPayloads)
-      resp <- fetchRequest api subName (fromIntegral requestTimeout) 100
-      let respPayloads = V.map getReceivedRecordPayload resp
-      Log.debug $ Log.buildString "respPayload = " <> Log.buildString (show respPayloads)
-      respPayloads `shouldBe` reqPayloads
+
+    timeStamp <- runIO getProtoTimestamp
+    let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+
+    it "test streamFetch request" $ \(api, (streamName, subName)) -> do
+      originCh <- newChan
+      hackerCh <- newChan
+      terminate <- newChan
+      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate defaultHacker)
+
+      let numMsg = 300
+          batchSize = 5
+      reqRids <- replicateM numMsg $ do
+        payload <- V.map (buildRecord header) <$> V.replicateM batchSize (newRandomByteString 2)
+        appendResponseRecordIds <$> appendRequest api streamName payload
+      Log.debug . Log.buildString $ "length of record = " <> show (length reqRids)
+      ack <- collectRecord 0 (numMsg * batchSize) [] originCh
+      ack `shouldBe` V.concat reqRids
+      writeChan terminate ()
+      Log.debug "streamFetch test done !!!!!!!!!!!"
+
+    it "test retrans unacked msg" $ \(api, (streamName, subName)) -> do
+      originCh <- newChan
+      hackerCh <- newChan
+      terminate <- newChan
+      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate randomKillHacker)
+
+      replicateM_ 1000 $ do
+        payload <- V.map (buildRecord header) <$> V.replicateM 2 (newRandomByteString 2)
+        appendResponseRecordIds <$> appendRequest api streamName payload
+      originAck <- readChan originCh
+      hackedAck <- readChan hackerCh
+      retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
+      Log.debug . Log.buildString $ "retransAck length = " <> show (length retransAck)
+      let diff = V.toList originAck L.\\ V.toList hackedAck
+      retransAck `shouldBe` V.fromList diff
+      writeChan terminate ()
+      Log.debug "retrans unacked msg test done !!!!!!!!!!!"
+
+    it "test retrans timeout msg" $ \(api, (streamName, subName)) -> do
+      originCh <- newChan
+      hackerCh <- newChan
+      terminate <- newChan
+      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate timeoutHacker)
+
+      replicateM_ 500 $ do
+        payload <- V.map (buildRecord header) <$> V.replicateM 5 (newRandomByteString 2)
+        appendResponseRecordIds <$> appendRequest api streamName payload
+      originAck <- readChan originCh
+      let hackedAck = V.empty
+      retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
+      Log.debug . Log.buildString $ "retransAck length = " <> show (length retransAck)
+      retransAck `shouldBe` originAck
+      writeChan terminate ()
+      Log.debug "retrans timeout msg done !!!!!!!!!!!"
+
+    -- FIXME:Wrong ack messages cause the server to fail to update the ack window and commit checkpoints,
+    -- but the only way to verify the server's behavior now is check the debug logs, so this test is always successful.
+    it "test ack wrong msg" $ \(api, (streamName, subName)) -> do
+      originCh <- newChan
+      hackerCh <- newChan
+      terminate <- newChan
+
+      let record = buildRecord header "1"
+      RecordId{..} <- V.head . appendResponseRecordIds <$> appendRequest api streamName (V.singleton record)
+      let !latesLSN = recordIdBatchId + 1
+      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate (wrongRidHacker latesLSN))
+
+      replicateM_ 5 $ do
+        payload <- V.map (buildRecord header) <$> V.replicateM 2 (newRandomByteString 2)
+        appendResponseRecordIds <$> appendRequest api streamName payload
+      originAck <- readChan originCh
+      let hackedAck = V.empty
+      retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
+      Log.debug . Log.buildString $ "retransAck length = " <> show (length retransAck)
+      retransAck `shouldBe` originAck
+      writeChan terminate ()
+      Log.debug "ack wrong msg test done !!!!!!!!!!!"
+
+  -- TODO:
+  -- test need to add
+  --  1. fetch/ack unsubscribed subscription will fail
+  --  2. validate commit and checkpoint
 
 ----------------------------------------------------------------------------------------------------------
 
@@ -328,8 +404,111 @@ fetchRequest HStreamApi{..} subscribeId timeout maxSize =
       req = ClientNormalRequest fetReq requestTimeout $ MetadataMap Map.empty
   in fetchResponseReceivedRecords <$> (getServerResp =<< hstreamApiFetch req)
 
+streamFetchRequest
+  :: HStreamClientApi
+  -> TL.Text
+  -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
+  -> Chan (V.Vector RecordId) -- channel use to trans record after hacker
+  -> Chan ()                  -- channel use to close client request
+  -> (V.Vector RecordId -> IO (V.Vector RecordId)) -- hacker function
+  -> IO ()
+streamFetchRequest HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
+  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True)
+  hstreamApiStreamingFetch req >>= \case
+    ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
+    ClientBiDiResponse _meta StatusOk _msg -> Log.debug "fetch request done"
+    ClientBiDiResponse _meta stats detail -> Log.fatal . Log.buildString $ "abnormal status: " <> show stats <> ", msg: " <> show detail
+    ClientErrorResponse err -> Log.e . Log.buildString $ "fetch request err: " <> show err
+  where
+    action isInit call _meta streamRecv streamSend _done = do
+      when isInit $ do
+        let initReq = StreamingFetchRequest subscribeId V.empty
+        streamSend initReq >>= \case
+          Left err -> do
+            Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
+            clientCallCancel call
+          Right _ -> return ()
+      void $ race (doFetch streamRecv streamSend hacker call) (notifyDone call)
+
+    doFetch streamRecv streamSend hacker' call = do
+      streamRecv >>= \case
+        Left err -> do
+          Log.e . Log.buildString $ "Error happened when recv from server " <> show err
+          clientCallCancel call
+        Right Nothing -> do
+          Log.debug "server close, fetch request end."
+          clientCallCancel call
+        Right (Just StreamingFetchResponse{..}) -> do
+          -- get recordId from response
+          let ackIds = V.map (fromJust . receivedRecordRecordId) streamingFetchResponseReceivedRecords
+          -- select ackIds
+          ackIds' <- hacker' ackIds
+          writeChan originCh ackIds
+          writeChan hackerCh ackIds'
+
+          -- send ack
+          let fetReq = StreamingFetchRequest subscribeId ackIds'
+          streamSend fetReq >>= \case
+            Left err -> do
+              Log.e . Log.buildString $ "Error happened when send ack: " <> show err <> "\n ack context: " <> show fetReq
+              clientCallCancel call
+            Right _ -> do
+              doFetch streamRecv streamSend defaultHacker call
+
+    notifyDone call = do
+      void $ readChan terminate
+      clientCallCancel call
+      Log.d "client cancel fetch request"
+
+collectRetrans :: Int -> Chan (V.Vector RecordId) -> Int -> [V.Vector RecordId]-> IO (V.Vector RecordId)
+collectRetrans cnt channel maxCount res
+  | maxCount <= cnt = return $ V.concat res
+  | otherwise = do
+      ids <- readChan channel
+      if V.length ids /= 1
+         then do
+           collectRetrans cnt channel maxCount res
+         else do
+           let nres = res L.++ [ids]
+           collectRetrans (cnt + 1) channel maxCount nres
+
+collectRecord :: Int -> Int -> [V.Vector RecordId] -> Chan (V.Vector RecordId) -> IO (V.Vector RecordId)
+collectRecord cnt maxCount res channel
+  | cnt >= maxCount = do
+      return . V.concat $ res
+  | otherwise = do
+      rids <- readChan channel
+      let nres = res L.++ [rids]
+      collectRecord (cnt + V.length rids) maxCount nres channel
+
+defaultHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
+defaultHacker = pure
+
+randomKillHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
+randomKillHacker rids = do
+  let size = V.length rids
+  seed <- randomRIO (1, min 10 (size `div` 2))
+  let retrans = V.ifilter (\idx _ -> idx `mod` seed == 0) rids
+  Log.d $ "length of recordIds which need to retrans: " <> Log.buildInt (V.length retrans)
+  return $ V.ifilter (\idx _ -> idx `mod` seed /= 0) rids
+
+timeoutHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
+timeoutHacker rids = threadDelay 7000000 >> return rids
+
+wrongRidHacker :: Word64 -> V.Vector RecordId -> IO (V.Vector RecordId)
+wrongRidHacker lsn _ = do
+  let wrongIdxRecord = RecordId lsn 100005
+      wrongLSNRecord = RecordId (lsn + 50000) 99
+  return . V.fromList $ [wrongLSNRecord, wrongIdxRecord]
+
 requestTimeout :: Int
 requestTimeout = 10
+
+streamingAckTimeout :: Int32
+streamingAckTimeout = 3
+
+streamingReqTimeout :: Int
+streamingReqTimeout = 10000000
 
 getReceivedRecordPayload :: ReceivedRecord -> B.ByteString
 getReceivedRecordPayload ReceivedRecord{..} =
