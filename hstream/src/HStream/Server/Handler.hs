@@ -76,7 +76,8 @@ import qualified HStream.Store.Admin.API           as AA
 import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                      (HasDefault (def))
+import           Proto3.Suite                      (Enumerated (..),
+                                                    HasDefault (def))
 import qualified Z.Data.CBytes                     as CB
 import           Z.Data.Vector                     (Bytes)
 import           Z.Foreign                         (toByteString)
@@ -419,8 +420,25 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
                    <> "Stream Name: " <> Log.buildString (show streamName)
        returnErrResp StatusInternal $ StatusDetails "stream not exist"
      else do
-       P.storeSubscription subscription (fromJust zkHandle)
+       logId <- S.getUnderlyingLogId scLDClient (transToStreamName . TL.toStrict $ subscriptionStreamName)
+       offset <- convertOffsetToRecordId logId
+       let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
+       P.storeSubscription newSub (fromJust zkHandle)
        returnResp subscription
+  where
+    convertOffsetToRecordId logId = do
+      let SubscriptionOffset{..} = fromJust subscriptionOffset
+          sOffset = fromJust subscriptionOffsetOffset
+      case sOffset of
+        SubscriptionOffsetOffsetSpecialOffset subOffset ->
+          case subOffset of
+            Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> do
+              return $ RecordId S.LSN_MIN 0
+            Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST) -> do
+              startLSN <- (+1) <$> S.getTailLSN scLDClient logId
+              return $ RecordId startLSN 0
+            Enumerated _ -> error "Wrong SpecialOffset!"
+        SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
 subscribeHandler
   :: ServerContext
@@ -448,23 +466,21 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
   where
     sId = TL.toStrict subscribeRequestSubscriptionId
 
-    doSubscribe (Just (streamName, rid)) store = do
+    doSubscribe (Just sub) store = do
+      let (streamName, rid@RecordId{..}) = convertSubscription sub
       -- if the underlying stream does not exist, the getUnderlyingLogId method will throw an exception,
       -- and all follows steps will not be executed.
       Log.debug $ "get subscription info from zk, streamName: " <> Log.buildText streamName <> " offset: " <> Log.buildString (show rid)
       logId <- S.getUnderlyingLogId scLDClient (transToStreamName streamName)
       ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes sId) S.checkpointStoreLogID 5000 1 Nothing 10
       Log.debug . Log.buildString $ "create ld reader to stream " <> show streamName
-      (isUpdated, newRecordId@RecordId{..}) <- checkLSN rid logId
       S.ckpReaderStartReading ldreader logId recordIdBatchId S.LSN_MAX
-      when isUpdated $
-        P.updateSubscriptionOffset sId newRecordId (fromJust zkHandle)
       Log.debug $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt recordIdBatchId
       -- insert to runtime info
       let info = SubscribeRuntimeInfo
                   { sriLdreader = ldreader
                   , sriStreamName = streamName
-                  , sriWindowLowerBound = newRecordId
+                  , sriWindowLowerBound = rid
                   , sriWindowUpperBound = maxBound
                   , sriAckedRanges = Map.empty
                   , sriBatchNumMap = Map.empty
@@ -478,13 +494,6 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
       Log.warning . Log.buildString $ "can not get subscription " <> show sId <> " from zk."
       resErr <- returnErrResp StatusInternal $ StatusDetails "Can not get subscription from zk"
       return (store, resErr)
-
-    checkLSN rId@RecordId{..} logId = do
-      if recordIdBatchId == S.LSN_MAX
-         then do
-           lsn <- (+1) <$> S.getTailLSN scLDClient logId
-           return (True, rId {recordIdBatchId = lsn})
-         else return (False, rId)
 
 deleteSubscriptionHandler
   :: ServerContext
@@ -689,10 +698,11 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                           return $ info {sriStreamSends = newSends}
                       )
 
-                  Just (streamName, startRecordId) ->
+                  Just sub ->
                     modifyMVar_ subscribeRuntimeInfo
                       (
-                        \store ->
+                        \store -> do
+                          let (streamName, startRecordId) = convertSubscription sub
                           case HM.lookup streamingFetchRequestSubscriptionId store of
                             Just _ -> return store
                             Nothing -> do
@@ -715,7 +725,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                 -- At this point, the corresponding subscribeRuntimeInfo must be
                 -- present, unless the subscription has been removed
                 -- forcely, which we will handle later(TODO).
-                (streamName, _) <- fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
+                (streamName, _) <- convertSubscription . fromJust <$> P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
 
                 modifyMVar_ infoMVar
                   (

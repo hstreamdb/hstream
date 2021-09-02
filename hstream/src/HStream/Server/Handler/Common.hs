@@ -11,9 +11,6 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent               (MVar, ThreadId, forkIO,
                                                    killThread, putMVar,
                                                    readMVar, swapMVar, takeMVar)
-import           Control.Concurrent.STM           (STM, TVar, atomically,
-                                                   modifyTVar', readTVar,
-                                                   writeTVar)
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    displayException,
@@ -26,6 +23,7 @@ import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromJust)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
@@ -33,7 +31,6 @@ import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
-import           GHC.Conc                         (readTVarIO)
 import           Network.GRPC.HighLevel           (StreamSend)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
@@ -58,8 +55,8 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (RecordId (..),
-                                                   StreamingFetchResponse,
-                                                   Subscription)
+                                                   StreamingFetchResponse)
+import qualified HStream.Server.HStreamApi        as Api
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
@@ -225,6 +222,15 @@ eitherToResponse (Right _) resp =
 responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (ServerResponse 'Normal a)
 responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing [] errCode msg
+
+convertSubscription :: Api.Subscription -> (T.Text, RecordId)
+convertSubscription Api.Subscription{..} =
+  let streamName = TL.toStrict subscriptionStreamName
+      Api.SubscriptionOffset{..} = fromJust subscriptionOffset
+      rid = case fromJust subscriptionOffsetOffset of
+               Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+               Api.SubscriptionOffsetOffsetRecordOffset r  -> r
+    in (streamName, rid)
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
