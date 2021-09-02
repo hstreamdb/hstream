@@ -69,7 +69,7 @@ listViewsHandler
   -> IO (ServerResponse 'Normal ListViewsResponse)
 listViewsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   Log.debug "Receive List View Request"
-  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  queries <- P.getQueries zkHandle
   let records = map hstreamQueryToView $ filter P.isViewQuery queries
   let resp = ListViewsResponse . V.fromList $ records
   returnResp resp
@@ -82,7 +82,7 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
   Log.debug $ "Receive Get View Request. "
     <> "View ID:" <> Log.buildString (TL.unpack getViewRequestViewId)
   query <- do
-    viewQueries <- filter P.isViewQuery <$> P.withMaybeZHandle zkHandle P.getQueries
+    viewQueries <- filter P.isViewQuery <$> P.getQueries zkHandle
     return $
       find (\P.PersistentQuery {..} -> cBytesToLazyText queryId == getViewRequestViewId) viewQueries
   case query of

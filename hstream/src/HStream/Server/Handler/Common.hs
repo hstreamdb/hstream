@@ -82,7 +82,7 @@ type Timestamp = Int64
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , scDefaultStreamRepFactor :: Int
-  , zkHandle                 :: Maybe ZHandle
+  , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
@@ -185,7 +185,7 @@ runSinkConnector
   -> SinkConnector
   -> IO ThreadId
 runSinkConnector ServerContext{..} cid src connector = do
-    P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid Running
+    P.setConnectorStatus cid Running zkHandle
     forkIO $ catches (forever action) cleanup
   where
     writeToConnector c SourceRecord{..} =
@@ -194,11 +194,11 @@ runSinkConnector ServerContext{..} cid src connector = do
     cleanup =
       [ Handler (\(_ :: ERRException) -> do
                     Log.warning "Sink connector thread died due to SQL errors"
-                    P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid ConnectionAbort
+                    P.setConnectorStatus cid ConnectionAbort zkHandle
                     void releasePid)
       , Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
-                    P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid Terminated
+                    P.setConnectorStatus cid Terminated zkHandle
                     void releasePid)
       ]
     releasePid = do
@@ -247,10 +247,10 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
   where
     cleanup = do
       Log.debug "Create sink connector failed"
-      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid CreationAbort
+      P.setConnectorStatus cid CreationAbort zkHandle
 
     action = do
-      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid Creating
+      P.setConnectorStatus cid Creating zkHandle
       Log.debug "Start creating sink connector"
       ldreader <- HS.newLDReader scLDClient 1000 Nothing
       let src = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
@@ -263,14 +263,14 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
         MySqlConnector table config -> do
           Log.debug $ "Connecting to mysql with " <> Log.buildString (show config)
           mysqlSinkConnector table <$> MySQL.connect config
-      P.withMaybeZHandle zkHandle $ P.setConnectorStatus cid Created
+      P.setConnectorStatus cid Created zkHandle
       Log.debug . Log.buildString . CB.unpack $ cid <> "Connected"
 
       tid <- runSinkConnector serverCtx cid src connector
       Log.debug . Log.buildString $ "Sink connector started running on thread#" <> show tid
 
       takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
-      P.withMaybeZHandle zkHandle $ P.getConnector cid
+      P.getConnector cid zkHandle
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
@@ -282,7 +282,7 @@ handleCreateAsSelect :: ServerContext
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
     (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType zkHandle
-  P.withMaybeZHandle zkHandle (P.setQueryStatus qid Running)
+  P.setQueryStatus qid Running zkHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
@@ -297,13 +297,13 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
                     Log.debug . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " is killed because of " <> show e
-                    P.withMaybeZHandle zkHandle $ P.setQueryStatus qid Terminated
+                    P.setQueryStatus qid Terminated zkHandle
                     void $ releasePid qid)
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " died because of " <> show e
-                    P.withMaybeZHandle zkHandle $ P.setQueryStatus qid ConnectionAbort
+                    P.setQueryStatus qid ConnectionAbort zkHandle
                     void $ releasePid qid)
       ]
     releasePid qid = do
@@ -343,7 +343,7 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
 
 terminateQueryAndRemove :: ServerContext -> CB.CBytes -> IO ()
 terminateQueryAndRemove sc@ServerContext{..} objectId = do
-  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  queries <- P.getQueries zkHandle
   let queryExists = find (\query -> P.getQuerySink query == objectId) queries
   case queryExists of
     Just query -> do
@@ -352,7 +352,7 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
         <> " with query id " <> show (P.queryId query)
         <> " writes to the stream being dropped " <> show objectId
       void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
-      P.withMaybeZHandle zkHandle (P.removeQuery' $ P.queryId query)
+      P.removeQuery' (P.queryId query) zkHandle
       Log.debug . Log.buildString
          $ "TERMINATE: query " <> show (P.queryType query)
         <> " has been removed"
@@ -362,7 +362,7 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
 
 terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
-  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  queries <- P.getQueries zkHandle
   let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
   Log.debug . Log.buildString
      $ "TERMINATE: the queries related to the terminating stream " <> show name
@@ -373,7 +373,7 @@ handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [CB.CBytes]
 handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  P.withMaybeZHandle zkHandle $ P.setQueryStatus qid Terminated
+  P.setQueryStatus qid Terminated zkHandle
   void $ swapMVar runningQueries (HM.delete qid hmapQ)
   Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
   return [qid]

@@ -95,7 +95,7 @@ listQueriesHandler
   -> IO (ServerResponse 'Normal ListQueriesResponse)
 listQueriesHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   Log.debug "Receive List Query Request"
-  queries <- P.withMaybeZHandle zkHandle P.getQueries
+  queries <- P.getQueries zkHandle
   let records = map hstreamQueryToQuery queries
   let resp = ListQueriesResponse . V.fromList $ records
   returnResp resp
@@ -108,7 +108,7 @@ getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest
   Log.debug $ "Receive Get Query Request. "
     <> "Query ID: " <> Log.buildString (TL.unpack getQueryRequestId)
   query <- do
-    queries <- P.withMaybeZHandle zkHandle P.getQueries
+    queries <- P.getQueries zkHandle
     return $ find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == getQueryRequestId) queries
   case query of
     Just q -> returnResp $ hstreamQueryToQuery q
@@ -141,7 +141,7 @@ deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryR
   defaultExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.buildString (TL.unpack deleteQueryRequestId)
-    P.withMaybeZHandle zkHandle $ P.removeQuery (lazyTextToCBytes deleteQueryRequestId)
+    P.removeQuery (lazyTextToCBytes deleteQueryRequestId) zkHandle
     returnResp Empty
 
 -- FIXME: Incorrect implementation!

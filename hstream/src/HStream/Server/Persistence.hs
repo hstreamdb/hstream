@@ -18,7 +18,6 @@ module HStream.Server.Persistence
   , Persistence (..)
   , SubPersistence (..)
   , initializeAncestors
-  , withMaybeZHandle
   , ZooException
   , isViewQuery
   , isStreamQuery
@@ -123,15 +122,11 @@ class Persistence handle where
   removeConnector'   :: HasCallStack => CBytes -> handle ->  IO ()
   removeConnector    :: HasCallStack => CBytes -> handle -> IO ()
 
-withMaybeZHandle :: Maybe ZHandle -> (forall a. Persistence a => a -> IO b) -> IO b
-withMaybeZHandle (Just zk) f = f zk
-withMaybeZHandle Nothing   f = f (queryCollection, connectorsCollection)
-
-createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> Maybe ZHandle -> IO (CBytes, Int64)
+createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> ZHandle -> IO (CBytes, Int64)
 createInsertPersistentQuery taskName queryText queryType zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
   let qid   = Z.Data.CBytes.pack (T.unpack taskName)
-  withMaybeZHandle zkHandle $ insertQuery qid queryText timestamp queryType
+  insertQuery qid queryText timestamp queryType zkHandle
   return (qid, timestamp)
 
 --------------------------------------------------------------------------------

@@ -12,7 +12,7 @@ module HStream.Server.Handler where
 
 import           Control.Concurrent
 import           Control.Exception                 (handle, throwIO)
-import           Control.Monad                     (join, unless, void, when)
+import           Control.Monad                     (join, unless, when)
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor
 import           Data.ByteString                   (ByteString)
@@ -90,7 +90,7 @@ handlers
   :: S.LDClient
   -> AA.HeaderConfig AA.AdminAPI
   -> Int
-  -> Maybe ZHandle
+  -> ZHandle
   -> Int64    -- ^ timer timeout, ms
   -> S.Compression
   -> IO (HStreamApi ServerRequest ServerResponse)
@@ -275,7 +275,7 @@ executeQueryHandler sc@ServerContext{..} (ServerNormalRequest _metadata CommandQ
           let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
           case mStateStore materialized of
             KVStateStore store -> do
-              queries <- P.withMaybeZHandle zkHandle P.getQueries
+              queries <- P.getQueries zkHandle
               sizeM   <- getFixedWinSize queries rSelectViewFrom
                 <&> fmap diffTimeToScientific
               if isJust sizeM
@@ -358,11 +358,11 @@ executePushQueryHandler ServerContext{..}
           (TL.toStrict commandPushQueryQueryText) (P.PlainQuery $ textToCBytes <$> sources) zkHandle
         -- run task
         -- FIXME: take care of the life cycle of the thread and global state
-        tid <- forkIO $ P.withMaybeZHandle zkHandle (P.setQueryStatus qid Running)
+        tid <- forkIO $ P.setQueryStatus qid Running zkHandle
           >> runTaskWrapper S.StreamTypeStream S.StreamTypeTemp taskBuilder scLDClient
         takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
         _ <- forkIO $ handlePushQueryCanceled meta
-          (killThread tid >> P.withMaybeZHandle zkHandle (P.setQueryStatus qid Terminated))
+          (killThread tid >> P.setQueryStatus qid Terminated zkHandle)
         ldreader' <- S.newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
           S.checkpointStoreLogID 5000 1 Nothing 10
@@ -375,7 +375,7 @@ executePushQueryHandler ServerContext{..}
 
 --------------------------------------------------------------------------------
 
-sendToClient :: Maybe ZHandle
+sendToClient :: ZHandle
              -> CB.CBytes
              -> SourceConnector
              -> (Struct -> IO (Either GRPCIOError ()))
@@ -385,7 +385,7 @@ sendToClient zkHandle qid sc@SourceConnector{..} streamSend = do
         Log.fatal $ "ZooKeeper Exception: " <> Log.buildString (show e)
         return $ ServerWriterResponse [] StatusAborted "failed to get status"
   handle f $ do
-    P.withMaybeZHandle zkHandle $ P.getQueryStatus qid
+    P.getQueryStatus qid zkHandle
     >>= \case
       Terminated -> return (ServerWriterResponse [] StatusUnknown "")
       Created    -> return (ServerWriterResponse [] StatusUnknown "")
@@ -423,7 +423,7 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
        logId <- S.getUnderlyingLogId scLDClient (transToStreamName . TL.toStrict $ subscriptionStreamName)
        offset <- convertOffsetToRecordId logId
        let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-       P.storeSubscription newSub (fromJust zkHandle)
+       P.storeSubscription newSub zkHandle
        returnResp subscription
   where
     convertOffsetToRecordId logId = do
@@ -448,7 +448,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
   Log.debug $ "Receive subscribe request: " <> Log.buildString (show req)
 
   -- first, check if the subscription exist. If not, return err
-  isExist <- P.checkIfExist sId (fromJust zkHandle)
+  isExist <- P.checkIfExist sId zkHandle
   unless isExist $ do
     Log.warning . Log.buildString $ "Can not subscribe an unexisted subscription, subscriptionId = " <> show sId
     throwIO SubscriptionIdNotFound
@@ -461,7 +461,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
          resp <- returnResp $ SubscribeResponse subscribeRequestSubscriptionId
          return (store, resp)
        else do
-         sub <- P.getSubscription sId (fromJust zkHandle)
+         sub <- P.getSubscription sId zkHandle
          doSubscribe sub store
   where
     sId = TL.toStrict subscribeRequestSubscriptionId
@@ -503,7 +503,7 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
 
   let sid = TL.toStrict deleteSubscriptionRequestSubscriptionId
-  P.removeSubscription sid (fromJust zkHandle)
+  P.removeSubscription sid zkHandle
 
   modifyMVar_ subscribeRuntimeInfo $ \store -> do
     case HM.lookup deleteSubscriptionRequestSubscriptionId store of
@@ -533,7 +533,7 @@ checkSubscriptionExistHandler
 checkSubscriptionExistHandler ServerContext{..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest{..})= do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
   let sid = TL.toStrict checkSubscriptionExistRequestSubscriptionId
-  res <- P.checkIfExist sid (fromJust zkHandle)
+  res <- P.checkIfExist sid zkHandle
   returnResp . CheckSubscriptionExistResponse $ res
 
 listSubscriptionsHandler
@@ -542,7 +542,7 @@ listSubscriptionsHandler
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsHandler ServerContext{..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
-  res <- ListSubscriptionsResponse . V.fromList <$> P.listSubscriptions (fromJust zkHandle)
+  res <- ListSubscriptionsResponse . V.fromList <$> P.listSubscriptions zkHandle
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
 
@@ -661,7 +661,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
 
   handleRequest True
   where
-    handler = fromJust zkHandle
     handleRequest isFirst = do
       eRes <- streamRecv
       case eRes of
@@ -694,7 +693,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                             -- This means that subscribeRuntimeInfo has been inited by others.
                             Just _ -> return store
                             Nothing -> do
-                              mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
+                              mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
                               -- At this point, the corresponding subscription must be
                               -- present, unless the subscription has been removed
                               -- forcely, which we will handle later(TODO).
