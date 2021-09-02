@@ -674,39 +674,32 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
             Just StreamingFetchRequest{..} -> do
               when isFirst $ do
                 -- TODO: check subscription whether exsits first
-                --
+
                 isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
+                if isInited
+                then do
+                  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
 
-                -- avoid nested locks for preventing deadlock
-                mRes <-
-                  if isInited
-                  then return Nothing
-                  else
-                    -- At this point, the corresponding subscribeRuntimeInfo must be
-                    -- present, unless the subscription has been removed
-                    -- forcely, which we will handle later(TODO).
-                    P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
-
-                case mRes of
-                  Nothing -> do
-                    infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
-
-                    modifyMVar_ infoMVar
-                      (
-                        \info@SubscribeRuntimeInfo{..} -> do
-                          let newSends = V.snoc sriStreamSends streamSend
-                          return $ info {sriStreamSends = newSends}
-                      )
-
-                  Just sub ->
+                  modifyMVar_ infoMVar
+                    (
+                      \info@SubscribeRuntimeInfo{..} -> do
+                        let newSends = V.snoc sriStreamSends streamSend
+                        return $ info {sriStreamSends = newSends}
+                    )
+                else do
                     modifyMVar_ subscribeRuntimeInfo
                       (
                         \store -> do
-                          let (streamName, startRecordId) = convertSubscription sub
                           case HM.lookup streamingFetchRequestSubscriptionId store of
-                            -- subscribeRuntimeInfo has been inited by others.
+                            -- This means that subscribeRuntimeInfo has been inited by others.
                             Just _ -> return store
                             Nothing -> do
+                              mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) handler
+                              -- At this point, the corresponding subscription must be
+                              -- present, unless the subscription has been removed
+                              -- forcely, which we will handle later(TODO).
+                              let sub = fromJust mSub
+                              let (streamName, startRecordId) = convertSubscription sub
                               newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId (TL.fromStrict streamName) startRecordId streamSend
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
