@@ -102,8 +102,10 @@ data RecordIdRange = RecordIdRange
   } deriving (Show, Eq)
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriLdreader         :: HS.LDSyncCkpReader
+    sriLdCkpReader      :: HS.LDSyncCkpReader
+  , sriLdReader         :: HS.LDReader
   , sriStreamName       :: T.Text
+  , sriLogId            :: HS.C_LogID
   , sriWindowLowerBound :: RecordId
   , sriWindowUpperBound :: RecordId
   , sriAckedRanges      :: Map.Map RecordId RecordIdRange
