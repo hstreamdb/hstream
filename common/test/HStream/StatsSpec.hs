@@ -34,8 +34,9 @@ statsSpec = describe "HStream.Stats" $ do
     -- faster than 2000B/s
     threadDelay 1000000
     stream_time_series_add_append_in_bytes h "/topic_1" 1000
-    m <- stream_time_series_getall_by_name h "appends" [10 * 1000]  -- 10 sec
+    m <- stream_time_series_getall_by_name h "appends" [5* 1000, 10 * 1000]  -- 5, 10 sec
     Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> head s > 0 && head s <= 2000) . fromJust)
+    Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> s!!1 > 0 && s!!1 <= 2000) . fromJust)
 
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
