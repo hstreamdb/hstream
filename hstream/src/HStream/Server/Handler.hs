@@ -20,7 +20,8 @@ import           Data.Function                     (on, (&))
 import           Data.Functor
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef                        (atomicModifyIORef',
-                                                    readIORef)
+                                                    newIORef, readIORef,
+                                                    writeIORef)
 import           Data.Int                          (Int64)
 import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as Map
@@ -665,7 +666,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       eRes <- streamRecv
       case eRes of
         Left (err :: grpcIOError) -> do
-          Log.fatal . Log.buildString $ "streamRecv error" <> show err
+          Log.fatal . Log.buildString $ "streamRecv error: " <> show err
           -- fixme here
           return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
         Right ma ->
@@ -798,26 +799,31 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                 let newInfo = info {sriAckedRanges = newRanges}
                 return newInfo
               Right dataRecords -> do
-                let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
-                let groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
-                let lastBatch = last groups
-                let maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
-                -- update window upper bound
-                -- update batchNumMap
-                let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
-                let newInfo = info {sriBatchNumMap = newBatchNumMap, sriWindowUpperBound = maxRecordId}
+                if null dataRecords
+                then return info
+                else do
+                  let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
+                  let groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
+                  let lastBatch = last groups
+                  let maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
+                  -- update window upper bound
+                  -- update batchNumMap
+                  let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
                 -- dispatch records to consumers
-                unless (null dataRecords) $ do
                   let receivedRecords = fetchResult groups
-                  dispatchRecords receivedRecords sriStreamSends
+                  newStreamSends <- dispatchRecords receivedRecords sriStreamSends
                   -- register task for resending timeout records
                   let receivedRecordIds = V.map (fromJust . receivedRecordRecordId) receivedRecords
                   void $ registerLowResTimer (fromIntegral sriAckTimeoutSeconds * 10)
                     (
                       void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar
                     )
+                  let newInfo = info {
+                                  sriBatchNumMap = newBatchNumMap
+                                , sriWindowUpperBound = maxRecordId
+                                , sriStreamSends = newStreamSends}
 
-                return newInfo
+                  return newInfo
 
         )
 
@@ -840,14 +846,29 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
               records
 
 
-      V.imapM_
+      resVec <- V.imapM
         (
           \ i group -> do
             Log.debug $ Log.buildString "dispatch " <> Log.buildInt (V.length group) <>  " records to " <> "consumer " <> Log.buildInt i
             let ss = streamSends V.! i
-            ss $ StreamingFetchResponse group
+            sendRes <- ss $ StreamingFetchResponse group
+            case sendRes of
+              Left err -> do
+                Log.fatal $ Log.buildString $ "dispatch error, will remove a consumer: " <> show err
+                return False
+              Right () -> return True
         )
         recordGroups
+
+      return $ V.ifilter
+        (
+          \ i _ -> resVec V.! i
+        )
+        streamSends
+
+      -- return a new vector of valid streamSend.
+      -- a map of bool
+      -- then filter valid steamSend
 
     filterUnackedRecordIds recordIds ackedRanges =
       V.filter
@@ -861,13 +882,14 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
       Log.debug "enter tryResendTimeoutRecords"
-      withMVar
+      modifyMVar_
         infoMVar
         (
-          \SubscribeRuntimeInfo{..} -> do
+          \info@SubscribeRuntimeInfo{..} -> do
             let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges
             Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
             let consumerNum = V.length sriStreamSends
+            streamSendValidRef <- newIORef $ V.replicate consumerNum True
             V.imapM_
               (
                 \ i RecordId{..} -> do
@@ -879,14 +901,19 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                     Log.fatal $ "can not read log " <> Log.buildString (show logId) <> " at " <> Log.buildString (show recordIdBatchId)
                   else do
                     let ci = i `mod` consumerNum
-                    let cs = sriStreamSends V.! ci
-                    let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
-                    res <- cs $ StreamingFetchResponse $ V.singleton rr
-                    case res of
-                      Left grpcIOError ->
-                        -- TODO: retry or error
-                        Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
-                      Right _ -> return ()
+                    streamSendValid <- readIORef streamSendValidRef
+                    if streamSendValid V.! ci
+                    then do
+                      let cs = sriStreamSends V.! ci
+                      let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
+                      res <- cs $ StreamingFetchResponse $ V.singleton rr
+                      case res of
+                        Left grpcIOError -> do
+                          Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
+                          let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
+                          writeIORef streamSendValidRef newStreamSendValid
+                        Right _ -> return ()
+                    else return ()
 
 
               )
@@ -896,6 +923,15 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
               (
                 void $ forkIO $ tryResendTimeoutRecords unackedRecordIds logId infoMVar
               )
+
+            valids <- readIORef streamSendValidRef
+            let newStreamSends = V.ifilter
+                                  (
+                                    \ i _ -> valids V.! i
+                                  )
+                                  sriStreamSends
+
+            return $ info {sriStreamSends = newStreamSends}
         )
 
 
