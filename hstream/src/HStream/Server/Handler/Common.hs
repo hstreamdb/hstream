@@ -20,7 +20,7 @@ import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
-import           Data.Int                         (Int64)
+import           Data.Int                         (Int32, Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
@@ -102,15 +102,16 @@ data RecordIdRange = RecordIdRange
   } deriving (Show, Eq)
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriLdCkpReader      :: HS.LDSyncCkpReader
-  , sriLdReader         :: HS.LDReader
-  , sriStreamName       :: T.Text
-  , sriLogId            :: HS.C_LogID
-  , sriWindowLowerBound :: RecordId
-  , sriWindowUpperBound :: RecordId
-  , sriAckedRanges      :: Map.Map RecordId RecordIdRange
-  , sriBatchNumMap      :: Map.Map Word64 Word32
-  , sriStreamSends      :: V.Vector (StreamSend StreamingFetchResponse)
+    sriStreamName        :: T.Text
+  , sriLogId             :: HS.C_LogID
+  , sriAckTimeoutSeconds :: Int32
+  , sriLdCkpReader       :: HS.LDSyncCkpReader
+  , sriLdReader          :: HS.LDReader
+  , sriWindowLowerBound  :: RecordId
+  , sriWindowUpperBound  :: RecordId
+  , sriAckedRanges       :: Map.Map RecordId RecordIdRange
+  , sriBatchNumMap       :: Map.Map Word64 Word32
+  , sriStreamSends       :: V.Vector (StreamSend StreamingFetchResponse)
 }
 
 --------------------------------------------------------------------------------
@@ -225,14 +226,14 @@ responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (S
 responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing [] errCode msg
 
-convertSubscription :: Api.Subscription -> (T.Text, RecordId)
-convertSubscription Api.Subscription{..} =
-  let streamName = TL.toStrict subscriptionStreamName
+getStartRecordId :: Api.Subscription -> RecordId
+getStartRecordId Api.Subscription{..} =
+  let
       Api.SubscriptionOffset{..} = fromJust subscriptionOffset
       rid = case fromJust subscriptionOffsetOffset of
                Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
                Api.SubscriptionOffsetOffsetRecordOffset r  -> r
-    in (streamName, rid)
+    in rid
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper

@@ -143,6 +143,7 @@ message Subscription {
   string subscriptionId = 1;
   string streamName = 2;
   SubscriptionOffset offset = 3;
+  int32 ackTimeoutSeconds = 4;
 }
 
 message SubscriptionOffset {
