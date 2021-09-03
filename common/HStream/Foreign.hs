@@ -30,6 +30,7 @@ module HStream.Foreign
   , c_delete_vector_of_string
   , c_delete_vector_of_int64
   , c_delete_std_vec_of_folly_small_vec_of_double
+  , cal_offset_std_string
   ) where
 
 import           Control.Exception        (finally)
@@ -67,7 +68,7 @@ peekStdStringToCBytesN len ptr
 
 peekStdStringToCBytesIdx :: Ptr Z.StdString -> Int -> IO CBytes
 peekStdStringToCBytesIdx p offset = do
-  ptr <- hs_cal_std_string_off p offset
+  ptr <- cal_offset_std_string p offset
   siz :: Int <- Z.hs_std_string_size ptr
   let !siz' = siz + 1
   (mpa@(Z.MutablePrimArray mba#) :: Z.MutablePrimArray Z.RealWorld a) <- Z.newPrimArray siz'
@@ -75,9 +76,6 @@ peekStdStringToCBytesIdx p offset = do
   Z.writePrimArray mpa siz 0
   CBytes.fromMutablePrimArray mpa
 {-# INLINE peekStdStringToCBytesIdx #-}
-
-foreign import ccall unsafe "hs_cal_std_string_off"
-  hs_cal_std_string_off :: Ptr Z.StdString -> Int -> IO (Ptr Z.StdString)
 
 -------------------------------------------------------------------------------
 
@@ -159,3 +157,9 @@ HS_CPP_DELETE(delete_string, Z.StdString)
 HS_CPP_DELETE(delete_vector_of_string, (StdVector Z.StdString))
 HS_CPP_DELETE(delete_vector_of_int64, (StdVector Int64))
 HS_CPP_DELETE(delete_std_vec_of_folly_small_vec_of_double, (StdVector (FollySmallVector Double)))
+
+#define HS_CPP_CAL_OFFSET(CFUN, HSOBJ) \
+  foreign import ccall unsafe "hs_cpp_lib.h CFUN" \
+    CFUN :: Ptr HSOBJ -> Int -> IO (Ptr HSOBJ)
+
+HS_CPP_CAL_OFFSET(cal_offset_std_string, Z.StdString)

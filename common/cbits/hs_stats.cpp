@@ -49,27 +49,12 @@ void stats_holder_print(StatsHolder* s) { s->print(); }
       std::vector<int64_t>** values_) {                                        \
     if (stats) {                                                               \
       auto& stats_rlock = *(stats->per_stream_stats.rlock());                  \
-      /* TODO                                                                  \
       cppMapToHs<                                                              \
           std::unordered_map<std::string, std::shared_ptr<PerStreamStats>>,    \
-          std::string, std::shared_ptr<PerStreamStats>,                        \
-          std::function<int64_t(std::shared_ptr<PerStreamStats&&>)>>(          \
-          stats_rlock, [](auto&& val) { val->name.load(); }, len,              \
-          stream_names_ptr, values_ptr, keys_, values_);                       \
-      */                                                                       \
-      *len = stats_rlock.size();                                               \
-      std::vector<std::string>* keys = new std::vector<std::string>;           \
-      keys->reserve(*len);                                                     \
-      std::vector<int64_t>* values = new std::vector<int64_t>;                 \
-      values->reserve(*len);                                                   \
-      for (const auto& [key, value] : stats_rlock) {                           \
-        keys->push_back(key);                                                  \
-        values->push_back(value->name.load());                                 \
-      }                                                                        \
-      *stream_names_ptr = keys->data();                                        \
-      *values_ptr = values->data();                                            \
-      *keys_ = keys;                                                           \
-      *values_ = values;                                                       \
+          std::string, int64_t, std::nullptr_t,                                \
+          std::function<int64_t(std::shared_ptr<PerStreamStats>)>&&>(          \
+          stats_rlock, nullptr, [](auto&& val) { return val->name.load(); },   \
+          len, stream_names_ptr, values_ptr, keys_, values_);                  \
     }                                                                          \
   }
 #include "per_stream_stats.inc"
@@ -158,19 +143,9 @@ void stream_time_series_getall_by_name(
     }
   });
 
-  *len = output.size();
-  auto keys = new std::vector<std::string>;
-  keys->reserve(*len);
-  auto values = new std::vector<folly::small_vector<double, 4>>;
-  values->reserve(*len);
-  for (const auto& [key, value] : output) {
-    keys->push_back(key);
-    values->push_back(value);
-  }
-  *keys_ptr = keys->data();
-  *values_ptr = values->data();
-  *keys_ = keys;
-  *values_ = values;
+  cppMapToHs<AggregateMap, std::string, folly::small_vector<double, 4>,
+             std::nullptr_t, std::nullptr_t>(
+      output, nullptr, nullptr, len, keys_ptr, values_ptr, keys_, values_);
 }
 
 // TODO
