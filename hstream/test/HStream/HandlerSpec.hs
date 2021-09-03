@@ -200,7 +200,7 @@ subscribeSpec = aroundAll provideHstreamApi $
 
   aroundWith withSubscriptions $ do
     it "test listSubscription request" $ \(api, (streamNames, subscriptionNames)) -> do
-      let subscriptions = V.zipWith3 Subscription  subscriptionNames streamNames  $ V.replicate 5 (Just offset)
+      let subscriptions = V.zipWith4 Subscription  subscriptionNames streamNames  (V.replicate 5 (Just offset)) (V.replicate 5 30)
       forM_ subscriptions $ \Subscription{..} -> do
         let stream = Stream subscriptionStreamName 1
         createStreamRequest api stream `shouldReturn` stream
@@ -246,7 +246,7 @@ subscribeSpec = aroundAll provideHstreamApi $
 
 createSubscriptionRequest :: HStreamClientApi -> TL.Text -> TL.Text -> SubscriptionOffset -> IO Bool
 createSubscriptionRequest HStreamApi{..} subscriptionId streamName offset =
-  let subscription = Subscription subscriptionId streamName $ Just offset
+  let subscription = Subscription subscriptionId streamName (Just offset) 30
       req = ClientNormalRequest subscription requestTimeout $ MetadataMap Map.empty
   in True <$ (getServerResp =<< hstreamApiCreateSubscription req)
 
