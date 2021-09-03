@@ -466,20 +466,20 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
   where
     sId = TL.toStrict subscribeRequestSubscriptionId
 
-    doSubscribe (Just sub) store = do
-      let (streamName, rid@RecordId{..}) = convertSubscription sub
+    doSubscribe (Just sub@Subscription{..}) store = do
+      let rid@RecordId{..} = getStartRecordId sub
       -- if the underlying stream does not exist, the getUnderlyingLogId method will throw an exception,
       -- and all follows steps will not be executed.
-      Log.debug $ "get subscription info from zk, streamName: " <> Log.buildText streamName <> " offset: " <> Log.buildString (show rid)
-      logId <- S.getUnderlyingLogId scLDClient (transToStreamName streamName)
+      Log.debug $ "get subscription info from zk, streamName: " <> Log.buildLazyText subscriptionStreamName <> " offset: " <> Log.buildString (show rid)
+      logId <- S.getUnderlyingLogId scLDClient (transToStreamName $ TL.toStrict subscriptionStreamName)
       ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes sId) S.checkpointStoreLogID 5000 1 Nothing 10
-      Log.debug . Log.buildString $ "create ld reader to stream " <> show streamName
+      Log.debug $ Log.buildString "create ld reader to stream " <> Log.buildLazyText subscriptionStreamName
       S.ckpReaderStartReading ldreader logId recordIdBatchId S.LSN_MAX
       Log.debug $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt recordIdBatchId
       -- insert to runtime info
       let info = SubscribeRuntimeInfo
                   { sriLdCkpReader = ldreader
-                  , sriStreamName = streamName
+                  , sriStreamName = TL.toStrict subscriptionStreamName
                   , sriWindowLowerBound = rid
                   , sriWindowUpperBound = maxBound
                   , sriAckedRanges = Map.empty
@@ -697,9 +697,9 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                               -- At this point, the corresponding subscription must be
                               -- present, unless the subscription has been removed
                               -- forcely, which we will handle later(TODO).
-                              let sub = fromJust mSub
-                              let (streamName, startRecordId) = convertSubscription sub
-                              newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId (TL.fromStrict streamName) startRecordId streamSend
+                              let sub@Subscription{..} = fromJust mSub
+                              let startRecordId = getStartRecordId sub
+                              newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName startRecordId streamSend subscriptionAckTimeoutSeconds
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
 
@@ -737,7 +737,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
               return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
 
     -- return: IO (MVar SubscribeRuntimeInfo)
-    initSubscribe ldclient subscriptionId streamName startRecordId sSend = do
+    initSubscribe ldclient subscriptionId streamName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
         S.newLDRsmCkpReader
@@ -758,15 +758,16 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
 
       -- init SubscribeRuntimeInfo
       let info = SubscribeRuntimeInfo {
-                  sriLdCkpReader = ldCkpReader
-                , sriLdReader = ldReader
+                  sriStreamName = TL.toStrict streamName
                 , sriLogId = logId
+                , sriAckTimeoutSeconds = ackTimeout
+                , sriLdCkpReader = ldCkpReader
+                , sriLdReader = ldReader
                 , sriWindowLowerBound = startRecordId
                 , sriWindowUpperBound = maxBound
                 , sriAckedRanges = Map.empty
                 , sriBatchNumMap = Map.empty
                 , sriStreamSends = V.singleton sSend
-                , sriStreamName = TL.toStrict streamName
                 }
 
       infoMVar <- newMVar info
@@ -811,7 +812,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                   dispatchRecords receivedRecords sriStreamSends
                   -- register task for resending timeout records
                   let receivedRecordIds = V.map (fromJust . receivedRecordRecordId) receivedRecords
-                  void $ registerLowResTimer 30
+                  void $ registerLowResTimer (fromIntegral sriAckTimeoutSeconds * 10)
                     (
                       void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar
                     )
@@ -860,7 +861,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
       Log.debug "enter tryResendTimeoutRecords"
-      resentRecordIds <- withMVar
+      withMVar
         infoMVar
         (
           \SubscribeRuntimeInfo{..} -> do
@@ -891,13 +892,12 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
               )
               unackedRecordIds
 
-            return unackedRecordIds
+            void $ registerLowResTimer (fromIntegral sriAckTimeoutSeconds * 10)
+              (
+                void $ forkIO $ tryResendTimeoutRecords unackedRecordIds logId infoMVar
+              )
         )
 
-      void $ registerLowResTimer 30
-        (
-          void $ forkIO $ tryResendTimeoutRecords resentRecordIds logId infoMVar
-        )
 
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
     fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
