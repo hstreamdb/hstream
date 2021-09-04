@@ -1,6 +1,6 @@
 [submodule "external/gRPC-haskell"]
 	path = external/gRPC-haskell
-	url = git@github.com:hstreamdb/gRPC-haskell.git
+	url = https://github.com/hstreamdb/gRPC-haskell.git
 [submodule "external/hsthrift"]
 	path = external/hsthrift
-	url = git@github.com:hstreamdb/hsthrift.git
+	url = https://github.com/hstreamdb/hsthrift.git
