@@ -23,7 +23,7 @@ module HStream.Store.Stream
   , findStreams
   , getStreamReplicaFactor
   , getStreamHeadTimestamp
-  , doesStreamExists
+  , doesStreamExist
 
     -- * Internal Log
   , FFI.LogID (..)
@@ -243,8 +243,8 @@ getStreamHeadTimestamp client stream = do
     FFI.C_MAX_MILLISECONDS -> return Nothing
     _                      -> return $ Just ts
 
-doesStreamExists :: HasCallStack => FFI.LDClient -> StreamId -> IO Bool
-doesStreamExists client stream = do
+doesStreamExist :: HasCallStack => FFI.LDClient -> StreamId -> IO Bool
+doesStreamExist client stream = do
   path <- getUnderlyingLogPath stream
   m_v <- Cache.lookup logPathCache path
   case m_v of

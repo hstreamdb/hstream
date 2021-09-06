@@ -124,7 +124,7 @@ createConnector sc@ServerContext{..} sql = do
            <> ", connector name: " <> Log.buildText cName
            <> ", stream name: " <> Log.buildText sName
            <> ", config: " <> Log.buildString (show cConfig)
-  streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
+  streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)
   connectorIds <- P.getConnectorIds zkHandle
   let cid = CB.pack $ T.unpack cName
       connectorExists = cid `elem` connectorIds
@@ -145,6 +145,6 @@ restartConnector sc@ServerContext{..} cid = do
   P.PersistentConnector _ sql _ _ _ <- P.getConnector cid zkHandle
   (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
     <- CodeGen.streamCodegen (T.pack . ZT.unpack $ sql)
-  streamExists <- S.doesStreamExists scLDClient (transToStreamName sName)
+  streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)
   unless streamExists $ throwIO StreamNotExist
   void $ handleCreateSinkConnector sc cid sName cConfig

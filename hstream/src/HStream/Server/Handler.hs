@@ -345,7 +345,7 @@ executePushQueryHandler ServerContext{..}
   plan' <- streamCodegen (TL.toStrict commandPushQueryQueryText)
   case plan' of
     SelectPlan sources sink taskBuilder -> do
-      exists <- mapM (S.doesStreamExists scLDClient . transToStreamName) sources
+      exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
       if (not . and) exists
       then do
         Log.warning $ "At least one of the streams do not exist: "
@@ -414,7 +414,7 @@ createSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata subsc
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
 
   let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
-  streamExists <- S.doesStreamExists scLDClient streamName
+  streamExists <- S.doesStreamExist scLDClient streamName
   if not streamExists
      then do
        Log.warning $ "Try to create a subscription to a nonexistent stream"
@@ -514,7 +514,7 @@ deleteSubscriptionHandler ServerContext{..} (ServerNormalRequest _metadata req@D
             \SubscribeRuntimeInfo{..} -> do
               -- stop ldreader
               let streamName = transToStreamName sriStreamName
-              exists <- S.doesStreamExists scLDClient streamName
+              exists <- S.doesStreamExist scLDClient streamName
               if exists
                  then do
                    logId <- S.getUnderlyingLogId scLDClient streamName
