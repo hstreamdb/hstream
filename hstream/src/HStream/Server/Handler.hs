@@ -870,14 +870,14 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       -- a map of bool
       -- then filter valid steamSend
 
-    filterUnackedRecordIds recordIds ackedRanges =
+    filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       V.filter
         (
           \recordId ->
             case Map.lookupLE recordId ackedRanges of
               Nothing                               -> True
               Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
-        )
+        ) . V.filter (>= windowLowerBound) $
         recordIds
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
@@ -886,7 +886,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
-            let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges
+            let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
             Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
             let consumerNum = V.length sriStreamSends
             streamSendValidRef <- newIORef $ V.replicate consumerNum True
@@ -934,7 +934,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
             return $ info {sriStreamSends = newStreamSends}
         )
 
-
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
     fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
 
@@ -943,14 +942,11 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
-    tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
-      let (_, RecordIdRange minStartRecordId minEndRecordId) = Map.findMin ackedRanges
-      in
-          if minStartRecordId == lowerBoundRecordId
-          then
-            Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
-          else
-            Nothing
+    tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap = Map.lookupMin ackedRanges >>=
+      \(_, RecordIdRange minStartRecordId minEndRecordId) ->
+         if minStartRecordId == lowerBoundRecordId
+            then Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
+            else Nothing
 
     commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> T.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
