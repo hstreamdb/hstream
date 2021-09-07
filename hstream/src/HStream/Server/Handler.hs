@@ -870,14 +870,14 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       -- a map of bool
       -- then filter valid steamSend
 
-    filterUnackedRecordIds recordIds ackedRanges =
+    filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       V.filter
         (
           \recordId ->
             case Map.lookupLE recordId ackedRanges of
               Nothing                               -> True
               Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
-        )
+        ) . V.filter (>= windowLowerBound) $
         recordIds
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
@@ -886,7 +886,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
-            let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges
+            let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
             Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
             let consumerNum = V.length sriStreamSends
             streamSendValidRef <- newIORef $ V.replicate consumerNum True
