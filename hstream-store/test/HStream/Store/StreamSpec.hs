@@ -23,14 +23,14 @@ base = describe "BaseSpec" $ do
 
   it "create stream" $ do
     print $ "Create a new stream: " <> S.showStreamName streamId
-    S.doesStreamExists client streamId `shouldReturn` False
+    S.doesStreamExist client streamId `shouldReturn` False
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
                                         , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
                                                                          , ("A", "B")
                                                                          ]
                                         }
     S.createStream client streamId attrs
-    S.doesStreamExists client streamId `shouldReturn` True
+    S.doesStreamExist client streamId `shouldReturn` True
 
   it "create the same stream should throw EXISTS" $ do
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
@@ -49,8 +49,8 @@ base = describe "BaseSpec" $ do
   it "rename stream" $ do
     print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
     S.renameStream client streamId newStreamId
-    S.doesStreamExists client streamId `shouldReturn` False
-    S.doesStreamExists client newStreamId `shouldReturn` True
+    S.doesStreamExist client streamId `shouldReturn` False
+    S.doesStreamExist client newStreamId `shouldReturn` True
 
   it "stream replication factor" $ do
     S.getStreamReplicaFactor client newStreamId `shouldReturn` 1
@@ -79,4 +79,4 @@ base = describe "BaseSpec" $ do
 
   it "remove the stream" $ do
     S.removeStream client newStreamId
-    S.doesStreamExists client newStreamId `shouldReturn` False
+    S.doesStreamExist client newStreamId `shouldReturn` False

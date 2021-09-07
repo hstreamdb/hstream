@@ -326,7 +326,7 @@ dropHelper :: ServerContext -> T.Text -> Bool -> Bool
 dropHelper sc@ServerContext{..} name checkIfExist isView = do
   when isView $ atomicModifyIORef' groupbyStores (\hm -> (HM.delete name hm, ()))
   let sName = if isView then HCS.transToViewStreamName name else HCS.transToStreamName name
-  streamExists <- HS.doesStreamExists scLDClient sName
+  streamExists <- HS.doesStreamExist scLDClient sName
   if streamExists
     then terminateQueryAndRemove sc (textToCBytes name)
       >> terminateRelatedQueries sc (textToCBytes name)

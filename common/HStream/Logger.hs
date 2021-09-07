@@ -22,6 +22,7 @@ module HStream.Logger
   , buildString
   , buildText
   , buildLazyText
+  , buildCBytes
 
   -- * Log Level
   , setLogLevel
@@ -40,10 +41,23 @@ import           GHC.Stack      (HasCallStack)
 import qualified Text.Read      as Read
 import           Z.Data.Builder (Builder)
 import qualified Z.Data.Builder as B
+import qualified Z.Data.CBytes  as CBytes
 import qualified Z.IO.Logger    as Log
 
 import qualified HStream.Utils  as U
 
+-------------------------------------------------------------------------------
+-- Example:
+--
+-- @
+-- import qualified HStream.Logger as Log
+--
+-- main :: IO ()
+-- main = Log.withDefaultLogger $ do
+--   Log.debug $ "..."
+--   Log.info $ Log.buildString someString
+-- @
+--
 -------------------------------------------------------------------------------
 
 buildInt :: (Integral a, Bounded a) => a -> Builder ()
@@ -61,6 +75,10 @@ buildText = U.textToZBuilder
 buildLazyText :: TL.Text -> Builder ()
 buildLazyText = U.lazyTextToZBuilder
 {-# INLINE buildLazyText #-}
+
+buildCBytes :: CBytes.CBytes -> Builder ()
+buildCBytes = CBytes.toBuilder
+{-# INLINE buildCBytes #-}
 
 setLogLevel :: Level -> Bool -> IO ()
 setLogLevel level withColor = do

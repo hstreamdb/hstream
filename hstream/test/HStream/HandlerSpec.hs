@@ -6,6 +6,7 @@
 
 module HStream.HandlerSpec (spec) where
 
+import           Control.Concurrent               (threadDelay)
 import           Control.Monad                    (forM_, replicateM, void)
 import qualified Data.ByteString                  as B
 import qualified Data.Map.Strict                  as Map
@@ -100,6 +101,10 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       -- append to a nonexistent stream should throw exception
       appendRequest api name (V.fromList [record1, record2]) `shouldThrow` anyException
       createStreamRequest api stream `shouldReturn` stream
+      -- FIXME: Even we have called the "syncLogsConfigVersion" method, there is
+      -- **no** guarantee that subsequent "append" will have an up-to-date view
+      -- of the LogsConfig. For details, see Logdevice::Client::syncLogsConfigVersion
+      threadDelay 2000000
       resp <- appendRequest api name (V.fromList [record1, record2])
       appendResponseStreamName resp `shouldBe` name
       recordIdBatchIndex <$> appendResponseRecordIds resp `shouldBe` V.fromList [0, 1]

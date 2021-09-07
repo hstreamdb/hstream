@@ -67,8 +67,7 @@ parseConfig =
                  <> showDefault
                  <> value "127.0.0.1:2181"
                  <> help ( "comma separated host:port pairs, each corresponding"
-                      <> "to a zk zookeeper server, only meaningful when"
-                      <> "persistent flag is set. "
+                      <> "to a zk zookeeper server. "
                       <> "e.g. \"127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183\""
                          )
                   )

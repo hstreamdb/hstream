@@ -62,7 +62,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
   case plan of
     HSC.SelectPlan sources sink taskBuilder -> do
       let taskBuilder' = taskBuilderWithName taskBuilder $ T.pack (TL.unpack createQueryRequestId)
-      exists <- mapM (HS.doesStreamExists scLDClient . HCH.transToStreamName) sources
+      exists <- mapM (HS.doesStreamExist scLDClient . HCH.transToStreamName) sources
       if (not . and) exists
       then do
         Log.warning $ "At least one of the streams do not exist: "
