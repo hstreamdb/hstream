@@ -83,11 +83,14 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
       loop api
   where
     loop :: HStreamClientApi -> IO ()
-    loop api = RL.readlineExMaybe [] (Just completer) Nothing >>= \case
-      Nothing -> pure ()
-      Just str
-        | take 1 (words str) == [":q"] -> pure ()
-        | otherwise -> commandExec api str >> loop api
+    loop api = do
+      RL.setHistory "./.hstream_client_history" (-1)
+      _ <- RL.enableAutoTab False
+      RL.readlineExMaybe [] (Just completer) Nothing >>= \case
+        Nothing -> pure ()
+        Just str
+          | take 1 (words str) == [":q"] -> pure ()
+          | otherwise -> commandExec api str >> loop api
 
 commandExec :: HStreamClientApi -> String -> IO ()
 commandExec api xs = case words xs of
