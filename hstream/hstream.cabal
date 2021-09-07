@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
     HStream.Client.Action
+    HStream.Client.Internal
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -55,6 +56,7 @@ library
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , isocline
     , microlens
     , microlens-aeson
     , mysql-haskell
@@ -120,11 +122,11 @@ executable hstream-client
     , containers
     , grpc-haskell
     , grpc-haskell-core
-    , haskeline
     , hstream
     , hstream-common
     , hstream-sql
     , hstream-store
+    , isocline
     , optparse-applicative
     , random
     , raw-strings-qq

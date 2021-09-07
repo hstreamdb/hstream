@@ -20,7 +20,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified Options.Applicative              as O
 import           System.Console.ANSI              (getTerminalSize)
-import qualified System.Console.Haskeline         as H
+import qualified System.Console.Isocline          as RL
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
@@ -28,6 +28,7 @@ import           Text.RawString.QQ                (r)
 
 import           Data.Functor                     ((<&>))
 import           HStream.Client.Action
+import           HStream.Client.Internal
 import qualified HStream.Logger                   as Log
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
@@ -79,14 +80,14 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
                            <> " through port " <> (T.pack . show . unPort) clientServerPort
     ClientNormalResponse {} -> do
       putStrLn helpInfo
-      H.runInputT H.defaultSettings (loop api)
+      loop api
   where
-    loop :: HStreamClientApi -> H.InputT IO ()
-    loop api = H.getInputLine "> " >>= \case
-      Nothing   -> return ()
+    loop :: HStreamClientApi -> IO ()
+    loop api = RL.readlineExMaybe [] (Just completer) Nothing >>= \case
+      Nothing -> pure ()
       Just str
-        | take 1 (words str) == [":q"] -> return ()
-        | otherwise -> liftIO (commandExec api str) >> loop api
+        | take 1 (words str) == [":q"] -> pure ()
+        | otherwise -> commandExec api str >> loop api
 
 commandExec :: HStreamClientApi -> String -> IO ()
 commandExec api xs = case words xs of
