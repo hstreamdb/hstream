@@ -622,7 +622,7 @@ ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeReque
       modifyMVar infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
-            let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges acknowledgeRequestAckIds
+            let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges acknowledgeRequestAckIds
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
                 Log.debug . Log.buildString $ "update ackedRanges " <> show newAckedRanges <> " update window lower bound to " <> show newLowerBound
@@ -718,7 +718,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                 modifyMVar_ infoMVar
                   (
                     \info@SubscribeRuntimeInfo{..} -> do
-                      let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
+                      let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
                       case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
                         Just (ranges, newLowerBound, checkpointRecordId) -> do
                           commitCheckpoint scLDClient sriLdCkpReader sriStreamName checkpointRecordId
@@ -874,7 +874,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       V.filter
         (
           \recordId ->
-            case Map.lookupLT  recordId ackedRanges of
+            case Map.lookupLE recordId ackedRanges of
               Nothing                               -> True
               Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
         )
