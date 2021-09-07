@@ -116,13 +116,20 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
 
 --------------------------------------------------------------------------------
 
-insertAckedRecordId :: RecordId -> Map.Map RecordId RecordIdRange -> Map.Map Word64 Word32 -> Map.Map RecordId RecordIdRange
-insertAckedRecordId recordId ackedRanges batchNumMap =
-  let leftRange = lookupLTWithDefault recordId ackedRanges
-      rightRange = lookupGTWithDefault recordId ackedRanges
-      canMergeToLeft = isSuccessor recordId (endRecordId leftRange) batchNumMap
-      canMergeToRight = isPrecursor recordId (startRecordId rightRange) batchNumMap
-   in f leftRange rightRange canMergeToLeft canMergeToRight
+insertAckedRecordId
+  :: RecordId -- ^ recordId need to insert
+  -> RecordId -- ^ lowerBound of current window
+  -> Map.Map RecordId RecordIdRange -- ^ ackedRanges
+  -> Map.Map Word64 Word32 -- ^ batchNumMap
+  -> Map.Map RecordId RecordIdRange
+insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
+  | recordId < lowerBound = ackedRanges
+  | otherwise =
+      let leftRange = lookupLTWithDefault recordId ackedRanges
+          rightRange = lookupGTWithDefault recordId ackedRanges
+          canMergeToLeft = isSuccessor recordId (endRecordId leftRange) batchNumMap
+          canMergeToRight = isPrecursor recordId (startRecordId rightRange) batchNumMap
+       in f leftRange rightRange canMergeToLeft canMergeToRight
   where
     f leftRange rightRange canMergeToLeft canMergeToRight
       | canMergeToLeft && canMergeToRight =
