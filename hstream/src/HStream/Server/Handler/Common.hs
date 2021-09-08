@@ -123,6 +123,7 @@ insertAckedRecordId
   -> Map.Map Word64 Word32 -- ^ batchNumMap
   -> Map.Map RecordId RecordIdRange
 insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
+  | not $ isValidRecordId recordId batchNumMap = ackedRanges
   | recordId < lowerBound = ackedRanges
   | otherwise =
       let leftRange = lookupLTWithDefault recordId ackedRanges
@@ -171,6 +172,13 @@ getSuccessor r@RecordId{..} batchNumMap =
   if isLastInBatch r batchNumMap
   then RecordId (recordIdBatchId + 1) 0
   else r {recordIdBatchIndex = recordIdBatchIndex + 1}
+
+isValidRecordId :: RecordId -> Map.Map Word64 Word32 -> Bool
+isValidRecordId RecordId{..} batchNumMap =
+  case Map.lookup recordIdBatchId batchNumMap of
+    Just maxIdx | recordIdBatchIndex >= maxIdx || recordIdBatchIndex < 0 -> False
+                | otherwise -> True
+    Nothing -> False
 --------------------------------------------------------------------------------
 
 runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
