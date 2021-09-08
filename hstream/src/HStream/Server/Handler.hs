@@ -888,51 +888,52 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
           \info@SubscribeRuntimeInfo{..} -> do
             let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
             Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
-            let consumerNum = V.length sriStreamSends
-            streamSendValidRef <- newIORef $ V.replicate consumerNum True
-            V.imapM_
-              (
-                \ i RecordId{..} -> do
-                  S.readerStartReading sriLdReader logId recordIdBatchId recordIdBatchId
-                  dataRecords <- S.readerRead sriLdReader 1
-                  if null dataRecords
-                  then do
-                    -- TODO: retry or error
-                    Log.fatal $ "can not read log " <> Log.buildString (show logId) <> " at " <> Log.buildString (show recordIdBatchId)
-                  else do
-                    let ci = i `mod` consumerNum
-                    streamSendValid <- readIORef streamSendValidRef
-                    if streamSendValid V.! ci
-                    then do
-                      let cs = sriStreamSends V.! ci
-                      let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
-                      res <- cs $ StreamingFetchResponse $ V.singleton rr
-                      case res of
-                        Left grpcIOError -> do
-                          Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
-                          let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
-                          writeIORef streamSendValidRef newStreamSendValid
-                        Right _ -> return ()
-                    else return ()
-
-
-              )
-              unackedRecordIds
-
-            void $ registerLowResTimer (fromIntegral sriAckTimeoutSeconds * 10)
-              (
-                void $ forkIO $ tryResendTimeoutRecords unackedRecordIds logId infoMVar
-              )
-
-            valids <- readIORef streamSendValidRef
-            let newStreamSends = V.ifilter
-                                  (
-                                    \ i _ -> valids V.! i
-                                  )
-                                  sriStreamSends
-
-            return $ info {sriStreamSends = newStreamSends}
+            if V.null unackedRecordIds
+               then return info
+               else doResend info unackedRecordIds
         )
+      where
+        doResend info@SubscribeRuntimeInfo{..} unackedRecordIds = do
+          let consumerNum = V.length sriStreamSends
+          streamSendValidRef <- newIORef $ V.replicate consumerNum True
+          V.imapM_
+            (
+              \ i RecordId{..} -> do
+                S.readerStartReading sriLdReader logId recordIdBatchId recordIdBatchId
+                dataRecords <- S.readerRead sriLdReader 1
+                if null dataRecords
+                then do
+                  -- TODO: retry or error
+                  Log.fatal $ "can not read log " <> Log.buildString (show logId) <> " at " <> Log.buildString (show recordIdBatchId)
+                else do
+                  let ci = i `mod` consumerNum
+                  streamSendValid <- readIORef streamSendValidRef
+                  when (streamSendValid V.! ci) $ do
+                    let cs = sriStreamSends V.! ci
+                    let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
+                    res <- cs $ StreamingFetchResponse $ V.singleton rr
+                    case res of
+                      Left grpcIOError -> do
+                        Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
+                        let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
+                        writeIORef streamSendValidRef newStreamSendValid
+                      Right _ -> return ()
+            )
+            unackedRecordIds
+
+          void $ registerLowResTimer (fromIntegral sriAckTimeoutSeconds * 10)
+            (
+              void $ forkIO $ tryResendTimeoutRecords unackedRecordIds logId infoMVar
+            )
+
+          valids <- readIORef streamSendValidRef
+          let newStreamSends = V.ifilter
+                                (
+                                  \ i _ -> valids V.! i
+                                )
+                                sriStreamSends
+
+          return $ info {sriStreamSends = newStreamSends}
 
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
     fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
