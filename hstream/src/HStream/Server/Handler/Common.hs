@@ -106,7 +106,7 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriLogId             :: HS.C_LogID
   , sriAckTimeoutSeconds :: Int32
   , sriLdCkpReader       :: HS.LDSyncCkpReader
-  , sriLdReader          :: HS.LDReader
+  , sriLdReader          :: Maybe HS.LDReader
   , sriWindowLowerBound  :: RecordId
   , sriWindowUpperBound  :: RecordId
   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
