@@ -663,8 +663,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
   handleRequest True
   where
     handleRequest isFirst = do
-      eRes <- streamRecv
-      case eRes of
+      streamRecv >>= \case
         Left (err :: grpcIOError) -> do
           Log.fatal . Log.buildString $ "streamRecv error: " <> show err
           -- fixme here
@@ -704,35 +703,34 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                               return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                       )
 
-              unless (V.null streamingFetchRequestAckIds) $ do
-                Log.debug $ "ready to handle acks, receviced " <> Log.buildInt (V.length streamingFetchRequestAckIds) <> " acks"
-                infoMVar <-
-                  withMVar subscribeRuntimeInfo
-                    (
-                        -- At this point, the corresponding subscribeRuntimeInfo must be
-                        -- present, unless the subscription has been removed
-                        -- forcely, which we will handle later(TODO).
-                      return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
-                    )
+              if V.null streamingFetchRequestAckIds
+                 then handleRequest False
+                 else do
+                   withMVar subscribeRuntimeInfo (return . HM.lookup streamingFetchRequestSubscriptionId) >>= \case
+                     Just infoMVar -> do
+                       modifyMVar_ infoMVar
+                         (
+                           \info@SubscribeRuntimeInfo{..} -> do
+                             Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
+                             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
+                             Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+                             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+                               Just (ranges, newLowerBound, checkpointRecordId) -> do
+                                 commitCheckpoint scLDClient sriLdCkpReader sriStreamName checkpointRecordId
+                                 Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
+                                   <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
+                                 return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+                               Nothing ->
+                                 return $ info {sriAckedRanges = newAckedRanges}
+                         )
+                       handleRequest False
+                     Nothing -> do
+                       -- FIXME: fix here when handle resouces remove
+                       Log.fatal . Log.buildString $ "can not found subscription: " <> show streamingFetchRequestSubscriptionId <> " when handle fetch request"
+                       return $ ServerBiDiResponse [] StatusInternal (StatusDetails "can not found subscription")
 
-                modifyMVar_ infoMVar
-                  (
-                    \info@SubscribeRuntimeInfo{..} -> do
-                      let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges streamingFetchRequestAckIds
-                      case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-                        Just (ranges, newLowerBound, checkpointRecordId) -> do
-                          commitCheckpoint scLDClient sriLdCkpReader sriStreamName checkpointRecordId
-                          Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
-                            <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
-                          return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
-                        Nothing ->
-                          return $ info {sriAckedRanges = newAckedRanges}
-                  )
-
-                Log.debug "update acked ranges in window"
-              handleRequest False
-
-            Nothing ->
+            Nothing -> do
+              Log.info "Client down."
               -- This means that the consumer finished sending acks actively,
               -- in fact, it should never happen.
               return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
@@ -791,17 +789,22 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
           \info@SubscribeRuntimeInfo{..} -> do
             res <- S.ckpReaderReadAllowGap sriLdCkpReader 1000
             case res of
-              Left S.GapRecord{..} -> do
+              Left gap@S.GapRecord{..} -> do
                 -- insert gap range to ackedRanges
                 let gapLoRecordId = RecordId gapLoLSN minBound
                 let gapHiRecordId = RecordId gapHiLSN maxBound
                 let newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) sriAckedRanges
                 let newInfo = info {sriAckedRanges = newRanges}
+                Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show sriStreamName <> ", the gap is " <> show gap
+                Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
                 return newInfo
               Right dataRecords -> do
                 if null dataRecords
-                then return info
+                then do
+                  Log.debug . Log.buildString $ "reader read empty dataRecords for stream " <> show sriStreamName
+                  return info
                 else do
+                  Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records"
                   let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
                   let groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
                   let lastBatch = last groups
@@ -887,53 +890,64 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         (
           \info@SubscribeRuntimeInfo{..} -> do
             let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
-            Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
             if V.null unackedRecordIds
                then return info
-               else doResend info unackedRecordIds
+               else do
+                 Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
+                 doResend info unackedRecordIds
         )
       where
+        registerResend records timeout = do
+          void $ registerLowResTimer timeout
+            (
+              void $ forkIO $ tryResendTimeoutRecords records logId infoMVar
+            )
+
         doResend info@SubscribeRuntimeInfo{..} unackedRecordIds = do
           let consumerNum = V.length sriStreamSends
-          streamSendValidRef <- newIORef $ V.replicate consumerNum True
-          V.imapM_
-            (
-              \ i RecordId{..} -> do
-                S.readerStartReading sriLdReader logId recordIdBatchId recordIdBatchId
-                dataRecords <- S.readerRead sriLdReader 1
-                if null dataRecords
-                then do
-                  -- TODO: retry or error
-                  Log.fatal $ "can not read log " <> Log.buildString (show logId) <> " at " <> Log.buildString (show recordIdBatchId)
-                else do
-                  let ci = i `mod` consumerNum
-                  streamSendValid <- readIORef streamSendValidRef
-                  when (streamSendValid V.! ci) $ do
-                    let cs = sriStreamSends V.! ci
-                    let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
-                    res <- cs $ StreamingFetchResponse $ V.singleton rr
-                    case res of
-                      Left grpcIOError -> do
-                        Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
-                        let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
-                        writeIORef streamSendValidRef newStreamSendValid
-                      Right _ -> return ()
-            )
-            unackedRecordIds
+          if consumerNum == 0
+             then do
+               Log.debug . Log.buildString $ "no consumer to resend unacked msg, try later"
+               registerResend unackedRecordIds 10
+               return info
+             else do
+               streamSendValidRef <- newIORef $ V.replicate consumerNum True
+               V.imapM_
+                 (
+                   \ i RecordId{..} -> do
+                     S.readerStartReading sriLdReader logId recordIdBatchId recordIdBatchId
+                     let batchSize = fromJust $ Map.lookup recordIdBatchId sriBatchNumMap
+                     dataRecords <- S.readerRead sriLdReader (fromIntegral batchSize)
+                     if null dataRecords
+                     then do
+                       -- TODO: retry or error
+                       Log.fatal $ "can not read log " <> Log.buildString (show logId) <> " at " <> Log.buildString (show recordIdBatchId)
+                     else do
+                       let ci = i `mod` consumerNum
+                       streamSendValid <- readIORef streamSendValidRef
+                       when (streamSendValid V.! ci) $ do
+                         let cs = sriStreamSends V.! ci
+                         let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
+                         res <- cs $ StreamingFetchResponse $ V.singleton rr
+                         case res of
+                           Left grpcIOError -> do
+                             Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
+                             let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
+                             writeIORef streamSendValidRef newStreamSendValid
+                           Right _ -> return ()
+                 )
+                 unackedRecordIds
 
-          void $ registerLowResTimer (fromIntegral sriAckTimeoutSeconds * 10)
-            (
-              void $ forkIO $ tryResendTimeoutRecords unackedRecordIds logId infoMVar
-            )
+               registerResend unackedRecordIds (fromIntegral sriAckTimeoutSeconds * 10)
 
-          valids <- readIORef streamSendValidRef
-          let newStreamSends = V.ifilter
-                                (
-                                  \ i _ -> valids V.! i
-                                )
-                                sriStreamSends
+               valids <- readIORef streamSendValidRef
+               let newStreamSends = V.ifilter
+                                     (
+                                       \ i _ -> valids V.! i
+                                     )
+                                     sriStreamSends
 
-          return $ info {sriStreamSends = newStreamSends}
+               return $ info {sriStreamSends = newStreamSends}
 
     fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
     fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0..]) groups
