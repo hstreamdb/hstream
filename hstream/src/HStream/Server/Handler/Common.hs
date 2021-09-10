@@ -123,6 +123,9 @@ insertAckedRecordId
   -> Map.Map Word64 Word32 -- ^ batchNumMap
   -> Map.Map RecordId RecordIdRange
 insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
+  -- [..., {leftStartRid, leftEndRid}, recordId, {rightStartRid, rightEndRig}, ... ]
+  --       | ---- leftRange ----    |            |  ---- rightRange ----    |
+  --
   | not $ isValidRecordId recordId batchNumMap = ackedRanges
   | recordId < lowerBound = ackedRanges
   | otherwise =

@@ -24,6 +24,7 @@ import           Data.IORef                        (atomicModifyIORef',
                                                     writeIORef)
 import           Data.Int                          (Int64)
 import qualified Data.List                         as L
+import           Data.Map.Strict                   (Map)
 import qualified Data.Map.Strict                   as Map
 import           Data.Maybe                        (catMaybes, fromJust, isJust)
 import           Data.Scientific
@@ -32,7 +33,7 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import qualified Data.Time                         as Time
 import qualified Data.Vector                       as V
-import           Data.Word                         (Word32)
+import           Data.Word                         (Word32, Word64)
 import           HStream.Connector.HStore
 import qualified HStream.Logger                    as Log
 import           HStream.Processing.Connector      (SourceConnector (..))
@@ -639,15 +640,6 @@ ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeReque
         )
     Nothing -> error "should not reach here"
   where
-    tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
-      let (_, RecordIdRange minStartRecordId minEndRecordId) = Map.findMin ackedRanges
-      in
-        if minStartRecordId == lowerBoundRecordId
-          then
-            Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
-          else
-            Nothing
-
     commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> TL.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
       logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
@@ -671,37 +663,42 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
         Right ma ->
           case ma of
             Just StreamingFetchRequest{..} -> do
+              -- if it is the first fetch request from current client, need to do some check
               when isFirst $ do
+                Log.debug "stream recive requst, do check in isFirst branch"
                 -- TODO: check subscription whether exsits first
 
+                -- check if the subscription is ready to consume, otherwise, need to do some init operation
                 isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
                 if isInited
-                then do
-                  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                   then do
+                     infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
 
-                  modifyMVar_ infoMVar
-                    (
-                      \info@SubscribeRuntimeInfo{..} -> do
-                        let newSends = V.snoc sriStreamSends streamSend
-                        return $ info {sriStreamSends = newSends}
-                    )
-                else do
-                    modifyMVar_ subscribeRuntimeInfo
-                      (
-                        \store -> do
-                          case HM.lookup streamingFetchRequestSubscriptionId store of
-                            -- This means that subscribeRuntimeInfo has been inited by others.
-                            Just _ -> return store
-                            Nothing -> do
-                              mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
-                              -- At this point, the corresponding subscription must be
-                              -- present, unless the subscription has been removed
-                              -- forcely, which we will handle later(TODO).
-                              let sub@Subscription{..} = fromJust mSub
-                              let startRecordId = getStartRecordId sub
-                              newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName startRecordId streamSend subscriptionAckTimeoutSeconds
-                              return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                      )
+                     modifyMVar_ infoMVar
+                       (
+                         \info@SubscribeRuntimeInfo{..} -> do
+                           -- bind a new sender to current client
+                           let newSends = V.snoc sriStreamSends streamSend
+                           return $ info {sriStreamSends = newSends}
+                       )
+                   else do
+                       modifyMVar_ subscribeRuntimeInfo
+                         (
+                           \store -> do
+                             case HM.lookup streamingFetchRequestSubscriptionId store of
+                               -- This means that subscribeRuntimeInfo has been inited by others.
+                               Just _ -> return store
+                               Nothing -> do
+                                 mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                                 -- At this point, the corresponding subscription must be
+                                 -- present, unless the subscription has been removed
+                                 -- forcely, which we will handle later(TODO).
+                                 let sub@Subscription{..} = fromJust mSub
+                                 let startRecordId = getStartRecordId sub
+                                 newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName startRecordId streamSend subscriptionAckTimeoutSeconds
+                                 Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " is ready to consume."
+                                 return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                         )
 
               if V.null streamingFetchRequestAckIds
                  then handleRequest False
@@ -774,6 +771,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       _ <- forkIO $ readAndDispatchRecords infoMVar
       return infoMVar
 
+    -- read records from logdevice and dispatch them to consumers
     readAndDispatchRecords runtimeInfoMVar = do
       Log.debug $ Log.buildString "enter readAndDispatchRecords"
       -- register for next readAndDispatch
@@ -812,7 +810,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                   -- update window upper bound
                   -- update batchNumMap
                   let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
-                -- dispatch records to consumers
+                  -- dispatch records to consumers
                   let receivedRecords = fetchResult groups
                   newStreamSends <- dispatchRecords receivedRecords sriStreamSends
                   -- register task for resending timeout records
@@ -827,7 +825,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                                 , sriStreamSends = newStreamSends}
 
                   return newInfo
-
         )
 
     -- round-robin dispatch
@@ -847,7 +844,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
               )
               initVec
               records
-
 
       resVec <- V.imapM
         (
@@ -885,8 +881,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
       Log.debug "enter tryResendTimeoutRecords"
-      modifyMVar_
-        infoMVar
+      modifyMVar_ infoMVar
         (
           \info@SubscribeRuntimeInfo{..} -> do
             let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
@@ -957,12 +952,6 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
       let recordId = RecordId (S.recordLSN record) (fromIntegral index)
       in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
-    tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap = Map.lookupMin ackedRanges >>=
-      \(_, RecordIdRange minStartRecordId minEndRecordId) ->
-         if minStartRecordId == lowerBoundRecordId
-            then Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
-            else Nothing
-
     commitCheckpoint :: S.LDClient -> S.LDSyncCkpReader -> T.Text -> RecordId -> IO ()
     commitCheckpoint client reader streamName RecordId{..} = do
       logId <- S.getUnderlyingLogId client $ transToStreamName streamName
@@ -970,6 +959,17 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
 
 --------------------------------------------------------------------------------
 --
+
+tryUpdateWindowLowerBound
+  :: Map RecordId RecordIdRange -- ^ ackedRanges
+  -> RecordId -- ^ lower bound record of current window
+  -> Map Word64 Word32 -- ^ batchNumMap
+  -> Maybe (Map RecordId RecordIdRange, RecordId, RecordId)
+tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
+  Map.lookupMin ackedRanges >>= \(_, RecordIdRange minStartRecordId minEndRecordId) ->
+     if minStartRecordId == lowerBoundRecordId
+        then Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
+        else Nothing
 
 batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
 batchAppend client streamName payloads strategy = do
