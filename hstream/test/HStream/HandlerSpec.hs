@@ -413,24 +413,25 @@ streamFetchRequest
   -> (V.Vector RecordId -> IO (V.Vector RecordId)) -- hacker function
   -> IO ()
 streamFetchRequest HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
-  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True)
+  consumerName <- newRandomLazyText 5
+  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
     ClientBiDiResponse _meta StatusOk _msg -> Log.debug "fetch request done"
     ClientBiDiResponse _meta stats detail -> Log.fatal . Log.buildString $ "abnormal status: " <> show stats <> ", msg: " <> show detail
     ClientErrorResponse err -> Log.e . Log.buildString $ "fetch request err: " <> show err
   where
-    action isInit call _meta streamRecv streamSend _done = do
+    action isInit consumerName call _meta streamRecv streamSend _done = do
       when isInit $ do
-        let initReq = StreamingFetchRequest subscribeId V.empty
+        let initReq = StreamingFetchRequest subscribeId consumerName V.empty
         streamSend initReq >>= \case
           Left err -> do
             Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
             clientCallCancel call
           Right _ -> return ()
-      void $ race (doFetch streamRecv streamSend hacker call) (notifyDone call)
+      void $ race (doFetch streamRecv streamSend hacker call consumerName) (notifyDone call)
 
-    doFetch streamRecv streamSend hacker' call = do
+    doFetch streamRecv streamSend hacker' call consumerName = do
       streamRecv >>= \case
         Left err -> do
           Log.e . Log.buildString $ "Error happened when recv from server " <> show err
@@ -447,13 +448,13 @@ streamFetchRequest HStreamApi{..} subscribeId originCh hackerCh terminate hacker
           writeChan hackerCh ackIds'
 
           -- send ack
-          let fetReq = StreamingFetchRequest subscribeId ackIds'
+          let fetReq = StreamingFetchRequest subscribeId consumerName ackIds'
           streamSend fetReq >>= \case
             Left err -> do
               Log.e . Log.buildString $ "Error happened when send ack: " <> show err <> "\n ack context: " <> show fetReq
               clientCallCancel call
             Right _ -> do
-              doFetch streamRecv streamSend defaultHacker call
+              doFetch streamRecv streamSend defaultHacker call consumerName
 
     notifyDone call = do
       void $ readChan terminate

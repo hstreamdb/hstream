@@ -26,7 +26,6 @@ import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
-import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
@@ -78,7 +77,6 @@ checkpointRootPath = "/tmp/checkpoint"
 
 type Timestamp = Int64
 
-
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , scDefaultStreamRepFactor :: Int
@@ -101,6 +99,8 @@ data RecordIdRange = RecordIdRange
     endRecordId   :: RecordId
   } deriving (Show, Eq)
 
+type ConsumerName = TL.Text
+
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
     sriStreamName        :: T.Text
   , sriLogId             :: HS.C_LogID
@@ -111,7 +111,7 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriWindowUpperBound  :: RecordId
   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
   , sriBatchNumMap       :: Map.Map Word64 Word32
-  , sriStreamSends       :: V.Vector (StreamSend StreamingFetchResponse)
+  , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
 }
 
 --------------------------------------------------------------------------------
@@ -182,6 +182,7 @@ isValidRecordId RecordId{..} batchNumMap =
     Just maxIdx | recordIdBatchIndex >= maxIdx || recordIdBatchIndex < 0 -> False
                 | otherwise -> True
     Nothing -> False
+
 --------------------------------------------------------------------------------
 
 runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
