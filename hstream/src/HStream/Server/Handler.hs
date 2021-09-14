@@ -12,7 +12,8 @@ module HStream.Server.Handler where
 
 import           Control.Concurrent
 import           Control.Exception                 (handle, throwIO)
-import           Control.Monad                     (join, unless, when)
+import           Control.Monad                     (join, unless, when,
+                                                    zipWithM)
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor
 import           Data.ByteString                   (ByteString)
@@ -486,7 +487,7 @@ subscribeHandler ServerContext{..} (ServerNormalRequest _metadata req@SubscribeR
                   , sriWindowUpperBound = maxBound
                   , sriAckedRanges = Map.empty
                   , sriBatchNumMap = Map.empty
-                  , sriStreamSends = V.empty
+                  , sriStreamSends = HM.empty
                   , sriLdReader = Nothing
                   , sriLogId = logId
                   , sriAckTimeoutSeconds = 0
@@ -619,7 +620,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                      (
                        \info@SubscribeRuntimeInfo{..} -> do
                          -- bind a new sender to current client
-                         let newSends = V.snoc sriStreamSends streamSend
+                         let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
                          return $ info {sriStreamSends = newSends}
                      )
                  else do
@@ -636,7 +637,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                              -- forcely, which we will handle later(TODO).
                              let sub@Subscription{..} = fromJust mSub
                              let startRecordId = getStartRecordId sub
-                             newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName startRecordId streamSend subscriptionAckTimeoutSeconds
+                             newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName streamingFetchRequestConsumerName startRecordId streamSend subscriptionAckTimeoutSeconds
                              Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " is ready to consume."
                              return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                      )
@@ -655,7 +656,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
             return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
 
     -- return: IO (MVar SubscribeRuntimeInfo)
-    initSubscribe ldclient subscriptionId streamName startRecordId sSend ackTimeout = do
+    initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <- S.newLDRsmCkpReader ldclient
           (textToCBytes $ TL.toStrict subscriptionId)
@@ -683,7 +684,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                 , sriWindowUpperBound = maxBound
                 , sriAckedRanges = Map.empty
                 , sriBatchNumMap = Map.empty
-                , sriStreamSends = V.singleton sSend
+                , sriStreamSends = HM.singleton consumerName sSend
                 }
 
       infoMVar <- newMVar info
@@ -694,7 +695,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
     -- read records from logdevice and dispatch them to consumers
     readAndDispatchRecords runtimeInfoMVar = do
       Log.debug $ Log.buildString "enter readAndDispatchRecords"
-      emptySend <- withMVar runtimeInfoMVar (return . V.null . sriStreamSends)
+      emptySend <- withMVar runtimeInfoMVar (return . HM.null . sriStreamSends)
       -- if null sriStreamSends is true, no need to contiue because even we can fetch record, we cannot send them.
       unless emptySend $ do
         -- register for next readAndDispatch
@@ -707,7 +708,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
           modifyMVar_ runtimeInfoMVar $
             \info@SubscribeRuntimeInfo{..} -> do
                newStreamSends <- dispatchRecords receivedRecords sriStreamSends
-               Log.e $ "after dispatchRecords, length(newStreamSends) = " <> Log.buildInt (V.length newStreamSends)
+               Log.e $ "after dispatchRecords, length(newStreamSends) = " <> Log.buildInt (HM.size newStreamSends)
                let newInfo = info {sriStreamSends = newStreamSends}
                    receivedRecordIds = V.map (fromJust . receivedRecordRecordId) receivedRecords
                -- register task for resending timeout records
@@ -742,8 +743,9 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
           registerLowResTimer timeout $
             void . forkIO $ tryResendTimeoutRecords records logId infoMVar
 
+        -- TODO: maybe we can read these unacked records concurrently
         doResend info@SubscribeRuntimeInfo{..} unackedRecordIds = do
-          let consumerNum = V.length sriStreamSends
+          let consumerNum = HM.size sriStreamSends
           if consumerNum == 0
              then do
                Log.debug . Log.buildString $ "no consumer to resend unacked msg, try later"
@@ -751,6 +753,7 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                return info
              else do
                streamSendValidRef <- newIORef $ V.replicate consumerNum True
+               let senders = HM.toList sriStreamSends
                V.iforM_ unackedRecordIds $ \i RecordId{..} -> do
                  S.readerStartReading (fromJust sriLdReader) logId recordIdBatchId recordIdBatchId
                  let batchSize = fromJust $ Map.lookup recordIdBatchId sriBatchNumMap
@@ -763,10 +766,11 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                       let ci = i `mod` consumerNum
                       streamSendValid <- readIORef streamSendValidRef
                       when (streamSendValid V.! ci) $ do
-                        let cs = sriStreamSends V.! ci
+                        let cs = snd $ senders L.!! ci
                             rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
                         cs (StreamingFetchResponse $ V.singleton rr) >>= \case
                           Left grpcIOError -> do
+                            -- TODO: maybe we can cache these records so that the next round resend can reuse it without read from logdevice
                             Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
                             let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
                             writeIORef streamSendValidRef newStreamSendValid
@@ -775,8 +779,8 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                void $ registerResend unackedRecordIds (fromIntegral sriAckTimeoutSeconds * 10)
 
                valids <- readIORef streamSendValidRef
-               let newStreamSends = V.ifilter (\ i _ -> valids V.! i) sriStreamSends
-               return $ info {sriStreamSends = newStreamSends}
+               let newStreamSends = map snd $ L.filter (\ (i , _) -> valids V.! i) $ zip [0..] senders
+               return $ info {sriStreamSends = HM.fromList newStreamSends}
 
 --------------------------------------------------------------------------------
 --
@@ -796,39 +800,40 @@ commitCheckPoint client reader streamName RecordId{..} = do
 
 dispatchRecords
   :: Show a => V.Vector ReceivedRecord
-  -> V.Vector (StreamingFetchResponse -> IO (Either a ()))
-  -> IO (V.Vector (StreamingFetchResponse -> IO (Either a ())))
+  -> HM.HashMap ConsumerName (StreamingFetchResponse -> IO (Either a ()))
+  -> IO (HM.HashMap ConsumerName (StreamingFetchResponse -> IO (Either a ())))
 dispatchRecords records streamSends
-  | V.null streamSends = return V.empty
+  | HM.null streamSends = return HM.empty
   | otherwise = do
-      let slen = V.length streamSends
+      let slen = HM.size streamSends
       Log.debug $ Log.buildString "ready to dispatchRecords to " <> Log.buildInt slen <> " consumers"
       let initVec = V.replicate slen V.empty
+      -- recordGroups aggregates the data to be sent by each sender
       let recordGroups =
             V.ifoldl'
               (
-                \v i r ->
-                  let ci = i `mod` slen
-                      og = v V.! ci
-                      ng = V.snoc og r
+                \vec idx record ->
+                  let senderIdx = idx `mod` slen -- Assign the idx-th record to the senderIdx-th sender to send
+                      dataSet = vec V.! senderIdx -- get the set of data to be sent by snederIdx-th sender
+                      newSet = V.snoc dataSet record -- add idx-th record to dataSet
                   in
-                      V.update v $ V.singleton (ci, ng)
+                      V.update vec $ V.singleton (senderIdx, newSet)
               )
               initVec
               records
 
-      resVec <- V.iforM recordGroups $ \ i group -> do
-        Log.debug $ Log.buildString "dispatch " <> Log.buildInt (V.length group) <>  " records to " <> "consumer " <> Log.buildInt i
-        let ss = streamSends V.! i
-        ss (StreamingFetchResponse group) >>= \case
-          Left err -> do
-            Log.fatal . Log.buildString $ "dispatch error, will remove a consumer: " <> show err
-            return False
-          Right () -> do
-            Log.debug "dispatch record success"
-            return True
-
-      return $ V.ifilter (\ i _ -> resVec V.! i) streamSends
+      newSenders <- zipWithM doDispatch (HM.toList streamSends) (V.toList recordGroups)
+      return . HM.fromList . catMaybes $ newSenders
+  where
+    doDispatch (name, sender) record = do
+      Log.debug $ Log.buildString "dispatch " <> Log.buildInt (V.length record) <> " records to " <> "consumer " <> Log.buildLazyText name
+      sender (StreamingFetchResponse record) >>= \case
+        Left err -> do
+          -- if send record error, this batch of records will resend next round
+          Log.fatal . Log.buildString $ "dispatch error, will remove a consumer: " <> show err
+          return Nothing
+        Right _ -> do
+          return $ Just (name, sender)
 
 -- doFetch will fetch records from logdevice, if reader meet gap or no new records to read, doFetch
 -- will return an empty vector
@@ -858,7 +863,6 @@ doFetch runtimeInfoMVar = modifyMVar runtimeInfoMVar $ \info@SubscribeRuntimeInf
             -- update window upper bound and batchNumMap
             newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
             receivedRecords = fetchResult groups
-        Log.e $ "length(sriStreamSends) = " <> Log.buildInt (V.length sriStreamSends)
         let newInfo = info { sriBatchNumMap = newBatchNumMap
                            , sriWindowUpperBound = maxRecordId
                            }

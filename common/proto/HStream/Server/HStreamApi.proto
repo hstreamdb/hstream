@@ -190,8 +190,9 @@ message FetchResponse {
 
 message StreamingFetchRequest {
   string subscriptionId = 1;
+  string consumerName = 2;
 
-  repeated RecordId ack_ids = 2;
+  repeated RecordId ack_ids = 3;
 }
 
 message StreamingFetchResponse {
