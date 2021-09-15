@@ -586,9 +586,9 @@ ackHandler
 ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive ack request: " <> Log.buildString (show req)
 
-  doAck scLDClient subscribeRuntimeInfo acknowledgeRequestSubscriptionId acknowledgeRequestAckIds >>= \case
-    True  -> returnResp Empty
-    False -> returnErrResp StatusInternal "error when handle ack"
+  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup acknowledgeRequestSubscriptionId
+  doAck scLDClient infoMVar acknowledgeRequestAckIds
+  returnResp Empty
 
 streamingFetchHandler
   :: ServerContext
