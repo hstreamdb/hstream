@@ -586,9 +586,9 @@ ackHandler
 ackHandler ServerContext{..} (ServerNormalRequest _metadata req@AcknowledgeRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive ack request: " <> Log.buildString (show req)
 
-  doAck scLDClient subscribeRuntimeInfo acknowledgeRequestSubscriptionId acknowledgeRequestAckIds >>= \case
-    True  -> returnResp Empty
-    False -> returnErrResp StatusInternal "error when handle ack"
+  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup acknowledgeRequestSubscriptionId
+  doAck scLDClient infoMVar acknowledgeRequestAckIds
+  returnResp Empty
 
 streamingFetchHandler
   :: ServerContext
@@ -597,65 +597,84 @@ streamingFetchHandler
 streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
-  handleRequest True
+  consumerNameRef <- newIORef TL.empty
+  subscriptionIdRef <- newIORef TL.empty
+  handleRequest True consumerNameRef subscriptionIdRef
   where
-    handleRequest isFirst = streamRecv >>= \case
-      Left (err :: grpcIOError) -> do
-        Log.fatal . Log.buildString $ "streamRecv error: " <> show err
-        -- fixme here
-        return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
-      Right ma ->
-        case ma of
-          Just StreamingFetchRequest{..} -> do
-            -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-            when isFirst $ do
-              Log.debug "stream recive requst, do check in isFirst branch"
-              -- TODO: check subscription whether exsits first
+    handleRequest isFirst consumerNameRef subscriptionIdRef = do
+      streamRecv >>= \case
+        Left (err :: grpcIOError) -> do
+          Log.fatal . Log.buildString $ "streamRecv error: " <> show err
 
-              isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
-              if isInited
-                 then do
-                   infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
-                   modifyMVar_ infoMVar
-                     (
-                       \info@SubscribeRuntimeInfo{..} -> do
-                         -- bind a new sender to current client
-                         let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                         return $ info {sriStreamSends = newSends}
-                     )
-                 else do
-                   modifyMVar_ subscribeRuntimeInfo
-                     (
-                       \store -> do
-                         case HM.lookup streamingFetchRequestSubscriptionId store of
-                           -- This means that subscribeRuntimeInfo has been inited by others.
-                           Just _ -> return store
-                           Nothing -> do
-                             mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
-                             -- At this point, the corresponding subscription must be
-                             -- present, unless the subscription has been removed
-                             -- forcely, which we will handle later(TODO).
-                             let sub@Subscription{..} = fromJust mSub
-                             let startRecordId = getStartRecordId sub
-                             newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName streamingFetchRequestConsumerName startRecordId streamSend subscriptionAckTimeoutSeconds
-                             Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " is ready to consume."
-                             return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                     )
+          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef
+          return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
+        Right ma ->
+          case ma of
+            Just StreamingFetchRequest{..} -> do
+              -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
+              when isFirst $ do
+                Log.debug "stream recive requst, do check in isFirst branch"
+                -- TODO: check subscription whether exsits first
 
-            if V.null streamingFetchRequestAckIds
-               then handleRequest False
-               else do
-                 doAck scLDClient subscribeRuntimeInfo streamingFetchRequestSubscriptionId streamingFetchRequestAckIds >>= \case
-                   True -> handleRequest False
-                   False -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "can not found subscription")
+                writeIORef consumerNameRef streamingFetchRequestConsumerName
+                writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
 
-          Nothing -> do
-            Log.info "Client down."
-            -- This means that the consumer finished sending acks actively,
-            -- in fact, it should never happen.
-            return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
+                isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
+                if isInited
+                then do
+                  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                  modifyMVar_ infoMVar
+                    (
+                      \info@SubscribeRuntimeInfo{..} -> do
+                        -- bind a new sender to current client
+                        let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
+                        return $ info {sriStreamSends = newSends}
+                    )
+                else do
+                  modifyMVar_ subscribeRuntimeInfo
+                    (
+                      \store -> do
+                        case HM.lookup streamingFetchRequestSubscriptionId store of
+                          -- This means that subscribeRuntimeInfo has been inited by others.
+                          Just _ -> return store
+                          Nothing -> do
+                            mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                            -- At this point, the corresponding subscription must be
+                            -- present, unless the subscription has been removed
+                            -- forcely, which we will handle later(TODO).
+                            let sub@Subscription{..} = fromJust mSub
+                            let startRecordId = getStartRecordId sub
+                            newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName streamingFetchRequestConsumerName startRecordId streamSend subscriptionAckTimeoutSeconds
+                            Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " is ready to consume."
+                            return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                    )
 
-    -- return: IO (MVar SubscribeRuntimeInfo)
+              unless (V.null streamingFetchRequestAckIds) $ do
+                  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                  doAck scLDClient infoMVar streamingFetchRequestAckIds
+
+              handleRequest False consumerNameRef subscriptionIdRef
+
+            Nothing -> do
+              -- This means that the consumer finished sending acks actively.
+              Log.info "consumer closed"
+              cleanupStreamSend isFirst consumerNameRef subscriptionIdRef
+              return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
+
+    -- We should cleanup according streamSend before returning ServerBiDiResponse.
+    cleanupStreamSend isFirst consumerNameRef subscriptionIdRef = do
+      unless isFirst $ do
+        subscriptionId <- readIORef subscriptionIdRef
+        infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup subscriptionId
+        consumerName <- readIORef consumerNameRef
+        modifyMVar_
+          infoMVar
+          (
+            \info@SubscribeRuntimeInfo{..} -> do
+              let newStreamSends = HM.delete consumerName sriStreamSends
+              return $ info {sriStreamSends = newStreamSends}
+          )
+
     initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <- S.newLDRsmCkpReader ldclient
@@ -870,33 +889,25 @@ doFetch runtimeInfoMVar = modifyMVar runtimeInfoMVar $ \info@SubscribeRuntimeInf
 
 doAck
   :: S.LDClient
-  -> MVar (HM.HashMap TL.Text (MVar SubscribeRuntimeInfo))
-  -> TL.Text
+  -> MVar SubscribeRuntimeInfo
   -> V.Vector RecordId
-  -> IO Bool
-doAck client subscribeRuntimeInfo subId ackRecordId = do
-  withMVar subscribeRuntimeInfo (return . HM.lookup subId) >>= \case
-    Just infoMVar -> do
-      modifyMVar_ infoMVar
-        (
-          \info@SubscribeRuntimeInfo{..} -> do
-            Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
-            let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordId
-            Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
-            case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-              Just (ranges, newLowerBound, checkpointRecordId) -> do
-                commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
-                Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
-                  <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
-                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
-              Nothing ->
-                return $ info {sriAckedRanges = newAckedRanges}
-        )
-      return True
-    Nothing -> do
-      -- FIXME: fix here when handle resouces remove
-      Log.fatal . Log.buildString $ "can not found subscription: " <> show subId <> " when handle ack"
-      return False
+  -> IO ()
+doAck client infoMVar ackRecordIds =
+  modifyMVar_ infoMVar
+    (
+      \info@SubscribeRuntimeInfo{..} -> do
+        Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
+        let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
+        Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+        case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+          Just (ranges, newLowerBound, checkpointRecordId) -> do
+            commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
+            Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
+              <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
+            return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+          Nothing ->
+            return $ info {sriAckedRanges = newAckedRanges}
+    )
 
 tryUpdateWindowLowerBound
   :: Map RecordId RecordIdRange -- ^ ackedRanges
