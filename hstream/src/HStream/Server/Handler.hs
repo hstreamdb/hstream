@@ -649,12 +649,11 @@ streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSe
                             return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
                     )
 
-              if V.null streamingFetchRequestAckIds
-                 then handleRequest False consumerNameRef subscriptionIdRef
-                 else do
-                   doAck scLDClient subscribeRuntimeInfo streamingFetchRequestSubscriptionId streamingFetchRequestAckIds >>= \case
-                     True -> handleRequest False consumerNameRef subscriptionIdRef
-                     False -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "can not found subscription")
+              unless (V.null streamingFetchRequestAckIds) $ do
+                  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                  doAck scLDClient infoMVar streamingFetchRequestAckIds
+
+              handleRequest False consumerNameRef subscriptionIdRef
 
             Nothing -> do
               -- This means that the consumer finished sending acks actively.
@@ -890,33 +889,25 @@ doFetch runtimeInfoMVar = modifyMVar runtimeInfoMVar $ \info@SubscribeRuntimeInf
 
 doAck
   :: S.LDClient
-  -> MVar (HM.HashMap TL.Text (MVar SubscribeRuntimeInfo))
-  -> TL.Text
+  -> MVar SubscribeRuntimeInfo
   -> V.Vector RecordId
-  -> IO Bool
-doAck client subscribeRuntimeInfo subId ackRecordId = do
-  withMVar subscribeRuntimeInfo (return . HM.lookup subId) >>= \case
-    Just infoMVar -> do
-      modifyMVar_ infoMVar
-        (
-          \info@SubscribeRuntimeInfo{..} -> do
-            Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
-            let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordId
-            Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
-            case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-              Just (ranges, newLowerBound, checkpointRecordId) -> do
-                commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
-                Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
-                  <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
-                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
-              Nothing ->
-                return $ info {sriAckedRanges = newAckedRanges}
-        )
-      return True
-    Nothing -> do
-      -- FIXME: fix here when handle resouces remove
-      Log.fatal . Log.buildString $ "can not found subscription: " <> show subId <> " when handle ack"
-      return False
+  -> IO ()
+doAck client infoMVar ackRecordIds =
+  modifyMVar_ infoMVar
+    (
+      \info@SubscribeRuntimeInfo{..} -> do
+        Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
+        let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
+        Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+        case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+          Just (ranges, newLowerBound, checkpointRecordId) -> do
+            commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
+            Log.info $ "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
+              <> "} to " <> "{" <> Log.buildString (show newLowerBound) <> "}"
+            return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+          Nothing ->
+            return $ info {sriAckedRanges = newAckedRanges}
+    )
 
 tryUpdateWindowLowerBound
   :: Map RecordId RecordIdRange -- ^ ackedRanges
