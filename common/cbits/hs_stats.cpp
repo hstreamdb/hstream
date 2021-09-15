@@ -99,6 +99,8 @@ void stream_time_series_getall_by_name(
     }                                                                          \
   }
 #include "per_stream_time_series.inc"
+  // FIXME: we should not abort in cpp side, instead we should check
+  // this in haskell
   ld_check(member_ptr != nullptr);
 
   stats_holder->runForEach([&](Stats& s) {

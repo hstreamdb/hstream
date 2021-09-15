@@ -49,19 +49,6 @@ spec =  describe "HStream.HandlerSpec" $ do
 ----------------------------------------------------------------------------------------------------------
 -- StreamSpec
 
-withRandomStreamName :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
-withRandomStreamName = provideRunTest setup clean
-  where
-    setup _api = ("StreamSpec_" <>) . TL.fromStrict <$> newRandomText 20
-    clean api name = deleteStreamRequest_ api name `shouldReturn` PB.Empty
-
-withRandomStreamNames :: ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
-withRandomStreamNames = provideRunTest setup clean
-  where
-    setup _api = replicateM 5 $ TL.fromStrict <$> newRandomText 20
-    clean api names = forM_ names $ \name -> do
-      deleteStreamRequest_ api name `shouldReturn` PB.Empty
-
 streamSpec :: Spec
 streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
@@ -95,7 +82,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       -- delete a nonexistent stream without ignoreNonExist set should throw an exception
       deleteStreamRequest api name `shouldThrow` anyException
       -- delete a nonexistent stream with ignoreNonExist set should be okay
-      deleteStreamRequest_ api name `shouldReturn` PB.Empty
+      cleanStreamReq api name `shouldReturn` PB.Empty
 
   aroundWith withRandomStreamName $ do
     it "test append request" $ \(api, name) -> do
@@ -110,7 +97,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       appendRequest api name (V.fromList [record1, record2]) `shouldThrow` anyException
       createStreamRequest api stream `shouldReturn` stream
       -- FIXME: Even we have called the "syncLogsConfigVersion" method, there is
-      -- **no** guarantee that subsequent "append" will have an up-to-date view
+      -- __no__ guarantee that subsequent "append" will have an up-to-date view
       -- of the LogsConfig. For details, see Logdevice::Client::syncLogsConfigVersion
       threadDelay 2000000
       resp <- appendRequest api name (V.fromList [record1, record2])
@@ -135,20 +122,6 @@ deleteStreamRequest HStreamApi{..} streamName =
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiDeleteStream req
 
--- This request is mainly used for cleaning up after testing
-deleteStreamRequest_ :: HStreamClientApi -> TL.Text -> IO PB.Empty
-deleteStreamRequest_ HStreamApi{..} streamName =
-  let delReq = def { deleteStreamRequestStreamName = streamName
-                   , deleteStreamRequestIgnoreNonExist = True }
-      req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
-  in getServerResp =<< hstreamApiDeleteStream req
-
-appendRequest :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO AppendResponse
-appendRequest HStreamApi{..} streamName records =
-  let appReq = AppendRequest streamName records
-      req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
-  in getServerResp =<< hstreamApiAppend req
-
 ----------------------------------------------------------------------------------------------------------
 -- SubscribeSpec
 
@@ -161,7 +134,7 @@ withSubscription = provideRunTest setup clean
       return ("StreamSpec_" <> stream, "SubscriptionSpec_" <> subscription)
     clean api (streamName, subscriptionName) = do
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
-      deleteStreamRequest_ api streamName `shouldReturn` PB.Empty
+      cleanStreamReq api streamName `shouldReturn` PB.Empty
 
 withSubscriptions :: ActionWith (HStreamClientApi, (V.Vector TL.Text, V.Vector TL.Text))
                   -> HStreamClientApi -> IO ()
@@ -173,7 +146,7 @@ withSubscriptions = provideRunTest setup clean
       return (("StreamSpec_" <>) <$> stream, ("SubscriptionSpec_" <>) <$> subscription)
     clean api (streamNames, subscriptionNames) = do
       forM_ streamNames $ \name -> do
-        deleteStreamRequest_ api name `shouldReturn` PB.Empty
+        cleanStreamReq api name `shouldReturn` PB.Empty
       forM_ subscriptionNames $ \name -> do
         deleteSubscriptionRequest api name `shouldReturn` True
 
@@ -306,7 +279,7 @@ withConsumerSpecEnv = provideRunTest setup clean
 
     clean api (streamName, subName) = do
       deleteSubscriptionRequest api subName `shouldReturn` True
-      deleteStreamRequest_ api streamName `shouldReturn` PB.Empty
+      cleanStreamReq api streamName `shouldReturn` PB.Empty
 
 consumerSpec :: Spec
 consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do

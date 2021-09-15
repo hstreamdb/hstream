@@ -17,6 +17,7 @@ import           Control.Monad                     (join, unless, when,
 import qualified Data.Aeson                        as Aeson
 import           Data.Bifunctor
 import           Data.ByteString                   (ByteString)
+import qualified Data.ByteString                   as BS
 import           Data.Function                     (on, (&))
 import           Data.Functor
 import qualified Data.HashMap.Strict               as HM
@@ -35,6 +36,15 @@ import qualified Data.Text.Lazy                    as TL
 import qualified Data.Time                         as Time
 import qualified Data.Vector                       as V
 import           Data.Word                         (Word32, Word64)
+import           Network.GRPC.HighLevel.Generated
+import           Proto3.Suite                      (Enumerated (..),
+                                                    HasDefault (def))
+import qualified Z.Data.CBytes                     as CB
+import           Z.Data.Vector                     (Bytes)
+import           Z.Foreign                         (toByteString)
+import           Z.IO.LowResTimer                  (registerLowResTimer)
+import           ZooKeeper.Types                   (ZHandle)
+
 import           HStream.Connector.HStore
 import qualified HStream.Logger                    as Log
 import           HStream.Processing.Connector      (SourceConnector (..))
@@ -53,64 +63,45 @@ import           HStream.SQL.ExecPlan              (genExecutionPlan)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector  (createConnector,
-                                                    createSinkConnectorHandler,
-                                                    deleteConnectorHandler,
-                                                    getConnectorHandler,
-                                                    listConnectorsHandler,
-                                                    restartConnectorHandler,
-                                                    terminateConnectorHandler)
-import           HStream.Server.Handler.Query      (createQueryHandler,
-                                                    deleteQueryHandler,
-                                                    getQueryHandler,
-                                                    listQueriesHandler,
-                                                    restartQueryHandler,
-                                                    terminateQueriesHandler)
-import           HStream.Server.Handler.StoreAdmin (getStoreNodeHandler,
-                                                    listStoreNodesHandler)
-import           HStream.Server.Handler.View       (createViewHandler,
-                                                    deleteViewHandler,
-                                                    getViewHandler,
-                                                    listViewsHandler)
+import           HStream.Server.Handler.Connector
+import           HStream.Server.Handler.Query
+import qualified HStream.Server.Handler.Stats      as H
+import           HStream.Server.Handler.StoreAdmin
+import           HStream.Server.Handler.View
 import qualified HStream.Server.Persistence        as P
+import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import qualified HStream.Store.Admin.API           as AA
 import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
-import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                      (Enumerated (..),
-                                                    HasDefault (def))
-import qualified Z.Data.CBytes                     as CB
-import           Z.Data.Vector                     (Bytes)
-import           Z.Foreign                         (toByteString)
-import           Z.IO.LowResTimer                  (registerLowResTimer)
-import           ZooKeeper.Types                   (ZHandle)
 
 --------------------------------------------------------------------------------
 
-handlers ::
-  S.LDClient ->
-  AA.HeaderConfig AA.AdminAPI ->
-  Int ->
-  ZHandle ->
-  -- | timer timeout, ms
-  Int64 ->
-  S.Compression ->
-  IO (HStreamApi ServerRequest ServerResponse)
-handlers ldclient headerConfig repFactor zkHandle _ compression = do
+handlers
+  :: S.LDClient
+  -> AA.HeaderConfig AA.AdminAPI
+  -> Int
+  -> ZHandle
+  -- ^ timer timeout, ms
+  -> Int64
+  -> S.Compression
+  -> Stats.StatsHolder
+  -> IO (HStreamApi ServerRequest ServerResponse)
+handlers ldclient headerConfig repFactor zkHandle _ compression statsHolder = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
   subscribeRuntimeInfo <- newMVar HM.empty
   let serverContext =
         ServerContext
-          { scLDClient = ldclient,
-            scDefaultStreamRepFactor = repFactor,
-            zkHandle = zkHandle,
-            runningQueries = runningQs,
-            runningConnectors = runningCs,
-            subscribeRuntimeInfo = subscribeRuntimeInfo,
-            cmpStrategy = compression,
-            headerConfig = headerConfig
+          { scLDClient               = ldclient
+          , scDefaultStreamRepFactor = repFactor
+          , zkHandle                 = zkHandle
+          , runningQueries           = runningQs
+          , runningConnectors        = runningCs
+          , subscribeRuntimeInfo     = subscribeRuntimeInfo
+          , cmpStrategy              = compression
+          , headerConfig             = headerConfig
+          , scStatsHolder            = statsHolder
           }
   -- timer <- newTimer
   -- _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
@@ -135,6 +126,8 @@ handlers ldclient headerConfig repFactor zkHandle _ compression = do
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
         hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
+        -- Stats
+        hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll statsHolder,
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
         -- Stream with Query
@@ -209,10 +202,20 @@ appendHandler ::
 appendHandler ServerContext {..} (ServerNormalRequest _metadata AppendRequest {..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Append Stream Request. Append Data to the Stream: " <> Log.buildText (TL.toStrict appendRequestStreamName)
   timestamp <- getProtoTimestamp
-  let payloads = V.toList $ encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
-  S.AppendCompletion {..} <- batchAppend scLDClient appendRequestStreamName payloads cmpStrategy
-  let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0 ..]
+  let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
+      payloadSize = V.sum $ BS.length . hstreamRecordPayload <$> appendRequestRecords
+      streamName = lazyTextToCBytes appendRequestStreamName
+  -- XXX: Should we add a server option to toggle Stats?
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
+  S.AppendCompletion{..} <- batchAppend scLDClient streamName payloads cmpStrategy
+  let records = V.zipWith (\_ idx -> RecordId appendCompLSN idx) appendRequestRecords [0..]
   returnResp $ AppendResponse appendRequestStreamName records
+  where
+    batchAppend :: S.LDClient -> CB.CBytes -> V.Vector ByteString -> S.Compression -> IO S.AppendCompletion
+    batchAppend client streamName payloads strategy = do
+      logId <- S.getUnderlyingLogId client $ S.mkStreamId S.StreamTypeStream streamName
+      -- TODO: support vector of ByteString
+      S.appendBatchBS client logId (V.toList payloads) strategy Nothing
 
 -------------------------------------------------------------------------------
 -- Stream with Select Query
@@ -1055,11 +1058,6 @@ tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
     if minStartRecordId == lowerBoundRecordId
       then Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
       else Nothing
-
-batchAppend :: S.LDClient -> TL.Text -> [ByteString] -> S.Compression -> IO S.AppendCompletion
-batchAppend client streamName payloads strategy = do
-  logId <- S.getUnderlyingLogId client $ transToStreamName $ TL.toStrict streamName
-  S.appendBatchBS client logId payloads strategy Nothing
 
 --------------------------------------------------------------------------------
 

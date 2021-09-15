@@ -25,13 +25,13 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Persistence
+import           HStream.Stats                    (StatsHolder, newStatsHolder)
 import           HStream.Store
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (setupSigsegvHandler)
 
 -- TODO
 -- 1. config file for the Server
--- 2. log options
 
 data ServerOpts = ServerOpts
   { _serverHost         :: CBytes
@@ -125,18 +125,19 @@ app config@ServerOpts{..} = do
   setupSigsegvHandler
   ldclient <- newLDClient _ldConfigPath
   _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
+  statsHolder <- newStatsHolder
   withResource (defaultHandle _zkUri) $ \zk -> do
     initZooKeeper zk
-    serve config ldclient zk
+    serve config ldclient zk statsHolder
 
-serve :: ServerOpts -> LDClient -> ZHandle -> IO ()
-serve ServerOpts{..} ldclient zk = do
+serve :: ServerOpts -> LDClient -> ZHandle -> StatsHolder -> IO ()
+serve ServerOpts{..} ldclient zk statsHolder = do
   let options = defaultServiceOptions
                 { serverHost = Host . toByteString . toBytes $ _serverHost
                 , serverPort = Port . fromIntegral $ _serverPort
                 }
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
-  api <- handlers ldclient headerConfig _topicRepFactor zk _heartbeatTimeout _compression
+  api <- handlers ldclient headerConfig _topicRepFactor zk _heartbeatTimeout _compression statsHolder
   Log.i $ "Server started on "
        <> CBytes.toBuilder _serverHost <> ":" <> Builder.int _serverPort
   hstreamApiServer api options

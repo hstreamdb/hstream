@@ -3,6 +3,7 @@
 // * --------------------------------------------------------------------------
 
 #include "ghc_ext.h"
+#include "hs_cpp_lib.h"
 
 #include <iostream>
 #include <limits.h>
@@ -97,7 +98,6 @@ extern "C" {
 #endif
 
 std::string* hs_cal_std_string_off(std::string* str, HsInt idx);
-void delete_vector_of_string(std::vector<std::string>* ss);
 
 // ----------------------------------------------------------------------------
 

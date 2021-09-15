@@ -36,6 +36,7 @@ library
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
 
+  other-modules:    HStream.Server.Handler.Stats
   hs-source-dirs:   src
   build-depends:
     , aeson
@@ -141,18 +142,20 @@ test-suite hstream-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:
-    HStream.HandlerSpec
     HStream.AckSpec
+    HStream.HandlerSpec
     HStream.RegressionSpec
     HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunStoreAdminSpec
     HStream.SpecUtils
+    HStream.StatsIntegrationSpec
 
   hs-source-dirs:     test
   build-depends:
     , aeson
+    , async
     , base                  >=4.11 && <5
     , bytestring
     , clickhouse-haskell
@@ -173,9 +176,23 @@ test-suite hstream-test
     , unordered-containers
     , vector
     , Z-Data
-    , async
+    , Z-IO
+    , zoovisitor
 
   default-language:   Haskell2010
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    UnliftedFFITypes
+
   build-tool-depends: hspec-discover:hspec-discover ==2.*
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates

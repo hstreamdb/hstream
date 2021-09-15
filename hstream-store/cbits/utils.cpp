@@ -25,7 +25,6 @@ std::string* hs_cal_std_string_off(std::string* str, HsInt idx) {
   return str + idx;
 }
 
-void delete_vector_of_string(std::vector<std::string>* ss) { delete ss; }
 void delete_vector_of_cint(std::vector<int>* ss) { delete ss; }
 
 HsInt get_vector_of_string_size(std::vector<std::string>* ss) {

@@ -48,3 +48,14 @@ void cppMapToHs(const Map& map, FunctionK extract_key, FunctionV extract_value,
 }
 
 // ----------------------------------------------------------------------------
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void delete_vector_of_string(std::vector<std::string>* ss);
+
+// ----------------------------------------------------------------------------
+#ifdef __cplusplus
+} /* end extern "C" */
+#endif

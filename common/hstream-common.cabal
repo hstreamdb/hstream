@@ -54,7 +54,10 @@ library
 
   hs-source-dirs:     . gen-src
   include-dirs:       include clib /usr/local/include
-  includes:           hs_common.h
+  includes:
+    hs_common.h
+    hs_cpp_lib.h
+
   install-includes:   hs_cpp_lib.h
   cxx-sources:
     cbits/hs_stats.cpp
@@ -88,6 +91,7 @@ library
     , Z-IO
 
   cxx-options:        -std=c++17
+  cpp-options:        -std=c++17
   extra-lib-dirs:     /usr/local/lib
   extra-libraries:
     stdc++

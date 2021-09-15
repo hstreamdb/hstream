@@ -44,6 +44,7 @@ import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),
                                                    ValueKind (ValueKindStructValue))
+import qualified HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
 clientConfig :: ClientConfig
@@ -171,6 +172,46 @@ grpcShouldThrow
   :: (HasCallStack, Exception e)
   => IO (ClientResult 'Normal a) -> Selector e -> Expectation
 action `grpcShouldThrow` p = (getServerResp =<< action) `shouldThrow` p
+
+withRandomStreamName :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
+withRandomStreamName = provideRunTest setup clean
+  where
+    setup _api = TL.fromStrict <$> newRandomText 20
+    clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
+
+withRandomStreamNames :: ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
+withRandomStreamNames = provideRunTest setup clean
+  where
+    setup _api = replicateM 5 $ TL.fromStrict <$> newRandomText 20
+    clean api names = forM_ names $ \name -> do
+      cleanStreamReq api name `shouldReturn` PB.Empty
+
+withRandomStream :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
+withRandomStream = provideRunTest setup clean
+  where
+    setup api = do name <- TL.fromStrict <$> newRandomText 20
+                   _ <- createStreamReq api (Stream name 1)
+                   threadDelay 1000000
+                   return name
+    clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
+
+createStreamReq :: HStreamClientApi -> Stream -> IO Stream
+createStreamReq HStreamApi{..} stream =
+  let req = ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiCreateStream req
+
+cleanStreamReq :: HStreamClientApi -> TL.Text -> IO PB.Empty
+cleanStreamReq HStreamApi{..} streamName =
+  let delReq = def { deleteStreamRequestStreamName = streamName
+                   , deleteStreamRequestIgnoreNonExist = True }
+      req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiDeleteStream req
+
+appendRequest :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO AppendResponse
+appendRequest HStreamApi{..} streamName records =
+  let appReq = AppendRequest streamName records
+      req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiAppend req
 
 -------------------------------------------------------------------------------
 
