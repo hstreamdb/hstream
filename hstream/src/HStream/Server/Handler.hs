@@ -597,65 +597,85 @@ streamingFetchHandler
 streamingFetchHandler ServerContext{..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
-  handleRequest True
+  consumerNameRef <- newIORef TL.empty
+  subscriptionIdRef <- newIORef TL.empty
+  handleRequest True consumerNameRef subscriptionIdRef
   where
-    handleRequest isFirst = streamRecv >>= \case
-      Left (err :: grpcIOError) -> do
-        Log.fatal . Log.buildString $ "streamRecv error: " <> show err
-        -- fixme here
-        return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
-      Right ma ->
-        case ma of
-          Just StreamingFetchRequest{..} -> do
-            -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-            when isFirst $ do
-              Log.debug "stream recive requst, do check in isFirst branch"
-              -- TODO: check subscription whether exsits first
+    handleRequest isFirst consumerNameRef subscriptionIdRef = do
+      streamRecv >>= \case
+        Left (err :: grpcIOError) -> do
+          Log.fatal . Log.buildString $ "streamRecv error: " <> show err
 
-              isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
-              if isInited
-                 then do
-                   infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
-                   modifyMVar_ infoMVar
-                     (
-                       \info@SubscribeRuntimeInfo{..} -> do
-                         -- bind a new sender to current client
-                         let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                         return $ info {sriStreamSends = newSends}
-                     )
+          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef
+          return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
+        Right ma ->
+          case ma of
+            Just StreamingFetchRequest{..} -> do
+              -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
+              when isFirst $ do
+                Log.debug "stream recive requst, do check in isFirst branch"
+                -- TODO: check subscription whether exsits first
+
+                writeIORef consumerNameRef streamingFetchRequestConsumerName
+                writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
+
+                isInited <- withMVar subscribeRuntimeInfo $ return . HM.member streamingFetchRequestSubscriptionId
+                if isInited
+                then do
+                  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup streamingFetchRequestSubscriptionId
+                  modifyMVar_ infoMVar
+                    (
+                      \info@SubscribeRuntimeInfo{..} -> do
+                        -- bind a new sender to current client
+                        let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
+                        return $ info {sriStreamSends = newSends}
+                    )
+                else do
+                  modifyMVar_ subscribeRuntimeInfo
+                    (
+                      \store -> do
+                        case HM.lookup streamingFetchRequestSubscriptionId store of
+                          -- This means that subscribeRuntimeInfo has been inited by others.
+                          Just _ -> return store
+                          Nothing -> do
+                            mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                            -- At this point, the corresponding subscription must be
+                            -- present, unless the subscription has been removed
+                            -- forcely, which we will handle later(TODO).
+                            let sub@Subscription{..} = fromJust mSub
+                            let startRecordId = getStartRecordId sub
+                            newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName streamingFetchRequestConsumerName startRecordId streamSend subscriptionAckTimeoutSeconds
+                            Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " is ready to consume."
+                            return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                    )
+
+              if V.null streamingFetchRequestAckIds
+                 then handleRequest False consumerNameRef subscriptionIdRef
                  else do
-                   modifyMVar_ subscribeRuntimeInfo
-                     (
-                       \store -> do
-                         case HM.lookup streamingFetchRequestSubscriptionId store of
-                           -- This means that subscribeRuntimeInfo has been inited by others.
-                           Just _ -> return store
-                           Nothing -> do
-                             mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
-                             -- At this point, the corresponding subscription must be
-                             -- present, unless the subscription has been removed
-                             -- forcely, which we will handle later(TODO).
-                             let sub@Subscription{..} = fromJust mSub
-                             let startRecordId = getStartRecordId sub
-                             newInfoMVar <- initSubscribe scLDClient streamingFetchRequestSubscriptionId subscriptionStreamName streamingFetchRequestConsumerName startRecordId streamSend subscriptionAckTimeoutSeconds
-                             Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " is ready to consume."
-                             return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                     )
+                   doAck scLDClient subscribeRuntimeInfo streamingFetchRequestSubscriptionId streamingFetchRequestAckIds >>= \case
+                     True -> handleRequest False consumerNameRef subscriptionIdRef
+                     False -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "can not found subscription")
 
-            if V.null streamingFetchRequestAckIds
-               then handleRequest False
-               else do
-                 doAck scLDClient subscribeRuntimeInfo streamingFetchRequestSubscriptionId streamingFetchRequestAckIds >>= \case
-                   True -> handleRequest False
-                   False -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "can not found subscription")
+            Nothing -> do
+              -- This means that the consumer finished sending acks actively.
+              Log.info "consumer closed"
+              cleanupStreamSend isFirst consumerNameRef subscriptionIdRef
+              return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
 
-          Nothing -> do
-            Log.info "Client down."
-            -- This means that the consumer finished sending acks actively,
-            -- in fact, it should never happen.
-            return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
+    -- We should cleanup according streamSend before returning ServerBiDiResponse.
+    cleanupStreamSend isFirst consumerNameRef subscriptionIdRef = do
+      unless isFirst $ do
+        subscriptionId <- readIORef subscriptionIdRef
+        infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup subscriptionId
+        consumerName <- readIORef consumerNameRef
+        modifyMVar_
+          infoMVar
+          (
+            \info@SubscribeRuntimeInfo{..} -> do
+              let newStreamSends = HM.delete consumerName sriStreamSends
+              return $ info {sriStreamSends = newStreamSends}
+          )
 
-    -- return: IO (MVar SubscribeRuntimeInfo)
     initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <- S.newLDRsmCkpReader ldclient
