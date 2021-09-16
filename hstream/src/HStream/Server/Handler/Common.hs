@@ -112,6 +112,7 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
   , sriBatchNumMap       :: Map.Map Word64 Word32
   , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
+  , sriValid             :: Bool
 }
 
 --------------------------------------------------------------------------------
