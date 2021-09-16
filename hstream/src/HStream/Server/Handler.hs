@@ -654,8 +654,9 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
         Left (err :: grpcIOError) -> do
           Log.fatal . Log.buildString $ "streamRecv error: " <> show err
 
-          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef
-          return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
+          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
+            Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
+            Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
         Right ma ->
           case ma of
             Just StreamingFetchRequest {..} -> do
@@ -718,8 +719,9 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
             Nothing -> do
               -- This means that the consumer finished sending acks actively.
               Log.info "consumer closed"
-              cleanupStreamSend isFirst consumerNameRef subscriptionIdRef
-              return $ ServerBiDiResponse [] StatusOk (StatusDetails "")
+              cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
+                Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
+                Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
 
     handleAcks subId acks consumerNameRef subscriptionIdRef =
       if V.null acks
@@ -738,18 +740,27 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     -- We should cleanup according streamSend before returning ServerBiDiResponse.
     cleanupStreamSend isFirst consumerNameRef subscriptionIdRef = do
-      unless isFirst $ do
-        subscriptionId <- readIORef subscriptionIdRef
-        infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup subscriptionId
-        consumerName <- readIORef consumerNameRef
-        modifyMVar_
-          infoMVar
-          ( \info@SubscribeRuntimeInfo {..} -> do
-              if sriValid
-                then do
-                  let newStreamSends = HM.delete consumerName sriStreamSends
-                  return $ info {sriStreamSends = newStreamSends}
-                else return info
+      if isFirst
+      then return Nothing
+      else
+        withMVar
+          subscribeRuntimeInfo
+          ( \store -> do
+              subscriptionId <- readIORef subscriptionIdRef
+              consumerName <- readIORef consumerNameRef
+              case HM.lookup subscriptionId store of
+                Nothing -> return $ Just "Subscription has been removed"
+                Just infoMVar -> do
+                  modifyMVar_
+                    infoMVar
+                    ( \info@SubscribeRuntimeInfo {..} -> do
+                        if sriValid
+                          then do
+                            let newStreamSends = HM.delete consumerName sriStreamSends
+                            return $ info {sriStreamSends = newStreamSends}
+                          else return info
+                    )
+                  return Nothing
           )
 
     initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
