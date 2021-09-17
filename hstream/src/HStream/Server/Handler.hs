@@ -562,9 +562,6 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
             ( \info@SubscribeRuntimeInfo {..} ->
                 if HM.null sriStreamSends
                   then do
-                    -- stop ldreader
-                    S.ckpReaderStopReading sriLdCkpReader sriLogId
-                    S.readerStopReading (fromJust sriLdReader) sriLogId
                     -- remove sub from zk
                     P.removeSubscription (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
                     let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
