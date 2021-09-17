@@ -676,7 +676,14 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                                 ( \info@SubscribeRuntimeInfo {..} -> do
                                     -- bind a new sender to current client
                                     let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                                    return $ info {sriStreamSends = newSends}
+                                    if V.null sriSignals
+                                    then
+                                      return $ info {sriStreamSends = newSends}
+                                    else do
+                                      -- wake up all threads waiting for a new
+                                      -- consumer to join
+                                      V.forM_ sriSignals $ flip putMVar ()
+                                      return $ info {sriStreamSends = newSends, sriSignals = V.empty}
                                 )
                               return (store, Nothing)
                             Nothing -> do
@@ -796,7 +803,8 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                 sriAckedRanges = Map.empty,
                 sriBatchNumMap = Map.empty,
                 sriStreamSends = HM.singleton consumerName sSend,
-                sriValid = True
+                sriValid = True,
+                sriSignals = V.empty
               }
 
       infoMVar <- newMVar info
@@ -808,14 +816,14 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
     readAndDispatchRecords runtimeInfoMVar = do
       Log.debug $ Log.buildString "enter readAndDispatchRecords"
 
-      modifyMVar_
+      modifyMVar
         runtimeInfoMVar
         ( \info@SubscribeRuntimeInfo {..} ->
             if sriValid
               then do
-                void $ registerLowResTimer 10 $ void . forkIO $ readAndDispatchRecords runtimeInfoMVar
                 if not (HM.null sriStreamSends)
-                  then
+                  then do
+                    void $ registerLowResTimer 10 $ void . forkIO $ readAndDispatchRecords runtimeInfoMVar
                     S.ckpReaderReadAllowGap sriLdCkpReader 1000 >>= \case
                       Left gap@S.GapRecord {..} -> do
                         -- insert gap range to ackedRanges
@@ -825,12 +833,12 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                             newInfo = info {sriAckedRanges = newRanges}
                         Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show sriStreamName <> ", the gap is " <> show gap
                         Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
-                        return newInfo
+                        return (newInfo, Nothing)
                       Right dataRecords -> do
                         if null dataRecords
                           then do
                             Log.debug . Log.buildString $ "reader read empty dataRecords from stream " <> show sriStreamName
-                            return info
+                            return (info, Nothing)
                           else do
                             Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records"
                             let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
@@ -855,10 +863,18 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                                 (fromIntegral sriAckTimeoutSeconds * 10)
                                 ( void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar
                                 )
-                            return newInfo
-                  else return info
-              else return info
+                            return (newInfo, Nothing)
+                  else do
+                    signal <- newEmptyMVar
+                    return (info {sriSignals = V.cons signal sriSignals}, Just signal)
+              else
+                return (info, Nothing)
         )
+        >>= \case
+          Nothing -> return ()
+          Just signal -> do
+            void $ takeMVar signal
+            readAndDispatchRecords runtimeInfoMVar
 
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       flip V.filter recordIds $ \recordId ->
@@ -869,19 +885,24 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
       Log.debug "enter tryResendTimeoutRecords"
-      modifyMVar_
+      modifyMVar
         infoMVar
         ( \info@SubscribeRuntimeInfo {..} -> do
             if sriValid
               then do
                 let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
                 if V.null unackedRecordIds
-                  then return info
+                  then return (info, Nothing)
                   else do
                     Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
                     doResend info unackedRecordIds
-              else return info
+              else return (info, Nothing)
         )
+        >>= \case
+          Nothing -> return ()
+          Just signal -> do
+            void $ takeMVar signal
+            tryResendTimeoutRecords recordIds logId infoMVar
       where
         registerResend records timeout =
           registerLowResTimer timeout $
@@ -892,9 +913,9 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
           let consumerNum = HM.size sriStreamSends
           if consumerNum == 0
             then do
-              Log.debug . Log.buildString $ "no consumer to resend unacked msg, try later"
-              void $ registerResend unackedRecordIds 10
-              return info
+              Log.debug . Log.buildString $ "no consumer to resend unacked msg, will block"
+              signal <- newEmptyMVar
+              return (info {sriSignals = V.cons signal sriSignals}, Just signal)
             else do
               streamSendValidRef <- newIORef $ V.replicate consumerNum True
               let senders = HM.toList sriStreamSends
@@ -924,7 +945,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
               valids <- readIORef streamSendValidRef
               let newStreamSends = map snd $ L.filter (\(i, _) -> valids V.! i) $ zip [0 ..] senders
-              return $ info {sriStreamSends = HM.fromList newStreamSends}
+              return (info {sriStreamSends = HM.fromList newStreamSends}, Nothing)
 
 --------------------------------------------------------------------------------
 --
