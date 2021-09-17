@@ -26,6 +26,7 @@ import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
@@ -113,6 +114,7 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriBatchNumMap       :: Map.Map Word64 Word32
   , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
   , sriValid             :: Bool
+  , sriSignals           :: V.Vector (MVar ())
 }
 
 --------------------------------------------------------------------------------
