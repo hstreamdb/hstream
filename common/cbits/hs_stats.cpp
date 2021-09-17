@@ -64,7 +64,8 @@ void stats_holder_print(StatsHolder* s) { s->print(); }
                                      const char* stream_name, int64_t val) {   \
     if (stats_holder) {                                                        \
       auto stats_struct = &(stats_holder->get());                              \
-      STREAM_TIME_SERIES_ADD(stats_struct, stream_name, name, val);            \
+      STREAM_TIME_SERIES_ADD(stats_struct, std::string(stream_name), name,     \
+                             val);                                             \
     }                                                                          \
   }
 #include "per_stream_time_series.inc"

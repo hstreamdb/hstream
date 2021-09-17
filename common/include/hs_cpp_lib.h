@@ -32,7 +32,7 @@ void cppMapToHs(const Map& map, FunctionK extract_key, FunctionV extract_value,
     if constexpr (std::is_null_pointer_v<FunctionK>) {
       keys->push_back(key);
     } else {
-      values->push_back(extract_key(std::move(key)));
+      keys->push_back(extract_key(std::move(key)));
     }
     if constexpr (std::is_null_pointer_v<FunctionV>) {
       values->push_back(value);

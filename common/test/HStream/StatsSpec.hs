@@ -8,6 +8,8 @@ import           Test.Hspec
 import           HStream.Stats
 import           HStream.Utils      (runConc, setupSigsegvHandler)
 
+{-# ANN module ("HLint: ignore Use head" :: String) #-}
+
 spec :: Spec
 spec = do
   runIO setupSigsegvHandler
@@ -30,13 +32,19 @@ statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats time series" $ do
     h <- newStatsHolder
     stream_time_series_add_append_in_bytes h "/topic_1" 1000
-    -- NOTE: we choose to sleep 1sec so that we can assume the speed won't be
-    -- faster than 2000B/s
+    stream_time_series_add_append_in_bytes h "/topic_2" 10000
+    -- NOTE: we choose to sleep 1sec so that we can assume the speed of topic_1
+    -- won't be faster than 2000B/s
     threadDelay 1000000
     stream_time_series_add_append_in_bytes h "/topic_1" 1000
+    stream_time_series_add_append_in_bytes h "/topic_2" 10000
+
     m <- stream_time_series_getall_by_name h "appends" [5* 1000, 10 * 1000]  -- 5, 10 sec
-    Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> head s > 0 && head s <= 2000) . fromJust)
+
+    Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
     Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> s!!1 > 0 && s!!1 <= 2000) . fromJust)
+    Map.lookup "/topic_2" m `shouldSatisfy` ((\s -> s!!0 > 2000 && s!!0 <= 20000) . fromJust)
+    Map.lookup "/topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
 
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
