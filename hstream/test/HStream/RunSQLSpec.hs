@@ -15,11 +15,9 @@ import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
 import           Test.Hspec
 
 import           HStream.Logger                  as Log
-import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
 import           HStream.Store.Logger            (pattern C_DBG_ERROR,
                                                   setLogDeviceDbgLevel)
-import           HStream.ThirdParty.Protobuf     (Struct)
 import           HStream.Utils
 
 spec :: Spec

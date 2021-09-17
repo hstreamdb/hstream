@@ -98,6 +98,7 @@ appendBatch client logid payloads compression m_key_attr = withForeignPtr client
     return $ AppendCompletion appendCbLogID appendCbLSN appendCbTimestamp
 {-# INLINABLE appendBatch #-}
 
+-- TODO: support vector of ByteString
 appendBatchBS
   :: HasCallStack
   => LDClient

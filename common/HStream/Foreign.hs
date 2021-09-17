@@ -96,7 +96,7 @@ peekFollySmallVectorDouble ptr offset = do
   size <- c_get_size_folly_small_vec_of_double ptr'
   fp <- mallocForeignPtrBytes size
   withForeignPtr fp $ \data' -> do
-    c_peek_folly_small_vec_of_double ptr size data'
+    c_peek_folly_small_vec_of_double ptr' size data'
     peekN size data'
 
 #define HS_CPP_VEC_SIZE(CFUN, HSOBJ) \

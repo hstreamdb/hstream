@@ -45,6 +45,12 @@ service HStreamApi {
   // Developing APIs
   // ---------------------------------------------------------------------------
 
+  // Stats
+  // TODO
+  // rpc PerStreamTimeSeriesStats() returns ()
+  rpc PerStreamTimeSeriesStatsAll(PerStreamTimeSeriesStatsAllRequest)
+    returns (PerStreamTimeSeriesStatsAllResponse);
+
   // only for push query
   // e.g., select (with emit changes)
   rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
@@ -430,3 +436,19 @@ message Node {
   string status = 4;
 }
 
+message PerStreamTimeSeriesStatsAllRequest {
+  string method = 1;
+  StatsIntervalVals intervals = 2;
+}
+
+message StatsIntervalVals {
+  repeated int32 intervals = 1;
+}
+
+message StatsDoubleVals {
+  repeated double vals = 1;
+}
+
+message PerStreamTimeSeriesStatsAllResponse {
+  map<string, StatsDoubleVals> stats = 1;
+}

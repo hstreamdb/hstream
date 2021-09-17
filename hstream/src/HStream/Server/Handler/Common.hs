@@ -17,9 +17,12 @@ import           Control.Exception                (Handler (Handler),
                                                    onException, throwIO, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
+import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
+import           Data.IORef                       (IORef, atomicModifyIORef',
+                                                   newIORef)
 import           Data.Int                         (Int32, Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
@@ -36,12 +39,10 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
+import           System.IO.Unsafe                 (unsafePerformIO)
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types
 
-import qualified Data.Aeson                       as Aeson
-import           Data.IORef                       (IORef, atomicModifyIORef',
-                                                   newIORef)
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
 import           HStream.Connector.MySQL
@@ -58,13 +59,13 @@ import           HStream.Server.HStreamApi        (RecordId (..),
                                                    StreamingFetchResponse)
 import qualified HStream.Server.HStreamApi        as Api
 import qualified HStream.Server.Persistence       as P
+import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (TaskStatus (..),
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
-import           System.IO.Unsafe                 (unsafePerformIO)
 
 --------------------------------------------------------------------------------
 
@@ -87,6 +88,7 @@ data ServerContext = ServerContext {
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
+  , scStatsHolder            :: Stats.StatsHolder
 }
 
 type SubscriptionId = TL.Text
