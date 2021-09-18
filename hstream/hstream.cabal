@@ -33,6 +33,8 @@ library
     HStream.Server.Handler.Query
     HStream.Server.Handler.StoreAdmin
     HStream.Server.Handler.View
+    HStream.Server.Handler.Subscription
+    HStream.Server.Handler.Stream
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
 
