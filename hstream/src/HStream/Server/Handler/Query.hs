@@ -1,46 +1,336 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Query where
 
-import           Control.Concurrent               (readMVar)
-import           Control.Exception                (throwIO)
+import           Control.Concurrent
+import           Control.Exception                (handle, throwIO)
+import           Control.Monad                    (join)
+import qualified Data.Aeson                       as Aeson
+import           Data.Bifunctor
+import           Data.Function                    (on, (&))
+import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
+import           Data.IORef                       (atomicModifyIORef',
+                                                   readIORef)
+import           Data.Int                         (Int64)
 import           Data.List                        (find, (\\))
+import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (catMaybes, fromJust, isJust)
+import           Data.Scientific
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import qualified Data.Time                        as Time
 import qualified Data.Vector                      as V
+
 import           Network.GRPC.HighLevel.Generated
+import           Proto3.Suite                     (HasDefault (def))
+
+import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
 
+import           ZooKeeper.Types                  (ZHandle)
+
+import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
-import           HStream.Processing.Connector     (subscribeToStream)
+import           HStream.Processing.Connector     (SourceConnector (..))
+import           HStream.Processing.Encoding      (Deserializer (..),
+                                                   Serde (..), Serializer (..))
 import           HStream.Processing.Processor     (getTaskName,
                                                    taskBuilderWithName)
-import           HStream.Processing.Type          (Offset (..))
+import           HStream.Processing.Store
+import qualified HStream.Processing.Stream        as PS
+import           HStream.Processing.Type          hiding (StreamName, Timestamp)
+import           HStream.SQL                      (parseAndRefine)
+import           HStream.SQL.AST
+import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
-import           HStream.Server.Exception         (StreamNotExist (..),
-                                                   defaultExceptionHandle)
+import           HStream.SQL.ExecPlan             (genExecutionPlan)
+import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   handleCreateAsSelect,
-                                                   handleQueryTerminate)
+import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Connector
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Store                    as HS
-import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToLazyText,
-                                                   lazyTextToCBytes,
-                                                   returnErrResp, returnResp,
-                                                   textToCBytes)
+import qualified HStream.Store                    as S
+import           HStream.ThirdParty.Protobuf      as PB
+import           HStream.Utils
 
+-------------------------------------------------------------------------------
+-- Stream with Select Query
+
+createQueryStreamHandler ::
+  ServerContext ->
+  ServerRequest 'Normal CreateQueryStreamRequest CreateQueryStreamResponse ->
+  IO (ServerResponse 'Normal CreateQueryStreamResponse)
+createQueryStreamHandler
+  sc@ServerContext {..}
+  (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = defaultExceptionHandle $ do
+    RQSelect select <- parseAndRefine $ TL.toStrict createQueryStreamRequestQueryStatements
+    tName <- genTaskName
+    let sName =
+          TL.toStrict . streamStreamName
+            <$> createQueryStreamRequestQueryStream
+        rFac = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
+    (builder, source, sink, _) <-
+      genStreamBuilderWithStream tName sName select
+    S.createStream scLDClient (transToStreamName sink) $ S.LogAttrs (S.HsLogAttrs rFac Map.empty)
+    let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
+    void $
+      handleCreateAsSelect
+        sc
+        (PS.build builder)
+        createQueryStreamRequestQueryStatements
+        query
+        S.StreamTypeStream
+    let streamResp = Stream (TL.fromStrict sink) (fromIntegral rFac)
+        -- FIXME: The value query returned should have been fully assigned
+        queryResp = def {queryId = TL.fromStrict tName}
+    returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
+
+--------------------------------------------------------------------------------
+
+executeQueryHandler ::
+  ServerContext ->
+  ServerRequest 'Normal CommandQuery CommandQueryResponse ->
+  IO (ServerResponse 'Normal CommandQueryResponse)
+executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata CommandQuery {..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Query Request: " <> Log.buildString (TL.unpack commandQueryStmtText)
+  plan' <- streamCodegen (TL.toStrict commandQueryStmtText)
+  case plan' of
+    SelectPlan {} -> returnErrResp StatusInternal "inconsistent method called"
+    -- execute plans that can be executed with this method
+    CreateViewPlan schema sources sink taskBuilder _repFactor materialized ->
+      do
+        create (transToViewStreamName sink)
+        >> handleCreateAsSelect
+          sc
+          taskBuilder
+          commandQueryStmtText
+          (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
+          S.StreamTypeView
+        >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
+        >> returnCommandQueryEmptyResp
+    CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
+      createConnector sc (TL.toStrict commandQueryStmtText) >> returnCommandQueryEmptyResp
+    SelectViewPlan RSelectView {..} -> do
+      hm <- readIORef groupbyStores
+      case HM.lookup rSelectViewFrom hm of
+        Nothing -> returnErrResp StatusInternal "VIEW not found"
+        Just materialized -> do
+          let (keyName, keyExpr) = rSelectViewWhere
+              (_, keyValue) = genRExprValue keyExpr (HM.fromList [])
+          let keySerde = PS.mKeySerde materialized
+              valueSerde = PS.mValueSerde materialized
+          let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
+          case PS.mStateStore materialized of
+            KVStateStore store -> do
+              queries <- P.getQueries zkHandle
+              sizeM <-
+                getFixedWinSize queries rSelectViewFrom
+                  <&> fmap diffTimeToScientific
+              if isJust sizeM
+                then do
+                  let size = fromJust sizeM & fromJust . toBoundedInteger @Int64
+                  subset <-
+                    ksDump store
+                      <&> Map.filterWithKey
+                        (\k _ -> all (`elem` HM.toList k) (HM.toList key))
+                      <&> Map.toList
+                  let winStarts =
+                        subset
+                          <&> (lookup "winStart" . HM.toList) . fst
+                            & L.sort . L.nub . catMaybes
+                      singlWinStart =
+                        subset
+                          <&> first (filter (\(k, _) -> k == "winStart") . HM.toList)
+                          <&> first HM.fromList
+                      grped =
+                        winStarts <&> \winStart ->
+                          let Aeson.Number winStart'' = winStart
+                              winStart' = fromJust . toBoundedInteger @Int64 $ winStart''
+                           in ( "winStart = "
+                                  <> (T.pack . show) winStart'
+                                  <> " ,winEnd = "
+                                  <> (T.pack . show) (winStart' + size),
+                                lookup (HM.fromList [("winStart", winStart)]) singlWinStart
+                                  & fromJust
+                                  & Aeson.Object
+                              )
+                  sendResp (Just $ HM.fromList grped) valueSerde
+                else ksGet key store >>= flip sendResp valueSerde
+            SessionStateStore store -> do
+              dropSurfaceTimeStamp <- ssDump store <&> Map.elems
+              let subset =
+                    dropSurfaceTimeStamp
+                      <&> Map.elems
+                        . Map.filterWithKey \k _ -> all (`elem` HM.toList k) (HM.toList key)
+              let res =
+                    subset
+                      & filter (not . null) . join
+                      <&> Map.toList
+                        & L.sortBy (compare `on` fst) . filter (not . null) . join
+              flip sendResp valueSerde $
+                Just . HM.fromList $
+                  res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, Aeson.Object v)
+            TimestampedKVStateStore _ ->
+              returnErrResp StatusInternal "Impossible happened"
+    ExplainPlan sql -> do
+      execPlan <- genExecutionPlan sql
+      let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
+      returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
+    _ -> discard
+  where
+    mkLogAttrs = S.HsLogAttrs scDefaultStreamRepFactor
+    create sName = do
+      let attrs = mkLogAttrs Map.empty
+      Log.debug . Log.buildString $
+        "CREATE: new stream " <> show sName
+          <> " with attributes: "
+          <> show attrs
+      S.createStream scLDClient sName (S.LogAttrs attrs)
+    sendResp ma valueSerde = do
+      case ma of
+        Nothing -> returnCommandQueryResp V.empty
+        Just x -> do
+          let result = runDeser (deserializer valueSerde) x
+          returnCommandQueryResp
+            (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
+    discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
+
+executePushQueryHandler ::
+  ServerContext ->
+  ServerRequest 'ServerStreaming CommandPushQuery Struct ->
+  IO (ServerResponse 'ServerStreaming Struct)
+executePushQueryHandler
+  ServerContext {..}
+  (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultStreamExceptionHandle $ do
+    Log.debug $ "Receive Push Query Request: " <> Log.buildString (TL.unpack commandPushQueryQueryText)
+    plan' <- streamCodegen (TL.toStrict commandPushQueryQueryText)
+    case plan' of
+      SelectPlan sources sink taskBuilder -> do
+        exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
+        if (not . and) exists
+          then do
+            Log.warning $
+              "At least one of the streams do not exist: "
+                <> Log.buildString (show sources)
+            throwIO StreamNotExist
+          else do
+            S.createStream
+              scLDClient
+              (transToTempStreamName sink)
+              (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
+            -- create persistent query
+            (qid, _) <-
+              P.createInsertPersistentQuery
+                (getTaskName taskBuilder)
+                (TL.toStrict commandPushQueryQueryText)
+                (P.PlainQuery $ textToCBytes <$> sources)
+                zkHandle
+            -- run task
+            -- FIXME: take care of the life cycle of the thread and global state
+            tid <-
+              forkIO $
+                P.setQueryStatus qid Running zkHandle
+                  >> runTaskWrapper S.StreamTypeStream S.StreamTypeTemp taskBuilder scLDClient
+            takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+            _ <-
+              forkIO $
+                handlePushQueryCanceled
+                  meta
+                  (killThread tid >> P.setQueryStatus qid Terminated zkHandle)
+            ldreader' <-
+              S.newLDRsmCkpReader
+                scLDClient
+                (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
+                S.checkpointStoreLogID
+                5000
+                1
+                Nothing
+                10
+            let sc = hstoreSourceConnector scLDClient ldreader' S.StreamTypeTemp
+            subscribeToStream sc sink Latest
+            sendToClient zkHandle qid sc streamSend
+      _ -> do
+        Log.fatal "Push Query: Inconsistent Method Called"
+        returnStreamingResp StatusInternal "inconsistent method called"
+
+--------------------------------------------------------------------------------
+
+sendToClient ::
+  ZHandle ->
+  CB.CBytes ->
+  SourceConnector ->
+  (Struct -> IO (Either GRPCIOError ())) ->
+  IO (ServerResponse 'ServerStreaming Struct)
+sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
+  let f (e :: P.ZooException) = do
+        Log.fatal $ "ZooKeeper Exception: " <> Log.buildString (show e)
+        return $ ServerWriterResponse [] StatusAborted "failed to get status"
+  handle f $
+    do
+      P.getQueryStatus qid zkHandle
+      >>= \case
+        Terminated -> return (ServerWriterResponse [] StatusUnknown "")
+        Created -> return (ServerWriterResponse [] StatusUnknown "")
+        Running -> do
+          sourceRecords <- readRecords
+          let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
+              structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
+          streamSendMany structs
+  where
+    streamSendMany = \case
+      [] -> sendToClient zkHandle qid sc streamSend
+      (x : xs') ->
+        streamSend (structToStruct "SELECT" x) >>= \case
+          Left err -> do
+            Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
+            return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
+          Right _ -> streamSendMany xs'
+
+--------------------------------------------------------------------------------
+
+getFixedWinSize :: [P.PersistentQuery] -> T.Text -> IO (Maybe Time.DiffTime)
+getFixedWinSize [] _ = pure Nothing
+getFixedWinSize queries viewNameRaw = do
+  sizes <-
+    queries <&> P.queryBindedSql
+      <&> parseAndRefine . cBytesToText . CB.fromText
+        & sequence
+      <&> filter \case
+        RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
+          viewNameRaw == viewNameSQL && isFixedWin rWin
+        _ -> False
+      <&> map \case
+        RQCreate (RCreateView _ (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
+          coeRWindowToDiffTime rWin
+        _ -> error "Impossible happened..."
+  pure case sizes of
+    []       -> Nothing
+    size : _ -> Just size
+  where
+    isFixedWin :: RWindow -> Bool = \case
+      RTumblingWindow _  -> True
+      RHoppingWIndow _ _ -> True
+      RSessionWindow _   -> False
+    coeRWindowToDiffTime :: RWindow -> Time.DiffTime = \case
+      RTumblingWindow size  -> size
+      RHoppingWIndow size _ -> size
+      RSessionWindow _      -> error "Impossible happened..."
+
+diffTimeToScientific :: Time.DiffTime -> Scientific
+diffTimeToScientific = flip scientific (-9) . Time.diffTimeToPicoseconds
 hstreamQueryToQuery :: P.PersistentQuery -> Query
 hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
   Query
