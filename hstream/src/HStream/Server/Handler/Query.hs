@@ -165,10 +165,14 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                                   <> (T.pack . show) (winStart' + size),
                                 lookup (HM.fromList [("winStart", winStart)]) singlWinStart
                                   & fromJust
-                                  & Aeson.Object
+                                  & mapAlias rSelectViewSelect
                               )
-                  sendResp (Just $ HM.fromList grped) valueSerde
-                else ksGet key store >>= flip sendResp valueSerde
+                      notEmpty = filter (\x -> snd x /= HM.empty) grped
+                        <&> second Aeson.Object
+                  sendResp (Just $ HM.fromList notEmpty) valueSerde
+                else do
+                  resp <- ksGet key store
+                  sendResp (mapAlias rSelectViewSelect <$> resp) valueSerde
             SessionStateStore store -> do
               dropSurfaceTimeStamp <- ssDump store <&> Map.elems
               let subset =
@@ -180,9 +184,10 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                       & filter (not . null) . join
                       <&> Map.toList
                         & L.sortBy (compare `on` fst) . filter (not . null) . join
+                  grped = res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, mapAlias rSelectViewSelect v)
+                  notEmpty = filter (\x -> snd x /= HM.empty) grped <&> second Aeson.Object
               flip sendResp valueSerde $
-                Just . HM.fromList $
-                  res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, Aeson.Object v)
+                Just . HM.fromList $ notEmpty
             TimestampedKVStateStore _ ->
               returnErrResp StatusInternal "Impossible happened"
     ExplainPlan sql -> do

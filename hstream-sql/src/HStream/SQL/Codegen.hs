@@ -1,17 +1,23 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE StrictData        #-}
+{-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData          #-}
 
 module HStream.SQL.Codegen where
 
 import           Data.Aeson                                      (Object,
                                                                   Value (Bool, Null, Number, String),
                                                                   encode)
+import           Data.Bifunctor
 import qualified Data.ByteString.Char8                           as BSC
+import           Data.Function
+import           Data.Functor
 import qualified Data.HashMap.Strict                             as HM
 import qualified Data.List                                       as L
+import           Data.Maybe
 import           Data.Scientific                                 (fromFloatDigits,
                                                                   scientific)
 import           Data.Text                                       (pack)
@@ -565,3 +571,23 @@ genStreamBuilderWithStream taskName sinkStream' select@(RSelect sel frm whr grp 
               builder <- HS.to sinkConfig s3
               return (builder, source, sink, Just materialized)
             Right _ -> throwSQLException CodegenException Nothing "Expected stream but got timeStream"
+
+--------------------------------------------------------------------------------
+
+mapAlias :: SelectViewSelect -> HM.HashMap T.Text Value -> HM.HashMap T.Text Value
+mapAlias SVSelectAll         res = res
+mapAlias (SVSelectFields []) _   = HM.empty
+mapAlias (SVSelectFields xs) res = HM.fromList
+  let ret = xs <&> \(proj1, proj2) ->
+        let key = T.pack proj2 & unQuote
+            val = HM.lookup (unQuote proj1) res
+        in  (key, val)
+  in  filter (isJust . snd) ret <&> second fromJust
+  where
+    unQuote name
+      | T.length name <  2   = name
+      | T.head   name /= '`' = name
+      | T.last   name /= '`' = name
+      | otherwise =
+          (snd . fromJust) (T.uncons name ) & \name' ->
+          (fst . fromJust) (T.unsnoc name')
