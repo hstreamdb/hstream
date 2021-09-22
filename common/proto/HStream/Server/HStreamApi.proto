@@ -178,11 +178,6 @@ message ReceivedRecord {
   bytes record = 2;
 }
 
-message AcknowledgeRequest {
-  string subscriptionId = 1;
-  repeated RecordId ackIds = 2; 
-}
-
 message StreamOffset {
   string streamName = 1;
   RecordId offset = 2;
