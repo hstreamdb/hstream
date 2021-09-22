@@ -14,17 +14,12 @@ module HStream.Server.Handler.Subscription
     deleteSubscriptionHandler,
     listSubscriptionsHandler,
     checkSubscriptionExistHandler,
-    streamingFetchHandler,
-    subscribeHandler,
-    consumerHeartbeatHandler,
-    fetchHandler,
-    ackHandler
+    streamingFetchHandler
   )
 where
 
 import           Control.Concurrent
-import           Control.Exception                (throwIO)
-import           Control.Monad                    (unless, when, zipWithM)
+import           Control.Monad                    (when, zipWithM)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -91,65 +86,6 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
             Enumerated _ -> error "Wrong SpecialOffset!"
         SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
-subscribeHandler ::
-  ServerContext ->
-  ServerRequest 'Normal SubscribeRequest SubscribeResponse ->
-  IO (ServerResponse 'Normal SubscribeResponse)
-subscribeHandler ServerContext {..} (ServerNormalRequest _metadata req@SubscribeRequest {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive subscribe request: " <> Log.buildString (show req)
-
-  -- first, check if the subscription exist. If not, return err
-  isExist <- P.checkIfExist sId zkHandle
-  unless isExist $ do
-    Log.warning . Log.buildString $ "Can not subscribe an unexisted subscription, subscriptionId = " <> show sId
-    throwIO SubscriptionIdNotFound
-
-  modifyMVar subscribeRuntimeInfo $ \store ->
-    if HM.member subscribeRequestSubscriptionId store
-      then do
-        -- if the subscription has a reader bind to stream, just return
-        Log.debug . Log.buildString $ "subscribe subscription " <> show sId <> " success"
-        resp <- returnResp $ SubscribeResponse subscribeRequestSubscriptionId
-        return (store, resp)
-      else do
-        sub <- P.getSubscription sId zkHandle
-        doSubscribe sub store
-  where
-    sId = TL.toStrict subscribeRequestSubscriptionId
-
-    doSubscribe (Just sub@Subscription {..}) store = do
-      let rid@RecordId {..} = getStartRecordId sub
-      -- if the underlying stream does not exist, the getUnderlyingLogId method will throw an exception,
-      -- and all follows steps will not be executed.
-      Log.debug $ "get subscription info from zk, streamName: " <> Log.buildLazyText subscriptionStreamName <> " offset: " <> Log.buildString (show rid)
-      logId <- S.getUnderlyingLogId scLDClient (transToStreamName $ TL.toStrict subscriptionStreamName)
-      ldreader <- S.newLDRsmCkpReader scLDClient (textToCBytes sId) S.checkpointStoreLogID 5000 1 Nothing 10
-      Log.debug $ Log.buildString "create ld reader to stream " <> Log.buildLazyText subscriptionStreamName
-      S.ckpReaderStartReading ldreader logId recordIdBatchId S.LSN_MAX
-      Log.debug $ Log.buildString "createSubscribe with startLSN: " <> Log.buildInt recordIdBatchId
-      -- insert to runtime info
-      let info =
-            SubscribeRuntimeInfo
-              { sriLdCkpReader = ldreader,
-                sriStreamName = TL.toStrict subscriptionStreamName,
-                sriWindowLowerBound = rid,
-                sriWindowUpperBound = maxBound,
-                sriAckedRanges = Map.empty,
-                sriBatchNumMap = Map.empty,
-                sriStreamSends = HM.empty,
-                sriLdReader = Nothing,
-                sriLogId = logId,
-                sriAckTimeoutSeconds = 0
-              }
-      mvar <- newMVar info
-      let newStore = HM.insert subscribeRequestSubscriptionId mvar store
-      resp <- returnResp (SubscribeResponse subscribeRequestSubscriptionId)
-      return (newStore, resp)
-    doSubscribe Nothing store = do
-      Log.warning . Log.buildString $ "can not get subscription " <> show sId <> " from zk."
-      resErr <- returnErrResp StatusInternal $ StatusDetails "Can not get subscription from zk"
-      return (store, resErr)
-
 deleteSubscriptionHandler ::
   ServerContext ->
   ServerRequest 'Normal DeleteSubscriptionRequest Empty ->
@@ -200,44 +136,6 @@ listSubscriptionsHandler ServerContext {..} (ServerNormalRequest _metadata ListS
   res <- ListSubscriptionsResponse . V.fromList <$> P.listSubscriptions zkHandle
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
-
---------------------------------------------------------------------------------
--- Comsumer
-
--- do nothing now
-consumerHeartbeatHandler ::
-  ServerContext ->
-  ServerRequest 'Normal ConsumerHeartbeatRequest ConsumerHeartbeatResponse ->
-  IO (ServerResponse 'Normal ConsumerHeartbeatResponse)
-consumerHeartbeatHandler ServerContext {..} (ServerNormalRequest _metadata ConsumerHeartbeatRequest {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive heartbeat msg for " <> Log.buildLazyText consumerHeartbeatRequestSubscriptionId
-  returnResp $ ConsumerHeartbeatResponse consumerHeartbeatRequestSubscriptionId
-
-fetchHandler ::
-  ServerContext ->
-  ServerRequest 'Normal FetchRequest FetchResponse ->
-  IO (ServerResponse 'Normal FetchResponse)
-fetchHandler ServerContext {..} (ServerNormalRequest _metadata req@FetchRequest {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive fetch request: " <> Log.buildString (show req)
-
-  withMVar subscribeRuntimeInfo (return . HM.lookup fetchRequestSubscriptionId) >>= \case
-    Just infoMVar -> do
-      records <- doFetch infoMVar
-      returnResp $ FetchResponse records
-    Nothing -> do
-      Log.warning . Log.buildString $ "fetch request error, subscriptionId " <> show fetchRequestSubscriptionId <> " not exist."
-      returnErrResp StatusInternal (StatusDetails "subscription do not exist")
-
-ackHandler ::
-  ServerContext ->
-  ServerRequest 'Normal AcknowledgeRequest Empty ->
-  IO (ServerResponse 'Normal Empty)
-ackHandler ServerContext {..} (ServerNormalRequest _metadata req@AcknowledgeRequest {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive ack request: " <> Log.buildString (show req)
-
-  infoMVar <- withMVar subscribeRuntimeInfo $ return . fromJust . HM.lookup acknowledgeRequestSubscriptionId
-  doAck scLDClient infoMVar acknowledgeRequestAckIds
-  returnResp Empty
 
 streamingFetchHandler ::
   ServerContext ->
@@ -600,41 +498,6 @@ dispatchRecords records streamSends
           return Nothing
         Right _ -> do
           return $ Just (name, sender)
-
--- doFetch will fetch records from logdevice, if reader meet gap or no new records to read, doFetch
--- will return an empty vector
-doFetch :: MVar SubscribeRuntimeInfo -> IO (V.Vector ReceivedRecord)
-doFetch runtimeInfoMVar = modifyMVar runtimeInfoMVar $ \info@SubscribeRuntimeInfo {..} -> do
-  S.ckpReaderReadAllowGap sriLdCkpReader 1000 >>= \case
-    Left gap@S.GapRecord {..} -> do
-      -- insert gap range to ackedRanges
-      let gapLoRecordId = RecordId gapLoLSN minBound
-          gapHiRecordId = RecordId gapHiLSN maxBound
-          newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) sriAckedRanges
-          newInfo = info {sriAckedRanges = newRanges}
-      Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show sriStreamName <> ", the gap is " <> show gap
-      Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
-      return (newInfo, V.empty)
-    Right dataRecords -> do
-      if null dataRecords
-        then do
-          Log.debug . Log.buildString $ "reader read empty dataRecords from stream " <> show sriStreamName
-          return (info, V.empty)
-        else do
-          Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records"
-          let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
-              groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
-              lastBatch = last groups
-              maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
-              -- update window upper bound and batchNumMap
-              newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
-              receivedRecords = fetchResult groups
-          let newInfo =
-                info
-                  { sriBatchNumMap = newBatchNumMap,
-                    sriWindowUpperBound = maxRecordId
-                  }
-          return (newInfo, receivedRecords)
 
 doAck ::
   S.LDClient ->
