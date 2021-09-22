@@ -30,15 +30,9 @@ service HStreamApi {
 
   // Subscribe APIs
   rpc CreateSubscription(Subscription) returns (Subscription) {}
-  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
   rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {}
   rpc CheckSubscriptionExist(CheckSubscriptionExistRequest) returns (CheckSubscriptionExistResponse) {}
   rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
-
-  rpc sendConsumerHeartbeat(ConsumerHeartbeatRequest) returns (ConsumerHeartbeatResponse) {}
-  rpc Fetch(FetchRequest) returns (FetchResponse) {}
-  rpc Acknowledge(AcknowledgeRequest) returns (google.protobuf.Empty) {}
-
   rpc StreamingFetch(stream StreamingFetchRequest) returns (stream StreamingFetchResponse) {}
 
   // ---------------------------------------------------------------------------
@@ -127,14 +121,6 @@ message CommandQueryResponse {
   repeated Struct result_set = 1;
 }
 
-message ConsumerHeartbeatRequest {
-  string subscriptionId = 1;
-}
-
-message ConsumerHeartbeatResponse {
-  string subscriptionId = 1;
-}
-
 message AppendRequest {
   string streamName = 1;
   repeated HStreamRecord records = 2;
@@ -164,14 +150,6 @@ message SubscriptionOffset {
   }
 }
 
-message SubscribeRequest {
-  string subscriptionId = 1;
-}
-
-message SubscribeResponse {
-  string subscriptionId = 1;
-}
-
 message DeleteSubscriptionRequest {
   string subscriptionId = 1;
 }
@@ -182,16 +160,6 @@ message CheckSubscriptionExistRequest {
 
 message CheckSubscriptionExistResponse {
   bool exists = 1;
-}
-
-message FetchRequest {
-  string subscriptionId = 1;
-  uint64 timeout = 2;
-  uint32 maxSize = 3;
-}
-
-message FetchResponse {
-  repeated ReceivedRecord receivedRecords = 1;
 }
 
 message StreamingFetchRequest {

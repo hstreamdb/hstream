@@ -12,7 +12,6 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (race)
 import           Control.Monad                    (forM_, replicateM,
                                                    replicateM_, void, when)
-import qualified Data.ByteString                  as B
 import           Data.Int                         (Int32)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
@@ -20,14 +19,13 @@ import           Data.Maybe                       (fromJust)
 import qualified Data.Set                         as Set
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
-import           Data.Word                        (Word32, Word64)
+import           Data.Word                        (Word64)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Proto3.Suite                     (Enumerated (..))
 import           Proto3.Suite.Class               (HasDefault (def))
 import           System.Random
 import           Test.Hspec
-import           Z.Foreign                        (toByteString)
 
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
@@ -168,22 +166,6 @@ subscribeSpec = aroundAll provideHstreamApi $
       -- createSubscribe fails if the subscriptionName has been used
       createSubscriptionRequest api subscriptionName streamName offset `shouldThrow` anyException
 
-  aroundWith withSubscription $ do
-    it "test subscribe request" $ \(api, (streamName, subscriptionName)) -> do
-      let stream = Stream streamName 1
-      let subscriptionName' = subscriptionName <> "___"
-      createStreamRequest api stream `shouldReturn` stream
-      createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
-      -- subscribe a nonexistent subscriptionId should throw exception
-      subscribeRequest api subscriptionName' `shouldThrow` anyException
-      -- subscribe an existing subscriptionId should return True
-      subscribeRequest api subscriptionName `shouldReturn` True
-      -- re-subscribe is okay
-      subscribeRequest api subscriptionName `shouldReturn` True
-      -- subscribe is okay even though the stream has been deleted
-      deleteStreamRequest api streamName `shouldReturn` PB.Empty
-      subscribeRequest api subscriptionName `shouldReturn` True
-
   aroundWith withSubscriptions $ do
     it "test listSubscription request" $ \(api, (streamNames, subscriptionNames)) -> do
       let subscriptions = V.zipWith4 Subscription  subscriptionNames streamNames  (V.replicate 5 (Just offset)) (V.replicate 5 30)
@@ -192,7 +174,6 @@ subscribeSpec = aroundAll provideHstreamApi $
         createStreamRequest api stream `shouldReturn` stream
         createSubscriptionRequest api subscriptionSubscriptionId subscriptionStreamName
           (fromJust subscriptionOffset) `shouldReturn` True
-        subscribeRequest api subscriptionSubscriptionId `shouldReturn` True
       resp <- listSubscriptionRequest api
       let respSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList resp
           reqsSet = Set.fromList $ subscriptionSubscriptionId <$> V.toList subscriptions
@@ -203,7 +184,6 @@ subscribeSpec = aroundAll provideHstreamApi $
       let stream = Stream streamName 1
       createStreamRequest api stream `shouldReturn` stream
       createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
-      subscribeRequest api subscriptionName `shouldReturn` True
       -- delete a subscribed stream should return true
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
       -- double deletion is okay
@@ -214,7 +194,6 @@ subscribeSpec = aroundAll provideHstreamApi $
       let stream = Stream streamName 1
       createStreamRequest api stream `shouldReturn` stream
       createSubscriptionRequest api subscriptionName streamName offset `shouldReturn` True
-      subscribeRequest api subscriptionName `shouldReturn` True
       -- delete a subscription with underlying stream deleted should success
       deleteStreamRequest api streamName `shouldReturn` PB.Empty
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
@@ -235,12 +214,6 @@ createSubscriptionRequest HStreamApi{..} subscriptionId streamName offset =
   let subscription = Subscription subscriptionId streamName (Just offset) streamingAckTimeout
       req = ClientNormalRequest subscription requestTimeout $ MetadataMap Map.empty
   in True <$ (getServerResp =<< hstreamApiCreateSubscription req)
-
-subscribeRequest :: HStreamClientApi -> TL.Text -> IO Bool
-subscribeRequest HStreamApi{..} subscribeId =
-  let subReq = SubscribeRequest subscribeId
-      req = ClientNormalRequest subReq requestTimeout $ MetadataMap Map.empty
-  in True <$ (getServerResp =<< hstreamApiSubscribe req)
 
 listSubscriptionRequest :: HStreamClientApi -> IO (V.Vector Subscription)
 listSubscriptionRequest HStreamApi{..} =
@@ -371,12 +344,6 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 
 ----------------------------------------------------------------------------------------------------------
 
-fetchRequest :: HStreamClientApi -> TL.Text -> Word64 -> Word32 -> IO (V.Vector ReceivedRecord)
-fetchRequest HStreamApi{..} subscribeId timeout maxSize =
-  let fetReq = FetchRequest subscribeId timeout maxSize
-      req = ClientNormalRequest fetReq requestTimeout $ MetadataMap Map.empty
-  in fetchResponseReceivedRecords <$> (getServerResp =<< hstreamApiFetch req)
-
 streamFetchRequest
   :: HStreamClientApi
   -> TL.Text
@@ -483,7 +450,3 @@ streamingAckTimeout = 3
 
 streamingReqTimeout :: Int
 streamingReqTimeout = 10000000
-
-getReceivedRecordPayload :: ReceivedRecord -> B.ByteString
-getReceivedRecordPayload ReceivedRecord{..} =
-  toByteString . getPayload . decodeByteStringRecord $ receivedRecordRecord

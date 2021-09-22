@@ -69,22 +69,16 @@ handlers ldclient headerConfig repFactor zkHandle _ compression statsHolder = do
         hstreamApiAppend = appendHandler serverContext,
         -- Subscribe
         hstreamApiCreateSubscription = createSubscriptionHandler serverContext,
-        hstreamApiSubscribe = subscribeHandler serverContext,
         hstreamApiDeleteSubscription = deleteSubscriptionHandler serverContext,
         hstreamApiListSubscriptions = listSubscriptionsHandler serverContext,
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
-        -- Consume
-        hstreamApiFetch = fetchHandler serverContext,
-        hstreamApiSendConsumerHeartbeat = consumerHeartbeatHandler serverContext,
-        hstreamApiAcknowledge = ackHandler serverContext,
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
-        hstreamApiExecuteQuery = executeQueryHandler serverContext,
-        hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
         -- Stats
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll statsHolder,
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
-        -- Stream with Query
+        hstreamApiExecuteQuery = executeQueryHandler serverContext,
+        hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
         hstreamApiCreateQueryStream = createQueryStreamHandler serverContext,
         -- FIXME:
         hstreamApiCreateQuery = createQueryHandler serverContext,
