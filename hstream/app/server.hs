@@ -91,24 +91,24 @@ parseConfig =
                    <> showDefault <> value CompressionLZ4
                    <> help "Specify the compression policy for gdevice"
                     )
-    <*> strOption   ( long "hadmin-host" <> metavar "HOST"
+    <*> strOption   ( long "store-admin-host" <> metavar "HOST"
                    <> showDefault <> value "127.0.0.1" <> help "logdevice admin host"
                     )
-    <*> option auto ( long "hadmin-port" <> metavar "INT"
+    <*> option auto ( long "store-admin-port" <> metavar "INT"
                    <> showDefault <> value 6440 <> help "logdevice admin port"
                     )
-    <*> option auto ( long "hadmin-protocol-id" <> metavar "ProtocolId"
+    <*> option auto ( long "store-admin-protocol-id" <> metavar "ProtocolId"
                    <> showDefault <> value AA.binaryProtocolId <> help "logdevice admin thrift protocol id"
                     )
-    <*> option auto ( long "hadmin-conn-timeout" <> metavar "INT"
+    <*> option auto ( long "store-admin-conn-timeout" <> metavar "INT"
                    <> showDefault <> value 5000
                    <> help "logdevice admin thrift connection timeout in milliseconds"
                     )
-    <*> option auto ( long "hadmin-send-timeout" <> metavar "INT"
+    <*> option auto ( long "store-admin-send-timeout" <> metavar "INT"
                    <> showDefault <> value 5000
                    <> help "logdevice admin thrift sending timeout in milliseconds"
                     )
-    <*> option auto ( long "hadmin-recv-timeout" <> metavar "INT"
+    <*> option auto ( long "store-admin-recv-timeout" <> metavar "INT"
                    <> showDefault <> value 5000
                    <> help "logdevice admin thrift receiving timeout in milliseconds"
                     )

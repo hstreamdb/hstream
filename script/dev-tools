@@ -321,6 +321,7 @@ def get_info(container_bin, service=None, port_only=False):
     if not service or service == "store":
         if not is_service_started(container_bin, 'store'):
             logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+            sys.exit(1)
         else:
             host = get_ldadmin_server_host(container_bin)
             port = get_ldadmin_server_port(container_bin)
@@ -331,24 +332,28 @@ def get_info(container_bin, service=None, port_only=False):
                     loginfo(f"dev-cluster admin host: {host}, port: {port}")
             else:
                 logerr("get dev-cluster address info failed.")
+                sys.exit(1)
 
     envs = read_env()
 
     if not service or service == "mysql":
         if not is_service_started(container_bin, 'mysql'):
             logerr("Please start the mysql service first. Run: dev-tools mysql-start")
+            sys.exit(1)
         else:
             loginfo(f"mysql port: {envs.get(MYSQL_PORT_ENV)}")
 
     if not service or service == "clickhouse":
         if not is_service_started(container_bin, 'clickhouse'):
             logerr("Please start the clickhouse service first. Run: dev-tools clickhouse-start")
+            sys.exit(1)
         else:
             loginfo(f"clickhouse port: {envs.get(CLICKHOUSE_PORT_ENV)}")
 
     if not service or service == "zookeeper":
         if not is_service_started(container_bin, 'zookeeper'):
             logerr("Please start the zookeeper service first. Run: dev-tools zookeeper-start")
+            sys.exit(1)
         else:
             loginfo(f"zookeeper port: {envs.get(ZOOKEEPER_PORT_ENV)}")
 
