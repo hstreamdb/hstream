@@ -85,17 +85,14 @@ jobs:
 
       - name: start hstream server
         run: |
-          SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
-          HADMIN_PORT=$(cat local-data/dev_tools.env|grep STORE_ADMIN_LOCAL_PORT|cut -d '=' -f2)
-          ZOOKEEPER_PORT=$(cat local-data/dev_tools.env|grep ZOOKEEPER_LOCAL_PORT|cut -d '=' -f2)
-          NAME="test-hstream-server"
-          EXE=$(find dist-newstyle -name "hstream-server" -type f)
-
-          python3 script/dev-tools shell --check --no-interactive --command "" --detach \
-              --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-              $EXE --port $SERVER_PORT --hadmin-port $HADMIN_PORT --zkuri "127.0.0.1:$ZOOKEEPER_PORT"
+          export CONTAINER_NAME="test-hstream-server"
+          export IMAGE="docker.io/hstreamdb/haskell:${{ matrix.ghc }}"
+          export EXTRA_OPTS="--check --no-interactive --detach"
+          export COMMAND=" "
+          export EXE=$(find dist-newstyle -name "hstream-server" -type f)
+          ./script/start-server.sh
           sleep 5
-          docker logs --tail 100 $NAME
+          docker logs --tail 100 $CONTAINER_NAME
 
       - name: start hstream http server
         run: |
