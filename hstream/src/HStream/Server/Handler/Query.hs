@@ -28,6 +28,7 @@ import           Data.Maybe                       (catMaybes, fromJust, isJust)
 import           Data.Scientific
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as TE
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Time                        as Time
 import qualified Data.Vector                      as V
@@ -124,67 +125,80 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
       createConnector sc (TL.toStrict commandQueryStmtText) >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
-      hm <- readIORef groupbyStores
-      case HM.lookup rSelectViewFrom hm of
-        Nothing -> returnErrResp StatusInternal "VIEW not found"
-        Just materialized -> do
-          let (keyName, keyExpr) = rSelectViewWhere
-              (_, keyValue) = genRExprValue keyExpr (HM.fromList [])
-          let keySerde = PS.mKeySerde materialized
-              valueSerde = PS.mValueSerde materialized
-          let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
-          case PS.mStateStore materialized of
-            KVStateStore store -> do
-              queries <- P.getQueries zkHandle
-              sizeM <-
-                getFixedWinSize queries rSelectViewFrom
-                  <&> fmap diffTimeToScientific
-              if isJust sizeM
-                then do
-                  let size = fromJust sizeM & fromJust . toBoundedInteger @Int64
-                  subset <-
-                    ksDump store
-                      <&> Map.filterWithKey
-                        (\k _ -> all (`elem` HM.toList k) (HM.toList key))
-                      <&> Map.toList
-                  let winStarts =
+      queries   <- P.getQueries zkHandle
+      condNameM <- getGrpByFieldName queries rSelectViewFrom
+      let neqCond = not case condNameM of
+            Nothing       -> True
+            Just condName -> fst rSelectViewWhere == condName
+      if neqCond
+        then returnErrResp StatusAborted $ StatusDetails . TE.encodeUtf8 . T.pack $
+          "VIEW is grouped by " ++ show (fromJust condNameM) ++ ", not " ++ show (fst rSelectViewWhere)
+        else do
+          hm <- readIORef groupbyStores
+          case HM.lookup rSelectViewFrom hm of
+            Nothing -> returnErrResp StatusInternal "VIEW not found"
+            Just materialized -> do
+              let (keyName, keyExpr) = rSelectViewWhere
+                  (_, keyValue) = genRExprValue keyExpr (HM.fromList [])
+              let keySerde = PS.mKeySerde materialized
+                  valueSerde = PS.mValueSerde materialized
+              let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
+              case PS.mStateStore materialized of
+                KVStateStore store -> do
+                  sizeM <-
+                    getFixedWinSize queries rSelectViewFrom
+                      <&> fmap diffTimeToScientific
+                  if isJust sizeM
+                    then do
+                      let size = fromJust sizeM & fromJust . toBoundedInteger @Int64
+                      subset <-
+                        ksDump store
+                          <&> Map.filterWithKey
+                            (\k _ -> all (`elem` HM.toList k) (HM.toList key))
+                          <&> Map.toList
+                      let winStarts =
+                            subset
+                              <&> (lookup "winStart" . HM.toList) . fst
+                                & L.sort . L.nub . catMaybes
+                          singlWinStart =
+                            subset
+                              <&> first (filter (\(k, _) -> k == "winStart") . HM.toList)
+                              <&> first HM.fromList
+                          grped =
+                            winStarts <&> \winStart ->
+                              let Aeson.Number winStart'' = winStart
+                                  winStart' = fromJust . toBoundedInteger @Int64 $ winStart''
+                              in ( "winStart = "
+                                      <> (T.pack . show) winStart'
+                                      <> " ,winEnd = "
+                                      <> (T.pack . show) (winStart' + size),
+                                    lookup (HM.fromList [("winStart", winStart)]) singlWinStart
+                                      & fromJust
+                                      & mapAlias rSelectViewSelect
+                                  )
+                          notEmpty = filter (\x -> snd x /= HM.empty) grped
+                            <&> second Aeson.Object
+                      sendResp (Just $ HM.fromList notEmpty) valueSerde
+                    else do
+                      resp <- ksGet key store
+                      sendResp (mapAlias rSelectViewSelect <$> resp) valueSerde
+                SessionStateStore store -> do
+                  dropSurfaceTimeStamp <- ssDump store <&> Map.elems
+                  let subset =
+                        dropSurfaceTimeStamp
+                          <&> Map.elems
+                            . Map.filterWithKey \k _ -> all (`elem` HM.toList k) (HM.toList key)
+                  let res =
                         subset
-                          <&> (lookup "winStart" . HM.toList) . fst
-                            & L.sort . L.nub . catMaybes
-                      singlWinStart =
-                        subset
-                          <&> first (filter (\(k, _) -> k == "winStart") . HM.toList)
-                          <&> first HM.fromList
-                      grped =
-                        winStarts <&> \winStart ->
-                          let Aeson.Number winStart'' = winStart
-                              winStart' = fromJust . toBoundedInteger @Int64 $ winStart''
-                           in ( "winStart = "
-                                  <> (T.pack . show) winStart'
-                                  <> " ,winEnd = "
-                                  <> (T.pack . show) (winStart' + size),
-                                lookup (HM.fromList [("winStart", winStart)]) singlWinStart
-                                  & fromJust
-                                  & Aeson.Object
-                              )
-                  sendResp (Just $ HM.fromList grped) valueSerde
-                else ksGet key store >>= flip sendResp valueSerde
-            SessionStateStore store -> do
-              dropSurfaceTimeStamp <- ssDump store <&> Map.elems
-              let subset =
-                    dropSurfaceTimeStamp
-                      <&> Map.elems
-                        . Map.filterWithKey \k _ -> all (`elem` HM.toList k) (HM.toList key)
-              let res =
-                    subset
-                      & filter (not . null) . join
-                      <&> Map.toList
-                        & L.sortBy (compare `on` fst) . filter (not . null) . join
-              flip sendResp valueSerde $
-                Just . HM.fromList $
-                  res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, Aeson.Object v)
-            TimestampedKVStateStore _ ->
-              returnErrResp StatusInternal "Impossible happened"
+                          & filter (not . null) . join
+                          <&> Map.toList
+                            & L.sortBy (compare `on` fst) . filter (not . null) . join
+                      grped = res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, mapAlias rSelectViewSelect v)
+                      notEmpty = filter (\x -> snd x /= HM.empty) grped <&> second Aeson.Object
+                  flip sendResp valueSerde $
+                    Just . HM.fromList $ notEmpty
+                TimestampedKVStateStore _ ->
+                  returnErrResp StatusInternal "Impossible happened"
     ExplainPlan sql -> do
       execPlan <- genExecutionPlan sql
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
@@ -328,6 +342,22 @@ getFixedWinSize queries viewNameRaw = do
       RTumblingWindow size  -> size
       RHoppingWIndow size _ -> size
       RSessionWindow _      -> error "Impossible happened..."
+
+getGrpByFieldName :: [P.PersistentQuery] -> T.Text -> IO (Maybe T.Text)
+getGrpByFieldName [] _ = pure Nothing
+getGrpByFieldName queries viewNameRaw = do
+  rSQL <- queries <&> (parseAndRefine . cBytesToText . CB.fromText) . P.queryBindedSql & sequence
+  let filtered = flip filter rSQL \case
+        RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ _) _))
+          -> viewNameRaw == viewNameSQL
+        _ -> False
+  pure case filtered <&> pickCondName of
+    []    -> Nothing
+    x : _ -> pure x
+  where
+    pickCondName = \case
+      RQCreate (RCreateView _ (RSelect _ _ _ (RGroupBy _ condName _) _)) -> condName
+      _ -> error "Impossible happened..."
 
 diffTimeToScientific :: Time.DiffTime -> Scientific
 diffTimeToScientific = flip scientific (-9) . Time.diffTimeToPicoseconds
