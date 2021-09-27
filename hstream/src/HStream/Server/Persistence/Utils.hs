@@ -36,6 +36,7 @@ module HStream.Server.Persistence.Utils
   , encodeValueToBytes
 
   , ifThrow
+  , configPath
   ) where
 
 --------------------------------------------------------------------------------
@@ -47,6 +48,7 @@ import           Control.Monad                        (void)
 import           Data.Aeson                           (FromJSON, ToJSON)
 import qualified Data.Aeson                           as Aeson
 import qualified Data.ByteString.Lazy                 as BL
+import           Data.Functor                         ((<&>))
 import qualified Data.Text                            as T
 import           GHC.Stack                            (HasCallStack)
 import           Z.Data.CBytes                        (CBytes)
@@ -61,7 +63,6 @@ import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
 import qualified HStream.Logger                       as Log
-
 import           HStream.Server.Persistence.Exception
 import           HStream.Utils                        (textToCBytes)
 
@@ -89,10 +90,14 @@ serverLoadPath = rootPath <> "/loadReports"
 subscriptionsPath :: CBytes
 subscriptionsPath = rootPath <> "/subscriptions"
 
+configPath :: CBytes
+configPath = rootPath <> "/config"
+
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
         , serverRootPath
+        , configPath
         , leaderPath
         , serverLoadPath
         , queriesPath
@@ -178,13 +183,13 @@ decodeDataCompletion' (DataCompletion (Just x) _) =
     Left _  -> throw FailedToDecode
 decodeDataCompletion' (DataCompletion Nothing _) = throw FailedToDecode
 
-decodeZNodeValue :: FromJSON a => ZHandle -> T.Text -> IO (Maybe a)
+decodeZNodeValue :: FromJSON a => ZHandle -> CBytes -> IO (Maybe a)
 decodeZNodeValue zk nodePath = do
-  zooGet zk (textToCBytes nodePath) >>= (return . decodeDataCompletion)
+  zooGet zk nodePath <&> decodeDataCompletion
 
-decodeZNodeValue' :: FromJSON a => ZHandle -> T.Text -> IO a
+decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
 decodeZNodeValue' zk nodePath = do
-  zooGet zk (textToCBytes nodePath) >>= (return . decodeDataCompletion')
+  zooGet zk nodePath <&> decodeDataCompletion'
 
 encodeValueToBytes :: ToJSON a => a -> Bytes
 encodeValueToBytes = ZF.fromByteString . BL.toStrict . Aeson.encode

@@ -54,7 +54,7 @@ instance TaskPersistence ZHandle where
     hServer     <- getThenDecode "/hServer" qid
     return $ PersistentQuery qid sql createdTime typ status timeCkp hServer
     where
-      getThenDecode field queryId = decodeZNodeValue' zk (cBytesToText (mkQueryPath queryId) <> field)
+      getThenDecode field queryId = decodeZNodeValue' zk (mkQueryPath queryId <> field)
 
   insertConnector cid cSql cTime cHServer zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'

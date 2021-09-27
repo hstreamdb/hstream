@@ -26,28 +26,32 @@ source-repository head
 library
   exposed-modules:
     HStream.Client.Action
+    HStream.Server.Bootstrap
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
+    HStream.Server.Initialization
+    HStream.Server.LoadBalance
+    HStream.Server.Persistence
+    HStream.Server.Persistence.Exception
+    HStream.Server.Types
+    HStream.Server.Watcher
+
+  other-modules:
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Query
+    HStream.Server.Handler.Stats
     HStream.Server.Handler.StoreAdmin
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
-    HStream.Server.Initialization
-    HStream.Server.LoadBalance
-    HStream.Server.Persistence
     HStream.Server.Persistence.Common
-    HStream.Server.Persistence.Exception
-    HStream.Server.Persistence.Subscriptions
+    HStream.Server.Persistence.Config
     HStream.Server.Persistence.MemoryStore
+    HStream.Server.Persistence.Nodes
+    HStream.Server.Persistence.Subscriptions
     HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.Utils
-    HStream.Server.Types
-
-  other-modules:
-    HStream.Server.Handler.Stats
 
   hs-source-dirs:   src
   build-depends:
@@ -83,6 +87,7 @@ library
     , time
     , timers
     , unordered-containers
+    , uuid
     , vector
     , Z-Data
     , Z-IO
@@ -114,7 +119,6 @@ executable hstream-server
     , suspend
     , text
     , timers
-    , uuid
     , vector
     , Z-Data
     , Z-IO

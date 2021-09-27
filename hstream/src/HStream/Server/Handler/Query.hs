@@ -11,7 +11,7 @@
 module HStream.Server.Handler.Query where
 
 import           Control.Concurrent
-import           Control.Exception                (handle, throwIO)
+import           Control.Exception                (handle)
 import           Control.Monad                    (join)
 import qualified Data.Aeson                       as Aeson
 import           Data.Bifunctor
@@ -64,7 +64,6 @@ import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
-import qualified ZooKeeper.Exception              as P
 
 -------------------------------------------------------------------------------
 -- Stream with Select Query

@@ -23,7 +23,7 @@ instance SubscriptionPersistence ZHandle where
     createInsert zk subPath (encodeValueToBytes val)
     where subPath = mkSubscriptionPath subId
 
-  getSubscription subId zk = decodeZNodeValue zk (cBytesToText subPath)
+  getSubscription subId zk = decodeZNodeValue zk subPath
     where subPath = mkSubscriptionPath subId
 
   checkIfExist subId zk = isJust <$> zooExists zk (mkSubscriptionPath subId)
