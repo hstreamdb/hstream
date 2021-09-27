@@ -14,8 +14,10 @@ module HStream.Stats where
 import           Data.Int
 import qualified Data.Map.Strict          as Map
 import           Data.Primitive.ByteArray
+import           Data.Primitive.PrimArray
 import           Foreign.ForeignPtr
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
+import qualified Z.Foreign                as Z
 
 import           HStream.Foreign
 import           HStream.Stats.Internal
@@ -37,27 +39,27 @@ newAggregateStats (StatsHolder holder) = withForeignPtr holder $ \holder' ->
 printStatsHolder :: StatsHolder -> IO ()
 printStatsHolder (StatsHolder holder) = withForeignPtr holder c_stats_holder_print
 
-#define STREAM_STAT_ADD(PERFIX, STATS_NAME) \
-PERFIX##_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();              \
-PERFIX##_##STATS_NAME (StatsHolder holder) stream_name val =                   \
+#define STREAM_STAT_ADD(PREFIX, STATS_NAME) \
+PREFIX##_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();              \
+PREFIX##_##STATS_NAME (StatsHolder holder) stream_name val =                   \
   withForeignPtr holder $ \holder' ->                                          \
   withCBytesUnsafe stream_name $ \stream_name' ->                              \
-    c_##PERFIX##_##STATS_NAME holder' (BA# stream_name') val;
+    c_##PREFIX##_##STATS_NAME holder' (BA# stream_name') val;
 
 -- TODO: Error while return value is a negative number.
-#define STREAM_STAT_GET(PERFIX, STATS_NAME)                                    \
-PERFIX##_##STATS_NAME :: Stats -> CBytes -> IO Int64;                          \
-PERFIX##_##STATS_NAME (Stats stats) stream_name =                              \
+#define STREAM_STAT_GET(PREFIX, STATS_NAME)                                    \
+PREFIX##_##STATS_NAME :: Stats -> CBytes -> IO Int64;                          \
+PREFIX##_##STATS_NAME (Stats stats) stream_name =                              \
   withForeignPtr stats $ \stats' ->                                            \
   withCBytesUnsafe stream_name $ \stream_name' ->                              \
-    c_##PERFIX##_##STATS_NAME stats' (BA# stream_name');
+    c_##PREFIX##_##STATS_NAME stats' (BA# stream_name');
 
-#define STREAM_STAT_GETALL(perfix, stats_name)                                 \
-perfix##_##stats_name :: Stats -> IO (Map.Map CBytes Int64);                   \
-perfix##_##stats_name (Stats stats) =                                          \
+#define STREAM_STAT_GETALL(prefix, stats_name)                                 \
+prefix##_##stats_name :: Stats -> IO (Map.Map CBytes Int64);                   \
+prefix##_##stats_name (Stats stats) =                                          \
   withForeignPtr stats $ \stats' ->                                            \
     peekCppMap                                                                 \
-      (c_##perfix##_##stats_name stats')                                       \
+      (c_##prefix##_##stats_name stats')                                       \
       peekStdStringToCBytesN c_delete_vector_of_string                         \
       peekN c_delete_vector_of_int64;
 
@@ -70,6 +72,20 @@ STREAM_STAT_GETALL(stream_stat_getall, name)
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
 STREAM_STAT_ADD(stream_time_series_add, name)
 #include "../include/per_stream_time_series.inc"
+
+stream_time_series_get
+  :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
+stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe method_name $ \method_name' ->
+  withCBytesUnsafe stream_name $ \stream_name' -> do
+    let interval_len = length intervals
+    (pa, ret) <- Z.allocPrimArrayUnsafe interval_len $ \val' -> do
+      let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
+      c_stream_time_series_get
+        holder' (BA# method_name') (BA# stream_name')
+        interval_len (BA# intervals') (MBA# val')
+    return $ if ret == 0 then Just (primArrayToList pa) else Nothing
 
 stream_time_series_getall_by_name
   :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])

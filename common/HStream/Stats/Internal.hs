@@ -7,6 +7,7 @@ module HStream.Stats.Internal where
 import           Data.Int
 import           Data.Primitive
 import           Data.Word
+import           Foreign.C.Types
 import           Foreign.Ptr
 
 import           HStream.Foreign
@@ -56,6 +57,12 @@ foreign import ccall unsafe "hs_common.h stream_time_series_add_##name"        \
   c_stream_time_series_add_##name                                              \
     :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO ();
 #include "../include/per_stream_time_series.inc"
+
+foreign import ccall unsafe "hs_common.h stream_time_series_get"
+  c_stream_time_series_get
+    :: Ptr CStatsHolder -> BA# Word8 -> BA# Word8
+    -> Int -> BA# Int -> MBA# Double
+    -> IO CInt
 
 foreign import ccall unsafe "hs_common.h stream_time_series_getall_by_name"
   c_stream_time_series_getall_by_name
