@@ -151,6 +151,85 @@ void stream_time_series_getall_by_name(
       output, nullptr, nullptr, len, keys_ptr, values_ptr, keys_, values_);
 }
 
+int stream_time_series_get(StatsHolder* stats_holder, const char* string_name,
+                           const char* stream_name_,
+                           //
+                           HsInt interval_size, HsInt* ms_intervals,
+                           HsDouble* aggregate_vals) {
+  using Duration = PerStreamTimeSeries::Duration;
+  using TimePoint = PerStreamTimeSeries::TimePoint;
+
+  std::shared_ptr<PerStreamTimeSeries> PerStreamStats::*member_ptr = nullptr;
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == std::string(string_name)) {                                     \
+      member_ptr = &PerStreamStats::name;                                      \
+      break;                                                                   \
+    }                                                                          \
+  }
+#include "per_stream_time_series.inc"
+  // TODO: also return failure reasons
+  if (UNLIKELY(member_ptr == nullptr)) {
+    return -1;
+  }
+
+  bool has_found = false;
+  stats_holder->runForEach([&](Stats& s) {
+    // Use synchronizedCopy() so we do not have to hold a read lock on
+    // per_log_stats map while we iterate over individual entries.
+    for (auto& entry : s.synchronizedCopy(&Stats::per_stream_stats)) {
+      std::lock_guard<std::mutex> guard(entry.second->mutex);
+
+      std::string& stream_name = entry.first;
+      auto time_series = entry.second.get()->*member_ptr;
+      if (!time_series) {
+        continue;
+      }
+
+      if (stream_name == std::string(stream_name_)) {
+        // NOTE: It might be tempting to pull `now' out of the loops but
+        // folly::MultiLevelTimeSeries barfs if we ask it for data that is
+        // too old.  Keep it under the lock for now, optimize if necessary.
+        //
+        // TODO: Constructing the TimePoint is slightly awkward at the moment
+        // as the folly stats code is being cleaned up to better support real
+        // clock types.  appendBytesTimeSeries_ should simply be changed to
+        // use std::steady_clock as it's clock type.  I'll do that in a
+        // separate diff for now, though.
+        const TimePoint now{std::chrono::duration_cast<Duration>(
+            std::chrono::steady_clock::now().time_since_epoch())};
+        // Flush any cached updates and discard any stale data
+        time_series->update(now);
+
+        // For each query interval, make a MultiLevelTimeSeries::rate() call
+        // to find the approximate rate over that interval
+        for (int i = 0; i < interval_size; ++i) {
+          const Duration interval = std::chrono::duration_cast<Duration>(
+              std::chrono::milliseconds{ms_intervals[i]});
+
+          auto rate_per_time_type =
+              time_series->rate<double>(now - interval, now);
+          // Duration may not be seconds, convert to seconds
+          aggregate_vals[i] += rate_per_time_type * Duration::period::den /
+                               Duration::period::num;
+        }
+
+        // We have aggregated the stat from this Stats, because stream name
+        // in Stats are unique(as keys of unordered_map), we can break the loop
+        // safely.
+        if (!has_found)
+          has_found = true;
+        break;
+      }
+    }
+  });
+
+  if (has_found)
+    return 0;
+  else
+    return -1;
+}
+
 // TODO
 // bool verifyIntervals(StatsHolder* stats_holder, std::string string_name,
 //                     std::vector<Duration> query_intervals, std::string& err)
