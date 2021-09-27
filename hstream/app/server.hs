@@ -18,6 +18,7 @@ import           HStream.Server.Bootstrap      (startServer)
 import           HStream.Server.HStreamApi     (hstreamApiServer)
 import           HStream.Server.Handler        (handlers)
 import           HStream.Server.Initialization (initializeServer)
+import           HStream.Server.Leader         (selectLeader)
 import           HStream.Server.LoadBalance    (startLoadBalancer)
 import           HStream.Server.Persistence    (defaultHandle,
                                                 initializeAncestors)
@@ -121,6 +122,9 @@ serve :: ServiceOptions -> ServerContext -> LoadManager -> IO ()
 serve options@ServiceOptions{..} sc@ServerContext{..} lm = do
   -- Start load balancer
   startLoadBalancer zkHandle lm
+
+  -- Select Leader
+  selectLeader sc
 
   -- Set watcher for nodes changes
   void . forkIO $ actionTriggedByNodesChange sc lm

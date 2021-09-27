@@ -9,7 +9,7 @@ module HStream.Server.Watcher
   , serverEvents
   ) where
 
-import           Control.Concurrent         (MVar, tryPutMVar)
+import           Control.Concurrent         (MVar, readMVar, tryPutMVar)
 import           Control.Concurrent.STM     (TChan, atomically, newTChanIO,
                                              readTChan, writeTChan)
 import           Control.Monad              (forever, void)
@@ -53,6 +53,8 @@ actionTriggedByNodesChange ServerContext{..} LoadManager{..} = forever $ do
           Log.warning "No enough nodes found, server may not work properly "
       | readyServers >= minServers -> do -- still enough
           Log.info "Some node failed. "
+          leader <- readMVar leaderName
+          Log.debug . Log.buildCBytes $ "Current Leader is " <> leader
     _ -> return ()
 
 watchChildrenForever :: ZHandle -> CBytes -> MVar () ->  IO ()

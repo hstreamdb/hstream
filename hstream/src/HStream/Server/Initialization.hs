@@ -7,7 +7,7 @@ module HStream.Server.Initialization
   , initNodePath
   ) where
 
-import           Control.Concurrent               (MVar, newMVar)
+import           Control.Concurrent               (MVar, newEmptyMVar, newMVar)
 import           Control.Exception                (SomeException, try)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Time.Clock.System           (SystemTime (..),
@@ -74,6 +74,8 @@ initializeServer ServerOpts{..} zk = do
   currentLoadReport <- initLoadReport lastSysResUsage
   currentLoadReports <- newMVar HM.empty
 
+  currentLeader <- newEmptyMVar
+
   return (
     defaultServiceOptions {
       Network.GRPC.HighLevel.Generated.serverHost =
@@ -93,12 +95,13 @@ initializeServer ServerOpts{..} zk = do
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
+    , leaderName               = currentLeader
     },
     LoadManager {
-      sName = _serverName
-    , loadReport = currentLoadReport
+      sName           = _serverName
+    , loadReport      = currentLoadReport
     , lastSysResUsage = lastSysResUsage
-    , loadReports = currentLoadReports
+    , loadReports     = currentLoadReports
     })
 
 --------------------------------------------------------------------------------
