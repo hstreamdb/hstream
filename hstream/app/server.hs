@@ -5,52 +5,33 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Exception
-import           Data.ByteString                  (ByteString)
-import           Data.Int                         (Int64)
-import qualified Data.Map.Strict                  as Map
-import           Network.GRPC.HighLevel.Generated
+import qualified Data.UUID                     as UUID
+import           Data.UUID.V4                  (nextRandom)
 import           Options.Applicative
-import           Text.RawString.QQ                (r)
-import qualified Z.Data.Builder                   as Builder
-import           Z.Data.CBytes                    (CBytes, toBytes)
-import qualified Z.Data.CBytes                    as CBytes
-import           Z.Foreign                        (toByteString)
-import           Z.IO.Network
+import           Text.RawString.QQ             (r)
 import           ZooKeeper
-import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
-import qualified HStream.Logger                   as Log
+import           Control.Concurrent            (forkIO, isEmptyMVar, putMVar,
+                                                readMVar, swapMVar)
+import           Control.Monad                 (void)
+import qualified HStream.Logger                as Log
+import           HStream.Server.Bootstrap
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
+import           HStream.Server.Initialization
+import           HStream.Server.LoadBalance
 import           HStream.Server.Persistence
-import           HStream.Stats                    (StatsHolder, newStatsHolder)
-import           HStream.Store
-import qualified HStream.Store.Admin.API          as AA
-import           HStream.Utils                    (setupSigsegvHandler)
+import           HStream.Server.Types
+import           HStream.Server.Watcher        (actionTriggedByNodesChange)
+import           HStream.Store                 (Compression (..))
+import qualified HStream.Store.Admin.API       as AA
+import           Network.GRPC.HighLevel        (ServiceOptions)
+import qualified Z.Data.CBytes                 as CB
+import           ZooKeeper.Recipe.Election     (election)
 
 -- TODO
 -- 1. config file for the Server
-
-data ServerOpts = ServerOpts
-  { _serverHost         :: CBytes
-  , _serverPort         :: PortNumber
-  , _zkUri              :: CBytes
-  , _ldConfigPath       :: CBytes
-  , _topicRepFactor     :: Int
-  , _ckpRepFactor       :: Int
-  , _heartbeatTimeout   :: Int64
-  , _compression        :: Compression
-  , _ldAdminHost        :: ByteString
-  , _ldAdminPort        :: Int
-  , _ldAdminProtocolId  :: AA.ProtocolId
-  , _ldAdminConnTimeout :: Int
-  , _ldAdminSendTimeout :: Int
-  , _ldAdminRecvTimeout :: Int
-  , _serverLogLevel     :: Log.Level
-  , _serverLogWithColor :: Bool
-  } deriving (Show)
 
 parseConfig :: Parser ServerOpts
 parseConfig =
@@ -59,10 +40,24 @@ parseConfig =
                  <> showDefault <> value "127.0.0.1"
                  <> help "server host value"
                   )
+    <*> strOption ( long "address" <> metavar "ADDRESS"
+                 <> help "server address"
+                  )
     <*> option auto ( long "port" <> short 'p' <> metavar "INT"
                    <> showDefault <> value 6570
                    <> help "server port value"
                     )
+    <*> option auto ( long "internal-port" <> metavar "INT"
+                   <> showDefault <> value 6571
+                   <> help "server channel port value for internal communication"
+                    )
+    <*> strOption ( long "name" <> metavar "NAME"
+                 <> showDefault <> value "hserver-1"
+                 <> help "name of the hstream server node"
+                  )
+    <*> option auto ( long "min-servers" <> metavar "INT"
+                   <> showDefault <> value 1
+                   <> help "minimal hstream servers")
     <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault
                  <> value "127.0.0.1:2181"
@@ -121,29 +116,57 @@ parseConfig =
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
-  Log.setLogLevel _serverLogLevel _serverLogWithColor
-  setupSigsegvHandler
-  ldclient <- newLDClient _ldConfigPath
-  _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
-  statsHolder <- newStatsHolder
+  (options, options', mkSC, lm) <- initializeServer config
   withResource (defaultHandle _zkUri) $ \zk -> do
-    initZooKeeper zk
-    serve config ldclient zk statsHolder
+    startServer zk config (serve config options options' (mkSC zk) lm)
 
-serve :: ServerOpts -> LDClient -> ZHandle -> StatsHolder -> IO ()
-serve ServerOpts{..} ldclient zk statsHolder = do
-  let options = defaultServiceOptions
-                { serverHost = Host . toByteString . toBytes $ _serverHost
-                , serverPort = Port . fromIntegral $ _serverPort
-                }
-  let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
-  api <- handlers ldclient headerConfig _topicRepFactor zk _heartbeatTimeout _compression statsHolder
-  Log.i $ "Server started on "
-       <> CBytes.toBuilder _serverHost <> ":" <> Builder.int _serverPort
-  hstreamApiServer api options
+serve :: ServerOpts -> ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO ()
+serve config options options' sc@ServerContext{..} lm@LoadManager{..} = do
+  -- Load balancing data
+  lr <- readMVar loadReport
+  writeLoadReportToZooKeeper zkHandle serverName lr
+  updateLoadReports zkHandle loadReports ranking
+  Log.debug . Log.buildCBytes $ "Server data initialized "
 
-initZooKeeper :: ZHandle -> IO ()
-initZooKeeper zk = catch (initializeAncestors zk) (\(_ :: ZNODEEXISTS) -> pure ())
+  -- Leader election
+  -- uuid <- nextRandom
+  -- _ <- forkIO $ election zkHandle "/election" (CB.pack . UUID.toString $ uuid)
+  --   (do
+  --       void $ zooSet zkHandle leaderPath (Just $ CB.toBytes serverName) Nothing
+  --       noLeader <- isEmptyMVar leaderName
+  --       case noLeader of
+  --         True  -> putMVar leaderName serverName
+  --         False -> void $ swapMVar leaderName serverName
+  --   )
+  --   (\_ -> do
+  --       (DataCompletion v_ _) <- zooGet zkHandle leaderPath
+  --       case v_ of
+  --         Nothing -> return ()
+  --         Just v  -> do
+  --           noLeader <- isEmptyMVar leaderName
+  --           case noLeader of
+  --             True  -> putMVar leaderName (CB.fromBytes v)
+  --             False -> void $ swapMVar leaderName (CB.fromBytes v)
+  --   )
+
+  -- Load balancing service
+  localReportUpdateTimer sc lm
+  zkReportUpdateTimer serverName sc
+
+  -- Set watcher for nodes changes
+  void $ forkIO $ actionTriggedByNodesChange config sc lm
+
+  -- GRPC service
+  Log.debug "**************************************************"
+  Log.debug . Log.buildCBytes $
+    "Server " <> serverName <> "started on port " <> CB.pack (show serverPort)
+  Log.debug . Log.buildCBytes $
+    "Internal Server " <> serverName <> "started on port " <> CB.pack (show serverInternalPort)
+  Log.debug "**************************************************"
+  -- let api = mkInternalHandlers sc
+  let api' = handlers sc
+  -- _ <- forkIO $ serverChannelServer api' options'
+  hstreamApiServer api' options
 
 main :: IO ()
 main = do

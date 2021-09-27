@@ -26,19 +26,31 @@ source-repository head
 library
   exposed-modules:
     HStream.Client.Action
+    HStream.Server.Bootstrap
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Query
     HStream.Server.Handler.StoreAdmin
-    HStream.Server.Handler.View
-    HStream.Server.Handler.Subscription
     HStream.Server.Handler.Stream
+    HStream.Server.Handler.Subscription
+    HStream.Server.Handler.View
+    HStream.Server.Initialization
+    HStream.Server.LoadBalance
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
+    HStream.Server.Persistence.Nodes
+    HStream.Server.Persistence.Subscriptions
+    HStream.Server.Persistence.Tasks
+    HStream.Server.Persistence.Utils
+    HStream.Server.Types
+    HStream.Server.Watcher
 
-  other-modules:    HStream.Server.Handler.Stats
+  other-modules:
+    HStream.Server.Handler.Stats
+    HStream.Server.Persistence.Config
+
   hs-source-dirs:   src
   build-depends:
     , aeson
@@ -65,6 +77,7 @@ library
     , proto3-wire
     , rio
     , scientific
+    , statgrab
     , stm
     , suspend
     , table-layout
@@ -103,6 +116,7 @@ executable hstream-server
     , suspend
     , text
     , timers
+    , uuid
     , vector
     , Z-Data
     , Z-IO

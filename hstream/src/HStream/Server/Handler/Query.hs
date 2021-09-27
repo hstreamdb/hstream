@@ -32,13 +32,10 @@ import qualified Data.Text.Encoding               as TE
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Time                        as Time
 import qualified Data.Vector                      as V
-
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (HasDefault (def))
-
 import qualified Z.Data.CBytes                    as CB
 import qualified Z.Data.Text                      as ZT
-
 import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.HStore
@@ -62,10 +59,12 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import qualified HStream.Server.Persistence       as P
+import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
+import qualified ZooKeeper.Exception              as P
 
 -------------------------------------------------------------------------------
 -- Stream with Select Query
@@ -348,7 +347,7 @@ getGrpByFieldName [] _ = pure Nothing
 getGrpByFieldName queries viewNameRaw = do
   rSQL <- queries <&> (parseAndRefine . cBytesToText . CB.fromText) . P.queryBindedSql & sequence
   let filtered = flip filter rSQL \case
-        RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ _) _))
+        RQCreate (RCreateView viewNameSQL (RSelect _ _ _ RGroupBy {} _))
           -> viewNameRaw == viewNameSQL
         _ -> False
   pure case filtered <&> pickCondName of

@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -8,9 +7,9 @@
 
 module HStream.Server.Handler.Common where
 
-import           Control.Concurrent               (MVar, ThreadId, forkIO,
-                                                   killThread, putMVar,
-                                                   readMVar, swapMVar, takeMVar)
+import           Control.Concurrent               (ThreadId, forkIO, killThread,
+                                                   putMVar, readMVar, swapMVar,
+                                                   takeMVar)
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    displayException,
@@ -23,25 +22,22 @@ import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef)
-import           Data.Int                         (Int32, Int64)
+import           Data.Int                         (Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
-import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
-import           Network.GRPC.HighLevel           (StreamSend)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Types
 
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
@@ -50,74 +46,24 @@ import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
-import           HStream.Processing.Stream        (Materialized (..))
+import           HStream.Processing.Stream        (Materialized)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
-import           HStream.Server.HStreamApi        (RecordId (..),
-                                                   StreamingFetchResponse)
+import           HStream.Server.HStreamApi        (RecordId (..))
 import qualified HStream.Server.HStreamApi        as Api
 import qualified HStream.Server.Persistence       as P
-import qualified HStream.Stats                    as Stats
+import           HStream.Server.Types
 import qualified HStream.Store                    as HS
-import qualified HStream.Store.Admin.API          as AA
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (TaskStatus (..),
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
 
---------------------------------------------------------------------------------
-
 groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object SerMat))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
-
-
-checkpointRootPath :: CB.CBytes
-checkpointRootPath = "/tmp/checkpoint"
-
-type Timestamp = Int64
-
-data ServerContext = ServerContext {
-    scLDClient               :: HS.LDClient
-  , scDefaultStreamRepFactor :: Int
-  , zkHandle                 :: ZHandle
-  , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
-  , cmpStrategy              :: HS.Compression
-  , headerConfig             :: AA.HeaderConfig AA.AdminAPI
-  , scStatsHolder            :: Stats.StatsHolder
-}
-
-type SubscriptionId = TL.Text
-
-instance Bounded RecordId where
-  minBound = RecordId minBound minBound
-  maxBound = RecordId maxBound maxBound
-
-data RecordIdRange = RecordIdRange
-  { startRecordId :: RecordId,
-    endRecordId   :: RecordId
-  } deriving (Show, Eq)
-
-type ConsumerName = TL.Text
-
-data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriStreamName        :: T.Text
-  , sriLogId             :: HS.C_LogID
-  , sriAckTimeoutSeconds :: Int32
-  , sriLdCkpReader       :: HS.LDSyncCkpReader
-  , sriLdReader          :: Maybe HS.LDReader
-  , sriWindowLowerBound  :: RecordId
-  , sriWindowUpperBound  :: RecordId
-  , sriAckedRanges       :: Map.Map RecordId RecordIdRange
-  , sriBatchNumMap       :: Map.Map Word64 Word32
-  , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
-  , sriValid             :: Bool
-  , sriSignals           :: V.Vector (MVar ())
-}
 
 --------------------------------------------------------------------------------
 
@@ -334,7 +280,6 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
     releasePid qid = do
       hmapC <- readMVar runningQueries
       swapMVar runningQueries $ HM.delete qid hmapC
-
 
 handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
 handleTerminateConnector ServerContext{..} cid = do
