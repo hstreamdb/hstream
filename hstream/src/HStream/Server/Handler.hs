@@ -74,6 +74,7 @@ handlers ldclient headerConfig repFactor zkHandle _ compression statsHolder = do
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
         -- Stats
+        hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats statsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll statsHolder,
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
@@ -107,4 +108,3 @@ echoHandler ::
   IO (ServerResponse 'Normal EchoResponse)
 echoHandler (ServerNormalRequest _metadata EchoRequest {..}) = do
   return $ ServerNormalResponse (Just $ EchoResponse echoRequestMsg) [] StatusOk ""
-

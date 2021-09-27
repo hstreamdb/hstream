@@ -29,15 +29,25 @@ perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeS
       PerStreamTimeSeriesStatsAllResponse resp <- perStreamTimeSeriesReq api methodName
       Map.lookup name resp `shouldBe` Nothing
 
+      PerStreamTimeSeriesStatsResponse resp' <- perStreamTimeSeriesGetReq api methodName name
+      resp' `shouldBe` Nothing
+
       timeStamp <- getProtoTimestamp
       let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
       payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
       replicateM_ 100 $ appendRequest api name payloads
 
-      PerStreamTimeSeriesStatsAllResponse resp' <- perStreamTimeSeriesReq api methodName
-      Map.lookup name resp' `shouldSatisfy` \case
-        Just (Just (StatsDoubleVals rates)) -> V.head rates > 0
-        _                                   -> False
+      PerStreamTimeSeriesStatsAllResponse resp1 <- perStreamTimeSeriesReq api methodName
+      PerStreamTimeSeriesStatsResponse    (Just (StatsDoubleVals rates))
+        <- perStreamTimeSeriesGetReq api methodName name
+
+      rates `shouldSatisfy` (> 0) . V.head
+
+      Map.lookup name resp1 `shouldSatisfy` \case
+        Just (Just (StatsDoubleVals rates')) -> V.head rates' >= V.head rates
+        _                                    -> False
+
+
 
 perStreamTimeSeriesReq
   :: HStreamApi ClientRequest ClientResult
@@ -48,3 +58,14 @@ perStreamTimeSeriesReq HStreamApi{..} name = do
       statReq = PerStreamTimeSeriesStatsAllRequest name (Just $ StatsIntervalVals $ V.singleton 10000)
       req = ClientNormalRequest statReq requestTimeout $ MetadataMap Map.empty
   getServerResp =<< hstreamApiPerStreamTimeSeriesStatsAll req
+
+perStreamTimeSeriesGetReq
+  :: HStreamApi ClientRequest ClientResult
+  -> TL.Text
+  -> TL.Text
+  -> IO PerStreamTimeSeriesStatsResponse
+perStreamTimeSeriesGetReq HStreamApi{..} name sName = do
+  let requestTimeout = 10
+      statReq = PerStreamTimeSeriesStatsRequest name sName (Just $ StatsIntervalVals $ V.singleton 10000)
+      req = ClientNormalRequest statReq requestTimeout $ MetadataMap Map.empty
+  getServerResp =<< hstreamApiPerStreamTimeSeriesStats req
