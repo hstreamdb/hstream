@@ -76,13 +76,14 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
       stream_time_series_add_append_in_bytes h "a_stream" 1000
       stream_time_series_add_append_in_bytes h "b_stream" 1000
 
-    m <- stream_time_series_getall_by_name h "appends" [10 * 1000]  -- 10 sec
+    let max_intervals = [60 * 1000]   -- 1min
+    m <- stream_time_series_getall_by_name h "appends" max_intervals
     Map.lookup "non-existed-stream-name" m `shouldBe` Nothing
-    stream_time_series_get h "appends" "non-existed-stream-name" [10 * 1000]  -- 10 sec
+    stream_time_series_get h "appends" "non-existed-stream-name" max_intervals
       `shouldReturn` Nothing
 
     -- FIXME: Unfortunately, there is no easy way to test with real speed. So we just
     -- check the speed is positive.
     Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
-    stream_time_series_get h "appends" "a_stream" [10 * 1000]
+    stream_time_series_get h "appends" "a_stream" max_intervals
       `shouldReturn` Map.lookup "a_stream" m
