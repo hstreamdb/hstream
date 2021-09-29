@@ -62,6 +62,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import qualified HStream.Server.Persistence       as P
+import           HStream.Server.Types
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB

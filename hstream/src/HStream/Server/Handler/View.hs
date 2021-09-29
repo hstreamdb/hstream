@@ -20,10 +20,10 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   dropHelper,
+import           HStream.Server.Handler.Common    (dropHelper,
                                                    handleCreateAsSelect)
 import qualified HStream.Server.Persistence       as P
+import           HStream.Server.Types
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),

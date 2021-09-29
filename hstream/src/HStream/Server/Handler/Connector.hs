@@ -27,10 +27,10 @@ import           HStream.Server.Exception         (ConnectorAlreadyExists (..),
                                                    StreamNotExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (ServerContext (..),
-                                                   handleCreateSinkConnector,
+import           HStream.Server.Handler.Common    (handleCreateSinkConnector,
                                                    handleTerminateConnector)
 import qualified HStream.Server.Persistence       as P
+import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),

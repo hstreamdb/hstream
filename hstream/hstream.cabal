@@ -27,6 +27,8 @@ library
   exposed-modules:
     HStream.Client.Action
     HStream.Server.Exception
+    HStream.Server.Types
+    HStream.Server.Initialization
     HStream.Server.Handler
     HStream.Server.Handler.Common
     HStream.Server.Handler.Connector
