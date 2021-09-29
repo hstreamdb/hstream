@@ -1,21 +1,20 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase        #-}
+
 module HStream.Server.Persistence.MemoryStore where
 
 import qualified Data.HashMap.Strict                  as HM
 import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
 import qualified Data.List                            as L
-import qualified Data.Text                            as T
 import           Data.Time.Clock.System
 import           GHC.IO                               (throwIO, unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes)
-import qualified Z.Data.Text                          as ZT
 import           Z.IO.Time                            (getSystemTime')
 
+import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
-import           HStream.Server.Persistence.Tasks
 import           HStream.Server.Persistence.Utils
 import           HStream.Utils                        (TaskStatus (..))
 
@@ -31,16 +30,16 @@ connectorsCollection :: ConnectorsM
 connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
 
-instance Persistence PStoreMem where
+instance TaskPersistence PStoreMem where
   insertQuery qid qSql qTime qType (refQ, _) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
     modifyIORef refQ $
-      HM.insert (mkQueryPath qid) $ PersistentQuery qid (ZT.pack . T.unpack $ qSql) qTime qType Created timestamp
+      HM.insert (mkQueryPath qid) $ PersistentQuery qid qSql qTime qType Created timestamp
 
   insertConnector cid cSql cTime (_, refC) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
     modifyIORef refC $
-      HM.insert (mkConnectorPath cid) $ PersistentConnector cid (ZT.pack . T.unpack $ cSql) cTime Created timestamp
+      HM.insert (mkConnectorPath cid) $ PersistentConnector cid cSql cTime Created timestamp
 
   setQueryStatus qid newStatus (refQ, _) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'

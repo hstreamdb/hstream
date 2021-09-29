@@ -15,7 +15,6 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
-import qualified Z.Data.Text                      as ZT
 import           Z.IO.Time                        (SystemTime (MkSystemTime),
                                                    getSystemTime')
 
@@ -115,7 +114,7 @@ hstreamConnectorToConnector :: P.PersistentConnector -> Connector
 hstreamConnectorToConnector P.PersistentConnector{..} =
   Connector (cBytesToLazyText connectorId)
     (getPBStatus connectorStatus) connectorCreatedTime
-    (TL.pack . ZT.unpack $ connectorBindedSql)
+    (TL.fromStrict connectorBindedSql)
 
 createConnector :: ServerContext -> T.Text -> IO Connector
 createConnector sc@ServerContext{..} sql = do
@@ -144,7 +143,7 @@ restartConnector :: ServerContext -> CB.CBytes -> IO ()
 restartConnector sc@ServerContext{..} cid = do
   P.PersistentConnector _ sql _ _ _ <- P.getConnector cid zkHandle
   (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
-    <- CodeGen.streamCodegen (T.pack . ZT.unpack $ sql)
+    <- CodeGen.streamCodegen sql
   streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)
   unless streamExists $ throwIO StreamNotExist
   void $ handleCreateSinkConnector sc cid sName cConfig
