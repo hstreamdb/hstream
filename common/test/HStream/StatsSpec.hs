@@ -51,8 +51,8 @@ statsSpec = describe "HStream.Stats" $ do
     rate2_p10s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
 
     m <- stream_time_series_getall_by_name h "appends" intervals
-    Map.lookup "/topic_1" m `shouldBe` Just [rate1_p5s, rate1_p10s]
-    Map.lookup "/topic_2" m `shouldBe` Just [rate2_p5s, rate2_p10s]
+    Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
+    Map.lookup "/topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
 
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
