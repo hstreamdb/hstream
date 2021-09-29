@@ -1,6 +1,9 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 module HStream.Server.Types where
 
 import           Control.Concurrent        (MVar, ThreadId)
+import           Data.Aeson                (FromJSON, ToJSON)
 import           Data.ByteString           (ByteString)
 import qualified Data.HashMap.Strict       as HM
 import           Data.Int                  (Int32, Int64)
@@ -9,6 +12,7 @@ import qualified Data.Text                 as T
 import qualified Data.Text.Lazy            as TL
 import qualified Data.Vector               as V
 import           Data.Word                 (Word32, Word64)
+import           GHC.Generics              (Generic)
 import           Network.GRPC.HighLevel    (StreamSend)
 import           Z.Data.CBytes             (CBytes)
 import qualified Z.Data.CBytes             as CB
@@ -16,8 +20,8 @@ import           Z.IO.Network              (PortNumber)
 import           ZooKeeper.Types           (ZHandle)
 
 import qualified HStream.Logger            as Log
-import           HStream.Server.HStreamApi (RecordId (RecordId),
-                                            StreamingFetchResponse)
+import           HStream.Server.HStreamApi (RecordId (..),
+                                            StreamingFetchResponse (..))
 import qualified HStream.Stats             as Stats
 import           HStream.Store             (Compression)
 import qualified HStream.Store             as HS
@@ -26,6 +30,7 @@ import qualified HStream.Store.Admin.API   as AA
 data ServerOpts = ServerOpts
   { _serverHost         :: CBytes
   , _serverPort         :: PortNumber
+  , _serverName         :: CBytes
   , _zkUri              :: CBytes
   , _ldConfigPath       :: CBytes
   , _topicRepFactor     :: Int
@@ -44,10 +49,16 @@ data ServerOpts = ServerOpts
 
 type Timestamp = Int64
 
+type ServerName = CBytes
+type ServerRanking = [ServerName]
+
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
+  , serverName               :: CBytes
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: ZHandle
+  , ranking                  :: MVar ServerRanking
+  , loadReport               :: MVar LoadReport
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
@@ -83,3 +94,36 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriValid             :: Bool
   , sriSignals           :: V.Vector (MVar ())
 }
+
+type ServerLoadReports = HM.HashMap CBytes LoadReport
+
+data LoadManager = LoadManager {
+    lastSysResUsage :: MVar SystemResourceUsage
+  , loadReports     :: MVar ServerLoadReports
+}
+
+data LoadReport = LoadReport {
+    systemResourceUsage :: SystemResourcePercentageUsage
+  , isUnderloaded       :: Bool
+  , isOverloaded        :: Bool
+  } deriving (Eq, Generic, Show)
+instance FromJSON LoadReport
+instance ToJSON LoadReport
+
+data SystemResourceUsage
+  = SystemResourceUsage {
+    cpuUsage      :: (Integer, Integer)
+  , txTotal       :: Integer
+  , rxTotal       :: Integer
+  , collectedTime :: Integer
+  } deriving (Eq, Generic, Show)
+
+data SystemResourcePercentageUsage =
+  SystemResourcePercentageUsage {
+    cpuPctUsage       :: Double
+  , memoryPctUsage    :: Double
+  , bandwidthInUsage  :: Double
+  , bandwidthOutUsage :: Double
+  } deriving (Eq, Generic, Show)
+instance FromJSON SystemResourcePercentageUsage
+instance ToJSON SystemResourcePercentageUsage
