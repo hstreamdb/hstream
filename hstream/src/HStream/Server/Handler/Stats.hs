@@ -4,6 +4,7 @@
 
 module HStream.Server.Handler.Stats
   ( perStreamTimeSeriesStatsAll
+  , perStreamTimeSeriesStats
   ) where
 
 import           Network.GRPC.HighLevel.Generated
@@ -36,3 +37,16 @@ perStreamTimeSeriesStatsAll holder req = defaultExceptionHandle $ do
       m <- Stats.stream_time_series_getall_by_name holder name intervals'
       let m' = Map.map (Just . StatsDoubleVals . V.fromList) . Map.mapKeys U.cBytesToLazyText $ m
       return $ PerStreamTimeSeriesStatsAllResponse m'
+
+perStreamTimeSeriesStats
+  :: StatsHolder
+  -> ServerRequest 'Normal PerStreamTimeSeriesStatsRequest PerStreamTimeSeriesStatsResponse
+  -> IO (ServerResponse 'Normal PerStreamTimeSeriesStatsResponse)
+perStreamTimeSeriesStats holder (ServerNormalRequest _ PerStreamTimeSeriesStatsRequest {..}) = defaultExceptionHandle $ do
+    maybe (pure Nothing) (Stats.stream_time_series_get holder methodName sName) intervals
+    >>= U.returnResp . PerStreamTimeSeriesStatsResponse . fmap (StatsDoubleVals . V.fromList)
+  where
+    methodName = U.lazyTextToCBytes perStreamTimeSeriesStatsRequestMethod
+    sName = U.lazyTextToCBytes perStreamTimeSeriesStatsRequestStreamName
+    intervals = map fromIntegral . V.toList . statsIntervalValsIntervals <$>
+      perStreamTimeSeriesStatsRequestIntervals

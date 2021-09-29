@@ -42,6 +42,8 @@ service HStreamApi {
   // Stats
   // TODO
   // rpc PerStreamTimeSeriesStats() returns ()
+  rpc PerStreamTimeSeriesStats(PerStreamTimeSeriesStatsRequest)
+    returns (PerStreamTimeSeriesStatsResponse);
   rpc PerStreamTimeSeriesStatsAll(PerStreamTimeSeriesStatsAllRequest)
     returns (PerStreamTimeSeriesStatsAllResponse);
 
@@ -399,11 +401,6 @@ message Node {
   string status = 4;
 }
 
-message PerStreamTimeSeriesStatsAllRequest {
-  string method = 1;
-  StatsIntervalVals intervals = 2;
-}
-
 message StatsIntervalVals {
   repeated int32 intervals = 1;
 }
@@ -412,6 +409,21 @@ message StatsDoubleVals {
   repeated double vals = 1;
 }
 
+message PerStreamTimeSeriesStatsRequest {
+  string method = 1;
+  string streamName = 2;
+  StatsIntervalVals intervals = 3;
+}
+
+message PerStreamTimeSeriesStatsResponse {
+  StatsDoubleVals stats = 1;
+}
+
 message PerStreamTimeSeriesStatsAllResponse {
   map<string, StatsDoubleVals> stats = 1;
+}
+
+message PerStreamTimeSeriesStatsAllRequest {
+  string method = 1;
+  StatsIntervalVals intervals = 2;
 }
