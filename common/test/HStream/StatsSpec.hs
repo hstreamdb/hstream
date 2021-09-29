@@ -85,5 +85,5 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     -- FIXME: Unfortunately, there is no easy way to test with real speed. So we just
     -- check the speed is positive.
     Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
-    stream_time_series_get h "appends" "a_stream" max_intervals
-      `shouldReturn` Map.lookup "a_stream" m
+    Just rate <- stream_time_series_get h "appends" "a_stream" max_intervals
+    rate `shouldSatisfy` (\s -> head s > 0)
