@@ -37,6 +37,9 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
+    HStream.Server.Persistence.Subscriptions
+    HStream.Server.Persistence.Tasks
+    HStream.Server.Persistence.Utils
 
   other-modules:    HStream.Server.Handler.Stats
   hs-source-dirs:   src
