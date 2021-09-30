@@ -13,7 +13,6 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.Text                      as ZT
 
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
@@ -36,7 +35,7 @@ hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQu
   View { viewViewId = cBytesToLazyText queryId
        , viewStatus = getPBStatus status
        , viewCreatedTime = createdTime
-       , viewSql = TL.pack $ ZT.unpack sqlStatement
+       , viewSql = TL.fromStrict sqlStatement
        , viewSchema = V.fromList $ TL.pack <$> schema
        }
 hstreamQueryToView _ = error "Impossible happened..."

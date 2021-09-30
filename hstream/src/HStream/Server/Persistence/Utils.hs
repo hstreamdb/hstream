@@ -1,7 +1,40 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module HStream.Server.Persistence.Utils where
+
+module HStream.Server.Persistence.Utils
+  ( defaultHandle
+
+  , rootPath
+  , serverRootPath
+  , leaderPath
+  , queriesPath
+  , connectorsPath
+  , serverLoadPath
+  , subscriptionsPath
+  , paths
+
+  , initializeAncestors
+  , mkQueryPath
+  , mkConnectorPath
+  , mkSubscriptionPath
+
+  , createInsert
+  , createInsertOp
+  , createPath
+  , tryCreate
+  , createPathOp
+  , setZkData
+  , deletePath
+  , tryDeletePath
+  , deleteAllPath
+  , tryDeleteAllPath
+  , decodeDataCompletion
+  , decodeZNodeValue
+  , encodeValueToBytes
+
+  , ifThrow
+  ) where
 
 --------------------------------------------------------------------------------
 -- Path
@@ -9,12 +42,12 @@ module HStream.Server.Persistence.Utils where
 import           Control.Exception                    (Exception, catch, handle,
                                                        throw)
 import           Control.Monad                        (void)
-import qualified Data.ByteString.Lazy.Char8           as BSL
+import           Data.Aeson                           (FromJSON, ToJSON)
+import qualified Data.Aeson                           as Aeson
+import qualified Data.ByteString.Lazy                 as BL
 import qualified Data.Text                            as T
 import           GHC.Stack                            (HasCallStack)
-import qualified Proto3.Suite.Class                   as Pb
 import           Z.Data.CBytes                        (CBytes)
-import           Z.Data.JSON                          (JSON, decode)
 import           Z.Data.Vector                        (Bytes)
 import qualified Z.Foreign                            as ZF
 import           ZooKeeper                            (Resource, zooCreate,
@@ -26,9 +59,12 @@ import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
 import qualified HStream.Logger                       as Log
-import qualified HStream.Server.HStreamApi            as Api
+
 import           HStream.Server.Persistence.Exception
 import           HStream.Utils                        (textToCBytes)
+
+defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
+defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 rootPath :: CBytes
 rootPath = "/hstreamdb/hstream"
@@ -52,7 +88,15 @@ subscriptionsPath :: CBytes
 subscriptionsPath = rootPath <> "/subscriptions"
 
 paths :: [CBytes]
-paths = ["/hstreamdb", rootPath, serverRootPath, leaderPath, serverLoadPath, queriesPath, connectorsPath, subscriptionsPath]
+paths = [ "/hstreamdb"
+        , rootPath
+        , serverRootPath
+        , leaderPath
+        , serverLoadPath
+        , queriesPath
+        , connectorsPath
+        , subscriptionsPath
+        ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = mapM_ (tryCreate zk) paths
@@ -83,8 +127,7 @@ setZkData zk path contents =
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
   \(_ :: ZNODEEXISTS) -> do
-    -- Log.warning . Log.buildString $ "create path failed: " <> show path <> " has existed in zk"
-    pure ()
+    Log.warning . Log.buildString $ "create path failed: " <> show path <> " has existed in zk"
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path = do
@@ -118,29 +161,20 @@ tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
     Log.warning . Log.buildString $ "delete all path error: " <> show path <> " not exist."
     pure ()
 
-decodeQ :: JSON a => DataCompletion -> a
-decodeQ = (\case { Right x -> x ; _ -> throw FailedToDecode}) . snd . decode
-        . (\case { Nothing -> ""; Just x -> x}) . dataCompletionValue
+-- FIXME: let 'Nothing' lead to more detailed exception?
+decodeDataCompletion :: FromJSON a => DataCompletion -> a
+decodeDataCompletion (DataCompletion (Just x) _) =
+  case Aeson.eitherDecode' . BL.fromStrict . ZF.toByteString $ x of
+    Right a -> a
+    Left _  -> throw FailedToDecode
+decodeDataCompletion (DataCompletion Nothing _) = throw FailedToDecode
+
+decodeZNodeValue :: FromJSON a => ZHandle -> T.Text -> IO a
+decodeZNodeValue zk nodePath = do
+  zooGet zk (textToCBytes nodePath) >>= (return . decodeDataCompletion)
+
+encodeValueToBytes :: ToJSON a => a -> Bytes
+encodeValueToBytes = ZF.fromByteString . BL.toStrict . Aeson.encode
 
 ifThrow :: Exception e => e -> IO a -> IO a
 ifThrow e = handle (\(_ :: ZooException) -> throwIO e)
-
-getNodeValue :: ZHandle -> T.Text -> IO (Maybe Bytes)
-getNodeValue zk sid = do
-  let path = mkSubscriptionPath sid
-  catch ((dataCompletionValue <$>) . zooGet zk $ path) $ \(err::ZooException) -> do
-    Log.warning . Log.buildString $ "get node value from " <> show path <> "err: " <> show err
-    return Nothing
-
-encodeSubscription :: Api.Subscription -> Bytes
-encodeSubscription = ZF.fromByteString . BSL.toStrict . Pb.toLazyByteString
-
-decodeSubscription :: Bytes -> Maybe Api.Subscription
-decodeSubscription origin =
-  let sub = Pb.fromByteString . ZF.toByteString $ origin
-   in case sub of
-        Right res -> Just res
-        Left _    -> Nothing
-
-defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
-defaultHandle network = zookeeperResInit network 5000 Nothing 0
