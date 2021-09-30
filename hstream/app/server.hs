@@ -5,16 +5,23 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+import           Control.Concurrent            (readMVar)
+import           Control.Monad                 (void)
 import           Network.GRPC.HighLevel        (ServiceOptions (..))
 import           Network.GRPC.HighLevel.Client (Port (unPort))
 import           Options.Applicative
 import           Text.RawString.QQ             (r)
 import           ZooKeeper
+import           ZooKeeper.Types
 
 import qualified HStream.Logger                as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Initialization
+import           HStream.Server.LoadBalance    (localReportUpdateTimer,
+                                                updateLoadReports,
+                                                writeLoadReportToZooKeeper,
+                                                zkReportUpdateTimer)
 import           HStream.Server.Persistence
 import           HStream.Server.Types
 import           HStream.Store                 (Compression (..))
@@ -35,6 +42,10 @@ parseConfig =
                    <> showDefault <> value 6570
                    <> help "server port value"
                     )
+    <*> strOption ( long "name" <> metavar "NAME"
+                 <> showDefault <> value "hserver-1"
+                 <> help "name of the hstream server node"
+                  )
     <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault
                  <> value "127.0.0.1:2181"
@@ -93,14 +104,26 @@ parseConfig =
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
+  setupSigsegvHandler
   withResource (defaultHandle _zkUri) $ \zk -> do
-    setupSigsegvHandler
-    (options, serverContext) <- initializeServer config zk
+    (options, serverContext, lm) <- initializeServer config zk
     initializeAncestors zk
-    serve options serverContext
+    -- Temporary path creation before bootstrap is implemented
+    void $ zooCreate zk (serverLoadPath <> "/" <> _serverName)
+      Nothing zooOpenAclUnsafe ZooEphemeral
+    serve options serverContext lm
 
-serve :: ServiceOptions -> ServerContext -> IO ()
-serve options@ServiceOptions{..} sc = do
+serve :: ServiceOptions -> ServerContext -> LoadManager -> IO ()
+serve options@ServiceOptions{..} sc@ServerContext{..} lm@LoadManager{..} = do
+    -- Load balancing data
+  lr <- readMVar loadReport
+  writeLoadReportToZooKeeper zkHandle serverName lr
+  updateLoadReports zkHandle loadReports ranking
+
+  -- Load balancing service
+  localReportUpdateTimer sc lm
+  zkReportUpdateTimer serverName sc
+
   -- GRPC service
   Log.info "**************************************************"
   Log.info $ "Server started on port " <> Log.buildInt (unPort serverPort)
