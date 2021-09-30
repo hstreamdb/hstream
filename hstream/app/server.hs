@@ -5,52 +5,24 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Exception
-import           Data.ByteString                  (ByteString)
-import           Data.Int                         (Int64)
-import qualified Data.Map.Strict                  as Map
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel        (ServiceOptions (..))
+import           Network.GRPC.HighLevel.Client (Port (unPort))
 import           Options.Applicative
-import           Text.RawString.QQ                (r)
-import qualified Z.Data.Builder                   as Builder
-import           Z.Data.CBytes                    (CBytes, toBytes)
-import qualified Z.Data.CBytes                    as CBytes
-import           Z.Foreign                        (toByteString)
-import           Z.IO.Network
+import           Text.RawString.QQ             (r)
 import           ZooKeeper
-import           ZooKeeper.Exception
-import           ZooKeeper.Types
 
-import qualified HStream.Logger                   as Log
+import qualified HStream.Logger                as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
+import           HStream.Server.Initialization
 import           HStream.Server.Persistence
-import           HStream.Stats                    (StatsHolder, newStatsHolder)
-import           HStream.Store
-import qualified HStream.Store.Admin.API          as AA
-import           HStream.Utils                    (setupSigsegvHandler)
+import           HStream.Server.Types
+import           HStream.Store                 (Compression (..))
+import qualified HStream.Store.Admin.API       as AA
+import           HStream.Utils                 (setupSigsegvHandler)
 
 -- TODO
 -- 1. config file for the Server
-
-data ServerOpts = ServerOpts
-  { _serverHost         :: CBytes
-  , _serverPort         :: PortNumber
-  , _zkUri              :: CBytes
-  , _ldConfigPath       :: CBytes
-  , _topicRepFactor     :: Int
-  , _ckpRepFactor       :: Int
-  , _heartbeatTimeout   :: Int64
-  , _compression        :: Compression
-  , _ldAdminHost        :: ByteString
-  , _ldAdminPort        :: Int
-  , _ldAdminProtocolId  :: AA.ProtocolId
-  , _ldAdminConnTimeout :: Int
-  , _ldAdminSendTimeout :: Int
-  , _ldAdminRecvTimeout :: Int
-  , _serverLogLevel     :: Log.Level
-  , _serverLogWithColor :: Bool
-  } deriving (Show)
 
 parseConfig :: Parser ServerOpts
 parseConfig =
@@ -121,29 +93,20 @@ parseConfig =
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
-  Log.setLogLevel _serverLogLevel _serverLogWithColor
-  setupSigsegvHandler
-  ldclient <- newLDClient _ldConfigPath
-  _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor Map.empty)
-  statsHolder <- newStatsHolder
   withResource (defaultHandle _zkUri) $ \zk -> do
-    initZooKeeper zk
-    serve config ldclient zk statsHolder
+    setupSigsegvHandler
+    (options, serverContext) <- initializeServer config zk
+    initializeAncestors zk
+    serve options serverContext
 
-serve :: ServerOpts -> LDClient -> ZHandle -> StatsHolder -> IO ()
-serve ServerOpts{..} ldclient zk statsHolder = do
-  let options = defaultServiceOptions
-                { serverHost = Host . toByteString . toBytes $ _serverHost
-                , serverPort = Port . fromIntegral $ _serverPort
-                }
-  let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
-  api <- handlers ldclient headerConfig _topicRepFactor zk _heartbeatTimeout _compression statsHolder
-  Log.i $ "Server started on "
-       <> CBytes.toBuilder _serverHost <> ":" <> Builder.int _serverPort
+serve :: ServiceOptions -> ServerContext -> IO ()
+serve options@ServiceOptions{..} sc = do
+  -- GRPC service
+  Log.info "**************************************************"
+  Log.info $ "Server started on port " <> Log.buildInt (unPort serverPort)
+  Log.info "**************************************************"
+  api <- handlers sc
   hstreamApiServer api options
-
-initZooKeeper :: ZHandle -> IO ()
-initZooKeeper zk = catch (initializeAncestors zk) (\(_ :: ZNODEEXISTS) -> pure ())
 
 main :: IO ()
 main = do

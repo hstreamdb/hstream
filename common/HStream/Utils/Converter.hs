@@ -8,9 +8,9 @@ module HStream.Utils.Converter
   , valueToJsonValue
   , structToZJsonObject
   , valueToZJsonValue
-    --
   , zJsonObjectToStruct
   , zJsonValueToValue
+    --
   , cBytesToText
   , cBytesToLazyText
   , textToCBytes
@@ -19,9 +19,12 @@ module HStream.Utils.Converter
   , lazyTextToCBytes
   , lazyByteStringToCBytes
   , cBytesToLazyByteString
-  , cBytesToValue
+  , lazyByteStringToBytes
+  , bytesToLazyByteString
     --
+  , cBytesToValue
   , stringToValue
+  , valueToBytes
   , listToStruct
   , structToStruct
   ) where
@@ -151,3 +154,12 @@ structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.Val
 
 stringToValue :: String -> PB.Value
 stringToValue = PB.Value . Just . PB.ValueKindStringValue . TL.pack
+
+lazyByteStringToBytes :: BL.ByteString -> ZV.Bytes
+lazyByteStringToBytes = ZV.pack . BL.unpack
+
+bytesToLazyByteString :: ZV.Bytes -> BL.ByteString
+bytesToLazyByteString = BL.pack . ZV.unpack
+
+valueToBytes :: (Aeson.ToJSON a) => a -> ZV.Bytes
+valueToBytes = lazyByteStringToBytes . Aeson.encode

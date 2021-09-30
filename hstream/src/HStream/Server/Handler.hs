@@ -10,14 +10,9 @@
 
 module HStream.Server.Handler where
 
-import           Control.Concurrent
-import qualified Data.HashMap.Strict                 as HM
-import           Data.Int                            (Int64)
 import           Network.GRPC.HighLevel.Generated
-import           ZooKeeper.Types                     (ZHandle)
 
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Query
 import qualified HStream.Server.Handler.Stats        as H
@@ -25,38 +20,14 @@ import           HStream.Server.Handler.StoreAdmin
 import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.Subscription
 import           HStream.Server.Handler.View
-import qualified HStream.Stats                       as Stats
-import qualified HStream.Store                       as S
-import qualified HStream.Store.Admin.API             as AA
+import           HStream.Server.Types
 
 --------------------------------------------------------------------------------
 
 handlers
-  :: S.LDClient
-  -> AA.HeaderConfig AA.AdminAPI
-  -> Int
-  -> ZHandle
-  -- ^ timer timeout, ms
-  -> Int64
-  -> S.Compression
-  -> Stats.StatsHolder
+  :: ServerContext
   -> IO (HStreamApi ServerRequest ServerResponse)
-handlers ldclient headerConfig repFactor zkHandle _ compression statsHolder = do
-  runningQs <- newMVar HM.empty
-  runningCs <- newMVar HM.empty
-  subscribeRuntimeInfo <- newMVar HM.empty
-  let serverContext =
-        ServerContext
-          { scLDClient               = ldclient
-          , scDefaultStreamRepFactor = repFactor
-          , zkHandle                 = zkHandle
-          , runningQueries           = runningQs
-          , runningConnectors        = runningCs
-          , subscribeRuntimeInfo     = subscribeRuntimeInfo
-          , cmpStrategy              = compression
-          , headerConfig             = headerConfig
-          , scStatsHolder            = statsHolder
-          }
+handlers serverContext@ServerContext{..} =
   -- timer <- newTimer
   -- _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
   return
@@ -74,8 +45,8 @@ handlers ldclient headerConfig repFactor zkHandle _ compression statsHolder = do
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
         -- Stats
-        hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats statsHolder,
-        hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll statsHolder,
+        hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
+        hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
         -- Query
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,

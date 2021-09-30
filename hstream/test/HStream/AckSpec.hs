@@ -2,9 +2,9 @@ module HStream.AckSpec (spec) where
 
 import           Data.Map.Strict               as Map
 import           HStream.Server.HStreamApi     (RecordId (..))
-import           HStream.Server.Handler.Common (RecordIdRange (..),
-                                                insertAckedRecordId,
+import           HStream.Server.Handler.Common (insertAckedRecordId,
                                                 isSuccessor)
+import           HStream.Server.Types
 import           Test.Hspec
 
 spec :: Spec
@@ -200,4 +200,3 @@ insertAckSpec =
       let lowerBound = RecordId minBound minBound
       insertAckedRecordId invalidIdx lowerBound oldRanges batchNumMap `shouldBe` oldRanges
       insertAckedRecordId invalidLSN lowerBound oldRanges batchNumMap `shouldBe` oldRanges
-
