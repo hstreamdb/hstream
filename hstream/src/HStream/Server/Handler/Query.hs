@@ -37,8 +37,7 @@ import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (HasDefault (def))
 
 import qualified Z.Data.CBytes                    as CB
-import qualified Z.Data.Text                      as ZT
-
+import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.HStore
@@ -289,7 +288,7 @@ sendToClient ::
   (Struct -> IO (Either GRPCIOError ())) ->
   IO (ServerResponse 'ServerStreaming Struct)
 sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
-  let f (e :: P.ZooException) = do
+  let f (e :: ZooException) = do
         Log.fatal $ "ZooKeeper Exception: " <> Log.buildString (show e)
         return $ ServerWriterResponse [] StatusAborted "failed to get status"
   handle f $
@@ -320,7 +319,7 @@ getFixedWinSize [] _ = pure Nothing
 getFixedWinSize queries viewNameRaw = do
   sizes <-
     queries <&> P.queryBindedSql
-      <&> parseAndRefine . cBytesToText . CB.fromText
+      <&> parseAndRefine
         & sequence
       <&> filter \case
         RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
@@ -346,7 +345,7 @@ getFixedWinSize queries viewNameRaw = do
 getGrpByFieldName :: [P.PersistentQuery] -> T.Text -> IO (Maybe T.Text)
 getGrpByFieldName [] _ = pure Nothing
 getGrpByFieldName queries viewNameRaw = do
-  rSQL <- queries <&> (parseAndRefine . cBytesToText . CB.fromText) . P.queryBindedSql & sequence
+  rSQL <- queries <&> parseAndRefine . P.queryBindedSql & sequence
   let filtered = flip filter rSQL \case
         RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ _) _))
           -> viewNameRaw == viewNameSQL
@@ -367,7 +366,7 @@ hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status
   { queryId = cBytesToLazyText queryId
   , queryStatus = getPBStatus status
   , queryCreatedTime = createdTime
-  , queryQueryText = TL.pack $ ZT.unpack sqlStatement
+  , queryQueryText = TL.fromStrict sqlStatement
   }
 
 createQueryHandler

@@ -69,7 +69,7 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
       logId <- S.getUnderlyingLogId scLDClient (transToStreamName . TL.toStrict $ subscriptionStreamName)
       offset <- convertOffsetToRecordId logId
       let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-      P.storeSubscription newSub zkHandle
+      P.storeSubscription (TL.toStrict subscriptionSubscriptionId) newSub zkHandle
       returnResp subscription
   where
     convertOffsetToRecordId logId = do
