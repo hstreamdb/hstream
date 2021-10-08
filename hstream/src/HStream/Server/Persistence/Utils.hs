@@ -30,7 +30,9 @@ module HStream.Server.Persistence.Utils
   , deleteAllPath
   , tryDeleteAllPath
   , decodeDataCompletion
+  , decodeDataCompletion'
   , decodeZNodeValue
+  , decodeZNodeValue'
   , encodeValueToBytes
 
   , ifThrow
@@ -161,17 +163,28 @@ tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
     Log.warning . Log.buildString $ "delete all path error: " <> show path <> " not exist."
     pure ()
 
--- FIXME: let 'Nothing' lead to more detailed exception?
-decodeDataCompletion :: FromJSON a => DataCompletion -> a
+decodeDataCompletion :: FromJSON a => DataCompletion -> Maybe a
 decodeDataCompletion (DataCompletion (Just x) _) =
+  case Aeson.eitherDecode' . BL.fromStrict . ZF.toByteString $ x of
+    Right a -> Just a
+    Left _  -> Nothing
+decodeDataCompletion (DataCompletion Nothing _) = Nothing
+
+-- FIXME: let 'Nothing' lead to more detailed exception?
+decodeDataCompletion' :: FromJSON a => DataCompletion -> a
+decodeDataCompletion' (DataCompletion (Just x) _) =
   case Aeson.eitherDecode' . BL.fromStrict . ZF.toByteString $ x of
     Right a -> a
     Left _  -> throw FailedToDecode
-decodeDataCompletion (DataCompletion Nothing _) = throw FailedToDecode
+decodeDataCompletion' (DataCompletion Nothing _) = throw FailedToDecode
 
-decodeZNodeValue :: FromJSON a => ZHandle -> T.Text -> IO a
+decodeZNodeValue :: FromJSON a => ZHandle -> T.Text -> IO (Maybe a)
 decodeZNodeValue zk nodePath = do
   zooGet zk (textToCBytes nodePath) >>= (return . decodeDataCompletion)
+
+decodeZNodeValue' :: FromJSON a => ZHandle -> T.Text -> IO a
+decodeZNodeValue' zk nodePath = do
+  zooGet zk (textToCBytes nodePath) >>= (return . decodeDataCompletion')
 
 encodeValueToBytes :: ToJSON a => a -> Bytes
 encodeValueToBytes = ZF.fromByteString . BL.toStrict . Aeson.encode

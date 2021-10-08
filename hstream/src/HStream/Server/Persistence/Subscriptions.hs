@@ -5,7 +5,9 @@
 module HStream.Server.Persistence.Subscriptions where
 
 import           Control.Monad                     (forM)
-import           Data.Maybe                        (isJust)
+import           Data.Bifunctor                    (second)
+import qualified Data.Map                          as Map
+import           Data.Maybe                        (fromJust, isJust)
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Utils
 import           HStream.Utils                     (cBytesToText)
@@ -29,7 +31,8 @@ instance SubscriptionPersistence ZHandle where
   listSubscriptions zk = do
     sIds <- fmap cBytesToText . unStrVec . strsCompletionValues <$>
             zooGetChildren zk subscriptionsPath
-    forM sIds (`getSubscription` zk)
+    ms <- forM sIds (`getSubscription` zk)
+    return $ Map.fromList $ second fromJust <$> filter (\(_,x) -> isJust x) (sIds `zip` ms)
 
   removeSubscription subId zk = tryDeletePath zk $ mkSubscriptionPath subId
 

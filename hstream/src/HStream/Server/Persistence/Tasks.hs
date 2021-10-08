@@ -49,7 +49,7 @@ instance TaskPersistence ZHandle where
     timeCkp     <- getThenDecode "/timeCkp" qid
     return $ PersistentQuery qid sql createdTime typ status timeCkp
     where
-      getThenDecode field queryId = decodeZNodeValue zk (cBytesToText (mkQueryPath queryId) <> field)
+      getThenDecode field queryId = decodeZNodeValue' zk (cBytesToText (mkQueryPath queryId) <> field)
 
   insertConnector cid cSql cTime zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
@@ -67,10 +67,10 @@ instance TaskPersistence ZHandle where
   getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>) . flip zooGetChildren connectorsPath
 
   getConnector cid zk = ifThrow FailedToGet $ do
-    sql         <- ((decodeDataCompletion <$>) . zooGet zk . (<> "/sql") . mkConnectorPath) cid
-    createdTime <- ((decodeDataCompletion <$>) . zooGet zk . (<> "/createdTime")  . mkConnectorPath) cid
-    status      <- ((decodeDataCompletion <$>) . zooGet zk . (<> "/status") . mkConnectorPath) cid
-    timeCkp     <- ((decodeDataCompletion <$>) . zooGet zk . (<> "/timeCkp") . mkConnectorPath) cid
+    sql         <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/sql") . mkConnectorPath) cid
+    createdTime <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/createdTime") . mkConnectorPath) cid
+    status      <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/status") . mkConnectorPath) cid
+    timeCkp     <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/timeCkp") . mkConnectorPath) cid
     return $ PersistentConnector cid sql createdTime status timeCkp
 
   removeQuery qid zk  = ifThrow FailedToRemove $
