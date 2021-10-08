@@ -16,6 +16,7 @@ module HStream.Server.Persistence.Common
 
 import           Data.Aeson    (FromJSON (..), ToJSON (..))
 import           Data.Int      (Int64)
+import           Data.Map      (Map)
 import qualified Data.Text     as T
 import           GHC.Generics  (Generic)
 import           GHC.Stack     (HasCallStack)
@@ -93,11 +94,11 @@ class SubscriptionPersistence handle where
   -- | persist a subscription to the store
   storeSubscription :: (HasCallStack, FromJSON a, ToJSON a) => T.Text -> a -> handle -> IO ()
   -- | return the specified subscription
-  getSubscription :: (HasCallStack, FromJSON a, ToJSON a) => T.Text -> handle -> IO a
+  getSubscription :: (HasCallStack, FromJSON a, ToJSON a) => T.Text -> handle -> IO (Maybe a)
   -- | check if specified subscription exists
   checkIfExist :: HasCallStack => T.Text -> handle -> IO Bool
   -- | return all subscriptions
-  listSubscriptions :: (HasCallStack, FromJSON a, ToJSON a) => handle -> IO [a]
+  listSubscriptions :: (HasCallStack, FromJSON a, ToJSON a) => handle -> IO (Map T.Text a)
   -- | remove specified subscription
   removeSubscription :: HasCallStack => T.Text -> handle -> IO ()
   -- | remove all subscriptions

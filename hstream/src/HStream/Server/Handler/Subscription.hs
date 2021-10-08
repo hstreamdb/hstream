@@ -138,7 +138,7 @@ listSubscriptionsHandler ::
   IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsHandler ServerContext {..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
-  res <- ListSubscriptionsResponse . V.fromList <$> P.listSubscriptions zkHandle
+  res <- ListSubscriptionsResponse . V.fromList . Map.elems <$> P.listSubscriptions zkHandle
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
 
