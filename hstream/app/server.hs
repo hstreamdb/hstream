@@ -5,7 +5,6 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent            (readMVar)
 import           Control.Monad                 (void)
 import           Network.GRPC.HighLevel        (ServiceOptions (..))
 import           Network.GRPC.HighLevel.Client (Port (unPort))
@@ -18,10 +17,7 @@ import qualified HStream.Logger                as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler
 import           HStream.Server.Initialization
-import           HStream.Server.LoadBalance    (localReportUpdateTimer,
-                                                updateLoadReports,
-                                                writeLoadReportToZooKeeper,
-                                                zkReportUpdateTimer)
+import           HStream.Server.LoadBalance
 import           HStream.Server.Persistence
 import           HStream.Server.Types
 import           HStream.Store                 (Compression (..))
@@ -114,16 +110,8 @@ app config@ServerOpts{..} = do
     serve options serverContext lm
 
 serve :: ServiceOptions -> ServerContext -> LoadManager -> IO ()
-serve options@ServiceOptions{..} sc@ServerContext{..} lm@LoadManager{..} = do
-    -- Load balancing data
-  lr <- readMVar loadReport
-  writeLoadReportToZooKeeper zkHandle serverName lr
-  updateLoadReports zkHandle loadReports ranking
-
-  -- Load balancing service
-  localReportUpdateTimer sc lm
-  zkReportUpdateTimer serverName sc
-
+serve options@ServiceOptions{..} sc@ServerContext{..} lm = do
+  startLoadBalancer zkHandle lm
   -- GRPC service
   Log.info "**************************************************"
   Log.info $ "Server started on port " <> Log.buildInt (unPort serverPort)

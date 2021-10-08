@@ -57,8 +57,6 @@ data ServerContext = ServerContext {
   , serverName               :: CBytes
   , scDefaultStreamRepFactor :: Int
   , zkHandle                 :: ZHandle
-  , ranking                  :: MVar ServerRanking
-  , loadReport               :: MVar LoadReport
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
@@ -95,10 +93,12 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriSignals           :: V.Vector (MVar ())
 }
 
-type ServerLoadReports = HM.HashMap CBytes LoadReport
+type ServerLoadReports = HM.HashMap ServerName LoadReport
 
 data LoadManager = LoadManager {
-    lastSysResUsage :: MVar SystemResourceUsage
+    sName           :: ServerName
+  , lastSysResUsage :: MVar SystemResourceUsage
+  , loadReport      :: MVar LoadReport
   , loadReports     :: MVar ServerLoadReports
 }
 
