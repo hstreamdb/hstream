@@ -1,7 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module HStream.Server.LoadBalance where
+module HStream.Server.LoadBalance
+ ( startLoadBalancer
+ , getRanking
 
+ , updateLoadReport
+ ) where
 
 import           Control.Concurrent
 import           Control.Concurrent.Suspend (mDelay, sDelay)
@@ -9,6 +13,8 @@ import           Control.Concurrent.Timer   (newTimer, repeatedStart)
 import           Control.Monad              (forever, void, when)
 import           Data.Aeson                 (decode, encode)
 import qualified Data.HashMap.Strict        as HM
+import           Data.IORef                 (IORef, atomicWriteIORef, newIORef,
+                                             readIORef)
 import           Data.List                  (sortOn, (\\))
 import           Data.Time.Clock.System     (SystemTime (..), getSystemTime)
 import           GHC.IO                     (unsafePerformIO)
@@ -23,6 +29,28 @@ import           HStream.Server.Types
 import           HStream.Utils              (bytesToLazyByteString,
                                              lazyByteStringToBytes)
 
+--------------------------------------------------------------------------------
+
+getRanking :: IO ServerRanking
+getRanking = readIORef serverRanking
+
+startLoadBalancer :: ZHandle -> LoadManager -> IO ()
+startLoadBalancer zk lm@LoadManager{..} = do
+  -- Write load balancing data
+  lr <- readMVar loadReport
+  writeLoadReportToZooKeeper zk sName lr
+  updateLoadReports zk loadReports
+
+  -- Load balancing service
+  localReportUpdateTimer lm
+  zkReportUpdateTimer zk lm
+
+--------------------------------------------------------------------------------
+
+serverRanking :: IORef [ServerName]
+serverRanking = unsafePerformIO $ newIORef []
+{-# NOINLINE serverRanking #-}
+
 writeLoadReportToZooKeeper :: ZHandle -> ServerName -> LoadReport -> IO ()
 writeLoadReportToZooKeeper zk name lr = void $
   zooSet zk (serverLoadPath <> "/" <> name) (Just ((lazyByteStringToBytes . encode) lr)) Nothing
@@ -30,61 +58,100 @@ writeLoadReportToZooKeeper zk name lr = void $
 -- Update data on the server according to the data in zk and set watch for any new updates
 updateLoadReports
   :: ZHandle -> MVar ServerLoadReports
-  -> MVar ServerRanking
   -> IO ()
-updateLoadReports zk hmapM rankingM = do
+updateLoadReports zk hmapM  = do
   Log.debug . Log.buildString $ "Updating local load reports map and set watch on every server"
   names <- unStrVec . strsCompletionValues <$> zooGetChildren zk serverRootPath
   _names <- HM.keys <$> readMVar hmapM
-  mapM_ (getAndWatchReport zk hmapM rankingM) (names \\ _names)
+  mapM_ (getAndWatchReport zk hmapM) (names \\ _names)
+
+--------------------------------------------------------------------------------
+-- Timer
+
+localReportUpdateTimer :: LoadManager -> IO ()
+localReportUpdateTimer LoadManager{..} = do
+  timer <- newTimer
+  void $ repeatedStart timer
+    (do
+      hmap <- readMVar loadReports
+      updateLoadReport lastSysResUsage loadReport
+      lr' <- readMVar loadReport
+      Log.debug . Log.buildString $ "Scheduled local report update" <> show lr'
+      when (abs (getPercentageUsage lr' -
+            maybe 0 getPercentageUsage (HM.lookup sName hmap)) > 5)
+        (putMVar ifUpdateZK ()))
+    (sDelay 5)
+
+zkReportUpdateTimer :: ZHandle -> LoadManager -> IO ()
+zkReportUpdateTimer zk LoadManager {..} = do
+  timer2 <- newTimer
+  _ <- repeatedStart timer2
+    (do
+      putMVar ifUpdateZK ()
+      Log.debug . Log.buildString $ "Scheduled zk local report store")
+    (mDelay 5)
+  void $ forkIO $ forever $ do
+    _ <- takeMVar ifUpdateZK
+    readMVar loadReport >>=
+      writeLoadReportToZooKeeper zk sName
+
+ifUpdateZK :: MVar ()
+ifUpdateZK = unsafePerformIO $ newMVar ()
+{-# NOINLINE ifUpdateZK #-}
+
+-- | Update Local Load Report
+updateLoadReport :: MVar SystemResourceUsage -> MVar LoadReport -> IO ()
+updateLoadReport mSysResUsg mLoadReport = do
+  lastUsage <- readMVar mSysResUsg
+  (lastUsage', loadReport) <- generateLoadReport lastUsage
+  void $ swapMVar mLoadReport loadReport
+  void $ swapMVar mSysResUsg lastUsage'
 
 --------------------------------------------------------------------------------
 
 getAndWatchReport
   :: ZHandle
   -> MVar ServerLoadReports
-  -> MVar ServerRanking
   -> ServerName
   -> IO ()
-getAndWatchReport zk hmapM rankingM name = do
+getAndWatchReport zk hmapM name = do
   Log.debug . Log.buildCBytes $ "Getting data from zk and setting watch for server " <> name
   _ <- forkIO $ zooWatchGet zk
                 (serverLoadPath <> "/" <> name)
-                (watchFun hmapM rankingM name)
-                (getReportCB hmapM rankingM name)
+                (watchFun hmapM name)
+                (getReportCB hmapM name)
   Log.debug . Log.buildCBytes $ "Getting data from zk and set watch for server " <> name <> " done"
 
 -- | The watch function set on every server load report in zk
 watchFun
   :: MVar ServerLoadReports
-  -> MVar ServerRanking
   -> ServerName
   -> HsWatcherCtx -> IO ()
-watchFun hmapM rankingM address HsWatcherCtx{..} = do
+watchFun hmapM address HsWatcherCtx{..} = do
   Log.debug . Log.buildString $ "Watch triggered, updating map and ranking "
   case watcherCtxType of
     ZooDeleteEvent -> do
       modifyMVar_ hmapM (pure . HM.delete address)
-      updateMapAndRanking hmapM rankingM
+      updateMapAndRanking hmapM
     ZooChangedEvent -> do
-      getAndWatchReport watcherCtxZHandle hmapM rankingM address
+      getAndWatchReport watcherCtxZHandle hmapM  address
     _ -> return ()
 
 -- | The call back function when we get load report info
-getReportCB :: MVar ServerLoadReports -> MVar ServerRanking -> ServerName ->
+getReportCB :: MVar ServerLoadReports -> ServerName ->
   DataCompletion -> IO ()
-getReportCB hmapM rankingM address DataCompletion{..} = do
+getReportCB hmapM  address DataCompletion{..} = do
   let lr = decode . bytesToLazyByteString <$> dataCompletionValue
   insertLoadReportsMap hmapM address lr
-  updateMapAndRanking hmapM rankingM
+  updateMapAndRanking hmapM
 
-updateMapAndRanking :: MVar ServerLoadReports -> MVar ServerRanking -> IO ()
-updateMapAndRanking hmapM rankingM = do
+updateMapAndRanking :: MVar ServerLoadReports -> IO ()
+updateMapAndRanking hmapM = do
   hmap <- readMVar hmapM
   Log.debug . Log.buildString $
     "Local loads map updated: " <> show hmap
   let newRanking = generateRanking hmap
-  void $ swapMVar rankingM newRanking
+  atomicWriteIORef serverRanking newRanking
   Log.debug . Log.buildString $
     "Ranking updated, new ranking is " <> show newRanking
 
@@ -108,48 +175,6 @@ generateRanking hmap = fst <$> sortOn (getPercentageUsage . snd) (HM.toList hmap
 getPercentageUsage :: LoadReport -> Double
 getPercentageUsage LoadReport {systemResourceUsage = SystemResourcePercentageUsage {..} }
   = maximum [cpuPctUsage, memoryPctUsage] --, bandwidthInUsage, bandwidthOutUsage]
-
---------------------------------------------------------------------------------
--- Timer
-
-localReportUpdateTimer :: ServerContext -> LoadManager -> IO ()
-localReportUpdateTimer ServerContext{..} LoadManager{..}= do
-  timer1 <- newTimer
-  void $ repeatedStart timer1
-    (do
-      hmap <- readMVar loadReports
-      updateLoadReport lastSysResUsage loadReport
-      lr' <- readMVar loadReport
-      Log.debug . Log.buildString $ "Scheduled local report update" <> show lr'
-      when (abs (getPercentageUsage lr' -
-            maybe 0 getPercentageUsage (HM.lookup serverName hmap)) > 5)
-        (putMVar ifUpdateZK ()))
-    (sDelay 5)
-
-zkReportUpdateTimer :: ServerName -> ServerContext -> IO ()
-zkReportUpdateTimer name ServerContext{..} = do
-  timer2 <- newTimer
-  _ <- repeatedStart timer2
-    (do
-      putMVar ifUpdateZK ()
-      Log.debug . Log.buildString $ "Scheduled zk local report store")
-    (mDelay 5)
-  void $ forkIO $ forever $ do
-    _ <- takeMVar ifUpdateZK
-    readMVar loadReport >>=
-      writeLoadReportToZooKeeper zkHandle name
-
-ifUpdateZK :: MVar ()
-ifUpdateZK = unsafePerformIO $ newMVar ()
-{-# NOINLINE ifUpdateZK #-}
-
--- | Update Local Load Report
-updateLoadReport :: MVar SystemResourceUsage -> MVar LoadReport -> IO ()
-updateLoadReport mSysResUsg mLoadReport = do
-  lastUsage <- readMVar mSysResUsg
-  (lastUsage', loadReport) <- generateLoadReport lastUsage
-  void $ swapMVar mLoadReport loadReport
-  void $ swapMVar mSysResUsg lastUsage'
 
 --------------------------------------------------------------------------------
 -- Get Stats

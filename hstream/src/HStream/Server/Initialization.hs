@@ -4,7 +4,7 @@
 
 module HStream.Server.Initialization where
 
-import           Control.Concurrent               (MVar, newMVar, readMVar)
+import           Control.Concurrent               (MVar, newMVar)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Time.Clock.System           (SystemTime (..),
                                                    getSystemTime)
@@ -26,12 +26,6 @@ import           HStream.Store                    (HsLogAttrs (HsLogAttrs),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
 import qualified HStream.Store.Admin.API          as AA
-import           HStream.Utils                    (setupSigsegvHandler)
-
-initialRanking :: MVar (HM.HashMap ServerName LoadReport) -> IO [ServerName]
-initialRanking hmapM = do
-  hmap <- readMVar hmapM
-  return $ generateRanking hmap
 
 initLastSysResUsage :: IO (MVar SystemResourceUsage)
 initLastSysResUsage = do
@@ -74,10 +68,8 @@ initializeServer ServerOpts{..} zk = do
 
   lastSysResUsage <- initLastSysResUsage
   currentLoadReport <- initLoadReport lastSysResUsage
-
-  -- data for load balance
-  currentRanking     <- newMVar []
   currentLoadReports <- newMVar HM.empty
+
   return (
     defaultServiceOptions {
       Network.GRPC.HighLevel.Generated.serverHost =
@@ -96,10 +88,10 @@ initializeServer ServerOpts{..} zk = do
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
-    , loadReport = currentLoadReport
-    , ranking    = currentRanking
     },
     LoadManager {
-      lastSysResUsage = lastSysResUsage
+      sName = _serverName
+    , loadReport = currentLoadReport
+    , lastSysResUsage = lastSysResUsage
     , loadReports = currentLoadReports
     })
