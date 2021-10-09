@@ -133,40 +133,6 @@ newtype AdminTable a = AdminTable
   { unAdminTable :: HM.HashMap T.Text (HM.HashMap T.Text a) }
   -- Stream Name, Col Name, Value
 
-selectAT :: AdminTable a
-         -> [T.Text] -> [T.Text]
-         -> AdminTable a
-selectAT (AdminTable adminTable) streamNames colNames
-  | streamNames == [] && colNames == [] = AdminTable adminTable
-  | streamNames == [] = AdminTable $
-      HM.map (HM.filterWithKey \colName _ -> colName `elem` colNames) adminTable
-  | colNames == [] = AdminTable $
-      (HM.filterWithKey \streamName _ -> streamName `elem` streamNames) adminTable
-  | otherwise = AdminTable $
-      (HM.filterWithKey \streamName _ -> streamName `elem` streamNames) $ HM.map
-      (HM.filterWithKey \colName    _ -> colName    `elem`    colNames) adminTable
-
-fmtAdminTable :: Show a => AdminTable a -> String
-fmtAdminTable (AdminTable adminTable)
-  | HM.size adminTable == 0 = "no result." | otherwise =
-  let titles     = ["stream_id"] <> getTitles
-      colSpecs   = L.replicate tableSize $ LT.column LT.expand LT.left LT.noAlign (LT.singleCutMark "...")
-      tableSty   = LT.asciiS
-      headerSpec = LT.titlesH titles
-      rowGrps    = [LT.colsAllG LT.center $
-        L.transpose . L.sortBy (compare `on` head) $ processedTable]
-  in LT.tableString colSpecs tableSty headerSpec rowGrps
-  where
-    streamNames = HM.toList adminTable <&> fst
-    rawTitles :: [T.Text] = (snd . head) (HM.toList adminTable) & map fst . HM.toList & L.nub . L.sort
-    getTitles :: [String] = T.unpack <$> rawTitles
-    tableSize = HM.size adminTable
-    processedTable = streamNames <&> \curName ->
-      let curLn  = HM.lookup curName adminTable & fromJust
-          curCol = rawTitles <&> \curTitle -> fromJust $
-            HM.lookup curTitle curLn
-      in T.unpack curName : map show curCol
-
 queryAllAppendInBytes, queryAllRecordBytes :: HStreamClientApi -> IO (AdminTable Double)
 queryAllAppendInBytes api = queryAdminTable api "appends_in"
   ["throughput_1min", "throughput_5min", "throughput_10min"]   . V.fromList $ map (* 1000)
@@ -195,5 +161,36 @@ sqlStatsAction api (colNames, tableKind, streamNames) = do
   tableRes <- api & case tableKind of
     AppendInBytes -> queryAllAppendInBytes
     RecordBytes   -> queryAllRecordBytes
-  let processedTable = selectAT tableRes streamNames colNames
-  putStrLn $ fmtAdminTable processedTable
+  putStrLn $ processTable tableRes colNames streamNames
+
+processTable :: Show a => AdminTable a
+             -> [T.Text] -- ^ select $0 from ...
+             -> [T.Text] -- ^ ... where stream = $0;
+             -> String
+processTable (AdminTable adminTable) selectNames_ streamNames_
+  | HM.size adminTable == 0 = "Empty status table." | otherwise =
+    if any (`notElem` inTableSelectNames) selectNames || any (`notElem` inTableStreamNames) streamNames
+      then "Col name or stream name not in scope."
+      else
+        let titles     = ["stream_id"] <> map T.unpack selectNames
+            tableSiz   = L.length selectNames + 1
+            colSpecs   = L.replicate tableSiz $ LT.column LT.expand LT.left LT.noAlign (LT.singleCutMark "...")
+            tableSty   = LT.asciiS
+            headerSpec = LT.titlesH titles
+            rowGrps    = [LT.colsAllG LT.center resTable]
+        in LT.tableString colSpecs tableSty headerSpec rowGrps
+  where
+    inTableSelectNames = (snd . head) (HM.toList adminTable) & map fst . HM.toList
+    inTableStreamNames = fst <$> HM.toList adminTable
+    selectNames = case selectNames_ of
+      [] -> inTableSelectNames
+      _  -> selectNames_
+    streamNames = case streamNames_ of
+      [] -> inTableStreamNames
+      _  -> streamNames_
+    processedTable = streamNames <&> \curStreamName ->
+      let curLn  = HM.lookup curStreamName adminTable & fromJust
+          curCol = selectNames <&> \curSelectName -> fromJust $
+            HM.lookup curSelectName curLn
+      in T.unpack curStreamName : map show curCol
+    resTable = L.transpose . L.sortBy (compare `on` head) $ processedTable
