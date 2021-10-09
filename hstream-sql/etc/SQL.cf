@@ -38,14 +38,15 @@ comment "/*" "*/" ;
 
 entrypoints SQL ;
 
-QSelect.     SQL ::= Select     ";" ;
-QSelectView. SQL ::= SelectView ";" ;
-QCreate.     SQL ::= Create     ";" ;
-QInsert.     SQL ::= Insert     ";" ;
-QShow.       SQL ::= ShowQ      ";" ;
-QDrop.       SQL ::= Drop       ";" ;
-QTerminate.  SQL ::= Terminate  ";" ;
-QExplain.    SQL ::= Explain    ";" ;
+QSelect.      SQL ::= Select      ";" ;
+QSelectView.  SQL ::= SelectView  ";" ;
+QSelectStats. SQL ::= SelectStats ";" ;
+QCreate.      SQL ::= Create      ";" ;
+QInsert.      SQL ::= Insert      ";" ;
+QShow.        SQL ::= ShowQ       ";" ;
+QDrop.        SQL ::= Drop        ";" ;
+QTerminate.   SQL ::= Terminate   ";" ;
+QExplain.     SQL ::= Explain     ";" ;
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident ;
@@ -312,3 +313,18 @@ CompOpLT.  CompOp ::= "<" ;
 CompOpGT.  CompOp ::= ">" ;
 CompOpLEQ. CompOp ::= "<=" ;
 CompOpGEQ. CompOp ::= ">=" ;
+
+--------------------------------------------------------------------------------
+DSelectStats. SelectStats ::= "SELECT" StatsItems "FROM" StatsTable StatsWhere ;
+
+StatsItemAll.  StatsItems ::= "*"          ;
+StatsItemList. StatsItems ::= [StatsIdent] ;
+
+DStatsIdent. StatsIdent ::= Ident ;
+separator StatsIdent ","          ;
+
+StatsTableAppendInBytes. StatsTable ::= "APPEND_IN_BYTES" ;
+StatsTableRecordBytes.   StatsTable ::= "RECORD_BYTES"    ;
+
+StatsWhereNil.  StatsWhere ::= ""                                ;
+StatsWhereCons. StatsWhere ::= "WHERE" "STREAM" "=" [StatsIdent] ;

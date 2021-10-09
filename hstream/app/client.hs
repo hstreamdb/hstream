@@ -99,6 +99,8 @@ commandExec api xs = case words xs of
       RQCreate (RCreateAs stream _ rOptions) ->
         createStreamBySelect api (TL.fromStrict stream) (rRepFactor rOptions) xs'
         >>= printResult
+      RQSelectStats (RSelectStats colNames tableKind streamNames) ->
+        sqlStatsAction api (colNames, tableKind, streamNames)
       rSql' -> hstreamCodegen rSql' >>= \case
         CreatePlan sName rFac
           -> createStream api sName rFac >>= printResult
@@ -142,8 +144,8 @@ sqlAction HStreamApi{..} sql = do
     ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a
-withInterrupt handle act = do
-  old_handler <- installHandler keyboardSignal (Catch handle) Nothing
+withInterrupt interruptHandle act = do
+  old_handler <- installHandler keyboardSignal (Catch interruptHandle) Nothing
   act `finally` installHandler keyboardSignal old_handler Nothing
 
 helpInfo :: String
