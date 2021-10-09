@@ -193,4 +193,4 @@ processTable (AdminTable adminTable) selectNames_ streamNames_
           curCol = selectNames <&> \curSelectName -> fromJust $
             HM.lookup curSelectName curLn
       in T.unpack curStreamName : map show curCol
-    resTable = L.transpose . L.sortBy (compare `on` head) $ processedTable
+    resTable = L.transpose processedTable
