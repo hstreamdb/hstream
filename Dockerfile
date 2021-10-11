@@ -40,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libsodium-dev                  \
       libzstd-dev                    \
       libmysqlclient-dev             \
+      libstatgrab10                  \
       python3                        \
       libpython3.8                   \
       python3-pip                    \
