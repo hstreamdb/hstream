@@ -5,21 +5,25 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+import           Control.Concurrent            (forkIO)
 import           Control.Monad                 (void)
 import           Network.GRPC.HighLevel        (ServiceOptions (..))
 import           Network.GRPC.HighLevel.Client (Port (unPort))
 import           Options.Applicative
 import           Text.RawString.QQ             (r)
-import           ZooKeeper
-import           ZooKeeper.Types
+import           ZooKeeper                     (withResource)
 
 import qualified HStream.Logger                as Log
-import           HStream.Server.HStreamApi
-import           HStream.Server.Handler
-import           HStream.Server.Initialization
-import           HStream.Server.LoadBalance
-import           HStream.Server.Persistence
-import           HStream.Server.Types
+import           HStream.Server.Bootstrap      (startServer)
+import           HStream.Server.HStreamApi     (hstreamApiServer)
+import           HStream.Server.Handler        (handlers)
+import           HStream.Server.Initialization (initializeServer)
+import           HStream.Server.LoadBalance    (startLoadBalancer)
+import           HStream.Server.Persistence    (defaultHandle,
+                                                initializeAncestors)
+import           HStream.Server.Types          (LoadManager, ServerContext (..),
+                                                ServerOpts (..))
+import           HStream.Server.Watcher        (actionTriggedByNodesChange)
 import           HStream.Store                 (Compression (..))
 import qualified HStream.Store.Admin.API       as AA
 import           HStream.Utils                 (setupSigsegvHandler)
@@ -38,10 +42,17 @@ parseConfig =
                    <> showDefault <> value 6570
                    <> help "server port value"
                     )
+    <*> strOption ( long "address" <> metavar "ADDRESS"
+                 <> showDefault <> value "127.0.0.1"
+                 <> help "server address"
+                  )
     <*> strOption ( long "name" <> metavar "NAME"
                  <> showDefault <> value "hserver-1"
                  <> help "name of the hstream server node"
                   )
+    <*> option auto ( long "min-servers" <> metavar "INT"
+                   <> showDefault <> value 1
+                   <> help "minimal hstream servers")
     <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault
                  <> value "127.0.0.1:2181"
@@ -104,16 +115,25 @@ app config@ServerOpts{..} = do
   withResource (defaultHandle _zkUri) $ \zk -> do
     (options, serverContext, lm) <- initializeServer config zk
     initializeAncestors zk
-    -- Temporary path creation before bootstrap is implemented
-    void $ zooCreate zk (serverLoadPath <> "/" <> _serverName)
-      Nothing zooOpenAclUnsafe ZooEphemeral
-    serve options serverContext lm
+    startServer zk config (serve options serverContext lm)
 
 serve :: ServiceOptions -> ServerContext -> LoadManager -> IO ()
 serve options@ServiceOptions{..} sc@ServerContext{..} lm = do
+  -- Start load balancer
   startLoadBalancer zkHandle lm
+
+  -- Set watcher for nodes changes
+  void . forkIO $ actionTriggedByNodesChange sc lm
+
   -- GRPC service
   Log.info "**************************************************"
+  putStrLn [r|
+   _  _   __ _____ ___ ___  __  __ __
+  | || |/' _/_   _| _ \ __|/  \|  V  |
+  | >< |`._`. | | | v / _|| /\ | \_/ |
+  |_||_||___/ |_| |_|_\___|_||_|_| |_|
+
+  |]
   Log.info $ "Server started on port " <> Log.buildInt (unPort serverPort)
   Log.info "**************************************************"
   api <- handlers sc
@@ -122,11 +142,4 @@ serve options@ServiceOptions{..} sc@ServerContext{..} lm = do
 main :: IO ()
 main = do
   config <- execParser $ info (parseConfig <**> helper) (fullDesc <> progDesc "HStream-Server")
-  putStrLn [r|
-   _  _   __ _____ ___ ___  __  __ __
-  | || |/' _/_   _| _ \ __|/  \|  V  |
-  | >< |`._`. | | | v / _|| /\ | \_/ |
-  |_||_||___/ |_| |_|_\___|_||_|_| |_|
-
-  |]
   app config
