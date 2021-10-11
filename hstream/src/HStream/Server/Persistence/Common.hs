@@ -41,6 +41,7 @@ data PersistentQuery = PersistentQuery
   , queryType        :: QueryType
   , queryStatus      :: TaskStatus
   , queryTimeCkp     :: Int64
+  , queryHServer     :: CBytes
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 data PersistentConnector = PersistentConnector
@@ -49,6 +50,7 @@ data PersistentConnector = PersistentConnector
   , connectorCreatedTime :: Int64
   , connectorStatus      :: TaskStatus
   , connectorTimeCkp     :: Int64
+  , connectorHServer     :: CBytes
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 data QueryType
@@ -60,11 +62,13 @@ data QueryType
 --------------------------------------------------------------------------------
 
 class TaskPersistence handle where
-  insertQuery        :: HasCallStack => CBytes -> T.Text -> Int64 -> QueryType -> handle -> IO ()
-  insertConnector    :: HasCallStack => CBytes -> T.Text -> Int64 -> handle -> IO ()
+  insertQuery        :: HasCallStack => CBytes -> T.Text -> Int64 -> QueryType -> CBytes -> handle -> IO ()
+  insertConnector    :: HasCallStack => CBytes -> T.Text -> Int64 -> CBytes -> handle -> IO ()
 
-  setQueryStatus     :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
-  setConnectorStatus :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
+  setQueryStatus      :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
+  setConnectorStatus  :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
+  setQueryHServer     :: HasCallStack => CBytes -> CBytes -> handle -> IO ()
+  setConnectorHServer :: HasCallStack => CBytes -> CBytes -> handle -> IO ()
 
   getQueryIds        :: HasCallStack => handle -> IO [CBytes]
   getQuery           :: HasCallStack => CBytes -> handle -> IO PersistentQuery

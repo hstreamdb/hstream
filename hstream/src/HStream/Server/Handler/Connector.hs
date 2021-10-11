@@ -136,12 +136,12 @@ createConnector sc@ServerContext{..} sql = do
     return $ hstreamConnectorToConnector connector
   else do
     MkSystemTime timestamp _ <- getSystemTime'
-    P.insertConnector cid sql timestamp zkHandle
+    P.insertConnector cid sql timestamp serverName zkHandle
     handleCreateSinkConnector sc cid sName cConfig <&> hstreamConnectorToConnector
 
 restartConnector :: ServerContext -> CB.CBytes -> IO ()
 restartConnector sc@ServerContext{..} cid = do
-  P.PersistentConnector _ sql _ _ _ <- P.getConnector cid zkHandle
+  P.PersistentConnector _ sql _ _ _ _ <- P.getConnector cid zkHandle
   (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
     <- CodeGen.streamCodegen sql
   streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)

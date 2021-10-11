@@ -250,6 +250,7 @@ executePushQueryHandler
                 (getTaskName taskBuilder)
                 (TL.toStrict commandPushQueryQueryText)
                 (P.PlainQuery $ textToCBytes <$> sources)
+                serverName
                 zkHandle
             -- run task
             -- FIXME: take care of the life cycle of the thread and global state
@@ -361,7 +362,7 @@ getGrpByFieldName queries viewNameRaw = do
 diffTimeToScientific :: Time.DiffTime -> Scientific
 diffTimeToScientific = flip scientific (-9) . Time.diffTimeToPicoseconds
 hstreamQueryToQuery :: P.PersistentQuery -> Query
-hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _) =
+hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _ _) =
   Query
   { queryId = cBytesToLazyText queryId
   , queryStatus = getPBStatus status
