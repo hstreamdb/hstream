@@ -554,7 +554,7 @@ instance Refine StatsTable where
 type instance RefinedType SelectStats = RSelectStats
 instance Refine SelectStats where
   refine = \case
-    DSelectStats _ statsItems statsTable statsConds -> RSelectStats
+    DSelectStats _ (DSelectAdmin _ statsItems statsTable) statsConds -> RSelectStats
       (rStatsItems statsItems)
       (refine      statsTable)
       (rStatsConds statsConds)
