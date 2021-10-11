@@ -5,17 +5,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module HStream.Client.Action where
 
-import           Data.Bifunctor
 import qualified Data.ByteString                  as BS
 import           Data.Function
-import           Data.Functor
-import qualified Data.List                        as L
 import qualified Data.Map                         as Map
-import           Data.Maybe
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
-import           GHC.Int                          (Int32)
 import           Network.GRPC.HighLevel.Generated (ClientRequest (ClientNormalRequest),
                                                    ClientResult,
                                                    GRPCMethodType (Normal),
@@ -23,7 +18,6 @@ import           Network.GRPC.HighLevel.Generated (ClientRequest (ClientNormalRe
 import           Proto3.Suite.Class               (HasDefault, def)
 
 import           Data.Char                        (toUpper)
-import qualified Data.HashMap.Strict              as HM
 import           HStream.SQL.AST                  (RStatsTable (..))
 import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..), StreamName,
@@ -37,9 +31,7 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    buildRecord,
                                                    buildRecordHeader,
                                                    cBytesToLazyText,
-                                                   getProtoTimestamp,
-                                                   getServerResp)
-import qualified Text.Layout.Table                as LT
+                                                   getProtoTimestamp)
 
 createStream :: HStreamClientApi -> StreamName -> Int -> IO (ClientResult 'Normal API.Stream)
 createStream API.HStreamApi{..} sName rFac =
