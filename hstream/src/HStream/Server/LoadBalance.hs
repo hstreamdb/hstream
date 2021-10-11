@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module HStream.Server.LoadBalance
- ( startLoadBalancer
- , getRanking
 
- , updateLoadReport
- ) where
+module HStream.Server.LoadBalance
+  ( startLoadBalancer
+  , getRanking
+
+  , updateLoadReport
+  , updateLoadReports
+  ) where
 
 import           Control.Concurrent
 import           Control.Concurrent.Suspend (mDelay, sDelay)

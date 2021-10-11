@@ -31,15 +31,15 @@ connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
 
 instance TaskPersistence PStoreMem where
-  insertQuery qid qSql qTime qType (refQ, _) = ifThrow FailedToRecordInfo $ do
+  insertQuery qid qSql qTime qType qHServer (refQ, _) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
     modifyIORef refQ $
-      HM.insert (mkQueryPath qid) $ PersistentQuery qid qSql qTime qType Created timestamp
+      HM.insert (mkQueryPath qid) $ PersistentQuery qid qSql qTime qType Created timestamp qHServer
 
-  insertConnector cid cSql cTime (_, refC) = ifThrow FailedToRecordInfo $ do
+  insertConnector cid cSql cTime cHServer (_, refC) = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
     modifyIORef refC $
-      HM.insert (mkConnectorPath cid) $ PersistentConnector cid cSql cTime Created timestamp
+      HM.insert (mkConnectorPath cid) $ PersistentConnector cid cSql cTime Created timestamp cHServer
 
   setQueryStatus qid newStatus (refQ, _) = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'

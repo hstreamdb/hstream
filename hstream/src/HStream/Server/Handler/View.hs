@@ -31,7 +31,7 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    textToCBytes)
 
 hstreamQueryToView :: P.PersistentQuery -> View
-hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _) =
+hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _ _) =
   View { viewViewId = cBytesToLazyText queryId
        , viewStatus = getPBStatus status
        , viewCreatedTime = createdTime

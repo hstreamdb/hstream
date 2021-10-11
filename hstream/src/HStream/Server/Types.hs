@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module HStream.Server.Types where
 
 import           Control.Concurrent        (MVar, ThreadId)
@@ -30,7 +30,9 @@ import qualified HStream.Store.Admin.API   as AA
 data ServerOpts = ServerOpts
   { _serverHost         :: CBytes
   , _serverPort         :: PortNumber
+  , _serverAddress      :: String
   , _serverName         :: CBytes
+  , _serverMinNum       :: Int
   , _zkUri              :: CBytes
   , _ldConfigPath       :: CBytes
   , _topicRepFactor     :: Int
@@ -56,6 +58,7 @@ data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverName               :: CBytes
   , scDefaultStreamRepFactor :: Int
+  , minServers               :: Int
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)

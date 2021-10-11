@@ -25,7 +25,7 @@ import           HStream.Utils                        (TaskStatus (..),
 --------------------------------------------------------------------------------
 
 instance TaskPersistence ZHandle where
-  insertQuery qid qSql qTime qType zk = ifThrow FailedToRecordInfo $ do
+  insertQuery qid qSql qTime qType qHServer zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
     createPath   zk (mkQueryPath qid)
     createInsert zk (mkQueryPath qid <> "/sql") (encodeValueToBytes qSql)
@@ -33,11 +33,15 @@ instance TaskPersistence ZHandle where
     createInsert zk (mkQueryPath qid <> "/type") (encodeValueToBytes qType)
     createInsert zk (mkQueryPath qid <> "/status")  (encodeValueToBytes Created)
     createInsert zk (mkQueryPath qid <> "/timeCkp") (encodeValueToBytes timestamp)
+    createInsert zk (mkQueryPath qid <> "/hServer") (encodeValueToBytes qHServer)
 
   setQueryStatus qid newStatus zk = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
     setZkData zk (mkQueryPath qid <> "/status") (encodeValueToBytes newStatus)
     setZkData zk (mkQueryPath qid <> "/timeCkp") (encodeValueToBytes timestamp)
+
+  setQueryHServer qid hServer zk = ifThrow FailedToSetHServer $ do
+    setZkData zk (mkQueryPath qid <> "/hServer") (encodeValueToBytes hServer)
 
   getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
 
@@ -47,22 +51,27 @@ instance TaskPersistence ZHandle where
     typ         <- getThenDecode "/type" qid
     status      <- getThenDecode "/status" qid
     timeCkp     <- getThenDecode "/timeCkp" qid
-    return $ PersistentQuery qid sql createdTime typ status timeCkp
+    hServer     <- getThenDecode "/hServer" qid
+    return $ PersistentQuery qid sql createdTime typ status timeCkp hServer
     where
-      getThenDecode field queryId = decodeZNodeValue' zk (cBytesToText (mkQueryPath queryId) <> field)
+      getThenDecode field queryId = decodeZNodeValue' zk (mkQueryPath queryId <> field)
 
-  insertConnector cid cSql cTime zk = ifThrow FailedToRecordInfo $ do
+  insertConnector cid cSql cTime cHServer zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
     createPath   zk (mkConnectorPath cid)
     createInsert zk (mkConnectorPath cid <> "/sql") (encodeValueToBytes cSql)
     createInsert zk (mkConnectorPath cid <> "/createdTime") (encodeValueToBytes cTime)
     createInsert zk (mkConnectorPath cid <> "/status") (encodeValueToBytes Created)
     createInsert zk (mkConnectorPath cid <> "/timeCkp") (encodeValueToBytes timestamp)
+    createInsert zk (mkConnectorPath cid <> "/hServer") (encodeValueToBytes cHServer)
 
   setConnectorStatus cid newStatus zk = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
     setZkData zk (mkConnectorPath cid <> "/status") (encodeValueToBytes newStatus)
     setZkData zk (mkConnectorPath cid <> "/timeCkp") (encodeValueToBytes timestamp)
+
+  setConnectorHServer qid hServer zk = ifThrow FailedToSetHServer $ do
+    setZkData zk (mkConnectorPath qid <> "/hServer") (encodeValueToBytes hServer)
 
   getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>) . flip zooGetChildren connectorsPath
 
@@ -71,7 +80,8 @@ instance TaskPersistence ZHandle where
     createdTime <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/createdTime") . mkConnectorPath) cid
     status      <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/status") . mkConnectorPath) cid
     timeCkp     <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/timeCkp") . mkConnectorPath) cid
-    return $ PersistentConnector cid sql createdTime status timeCkp
+    hServer     <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/hServer") . mkConnectorPath) cid
+    return $ PersistentConnector cid sql createdTime status timeCkp hServer
 
   removeQuery qid zk  = ifThrow FailedToRemove $
     getQueryStatus qid zk >>= \case
@@ -113,9 +123,9 @@ getQuerySink PersistentQuery{..} =
     (StreamQuery _ s) -> s
     (ViewQuery _ s _) -> s
 
-createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> ZHandle -> IO (CBytes, Int64)
-createInsertPersistentQuery taskName queryText queryType zkHandle = do
+createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> CBytes ->  ZHandle -> IO (CBytes, Int64)
+createInsertPersistentQuery taskName queryText queryType queryHServer zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
   let qid   = Z.Data.CBytes.pack (T.unpack taskName)
-  insertQuery qid queryText timestamp queryType zkHandle
+  insertQuery qid queryText timestamp queryType queryHServer zkHandle
   return (qid, timestamp)
