@@ -53,17 +53,17 @@ docker pull hstreamdb/hstream
 
 ## Quickstart
 
-**For detailed instructions, follow [HStreamDB quickstart](https://docs.hstream.io/start/quickstart-with-docker/).**
+**For detailed instructions, follow [HStreamDB quickstart](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html).**
 
-1. [Install HStreamDB](https://docs.hstream.io/start/quickstart-with-docker/#installation).
-2. [Start a local standalone HStream server](https://docs.hstream.io/start/quickstart-with-docker/#start-a-local-standalone-hstream-server-in-docker).
-3. [Start HStreamDB's interactive CLI](https://docs.hstream.io/start/quickstart-with-docker/#start-hstreamdbs-interactive-sql-cli) and [create your first stream](https://docs.hstream.io/start/quickstart-with-docker/#create-a-stream).
-4. [Run a continuous query](https://docs.hstream.io/start/quickstart-with-docker/#run-a-continuous-query-over-the-stream).
-5. [Start another interactive CLI](https://docs.hstream.io/start/quickstart-with-docker/#start-another-cli-session), then [insert some data into the stream and get query results](https://docs.hstream.io/start/quickstart-with-docker/#insert-data-into-the-stream).
+1. [Install HStreamDB](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#installation).
+2. [Start a local standalone HStream server](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-a-local-standalone-hstream-server-in-docker).
+3. [Start HStreamDB's interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-hstreamdb-s-interactive-sql-cli) and [create your first stream](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#create-a-stream).
+4. [Run a continuous query](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#run-a-continuous-query-over-the-stream).
+5. [Start another interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-another-cli-session), then [insert some data into the stream and get query results](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#insert-data-into-the-stream).
 
 ## Documentation
 
-Check out [the documentation](https://docs.hstream.io/).
+Check out [the documentation](https://hstream.io/docs/en/latest/).
 
 ## Community, Discussion, Construction and Support
 
