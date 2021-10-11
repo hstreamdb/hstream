@@ -29,6 +29,9 @@ import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..), StreamName,
                                                    TerminationSelection (..))
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.Handler.Stats     (processTable,
+                                                   queryAllAppendInBytes,
+                                                   queryAllRecordBytes)
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils                    (HStreamClientApi,
                                                    buildRecord,
@@ -129,68 +132,9 @@ extractSelect = TL.pack .
   dropWhile ((/= "SELECT") . map toUpper)
 
 --------------------------------------------------------------------------------
-newtype AdminTable a = AdminTable
-  { unAdminTable :: HM.HashMap T.Text (HM.HashMap T.Text a) }
-  -- Stream Name, Col Name, Value
-
-queryAllAppendInBytes, queryAllRecordBytes :: HStreamClientApi -> IO (AdminTable Double)
-queryAllAppendInBytes api = queryAdminTable api "appends_in"
-  ["throughput_1min", "throughput_5min", "throughput_10min"]   . V.fromList $ map (* 1000)
-  [60               , 300              , 600]
-queryAllRecordBytes   api = queryAdminTable api "reads"
-  ["throughput_15min", "throughput_30min", "throughput_60min"] . V.fromList $ map (* 1000)
-  [900               , 1800              , 3600]
-
-queryAdminTable :: HStreamClientApi
-                -> T.Text -> [T.Text] -> V.Vector Int32
-                -> IO (AdminTable Double)
-queryAdminTable API.HStreamApi{..} tableName methodNames intervalVec = do
-  let statsRequestTimeOut  = 10
-      colNames :: [T.Text] = methodNames
-      statsRequest         = API.PerStreamTimeSeriesStatsAllRequest (TL.fromStrict tableName) (Just $ API.StatsIntervalVals intervalVec)
-      resRequest           = ClientNormalRequest statsRequest statsRequestTimeOut (MetadataMap Map.empty)
-  API.PerStreamTimeSeriesStatsAllResponse respM <- hstreamApiPerStreamTimeSeriesStatsAll resRequest >>= getServerResp
-  let resp  = filter (isJust . snd) (Map.toList respM) <&> second (V.toList . API.statsDoubleValsVals . fromJust)
-      lbled = (map . second) (zip colNames) resp
-  pure . AdminTable . HM.fromList
-    $ (map .  first) TL.toStrict
-    $ (map . second) HM.fromList lbled
-
 sqlStatsAction :: HStreamClientApi -> ([T.Text], RStatsTable, [T.Text]) -> IO ()
 sqlStatsAction api (colNames, tableKind, streamNames) = do
   tableRes <- api & case tableKind of
     AppendInBytes -> queryAllAppendInBytes
     RecordBytes   -> queryAllRecordBytes
   putStrLn $ processTable tableRes colNames streamNames
-
-processTable :: Show a => AdminTable a
-             -> [T.Text] -- ^ select $0 from ...
-             -> [T.Text] -- ^ ... where stream = $0;
-             -> String
-processTable (AdminTable adminTable) selectNames_ streamNames_
-  | HM.size adminTable == 0 = "Empty status table." | otherwise =
-    if any (`notElem` inTableSelectNames) selectNames || any (`notElem` inTableStreamNames) streamNames
-      then "Col name or stream name not in scope."
-      else
-        let titles     = ["stream_id"] <> map T.unpack selectNames
-            tableSiz   = L.length selectNames + 1
-            colSpecs   = L.replicate tableSiz $ LT.column LT.expand LT.left LT.noAlign (LT.singleCutMark "...")
-            tableSty   = LT.asciiS
-            headerSpec = LT.titlesH titles
-            rowGrps    = [LT.colsAllG LT.center resTable]
-        in LT.tableString colSpecs tableSty headerSpec rowGrps
-  where
-    inTableSelectNames = (snd . head) (HM.toList adminTable) & map fst . HM.toList
-    inTableStreamNames = fst <$> HM.toList adminTable
-    selectNames = case selectNames_ of
-      [] -> inTableSelectNames
-      _  -> selectNames_
-    streamNames = case streamNames_ of
-      [] -> inTableStreamNames
-      _  -> streamNames_
-    processedTable = streamNames <&> \curStreamName ->
-      let curLn  = HM.lookup curStreamName adminTable & fromJust
-          curCol = selectNames <&> \curSelectName -> fromJust $
-            HM.lookup curSelectName curLn
-      in T.unpack curStreamName : map show curCol
-    resTable = L.transpose processedTable

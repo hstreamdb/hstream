@@ -315,7 +315,7 @@ CompOpLEQ. CompOp ::= "<=" ;
 CompOpGEQ. CompOp ::= ">=" ;
 
 --------------------------------------------------------------------------------
-DSelectStats. SelectStats ::= "SELECT" StatsItems "FROM" StatsTable StatsWhere ;
+DSelectStats. SelectStats ::= "SELECT" "STATUS" StatsItems "FROM" StatsTable StatsWhere ;
 
 StatsItemAll.  StatsItems ::= "*"          ;
 StatsItemList. StatsItems ::= [StatsIdent] ;
