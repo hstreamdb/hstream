@@ -26,6 +26,13 @@ instance Exception FailedToSetStatus where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
 
+data FailedToSetHServer = FailedToSetHServer
+  deriving Show
+
+instance Exception FailedToSetHServer where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
 data FailedToRecordInfo = FailedToRecordInfo
   deriving Show
 
