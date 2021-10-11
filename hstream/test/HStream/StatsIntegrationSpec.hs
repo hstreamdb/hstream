@@ -37,17 +37,12 @@ perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeS
       payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
       replicateM_ 100 $ appendRequest api name payloads
 
-      PerStreamTimeSeriesStatsAllResponse resp1 <- perStreamTimeSeriesReq api methodName
-      PerStreamTimeSeriesStatsResponse    (Just (StatsDoubleVals rates))
-        <- perStreamTimeSeriesGetReq api methodName name
+      PerStreamTimeSeriesStatsAllResponse resp_ <- perStreamTimeSeriesReq api methodName
+      let Just (Just (StatsDoubleVals rates1)) = Map.lookup name resp_
+      PerStreamTimeSeriesStatsResponse (Just (StatsDoubleVals rates2)) <- perStreamTimeSeriesGetReq api methodName name
 
-      rates `shouldSatisfy` (> 0) . V.head
-
-      Map.lookup name resp1 `shouldSatisfy` \case
-        Just (Just (StatsDoubleVals rates')) -> V.head rates' >= V.head rates
-        _                                    -> False
-
-
+      V.head rates1 `shouldSatisfy` (> 0)
+      V.head rates2 `shouldSatisfy` (> 0)
 
 perStreamTimeSeriesReq
   :: HStreamApi ClientRequest ClientResult
