@@ -12,6 +12,7 @@ module HStream.Server.Handler where
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Query
 import qualified HStream.Server.Handler.Stats        as H
@@ -68,7 +69,10 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,
         hstreamApiGetNode = getStoreNodeHandler serverContext,
-        hstreamApiListNodes = listStoreNodesHandler serverContext
+        hstreamApiListNodes = listStoreNodesHandler serverContext,
+
+        -- Cluster
+        hstreamApiConnect = connectHandler serverContext
       }
 
 -------------------------------------------------------------------------------

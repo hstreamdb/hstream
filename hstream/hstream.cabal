@@ -26,6 +26,8 @@ source-repository head
 library
   exposed-modules:
     HStream.Client.Action
+    HStream.Client.Gadget
+    HStream.Client.Utils
     HStream.Server.Bootstrap
     HStream.Server.Exception
     HStream.Server.Handler
@@ -46,6 +48,7 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
+    HStream.Server.Handler.Cluster
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.Config
     HStream.Server.Persistence.MemoryStore
@@ -76,6 +79,7 @@ library
     , microlens
     , microlens-aeson
     , mysql-haskell
+    , network-uri
     , proto3-suite
     , proto3-wire
     , rio
