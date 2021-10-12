@@ -9,32 +9,17 @@
 module HStream.Server.Handler.Stats
   ( perStreamTimeSeriesStatsAll
   , perStreamTimeSeriesStats
-  --------------------
-  , processTable
-  , queryAllAppendInBytes
-  , queryAllRecordBytes
   ) where
 
 import           Network.GRPC.HighLevel.Generated
 
-import           Data.Bifunctor
-import           Data.Function
-import           Data.Functor
-import qualified Data.HashMap.Strict              as HM
-import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe
-import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
-import           GHC.Int
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamApi        as API
 import           HStream.Stats                    (StatsHolder)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Utils                    as U
-import qualified Text.Layout.Table                as LT
 
 perStreamTimeSeriesStatsAll
   :: StatsHolder
@@ -69,79 +54,3 @@ perStreamTimeSeriesStats holder (ServerNormalRequest _ PerStreamTimeSeriesStatsR
     sName = U.lazyTextToCBytes perStreamTimeSeriesStatsRequestStreamName
     intervals = map fromIntegral . V.toList . statsIntervalValsIntervals <$>
       perStreamTimeSeriesStatsRequestIntervals
-
--------------------------------------------------------------------------------
-data StatsValue
-  = NULL
-  | INTEGER Int32
-  | REAL    Double
-  | TEXT    T.Text
-  | BOOL    Bool
-  deriving (Eq)
-
-instance Show StatsValue where
-  show = \case
-    NULL      -> "NULL"
-    INTEGER i -> show i
-    REAL    f -> show f
-    TEXT    s -> show s
-    BOOL    b -> show b
-
-queryAllAppendInBytes, queryAllRecordBytes :: U.HStreamClientApi -> IO (HM.HashMap T.Text (HM.HashMap T.Text StatsValue))
-queryAllAppendInBytes api = queryPerStreamTimeSeriesStatsAll api "appends_in"
-  ["throughput_1min", "throughput_5min", "throughput_10min"]   . V.fromList $ map (* 1000)
-  [60               , 300              , 600]
-queryAllRecordBytes   api = queryPerStreamTimeSeriesStatsAll api "reads"
-  ["throughput_15min", "throughput_30min", "throughput_60min"] . V.fromList $ map (* 1000)
-  [900               , 1800              , 3600]
-
-queryPerStreamTimeSeriesStatsAll :: U.HStreamClientApi
-                                 -> T.Text -> [T.Text] -> V.Vector Int32
-                                 -> IO (HM.HashMap T.Text (HM.HashMap T.Text StatsValue))
-queryPerStreamTimeSeriesStatsAll API.HStreamApi{..} tableName methodNames intervalVec = do
-  let statsRequestTimeOut  = 10
-      colNames :: [T.Text] = methodNames
-      statsRequest         = API.PerStreamTimeSeriesStatsAllRequest (TL.fromStrict tableName) (Just $ API.StatsIntervalVals intervalVec)
-      resRequest           = ClientNormalRequest statsRequest statsRequestTimeOut (MetadataMap Map.empty)
-  API.PerStreamTimeSeriesStatsAllResponse respM <- hstreamApiPerStreamTimeSeriesStatsAll resRequest >>= U.getServerResp
-  let resp  = filter (isJust . snd) (Map.toList respM) <&> second (map REAL . V.toList . API.statsDoubleValsVals . fromJust)
-      lbled = (map . second) (zip colNames) resp
-      named = lbled <&> \(proj0, proj1) ->
-        let streamId = TL.toStrict proj0
-        in  (proj0, ("stream_id", TEXT streamId) : proj1)
-  pure . HM.fromList
-    $ (map .  first) TL.toStrict
-    $ (map . second) HM.fromList named
-
-processTable :: Show a => HM.HashMap T.Text (HM.HashMap T.Text a)
-             -> [T.Text]
-             -> [T.Text]
-             -> String
-processTable adminTable selectNames_ streamNames_
-  | HM.size adminTable == 0 = "Empty status table." | otherwise =
-    if any (`notElem` inTableSelectNames) selectNames || any (`notElem` inTableStreamNames) streamNames
-      then "Col name or stream name not in scope."
-      else
-        let titles     = map T.unpack selectNames
-            tableSiz   = L.length selectNames + 1
-            colSpecs   = L.replicate tableSiz $ LT.column LT.expand LT.left LT.noAlign (LT.singleCutMark "...")
-            tableSty   = LT.asciiS
-            headerSpec = LT.titlesH titles
-            rowGrps    = [LT.colsAllG LT.center resTable]
-        in LT.tableString colSpecs tableSty headerSpec rowGrps
-  where
-    inTableSelectNames = let xs = (snd . head) (HM.toList adminTable) & map fst . HM.toList
-                         in  L.nub ("stream_id" : L.sort xs)
-    inTableStreamNames = fst <$> HM.toList adminTable & L.sort
-    selectNames = case selectNames_ of
-      [] -> inTableSelectNames
-      _  -> selectNames_
-    streamNames = case streamNames_ of
-      [] -> inTableStreamNames
-      _  -> streamNames_
-    processedTable = streamNames <&> \curStreamName ->
-      let curLn  = HM.lookup curStreamName adminTable & fromJust
-          curCol = selectNames <&> \curSelectName -> fromJust $
-            HM.lookup curSelectName curLn
-      in map show curCol
-    resTable = L.transpose processedTable
