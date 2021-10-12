@@ -315,8 +315,8 @@ CompOpLEQ. CompOp ::= "<=" ;
 CompOpGEQ. CompOp ::= ">=" ;
 
 --------------------------------------------------------------------------------
-DSelectStats. SelectStats ::= SelectAdmin StatsWhere                           ;
-DSelectAdmin. SelectAdmin ::= "SELECT_STATUS" StatsItems "FROM" StatsTable ;
+DSelectStats. SelectStats ::= "ADMIN::" SelectAdmin StatsWhere      ;
+DSelectAdmin. SelectAdmin ::= "SELECT" StatsItems "FROM" StatsTable ;
 
 StatsItemAll.  StatsItems ::= "*"          ;
 StatsItemList. StatsItems ::= [StatsIdent] ;

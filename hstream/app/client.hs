@@ -86,7 +86,15 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
       Nothing   -> return ()
       Just str
         | take 1 (words str) == [":q"] -> return ()
+        | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
+          take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
+            loopAdmin api
         | otherwise -> liftIO (commandExec api str) >> loop api
+    loopAdmin api = H.getInputLine "ADMIN> " >>= \case
+      Nothing   -> return ()
+      Just str
+        | take 1 (words str) == [":q"] -> loop api
+        | otherwise -> liftIO (commandExec api $ "ADMIN:: " <> str) >> loopAdmin api
 
 commandExec :: HStreamClientApi -> String -> IO ()
 commandExec api xs = case words xs of
