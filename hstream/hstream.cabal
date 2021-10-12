@@ -166,6 +166,7 @@ test-suite hstream-test
   main-is:            Spec.hs
   other-modules:
     HStream.AckSpec
+    HStream.BootstrapSpec
     HStream.HandlerSpec
     HStream.RegressionSpec
     HStream.RunConnectorSpec
