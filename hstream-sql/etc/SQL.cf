@@ -324,8 +324,8 @@ StatsItemList. StatsItems ::= [StatsIdent] ;
 DStatsIdent. StatsIdent ::= Ident ;
 separator StatsIdent ","          ;
 
-StatsTableAppendInBytes. StatsTable ::= "APPEND_IN_BYTES" ;
-StatsTableRecordBytes.   StatsTable ::= "RECORD_BYTES"    ;
+StatsTableAppendInBytes. StatsTable ::= "APPEND_THROUGHPUT" ;
+StatsTableRecordBytes.   StatsTable ::= "READ_THROUGHPUT"    ;
 
 StatsWhereNil.  StatsWhere ::= ""                                ;
 StatsWhereCons. StatsWhere ::= "WHERE" "STREAM" "=" [StatsIdent] ;
