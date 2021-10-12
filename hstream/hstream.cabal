@@ -31,6 +31,7 @@ library
     HStream.Server.Handler
     HStream.Server.Handler.Common
     HStream.Server.Initialization
+    HStream.Server.Leader
     HStream.Server.LoadBalance
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception

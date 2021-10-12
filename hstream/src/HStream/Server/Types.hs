@@ -59,6 +59,7 @@ data ServerContext = ServerContext {
   , serverName               :: CBytes
   , scDefaultStreamRepFactor :: Int
   , minServers               :: Int
+  , leaderName               :: MVar CBytes
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
