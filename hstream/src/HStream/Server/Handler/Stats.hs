@@ -1,10 +1,6 @@
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE GADTs           #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module HStream.Server.Handler.Stats
   ( perStreamTimeSeriesStatsAll
