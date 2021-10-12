@@ -8,6 +8,7 @@ module HStream.Server.Persistence.Nodes (
   , NodeInfo (..)
 
   , getNodeStatus
+  , getServerUri
   , setNodeStatus
 
   , getReadyServers
@@ -39,6 +40,9 @@ data NodeInfo = NodeInfo
 
 getNodeStatus :: ZHandle -> CBytes -> IO NodeStatus
 getNodeStatus zk name = getNodeInfo zk name <&> nodeStatus
+
+getServerUri :: ZHandle -> CBytes -> IO String
+getServerUri zk name = getNodeInfo zk name <&> serverUri
 
 setNodeStatus :: HasCallStack => ZHandle -> CBytes -> NodeStatus -> IO ()
 setNodeStatus zk name status = do
