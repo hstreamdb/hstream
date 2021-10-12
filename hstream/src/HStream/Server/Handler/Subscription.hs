@@ -35,6 +35,7 @@ import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
 import           Z.Data.Vector                    (Bytes)
+import qualified Z.Data.Vector                    as ZV
 import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 
@@ -47,6 +48,7 @@ import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    insertAckedRecordId)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (returnErrResp, returnResp,
@@ -347,6 +349,16 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                             return (info, Nothing)
                           else do
                             Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records"
+
+                            -- XXX: Should we add a server option to toggle Stats?
+                            --
+                            -- WARNING: we assume there is one stream name in all dataRecords.
+                            --
+                            -- Make sure you have read only ONE stream(log), otherwise you should
+                            -- group dataRecords by stream name.
+                            let len_bs = sum $ map (ZV.length . S.recordPayload) dataRecords
+                            Stats.stream_time_series_add_record_bytes scStatsHolder (textToCBytes sriStreamName) (fromIntegral len_bs)
+
                             let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
                                 groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
                                 lastBatch = last groups
