@@ -86,7 +86,18 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
       Nothing   -> return ()
       Just str
         | take 1 (words str) == [":q"] -> return ()
+        | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
+          take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
+            loopAdmin api
         | otherwise -> liftIO (commandExec api str) >> loop api
+    loopAdmin api = H.getInputLine "ADMIN> " >>= \case
+      Nothing   -> return ()
+      Just str
+        | take 1 (words str) == [":q"] -> return ()
+        | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
+          take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     ->
+            loop api
+        | otherwise -> liftIO (commandExec api $ "ADMIN:: " <> str) >> loopAdmin api
 
 commandExec :: HStreamClientApi -> String -> IO ()
 commandExec api xs = case words xs of
@@ -99,6 +110,8 @@ commandExec api xs = case words xs of
       RQCreate (RCreateAs stream _ rOptions) ->
         createStreamBySelect api (TL.fromStrict stream) (rRepFactor rOptions) xs'
         >>= printResult
+      RQSelectStats (RSelectStats colNames tableKind streamNames) ->
+        sqlStatsAction api (colNames, tableKind, streamNames)
       rSql' -> hstreamCodegen rSql' >>= \case
         CreatePlan sName rFac
           -> createStream api sName rFac >>= printResult
@@ -142,8 +155,8 @@ sqlAction HStreamApi{..} sql = do
     ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a
-withInterrupt handle act = do
-  old_handler <- installHandler keyboardSignal (Catch handle) Nothing
+withInterrupt interruptHandle act = do
+  old_handler <- installHandler keyboardSignal (Catch interruptHandle) Nothing
   act `finally` installHandler keyboardSignal old_handler Nothing
 
 helpInfo :: String
