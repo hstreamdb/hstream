@@ -93,6 +93,7 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
     loopAdmin api = H.getInputLine "ADMIN> " >>= \case
       Nothing   -> return ()
       Just str
+        | take 1 (words str) == [":q"] -> return ()
         | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
           take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     ->
             loop api

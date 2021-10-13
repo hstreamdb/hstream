@@ -198,7 +198,7 @@ processTable adminTable selectNames_ streamNames_
         in LT.tableString colSpecs tableSty headerSpec rowGrps
   where
     inTableSelectNames = let xs = (snd . head) (HM.toList adminTable) & map fst . HM.toList
-                         in  "stream_id" : (L.sort . filter (/= "stream_id")) xs
+                         in  "stream_id" : (liftTimeNames "min" . L.sort . filter (/= "stream_id")) xs
     inTableStreamNames = fst <$> HM.toList adminTable & L.sort
     selectNames = case selectNames_ of
       [] -> inTableSelectNames
@@ -212,3 +212,23 @@ processTable adminTable selectNames_ streamNames_
             HM.lookup curSelectName curLn
       in map show curCol
     resTable = L.transpose processedTable
+
+liftTimeNames :: T.Text -> [T.Text] -> [T.Text]
+liftTimeNames timeStr = \case
+  []     -> []
+  xs     ->
+    let normalNames = filter (not . isEndWith timeStr) xs
+        timeLbNames = filter (      isEndWith timeStr) xs
+        sortedNames = L.sortBy (cmpByLit `on` takeTime timeStr) timeLbNames
+    in  sortedNames <> normalNames
+  where
+  isEndWith postStr txt
+    | T.length txt < T.length postStr = False
+    | otherwise = T.reverse postStr == T.take (T.length postStr) (T.reverse txt)
+  takeTime timeStr_ txt =
+    T.takeWhile (/= '_') (T.reverse txt) & T.reverse & \txt' ->
+    T.take (T.length txt' - T.length timeStr_) txt'
+  cmpByLit numStr0 numStr1 =
+    let num0 :: Int = (read (T.unpack numStr0)) :: Int
+        num1 :: Int = (read (T.unpack numStr1)) :: Int
+    in  compare num0 num1
