@@ -10,6 +10,7 @@ module HStream.Server.Initialization
 import           Control.Concurrent               (MVar, newEmptyMVar, newMVar)
 import           Control.Exception                (SomeException, try)
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map                         as Map
 import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock.System           (SystemTime (..),
                                                    getSystemTime)
@@ -78,6 +79,7 @@ initializeServer ServerOpts{..} zk = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
   subscribeRuntimeInfo <- newMVar HM.empty
+  subscriptionCtx <- newMVar Map.empty
 
   lastSysResUsage <- initLastSysResUsage
   currentLoadReport <- initLoadReport lastSysResUsage
@@ -106,6 +108,7 @@ initializeServer ServerOpts{..} zk = do
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
     , subscribeRuntimeInfo     = subscribeRuntimeInfo
+    , subscriptionCtx          = subscriptionCtx
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder

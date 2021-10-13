@@ -14,6 +14,7 @@ module HStream.Server.Persistence.Nodes (
   , getServerInternalPort
   , getServerUri
   , getServerNode
+  , getInternalServerNode
   , setNodeStatus
 
   , getReadyServers
@@ -88,6 +89,16 @@ getServerNode :: ZHandle -> CBytes -> IO ServerNode
 getServerNode zk name = do
   host <- getServerHost zk name
   port <- getServerPort zk name
+  return $ ServerNode
+           { serverNodeId = 0
+           , serverNodeHost = host
+           , serverNodePort = port
+           }
+
+getInternalServerNode :: ZHandle -> CBytes -> IO ServerNode
+getInternalServerNode zk name = do
+  host <- getServerHost zk name
+  port <- getServerInternalPort zk name
   return $ ServerNode
            { serverNodeId = 0
            , serverNodeHost = host

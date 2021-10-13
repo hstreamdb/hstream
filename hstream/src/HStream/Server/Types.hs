@@ -67,7 +67,7 @@ data ServerContext = ServerContext {
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
-  , subscriptionCtx          :: MVar (Map String SubscriptionContext)
+  , subscriptionCtx          :: MVar (Map String (MVar SubscriptionContext))
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
@@ -139,9 +139,9 @@ instance ToJSON SystemResourcePercentageUsage
 data SubscriptionContext = SubscriptionContext
   { _subctxSubId     :: String
   , _subctxStream    :: String
-  , _subctxOffset    :: Int64
+  , _subctxOffset    :: RecordId
   , _subctxNode      :: String
-  , _subctxCurOffset :: Int64
+  , _subctxCurOffset :: RecordId
   , _subctxClients   :: Set String
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 

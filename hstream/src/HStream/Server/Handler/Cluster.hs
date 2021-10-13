@@ -22,7 +22,7 @@ import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types
 
-import           HStream.Server.Exception
+import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.LoadBalance       (getNodesRanking)
 import qualified HStream.Server.Persistence       as P
