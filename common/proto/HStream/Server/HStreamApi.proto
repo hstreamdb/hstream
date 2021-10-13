@@ -40,8 +40,6 @@ service HStreamApi {
   // ---------------------------------------------------------------------------
 
   // Stats
-  // TODO
-  // rpc PerStreamTimeSeriesStats() returns ()
   rpc PerStreamTimeSeriesStats(PerStreamTimeSeriesStatsRequest)
     returns (PerStreamTimeSeriesStatsResponse);
   rpc PerStreamTimeSeriesStatsAll(PerStreamTimeSeriesStatsAllRequest)
