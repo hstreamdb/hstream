@@ -15,6 +15,7 @@ import           Control.Monad                 (unless, void, when)
 import           Control.Monad.STM             (atomically)
 import           Data.IORef                    (IORef, modifyIORef, newIORef,
                                                 readIORef, writeIORef)
+import qualified Data.Text.Lazy                as TL
 import           System.IO.Unsafe              (unsafePerformIO)
 import           Z.Data.CBytes                 (CBytes)
 import           ZooKeeper.Types
@@ -30,7 +31,8 @@ import           HStream.Server.Watcher        (serverEvents,
 
 startServer :: ZHandle -> ServerOpts -> IO () -> IO ()
 startServer zk opts@ServerOpts {..} myApp = do
-    let serverUri  = _serverAddress <> ":" <> show _serverPort
+    let serverUri          = TL.pack $ _serverAddress <> ":" <> show _serverPort
+        serverInternalUri  = TL.pack $ _serverAddress <> ":" <> show _serverInternalPort
     -- 1. Check persistent paths
     initializeAncestors zk
 
@@ -43,7 +45,7 @@ startServer zk opts@ServerOpts {..} myApp = do
     void $ takeMVar watchSetDone
 
     -- 4. Run Server
-    initNodePath zk _serverName serverUri
+    initNodePath zk _serverName serverUri serverInternalUri
     bootStrap zk opts
     runServer zk _serverName myApp
 

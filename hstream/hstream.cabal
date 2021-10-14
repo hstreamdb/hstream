@@ -33,6 +33,7 @@ library
     HStream.Server.Handler
     HStream.Server.Handler.Common
     HStream.Server.Initialization
+    HStream.Server.InternalHandler
     HStream.Server.Leader
     HStream.Server.LoadBalance
     HStream.Server.Persistence
@@ -41,6 +42,7 @@ library
     HStream.Server.Watcher
 
   other-modules:
+    HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Query
     HStream.Server.Handler.Stats
@@ -48,7 +50,6 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
-    HStream.Server.Handler.Cluster
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.Config
     HStream.Server.Persistence.MemoryStore
