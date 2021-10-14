@@ -42,6 +42,7 @@ package grpc-haskell-core
 constraints:
     Z-IO == 0.8.1.1
   , Z-Data == 0.8.8.0
+  , zoovisitor == 0.1.4.0
   , proto3-suite == 0.4.1
   , proto3-wire == 1.2.1
   , blaze-textual == 0.2.1.0
