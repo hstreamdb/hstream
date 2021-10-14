@@ -81,6 +81,11 @@ service HStreamApi {
   // node related apis
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse) {}
   rpc GetNode(GetNodeRequest) returns (Node) {}
+
+  // ---------------------------------------------------------------------------
+  // APIs for Cluster
+  // ---------------------------------------------------------------------------
+  rpc connect(ConnectRequest) returns (ConnectResponse);
 }
 
 message EchoRequest {
@@ -424,4 +429,35 @@ message PerStreamTimeSeriesStatsAllResponse {
 message PerStreamTimeSeriesStatsAllRequest {
   string method = 1;
   StatsIntervalVals intervals = 2;
+}
+
+
+// ---------------------------------------------------------------------------
+// Messages for Cluster
+// ---------------------------------------------------------------------------
+message ConnectRequest {
+  oneof RedirectStrategy {
+    Empty ByLoad = 1;
+    SubReq BySubscription = 2;
+  }
+}
+
+message ConnectResponse {
+  oneof status {
+    ServerList accepted = 1;
+    Redirected redirected = 2;
+  }
+}
+
+message ServerList {
+  repeated string available_uris = 1;
+}
+
+message Redirected {
+  string redirected_uri = 1;
+}
+
+message SubReq {
+  string subsctiption_Id = 1;
+  string client_id = 2;
 }

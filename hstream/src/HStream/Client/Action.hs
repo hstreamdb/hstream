@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -27,6 +28,7 @@ import           Proto3.Suite.Class               (HasDefault, def)
 import qualified Text.Layout.Table                as LT
 
 import           Data.Char                        (toUpper)
+import           HStream.Client.Utils
 import           HStream.SQL.AST                  (RStatsTable (..))
 import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..), StreamName,
@@ -47,13 +49,13 @@ createStream API.HStreamApi{..} sName rFac =
     , API.streamReplicationFactor = fromIntegral rFac})
 
 listStreams :: HStreamClientApi -> IO (ClientResult 'Normal API.ListStreamsResponse)
-listStreams API.HStreamApi{..} = hstreamApiListStreams requestDefault
+listStreams API.HStreamApi{..} = hstreamApiListStreams clientDefaultRequest
 listViews :: HStreamClientApi -> IO (ClientResult 'Normal API.ListViewsResponse)
-listViews API.HStreamApi{..} = hstreamApiListViews requestDefault
+listViews API.HStreamApi{..} = hstreamApiListViews clientDefaultRequest
 listQueries :: HStreamClientApi -> IO (ClientResult 'Normal API.ListQueriesResponse)
-listQueries API.HStreamApi{..} = hstreamApiListQueries requestDefault
+listQueries API.HStreamApi{..} = hstreamApiListQueries clientDefaultRequest
 listConnectors :: HStreamClientApi -> IO (ClientResult 'Normal API.ListConnectorsResponse)
-listConnectors API.HStreamApi{..} = hstreamApiListConnectors requestDefault
+listConnectors API.HStreamApi{..} = hstreamApiListConnectors clientDefaultRequest
 
 terminateQueries :: HStreamClientApi
   -> TerminationSelection
@@ -111,24 +113,6 @@ createStreamBySelect API.HStreamApi{..} sName rFac sql =
         { API.streamStreamName        = sName
         , API.streamReplicationFactor = fromIntegral rFac}
     , API.createQueryStreamRequestQueryStatements = extractSelect sql})
-
---------------------------------------------------------------------------------
-
-requestDefault :: HasDefault a => ClientRequest 'Normal a b
-requestDefault = mkClientNormalRequest def
-
-requestTimeout :: Int
-requestTimeout = 1000
-
-mkClientNormalRequest :: a -> ClientRequest 'Normal a b
-mkClientNormalRequest x = ClientNormalRequest x requestTimeout (MetadataMap Map.empty)
-
-extractSelect :: [String] -> TL.Text
-extractSelect = TL.pack .
-  unwords . reverse . ("CHANGES;" :) .
-  dropWhile ((/= "EMIT") . map toUpper) .
-  reverse .
-  dropWhile ((/= "SELECT") . map toUpper)
 
 --------------------------------------------------------------------------------
 sqlStatsAction :: HStreamClientApi -> ([T.Text], RStatsTable, [T.Text]) -> IO ()
