@@ -1,10 +1,12 @@
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence.Config where
 
+import           Control.Exception                (SomeException, try)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           GHC.Generics                     (Generic)
 import           System.Exit                      (exitFailure)
@@ -27,13 +29,17 @@ getHServerConfig :: CBytes -> ZHandle -> IO HServerConfig
 getHServerConfig name zk =
   decodeZNodeValue' zk (configPath <> "/" <> name)
 
--- FIXME : A distributed lock is required when trying to insert the first hserver config
+-- Note: A distributed lock is required when trying to insert hserver config.
+-- However, the problem is encountered only when the nodes is empty, or in other
+-- words, when we inserting the first config. As a consequence, we does not use a
+-- standard distributed lock but take a really simple one based on 'zooCreate'.
+-- It just makes sense because herd effect is not serious in the situation.
 checkConfigConsistent :: ServerOpts -> ZHandle -> IO ()
-checkConfigConsistent ServerOpts {..} zk = do
+checkConfigConsistent opts@ServerOpts {..} zk = do
   nodes <- unStrVec . strsCompletionValues <$> zooGetChildren zk configPath
   let serverConfig = HServerConfig { hserverMinServers = _serverMinNum }
   case nodes of
-    [] -> insertConfig serverConfig
+    [] -> insertFirstConfig serverConfig
     _  -> do
       HServerConfig {..} <- getHServerConfig (head nodes) zk
       when (hserverMinServers /= _serverMinNum) $ do
@@ -46,3 +52,8 @@ checkConfigConsistent ServerOpts {..} zk = do
   where
     insertConfig serverConfig = void $
       zooCreate zk (configPath <> "/" <> _serverName) (Just $ valueToBytes serverConfig) zooOpenAclUnsafe ZooEphemeral
+    insertFirstConfig serverConfig = do
+      result <- try $ zooCreate zk (configPath <> "first") Nothing zooOpenAclUnsafe ZooEphemeral
+      case result of
+        Right _                   -> insertConfig serverConfig
+        Left (_ :: SomeException) -> checkConfigConsistent opts zk
