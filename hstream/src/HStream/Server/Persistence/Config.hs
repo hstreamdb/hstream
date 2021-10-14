@@ -29,7 +29,11 @@ getHServerConfig :: CBytes -> ZHandle -> IO HServerConfig
 getHServerConfig name zk =
   decodeZNodeValue' zk (configPath <> "/" <> name)
 
--- FIXME : A distributed lock is required when trying to insert the first hserver config
+-- Note: A distributed lock is required when trying to insert hserver config.
+-- However, the problem is encountered only when the nodes is empty, or in other
+-- words, when we inserting the first config. As a consequence, we does not use a
+-- standard distributed lock but take a really simple one based on 'zooCreate'.
+-- It just makes sense because herd effect is not serious in the situation.
 checkConfigConsistent :: ServerOpts -> ZHandle -> IO ()
 checkConfigConsistent opts@ServerOpts {..} zk = do
   nodes <- unStrVec . strsCompletionValues <$> zooGetChildren zk configPath
