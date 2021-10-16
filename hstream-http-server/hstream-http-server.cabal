@@ -5,7 +5,7 @@ synopsis:
   High performance stream processing platform for IoT data written in Haskell.
 
 description:
-  Please see the README on Github at
+  Please see the README on GitHub at
   <https://github.com/hstreamdb/hstream#readme>
 
 license:            BSD-3-Clause
@@ -33,6 +33,7 @@ library
   build-depends:
     , aeson
     , base                  >=4.11 && <5
+    , base64-bytestring
     , bytestring
     , clickhouse-haskell
     , containers
@@ -122,9 +123,10 @@ test-suite hstream-http-server-test
     , http-conduit
     , mysql-haskell
     , text
+    , vector
 
   default-language:   Haskell2010
-  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
