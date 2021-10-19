@@ -9,6 +9,7 @@
 module HStream.Client.Action where
 
 import           Control.Concurrent
+import           Control.Monad
 import           Data.Bifunctor
 import qualified Data.ByteString                  as BS
 import           Data.Function
@@ -28,8 +29,9 @@ import           HStream.SQL.AST                  (RStatsTable (..))
 import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..), StreamName,
                                                    TerminationSelection (..))
+import           HStream.Server.HStreamApi        (DeleteSubscriptionRequest (deleteSubscriptionRequestSubscriptionId))
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.ThirdParty.Protobuf      (Empty)
+import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (HStreamClientApi,
                                                    buildRecord,
                                                    buildRecordHeader,
@@ -37,12 +39,13 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    getProtoTimestamp,
                                                    getServerResp)
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
-                                                   ClientRequest (ClientNormalRequest),
+                                                   ClientRequest (..),
                                                    ClientResult (..),
                                                    GRPCIOError (..),
                                                    GRPCMethodType (Normal),
                                                    MetadataMap (MetadataMap),
                                                    withGRPCClient)
+import           Proto3.Suite                     (Enumerated (Enumerated))
 import           Proto3.Suite.Class               (def)
 import qualified Text.Layout.Table                as LT
 
@@ -248,3 +251,96 @@ liftTimeNames timeStr = \case
     let num0 :: Int = (read (T.unpack numStr0)) :: Int
         num1 :: Int = (read (T.unpack numStr1)) :: Int
     in  compare num0 num1
+
+--------------------------------------------------------------------------------
+
+callSubscription :: ClientContext -> T.Text -> T.Text -> IO ()
+callSubscription ctx subId stream = void $ doAction ctx getRespApp handleRespApp
+  where
+    getRespApp client = do
+      let subReq = API.Subscription
+                   { API.subscriptionSubscriptionId = TL.fromStrict subId
+                   , API.subscriptionStreamName = TL.fromStrict stream
+                   , API.subscriptionOffset = Just $ API.SubscriptionOffset
+                     (Just $ API.SubscriptionOffsetOffsetSpecialOffset
+                       (Enumerated (Right API.SubscriptionOffset_SpecialOffsetLATEST))
+                     )
+                   , API.subscriptionAckTimeoutSeconds = 1
+                   }
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      hstreamApiCreateSubscription (mkClientNormalRequest subReq)
+    handleRespApp :: ClientResult 'Normal API.Subscription -> IO (Maybe a)
+    handleRespApp resp = case resp of
+      (ClientNormalResponse resp_ _meta1 _meta2 _code _details) -> do
+        print "-----------------"
+        print resp_
+        print "-----------------"
+        return Nothing
+      _ -> print "Failed!" >> return Nothing
+
+callDeleteSubscription :: ClientContext -> T.Text -> IO ()
+callDeleteSubscription ctx subId = void $ doAction ctx getRespApp handleRespApp
+  where
+    getRespApp client = do
+      let req = API.DeleteSubscriptionRequest
+                { deleteSubscriptionRequestSubscriptionId = TL.fromStrict subId
+                }
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      hstreamApiDeleteSubscription (mkClientNormalRequest req)
+    handleRespApp resp = case resp of
+      (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
+        print "-----------------"
+        print "Done."
+        print "-----------------"
+        return Nothing
+      _ -> print "Failed!" >> return Nothing
+
+callListSubscriptions :: ClientContext -> IO ()
+callListSubscriptions ctx = void $ doAction ctx getRespApp handleRespApp
+  where
+    getRespApp client = do
+      let req = API.ListSubscriptionsRequest
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      hstreamApiListSubscriptions (mkClientNormalRequest req)
+    handleRespApp :: ClientResult 'Normal API.ListSubscriptionsResponse -> IO (Maybe a)
+    handleRespApp resp = case resp of
+      (ClientNormalResponse (API.ListSubscriptionsResponse subs) _meta1 _meta2 _code _details) -> do
+        print "-----------------"
+        mapM_ print subs
+        print "-----------------"
+        return Nothing
+      _ -> print "Failed!" >> return Nothing
+
+
+callStreamingFetch :: ClientContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
+callStreamingFetch ctx startRecordIds subId clientId = do
+  curNode <- readMVar (currentServer ctx)
+  m_node <- lookupSubscription ctx curNode subId
+  case m_node of
+    Nothing   -> print "Subscription not found"
+    Just node -> withGRPCClient (mkGRPCClientConf node) $ \client -> do
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty action)
+      return ()
+  where
+    action clientCall _meta streamRecv streamSend writeDone = do
+      go startRecordIds
+      where
+        go recordIds = do
+          let req = API.StreamingFetchRequest
+                    { API.streamingFetchRequestSubscriptionId = TL.fromStrict subId
+                    , API.streamingFetchRequestConsumerName = TL.fromStrict clientId
+                    , API.streamingFetchRequestAckIds = recordIds
+                    }
+          void $ streamSend req
+          m_recv <- streamRecv
+          case m_recv of
+            Left err -> print err
+            Right (Just resp@API.StreamingFetchResponse{..}) -> do
+              let recIds = V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
+              print resp
+              go recIds
+            Right Nothing -> do
+              print "Stopped. Redirecting..."
+              threadDelay 2000000
+              callStreamingFetch ctx recordIds subId clientId
