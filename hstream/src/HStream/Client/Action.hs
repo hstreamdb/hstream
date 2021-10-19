@@ -8,6 +8,7 @@
 
 module HStream.Client.Action where
 
+import           Control.Concurrent
 import           Data.Bifunctor
 import qualified Data.ByteString                  as BS
 import           Data.Function
@@ -20,15 +21,9 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           GHC.Int                          (Int32)
-import           Network.GRPC.HighLevel.Generated (ClientRequest (ClientNormalRequest),
-                                                   ClientResult,
-                                                   GRPCMethodType (Normal),
-                                                   MetadataMap (MetadataMap))
-import           Proto3.Suite.Class               (HasDefault, def)
-import qualified Text.Layout.Table                as LT
-
-import           Data.Char                        (toUpper)
+import           HStream.Client.Gadget
 import           HStream.Client.Utils
+import qualified HStream.Logger                   as Log
 import           HStream.SQL.AST                  (RStatsTable (..))
 import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..), StreamName,
@@ -41,6 +36,15 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    cBytesToLazyText,
                                                    getProtoTimestamp,
                                                    getServerResp)
+import           Network.GRPC.HighLevel.Generated (ClientError (..),
+                                                   ClientRequest (ClientNormalRequest),
+                                                   ClientResult (..),
+                                                   GRPCIOError (..),
+                                                   GRPCMethodType (Normal),
+                                                   MetadataMap (MetadataMap),
+                                                   withGRPCClient)
+import           Proto3.Suite.Class               (def)
+import qualified Text.Layout.Table                as LT
 
 createStream :: HStreamClientApi -> StreamName -> Int -> IO (ClientResult 'Normal API.Stream)
 createStream API.HStreamApi{..} sName rFac =
@@ -89,19 +93,46 @@ dropAction API.HStreamApi{..} checkIfExist dropObject = do
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
 
-insertIntoStream :: HStreamClientApi
+insertIntoStream :: ClientContext
   -> StreamName -> InsertType -> BS.ByteString
   -> IO (ClientResult 'Normal API.AppendResponse)
-insertIntoStream API.HStreamApi{..} sName insertType payload = do
-  timestamp <- getProtoTimestamp
-  let header = case insertType of
-        JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
-        RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
-      record = buildRecord header payload
-  hstreamApiAppend (mkClientNormalRequest def
-    { API.appendRequestStreamName = TL.fromStrict sName
-    , API.appendRequestRecords    = V.singleton record
-    })
+insertIntoStream ctx@ClientContext{..} sName insertType payload = do
+  curProducers <- readMVar producers
+  curServer    <- readMVar currentServer
+  case Map.lookup (T.unpack sName) curProducers of
+    Nothing       -> do
+      m_uri <- connect ctx curServer ByLoad
+      case m_uri of
+        Nothing  -> do
+          Log.e "Failed to get any avaliable server."
+          return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
+        Just uri -> do
+          modifyMVar_ producers (return . Map.insert (T.unpack sName) uri)
+          go uri
+    Just producer -> go producer
+  where
+    go uri_ = withGRPCClient (mkGRPCClientConf uri_) $ \client -> do
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      timestamp <- getProtoTimestamp
+      let header = case insertType of
+            JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+            RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
+          record = buildRecord header payload
+      resp <- hstreamApiAppend (mkClientNormalRequest def
+              { API.appendRequestStreamName = TL.fromStrict sName
+              , API.appendRequestRecords    = V.singleton record
+              })
+      case resp of
+        (ClientNormalResponse _ _meta1 _meta2 _code _details) -> return resp
+        _ -> do
+          m_uri <- connect ctx uri_ ByLoad
+          case m_uri of
+            Nothing -> do
+              Log.e "Failed to get any avaliable server."
+              return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
+            Just newUri -> do
+              modifyMVar_ producers (return . Map.insert (T.unpack sName) newUri)
+              insertIntoStream ctx sName insertType payload
 
 createStreamBySelect :: HStreamClientApi
   -> TL.Text -> Int -> [String]
