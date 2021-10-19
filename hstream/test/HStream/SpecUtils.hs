@@ -39,6 +39,7 @@ import           System.Random
 import           Test.Hspec
 
 import           HStream.Client.Action
+import           HStream.Client.Gadget
 import           HStream.Client.Utils
 import           HStream.SQL
 import           HStream.Server.HStreamApi
@@ -322,8 +323,20 @@ runCreateStreamSql api sql = do
 
 runInsertSql :: HStreamClientApi -> TL.Text -> Expectation
 runInsertSql api sql = do
+  let (Host host) = clientServerHost clientConfig
+      (Port port) = clientServerPort clientConfig
+  let uri = host <> ":" <> (BSC.pack . show $ port)
+  available  <- newMVar []
+  current    <- newMVar uri
+  producers_ <- newMVar mempty
+  let ctx = ClientContext
+            { availableServers = available
+            , currentServer    = current
+            , producers        = producers_
+            , clientId         = "client_01"
+            }
   InsertPlan sName insertType payload <- streamCodegen $ TL.toStrict sql
-  resp <- getServerResp =<< insertIntoStream api sName insertType payload
+  resp <- getServerResp =<< insertIntoStream ctx sName insertType payload
   appendResponseStreamName resp `shouldBe` TL.fromStrict sName
 
 runCreateWithSelectSql :: HStreamClientApi -> TL.Text -> Expectation

@@ -8,13 +8,14 @@
 
 module Main where
 
+import           Control.Concurrent
 import           Control.Exception                (finally, handle)
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
+import qualified Data.ByteString.Char8            as BSC
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
-import qualified Data.Text.Encoding               as T
 import qualified Data.Text.Lazy                   as TL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
@@ -28,6 +29,7 @@ import           Text.RawString.QQ                (r)
 
 import           Data.Functor                     ((<&>))
 import           HStream.Client.Action
+import           HStream.Client.Gadget
 import qualified HStream.Logger                   as Log
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
@@ -41,6 +43,7 @@ import           HStream.Utils                    (Format, HStreamClientApi,
 data UserConfig = UserConfig
   { _serverHost :: ByteString
   , _serverPort :: Int
+  , _clientId   :: String
   }
 
 parseConfig :: O.Parser UserConfig
@@ -48,6 +51,7 @@ parseConfig =
   UserConfig
     <$> O.strOption (O.long "host" <> O.metavar "HOST" <> O.showDefault <> O.value "127.0.0.1" <> O.help "server host value")
     <*> O.option O.auto (O.long "port" <> O.metavar "INT" <> O.showDefault <> O.value 6570 <> O.short 'p' <> O.help "server port value")
+    <*> O.strOption (O.long "client-id" <> O.metavar "ID" <> O.help "unique id for the client")
 
 main :: IO ()
 main = do
@@ -59,27 +63,35 @@ main = do
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
-  setupSigsegvHandler
-  let clientConfig = ClientConfig { clientServerHost = Host _serverHost
+  let _serverUri = _serverHost <> ":" <> (BSC.pack . show $ _serverPort)
+  available <- newMVar []
+  current <- newMVar _serverUri
+  producers_ <- newMVar mempty
+  let ctx = ClientContext
+        { availableServers = available
+        , currentServer    = current
+        , producers        = producers_
+        , clientId         = _clientId
+        }
+      clientConfig = ClientConfig { clientServerHost = Host _serverHost
                                   , clientServerPort = Port _serverPort
-                                  , clientArgs = []
-                                  , clientSSLConfig = Nothing
-                                  , clientAuthority = Nothing
+                                  , clientArgs       = []
+                                  , clientSSLConfig  = Nothing
+                                  , clientAuthority  = Nothing
                                   }
-   in app clientConfig
+  setupSigsegvHandler
+  app ctx clientConfig
+  m_uri <- connect ctx _serverUri ByLoad
+  case m_uri of
+    Just _  -> app ctx clientConfig
+    Nothing -> do
+      Log.e "Connection timed out. Please check the server URI and try again."
 
-app :: ClientConfig -> IO ()
-app config@ClientConfig{..} = withGRPCClient config $ \client -> do
+app :: ClientContext -> ClientConfig -> IO ()
+app ctx config@ClientConfig{..} = withGRPCClient config $ \client -> do
   api@HStreamApi{..} <- hstreamApiClient client
-  resp <- hstreamApiEcho $ ClientNormalRequest EchoRequest{ echoRequestMsg = "Connected" } 1000 (MetadataMap M.empty)
-  case resp of
-    ClientErrorResponse  {} ->
-      Log.e . Log.buildText $ "Can't connect to HStreamDB server at "
-                           <> (T.decodeUtf8 . unHost) clientServerHost
-                           <> " through port " <> (T.pack . show . unPort) clientServerPort
-    ClientNormalResponse {} -> do
-      putStrLn helpInfo
-      H.runInputT H.defaultSettings (loop api)
+  putStrLn helpInfo
+  H.runInputT H.defaultSettings (loop api)
   where
     loop :: HStreamClientApi -> H.InputT IO ()
     loop api = H.getInputLine "> " >>= \case
@@ -89,7 +101,7 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
         | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
           take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
             loopAdmin api
-        | otherwise -> liftIO (commandExec api str) >> loop api
+        | otherwise -> liftIO (commandExec ctx api str) >> loop api
     loopAdmin api = H.getInputLine "ADMIN> " >>= \case
       Nothing   -> return ()
       Just str
@@ -97,10 +109,10 @@ app config@ClientConfig{..} = withGRPCClient config $ \client -> do
         | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
           take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     ->
             loop api
-        | otherwise -> liftIO (commandExec api $ "ADMIN:: " <> str) >> loopAdmin api
+        | otherwise -> liftIO (commandExec ctx api $ "ADMIN:: " <> str) >> loopAdmin api
 
-commandExec :: HStreamClientApi -> String -> IO ()
-commandExec api xs = case words xs of
+commandExec :: ClientContext -> HStreamClientApi -> String -> IO ()
+commandExec ctx api xs = case words xs of
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
@@ -122,7 +134,7 @@ commandExec api xs = case words xs of
         DropPlan checkIfExists dropObj
           -> dropAction api checkIfExists dropObj >>= printResult
         InsertPlan sName insertType payload
-          -> insertIntoStream api sName insertType payload >>= printResult
+          -> insertIntoStream ctx sName insertType payload >>= printResult
         _ -> sqlAction api (TL.pack xs)
 
   [] -> return ()
