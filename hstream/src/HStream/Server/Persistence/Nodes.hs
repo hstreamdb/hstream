@@ -16,25 +16,19 @@ module HStream.Server.Persistence.Nodes (
   , getServerNode
   , setNodeStatus
   , getServerInternalAddr
-
-  , getReadyServers
   ) where
 
-import           Control.Exception                 (SomeException, try)
-import           Control.Monad                     (forM)
 import           Data.Aeson                        (FromJSON, ToJSON)
 import           Data.Functor                      (void, (<&>))
 import qualified Data.Text.Lazy                    as TL
+import           Data.Word                         (Word32)
 import           GHC.Generics                      (Generic)
 import           GHC.Stack                         (HasCallStack)
 import qualified Z.Data.CBytes                     as CB
 import           Z.IO.Network                      (SocketAddr, ipv4)
-import           ZooKeeper                         (zooGetChildren, zooSet)
-import           ZooKeeper.Types                   (StringVector (StringVector),
-                                                    StringsCompletion (StringsCompletion),
-                                                    ZHandle)
+import           ZooKeeper                         (zooSet)
+import           ZooKeeper.Types                   (ZHandle)
 
-import           Data.Word                         (Word32)
 import           HStream.Server.HStreamApi         (ServerNode (..))
 import           HStream.Server.Persistence.Common ()
 import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
@@ -96,13 +90,3 @@ getServerNode zk sID = do
            , serverNodeHost = host
            , serverNodePort = port
            }
-
-getReadyServers :: ZHandle -> IO Int
-getReadyServers zk = do
-  (StringsCompletion (StringVector servers)) <- zooGetChildren zk serverRootPath
-  (sum <$>) . forM (read . CB.unpack <$> servers) $ \sID -> do
-    (e' :: Either SomeException NodeStatus) <- try $ getNodeStatus zk sID
-    case e' of
-      Right Ready   -> return (1 :: Int)
-      Right Working -> return (1 :: Int)
-      _             -> return (0 :: Int)

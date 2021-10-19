@@ -12,7 +12,7 @@ module HStream.Server.Handler.Query where
 
 import           Control.Concurrent
 import           Control.Exception                (handle)
-import           Control.Monad                    (join)
+import           Control.Monad                    (join, (>=>))
 import qualified Data.Aeson                       as Aeson
 import           Data.Bifunctor
 import           Data.Function                    (on, (&))
@@ -21,13 +21,15 @@ import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
 import           Data.Int                         (Int64)
-import           Data.List                        (find, (\\))
+import           Data.List                        (find, groupBy, intersect,
+                                                   (\\))
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, fromJust, isJust)
 import           Data.Scientific
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
+import           Data.Text.Encoding               (encodeUtf8)
 import qualified Data.Text.Encoding               as TE
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Time                        as Time
@@ -58,6 +60,7 @@ import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
+import           HStream.Server.LoadBalance       (getRanking)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Store                    as HS
@@ -74,7 +77,7 @@ createQueryStreamHandler ::
   IO (ServerResponse 'Normal CreateQueryStreamResponse)
 createQueryStreamHandler
   sc@ServerContext {..}
-  (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = defaultExceptionHandle $ do
+  (ServerNormalRequest _metadata req@CreateQueryStreamRequest {..}) = defaultExceptionHandle $ do
     RQSelect select <- parseAndRefine $ TL.toStrict createQueryStreamRequestQueryStatements
     tName <- genTaskName
     let sName =
@@ -440,10 +443,11 @@ terminateQueriesHandler
 terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueriesRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
-  qids <-
-    if terminateQueriesRequestAll
-      then HM.keys <$> readMVar runningQueries
-      else return . V.toList $ lazyTextToCBytes <$> terminateQueriesRequestQueryId
+  queriesOnThisServer <- HM.keys <$> readMVar runningQueries
+  let queries = V.toList (lazyTextToCBytes <$> terminateQueriesRequestQueryId)
+  let qids = if terminateQueriesRequestAll
+      then queriesOnThisServer
+      else queries `intersect` queriesOnThisServer
   terminatedQids <- handleQueryTerminate sc (HSC.ManyQueries qids)
   if length terminatedQids < length qids
     then do

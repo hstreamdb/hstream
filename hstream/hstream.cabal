@@ -44,6 +44,7 @@ library
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Query
+    HStream.Server.Handler.Redirect
     HStream.Server.Handler.Stats
     HStream.Server.Handler.StoreAdmin
     HStream.Server.Handler.Stream

@@ -16,6 +16,7 @@ import           HStream.Server.Handler.Admin
 import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Query
+import           HStream.Server.Handler.Redirect
 import qualified HStream.Server.Handler.Stats        as H
 import           HStream.Server.Handler.StoreAdmin
 import           HStream.Server.Handler.Stream
@@ -49,21 +50,22 @@ handlers serverContext@ServerContext{..} =
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
         -- Query
-        hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
+        hstreamApiTerminateQueries = terminateQueriesHandler' serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
         hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
-        hstreamApiCreateQueryStream = createQueryStreamHandler serverContext,
+        hstreamApiCreateQueryStream = createQueryStreamHandler' serverContext,
         -- FIXME:
+        hstreamApiCreateSinkConnector = createSinkConnectorHandler' serverContext,
+        hstreamApiTerminateConnector = terminateConnectorHandler' serverContext,
+
         hstreamApiCreateQuery = createQueryHandler serverContext,
         hstreamApiGetQuery = getQueryHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,
-        hstreamApiCreateSinkConnector = createSinkConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
-        hstreamApiTerminateConnector = terminateConnectorHandler serverContext,
         hstreamApiRestartConnector = restartConnectorHandler serverContext,
         hstreamApiCreateView = createViewHandler serverContext,
         hstreamApiGetView = getViewHandler serverContext,

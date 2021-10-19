@@ -16,6 +16,9 @@ import           Network.GRPC.HighLevel.Generated
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamInternal
+import           HStream.Server.Handler.Connector
+import           HStream.Server.Handler.Query
+import           HStream.Server.Handler.Redirect
 import           HStream.Server.LoadBalance       (getRanking)
 import           HStream.Server.Persistence       (getServerNode)
 import qualified HStream.Server.Persistence       as P
@@ -28,12 +31,12 @@ import           HStream.Utils                    (returnErrResp, returnResp)
 internalHandlers :: ServerContext -> IO (HStreamInternal ServerRequest ServerResponse)
 internalHandlers ctx = pure HStreamInternal {
   -- TODO : add corresponding implementation and subscription api
-    hstreamInternalCreateQueryStream   = unimplemented
+    hstreamInternalCreateQueryStream   = createQueryStreamHandlerInternal ctx
   , hstreamInternalRestartQuery        = unimplemented
-  , hstreamInternalTerminateQueries    = unimplemented
-  , hstreamInternalCreateSinkConnector = unimplemented
+  , hstreamInternalTerminateQueries    = terminateQueriesHandler ctx
+  , hstreamInternalCreateSinkConnector = createSinkConnectorHandlerInternal ctx
   , hstreamInternalRestartConnector    = unimplemented
-  , hstreamInternalTerminateConnector  = unimplemented
+  , hstreamInternalTerminateConnector  = terminateConnectorHandler ctx
 
   , hstreamInternalGetNodesRanking     = getNodesRankingHandler ctx
   , hstreamInternalTakeSubscription    = takeSubscription ctx
