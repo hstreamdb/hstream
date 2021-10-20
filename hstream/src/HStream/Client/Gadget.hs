@@ -16,7 +16,8 @@ import qualified Data.Text.Encoding               as TE
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Network.GRPC.HighLevel.Generated (GRPCIOError (..),
+                                                   withGRPCClient)
 
 import           HStream.Client.Utils
 import qualified HStream.Logger                   as Log
@@ -79,3 +80,32 @@ connect ctx@ClientContext{..} uri strategy = withGRPCClient (mkGRPCClientConf ur
       case m_uri of
         Just uri_ -> return (Just uri_)
         Nothing   -> go xs
+
+-- | Try the best to execute an GRPC request until all possible choices failed.
+doAction :: ClientContext
+         -> ConnectStrategy
+         -> (Client -> IO (ClientResult typ a))
+         -> (ClientResult typ a -> IO ())
+         -> IO ()
+doAction ctx@ClientContext{..} strategy getRespApp handleRespApp = do
+  uri <- readMVar currentServer
+  doActionWithUri ctx uri strategy getRespApp handleRespApp
+
+-- | Try the best to execute an GRPC request until all possible choices failed,
+-- with the given uri instead of which from ClientContext.
+doActionWithUri :: ClientContext
+                -> ByteString
+                -> ConnectStrategy
+                -> (Client -> IO (ClientResult typ a))
+                -> (ClientResult typ a -> IO ())
+                -> IO ()
+doActionWithUri ctx uri strategy getRespApp handleRespApp = do
+  m_realUri <- connect ctx uri strategy
+  case m_realUri of
+    Nothing      -> Log.w . Log.buildString $ "Error when executing an action."
+    Just realUri -> withGRPCClient (mkGRPCClientConf realUri) $ \client -> do
+      resp <- getRespApp client
+      case resp of
+        ClientErrorResponse (ClientIOError GRPCIOTimeout) -> do
+          Log.w . Log.buildString $ "Error when executing an action." <> show realUri
+        _ -> handleRespApp resp
