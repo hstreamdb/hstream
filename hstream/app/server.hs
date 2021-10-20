@@ -5,29 +5,32 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent            (forkIO)
-import           Control.Monad                 (void)
-import           Network.GRPC.HighLevel        (ServiceOptions (..))
-import           Network.GRPC.HighLevel.Client (Port (unPort))
+import           Control.Concurrent             (forkIO)
+import           Control.Monad                  (void)
+import           Network.GRPC.HighLevel         (ServiceOptions (..))
+import           Network.GRPC.HighLevel.Client  (Port (unPort))
 import           Options.Applicative
-import           Text.RawString.QQ             (r)
-import           ZooKeeper                     (withResource)
+import           Text.RawString.QQ              (r)
+import           ZooKeeper                      (withResource)
 
-import qualified HStream.Logger                as Log
-import           HStream.Server.Bootstrap      (startServer)
-import           HStream.Server.HStreamApi     (hstreamApiServer)
-import           HStream.Server.Handler        (handlers)
-import           HStream.Server.Initialization (initializeServer)
-import           HStream.Server.Leader         (selectLeader)
-import           HStream.Server.LoadBalance    (startLoadBalancer)
-import           HStream.Server.Persistence    (defaultHandle,
-                                                initializeAncestors)
-import           HStream.Server.Types          (LoadManager, ServerContext (..),
-                                                ServerOpts (..))
-import           HStream.Server.Watcher        (actionTriggedByNodesChange)
-import           HStream.Store                 (Compression (..))
-import qualified HStream.Store.Admin.API       as AA
-import           HStream.Utils                 (setupSigsegvHandler)
+import qualified HStream.Logger                 as Log
+import           HStream.Server.Bootstrap       (startServer)
+import           HStream.Server.HStreamApi      (hstreamApiServer)
+import           HStream.Server.HStreamInternal (hstreamInternalServer)
+import           HStream.Server.Handler         (handlers)
+import           HStream.Server.Initialization  (initializeServer)
+import           HStream.Server.InternalHandler (internalHandlers)
+import           HStream.Server.Leader          (selectLeader)
+import           HStream.Server.LoadBalance     (startLoadBalancer)
+import           HStream.Server.Persistence     (defaultHandle,
+                                                 initializeAncestors)
+import           HStream.Server.Types           (LoadManager,
+                                                 ServerContext (..),
+                                                 ServerOpts (..))
+import           HStream.Server.Watcher         (actionTriggedByNodesChange)
+import           HStream.Store                  (Compression (..))
+import qualified HStream.Store.Admin.API        as AA
+import           HStream.Utils                  (setupSigsegvHandler)
 
 -- TODO
 -- 1. config file for the Server
@@ -46,6 +49,10 @@ parseConfig =
     <*> strOption ( long "address" <> metavar "ADDRESS"
                  <> showDefault <> value "127.0.0.1"
                  <> help "server address"
+                  )
+    <*> option auto ( long "internal-port" <> metavar "INT"
+                  <> showDefault <> value 6571
+                  <> help "server channel port value for internal communication"
                   )
     <*> strOption ( long "name" <> metavar "NAME"
                  <> showDefault <> value "hserver-1"
@@ -114,12 +121,12 @@ app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupSigsegvHandler
   withResource (defaultHandle _zkUri) $ \zk -> do
-    (options, serverContext, lm) <- initializeServer config zk
+    (options, options', serverContext, lm) <- initializeServer config zk
     initializeAncestors zk
-    startServer zk config (serve options serverContext lm)
+    startServer zk config (serve options options' serverContext lm)
 
-serve :: ServiceOptions -> ServerContext -> LoadManager -> IO ()
-serve options@ServiceOptions{..} sc@ServerContext{..} lm = do
+serve :: ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO ()
+serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
   -- Start load balancer
   startLoadBalancer zkHandle lm
 
@@ -141,6 +148,8 @@ serve options@ServiceOptions{..} sc@ServerContext{..} lm = do
   Log.info $ "Server started on port " <> Log.buildInt (unPort serverPort)
   Log.info "**************************************************"
   api <- handlers sc
+  internalApi <- internalHandlers sc
+  void . forkIO $ hstreamInternalServer internalApi optionsInternal
   hstreamApiServer api options
 
 main :: IO ()

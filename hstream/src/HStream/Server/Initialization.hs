@@ -10,6 +10,7 @@ module HStream.Server.Initialization
 import           Control.Concurrent               (MVar, newEmptyMVar, newMVar)
 import           Control.Exception                (SomeException, try)
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock.System           (SystemTime (..),
                                                    getSystemTime)
 import           Network.GRPC.HighLevel.Generated
@@ -38,9 +39,9 @@ import           HStream.Store                    (HsLogAttrs (HsLogAttrs),
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (valueToBytes)
 
-initNodePath :: ZHandle -> CB.CBytes -> String -> IO ()
-initNodePath zk serverName uri = do
-  let nodeInfo = NodeInfo { nodeStatus = Ready, serverUri = uri}
+initNodePath :: ZHandle -> CB.CBytes -> TL.Text -> TL.Text -> IO ()
+initNodePath zk serverName uri uri' = do
+  let nodeInfo = NodeInfo { nodeStatus = Ready, serverUri = uri, serverInternalUri = uri'}
   let ops = [ createEphemeral (serverRootPath, Just $ valueToBytes nodeInfo)
             , createEphemeral (serverLoadPath, Nothing)
             ]
@@ -57,7 +58,7 @@ initNodePath zk serverName uri = do
 
 initializeServer
   :: ServerOpts -> ZHandle
-  -> IO (ServiceOptions, ServerContext, LoadManager)
+  -> IO (ServiceOptions, ServiceOptions, ServerContext, LoadManager)
 initializeServer ServerOpts{..} zk = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   ldclient <- newLDClient _ldConfigPath
@@ -82,6 +83,12 @@ initializeServer ServerOpts{..} zk = do
         Host . toByteString . CB.toBytes $ _serverHost
     , Network.GRPC.HighLevel.Generated.serverPort =
         Port . fromIntegral $ _serverPort
+    },
+    defaultServiceOptions {
+      Network.GRPC.HighLevel.Generated.serverHost =
+        Host . toByteString . CB.toBytes $ _serverHost
+    , Network.GRPC.HighLevel.Generated.serverPort =
+        Port . fromIntegral $ _serverInternalPort
     },
     ServerContext {
       zkHandle                 = zk
