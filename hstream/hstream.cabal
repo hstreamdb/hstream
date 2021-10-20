@@ -39,7 +39,6 @@ library
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
     HStream.Server.Types
-    HStream.Server.Watcher
 
   other-modules:
     HStream.Server.Handler.Cluster
@@ -51,7 +50,6 @@ library
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
     HStream.Server.Persistence.Common
-    HStream.Server.Persistence.Config
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Nodes
     HStream.Server.Persistence.Subscriptions
