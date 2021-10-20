@@ -37,6 +37,7 @@ library
     HStream.Foreign
     HStream.Logger
     HStream.Server.HStreamApi
+    HStream.Server.HStreamInternal
     HStream.Stats
     HStream.ThirdParty.Protobuf
     HStream.Utils

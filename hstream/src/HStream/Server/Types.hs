@@ -34,6 +34,7 @@ data ServerOpts = ServerOpts
   { _serverHost         :: CBytes
   , _serverPort         :: PortNumber
   , _serverAddress      :: String
+  , _serverInternalPort :: PortNumber
   , _serverName         :: CBytes
   , _serverMinNum       :: Int
   , _zkUri              :: CBytes

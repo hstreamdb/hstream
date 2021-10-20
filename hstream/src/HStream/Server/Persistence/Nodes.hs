@@ -18,6 +18,7 @@ import           Control.Exception                (SomeException, try)
 import           Control.Monad                    (forM)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Functor                     (void, (<&>))
+import qualified Data.Text.Lazy                   as TL
 import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack)
 import           Z.Data.CBytes                    (CBytes)
@@ -34,14 +35,15 @@ data NodeStatus = Starting | Ready | Working
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 data NodeInfo = NodeInfo
-  { nodeStatus :: NodeStatus
-  , serverUri  :: String
+  { nodeStatus        :: NodeStatus
+  , serverUri         :: TL.Text
+  , serverInternalUri :: TL.Text
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 getNodeStatus :: ZHandle -> CBytes -> IO NodeStatus
 getNodeStatus zk name = getNodeInfo zk name <&> nodeStatus
 
-getServerUri :: ZHandle -> CBytes -> IO String
+getServerUri :: ZHandle -> CBytes -> IO TL.Text
 getServerUri zk name = getNodeInfo zk name <&> serverUri
 
 setNodeStatus :: HasCallStack => ZHandle -> CBytes -> NodeStatus -> IO ()
