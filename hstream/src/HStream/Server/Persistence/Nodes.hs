@@ -89,10 +89,12 @@ getServerNode :: ZHandle -> CBytes -> IO ServerNode
 getServerNode zk name = do
   host <- getServerHost zk name
   port <- getServerPort zk name
+  port' <- getServerInternalPort zk name
   return $ ServerNode
            { serverNodeId = 0
            , serverNodeHost = host
            , serverNodePort = port
+           , serverNodeInternalPort = port'
            }
 
 getInternalServerNode :: ZHandle -> CBytes -> IO ServerNode
