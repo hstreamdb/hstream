@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators     #-}
 
 module HStream.HTTP.Server.Stream
-  ( StreamsAPI , streamServer
+  ( StreamsAPI, streamServer
   , listStreamsHandler
   , StreamBO(..), Records(..), AppendResult(..)
   , buildRecords
