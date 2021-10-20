@@ -1,4 +1,3 @@
-{-# LANGUAGE BlockArguments    #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE GADTs             #-}
@@ -7,19 +6,21 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.HTTP.Server.Stream where
+module HStream.HTTP.Server.Stream
+  ( StreamsAPI , streamServer
+  , listStreamsHandler
+  , StreamBO(..), Records(..), AppendResult(..)
+  , buildRecords
+  ) where
 
 import           Control.Monad.IO.Class       (liftIO)
 import qualified Data.Aeson                   as A
-import           Data.Bifunctor
 import qualified Data.ByteString              as BS
 import qualified Data.ByteString.Base64       as BSE
 import qualified Data.ByteString.Base64.Lazy  as BSL
 import qualified Data.ByteString.Char8        as BS
 import qualified Data.ByteString.Lazy         as BSL
 import qualified Data.ByteString.Lazy.Char8   as BSL
-import           Data.Function
-import           Data.Functor
 import qualified Data.HashMap.Strict          as HM
 import qualified Data.List                    as L
 import qualified Data.Map                     as Map
@@ -83,15 +84,15 @@ instance ToSchema   AppendResult
 
 type StreamsAPI
   =    "streams" :> Get '[JSON] [StreamBO]
-  -- List all streams
+  -- ^ List all streams
   :<|> "streams" :> ReqBody '[JSON] StreamBO :> Post '[JSON] StreamBO
-  -- Create a new stream
+  -- ^ Create a new stream
   :<|> "streams" :> Capture "name" T.Text :> Delete '[JSON] Bool
-  -- Delete a stream
+  -- ^ Delete a stream
   :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
-  -- Get a stream
+  -- ^ Get a stream
   :<|> "streams" :> Capture "name" T.Text :> "publish" :> ReqBody '[JSON] Records :> Put '[JSON] AppendResult
-  -- Append records to a stream
+  -- ^ Append records to a stream
 
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO
 createStreamHandler hClient streamBO = liftIO $ do
@@ -111,7 +112,7 @@ listStreamsHandler hClient = liftIO $ do
   maybe [] (V.toList . V.map streamToStreamBO . listStreamsResponseStreams) <$> getServerResp resp
 
 deleteStreamHandler :: Client -> T.Text -> Handler Bool
-deleteStreamHandler hClient sName = liftIO do
+deleteStreamHandler hClient sName = liftIO $ do
   Log.debug $ "Send delete stream request to HStream server. "
            <> "Stream Name: " <> Log.buildText sName
   HStreamApi{..} <- hstreamApiClient hClient
@@ -127,12 +128,12 @@ getStreamHandler :: Client -> T.Text -> Handler (Maybe StreamBO)
 getStreamHandler hClient sName = do
   liftIO . Log.debug $ "Send get stream request to HStream server. "
                     <> "Stream Name: " <> Log.buildText sName
-  listStreamsHandler hClient <&> L.find \StreamBO{..} -> sName == name
+  (L.find $ \StreamBO{..} -> sName == name) <$> listStreamsHandler hClient
 
 appendHandler :: Client
               -> T.Text -> Records
               -> Handler AppendResult
-appendHandler hClient sName recs = liftIO do
+appendHandler hClient sName recs = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
   timestamp      <- getProtoTimestamp
   Log.debug $ ""
