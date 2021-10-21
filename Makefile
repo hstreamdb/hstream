@@ -4,21 +4,30 @@ all:: thrift grpc sql
 
 THRIFT_COMPILE = thrift-compiler
 BNFC = bnfc
-PROTO_COMPILE = compile-proto-file
+PROTO_COMPILE = protoc
+PROTO_COMPILE_HS = compile-proto-file
+PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
 
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-store/admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
-grpc:: grpc-deps
-	 (cd common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/struct.proto --out ../gen-src)
-	 (cd common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/timestamp.proto --out ../gen-src)
-	 (cd common/proto && $(PROTO_COMPILE) --proto third_party/google/protobuf/empty.proto --out ../gen-src)
-	 (cd common/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamApi.proto --out ../gen-src)
-	 (cd common/proto && $(PROTO_COMPILE) --proto HStream/Server/HStreamInternal.proto --out ../gen-src)
+grpc:: grpc-deps grpc-hs grpc-cpp
+
+grpc-hs:
+	 (cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/struct.proto --out ../gen-hs)
+	 (cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/empty.proto --out ../gen-hs)
+	 (cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --includeDir . --proto HStream/Server/HStreamApi.proto --out ../gen-hs)
+	 (cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --includeDir . --proto HStream/Server/HStreamInternal.proto --out ../gen-hs)
+
+grpc-cpp:
+	(cd common && mkdir -p gen-cpp && \
+		$(PROTO_COMPILE) --cpp_out gen-cpp --grpc_out gen-cpp -I proto --plugin=protoc-gen-grpc=$(PROTO_CPP_PLUGIN) \
+		proto/HStream/Server/HStreamApi.proto \
+	)
 
 grpc-deps:
-	(cd ~ && command -v $(PROTO_COMPILE) || cabal install proto3-suite --constraint 'proto3-suite == 0.4.1')
+	(cd ~ && command -v $(PROTO_COMPILE_HS) || cabal install proto3-suite --constraint 'proto3-suite == 0.4.1')
 
 sql:: sql-deps
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)

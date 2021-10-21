@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package hstream.server;
 
-import "third_party/google/protobuf/struct.proto";
-import "third_party/google/protobuf/timestamp.proto";
-import "third_party/google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
 
 option java_package = "io.hstream";
 option java_multiple_files = true;
@@ -47,7 +47,7 @@ service HStreamApi {
 
   // only for push query
   // e.g., select (with emit changes)
-  rpc ExecutePushQuery(CommandPushQuery) returns (stream Struct);
+  rpc ExecutePushQuery(CommandPushQuery) returns (stream google.protobuf.Struct);
 
   // for execute any sql stmt except push query,
   // e.g., insert, create, show/list, select(without emit changes) ...
@@ -123,7 +123,7 @@ message CommandQuery {
 }
 
 message CommandQueryResponse {
-  repeated Struct result_set = 1;
+  repeated google.protobuf.Struct result_set = 1;
 }
 
 message AppendRequest {
@@ -246,7 +246,7 @@ message HStreamRecordHeader {
   // Required.
   // The time at which the message was published,
   // populated by the server.
-  Timestamp publish_time = 3;
+  google.protobuf.Timestamp publish_time = 3;
 
   // Optional.
   // key for the message.
@@ -437,7 +437,7 @@ message PerStreamTimeSeriesStatsAllRequest {
 // ---------------------------------------------------------------------------
 message ConnectRequest {
   oneof RedirectStrategy {
-    Empty ByLoad = 1;
+    google.protobuf.Empty ByLoad = 1;
     SubReq BySubscription = 2;
   }
 }
