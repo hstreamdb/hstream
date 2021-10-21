@@ -28,7 +28,8 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.LoadBalance       (updateLoadReport)
 import           HStream.Server.Persistence       (NodeInfo (..),
                                                    NodeStatus (..),
-                                                   serverLoadPath,
+                                                   encodeValueToBytes,
+                                                   serverIdPath, serverLoadPath,
                                                    serverRootPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
@@ -44,6 +45,8 @@ initNodePath zk serverName uri uri' = do
   let nodeInfo = NodeInfo { nodeStatus = Ready, serverUri = uri, serverInternalUri = uri'}
   let ops = [ createEphemeral (serverRootPath, Just $ valueToBytes nodeInfo)
             , createEphemeral (serverLoadPath, Nothing)
+            , zooCreateOpInit (serverIdPath <> "/")
+                      (Just (encodeValueToBytes serverName)) 0 zooOpenAclUnsafe ZooEphemeralSequential
             ]
   e' <- try $ zooMulti zk ops
   case e' of
