@@ -1,9 +1,11 @@
 module HStream.ThirdParty.Protobuf
-  ( module ThirdParty.Google.Protobuf.Empty
-  , module ThirdParty.Google.Protobuf.Struct
-  , module ThirdParty.Google.Protobuf.Timestamp
+  ( module Google.Protobuf.Empty
+  , module Google.Protobuf.Struct
+  , module Google.Protobuf.Timestamp
   ) where
 
-import           ThirdParty.Google.Protobuf.Empty
-import           ThirdParty.Google.Protobuf.Struct
-import           ThirdParty.Google.Protobuf.Timestamp
+-- generated from proto files
+import           Google.Protobuf.Empty
+import           Google.Protobuf.Struct
+-- import from proto3-suite
+import           Google.Protobuf.Timestamp

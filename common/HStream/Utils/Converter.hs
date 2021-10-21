@@ -29,25 +29,25 @@ module HStream.Utils.Converter
   , structToStruct
   ) where
 
-import qualified Data.Aeson                        as Aeson
-import           Data.Bifunctor                    (Bifunctor (bimap))
-import qualified Data.ByteString.Lazy              as BL
-import qualified Data.HashMap.Strict               as HM
-import qualified Data.Map                          as M
-import qualified Data.Map.Strict                   as Map
-import           Data.Scientific                   (toRealFloat)
-import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
-import qualified Data.Vector                       as V
-import           Proto3.Suite                      (Enumerated (Enumerated))
-import qualified Z.Data.Builder                    as Builder
-import qualified Z.Data.CBytes                     as ZCB
-import qualified Z.Data.JSON                       as Z
-import qualified Z.Data.Text                       as ZT
-import qualified Z.Data.Vector                     as ZV
-import qualified Z.Foreign                         as ZF
+import qualified Data.Aeson             as Aeson
+import           Data.Bifunctor         (Bifunctor (bimap))
+import qualified Data.ByteString.Lazy   as BL
+import qualified Data.HashMap.Strict    as HM
+import qualified Data.Map               as M
+import qualified Data.Map.Strict        as Map
+import           Data.Scientific        (toRealFloat)
+import qualified Data.Text              as T
+import qualified Data.Text.Lazy         as TL
+import qualified Data.Vector            as V
+import           Proto3.Suite           (Enumerated (Enumerated))
+import qualified Z.Data.Builder         as Builder
+import qualified Z.Data.CBytes          as ZCB
+import qualified Z.Data.JSON            as Z
+import qualified Z.Data.Text            as ZT
+import qualified Z.Data.Vector          as ZV
+import qualified Z.Foreign              as ZF
 
-import qualified ThirdParty.Google.Protobuf.Struct as PB
+import qualified Google.Protobuf.Struct as PB
 
 pattern V :: PB.ValueKind -> PB.Value
 pattern V x = PB.Value (Just x)
