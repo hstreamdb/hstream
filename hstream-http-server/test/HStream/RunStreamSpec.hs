@@ -37,7 +37,7 @@ spec = describe "HStream.RunStreamSpec" do
     stream `shouldBe` (Just (StreamBO (T.pack sName) 3))
 
   it "appends" do
-    AppendResult xs <- appendStream sName testRecords
+    AppendResult xs <- appendStream $ testRecords $ T.pack sName
     xs `shouldSatisfy` (/= V.empty)
 
   it "list streams" do
@@ -53,8 +53,8 @@ spec = describe "HStream.RunStreamSpec" do
     res `shouldBe` (Just True)
 
 --------------------------------------------------------------------------------
-testRecords :: Records
-testRecords = buildRecords $ pure
+testRecords :: T.Text -> AppendBO
+testRecords = flip buildAppendBO $ pure
   [ ("a", Number 42)
   , ("b", Number 10)
   , ("c", String "hmm")

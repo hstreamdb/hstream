@@ -9,8 +9,8 @@
 module HStream.HTTP.Server.Stream
   ( StreamsAPI, streamServer
   , listStreamsHandler
-  , StreamBO(..), Records(..), AppendResult(..)
-  , buildRecords
+  , StreamBO(..), AppendBO(..), AppendResult(..)
+  , buildAppendBO
   ) where
 
 import           Control.Monad.IO.Class       (liftIO)
@@ -58,24 +58,25 @@ streamToStreamBO (Stream name rep) = StreamBO (TL.toStrict name) rep
 streamBOTOStream :: StreamBO -> Stream
 streamBOTOStream (StreamBO name rep) = Stream (TL.fromStrict name) rep
 
-data Records = Records
-  { records :: T.Text
+data AppendBO = AppendBO
+  { streamName :: T.Text
+  , records    :: T.Text
   } deriving (Eq, Show, Generic)
 
-instance A.ToJSON   Records
-instance A.FromJSON Records
-instance ToSchema   Records
+instance A.ToJSON   AppendBO
+instance A.FromJSON AppendBO
+instance ToSchema   AppendBO
 
-processRecords :: Records -> V.Vector BS.ByteString
+processRecords :: AppendBO -> V.Vector BS.ByteString
 processRecords = V.fromList . BS.lines . BSE.decodeLenient . T.encodeUtf8 . records
 
-buildRecords :: [[(T.Text, A.Value)]] -> Records
-buildRecords = Records . T.decodeUtf8 . BS.concat . BSL.toChunks .
+buildAppendBO :: T.Text -> [[(T.Text, A.Value)]] -> AppendBO
+buildAppendBO streamName = AppendBO streamName . T.decodeUtf8 . BS.concat . BSL.toChunks .
   BSL.encode . BSL.unlines . map
     (A.encode . HM.fromList)
 
 data AppendResult = AppendResult
-  { appendResultRecordIds :: V.Vector RecordId
+  { recordIds :: V.Vector RecordId
   } deriving (Eq, Show, Generic)
 
 instance A.ToJSON   AppendResult
@@ -91,7 +92,7 @@ type StreamsAPI
   -- ^ Delete a stream
   :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
   -- ^ Get a stream
-  :<|> "streams" :> Capture "name" T.Text :> "publish" :> ReqBody '[JSON] Records :> Post '[JSON] AppendResult
+  :<|> "streams" :> "publish" :> ReqBody '[JSON] AppendBO :> Post '[JSON] AppendResult
   -- ^ Append records to a stream
 
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO
@@ -130,18 +131,16 @@ getStreamHandler hClient sName = do
                     <> "Stream Name: " <> Log.buildText sName
   (L.find $ \StreamBO{..} -> sName == name) <$> listStreamsHandler hClient
 
-appendHandler :: Client
-              -> T.Text -> Records
-              -> Handler AppendResult
-appendHandler hClient sName recs = liftIO $ do
+appendHandler :: Client -> AppendBO -> Handler AppendResult
+appendHandler hClient appendBO = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
   timestamp      <- getProtoTimestamp
   Log.debug $ ""
-           <> "Stream Name: " <> Log.buildText sName
+           <> "Stream Name: " <> Log.buildText (streamName appendBO)
   let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
-      record  = buildRecord header `V.map` processRecords recs
+      record  = buildRecord header `V.map` processRecords appendBO
   resp <- hstreamApiAppend . mkClientNormalRequest $ def
-      { appendRequestStreamName = TL.fromStrict sName
+      { appendRequestStreamName = TL.fromStrict (streamName appendBO)
       , appendRequestRecords    = record
       }
   AppendResult . appendResponseRecordIds . fromJust <$> getServerResp resp
