@@ -4,21 +4,20 @@
 
 module HStream.Utils.BuildRecord where
 
-import           Control.Exception                    (displayException)
-import           Data.ByteString                      (ByteString)
-import qualified Data.ByteString                      as B
-import qualified Data.ByteString.Lazy                 as BL
-import           Data.Int                             (Int64)
-import           Data.Map.Strict                      (Map)
-import           Data.Maybe                           (fromJust)
-import           Data.Text.Lazy                       (Text)
-import qualified Proto3.Suite                         as PT
-import           Z.Data.Vector                        (Bytes)
-import           Z.Foreign                            (fromByteString,
-                                                       toByteString)
+import           Control.Exception         (displayException)
+import           Data.ByteString           (ByteString)
+import qualified Data.ByteString           as B
+import qualified Data.ByteString.Lazy      as BL
+import           Data.Int                  (Int64)
+import           Data.Map.Strict           (Map)
+import           Data.Maybe                (fromJust)
+import           Data.Text.Lazy            (Text)
+import qualified Proto3.Suite              as PT
+import           Z.Data.Vector             (Bytes)
+import           Z.Foreign                 (fromByteString, toByteString)
 
+import           Google.Protobuf.Timestamp
 import           HStream.Server.HStreamApi
-import           ThirdParty.Google.Protobuf.Timestamp
 
 buildRecordHeader
   :: HStreamRecordHeader_Flag
