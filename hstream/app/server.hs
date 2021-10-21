@@ -14,7 +14,8 @@ import           Text.RawString.QQ              (r)
 import           ZooKeeper                      (withResource)
 
 import qualified HStream.Logger                 as Log
-import           HStream.Server.Bootstrap       (startServer)
+import           HStream.Server.Bootstrap       (actionTriggedByNodesChange,
+                                                 startServer)
 import           HStream.Server.HStreamApi      (hstreamApiServer)
 import           HStream.Server.HStreamInternal (hstreamInternalServer)
 import           HStream.Server.Handler         (handlers)
@@ -27,7 +28,6 @@ import           HStream.Server.Persistence     (defaultHandle,
 import           HStream.Server.Types           (LoadManager,
                                                  ServerContext (..),
                                                  ServerOpts (..))
-import           HStream.Server.Watcher         (actionTriggedByNodesChange)
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Admin.API        as AA
 import           HStream.Utils                  (setupSigsegvHandler)
@@ -58,9 +58,6 @@ parseConfig =
                  <> showDefault <> value "hserver-1"
                  <> help "name of the hstream server node"
                   )
-    <*> option auto ( long "min-servers" <> metavar "INT"
-                   <> showDefault <> value 1
-                   <> help "minimal hstream servers")
     <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault
                  <> value "127.0.0.1:2181"
@@ -137,7 +134,7 @@ serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
   void . forkIO $ actionTriggedByNodesChange sc lm
 
   -- GRPC service
-  Log.info "**************************************************"
+  Log.i "************************"
   putStrLn [r|
    _  _   __ _____ ___ ___  __  __ __
   | || |/' _/_   _| _ \ __|/  \|  V  |
@@ -145,8 +142,8 @@ serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
-  Log.info $ "Server started on port " <> Log.buildInt (unPort serverPort)
-  Log.info "**************************************************"
+  Log.i $ "Server started on port " <> Log.buildInt (unPort serverPort)
+  Log.i "*************************"
   api <- handlers sc
   internalApi <- internalHandlers sc
   void . forkIO $ hstreamInternalServer internalApi optionsInternal

@@ -95,7 +95,6 @@ initializeServer ServerOpts{..} zk = do
     , scLDClient               = ldclient
     , serverName               = _serverName
     , scDefaultStreamRepFactor = _topicRepFactor
-    , minServers               = _serverMinNum
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
     , subscribeRuntimeInfo     = subscribeRuntimeInfo
