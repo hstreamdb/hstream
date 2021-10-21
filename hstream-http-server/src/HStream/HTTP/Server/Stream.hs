@@ -91,7 +91,7 @@ type StreamsAPI
   -- ^ Delete a stream
   :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
   -- ^ Get a stream
-  :<|> "streams" :> Capture "name" T.Text :> "publish" :> ReqBody '[JSON] Records :> Put '[JSON] AppendResult
+  :<|> "streams" :> Capture "name" T.Text :> "publish" :> ReqBody '[JSON] Records :> Post '[JSON] AppendResult
   -- ^ Append records to a stream
 
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO

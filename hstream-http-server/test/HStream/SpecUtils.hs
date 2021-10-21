@@ -18,7 +18,7 @@ createStream sName rep = do
 
 appendStream :: String -> Records -> IO AppendResult
 appendStream sName recs = do
-  req <- buildRequest "PUT" $ "streams/" <> sName <> "/publish"
+  req <- buildRequest "POST" $ "streams/" <> sName <> "/publish"
   let request = setRequestBodyJSON recs req
   resp <- httpLBS request
   pure $ fromJust (decode (getResponseBody resp) :: Maybe AppendResult)
