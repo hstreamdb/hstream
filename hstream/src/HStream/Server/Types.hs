@@ -36,7 +36,6 @@ data ServerOpts = ServerOpts
   , _serverAddress      :: String
   , _serverInternalPort :: PortNumber
   , _serverName         :: CBytes
-  , _serverMinNum       :: Int
   , _zkUri              :: CBytes
   , _ldConfigPath       :: CBytes
   , _topicRepFactor     :: Int

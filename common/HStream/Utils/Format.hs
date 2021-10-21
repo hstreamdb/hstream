@@ -6,27 +6,27 @@
 
 module HStream.Utils.Format where
 
-import qualified Data.Aeson                        as A
-import qualified Data.Aeson.Text                   as A
-import qualified Data.HashMap.Strict               as HM
-import           Data.List                         (sort)
-import qualified Data.Map.Strict                   as M
-import qualified Data.Text                         as T
-import qualified Data.Text.Lazy                    as TL
-import           Data.Time.Clock                   (NominalDiffTime)
-import qualified Data.Vector                       as V
-import           Text.Layout.Table                 (center, colsAllG, column,
-                                                    expand, justify, left,
-                                                    noAlign, singleCutMark,
-                                                    tableString, titlesH,
-                                                    unicodeRoundS)
-import qualified ThirdParty.Google.Protobuf.Struct as P
+import qualified Data.Aeson                       as A
+import qualified Data.Aeson.Text                  as A
+import qualified Data.HashMap.Strict              as HM
+import           Data.List                        (sort)
+import qualified Data.Map.Strict                  as M
+import qualified Data.Text                        as T
+import qualified Data.Text.Lazy                   as TL
+import           Data.Time.Clock                  (NominalDiffTime)
+import qualified Data.Vector                      as V
+import           Text.Layout.Table                (center, colsAllG, column,
+                                                   expand, justify, left,
+                                                   noAlign, singleCutMark,
+                                                   tableString, titlesH,
+                                                   unicodeRoundS)
 
-import qualified HStream.Server.HStreamApi         as API
-import           HStream.Utils.Converter           (valueToJsonValue)
-import           Network.GRPC.HighLevel.Generated  (ClientResult (..),
-                                                    GRPCMethodType (..))
-import qualified ThirdParty.Google.Protobuf.Empty  as Protobuf
+import qualified Google.Protobuf.Empty            as Protobuf
+import qualified Google.Protobuf.Struct           as P
+import qualified HStream.Server.HStreamApi        as API
+import           HStream.Utils.Converter          (valueToJsonValue)
+import           Network.GRPC.HighLevel.Generated (ClientResult (..),
+                                                   GRPCMethodType (..))
 
 --------------------------------------------------------------------------------
 type Width = Int

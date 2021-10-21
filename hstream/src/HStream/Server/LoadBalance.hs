@@ -62,7 +62,7 @@ updateLoadReports
   :: ZHandle -> MVar ServerLoadReports
   -> IO ()
 updateLoadReports zk hmapM  = do
-  Log.debug . Log.buildString $ "Updating local load reports map and set watch on every server"
+  Log.debug "Updating local load reports map and set watch on every server"
   names <- unStrVec . strsCompletionValues <$> zooGetChildren zk serverRootPath
   _names <- HM.keys <$> readMVar hmapM
   mapM_ (getAndWatchReport zk hmapM) (names \\ _names)
