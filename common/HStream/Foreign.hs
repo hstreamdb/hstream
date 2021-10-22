@@ -28,6 +28,7 @@ module HStream.Foreign
   -- * Misc
   , c_delete_string
   , c_delete_vector_of_string
+  , c_delete_vector_of_int
   , c_delete_vector_of_int64
   , c_delete_std_vec_of_folly_small_vec_of_double
   , cal_offset_std_string
@@ -38,6 +39,7 @@ import           Control.Monad            (forM)
 import           Data.Int                 (Int64)
 import qualified Data.Map.Strict          as Map
 import           Data.Primitive.ByteArray
+import           Foreign.C.Types
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.Storable
@@ -155,6 +157,7 @@ peekCppMap f peekKey delKey peekVal delVal = do
 
 HS_CPP_DELETE(delete_string, Z.StdString)
 HS_CPP_DELETE(delete_vector_of_string, (StdVector Z.StdString))
+HS_CPP_DELETE(delete_vector_of_int, (StdVector CInt))
 HS_CPP_DELETE(delete_vector_of_int64, (StdVector Int64))
 HS_CPP_DELETE(delete_std_vec_of_folly_small_vec_of_double, (StdVector (FollySmallVector Double)))
 
