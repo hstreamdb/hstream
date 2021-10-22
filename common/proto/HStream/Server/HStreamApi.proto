@@ -88,7 +88,10 @@ service HStreamApi {
   // ---------------------------------------------------------------------------
   // APIs for Cluster
   // ---------------------------------------------------------------------------
-  rpc connect(ConnectRequest) returns (ConnectResponse);
+  rpc DescribeCluster() returns (DescribeClusterResponse) {}
+  rpc LookupStream(string streamName) returns (LookupStreamResponse) {}
+  rpc LookupSubscription(string subscriptionId) returns (LookupSubscriptionResponse) {}
+
 }
 
 message EchoRequest {
@@ -446,29 +449,25 @@ message PerStreamTimeSeriesStatsAllRequest {
 // ---------------------------------------------------------------------------
 // Messages for Cluster
 // ---------------------------------------------------------------------------
-message ConnectRequest {
-  oneof RedirectStrategy {
-    google.protobuf.Empty ByLoad = 1;
-    SubReq BySubscription = 2;
-  }
+
+message DescribeClusterResponse {
+  string protocolVersion = 1;
+  string serverVersion = 2;
+  repeated ServerNode serverNodes = 3;
 }
 
-message ConnectResponse {
-  oneof status {
-    ServerList accepted = 1;
-    Redirected redirected = 2;
-  }
+message ServerNode {
+  uint32 id = 1;
+  string host = 2;
+  uint32 port = 3;
 }
 
-message ServerList {
-  repeated string available_uris = 1;
+message LookupStreamResponse {
+  string streamName = 1;
+  ServerNode serverNode = 2;
 }
 
-message Redirected {
-  string redirected_uri = 1;
-}
-
-message SubReq {
-  string subsctiption_Id = 1;
-  string client_id = 2;
+message LookupSubscriptionResponse {
+  string subscriptionId = 1;
+  ServerNode serverNode = 2;
 }
