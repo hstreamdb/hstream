@@ -10,6 +10,6 @@ module HStream.Server.Persistence (
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.MemoryStore
 import           HStream.Server.Persistence.Nodes
-import           HStream.Server.Persistence.Subscriptions ()
+import           HStream.Server.Persistence.Object      ()
 import           HStream.Server.Persistence.Tasks
 import           HStream.Server.Persistence.Utils

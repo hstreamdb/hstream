@@ -144,3 +144,8 @@ data SubscriptionContext = SubscriptionContext
   , _subctxCurOffset :: Int64
   , _subctxClients   :: Set String
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
+
+data ProducerContext = ProducerContext
+  { _prdctxStream :: String
+  , _prdctxNode   :: String
+  } deriving (Show, Eq, Generic, FromJSON, ToJSON)

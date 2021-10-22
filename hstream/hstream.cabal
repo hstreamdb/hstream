@@ -52,7 +52,7 @@ library
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Nodes
-    HStream.Server.Persistence.Subscriptions
+    HStream.Server.Persistence.Object
     HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.Utils
 
