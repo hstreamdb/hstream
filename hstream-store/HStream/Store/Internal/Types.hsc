@@ -257,8 +257,8 @@ peekDataRecordBS ptr offset = do
 data GapRecord = GapRecord
   { gapLogID :: {-# UNPACK #-} !C_LogID
   , gapType  :: {-# UNPACK #-} !GapType
-  , gapHiLSN :: {-# UNPACK #-} !LSN
   , gapLoLSN :: {-# UNPACK #-} !LSN
+  , gapHiLSN :: {-# UNPACK #-} !LSN
   } deriving (Show, Eq)
 
 newtype GapType = GapType Word8
@@ -323,7 +323,11 @@ peekGapRecord ptr = do
   gaptype <- (#peek logdevice_gap_record_t, gaptype) ptr
   lo <- (#peek logdevice_gap_record_t, lo) ptr
   hi <- (#peek logdevice_gap_record_t, hi) ptr
-  return $ GapRecord logid (GapType gaptype) lo hi
+  return $ GapRecord { gapLogID = logid
+                     , gapType  = GapType gaptype
+                     , gapHiLSN = hi
+                     , gapLoLSN = lo
+                     }
 
 data AppendCallBackData = AppendCallBackData
   { appendCbRetCode   :: !ErrorCode
