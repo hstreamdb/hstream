@@ -88,9 +88,9 @@ service HStreamApi {
   // ---------------------------------------------------------------------------
   // APIs for Cluster
   // ---------------------------------------------------------------------------
-  rpc DescribeCluster() returns (DescribeClusterResponse) {}
-  rpc LookupStream(string streamName) returns (LookupStreamResponse) {}
-  rpc LookupSubscription(string subscriptionId) returns (LookupSubscriptionResponse) {}
+  rpc DescribeCluster(google.protobuf.Empty) returns (DescribeClusterResponse) {}
+  rpc LookupStream(LookupStreamRequest) returns (LookupStreamResponse) {}
+  rpc LookupSubscription(LookupSubscriptionRequest) returns (LookupSubscriptionResponse) {}
 
 }
 
@@ -462,9 +462,17 @@ message ServerNode {
   uint32 port = 3;
 }
 
+message LookupStreamRequest {
+  string streamName = 1;
+}
+
 message LookupStreamResponse {
   string streamName = 1;
   ServerNode serverNode = 2;
+}
+
+message LookupSubscriptionRequest {
+  string subscriptionId = 1;
 }
 
 message LookupSubscriptionResponse {
