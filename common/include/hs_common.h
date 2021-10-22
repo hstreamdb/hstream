@@ -22,6 +22,12 @@ void setup_sigsegv_handler();
 struct StatsHolder;
 
 // ----------------------------------------------------------------------------
+// Query
+//
+// See: cbits/query.cpp
+
+
+// ----------------------------------------------------------------------------
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -91,7 +91,6 @@ service HStreamApi {
   rpc DescribeCluster(google.protobuf.Empty) returns (DescribeClusterResponse) {}
   rpc LookupStream(LookupStreamRequest) returns (LookupStreamResponse) {}
   rpc LookupSubscription(LookupSubscriptionRequest) returns (LookupSubscriptionResponse) {}
-
 }
 
 message EchoRequest {
