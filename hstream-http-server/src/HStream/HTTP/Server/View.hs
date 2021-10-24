@@ -12,10 +12,10 @@ module HStream.HTTP.Server.View (
   ViewsAPI, viewServer, listViewsHandler, ViewBO(..)
 ) where
 
+import           Control.Monad                (void)
 import           Control.Monad.IO.Class       (liftIO)
 import           Data.Aeson                   (FromJSON, ToJSON)
 import           Data.Int                     (Int64)
-import           Data.Maybe                   (isJust)
 import           Data.Swagger                 (ToSchema)
 import qualified Data.Text                    as T
 import qualified Data.Text.Lazy               as TL
@@ -27,8 +27,7 @@ import           Servant                      (Capture, Delete, Get, JSON, Post,
                                                ReqBody, type (:>), (:<|>) (..))
 import           Servant.Server               (Handler, Server)
 
-import           HStream.HTTP.Server.Utils    (getServerResp,
-                                               mkClientNormalRequest)
+import           HStream.HTTP.Server.Utils
 import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 import           HStream.Utils                (TaskStatus (..))
@@ -41,57 +40,60 @@ data ViewBO = ViewBO
   , sql         :: T.Text
   } deriving (Eq, Show, Generic)
 
-instance ToJSON ViewBO
+instance ToJSON   ViewBO
 instance FromJSON ViewBO
 instance ToSchema ViewBO
-
-type ViewsAPI =
-  "views" :> Get '[JSON] [ViewBO]
-  :<|> "views" :> ReqBody '[JSON] ViewBO :> Post '[JSON] ViewBO
-  :<|> "views" :> Capture "name" String :> Delete '[JSON] Bool
-  :<|> "views" :> Capture "name" String :> Get '[JSON] (Maybe ViewBO)
 
 viewToViewBO :: View -> ViewBO
 viewToViewBO (View id' status createdTime sql _) =
   ViewBO (Just $ TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict sql)
 
+type ViewsAPI
+  =    "views" :> Get '[JSON] [ViewBO]
+  :<|> "views" :> ReqBody '[JSON] ViewBO :> Post '[JSON] ViewBO
+  :<|> "views" :> Capture "name" String :> Delete '[JSON] ()
+  :<|> "views" :> Capture "name" String :> Get '[JSON] ViewBO
+
 createViewHandler :: Client -> ViewBO -> Handler ViewBO
-createViewHandler hClient (ViewBO _ _ _ sql) = liftIO $ do
-  Log.debug $ "Send create view request to HStream server. "
-    <> "SQL Statement: " <> Log.buildText sql
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiCreateView
-    (mkClientNormalRequest def {createViewRequestSql = TL.pack $ T.unpack sql})
-  maybe (ViewBO Nothing Nothing Nothing sql) viewToViewBO <$> getServerResp resp
+createViewHandler hClient (ViewBO _ _ _ sql) = do
+  resp <- liftIO $ do
+    Log.debug $ "Send create view request to HStream server. "
+             <> "SQL Statement: " <> Log.buildText sql
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiCreateView $ mkClientNormalRequest def
+      { createViewRequestSql = TL.pack $ T.unpack sql }
+  viewToViewBO <$> getServerResp' resp
 
 listViewsHandler :: Client -> Handler [ViewBO]
-listViewsHandler hClient = liftIO $ do
-  Log.debug "Send list views request to HStream server. "
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiListViews (mkClientNormalRequest def)
-  maybe [] (V.toList . V.map viewToViewBO . listViewsResponseViews)
-    <$> getServerResp resp
+listViewsHandler hClient = do
+  resp <- liftIO $ do
+    Log.debug "Send list views request to HStream server. "
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiListViews $ mkClientNormalRequest def
+  V.toList . V.map viewToViewBO . listViewsResponseViews <$> getServerResp' resp
 
-deleteViewHandler :: Client -> String -> Handler Bool
-deleteViewHandler hClient vid = liftIO $ do
-  Log.debug $ "Send delete view request to HStream server. "
-    <> "View ID: " <> Log.buildString vid
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiDeleteView
-    (mkClientNormalRequest def { deleteViewRequestViewId = TL.pack vid })
-  isJust <$> getServerResp resp
+deleteViewHandler :: Client -> String -> Handler ()
+deleteViewHandler hClient vid = do
+  resp <- liftIO $ do
+    Log.debug $ "Send delete view request to HStream server. "
+             <> "View ID: " <> Log.buildString vid
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiDeleteView $ mkClientNormalRequest def
+      { deleteViewRequestViewId = TL.pack vid }
+  void $ getServerResp' resp
 
-getViewHandler :: Client -> String -> Handler (Maybe ViewBO)
-getViewHandler hClient vid = liftIO $ do
-  Log.debug $ "Send get view request to HStream server. "
-    <> "View ID: " <> Log.buildString vid
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiGetView (mkClientNormalRequest def { getViewRequestViewId = TL.pack vid })
-  (viewToViewBO <$>) <$> getServerResp resp
+getViewHandler :: Client -> String -> Handler ViewBO
+getViewHandler hClient vid = do
+  resp <- liftIO $ do
+    Log.debug $ "Send get view request to HStream server. "
+             <> "View ID: " <> Log.buildString vid
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiGetView $ mkClientNormalRequest def
+      { getViewRequestViewId = TL.pack vid }
+  viewToViewBO <$> getServerResp' resp
 
 viewServer :: Client -> Server ViewsAPI
-viewServer hClient =
-  listViewsHandler hClient
-  :<|> createViewHandler hClient
-  :<|> deleteViewHandler hClient
-  :<|> getViewHandler hClient
+viewServer hClient = listViewsHandler  hClient
+                :<|> createViewHandler hClient
+                :<|> deleteViewHandler hClient
+                :<|> getViewHandler    hClient
