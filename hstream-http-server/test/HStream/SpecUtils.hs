@@ -9,12 +9,12 @@ import           System.Environment         (lookupEnv)
 
 import           HStream.HTTP.Server.Stream
 
-createStream :: String -> Word32 -> IO (Maybe StreamBO)
+createStream :: String -> Word32 -> IO StreamBO
 createStream sName rep = do
   request' <- buildRequest "POST" "streams"
   let request = setRequestBodyJSON (StreamBO (T.pack sName) rep) $ request'
   response <- httpLBS request
-  return (decode (getResponseBody response) :: Maybe StreamBO)
+  pure $ fromJust (decode (getResponseBody response) :: Maybe StreamBO)
 
 appendStream :: AppendBO -> IO AppendResult
 appendStream appendBO = do
@@ -23,11 +23,11 @@ appendStream appendBO = do
   resp <- httpLBS request
   pure $ fromJust (decode (getResponseBody resp) :: Maybe AppendResult)
 
-deleteStream :: String -> IO (Maybe Bool)
+deleteStream :: String -> IO ()
 deleteStream sName = do
   request <- buildRequest "DELETE" ("streams/" <> sName)
   response <- httpLBS request
-  return (decode (getResponseBody response) :: Maybe Bool)
+  pure $ fromJust (decode (getResponseBody response) :: Maybe ())
 
 getHTTPPort :: IO String
 getHTTPPort = fromMaybe "8000" <$> lookupEnv "HTTP_LOCAL_PORT"

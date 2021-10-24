@@ -1,14 +1,29 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs     #-}
+{-# LANGUAGE DataKinds     #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GADTs         #-}
 module HStream.HTTP.Server.Utils where
 
 import           Control.Monad.IO.Class           (liftIO)
+import           Data.Aeson                       (FromJSON (..), ToJSON (..))
 import qualified Data.ByteString.Lazy             as BSL
 import qualified Data.Map                         as Map
+import           Data.Swagger                     (ToSchema (..))
+import qualified Data.Text                        as T
+import           GHC.Generics                     (Generic (..))
 import qualified HStream.Logger                   as Log
 import           Network.GRPC.HighLevel.Generated
 import           Servant                          hiding (Stream)
 
+--------------------------------------------------------------------------------
+newtype SQLCmd = SQLCmd
+  { sqlCmd :: T.Text }
+  deriving (Show, Eq, Generic)
+
+instance ToJSON   SQLCmd
+instance FromJSON SQLCmd
+instance ToSchema SQLCmd
+
+--------------------------------------------------------------------------------
 getServerResp :: ClientResult 'Normal a -> IO (Maybe a)
 getServerResp result = do
   case result of

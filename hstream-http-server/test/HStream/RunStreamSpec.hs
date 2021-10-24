@@ -34,7 +34,7 @@ spec = describe "HStream.RunStreamSpec" do
 
   it "create stream" do
     stream <- createStream sName 3
-    stream `shouldBe` (Just (StreamBO (T.pack sName) 3))
+    stream `shouldBe` StreamBO (T.pack sName) 3
 
   it "appends" do
     AppendResult xs <- appendStream $ testRecords $ T.pack sName
@@ -46,11 +46,11 @@ spec = describe "HStream.RunStreamSpec" do
 
   it "get stream" do
     stream <- getStream sName
-    stream `shouldBe` (Just (StreamBO (T.pack sName) 3))
+    stream `shouldBe` Just (StreamBO (T.pack sName) 3)
 
   it "delete stream" do
     res <- deleteStream sName
-    res `shouldBe` (Just True)
+    res `shouldBe` ()
 
 --------------------------------------------------------------------------------
 testRecords :: T.Text -> AppendBO

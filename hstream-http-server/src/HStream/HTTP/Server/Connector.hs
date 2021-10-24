@@ -50,7 +50,7 @@ type ConnectorsAPI
   =    "connectors" :> Get '[JSON] [ConnectorBO]
   :<|> "connectors" :> "restart"   :> Capture "name" String :> Post '[JSON] ()
   :<|> "connectors" :> "terminate" :> Capture "name" String :> Post '[JSON] ()
-  :<|> "connectors" :> ReqBody '[JSON] ConnectorBO :> Post '[JSON] ConnectorBO
+  :<|> "connectors" :> ReqBody '[JSON] SQLCmd :> Post '[JSON] ConnectorBO
   :<|> "connectors" :> Capture "name" String :> Delete '[JSON] ()
   :<|> "connectors" :> Capture "name" String :> Get '[JSON] ConnectorBO
 
@@ -62,15 +62,14 @@ connectorToConnectorBO Connector{..} = ConnectorBO
   , sql         = TL.toStrict connectorSql
   }
 
--- FIXME: no need for a ConnectorBO in request
-createConnectorHandler :: Client -> ConnectorBO -> Handler ConnectorBO
-createConnectorHandler hClient (ConnectorBO _ _ _ sql) = do
+createConnectorHandler :: Client -> SQLCmd -> Handler ConnectorBO
+createConnectorHandler hClient SQLCmd{..} = do
   resp <- liftIO $ do
     Log.debug $ "Send create connector request to HStream server. "
-             <> "SQL statement: " <> Log.buildText sql
+             <> "SQL statement: " <> Log.buildText sqlCmd
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiCreateSinkConnector . mkClientNormalRequest $ def
-      { createSinkConnectorRequestSql = TL.fromStrict sql }
+      { createSinkConnectorRequestSql = TL.fromStrict sqlCmd }
   connectorToConnectorBO <$> getServerResp' resp
 
 listConnectorsHandler :: Client -> Handler [ConnectorBO]
