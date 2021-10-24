@@ -136,7 +136,7 @@ appendHandler hClient appendBO = do
   resp <- liftIO $ do
     HStreamApi{..} <- hstreamApiClient hClient
     timestamp      <- getProtoTimestamp
-    Log.debug $ ""
+    Log.debug $ "Append records to HStream server. "
              <> "Stream Name: " <> Log.buildText (streamName appendBO)
     let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
         record  = buildRecord header `V.map` processRecords appendBO

@@ -3,9 +3,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.HTTP.Server.Overview (
-  OverviewAPI, overviewServer
-) where
+module HStream.HTTP.Server.Overview
+  ( OverviewAPI , overviewServer
+  ) where
 
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Swagger                  (ToSchema)
@@ -29,18 +29,18 @@ data OverviewBO = OverviewBO
   , nodes      :: Int
   } deriving (Eq, Show, Generic)
 
-instance ToJSON OverviewBO
+instance ToJSON   OverviewBO
 instance FromJSON OverviewBO
 instance ToSchema OverviewBO
 
-type OverviewAPI =
-  "overview" :> Get '[JSON] OverviewBO
+type OverviewAPI
+  = "overview" :> Get '[JSON] OverviewBO
 
 getOverviewHandler :: Client -> Handler OverviewBO
 getOverviewHandler hClient = do
-    streamCnt    <- length <$> listStreamsHandler hClient
-    queryCnt     <- length <$> listQueriesHandler hClient
-    viewCnt      <- length <$> listViewsHandler hClient
+    streamCnt    <- length <$> listStreamsHandler    hClient
+    queryCnt     <- length <$> listQueriesHandler    hClient
+    viewCnt      <- length <$> listViewsHandler      hClient
     connectorCnt <- length <$> listConnectorsHandler hClient
     nodeCnt      <- length <$> listStoreNodesHandler hClient
     return $ OverviewBO streamCnt queryCnt viewCnt connectorCnt nodeCnt
