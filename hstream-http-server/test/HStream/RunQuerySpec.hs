@@ -4,6 +4,7 @@
 module HStream.RunQuerySpec (spec) where
 
 import           Data.Aeson                (decode)
+import           Data.Maybe                (fromJust)
 import qualified Data.Text                 as T
 import           Network.HTTP.Simple
 import           Test.Hspec
@@ -32,11 +33,11 @@ getQuery qName = do
   response <- httpLBS request
   return (decode (getResponseBody response) :: Maybe QueryBO)
 
-cancelQuery :: String -> IO (Maybe Bool)
+cancelQuery :: String -> IO ()
 cancelQuery qName = do
   request <- buildRequest "POST" ("queries/cancel/" <> qName)
   response <- httpLBS request
-  return (decode (getResponseBody response) :: Maybe Bool)
+  pure $ fromJust (decode (getResponseBody response) :: Maybe ())
 
 createQuery :: String -> String -> IO (Maybe QueryBO)
 createQuery qName sql = do
@@ -45,11 +46,11 @@ createQuery qName sql = do
   response <- httpLBS request
   return (decode (getResponseBody response) :: Maybe QueryBO)
 
-deleteQuery :: String -> IO (Maybe Bool)
+deleteQuery :: String -> IO ()
 deleteQuery qName = do
   request <- buildRequest "DELETE" ("queries/" <> qName)
   response <- httpLBS request
-  return (decode (getResponseBody response) :: Maybe Bool)
+  pure $ fromJust (decode (getResponseBody response) :: Maybe ())
 
 spec :: Spec
 spec = describe "HStream.RunQuerySpec" $ do
@@ -73,12 +74,12 @@ spec = describe "HStream.RunQuerySpec" $ do
 
     it "cancel query" $ do
       query <- cancelQuery qName
-      query `shouldBe` (Just True)
+      query `shouldBe` ()
 
     it "delete query" $ do
       query <- deleteQuery qName
       _ <- deleteStream sName
-      query `shouldBe` (Just True)
+      query `shouldBe` ()
   where
     queryWithCorrectSql :: String -> Maybe QueryBO -> Bool
     queryWithCorrectSql sql query = case query of

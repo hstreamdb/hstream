@@ -4,7 +4,7 @@
 module HStream.RunViewSpec (spec) where
 
 import           Data.Aeson               (decode)
-import           Data.Maybe               (isJust)
+import           Data.Maybe               (fromJust, isJust)
 import qualified Data.Text                as T
 import           Network.HTTP.Simple
 import           Test.Hspec
@@ -40,11 +40,11 @@ createView sql = do
   response <- httpLBS request
   return (decode (getResponseBody response) :: Maybe ViewBO)
 
-deleteView :: String -> IO (Maybe Bool)
+deleteView :: String -> IO ()
 deleteView vName = do
   request <- buildRequest "DELETE" ("views/" <> vName)
   response <- httpLBS request
-  return (decode (getResponseBody response) :: Maybe Bool)
+  pure $ fromJust (decode (getResponseBody response) :: Maybe ())
 
 spec :: Spec
 spec = describe "HStream.RunViewSpec" $ do
@@ -69,5 +69,5 @@ spec = describe "HStream.RunViewSpec" $ do
         view' `shouldSatisfy` isJust
         res <- deleteView vName
         _ <- deleteStream sName
-        res `shouldBe` Just True
+        res `shouldBe` ()
       (ViewBO vid _ _ _) -> vid `shouldSatisfy` isJust

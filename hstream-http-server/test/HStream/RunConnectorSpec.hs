@@ -85,7 +85,7 @@ spec = describe "HStream.RunConnectorSpec" $ do
     it "create connector" $ do
       _ <- createStream sName 3
       connector <- createConnector sql
-      connector `shouldSatisfy` (connectorWithCorrectSql sql)
+      connector `shouldSatisfy` connectorWithCorrectSql sql
 
     it "list connectors" $ do
       connectors <- listConnectors
