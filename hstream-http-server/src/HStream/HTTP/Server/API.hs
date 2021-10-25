@@ -42,12 +42,12 @@ api :: Proxy API
 api = Proxy
 
 apiServer :: Client -> Server API
-apiServer hClient = do streamServer hClient
-                  :<|> queryServer hClient
-                  :<|> nodeServer hClient
+apiServer hClient = do streamServer    hClient
+                  :<|> queryServer     hClient
+                  :<|> nodeServer      hClient
                   :<|> connectorServer hClient
-                  :<|> overviewServer hClient
-                  :<|> viewServer hClient
+                  :<|> overviewServer  hClient
+                  :<|> viewServer      hClient
 
 apiSwagger :: Swagger
 apiSwagger = toSwagger api

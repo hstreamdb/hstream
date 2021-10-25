@@ -1,13 +1,13 @@
 module HStream.SpecUtils where
 
 import           Data.Aeson                 (decode)
-import           Data.Maybe                 (fromMaybe)
+import           Data.Maybe                 (fromJust, fromMaybe)
 import qualified Data.Text                  as T
 import           Data.Word                  (Word32)
 import           Network.HTTP.Simple
 import           System.Environment         (lookupEnv)
 
-import           HStream.HTTP.Server.Stream (StreamBO (..))
+import           HStream.HTTP.Server.Stream
 
 createStream :: String -> Word32 -> IO (Maybe StreamBO)
 createStream sName rep = do
@@ -15,6 +15,13 @@ createStream sName rep = do
   let request = setRequestBodyJSON (StreamBO (T.pack sName) rep) $ request'
   response <- httpLBS request
   return (decode (getResponseBody response) :: Maybe StreamBO)
+
+appendStream :: AppendBO -> IO AppendResult
+appendStream appendBO = do
+  req <- buildRequest "POST" $ "streams/publish"
+  let request = setRequestBodyJSON appendBO req
+  resp <- httpLBS request
+  pure $ fromJust (decode (getResponseBody resp) :: Maybe AppendResult)
 
 deleteStream :: String -> IO (Maybe Bool)
 deleteStream sName = do

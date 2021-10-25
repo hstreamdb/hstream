@@ -7,32 +7,40 @@
 {-# LANGUAGE TypeOperators     #-}
 
 module HStream.HTTP.Server.Stream
-  ( StreamsAPI
-  , streamServer
+  ( StreamsAPI, streamServer
   , listStreamsHandler
-  , StreamBO(..)
+  , StreamBO(..), AppendBO(..), AppendResult(..)
+  , buildAppendBO
   ) where
 
 import           Control.Monad.IO.Class       (liftIO)
-import           Data.Aeson                   (FromJSON, ToJSON)
-import           Data.List                    (find)
-import           Data.Maybe                   (isJust)
-import           Data.Swagger                 (ToSchema)
+import qualified Data.Aeson                   as A
+import qualified Data.ByteString              as BS
+import qualified Data.ByteString.Base64       as BSE
+import qualified Data.ByteString.Base64.Lazy  as BSL
+import qualified Data.ByteString.Char8        as BS
+import qualified Data.ByteString.Lazy         as BSL
+import qualified Data.ByteString.Lazy.Char8   as BSL
+import qualified Data.HashMap.Strict          as HM
+import qualified Data.List                    as L
+import qualified Data.Map                     as Map
+import           Data.Maybe
+import           Data.Swagger                 (ToSchema (..))
 import qualified Data.Text                    as T
+import qualified Data.Text.Encoding           as T
 import qualified Data.Text.Lazy               as TL
 import qualified Data.Vector                  as V
 import           Data.Word                    (Word32)
 import           GHC.Generics                 (Generic)
-import           Network.GRPC.LowLevel.Client (Client)
-import           Proto3.Suite                 (def)
-import           Servant                      (Capture, Delete, Get, JSON, Post,
-                                               ReqBody, type (:>), (:<|>) (..))
-import           Servant.Server               (Handler, Server)
-
 import           HStream.HTTP.Server.Utils    (getServerResp,
                                                mkClientNormalRequest)
 import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
+import           HStream.Utils                (buildRecord, buildRecordHeader,
+                                               getProtoTimestamp)
+import           Network.GRPC.LowLevel.Client (Client)
+import           Proto3.Suite                 (def)
+import           Servant                      hiding (Stream)
 
 -- BO is short for Business Object
 data StreamBO = StreamBO
@@ -40,21 +48,52 @@ data StreamBO = StreamBO
   , replicationFactor :: Word32
   } deriving (Eq, Show, Generic)
 
-instance ToJSON StreamBO
-instance FromJSON StreamBO
-instance ToSchema StreamBO
-
-type StreamsAPI =
-  "streams" :> Get '[JSON] [StreamBO]
-  :<|> "streams" :> ReqBody '[JSON] StreamBO :> Post '[JSON] StreamBO
-  :<|> "streams" :> Capture "name" String :> Delete '[JSON] Bool
-  :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
+instance A.ToJSON   StreamBO
+instance A.FromJSON StreamBO
+instance ToSchema   StreamBO
 
 streamToStreamBO :: Stream -> StreamBO
 streamToStreamBO (Stream name rep) = StreamBO (TL.toStrict name) rep
 
 streamBOTOStream :: StreamBO -> Stream
 streamBOTOStream (StreamBO name rep) = Stream (TL.fromStrict name) rep
+
+data AppendBO = AppendBO
+  { streamName :: T.Text
+  , records    :: T.Text
+  } deriving (Eq, Show, Generic)
+
+instance A.ToJSON   AppendBO
+instance A.FromJSON AppendBO
+instance ToSchema   AppendBO
+
+processRecords :: AppendBO -> V.Vector BS.ByteString
+processRecords = V.fromList . BS.lines . BSE.decodeLenient . T.encodeUtf8 . records
+
+buildAppendBO :: T.Text -> [[(T.Text, A.Value)]] -> AppendBO
+buildAppendBO streamName = AppendBO streamName . T.decodeUtf8 . BS.concat . BSL.toChunks .
+  BSL.encode . BSL.unlines . map
+    (A.encode . HM.fromList)
+
+data AppendResult = AppendResult
+  { recordIds :: V.Vector RecordId
+  } deriving (Eq, Show, Generic)
+
+instance A.ToJSON   AppendResult
+instance A.FromJSON AppendResult
+instance ToSchema   AppendResult
+
+type StreamsAPI
+  =    "streams" :> Get '[JSON] [StreamBO]
+  -- ^ List all streams
+  :<|> "streams" :> ReqBody '[JSON] StreamBO :> Post '[JSON] StreamBO
+  -- ^ Create a new stream
+  :<|> "streams" :> Capture "name" T.Text :> Delete '[JSON] Bool
+  -- ^ Delete a stream
+  :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
+  -- ^ Get a stream
+  :<|> "streams" :> "publish" :> ReqBody '[JSON] AppendBO :> Post '[JSON] AppendResult
+  -- ^ Append records to a stream
 
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO
 createStreamHandler hClient streamBO = liftIO $ do
@@ -73,27 +112,42 @@ listStreamsHandler hClient = liftIO $ do
   resp <- hstreamApiListStreams $ mkClientNormalRequest ListStreamsRequest
   maybe [] (V.toList . V.map streamToStreamBO . listStreamsResponseStreams) <$> getServerResp resp
 
-deleteStreamHandler :: Client -> String -> Handler Bool
+deleteStreamHandler :: Client -> T.Text -> Handler Bool
 deleteStreamHandler hClient sName = liftIO $ do
   Log.debug $ "Send delete stream request to HStream server. "
-    <> "Stream Name: " <> Log.buildString sName
+           <> "Stream Name: " <> Log.buildText sName
   HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiDeleteStream
-    (mkClientNormalRequest def
-      { deleteStreamRequestStreamName = TL.pack sName
-      , deleteStreamRequestIgnoreNonExist = False } )
+  resp <- hstreamApiDeleteStream $
+    mkClientNormalRequest def
+      { deleteStreamRequestStreamName     = TL.fromStrict sName
+      , deleteStreamRequestIgnoreNonExist = False
+      }
   isJust <$> getServerResp resp
 
 -- FIXME: This is broken.
 getStreamHandler :: Client -> T.Text -> Handler (Maybe StreamBO)
 getStreamHandler hClient sName = do
   liftIO . Log.debug $ "Send get stream request to HStream server. "
-    <> "Stream Name: " <> Log.buildText sName
-  streams <- listStreamsHandler hClient
-  return $ find (\StreamBO{..} -> sName == name) streams
+                    <> "Stream Name: " <> Log.buildText sName
+  (L.find $ \StreamBO{..} -> sName == name) <$> listStreamsHandler hClient
+
+appendHandler :: Client -> AppendBO -> Handler AppendResult
+appendHandler hClient appendBO = liftIO $ do
+  HStreamApi{..} <- hstreamApiClient hClient
+  timestamp      <- getProtoTimestamp
+  Log.debug $ ""
+           <> "Stream Name: " <> Log.buildText (streamName appendBO)
+  let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+      record  = buildRecord header `V.map` processRecords appendBO
+  resp <- hstreamApiAppend . mkClientNormalRequest $ def
+      { appendRequestStreamName = TL.fromStrict (streamName appendBO)
+      , appendRequestRecords    = record
+      }
+  AppendResult . appendResponseRecordIds . fromJust <$> getServerResp resp
 
 streamServer :: Client -> Server StreamsAPI
-streamServer hClient = listStreamsHandler hClient
+streamServer hClient = listStreamsHandler  hClient
                   :<|> createStreamHandler hClient
                   :<|> deleteStreamHandler hClient
-                  :<|> getStreamHandler hClient
+                  :<|> getStreamHandler    hClient
+                  :<|> appendHandler       hClient

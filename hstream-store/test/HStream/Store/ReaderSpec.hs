@@ -135,7 +135,12 @@ misc = do
     S.readerStartReading reader logid sn0 sn2
     log1 <- S.readerReadAllowGap @Bytes reader 10
     log2 <- S.readerReadAllowGap @Bytes reader 10
-    log1 `shouldBe` Left (S.GapRecord logid (S.GapType 4) sn0 sn1)
+    let expected = S.GapRecord { gapLogID = logid
+                               , gapType  = S.GapType 4
+                               , gapLoLSN = sn0
+                               , gapHiLSN = sn1
+                               }
+    log1 `shouldBe` Left expected
     (fmap S.recordPayload <$> log2) `shouldBe` Right ["three" :: Bytes]
 
   -- TODO
