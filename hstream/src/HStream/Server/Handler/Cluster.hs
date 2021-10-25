@@ -47,7 +47,7 @@ connectHandler ServerContext{..} (ServerNormalRequest _meta (ConnectRequest (Jus
     ConnectRequestRedirectStrategyBySubscription (SubReq subId clientId) -> do
       -- fetch zk because local subscriptions may not be the latest
       -- (e.g. some subscriptions were transferred)
-      subs <- P.listSubscriptions zkHandle
+      subs <- P.listObjects zkHandle
       case Map.lookup (TL.toStrict subId) subs of
         Nothing -> returnErrResp StatusInternal "No subscription found"
         Just sub@SubscriptionContext{..} -> do
@@ -55,7 +55,7 @@ connectHandler ServerContext{..} (ServerNormalRequest _meta (ConnectRequest (Jus
             then do
             let sub' = sub{ _subctxClients = Set.insert (TL.unpack clientId) _subctxClients }
             modifyMVar_ subscriptionCtx (return . Map.insert (TL.unpack subId) sub')
-            P.storeSubscription (TL.toStrict subId) sub' zkHandle -- sync to zk
+            P.storeObject (TL.toStrict subId) sub' zkHandle -- sync to zk
             let serverList = ServerList (V.fromList allUris)
             returnResp $ ConnectResponse (Just $ ConnectResponseStatusAccepted serverList)
             else do -- redirect to the subscription node
