@@ -268,7 +268,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       terminate <- newChan
       void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate defaultHacker)
 
-      let numMsg = 300
+      let numMsg = 1000
           batchSize = 5
       reqRids <- replicateM numMsg $ do
         payload <- V.map (buildRecord header) <$> V.replicateM batchSize (newRandomByteString 2)
@@ -341,6 +341,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
   -- test need to add
   --  1. fetch/ack unsubscribed subscription will fail
   --  2. validate commit and checkpoint
+  --  3. test subscribe from any offset
 
 ----------------------------------------------------------------------------------------------------------
 

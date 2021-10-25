@@ -119,7 +119,8 @@ isLastInBatch :: RecordId -> Map.Map Word64 Word32 -> Bool
 isLastInBatch recordId batchNumMap =
   case Map.lookup (recordIdBatchId recordId) batchNumMap of
     Nothing  -> error "no recordIdBatchId found"
-    Just num -> recordIdBatchIndex recordId == num - 1
+    Just num | num == 0 -> True
+             | otherwise -> recordIdBatchIndex recordId == num - 1
 
 getSuccessor :: RecordId -> Map.Map Word64 Word32 -> RecordId
 getSuccessor r@RecordId{..} batchNumMap =
