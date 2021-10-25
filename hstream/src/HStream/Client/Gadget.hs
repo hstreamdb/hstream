@@ -1,5 +1,7 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,11 +10,10 @@ module HStream.Client.Gadget where
 
 import           Control.Concurrent
 import           Control.Monad
-import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
 import qualified Data.List                        as L
 import qualified Data.Map                         as Map
-import qualified Data.Text.Encoding               as TE
+import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
@@ -21,91 +22,84 @@ import           Network.GRPC.HighLevel.Generated (GRPCIOError (..),
 
 import           HStream.Client.Utils
 import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi        (ServerNode (serverNodeHost))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
 data ClientContext = ClientContext
-  { availableServers :: MVar [ByteString]
-  , currentServer    :: MVar ByteString
-  , producers        :: MVar (Map.Map String ByteString)
+  { availableServers :: MVar [API.ServerNode]
+  , currentServer    :: MVar API.ServerNode
+  , producers        :: MVar (Map.Map T.Text API.ServerNode)
   , clientId         :: String
 }
 
-data SubscriptionWithClient = SubscriptionWithClient
-  { _subscriptionWithClientSubId    :: String
-  , _subscriptionWithClientClientId :: String
-  }
-
-data ConnectStrategy
-  = ByLoad
-  | BySubscription SubscriptionWithClient
-
 --------------------------------------------------------------------------------
 
--- | Try the best to connect to the cluster until all possible choices failed.
-connect :: ClientContext -> ByteString -> ConnectStrategy -> IO (Maybe ByteString)
-connect ctx@ClientContext{..} uri strategy = withGRPCClient (mkGRPCClientConf uri) $ \client -> do
-    API.HStreamApi{..} <- API.hstreamApiClient client
-    let req = case strategy of
-          ByLoad -> API.ConnectRequest (Just $ API.ConnectRequestRedirectStrategyByLoad Empty)
-          BySubscription (SubscriptionWithClient subId cId) ->
-            API.ConnectRequest (Just $ API.ConnectRequestRedirectStrategyBySubscription
-                                (API.SubReq (TL.pack subId) (TL.pack cId)))
-    resp <- hstreamApiConnect $ mkClientNormalRequest req
-    case resp of
-      ClientNormalResponse (API.ConnectResponse (Just (API.ConnectResponseStatusAccepted (API.ServerList uris)))) _meta1 _meta2 _code _details      -> do
-        void $ swapMVar currentServer uri
-        void $ swapMVar availableServers (V.toList $ TE.encodeUtf8 . TL.toStrict <$> uris)
-        Log.d . Log.buildByteString $ "Connected to " <> uri
-          <> ". Available servers: " <> BSC.pack (show uris)
-        return (Just uri)
-      ClientNormalResponse (API.ConnectResponse (Just (API.ConnectResponseStatusRedirected (API.Redirected new_uri)))) _meta1 _meta2 _code _details -> do
-        Log.d . Log.buildString $ "Redirected to " <> show new_uri
-        connect ctx (TE.encodeUtf8 . TL.toStrict $ new_uri) strategy
-      ClientErrorResponse err        -> do
-        Log.w . Log.buildString $
-          "Error when connecting to " <> BSC.unpack uri <> ": " <> show err
-        modifyMVar_ availableServers (return . L.delete uri)
-        uris <- readMVar availableServers
-        Log.w . Log.buildString $ "Now trying: " <> show uris
-        go uris
-      _                              -> do
-        Log.e "Unknown error"
-        return Nothing
+describeCluster :: ClientContext -> API.ServerNode -> IO (Maybe API.DescribeClusterResponse)
+describeCluster ctx@ClientContext{..} node = do
+  doActionWithNode ctx node getRespApp handleRespApp
   where
-    go :: [ByteString] -> IO (Maybe ByteString)
-    go [] = return Nothing
-    go (x:xs) = do
-      m_uri <- connect ctx x strategy
-      case m_uri of
-        Just uri_ -> return (Just uri_)
-        Nothing   -> go xs
+    getRespApp client = do
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      hstreamApiDescribeCluster (mkClientNormalRequest Empty)
+    handleRespApp :: ClientResult 'Normal API.DescribeClusterResponse -> IO (Maybe API.DescribeClusterResponse)
+    handleRespApp
+      (ClientNormalResponse resp@(API.DescribeClusterResponse _ _ nodes) _meta1 _meta2 _code _details) = do
+      void $ swapMVar availableServers (V.toList nodes)
+      return $ Just resp
 
--- | Try the best to execute an GRPC request until all possible choices failed.
-doAction :: ClientContext
-         -> ConnectStrategy
-         -> (Client -> IO (ClientResult typ a))
-         -> (ClientResult typ a -> IO ())
-         -> IO ()
-doAction ctx@ClientContext{..} strategy getRespApp handleRespApp = do
-  uri <- readMVar currentServer
-  doActionWithUri ctx uri strategy getRespApp handleRespApp
+lookupStream :: ClientContext -> API.ServerNode -> T.Text -> IO (Maybe API.ServerNode)
+lookupStream ctx@ClientContext{..} node stream = do
+  doActionWithNode ctx node getRespApp handleRespApp
+  where
+    getRespApp client = do
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      let req = API.LookupStreamRequest { lookupStreamRequestStreamName = TL.fromStrict stream }
+      hstreamApiLookupStream (mkClientNormalRequest req)
+    handleRespApp :: ClientResult 'Normal API.LookupStreamResponse -> IO (Maybe API.ServerNode)
+    handleRespApp
+      (ClientNormalResponse (API.LookupStreamResponse _ Nothing) _meta1 _meta2 _code _details) = return Nothing
+    handleRespApp
+      (ClientNormalResponse (API.LookupStreamResponse _ (Just serverNode)) _meta1 _meta2 _code _details) = do
+      modifyMVar_ producers (return . Map.insert stream serverNode)
+      return $ Just serverNode
+
+lookupSubscription :: ClientContext -> API.ServerNode -> T.Text -> IO (Maybe API.ServerNode)
+lookupSubscription ctx node subId = do
+  doActionWithNode ctx node getRespApp handleRespApp
+  where
+    getRespApp client = do
+      API.HStreamApi{..} <- API.hstreamApiClient client
+      let req = API.LookupSubscriptionRequest { lookupSubscriptionRequestSubscriptionId = TL.fromStrict subId }
+      hstreamApiLookupSubscription (mkClientNormalRequest req)
+    handleRespApp :: ClientResult 'Normal API.LookupSubscriptionResponse -> IO (Maybe API.ServerNode)
+    handleRespApp (ClientNormalResponse (API.LookupSubscriptionResponse _ Nothing) _meta1 _meta2 _code _details) = return Nothing
+    handleRespApp (ClientNormalResponse (API.LookupSubscriptionResponse _ (Just serverNode)) _meta1 _meta2 _code _details) = return $ Just serverNode
 
 -- | Try the best to execute an GRPC request until all possible choices failed,
--- with the given uri instead of which from ClientContext.
-doActionWithUri :: ClientContext
-                -> ByteString
-                -> ConnectStrategy
-                -> (Client -> IO (ClientResult typ a))
-                -> (ClientResult typ a -> IO ())
-                -> IO ()
-doActionWithUri ctx uri strategy getRespApp handleRespApp = do
-  m_realUri <- connect ctx uri strategy
-  case m_realUri of
-    Nothing      -> Log.w . Log.buildString $ "Error when executing an action."
-    Just realUri -> withGRPCClient (mkGRPCClientConf realUri) $ \client -> do
-      resp <- getRespApp client
-      case resp of
-        ClientErrorResponse (ClientIOError GRPCIOTimeout) -> do
-          Log.w . Log.buildString $ "Error when executing an action." <> show realUri
-        _ -> handleRespApp resp
+-- with the given node instead of which from ClientContext.
+doActionWithNode :: ClientContext
+                 -> API.ServerNode
+                 -> (Client -> IO (ClientResult typ a))
+                 -> (ClientResult typ a -> IO (Maybe b))
+                 -> IO (Maybe b)
+doActionWithNode ctx@ClientContext{..} node@API.ServerNode{..} getRespApp handleRespApp = do
+  withGRPCClient (mkGRPCClientConf $ BSC.pack uri) $ \client -> do
+    resp <- getRespApp client
+    case resp of
+      ClientErrorResponse (ClientIOError GRPCIOTimeout) -> do
+        Log.w . Log.buildString $ "Failed to connect to Node " <> show uri <> ", redirecting..."
+        modifyMVar_ availableServers (return . L.delete node)
+        curNodes <- readMVar availableServers
+        case L.null curNodes of
+          True  -> do
+            Log.w . Log.buildString $ "Error when executing an action."
+            return Nothing
+          False -> do
+            let newNode = head curNodes
+            doActionWithNode ctx newNode getRespApp handleRespApp
+      ClientErrorResponse _ -> do
+        Log.w . Log.buildString $ "Error when executing an action."
+        return Nothing
+      _ -> handleRespApp resp
+  where uri = TL.unpack serverNodeHost <> ":" <> show serverNodePort

@@ -24,6 +24,7 @@ import           Z.Foreign                        (toByteString)
 import           ZooKeeper                        (zooCreateOpInit, zooMulti)
 import           ZooKeeper.Types
 
+import           Data.Word                        (Word32)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.LoadBalance       (updateLoadReport)
 import           HStream.Server.Persistence       (NodeInfo (..),
@@ -40,9 +41,13 @@ import           HStream.Store                    (HsLogAttrs (HsLogAttrs),
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils                    (valueToBytes)
 
-initNodePath :: ZHandle -> CB.CBytes -> TL.Text -> TL.Text -> IO ()
-initNodePath zk serverName uri uri' = do
-  let nodeInfo = NodeInfo { nodeStatus = Ready, serverUri = uri, serverInternalUri = uri'}
+initNodePath :: ZHandle -> CB.CBytes -> TL.Text -> Word32 -> Word32 -> IO ()
+initNodePath zk serverName host port port' = do
+  let nodeInfo = NodeInfo { nodeStatus = Ready
+                          , serverHost = host
+                          , serverPort = port
+                          , serverInternalPort = port'
+                          }
   let ops = [ createEphemeral (serverRootPath, Just $ valueToBytes nodeInfo)
             , createEphemeral (serverLoadPath, Nothing)
             , zooCreateOpInit (serverIdPath <> "/")

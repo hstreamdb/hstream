@@ -93,6 +93,7 @@ dropAction API.HStreamApi{..} checkIfExist dropObject = do
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
 
+{-
 insertIntoStream :: ClientContext
   -> StreamName -> InsertType -> BS.ByteString
   -> IO (ClientResult 'Normal API.AppendResponse)
@@ -133,6 +134,7 @@ insertIntoStream ctx@ClientContext{..} sName insertType payload = do
             Just newUri -> do
               modifyMVar_ producers (return . Map.insert (T.unpack sName) newUri)
               insertIntoStream ctx sName insertType payload
+-}
 
 createStreamBySelect :: HStreamClientApi
   -> TL.Text -> Int -> [String]

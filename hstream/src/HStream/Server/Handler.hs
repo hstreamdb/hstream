@@ -73,8 +73,9 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListNodes = listStoreNodesHandler serverContext,
 
         -- Cluster
-        hstreamApiConnect = connectHandler serverContext
-
+        hstreamApiDescribeCluster = describeClusterHandler serverContext,
+        hstreamApiLookupStream = lookupStreamHandler serverContext,
+        hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext
         -- Admin
       , hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }

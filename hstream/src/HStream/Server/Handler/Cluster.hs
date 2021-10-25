@@ -9,65 +9,74 @@
 {-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Cluster
-  ( connectHandler
+  ( describeClusterHandler
+  , lookupStreamHandler
+  , lookupSubscriptionHandler
   ) where
 
-import           Control.Concurrent
-import           Control.Exception
+import           Data.Functor
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Set                         as Set
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper                        (zooGetChildren)
-import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
+import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (serverRootPath)
+import           HStream.Server.LoadBalance       (getNodesRanking)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
 
-connectHandler :: ServerContext
-               -> ServerRequest 'Normal ConnectRequest ConnectResponse
-               -> IO (ServerResponse 'Normal ConnectResponse)
-connectHandler ServerContext{..} (ServerNormalRequest _meta (ConnectRequest (Just strategy))) = do
-  -- FIXME: This is just a batch fix before modified connect
-  (StringsCompletion (StringVector allNames)) <- zooGetChildren zkHandle serverRootPath
-  allUris <- mapM (P.getServerUri zkHandle) allNames
-  case strategy of
-    ConnectRequestRedirectStrategyByLoad _ -> case allUris of
-      [] -> returnErrResp StatusInternal "No available server found"
-      _  -> if serverName == head allNames then do
-          let serverList = ServerList (V.fromList allUris)
-          returnResp $ ConnectResponse (Just $ ConnectResponseStatusAccepted serverList)
-            else do
-          let redirected = Redirected (head allUris)
-          returnResp $ ConnectResponse (Just $ ConnectResponseStatusRedirected redirected)
-    ConnectRequestRedirectStrategyBySubscription (SubReq subId clientId) -> do
-      -- fetch zk because local subscriptions may not be the latest
-      -- (e.g. some subscriptions were transferred)
-      subs <- P.listObjects zkHandle
-      case Map.lookup (TL.toStrict subId) subs of
-        Nothing -> returnErrResp StatusInternal "No subscription found"
-        Just sub@SubscriptionContext{..} -> do
-          if CB.unpack serverName == _subctxNode -- this node is the proper one
-            then do
-            let sub' = sub{ _subctxClients = Set.insert (TL.unpack clientId) _subctxClients }
-            modifyMVar_ subscriptionCtx (return . Map.insert (TL.unpack subId) sub')
-            P.storeObject (TL.toStrict subId) sub' zkHandle -- sync to zk
-            let serverList = ServerList (V.fromList allUris)
-            returnResp $ ConnectResponse (Just $ ConnectResponseStatusAccepted serverList)
-            else do -- redirect to the subscription node
-            try (P.getServerUri zkHandle (CB.pack _subctxNode)) >>= \case
-              Left (_ :: ZooException) ->
-                returnErrResp StatusInternal "The server that holds the subscription is unavailable"
-              Right real_uri -> do
-                let redirected = Redirected real_uri
-                returnResp $ ConnectResponse (Just $ ConnectResponseStatusRedirected redirected)
-connectHandler _ctx (ServerNormalRequest _meta (ConnectRequest Nothing)) = do
-  returnErrResp StatusInternal "Incorrect redirection strategy received"
+describeClusterHandler :: ServerContext
+                       -> ServerRequest 'Normal Empty DescribeClusterResponse
+                       -> IO (ServerResponse 'Normal DescribeClusterResponse)
+describeClusterHandler ctx@ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
+  let protocolVer = "0.1.0"
+      serverVer = "0.6.0"
+  nodes <- getNodesRanking ctx <&> V.fromList
+  return $ ServerNormalResponse (Just $ DescribeClusterResponse protocolVer serverVer nodes) mempty StatusOk ""
+
+lookupStreamHandler :: ServerContext
+                    -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
+                    -> IO (ServerResponse 'Normal LookupStreamResponse)
+lookupStreamHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream)) = defaultExceptionHandle $ do
+  prdCtxs <- P.listObjects @ZHandle @'P.PrdCtxRep zkHandle
+  case Map.lookup (TL.toStrict stream) prdCtxs of
+    Nothing -> do
+      allNodes <- getNodesRanking ctx
+      case allNodes of
+        []       -> returnErrResp StatusInternal "No available server node"
+        newNode:_ -> do
+          let prdCtx = ProducerContext (TL.toStrict stream) newNode
+          P.storeObject (TL.toStrict stream) prdCtx zkHandle
+          let resp = LookupStreamResponse
+                     { lookupStreamResponseStreamName = stream
+                     , lookupStreamResponseServerNode = Just newNode
+                     }
+          returnResp resp
+    Just ProducerContext{..} -> do
+      let resp = LookupStreamResponse
+                 { lookupStreamResponseStreamName = TL.fromStrict _prdctxStream
+                 , lookupStreamResponseServerNode = Just _prdctxNode
+                 }
+      returnResp resp
+
+lookupSubscriptionHandler :: ServerContext
+                    -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
+                    -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
+lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
+  subCtxs <- P.listObjects zkHandle
+  case Map.lookup (TL.toStrict subId) subCtxs of
+    Nothing -> returnErrResp StatusInternal "No subscription found"
+    Just SubscriptionContext{..} -> do
+      serverNode <- P.getServerNode zkHandle (CB.pack _subctxNode)
+      let resp = LookupSubscriptionResponse
+                 { lookupSubscriptionResponseSubscriptionId = subId
+                 , lookupSubscriptionResponseServerNode = Just serverNode
+                 }
+      returnResp resp

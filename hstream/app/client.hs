@@ -63,9 +63,9 @@ main = do
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
-  let _serverUri = _serverHost <> ":" <> (BSC.pack . show $ _serverPort)
+  let _serverNode = ServerNode 0 (TL.pack . BSC.unpack $ _serverHost) (fromIntegral _serverPort)
   available <- newMVar []
-  current <- newMVar _serverUri
+  current <- newMVar _serverNode
   producers_ <- newMVar mempty
   let ctx = ClientContext
         { availableServers = available
@@ -81,8 +81,8 @@ main = do
                                   }
   setupSigsegvHandler
   app ctx clientConfig
-  m_uri <- connect ctx _serverUri ByLoad
-  case m_uri of
+  m_desc <- describeCluster ctx _serverNode
+  case m_desc of
     Just _  -> app ctx clientConfig
     Nothing -> do
       Log.e "Connection timed out. Please check the server URI and try again."
@@ -134,7 +134,7 @@ commandExec ctx api xs = case words xs of
         DropPlan checkIfExists dropObj
           -> dropAction api checkIfExists dropObj >>= printResult
         InsertPlan sName insertType payload
-          -> insertIntoStream ctx sName insertType payload >>= printResult
+          -> print "unsupported"--insertIntoStream ctx sName insertType payload >>= printResult
         _ -> sqlAction api (TL.pack xs)
 
   [] -> return ()
