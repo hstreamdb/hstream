@@ -145,7 +145,7 @@ commandExec ctx api xs = case words xs of
         DropPlan checkIfExists dropObj
           -> dropAction api checkIfExists dropObj >>= printResult
         InsertPlan sName insertType payload
-          -> insertIntoStream ctx sName insertType payload >>= printResult
+          -> print "unsupported"--insertIntoStream ctx sName insertType payload >>= printResult
         _ -> sqlAction api (TL.pack xs)
 
   [] -> return ()

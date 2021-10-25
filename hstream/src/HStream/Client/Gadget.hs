@@ -10,6 +10,10 @@ module HStream.Client.Gadget where
 
 import           Control.Concurrent
 import           Control.Monad
+<<<<<<< HEAD
+=======
+import qualified Data.ByteString.Char8            as BSC
+>>>>>>> c71649a (hstream: implement cluster RPCs)
 import qualified Data.List                        as L
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
@@ -22,6 +26,7 @@ import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
 import           HStream.Client.Utils
 import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi        (ServerNode (serverNodeHost))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
@@ -31,7 +36,7 @@ data ClientContext = ClientContext
   , producers                      :: MVar (Map.Map T.Text API.ServerNode)
   , clientId                       :: String
   , availableServersUpdateInterval :: Int
-}
+  }
 
 --------------------------------------------------------------------------------
 
