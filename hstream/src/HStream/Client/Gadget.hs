@@ -10,10 +10,6 @@ module HStream.Client.Gadget where
 
 import           Control.Concurrent
 import           Control.Monad
-<<<<<<< HEAD
-=======
-import qualified Data.ByteString.Char8            as BSC
->>>>>>> c71649a (hstream: implement cluster RPCs)
 import qualified Data.List                        as L
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
