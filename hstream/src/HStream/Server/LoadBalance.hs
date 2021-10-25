@@ -3,6 +3,7 @@
 
 module HStream.Server.LoadBalance
   ( startLoadBalancer
+  , startWritingLoadReport
   , getRanking
 
   , updateLoadReport
@@ -39,14 +40,16 @@ getRanking = readIORef serverRanking
 startLoadBalancer :: ZHandle -> LoadManager -> IO ()
 startLoadBalancer zk lm@LoadManager{..} = do
   -- Write load balancing data
-  lr <- readMVar loadReport
-  writeLoadReportToZooKeeper zk sName lr
   updateLoadReports zk loadReports
 
   -- Load balancing service
-  localReportUpdateTimer lm
   zkReportUpdateTimer zk lm
 
+startWritingLoadReport :: ZHandle -> LoadManager -> IO ()
+startWritingLoadReport zk lm@LoadManager{..} = do
+  lr <- readMVar loadReport
+  writeLoadReportToZooKeeper zk sName lr
+  localReportUpdateTimer lm
 --------------------------------------------------------------------------------
 
 serverRanking :: IORef [ServerName]
@@ -154,7 +157,7 @@ updateMapAndRanking hmapM = do
     "Local loads map updated: " <> show hmap
   let newRanking = generateRanking hmap
   atomicWriteIORef serverRanking newRanking
-  Log.debug . Log.buildString $
+  Log.info . Log.buildString $
     "Ranking updated, new ranking is " <> show newRanking
 
 -- Update the load report map stored in the server local data

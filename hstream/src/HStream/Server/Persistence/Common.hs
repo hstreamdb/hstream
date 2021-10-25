@@ -23,18 +23,20 @@ module HStream.Server.Persistence.Common
   , ObjRepType (..)
   ) where
 
-import           Data.Aeson                (FromJSON (..), ToJSON (..))
+import           Data.Aeson                (FromJSON (..), FromJSONKey,
+                                            ToJSON (..), ToJSONKey)
 import           Data.Int                  (Int64)
 import           Data.Map                  (Map)
 import qualified Data.Text                 as T
 import           GHC.Generics              (Generic)
 import           GHC.Stack                 (HasCallStack)
+import           Z.Data.CBytes             (CBytes)
+
 import           HStream.Server.HStreamApi (Subscription)
 import           HStream.Server.Types      (ProducerContext,
                                             SubscriptionContext)
 import           HStream.Utils             (TaskStatus (..), cBytesToText,
                                             textToCBytes)
-import           Z.Data.CBytes             (CBytes)
 
 --------------------------------------------------------------------------------
 
@@ -43,6 +45,9 @@ instance FromJSON CBytes where
 
 instance ToJSON CBytes where
   toJSON cb = toJSON (cBytesToText cb)
+
+instance FromJSONKey CBytes
+instance ToJSONKey CBytes
 
 type ViewSchema     = [String]
 type RelatedStreams = [CBytes]

@@ -41,7 +41,7 @@ module HStream.Server.Persistence.Utils
 
   , ifThrow
   , configPath
-  ) where
+  , serverIdPath) where
 
 --------------------------------------------------------------------------------
 -- Path
@@ -79,6 +79,9 @@ rootPath = "/hstreamdb/hstream"
 serverRootPath :: CBytes
 serverRootPath = rootPath <> "/servers"
 
+serverIdPath :: CBytes
+serverIdPath = rootPath <> "/serverIds"
+
 leaderPath :: CBytes
 leaderPath = rootPath <> "/leader"
 
@@ -107,6 +110,7 @@ paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
         , serverRootPath
+        , serverIdPath
         , configPath
         , leaderPath
         , serverLoadPath
@@ -207,6 +211,7 @@ decodeZNodeValue zk nodePath = do
 
 decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
 decodeZNodeValue' zk nodePath = do
+  Log.i $ Log.buildCBytes nodePath
   zooGet zk nodePath <&> decodeDataCompletion'
 
 encodeValueToBytes :: ToJSON a => a -> Bytes
