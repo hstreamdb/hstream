@@ -14,22 +14,23 @@ module HStream.Server.Persistence.Nodes (
   , getReadyServers
   ) where
 
-import           Control.Exception                (SomeException, try)
-import           Control.Monad                    (forM)
-import           Data.Aeson                       (FromJSON, ToJSON)
-import           Data.Functor                     (void, (<&>))
-import qualified Data.Text.Lazy                   as TL
-import           GHC.Generics                     (Generic)
-import           GHC.Stack                        (HasCallStack)
-import           Z.Data.CBytes                    (CBytes)
-import           ZooKeeper                        (zooGetChildren, zooSet)
-import           ZooKeeper.Types                  (StringVector (StringVector),
-                                                   StringsCompletion (StringsCompletion),
-                                                   ZHandle)
+import           Control.Exception                 (SomeException, try)
+import           Control.Monad                     (forM)
+import           Data.Aeson                        (FromJSON, ToJSON)
+import           Data.Functor                      (void, (<&>))
+import qualified Data.Text.Lazy                    as TL
+import           GHC.Generics                      (Generic)
+import           GHC.Stack                         (HasCallStack)
+import           Z.Data.CBytes                     (CBytes)
+import           ZooKeeper                         (zooGetChildren, zooSet)
+import           ZooKeeper.Types                   (StringVector (StringVector),
+                                                    StringsCompletion (StringsCompletion),
+                                                    ZHandle)
 
-import           HStream.Server.Persistence.Utils (decodeZNodeValue',
-                                                   serverRootPath)
-import           HStream.Utils                    (valueToBytes)
+import           HStream.Server.Persistence.Common ()
+import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
+                                                    serverRootPath)
+import           HStream.Utils                     (valueToBytes)
 
 data NodeStatus = Starting | Ready | Working
   deriving (Show, Eq, Generic, FromJSON, ToJSON)

@@ -12,12 +12,16 @@ module HStream.Server.Persistence.Utils
   , connectorsPath
   , serverLoadPath
   , subscriptionsPath
+  , subscriptionCtxsPath
+  , producerCtxsPath
   , paths
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
+  , mkSubscriptionCtxPath
+  , mkProducerCtxPath
 
   , createInsert
   , createInsertOp
@@ -37,7 +41,7 @@ module HStream.Server.Persistence.Utils
 
   , ifThrow
   , configPath
-  ) where
+  , serverIdPath) where
 
 --------------------------------------------------------------------------------
 -- Path
@@ -75,6 +79,9 @@ rootPath = "/hstreamdb/hstream"
 serverRootPath :: CBytes
 serverRootPath = rootPath <> "/servers"
 
+serverIdPath :: CBytes
+serverIdPath = rootPath <> "/serverIds"
+
 leaderPath :: CBytes
 leaderPath = rootPath <> "/leader"
 
@@ -90,6 +97,12 @@ serverLoadPath = rootPath <> "/loadReports"
 subscriptionsPath :: CBytes
 subscriptionsPath = rootPath <> "/subscriptions"
 
+subscriptionCtxsPath :: CBytes
+subscriptionCtxsPath = rootPath <> "/subscriptionCtxs"
+
+producerCtxsPath :: CBytes
+producerCtxsPath = rootPath <> "/producerCtxs"
+
 configPath :: CBytes
 configPath = rootPath <> "/config"
 
@@ -97,12 +110,15 @@ paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
         , serverRootPath
+        , serverIdPath
         , configPath
         , leaderPath
         , serverLoadPath
         , queriesPath
         , connectorsPath
         , subscriptionsPath
+        , subscriptionCtxsPath
+        , producerCtxsPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
@@ -116,6 +132,12 @@ mkConnectorPath x = connectorsPath <> "/" <> x
 
 mkSubscriptionPath :: T.Text -> CBytes
 mkSubscriptionPath x = subscriptionsPath <> "/" <> textToCBytes x
+
+mkSubscriptionCtxPath :: T.Text -> CBytes
+mkSubscriptionCtxPath x = subscriptionCtxsPath <> "/" <> textToCBytes x
+
+mkProducerCtxPath :: T.Text -> CBytes
+mkProducerCtxPath x = producerCtxsPath <> "/" <> textToCBytes x
 
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents = do
@@ -189,6 +211,7 @@ decodeZNodeValue zk nodePath = do
 
 decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
 decodeZNodeValue' zk nodePath = do
+  Log.i $ Log.buildCBytes nodePath
   zooGet zk nodePath <&> decodeDataCompletion'
 
 encodeValueToBytes :: ToJSON a => a -> Bytes

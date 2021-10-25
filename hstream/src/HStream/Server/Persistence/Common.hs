@@ -1,8 +1,16 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveAnyClass         #-}
+{-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE TypeFamilies           #-}
 
 module HStream.Server.Persistence.Common
   ( ViewSchema
@@ -11,17 +19,24 @@ module HStream.Server.Persistence.Common
   , PersistentConnector (..)
   , QueryType (..)
   , TaskPersistence (..)
-  , SubscriptionPersistence (..)
+  , BasicObjectPersistence (..)
+  , ObjRepType (..)
   ) where
 
-import           Data.Aeson    (FromJSON (..), ToJSON (..))
-import           Data.Int      (Int64)
-import           Data.Map      (Map)
-import qualified Data.Text     as T
-import           GHC.Generics  (Generic)
-import           GHC.Stack     (HasCallStack)
-import           HStream.Utils (TaskStatus (..), cBytesToText, textToCBytes)
-import           Z.Data.CBytes (CBytes)
+import           Data.Aeson                (FromJSON (..), FromJSONKey,
+                                            ToJSON (..), ToJSONKey)
+import           Data.Int                  (Int64)
+import           Data.Map                  (Map)
+import qualified Data.Text                 as T
+import           GHC.Generics              (Generic)
+import           GHC.Stack                 (HasCallStack)
+import           Z.Data.CBytes             (CBytes)
+
+import           HStream.Server.HStreamApi (Subscription)
+import           HStream.Server.Types      (ProducerContext,
+                                            SubscriptionContext)
+import           HStream.Utils             (TaskStatus (..), cBytesToText,
+                                            textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -30,6 +45,9 @@ instance FromJSON CBytes where
 
 instance ToJSON CBytes where
   toJSON cb = toJSON (cBytesToText cb)
+
+instance FromJSONKey CBytes
+instance ToJSONKey CBytes
 
 type ViewSchema     = [String]
 type RelatedStreams = [CBytes]
@@ -94,16 +112,27 @@ class TaskPersistence handle where
 
 --------------------------------------------------------------------------------
 
-class SubscriptionPersistence handle where
-  -- | persist a subscription to the store
-  storeSubscription :: (HasCallStack, FromJSON a, ToJSON a) => T.Text -> a -> handle -> IO ()
-  -- | return the specified subscription
-  getSubscription :: (HasCallStack, FromJSON a, ToJSON a) => T.Text -> handle -> IO (Maybe a)
-  -- | check if specified subscription exists
+data ObjRepType = SubRep | SubCtxRep | PrdCtxRep
+
+-- | The real type of the stored object
+type family RealObjType (a :: ObjRepType) where
+  RealObjType 'SubRep    = Subscription
+  RealObjType 'SubCtxRep = SubscriptionContext
+  RealObjType 'PrdCtxRep = ProducerContext
+
+class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b | b -> a where
+  -- | persist an object to the store
+  storeObject :: (HasCallStack, FromJSON b, ToJSON b)
+              => T.Text -> b -> handle -> IO ()
+  -- | return the specified object
+  getObject :: (HasCallStack, FromJSON b, ToJSON b)
+            => T.Text -> handle -> IO (Maybe b)
+  -- | check if specified object exists
   checkIfExist :: HasCallStack => T.Text -> handle -> IO Bool
-  -- | return all subscriptions
-  listSubscriptions :: (HasCallStack, FromJSON a, ToJSON a) => handle -> IO (Map T.Text a)
-  -- | remove specified subscription
-  removeSubscription :: HasCallStack => T.Text -> handle -> IO ()
-  -- | remove all subscriptions
-  removeAllSubscriptions :: HasCallStack => handle -> IO ()
+  -- | return all objects
+  listObjects :: (HasCallStack, FromJSON b, ToJSON b)
+              => handle -> IO (Map T.Text b)
+  -- | remove specified object
+  removeObject :: HasCallStack => T.Text -> handle -> IO ()
+  -- | remove all objects
+  removeAllObjects :: HasCallStack => handle -> IO ()

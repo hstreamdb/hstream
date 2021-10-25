@@ -18,14 +18,17 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Set                         as Set
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import           Network.GRPC.HighLevel.Generated
+import qualified Z.Data.CBytes                    as CB
+import           ZooKeeper                        (zooGetChildren)
+import           ZooKeeper.Exception
+import           ZooKeeper.Types
+
 import           HStream.Server.HStreamApi
-import           HStream.Server.LoadBalance       (getRanking)
+import           HStream.Server.Persistence       (serverRootPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.Utils
-import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Exception
 
 --------------------------------------------------------------------------------
 
@@ -33,7 +36,8 @@ connectHandler :: ServerContext
                -> ServerRequest 'Normal ConnectRequest ConnectResponse
                -> IO (ServerResponse 'Normal ConnectResponse)
 connectHandler ServerContext{..} (ServerNormalRequest _meta (ConnectRequest (Just strategy))) = do
-  allNames <- getRanking
+  -- FIXME: This is just a batch fix before modified connect
+  (StringsCompletion (StringVector allNames)) <- zooGetChildren zkHandle serverRootPath
   allUris <- mapM (P.getServerUri zkHandle) allNames
   case strategy of
     ConnectRequestRedirectStrategyByLoad _ -> case allUris of
@@ -47,7 +51,7 @@ connectHandler ServerContext{..} (ServerNormalRequest _meta (ConnectRequest (Jus
     ConnectRequestRedirectStrategyBySubscription (SubReq subId clientId) -> do
       -- fetch zk because local subscriptions may not be the latest
       -- (e.g. some subscriptions were transferred)
-      subs <- P.listSubscriptions zkHandle
+      subs <- P.listObjects zkHandle
       case Map.lookup (TL.toStrict subId) subs of
         Nothing -> returnErrResp StatusInternal "No subscription found"
         Just sub@SubscriptionContext{..} -> do
@@ -55,7 +59,7 @@ connectHandler ServerContext{..} (ServerNormalRequest _meta (ConnectRequest (Jus
             then do
             let sub' = sub{ _subctxClients = Set.insert (TL.unpack clientId) _subctxClients }
             modifyMVar_ subscriptionCtx (return . Map.insert (TL.unpack subId) sub')
-            P.storeSubscription (TL.toStrict subId) sub' zkHandle -- sync to zk
+            P.storeObject (TL.toStrict subId) sub' zkHandle -- sync to zk
             let serverList = ServerList (V.fromList allUris)
             returnResp $ ConnectResponse (Just $ ConnectResponseStatusAccepted serverList)
             else do -- redirect to the subscription node

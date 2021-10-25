@@ -1,21 +1,38 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module HStream.Server.Leader where
 
+module HStream.Server.Leader (
+    selectLeader
+  , leaderAction
+  ) where
 
-import           Control.Concurrent         (forkIO, isEmptyMVar, putMVar,
-                                             swapMVar)
-import           Control.Monad              (void)
+import           Control.Concurrent         (MVar, forkIO, isEmptyMVar,
+                                             newEmptyMVar, putMVar, swapMVar,
+                                             takeMVar)
+import           Control.Monad              (forever, unless, void, when)
+import           Data.Foldable              (foldrM)
+import           Data.List                  ((\\))
+import qualified Data.Map.Strict            as M
+import           Data.String                (fromString)
 import qualified Data.UUID                  as UUID
 import           Data.UUID.V4               (nextRandom)
+import           GHC.IO                     (unsafePerformIO)
+import           Z.Data.CBytes              (CBytes)
 import qualified Z.Data.CBytes              as CB
-import           ZooKeeper                  (zooGet, zooSet)
+import           ZooKeeper
 import           ZooKeeper.Recipe.Election  (election)
-import           ZooKeeper.Types            (DataCompletion (..))
+import           ZooKeeper.Types
 
-import           HStream.Server.Persistence (leaderPath)
-import           HStream.Server.Types       (ServerContext (..))
+import qualified HStream.Logger             as Log
+import           HStream.Server.LoadBalance (startLoadBalancer,
+                                             updateLoadReports)
+import           HStream.Server.Persistence (decodeZNodeValue,
+                                             decodeZNodeValue',
+                                             encodeValueToBytes, leaderPath,
+                                             serverIdPath, setZkData)
+import           HStream.Server.Types       (LoadManager (..),
+                                             ServerContext (..))
 
 selectLeader :: ServerContext -> IO ()
 selectLeader ServerContext{..} = do
@@ -37,3 +54,66 @@ selectLeader ServerContext{..} = do
       case () of
         _ | noLeader  -> putMVar leaderName new
           | otherwise -> void $ swapMVar leaderName new
+
+leaderAction :: ServerContext -> LoadManager -> IO ()
+leaderAction sc@ServerContext{..} lm = forever $ do
+  leader <- takeMVar leaderName
+  when (leader == serverName) $ do
+    Log.i $ "Current leader: " <> Log.buildString (show serverName)
+    startLoadBalancer zkHandle lm
+    putMVar watchLock ()
+    actionTriggedByNodesChange zkHandle lm
+    -- Set watcher for nodes changes
+    watchNodes sc lm
+
+watchNodes :: ServerContext -> LoadManager -> IO ()
+watchNodes sc@ServerContext{..} lm = do
+  zooWatchGetChildren zkHandle serverIdPath callback result
+  where
+    callback HsWatcherCtx{..} = do
+      _ <- forkIO $ watchNodes sc lm
+      actionTriggedByNodesChange watcherCtxZHandle lm
+    result _ = pure ()
+
+actionTriggedByNodesChange :: ZHandle -> LoadManager -> IO ()
+actionTriggedByNodesChange zkHandle LoadManager{..} = do
+  void $ takeMVar watchLock
+  StringsCompletion (StringVector children) <-
+    zooGetChildren zkHandle serverIdPath
+  serverMap <- getCurrentServers zkHandle children
+  oldNodes <- getPrevServers zkHandle
+  let newNodes = children \\ M.keys oldNodes
+  let failedNodes = M.keys oldNodes \\ children
+  unless (null newNodes) $ do
+    Log.info "Some node started. "
+    updateLoadReports zkHandle loadReports
+  unless (null failedNodes) $ do
+    let failedNodesNames = map (`M.lookup` oldNodes) failedNodes
+    Log.info $ fromString (show failedNodesNames) <>  " failed. "
+  setPrevServers zkHandle serverMap
+  putMVar watchLock ()
+
+--------------------------------------------------------------------------------
+
+watchLock :: MVar ()
+watchLock = unsafePerformIO newEmptyMVar
+{-# NOINLINE watchLock #-}
+
+getPrevServers :: ZHandle -> IO (M.Map CBytes String)
+getPrevServers zk = do
+  decodeZNodeValue zk serverIdPath >>= \case
+    Just x -> return x; Nothing -> return M.empty
+
+getCurrentServers :: ZHandle -> [CBytes] -> IO (M.Map CBytes String)
+getCurrentServers zk = foldrM f M.empty
+  where
+    f x y = do
+      name <- getServerNameFromId zk x
+      return $ M.insert x name y
+
+getServerNameFromId :: ZHandle -> CBytes -> IO String
+getServerNameFromId zk serverId =
+  decodeZNodeValue' zk $ serverIdPath <> "/" <> serverId
+
+setPrevServers :: ZHandle -> M.Map CBytes String -> IO ()
+setPrevServers zk = setZkData zk serverIdPath . encodeValueToBytes

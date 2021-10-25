@@ -14,15 +14,14 @@ import           Text.RawString.QQ              (r)
 import           ZooKeeper                      (withResource)
 
 import qualified HStream.Logger                 as Log
-import           HStream.Server.Bootstrap       (actionTriggedByNodesChange,
-                                                 startServer)
+import           HStream.Server.Bootstrap       (startServer)
 import           HStream.Server.HStreamApi      (hstreamApiServer)
 import           HStream.Server.HStreamInternal (hstreamInternalServer)
 import           HStream.Server.Handler         (handlers)
 import           HStream.Server.Initialization  (initializeServer)
 import           HStream.Server.InternalHandler (internalHandlers)
-import           HStream.Server.Leader          (selectLeader)
-import           HStream.Server.LoadBalance     (startLoadBalancer)
+import           HStream.Server.Leader          (leaderAction, selectLeader)
+import           HStream.Server.LoadBalance     (startWritingLoadReport)
 import           HStream.Server.Persistence     (defaultHandle,
                                                  initializeAncestors)
 import           HStream.Server.Types           (LoadManager,
@@ -124,14 +123,11 @@ app config@ServerOpts{..} = do
 
 serve :: ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO ()
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
-  -- Start load balancer
-  startLoadBalancer zkHandle lm
+  startWritingLoadReport zkHandle lm
 
-  -- Select Leader
   selectLeader sc
 
-  -- Set watcher for nodes changes
-  void . forkIO $ actionTriggedByNodesChange sc lm
+  void . forkIO $ leaderAction sc lm
 
   -- GRPC service
   Log.i "************************"

@@ -19,7 +19,8 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Monad                    (when, zipWithM)
+import           Control.Monad                    (forM, forever, when,
+                                                   zipWithM)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -46,6 +47,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
+import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
@@ -53,6 +55,7 @@ import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
+import           ZooKeeper.Types                  (ZHandle)
 
 --------------------------------------------------------------------------------
 
@@ -76,7 +79,7 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
       logId <- S.getUnderlyingLogId scLDClient (transToStreamName . TL.toStrict $ subscriptionStreamName)
       offset <- convertOffsetToRecordId logId
       let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-      P.storeSubscription (TL.toStrict subscriptionSubscriptionId) newSub zkHandle
+      P.storeObject (TL.toStrict subscriptionSubscriptionId) newSub zkHandle
       returnResp subscription
   where
     convertOffsetToRecordId logId = do
@@ -110,7 +113,8 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
                 if HM.null sriStreamSends
                   then do
                     -- remove sub from zk
-                    P.removeSubscription (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+                    P.removeObject @ZHandle @'SubRep
+                      (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
                     let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
                     return (newInfo, True)
                   else return (info, False)
@@ -119,7 +123,8 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
           then return $ HM.delete deleteSubscriptionRequestSubscriptionId store
           else return store
       Nothing -> do
-        P.removeSubscription (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+        P.removeObject @ZHandle @'SubRep
+          (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
         return store
 
   returnResp Empty
@@ -131,7 +136,7 @@ checkSubscriptionExistHandler ::
 checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
   let sid = TL.toStrict checkSubscriptionExistRequestSubscriptionId
-  res <- P.checkIfExist sid zkHandle
+  res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
   returnResp . CheckSubscriptionExistResponse $ res
 
 listSubscriptionsHandler ::
@@ -140,7 +145,7 @@ listSubscriptionsHandler ::
   IO (ServerResponse 'Normal ListSubscriptionsResponse)
 listSubscriptionsHandler ServerContext {..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
-  res <- ListSubscriptionsResponse . V.fromList . Map.elems <$> P.listSubscriptions zkHandle
+  res <- ListSubscriptionsResponse . V.fromList . Map.elems <$> P.listObjects zkHandle
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
 
@@ -195,7 +200,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                                 )
                               return (store, Nothing)
                             Nothing -> do
-                              mSub <- P.getSubscription (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                              mSub <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
                               case mSub of
                                 Nothing -> return (store, Just "Subscription has been removed")
                                 Just sub@Subscription {..} -> do
