@@ -22,6 +22,7 @@ import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
 import           HStream.Client.Utils
 import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi        (ServerNode (serverNodeHost))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
