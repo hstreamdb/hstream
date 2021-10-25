@@ -4,6 +4,7 @@ module HStream.Utils
   , module HStream.Utils.BuildRecord
   , module HStream.Utils.RPC
   , module HStream.Utils.Concurrent
+  , module HStream.Utils.TimeInterval
 
   , getKeyWordFromException
   , flattenJSON
@@ -11,25 +12,26 @@ module HStream.Utils
   , setupSigsegvHandler
   ) where
 
-import           Control.Exception         (Exception (..))
-import           Control.Monad             (join, unless)
-import           Data.Aeson                as Aeson
-import           Data.Bifunctor            (first)
-import           Data.Bits                 (shiftL, shiftR, (.&.), (.|.))
-import qualified Data.HashMap.Strict       as HM
-import           Data.Int                  (Int64)
-import           Data.Text                 (Text)
-import qualified Data.Text                 as Text
-import qualified Data.Text.Lazy            as TL
-import           Data.Word                 (Word16, Word32, Word64)
-import           System.Random             (randomRIO)
-import           Z.IO.Time                 (SystemTime (..), getSystemTime')
+import           Control.Exception          (Exception (..))
+import           Control.Monad              (join, unless)
+import           Data.Aeson                 as Aeson
+import           Data.Bifunctor             (first)
+import           Data.Bits                  (shiftL, shiftR, (.&.), (.|.))
+import qualified Data.HashMap.Strict        as HM
+import           Data.Int                   (Int64)
+import           Data.Text                  (Text)
+import qualified Data.Text                  as Text
+import qualified Data.Text.Lazy             as TL
+import           Data.Word                  (Word16, Word32, Word64)
+import           System.Random              (randomRIO)
+import           Z.IO.Time                  (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
 import           HStream.Utils.Concurrent
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
 import           HStream.Utils.RPC
+import           HStream.Utils.TimeInterval
 
 getKeyWordFromException :: Exception a => a -> TL.Text
 getKeyWordFromException =  TL.pack . takeWhile (/='{') . show

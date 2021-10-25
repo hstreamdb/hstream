@@ -12,6 +12,7 @@ module HStream.Server.Handler where
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Admin
 import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Query
@@ -73,6 +74,9 @@ handlers serverContext@ServerContext{..} =
 
         -- Cluster
         hstreamApiConnect = connectHandler serverContext
+
+          -- Admin
+      , hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }
 
 -------------------------------------------------------------------------------
