@@ -10,7 +10,6 @@ module HStream.Client.Gadget where
 
 import           Control.Concurrent
 import           Control.Monad
-import qualified Data.ByteString.Char8            as BSC
 import qualified Data.List                        as L
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
@@ -46,6 +45,8 @@ describeCluster ctx@ClientContext{..} node = do
     handleRespApp
       (ClientNormalResponse resp@(API.DescribeClusterResponse _ _ nodes) _meta1 _meta2 _code _details) = do
       void $ swapMVar availableServers (V.toList nodes)
+      unless (V.null nodes) $ do
+        void $ swapMVar currentServer (V.head nodes)
       return $ Just resp
 
 lookupStream :: ClientContext -> API.ServerNode -> T.Text -> IO (Maybe API.ServerNode)
@@ -84,7 +85,7 @@ doActionWithNode :: ClientContext
                  -> (ClientResult typ a -> IO (Maybe b))
                  -> IO (Maybe b)
 doActionWithNode ctx@ClientContext{..} node@API.ServerNode{..} getRespApp handleRespApp = do
-  withGRPCClient (mkGRPCClientConf $ BSC.pack uri) $ \client -> do
+  withGRPCClient (mkGRPCClientConf node) $ \client -> do
     resp <- getRespApp client
     case resp of
       ClientErrorResponse (ClientIOError GRPCIOTimeout) -> do
@@ -96,10 +97,11 @@ doActionWithNode ctx@ClientContext{..} node@API.ServerNode{..} getRespApp handle
             Log.w . Log.buildString $ "Error when executing an action."
             return Nothing
           False -> do
+            Log.w . Log.buildString $ "Available servers: " <> show curNodes
             let newNode = head curNodes
             doActionWithNode ctx newNode getRespApp handleRespApp
-      ClientErrorResponse _ -> do
-        Log.w . Log.buildString $ "Error when executing an action."
+      ClientErrorResponse err -> do
+        Log.w . Log.buildString $ "Error when executing an action: " <> show err
         return Nothing
       _ -> handleRespApp resp
   where uri = TL.unpack serverNodeHost <> ":" <> show serverNodePort

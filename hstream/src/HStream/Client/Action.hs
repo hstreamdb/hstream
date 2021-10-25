@@ -93,26 +93,24 @@ dropAction API.HStreamApi{..} checkIfExist dropObject = do
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
 
-{-
 insertIntoStream :: ClientContext
   -> StreamName -> InsertType -> BS.ByteString
   -> IO (ClientResult 'Normal API.AppendResponse)
 insertIntoStream ctx@ClientContext{..} sName insertType payload = do
   curProducers <- readMVar producers
-  curServer    <- readMVar currentServer
-  case Map.lookup (T.unpack sName) curProducers of
+  curNode <- readMVar currentServer
+  case Map.lookup sName curProducers of
+    Just realNode -> go realNode
     Nothing       -> do
-      m_uri <- connect ctx curServer ByLoad
-      case m_uri of
-        Nothing  -> do
+      lookupStream ctx curNode sName >>= \case
+        Nothing -> do
           Log.e "Failed to get any avaliable server."
           return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
-        Just uri -> do
-          modifyMVar_ producers (return . Map.insert (T.unpack sName) uri)
-          go uri
-    Just producer -> go producer
+        Just realNode -> do
+          modifyMVar_ producers (return . Map.insert sName realNode)
+          go realNode
   where
-    go uri_ = withGRPCClient (mkGRPCClientConf uri_) $ \client -> do
+    go node_ = withGRPCClient (mkGRPCClientConf node_) $ \client -> do
       API.HStreamApi{..} <- API.hstreamApiClient client
       timestamp <- getProtoTimestamp
       let header = case insertType of
@@ -126,15 +124,14 @@ insertIntoStream ctx@ClientContext{..} sName insertType payload = do
       case resp of
         (ClientNormalResponse _ _meta1 _meta2 _code _details) -> return resp
         _ -> do
-          m_uri <- connect ctx uri_ ByLoad
-          case m_uri of
+          m_node <- lookupStream ctx node_ sName
+          case m_node of
             Nothing -> do
               Log.e "Failed to get any avaliable server."
               return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
-            Just newUri -> do
-              modifyMVar_ producers (return . Map.insert (T.unpack sName) newUri)
+            Just newNode -> do
+              modifyMVar_ producers (return . Map.insert sName newNode)
               insertIntoStream ctx sName insertType payload
--}
 
 createStreamBySelect :: HStreamClientApi
   -> TL.Text -> Int -> [String]

@@ -12,13 +12,12 @@ module HStream.Client.Utils
   , mkGRPCClientConf
   ) where
 
-import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Char8         as BSC
 import           Data.Char                     (toUpper)
 import qualified Data.Map                      as Map
 import qualified Data.Text.Lazy                as TL
+import           HStream.Server.HStreamApi     (ServerNode (..))
 import           Network.GRPC.HighLevel.Client
-import           Network.URI
 import           Proto3.Suite.Class            (HasDefault, def)
 
 clientDefaultRequest :: HasDefault a => ClientRequest 'Normal a b
@@ -37,16 +36,11 @@ extractSelect = TL.pack .
   reverse .
   dropWhile ((/= "SELECT") . map toUpper)
 
-mkGRPCClientConf :: BS.ByteString -> ClientConfig
-mkGRPCClientConf uri = ClientConfig {
-    clientServerHost = Host serverHost
-  , clientServerPort = Port serverPort
+mkGRPCClientConf :: ServerNode -> ClientConfig
+mkGRPCClientConf ServerNode{..} = ClientConfig {
+    clientServerHost = Host . BSC.pack . TL.unpack $ serverNodeHost
+  , clientServerPort = Port $ fromIntegral serverNodePort
   , clientArgs = []
   , clientSSLConfig = Nothing
   , clientAuthority = Nothing
   }
-  where
-    (Just parsedUri) = parseURI ("hstream://" <> BSC.unpack uri)
-    Just (URIAuth _ host_ port_) = uriAuthority parsedUri
-    serverHost = BSC.pack host_
-    serverPort = read (tail port_)

@@ -10,6 +10,7 @@ module Main where
 
 import           Control.Concurrent
 import           Control.Exception                (finally, handle)
+import           Control.Monad
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
@@ -80,7 +81,6 @@ main = do
                                   , clientAuthority  = Nothing
                                   }
   setupSigsegvHandler
-  app ctx clientConfig
   m_desc <- describeCluster ctx _serverNode
   case m_desc of
     Just _  -> app ctx clientConfig
@@ -88,11 +88,17 @@ main = do
       Log.e "Connection timed out. Please check the server URI and try again."
 
 app :: ClientContext -> ClientConfig -> IO ()
-app ctx config@ClientConfig{..} = withGRPCClient config $ \client -> do
+app ctx@ClientContext{..} config@ClientConfig{..} = withGRPCClient config $ \client -> do
   api@HStreamApi{..} <- hstreamApiClient client
   putStrLn helpInfo
+  void $ forkIO maintainAvailableNodes
   H.runInputT H.defaultSettings (loop api)
   where
+    maintainAvailableNodes = do
+      readMVar availableServers >>= \case
+        []     -> return ()
+        node:_ -> void $ describeCluster ctx node
+      threadDelay $ 30 * 1000 * 1000
     loop :: HStreamClientApi -> H.InputT IO ()
     loop api = H.getInputLine "> " >>= \case
       Nothing   -> return ()
@@ -134,7 +140,7 @@ commandExec ctx api xs = case words xs of
         DropPlan checkIfExists dropObj
           -> dropAction api checkIfExists dropObj >>= printResult
         InsertPlan sName insertType payload
-          -> print "unsupported"--insertIntoStream ctx sName insertType payload >>= printResult
+          -> insertIntoStream ctx sName insertType payload >>= printResult
         _ -> sqlAction api (TL.pack xs)
 
   [] -> return ()

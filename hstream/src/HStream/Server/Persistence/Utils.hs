@@ -123,7 +123,9 @@ paths = [ "/hstreamdb"
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
-initializeAncestors zk = mapM_ (tryCreate zk) paths
+initializeAncestors zk = do
+  tryDeleteAllPath zk producerCtxsPath
+  mapM_ (tryCreate zk) paths
 
 mkQueryPath :: CBytes -> CBytes
 mkQueryPath x = queriesPath <> "/" <> x
