@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Subscription
@@ -149,10 +150,10 @@ listSubscriptionsHandler ServerContext {..} (ServerNormalRequest _metadata ListS
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
 
-streamingFetchHandler ::
-  ServerContext ->
-  ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse ->
-  IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
+streamingFetchHandler
+  :: ServerContext
+  -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
+  -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
@@ -179,45 +180,42 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                   writeIORef consumerNameRef streamingFetchRequestConsumerName
                   writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
 
-                  mRes <-
-                    modifyMVar
-                      subscribeRuntimeInfo
-                      ( \store -> do
-                          case HM.lookup streamingFetchRequestSubscriptionId store of
-                            Just infoMVar -> do
-                              modifyMVar_
-                                infoMVar
-                                ( \info@SubscribeRuntimeInfo {..} -> do
-                                    -- bind a new sender to current client
-                                    let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                                    if V.null sriSignals
-                                      then return $ info {sriStreamSends = newSends}
-                                      else do
-                                        -- wake up all threads waiting for a new
-                                        -- consumer to join
-                                        V.forM_ sriSignals $ flip putMVar ()
-                                        return $ info {sriStreamSends = newSends, sriSignals = V.empty}
-                                )
-                              return (store, Nothing)
-                            Nothing -> do
-                              mSub <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
-                              case mSub of
-                                Nothing -> return (store, Just "Subscription has been removed")
-                                Just sub@Subscription {..} -> do
-                                  let startRecordId = getStartRecordId sub
-                                  newInfoMVar <-
-                                    initSubscribe
-                                      scLDClient
-                                      streamingFetchRequestSubscriptionId
-                                      subscriptionStreamName
-                                      streamingFetchRequestConsumerName
-                                      startRecordId
-                                      streamSend
-                                      subscriptionAckTimeoutSeconds
-                                  Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
-                                  let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                                  return (newStore, Nothing)
-                      )
+                  mRes <- modifyMVar subscribeRuntimeInfo
+                    ( \store -> do
+                        case HM.lookup streamingFetchRequestSubscriptionId store of
+                          Just infoMVar -> do
+                            modifyMVar_ infoMVar
+                              ( \info@SubscribeRuntimeInfo {..} -> do
+                                  -- bind a new sender to current client
+                                  let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
+                                  if V.null sriSignals
+                                    then return $ info {sriStreamSends = newSends}
+                                    else do
+                                      -- wake up all threads waiting for a new
+                                      -- consumer to join
+                                      V.forM_ sriSignals $ flip putMVar ()
+                                      return $ info {sriStreamSends = newSends, sriSignals = V.empty}
+                              )
+                            return (store, Nothing)
+                          Nothing -> do
+                            mSub <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                            case mSub of
+                              Nothing -> return (store, Just "Subscription has been removed")
+                              Just sub@Subscription {..} -> do
+                                let startRecordId = getStartRecordId sub
+                                newInfoMVar <-
+                                  initSubscribe
+                                    scLDClient
+                                    streamingFetchRequestSubscriptionId
+                                    subscriptionStreamName
+                                    streamingFetchRequestConsumerName
+                                    startRecordId
+                                    streamSend
+                                    subscriptionAckTimeoutSeconds
+                                Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
+                                let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                                return (newStore, Nothing)
+                    )
                   case mRes of
                     Just errorMsg ->
                       return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
@@ -244,32 +242,26 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       if V.null acks
         then handleRequest False consumerNameRef subscriptionIdRef
         else do
-          withMVar
-            subscribeRuntimeInfo
-            ( return . HM.lookup subId
-            )
-            >>= \case
-              Just infoMVar -> do
-                doAck scLDClient infoMVar acks
-                handleRequest False consumerNameRef subscriptionIdRef
-              Nothing ->
-                return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
+          withMVar subscribeRuntimeInfo (return . HM.lookup subId) >>= \case
+            Just infoMVar -> do
+              doAck scLDClient infoMVar acks
+              handleRequest False consumerNameRef subscriptionIdRef
+            Nothing ->
+              return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
 
     -- We should cleanup according streamSend before returning ServerBiDiResponse.
     cleanupStreamSend isFirst consumerNameRef subscriptionIdRef = do
       if isFirst
         then return Nothing
         else
-          withMVar
-            subscribeRuntimeInfo
+          withMVar subscribeRuntimeInfo
             ( \store -> do
                 subscriptionId <- readIORef subscriptionIdRef
                 consumerName <- readIORef consumerNameRef
                 case HM.lookup subscriptionId store of
                   Nothing -> return $ Just "Subscription has been removed"
                   Just infoMVar -> do
-                    modifyMVar_
-                      infoMVar
+                    modifyMVar_ infoMVar
                       ( \info@SubscribeRuntimeInfo {..} -> do
                           if sriValid
                             then do
@@ -329,8 +321,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
     readAndDispatchRecords runtimeInfoMVar = do
       Log.debug $ Log.buildString "enter readAndDispatchRecords"
 
-      modifyMVar
-        runtimeInfoMVar
+      modifyMVar runtimeInfoMVar
         ( \info@SubscribeRuntimeInfo {..} ->
             if sriValid
               then do
@@ -343,9 +334,16 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                         let gapLoRecordId = RecordId gapLoLSN minBound
                             gapHiRecordId = RecordId gapHiLSN maxBound
                             newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) sriAckedRanges
-                            newInfo = info {sriAckedRanges = newRanges}
+                            -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
+                            -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
+                            groupNums = map (, 0) [gapLoLSN, gapHiLSN]
+                            newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
+                            newInfo = info { sriAckedRanges = newRanges
+                                           , sriBatchNumMap = newBatchNumMap
+                                           }
                         Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show sriStreamName <> ", the gap is " <> show gap
                         Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
+                        Log.debug . Log.buildString $ "update batchNumMap to " <> show newBatchNumMap
                         return (newInfo, Nothing)
                       Right dataRecords -> do
                         if null dataRecords
@@ -384,8 +382,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                             void $
                               registerLowResTimer
                                 (fromIntegral sriAckTimeoutSeconds * 10)
-                                ( void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar
-                                )
+                                (void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar)
                             return (newInfo, Nothing)
                   else do
                     signal <- newEmptyMVar
@@ -407,28 +404,26 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     tryResendTimeoutRecords recordIds logId infoMVar = do
       Log.debug "enter tryResendTimeoutRecords"
-      modifyMVar
-        infoMVar
-        ( \info@SubscribeRuntimeInfo {..} -> do
-            if sriValid
-              then do
-                let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
-                if V.null unackedRecordIds
-                  then return (info, Nothing)
-                  else do
-                    Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
-                    doResend info unackedRecordIds
-              else return (info, Nothing)
-        )
-        >>= \case
-          Nothing -> return ()
-          Just signal -> do
-            void $ takeMVar signal
-            tryResendTimeoutRecords recordIds logId infoMVar
+      modifyMVar infoMVar resendTimeoutRecords >>= \case
+        Nothing -> return ()
+        Just signal -> do
+          void $ takeMVar signal
+          tryResendTimeoutRecords recordIds logId infoMVar
       where
         registerResend records timeout =
           registerLowResTimer timeout $
             void . forkIO $ tryResendTimeoutRecords records logId infoMVar
+
+        resendTimeoutRecords info@SubscribeRuntimeInfo{..} = do
+          if sriValid
+            then do
+              let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
+              if V.null unackedRecordIds
+                then return (info, Nothing)
+                else do
+                  Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
+                  doResend info unackedRecordIds
+            else return (info, Nothing)
 
         -- TODO: maybe we can read these unacked records concurrently
         doResend info@SubscribeRuntimeInfo {..} unackedRecordIds = do
@@ -521,34 +516,30 @@ dispatchRecords records streamSends
         Right _ -> do
           return $ Just (name, sender)
 
-doAck ::
-  S.LDClient ->
-  MVar SubscribeRuntimeInfo ->
-  V.Vector RecordId ->
-  IO ()
+doAck
+  :: S.LDClient
+  -> MVar SubscribeRuntimeInfo
+  -> V.Vector RecordId
+  -> IO ()
 doAck client infoMVar ackRecordIds =
-  modifyMVar_
-    infoMVar
-    ( \info@SubscribeRuntimeInfo {..} -> do
-        if sriValid
-          then do
-            Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
-            let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
-            Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
-            case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-              Just (ranges, newLowerBound, checkpointRecordId) -> do
-                commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
-                Log.info $
-                  "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
-                    <> "} to "
-                    <> "{"
+  modifyMVar_ infoMVar $ \info@SubscribeRuntimeInfo {..} -> do
+    if sriValid
+      then do
+        Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges) <> " ackedRanges = " <> Log.buildString (show sriAckedRanges)
+        let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
+        Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges) <> " ackedRanges = " <> Log.buildString (show newAckedRanges)
+        case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+          Just (ranges, newLowerBound, checkpointRecordId) -> do
+            commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
+            Log.info $ "update window lower bound, from {"
+                    <> Log.buildString (show sriWindowLowerBound)
+                    <> "} to {"
                     <> Log.buildString (show newLowerBound)
                     <> "}"
-                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
-              Nothing ->
-                return $ info {sriAckedRanges = newAckedRanges}
-          else return info
-    )
+            return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+          Nothing ->
+            return $ info {sriAckedRanges = newAckedRanges}
+      else return info
 
 tryUpdateWindowLowerBound ::
   -- | ackedRanges

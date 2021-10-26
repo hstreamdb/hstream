@@ -200,3 +200,40 @@ insertAckSpec =
       let lowerBound = RecordId minBound minBound
       insertAckedRecordId invalidIdx lowerBound oldRanges batchNumMap `shouldBe` oldRanges
       insertAckedRecordId invalidLSN lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+    it "merge after gap record" $ do
+      let recordInsert = RecordId 10 0
+      let lowerBound = RecordId minBound minBound
+
+      let gapL = RecordId 5 minBound
+      let gapR = RecordId 9 maxBound
+
+      let batchNumMap = Map.fromList [(9, 0), (10, 3)]
+      let oldRanges = Map.fromList [(gapL, RecordIdRange gapL gapR)]
+      let newRanges = Map.fromList [(gapL, RecordIdRange gapL recordInsert)]
+      insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+    it "merge before gap record" $ do
+      let recordInsert = RecordId 4 3
+      let lowerBound = RecordId minBound minBound
+
+      let gapL = RecordId 5 minBound
+      let gapR = RecordId 9 maxBound
+
+      let batchNumMap = Map.fromList [(4, 4), (5, 0)]
+      let oldRanges = Map.fromList [(gapL, RecordIdRange gapL gapR)]
+      let newRanges = Map.fromList [(recordInsert, RecordIdRange recordInsert gapR)]
+      insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+    it "merge between gap record" $ do
+      let recordInsert = RecordId 5 0
+      let lowerBound = RecordId minBound minBound
+
+      let gapLL = RecordId 2 minBound
+      let gapLR = RecordId 4 maxBound
+      let gapRL = RecordId 6 minBound
+      let gapRR = RecordId 12 maxBound
+
+      let batchNumMap = Map.fromList [(4, 0), (5, 1), (6, 0)]
+      let oldRanges = Map.fromList [(gapLL, RecordIdRange gapLL gapLR), (gapRL, RecordIdRange gapRL gapRR)]
+      let newRanges = Map.fromList [(gapLL, RecordIdRange gapLL gapRR)]
+      insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+
+
