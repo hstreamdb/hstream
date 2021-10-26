@@ -20,7 +20,7 @@ import           HStream.Server.HStreamInternal (hstreamInternalServer)
 import           HStream.Server.Handler         (handlers)
 import           HStream.Server.Initialization  (initializeServer)
 import           HStream.Server.InternalHandler (internalHandlers)
-import           HStream.Server.Leader          (leaderAction, selectLeader)
+import           HStream.Server.Leader          (selectLeader)
 import           HStream.Server.LoadBalance     (startWritingLoadReport)
 import           HStream.Server.Persistence     (defaultHandle,
                                                  initializeAncestors)
@@ -125,9 +125,7 @@ serve :: ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO 
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
   startWritingLoadReport zkHandle lm
 
-  selectLeader sc
-
-  void . forkIO $ leaderAction sc lm
+  selectLeader sc lm
 
   -- GRPC service
   Log.i "************************"

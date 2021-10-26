@@ -37,6 +37,8 @@ import qualified System.IO.Streams                as Streams
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
+import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Network.SocketAddr          (ipv4)
 
 import           HStream.Client.Action
 import           HStream.Client.Gadget
@@ -325,9 +327,9 @@ runInsertSql :: HStreamClientApi -> TL.Text -> Expectation
 runInsertSql api sql = do
   let (Host host) = clientServerHost clientConfig
       (Port port) = clientServerPort clientConfig
-  let uri = host <> ":" <> (BSC.pack . show $ port)
+  let addr = ipv4 (CB.pack . BSC.unpack $ host) (fromIntegral port)
   available  <- newMVar []
-  current    <- newMVar uri
+  current    <- newMVar addr
   producers_ <- newMVar mempty
   let ctx = ClientContext
             { availableServers = available

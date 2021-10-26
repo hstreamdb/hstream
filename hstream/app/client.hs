@@ -15,6 +15,7 @@ import           Control.Monad.IO.Class           (liftIO)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
 import           Data.Char                        (toUpper)
+import           Data.Functor                     ((<&>))
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -27,8 +28,9 @@ import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
+import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Network.SocketAddr          (ipv4)
 
-import           Data.Functor                     ((<&>))
 import           HStream.Client.Action
 import           HStream.Client.Gadget
 import qualified HStream.Logger                   as Log
@@ -42,9 +44,10 @@ import           HStream.Utils                    (Format, HStreamClientApi,
                                                    setupSigsegvHandler)
 
 data UserConfig = UserConfig
-  { _serverHost :: ByteString
-  , _serverPort :: Int
-  , _clientId   :: String
+  { _serverHost                     :: ByteString
+  , _serverPort                     :: Int
+  , _clientId                       :: String
+  , _availableServersUpdateInterval :: Int
   }
 
 parseConfig :: O.Parser UserConfig
@@ -53,6 +56,7 @@ parseConfig =
     <$> O.strOption (O.long "host" <> O.metavar "HOST" <> O.showDefault <> O.value "127.0.0.1" <> O.help "server host value")
     <*> O.option O.auto (O.long "port" <> O.metavar "INT" <> O.showDefault <> O.value 6570 <> O.short 'p' <> O.help "server port value")
     <*> O.strOption (O.long "client-id" <> O.metavar "ID" <> O.help "unique id for the client")
+    <*> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in second")
 
 main :: IO ()
 main = do
@@ -64,15 +68,16 @@ main = do
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
-  let _serverNode = ServerNode 0 (TL.pack . BSC.unpack $ _serverHost) (fromIntegral _serverPort)
+  let _addr = ipv4 (CB.pack . BSC.unpack $ _serverHost) (fromIntegral _serverPort)
   available <- newMVar []
-  current <- newMVar _serverNode
+  current <- newMVar _addr
   producers_ <- newMVar mempty
   let ctx = ClientContext
         { availableServers = available
         , currentServer    = current
         , producers        = producers_
         , clientId         = _clientId
+        , availableServersUpdateInterval = _availableServersUpdateInterval
         }
       clientConfig = ClientConfig { clientServerHost = Host _serverHost
                                   , clientServerPort = Port _serverPort
@@ -81,7 +86,7 @@ main = do
                                   , clientAuthority  = Nothing
                                   }
   setupSigsegvHandler
-  m_desc <- describeCluster ctx _serverNode
+  m_desc <- describeCluster ctx _addr
   case m_desc of
     Just _  -> app ctx clientConfig
     Nothing -> do
@@ -94,11 +99,11 @@ app ctx@ClientContext{..} config@ClientConfig{..} = withGRPCClient config $ \cli
   void $ forkIO maintainAvailableNodes
   H.runInputT H.defaultSettings (loop api)
   where
-    maintainAvailableNodes = do
+    maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
         []     -> return ()
         node:_ -> void $ describeCluster ctx node
-      threadDelay $ 30 * 1000 * 1000
+      threadDelay $ availableServersUpdateInterval * 1000 * 1000
     loop :: HStreamClientApi -> H.InputT IO ()
     loop api = H.getInputLine "> " >>= \case
       Nothing   -> return ()
