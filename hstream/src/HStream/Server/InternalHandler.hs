@@ -14,13 +14,16 @@ import qualified Data.Vector                      as V
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamInternal
 import           HStream.Server.LoadBalance       (getRanking)
+import           HStream.Server.Persistence       (getServerNode)
 import qualified HStream.Server.Persistence       as P
-import           HStream.Server.Types             (ServerContext (..),
+import           HStream.Server.Types             (ProducerContext (ProducerContext),
+                                                   ServerContext (..),
                                                    SubscriptionContext (..))
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (returnErrResp, returnResp)
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
+import HStream.Server.Exception (defaultExceptionHandle)
 
 internalHandlers :: ServerContext -> IO (HStreamInternal ServerRequest ServerResponse)
 internalHandlers ctx = pure HStreamInternal {
@@ -34,6 +37,7 @@ internalHandlers ctx = pure HStreamInternal {
 
   , hstreamInternalGetNodesRanking     = getNodesRankingHandler ctx
   , hstreamInternalTakeSubscription    = takeSubscription ctx
+  , hstreamInternalTakeStream          = takeStream ctx
   }
   where
     unimplemented = const (returnErrResp StatusInternal "unimplemented method called")
@@ -41,7 +45,7 @@ internalHandlers ctx = pure HStreamInternal {
 getNodesRankingHandler :: ServerContext
                        -> ServerRequest 'Normal Empty GetNodesRankingResponse
                        -> IO (ServerResponse 'Normal GetNodesRankingResponse)
-getNodesRankingHandler ServerContext{..} (ServerNormalRequest _meta _) = do
+getNodesRankingHandler ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
   nodes <- getRanking >>= mapM (P.getServerNode zkHandle)
   let resp = GetNodesRankingResponse $ V.fromList nodes
   returnResp resp
@@ -49,7 +53,7 @@ getNodesRankingHandler ServerContext{..} (ServerNormalRequest _meta _) = do
 takeSubscription :: ServerContext
                  -> ServerRequest 'Normal TakeSubscriptionRequest Empty
                  -> IO (ServerResponse 'Normal Empty)
-takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionRequest subId))= do
+takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionRequest subId))= defaultExceptionHandle $ do
   Log.debug . Log.buildString $ "I took the subscription " <> TL.unpack subId
   err_m <- modifyMVar subscriptionCtx
     (\subctxs -> do
@@ -69,3 +73,12 @@ takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionReque
             (subctx { _subctxNode = CB.unpack serverName }) zkHandle
           returnResp Empty
     Just err -> returnErrResp StatusInternal err
+
+takeStream :: ServerContext
+           -> ServerRequest 'Normal TakeStreamRequest Empty
+           -> IO (ServerResponse 'Normal Empty)
+takeStream ServerContext{..} (ServerNormalRequest _ (TakeStreamRequest stream)) = defaultExceptionHandle $ do
+  node <- getServerNode zkHandle serverName
+  Log.debug . Log.buildString $ "I took the stream " <> TL.unpack stream
+  P.storeObject (TL.toStrict stream) (ProducerContext (TL.toStrict stream) node) zkHandle
+  returnResp Empty

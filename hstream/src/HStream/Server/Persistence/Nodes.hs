@@ -95,6 +95,7 @@ getServerNode zk name = do
            , serverNodeHost = host
            , serverNodePort = port
            , serverNodeInternalPort = port'
+           , serverNodeName = cBytesToLazyText name
            }
 
 getInternalServerNode :: ZHandle -> CBytes -> IO ServerNode

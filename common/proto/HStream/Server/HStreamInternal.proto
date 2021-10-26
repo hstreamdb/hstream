@@ -16,6 +16,7 @@ service HStreamInternal {
 
   rpc getNodesRanking(google.protobuf.Empty) returns (GetNodesRankingResponse) {}
   rpc takeSubscription(TakeSubscriptionRequest) returns (google.protobuf.Empty) {}
+  rpc takeStream(TakeStreamRequest) returns (google.protobuf.Empty) {}
 }
 
 message GetNodesRankingResponse {
@@ -24,4 +25,8 @@ message GetNodesRankingResponse {
 
 message TakeSubscriptionRequest {
   string subscriptionId = 1;
+}
+
+message TakeStreamRequest {
+  string stream = 1;
 }
