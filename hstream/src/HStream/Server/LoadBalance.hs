@@ -35,7 +35,8 @@ import           ZooKeeper                        (zooGetChildren, zooSet,
 import           ZooKeeper.Types
 
 import           HStream.Client.Utils             (mkClientNormalRequest,
-                                                   mkGRPCClientConf)
+                                                   mkGRPCClientConf,
+                                                   serverNodeToSocketAddr)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (ServerNode)
 import           HStream.Server.HStreamInternal

@@ -47,12 +47,7 @@ selectLeader ctx@ServerContext{..} lm = do
       -- Set watcher for nodes changes
       watchNodes ctx lm
     )
-    (\_ -> do
-      DataCompletion v _ <- zooGet zkHandle leaderPath
-      case v of
-        Just x  -> updateLeader (CB.fromBytes x)
-        Nothing -> pure ()
-    )
+    (\_ -> return ())
   where
     updateLeader new = do
       noLeader <- isEmptyMVar leaderName
