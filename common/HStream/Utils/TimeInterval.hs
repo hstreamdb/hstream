@@ -1,7 +1,7 @@
 module HStream.Utils.TimeInterval (
     Interval (..)
   , parserInterval
-  ,interval2ms
+  , interval2ms
   ) where
 
 import           Control.Applicative  ((<|>))
