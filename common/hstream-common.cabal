@@ -51,6 +51,7 @@ library
     HStream.Utils.Converter
     HStream.Utils.Format
     HStream.Utils.RPC
+    HStream.Utils.TimeInterval
 
   hs-source-dirs:     . gen-hs
   include-dirs:       include clib cbits gen-cpp /usr/local/include
@@ -68,6 +69,7 @@ library
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
     , aeson
+    , attoparsec
     , base                  >=4.11  && <5
     , bytestring
     , containers

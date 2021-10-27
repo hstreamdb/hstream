@@ -45,6 +45,9 @@ service HStreamApi {
   rpc PerStreamTimeSeriesStatsAll(PerStreamTimeSeriesStatsAllRequest)
     returns (PerStreamTimeSeriesStatsAllResponse);
 
+  // Admin Command
+  rpc SendAdminCommand(AdminCommandRequest) returns (AdminCommandResponse);
+
   // only for push query
   // e.g., select (with emit changes)
   rpc ExecutePushQuery(CommandPushQuery) returns (stream google.protobuf.Struct);
@@ -410,6 +413,14 @@ message StatsIntervalVals {
 
 message StatsDoubleVals {
   repeated double vals = 1;
+}
+
+message AdminCommandRequest {
+  string command = 1;
+}
+
+message AdminCommandResponse {
+  string result = 1;
 }
 
 message PerStreamTimeSeriesStatsRequest {
