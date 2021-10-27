@@ -75,7 +75,7 @@ handlers serverContext@ServerContext{..} =
         -- Cluster
         hstreamApiConnect = connectHandler serverContext
 
-          -- Admin
+        -- Admin
       , hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }
 
