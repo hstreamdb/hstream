@@ -13,6 +13,7 @@ module HStream.HTTP.Server.Stream
   , buildAppendBO
   ) where
 
+import           Control.Monad                (void)
 import           Control.Monad.IO.Class       (liftIO)
 import qualified Data.Aeson                   as A
 import qualified Data.ByteString              as BS
@@ -24,7 +25,6 @@ import qualified Data.ByteString.Lazy.Char8   as BSL
 import qualified Data.HashMap.Strict          as HM
 import qualified Data.List                    as L
 import qualified Data.Map                     as Map
-import           Data.Maybe
 import           Data.Swagger                 (ToSchema (..))
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as T
@@ -32,8 +32,7 @@ import qualified Data.Text.Lazy               as TL
 import qualified Data.Vector                  as V
 import           Data.Word                    (Word32)
 import           GHC.Generics                 (Generic)
-import           HStream.HTTP.Server.Utils    (getServerResp,
-                                               mkClientNormalRequest)
+import           HStream.HTTP.Server.Utils
 import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 import           HStream.Utils                (buildRecord, buildRecordHeader,
@@ -88,7 +87,7 @@ type StreamsAPI
   -- ^ List all streams
   :<|> "streams" :> ReqBody '[JSON] StreamBO :> Post '[JSON] StreamBO
   -- ^ Create a new stream
-  :<|> "streams" :> Capture "name" T.Text :> Delete '[JSON] Bool
+  :<|> "streams" :> Capture "name" T.Text :> Delete '[JSON] ()
   -- ^ Delete a stream
   :<|> "streams" :> Capture "name" T.Text :> Get '[JSON] (Maybe StreamBO)
   -- ^ Get a stream
@@ -96,33 +95,34 @@ type StreamsAPI
   -- ^ Append records to a stream
 
 createStreamHandler :: Client -> StreamBO -> Handler StreamBO
-createStreamHandler hClient streamBO = liftIO $ do
-  Log.debug $ "Send create stream request to HStream server. "
-    <> "Stream Name: " <> Log.buildText (name streamBO)
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiCreateStream
-    (mkClientNormalRequest (streamBOTOStream streamBO))
-  -- FIXME: return Nothing when failed
-  maybe (StreamBO "" 0) streamToStreamBO <$> getServerResp resp
+createStreamHandler hClient streamBO = do
+  resp <- liftIO $ do
+    Log.debug $ "Send create stream request to HStream server. "
+             <> "Stream Name: " <> Log.buildText (name streamBO)
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiCreateStream $ mkClientNormalRequest (streamBOTOStream streamBO)
+  streamToStreamBO <$> getServerResp' resp
 
 listStreamsHandler :: Client -> Handler [StreamBO]
-listStreamsHandler hClient = liftIO $ do
-  Log.debug "Send list streams request to HStream server. "
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiListStreams $ mkClientNormalRequest ListStreamsRequest
-  maybe [] (V.toList . V.map streamToStreamBO . listStreamsResponseStreams) <$> getServerResp resp
+listStreamsHandler hClient = do
+  resp <- liftIO $ do
+    Log.debug "Send list streams request to HStream server. "
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiListStreams $ mkClientNormalRequest ListStreamsRequest
+  V.toList . V.map streamToStreamBO . listStreamsResponseStreams <$> getServerResp' resp
 
-deleteStreamHandler :: Client -> T.Text -> Handler Bool
-deleteStreamHandler hClient sName = liftIO $ do
-  Log.debug $ "Send delete stream request to HStream server. "
-           <> "Stream Name: " <> Log.buildText sName
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiDeleteStream $
-    mkClientNormalRequest def
-      { deleteStreamRequestStreamName     = TL.fromStrict sName
-      , deleteStreamRequestIgnoreNonExist = False
-      }
-  isJust <$> getServerResp resp
+deleteStreamHandler :: Client -> T.Text -> Handler ()
+deleteStreamHandler hClient sName = do
+  resp <- liftIO $ do
+    Log.debug $ "Send delete stream request to HStream server. "
+             <> "Stream Name: " <> Log.buildText sName
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiDeleteStream $
+      mkClientNormalRequest def
+        { deleteStreamRequestStreamName     = TL.fromStrict sName
+        , deleteStreamRequestIgnoreNonExist = False
+        }
+  void $ getServerResp' resp
 
 -- FIXME: This is broken.
 getStreamHandler :: Client -> T.Text -> Handler (Maybe StreamBO)
@@ -132,18 +132,19 @@ getStreamHandler hClient sName = do
   (L.find $ \StreamBO{..} -> sName == name) <$> listStreamsHandler hClient
 
 appendHandler :: Client -> AppendBO -> Handler AppendResult
-appendHandler hClient appendBO = liftIO $ do
-  HStreamApi{..} <- hstreamApiClient hClient
-  timestamp      <- getProtoTimestamp
-  Log.debug $ ""
-           <> "Stream Name: " <> Log.buildText (streamName appendBO)
-  let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
-      record  = buildRecord header `V.map` processRecords appendBO
-  resp <- hstreamApiAppend . mkClientNormalRequest $ def
+appendHandler hClient appendBO = do
+  resp <- liftIO $ do
+    HStreamApi{..} <- hstreamApiClient hClient
+    timestamp      <- getProtoTimestamp
+    Log.debug $ "Append records to HStream server. "
+             <> "Stream Name: " <> Log.buildText (streamName appendBO)
+    let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+        record  = buildRecord header `V.map` processRecords appendBO
+    hstreamApiAppend . mkClientNormalRequest $ def
       { appendRequestStreamName = TL.fromStrict (streamName appendBO)
       , appendRequestRecords    = record
       }
-  AppendResult . appendResponseRecordIds . fromJust <$> getServerResp resp
+  AppendResult . appendResponseRecordIds <$> getServerResp' resp
 
 streamServer :: Client -> Server StreamsAPI
 streamServer hClient = listStreamsHandler  hClient

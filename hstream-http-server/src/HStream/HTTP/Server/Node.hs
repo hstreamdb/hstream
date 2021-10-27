@@ -5,9 +5,11 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module HStream.HTTP.Server.Node (
-  NodesAPI, nodeServer, listStoreNodesHandler, NodeBO
-) where
+module HStream.HTTP.Server.Node
+  ( NodesAPI, nodeServer
+  , listStoreNodesHandler
+  , NodeBO
+  ) where
 
 import           Control.Monad.IO.Class       (liftIO)
 import           Data.Aeson                   (FromJSON, ToJSON)
@@ -23,8 +25,7 @@ import           Servant                      (Capture, Get, JSON, type (:>),
                                                (:<|>) (..))
 import           Servant.Server               (Handler, Server)
 
-import           HStream.HTTP.Server.Utils    (getServerResp,
-                                               mkClientNormalRequest)
+import           HStream.HTTP.Server.Utils
 import qualified HStream.Logger               as Log
 import           HStream.Server.HStreamApi
 
@@ -36,34 +37,37 @@ data NodeBO = NodeBO
   , status  :: T.Text
   } deriving (Eq, Show, Generic)
 
-instance ToJSON NodeBO
+instance ToJSON   NodeBO
 instance FromJSON NodeBO
 instance ToSchema NodeBO
 
-type NodesAPI =
-  "nodes" :> Get '[JSON] [NodeBO]
-  :<|> "nodes" :> Capture "id" Int32 :> Get '[JSON] (Maybe NodeBO)
+type NodesAPI
+  =    "nodes" :> Get '[JSON] [NodeBO]
+  :<|> "nodes" :> Capture "id" Int32 :> Get '[JSON] NodeBO
 
 nodeToNodeBO :: Node -> NodeBO
 nodeToNodeBO (Node id' roles address status) =
   NodeBO id' (V.toList roles) (TL.toStrict address) (TL.toStrict status)
 
 listStoreNodesHandler :: Client -> Handler [NodeBO]
-listStoreNodesHandler hClient = liftIO $ do
-  Log.debug "Send list nodes request to HStream server. "
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiListNodes (mkClientNormalRequest ListNodesRequest)
-  maybe [] (V.toList . V.map nodeToNodeBO . listNodesResponseNodes) <$> getServerResp resp
+listStoreNodesHandler hClient = do
+  resp <- liftIO $ do
+    Log.debug "Send list nodes request to HStream server. "
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiListNodes (mkClientNormalRequest ListNodesRequest)
+  V.toList . V.map nodeToNodeBO . listNodesResponseNodes <$> getServerResp' resp
 
-getStoreNodeHandler :: Client -> Int32 -> Handler (Maybe NodeBO)
-getStoreNodeHandler hClient target = liftIO $ do
-  Log.debug $ "Send get store node request to HStream server. "
-    <> "Node ID: " <> Log.buildString (show target)
-  HStreamApi{..} <- hstreamApiClient hClient
-  resp <- hstreamApiGetNode
-    (mkClientNormalRequest def { getNodeRequestId = target})
-  (nodeToNodeBO <$>) <$> getServerResp resp
+getStoreNodeHandler :: Client -> Int32 -> Handler NodeBO
+getStoreNodeHandler hClient target = do
+  resp <- liftIO $ do
+    Log.debug $ "Send get store node request to HStream server. "
+             <> "Node ID: " <> Log.buildString (show target)
+    HStreamApi{..} <- hstreamApiClient hClient
+    hstreamApiGetNode . mkClientNormalRequest $ def
+      { getNodeRequestId = target}
+  nodeToNodeBO <$> getServerResp' resp
 
 nodeServer :: Client -> Server NodesAPI
-nodeServer hClient = listStoreNodesHandler hClient
-                :<|> getStoreNodeHandler hClient
+nodeServer hClient
+  =    listStoreNodesHandler hClient
+  :<|> getStoreNodeHandler   hClient
