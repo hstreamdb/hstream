@@ -57,7 +57,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       -- create an existed stream should fail
       createStreamRequest api stream `shouldThrow` anyException
 
-  aroundWith withRandomStreamNames $ do
+  aroundWith (withRandomStreamNames 5) $ do
     it "test listStream request" $ \(api, names) -> do
       let createStreamReqs = zipWith Stream names [1, 2, 3, 3, 2]
       forM_ createStreamReqs $ \stream -> do
