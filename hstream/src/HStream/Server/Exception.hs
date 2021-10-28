@@ -13,6 +13,7 @@ import           Control.Exception                    (Exception (..),
 import qualified Data.ByteString.Char8                as BS
 import           Database.MySQL.Base                  (ERRException)
 
+import qualified HStream.Logger                       as Log
 import           HStream.SQL.Exception                (SomeSQLException,
                                                        formatSomeSQLException)
 import           HStream.Server.Persistence.Exception (PersistenceException)
@@ -45,6 +46,7 @@ mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(_ :: SubscriptionIdNotFound) ->
     retFun StatusInternal "Subscription ID can not be found"),
   Handler (\(err :: IOException) -> do
+    Log.fatal $ Log.buildString (displayException err)
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(err :: ERRException) -> do
     retFun StatusInternal $ StatusDetails ("Mysql error " <> BS.pack (show err))),
