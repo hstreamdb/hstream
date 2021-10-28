@@ -10,13 +10,14 @@ module HStream.HandlerSpec (spec) where
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (race)
-import           Control.Monad                    (forM_, replicateM,
-                                                   replicateM_, void, when)
+import           Control.Monad                    (forM, forM_, replicateM,
+                                                   void, when)
 import           Data.IORef
 import           Data.Int                         (Int32)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
+import           Data.Set                         (Set)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -44,6 +45,7 @@ spec =  describe "HStream.HandlerSpec" $ do
   streamSpec
   subscribeSpec
   consumerSpec
+  consumerGroupSpec
 
 ----------------------------------------------------------------------------------------------------------
 -- StreamSpec
@@ -264,34 +266,23 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
     let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
 
     it "test streamFetch request" $ \(api, (streamName, subName)) -> do
-      originCh <- newChan
-      terminate <- newChan
-      void $ forkIO (streamFetchRequest api subName originCh terminate)
+      let msgCnt = 30
+          maxPayloadSize = 1300
+      (reqRids, totalSize) <- produceRecords api header streamName msgCnt maxPayloadSize
+      Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
 
-      let numMsg = 30
-      batchSize <- newIORef 0
-      reqRids <- replicateM numMsg $ do
-        size <- randomRIO (1, 1300)
-        payload <- V.map (buildRecord header) <$> V.replicateM size (newRandomByteString 2)
-        modifyIORef' batchSize (+size)
-        appendResponseRecordIds <$> appendRequest api streamName payload
-      Log.debug . Log.buildString $ "length of record = " <> show (length reqRids)
-      sz <- readIORef batchSize
-      Log.debug $ "total batchSize = " <> Log.buildInt sz
-      ack <- collectRecord 0 sz [] originCh
-      ack `shouldBe` V.concat reqRids
-      writeChan terminate ()
+      verifyConsumer api subName totalSize reqRids [defaultHacker]
       Log.debug "streamFetch test done !!!!!!!!!!!"
 
     it "test retrans unacked msg" $ \(api, (streamName, subName)) -> do
       originCh <- newChan
       hackerCh <- newChan
       terminate <- newChan
-      void $ forkIO (streamFetchRequestWithChaos api subName originCh hackerCh terminate randomKillHacker)
+      void $ forkIO (streamFetchRequestWithChannel api subName originCh hackerCh terminate randomKillHacker)
 
-      replicateM_ 1000 $ do
-        payload <- V.map (buildRecord header) <$> V.replicateM 2 (newRandomByteString 2)
-        appendResponseRecordIds <$> appendRequest api streamName payload
+      (reqRids, totalSize) <- produceRecords api header streamName 200 20
+      Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
       originAck <- readChan originCh
       hackedAck <- readChan hackerCh
       retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
@@ -305,11 +296,11 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       originCh <- newChan
       hackerCh <- newChan
       terminate <- newChan
-      void $ forkIO (streamFetchRequestWithChaos api subName originCh hackerCh terminate timeoutHacker)
+      void $ forkIO (streamFetchRequestWithChannel api subName originCh hackerCh terminate timeoutHacker)
 
-      replicateM_ 500 $ do
-        payload <- V.map (buildRecord header) <$> V.replicateM 5 (newRandomByteString 2)
-        appendResponseRecordIds <$> appendRequest api streamName payload
+      (reqRids, totalSize) <- produceRecords api header streamName 200 20
+      Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
       originAck <- readChan originCh
       let hackedAck = V.empty
       retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
@@ -330,11 +321,11 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       let record = buildRecord header "1"
       RecordId{..} <- V.head . appendResponseRecordIds <$> appendRequest api streamName (V.singleton record)
       let !latesLSN = recordIdBatchId + 1
-      void $ forkIO (streamFetchRequestWithChaos api subName originCh hackerCh terminate (wrongRidHacker latesLSN))
+      void $ forkIO (streamFetchRequestWithChannel api subName originCh hackerCh terminate (wrongRidHacker latesLSN))
 
-      replicateM_ 5 $ do
-        payload <- V.map (buildRecord header) <$> V.replicateM 2 (newRandomByteString 2)
-        appendResponseRecordIds <$> appendRequest api streamName payload
+      (reqRids, totalSize) <- produceRecords api header streamName 5 2
+      Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
       originAck <- readChan originCh
       let hackedAck = V.empty
       retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
@@ -350,33 +341,158 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
   --  3. test subscribe from any offset
 
 ----------------------------------------------------------------------------------------------------------
+-- ConsumerGroupSpec
+
+-- TODO:
+-- 1. what should happen if all consumer exist the consumer group?
+--    a. if any consumer join the group again, what should happen?
+-- 2. if a consumer join multi consumer groups, what should happen?
+
+consumerGroupSpec :: Spec
+consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $ do
+
+  aroundWith withConsumerSpecEnv $ do
+
+     timeStamp <- runIO getProtoTimestamp
+     let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+
+     it "test consumerGroup" $ \(api, (streamName, subName)) -> do
+       let msgCnt = 500
+           maxPayloadSize = 20
+       (reqRids, totalSize) <- produceRecords api header streamName msgCnt maxPayloadSize
+       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
+       let hackers = V.replicate 5 [defaultHacker]
+       verifyConsumerGroup api subName totalSize reqRids hackers
+
+     it "test consumerGroup with timeout" $ \(api, (streamName, subName)) -> do
+       let msgCnt = 200
+       (reqRids, totalSize) <- produceRecords api header streamName msgCnt 20
+       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
+       let hackers = V.foldl'
+                      (\acc i -> if even i
+                                   then V.cons [defaultHacker] acc
+                                   else V.cons [timeoutHacker, defaultHacker] acc
+                      )
+                      V.empty
+                      (V.fromList @Int [1..5])
+       verifyConsumerGroup api subName totalSize reqRids hackers
+
+     it "test consumerGroup with unacked" $ \(api, (streamName, subName)) -> do
+       let msgCnt = 200
+       (reqRids, totalSize) <- produceRecords api header streamName msgCnt 20
+       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
+       let hackers = V.foldl'
+                      (\acc i -> if even i
+                                   then V.cons [defaultHacker] acc
+                                   else V.cons [randomKillHacker, defaultHacker] acc
+                      )
+                      V.empty
+                      (V.fromList @Int [1..5])
+       verifyConsumerGroup api subName totalSize reqRids hackers
+
+     it "test consumerGroup with multi chaos" $ \(api, (streamName, subName)) -> do
+       let msgCnt = 200
+       (reqRids, totalSize) <- produceRecords api header streamName msgCnt 20
+       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+
+       let hackerList = [defaultHacker, randomKillHacker, timeoutHacker]
+       hackers <- V.forM (V.fromList [1::Int ..5]) $ \_ -> do
+         idx <- randomRIO (0,2)
+         return [hackerList !! idx, defaultHacker]
+       verifyConsumerGroup api subName totalSize reqRids hackers
+
+     it "test kill consumer" $ \(api, (streamName, subName)) -> do
+       let msgCnt = 200
+       (reqRids, totalSize) <- produceRecords api header streamName msgCnt 20
+       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+       terminate <- newChan
+       condVar <- newEmptyMVar
+       let idxs = [1, 3]
+       sig <- newMVar (Set.empty, condVar)
+       res <- forM (V.fromList @Int [1..5]) $ \_ -> do
+         responses <- newIORef Set.empty
+         tch <- dupChan terminate
+         tid <- forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
+         return (tid, responses)
+       forM_ idxs $ \index -> do
+         Log.d $ "kill " <> Log.buildInt index
+         killThread . fst $ res V.! index
+       void $ readMVar condVar
+       Log.debug "receive signal"
+       writeChan terminate ()
+       result <- forM res $ readIORef . snd
+       let reqSet = Set.fromList . V.toList . V.concat $ reqRids
+           repSet = Set.unions result
+           reqSize = Set.size reqSet
+           repSize = Set.size repSet
+       repSize `shouldBe` reqSize
+       Set.difference reqSet repSet `shouldBe` Set.empty
+       repSet `shouldBe` reqSet
+
+     it "test add consumer" $ \(api, (streamName, subName)) -> do
+       let msgCnt = 1000
+       (reqRids, totalSize) <- produceRecords api header streamName msgCnt 20
+       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
+       terminate <- newChan
+       condVar <- newEmptyMVar
+       sig <- newMVar (Set.empty, condVar)
+       res' <- forM (V.fromList @Int [1..5]) $ \_ -> do
+         responses <- newIORef Set.empty
+         tch <- dupChan terminate
+         void $ forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
+         return responses
+
+       Log.debug "add new consumer"
+       responses <- newIORef Set.empty
+       tch <- dupChan terminate
+       void $ forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
+       let res = res' V.++ V.singleton responses
+
+       void $ readMVar condVar
+       Log.debug "receive signal"
+       writeChan terminate ()
+       result <- forM res readIORef
+       let reqSet = Set.fromList . V.toList . V.concat $ reqRids
+           repSet = Set.unions result
+           reqSize = Set.size reqSet
+           repSize = Set.size repSet
+       repSize `shouldBe` reqSize
+       Set.difference reqSet repSet `shouldBe` Set.empty
+       repSet `shouldBe` reqSet
+
+----------------------------------------------------------------------------------------------------------
 
 streamFetchRequest
   :: HStreamClientApi
   -> T.Text
-  -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
+  -> IORef (Set RecordId)
   -> Chan ()                  -- channel use to close client request
+  -> MVar (Set RecordId, CondVar)       -- use as a condition var
+  -> Int                      -- signal of receive enough response
+  -> [Hacker]
   -> IO ()
-streamFetchRequest HStreamApi{..} subscribeId originCh terminate = do
+streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total hackers = do
   consumerName <- newRandomText 5
-  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
+  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action consumerName)
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
     ClientBiDiResponse _meta StatusOk _msg -> Log.debug "fetch request done"
     ClientBiDiResponse _meta stats detail -> Log.fatal . Log.buildString $ "abnormal status: " <> show stats <> ", msg: " <> show detail
     ClientErrorResponse err -> Log.e . Log.buildString $ "fetch request err: " <> show err
   where
-    action isInit consumerName call _meta streamRecv streamSend _done = do
-      when isInit $ do
-        let initReq = StreamingFetchRequest subscribeId consumerName V.empty
-        streamSend initReq >>= \case
-          Left err -> do
-            Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
-            clientCallCancel call
-          Right _ -> return ()
-      void $ race (doFetch streamRecv streamSend call consumerName) (notifyDone call)
+    action consumerName call _meta streamRecv streamSend _done = do
+      let initReq = StreamingFetchRequest subscribeId consumerName V.empty
+      streamSend initReq >>= \case
+        Left err -> do
+          Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
+          clientCallCancel call
+        Right _ -> return ()
+      void $ race (doFetch streamRecv streamSend call consumerName hackers) (notifyDone consumerName call)
 
-    doFetch streamRecv streamSend call consumerName = do
+    doFetch streamRecv streamSend call consumerName hackers = do
       streamRecv >>= \case
         Left err -> do
           Log.e . Log.buildString $ "Error happened when recv from server " <> show err
@@ -387,24 +503,44 @@ streamFetchRequest HStreamApi{..} subscribeId originCh terminate = do
         Right (Just StreamingFetchResponse{..}) -> do
           -- get recordId from response
           let ackIds = V.map (fromJust . receivedRecordRecordId) streamingFetchResponseReceivedRecords
-          -- select ackIds
-          writeChan originCh ackIds
+          Log.debug $ "consumer " <> Log.buildLazyText consumerName <> " get length of response: " <> Log.buildInt (V.length ackIds)
+
+          let curHacker = head hackers
+          let newHackers = if length hackers == 1 then hackers else tail hackers
+
+          ackIds' <- curHacker ackIds
+
+          -- add responsed recordId to set, if recevied enough response, notify the cond_var
+          let newSet = foldr Set.insert Set.empty ackIds'
+          originSet <- readIORef responses
+          -- total records received without duplicate
+          let uSet = Set.union originSet newSet
+          -- new records received this turn
+          let dSet = Set.difference newSet originSet
+          writeIORef responses uSet
+          modifyMVar_ conVar $ \(s, sig) -> do
+            let totalSet = Set.union s dSet
+            -- Log.e $ "consumer is updating total responses, total size before update: " <> Log.buildInt (Set.size s) <> ", after update: " <> Log.buildInt (Set.size totalSet)
+            when (Set.size totalSet == total) $ putMVar sig ()
+            return (totalSet, sig)
 
           -- send ack
-          let fetReq = StreamingFetchRequest subscribeId consumerName ackIds
+          let fetReq = StreamingFetchRequest subscribeId consumerName ackIds'
           streamSend fetReq >>= \case
             Left err -> do
               Log.e . Log.buildString $ "Error happened when send ack: " <> show err <> "\n ack context: " <> show fetReq
               clientCallCancel call
             Right _ -> do
-              doFetch streamRecv streamSend call consumerName
+              doFetch streamRecv streamSend call consumerName newHackers
 
-    notifyDone call = do
+    notifyDone consumerName call = do
       void $ readChan terminate
+      res <- readIORef responses
+      Log.debug $ "finally consumer " <> Log.buildText (TL.toStrict consumerName) <> " get length of response: " <> Log.buildInt (Set.size res)
       clientCallCancel call
       Log.d "client cancel fetch request"
 
-streamFetchRequestWithChaos
+streamFetchRequestWithChannel
   :: HStreamClientApi
   -> T.Text
   -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
@@ -412,23 +548,22 @@ streamFetchRequestWithChaos
   -> Chan ()                  -- channel use to close client request
   -> (V.Vector RecordId -> IO (V.Vector RecordId)) -- hacker function
   -> IO ()
-streamFetchRequestWithChaos HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
+streamFetchRequestWithChannel HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
   consumerName <- newRandomText 5
-  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
+  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action consumerName)
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
     ClientBiDiResponse _meta StatusOk _msg -> Log.debug "fetch request done"
     ClientBiDiResponse _meta stats detail -> Log.fatal . Log.buildString $ "abnormal status: " <> show stats <> ", msg: " <> show detail
     ClientErrorResponse err -> Log.e . Log.buildString $ "fetch request err: " <> show err
   where
-    action isInit consumerName call _meta streamRecv streamSend _done = do
-      when isInit $ do
-        let initReq = StreamingFetchRequest subscribeId consumerName V.empty
-        streamSend initReq >>= \case
-          Left err -> do
-            Log.e . Log.buildString $ "Server error happened when send init streamFetchRequestWithChaos err: " <> show err
-            clientCallCancel call
-          Right _ -> return ()
+    action consumerName call _meta streamRecv streamSend _done = do
+      let initReq = StreamingFetchRequest subscribeId consumerName V.empty
+      streamSend initReq >>= \case
+        Left err -> do
+          Log.e . Log.buildString $ "Server error happened when send init streamFetchRequestWithChannel err: " <> show err
+          clientCallCancel call
+        Right _ -> return ()
       void $ race (doFetch streamRecv streamSend hacker call consumerName) (notifyDone call)
 
     doFetch streamRecv streamSend hacker' call consumerName = do
@@ -461,6 +596,76 @@ streamFetchRequestWithChaos HStreamApi{..} subscribeId originCh hackerCh termina
       clientCallCancel call
       Log.d "client cancel fetch request"
 
+type CondVar = MVar ()
+type Hacker = V.Vector RecordId -> IO(V.Vector RecordId)
+
+produceRecords
+  :: HStreamClientApi
+  -> HStreamRecordHeader
+  -> TL.Text
+  -> Int -> Int
+  -> IO([V.Vector RecordId], Int)
+produceRecords api header streamName msgCount maxBatchSize = do
+  batchSize <- newIORef 0
+  reqRids <- replicateM msgCount $ do
+    size <- randomRIO (1, maxBatchSize)
+    payload <- V.map (buildRecord header) <$> V.replicateM size (newRandomByteString 2)
+    modifyIORef' batchSize (+size)
+    appendResponseRecordIds <$> appendRequest api streamName payload
+  sz <- readIORef batchSize
+  return (reqRids, sz)
+
+doConsume
+  :: HStreamClientApi
+  -> TL.Text
+  -> MVar (Set RecordId, CondVar)
+  -> Int
+  -> Chan()
+  -> [Hacker]
+  -> IO (IORef (Set RecordId))
+doConsume api subName sig totalSize terminateCh hackers = do
+  responses <- newIORef Set.empty
+  tch <- dupChan terminateCh
+  void $ forkIO (streamFetchRequest api subName responses tch sig totalSize hackers)
+  return responses
+
+verifyConsumer
+  :: HStreamClientApi
+  -> TL.Text
+  -> Int
+  -> [V.Vector RecordId]
+  -> [Hacker]
+  -> IO ()
+verifyConsumer api subName totalSize reqRids hackers = do
+  verifyConsumerGroup api subName totalSize reqRids $ V.singleton hackers
+
+verifyConsumerGroup
+  :: HStreamClientApi
+  -> TL.Text
+  -> Int
+  -> [V.Vector RecordId]
+  -> V.Vector [Hacker]
+  -> IO ()
+verifyConsumerGroup api subName totalSize reqRids hackers = do
+  terminate <- newChan
+  condVar <- newEmptyMVar
+  sig <- newMVar (Set.empty, condVar)
+
+  res <- forM hackers $ doConsume api subName sig totalSize terminate
+
+  void $ readMVar condVar
+  Log.d "receive signal"
+  writeChan terminate ()
+  result <- forM res readIORef
+
+  let reqSet = Set.fromList . V.toList . V.concat $ reqRids
+      repSet = Set.unions result
+      reqSize = Set.size reqSet
+      repSize = Set.size repSet
+  repSize `shouldBe` reqSize
+  Set.difference reqSet repSet `shouldBe` Set.empty
+  repSet `shouldBe` reqSet
+
 collectRetrans :: Int -> Chan (V.Vector RecordId) -> Int -> [V.Vector RecordId]-> IO (V.Vector RecordId)
 collectRetrans cnt channel maxCount res
   | maxCount <= cnt = return $ V.concat res
@@ -473,21 +678,10 @@ collectRetrans cnt channel maxCount res
            let nres = res L.++ [ids]
            collectRetrans (cnt + 1) channel maxCount nres
 
-collectRecord :: Int -> Int -> [V.Vector RecordId] -> Chan (V.Vector RecordId) -> IO (V.Vector RecordId)
-collectRecord cnt maxCount res channel
-  | cnt >= maxCount = do
-      return . V.concat $ res
-  | otherwise = do
-      rids <- readChan channel
-      let nres = res L.++ [rids]
-          total = cnt + V.length rids
-      Log.debug $ "collectRecord num: " <> Log.buildInt total
-      collectRecord total maxCount nres channel
-
-defaultHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
+defaultHacker :: Hacker
 defaultHacker = pure
 
-randomKillHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
+randomKillHacker :: Hacker
 randomKillHacker rids = do
   let size = V.length rids
   seed <- randomRIO (1, min 10 (size `div` 2))
@@ -495,10 +689,10 @@ randomKillHacker rids = do
   Log.d $ "length of recordIds which need to retrans: " <> Log.buildInt (V.length retrans)
   return $ V.ifilter (\idx _ -> idx `mod` seed /= 0) rids
 
-timeoutHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
-timeoutHacker rids = threadDelay 7000000 >> return rids
+timeoutHacker :: Hacker
+timeoutHacker _ = threadDelay 7000000 >> return V.empty
 
-wrongRidHacker :: Word64 -> V.Vector RecordId -> IO (V.Vector RecordId)
+wrongRidHacker :: Word64 -> Hacker
 wrongRidHacker lsn _ = do
   let wrongIdxRecord = RecordId lsn 100005
       wrongLSNRecord = RecordId (lsn + 50000) 99

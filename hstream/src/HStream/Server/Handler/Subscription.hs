@@ -109,45 +109,40 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
             Enumerated _ -> error "Wrong SpecialOffset!"
         SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
-deleteSubscriptionHandler ::
-  ServerContext ->
-  ServerRequest 'Normal DeleteSubscriptionRequest Empty ->
-  IO (ServerResponse 'Normal Empty)
+deleteSubscriptionHandler
+  :: ServerContext
+  -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest {..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
 
   modifyMVar_ subscribeRuntimeInfo $ \store -> do
     case HM.lookup deleteSubscriptionRequestSubscriptionId store of
       Just infoMVar -> do
-        shouldDelete <-
-          modifyMVar
-            infoMVar
-            ( \info@SubscribeRuntimeInfo {..} ->
-                if HM.null sriStreamSends
-                  then do
-                    -- remove sub from zk
-                    P.removeObject @ZHandle @'SubRep
-                      deleteSubscriptionRequestSubscriptionId zkHandle
-                    -- remove subctx from zk
-                    P.removeObject @ZHandle @'SubCtxRep
-                      deleteSubscriptionRequestSubscriptionId zkHandle
-                    let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
-                    return (newInfo, True)
-                  else return (info, False)
-            )
-        if shouldDelete
-          then do
-          modifyMVar_ subscriptionCtx (return . Map.delete (T.unpack deleteSubscriptionRequestSubscriptionId))
-          return $ HM.delete deleteSubscriptionRequestSubscriptionId store
-          else return store
+        modifyMVar infoMVar removeSubscriptionFromZK >>= \case
+          True -> do
+            modifyMVar_ subscriptionCtx (return . Map.delete (TL.unpack deleteSubscriptionRequestSubscriptionId))
+            return $ HM.delete deleteSubscriptionRequestSubscriptionId store
+          False -> return store
       Nothing -> do
         P.removeObject @ZHandle @'SubRep
           deleteSubscriptionRequestSubscriptionId zkHandle
         P.removeObject @ZHandle @'SubCtxRep
           deleteSubscriptionRequestSubscriptionId zkHandle
         return store
-
   returnResp Empty
+  where
+    removeSubscriptionFromZK info@SubscribeRuntimeInfo {..}
+      | HM.null sriStreamSends = do
+          -- remove sub from zk
+          P.removeObject @ZHandle @'SubRep
+            deleteSubscriptionRequestSubscriptionId zkHandle
+          -- remove subctx from zk
+          P.removeObject @ZHandle @'SubCtxRep
+            deleteSubscriptionRequestSubscriptionId zkHandle
+          let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
+          return (newInfo, True)
+      | otherwise = return (info, False)
 
 checkSubscriptionExistHandler ::
   ServerContext ->
@@ -481,6 +476,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
             else return (info, Nothing)
 
         -- TODO: maybe we can read these unacked records concurrently
+        -- TODO: if all senders in streamSendValidRef are invalid, no need to do resend
         doResend info@SubscribeRuntimeInfo {..} unackedRecordIds = do
           let consumerNum = HM.size sriStreamSends
           if consumerNum == 0
@@ -571,32 +567,31 @@ dispatchRecords records streamSends
         Right _ -> do
           return $ Just (name, sender)
 
-doAck ::
-  S.LDClient ->
-  MVar SubscribeRuntimeInfo ->
-  V.Vector RecordId ->
-  IO ()
+doAck
+  :: S.LDClient
+  -> MVar SubscribeRuntimeInfo
+  -> V.Vector RecordId
+  -> IO ()
 doAck client infoMVar ackRecordIds =
-  modifyMVar_
-    infoMVar
+  modifyMVar_ infoMVar
     ( \info@SubscribeRuntimeInfo {..} -> do
         if sriValid
           then do
-            Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
+            Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
-            Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+            Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
                 commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
                 -- after a checkpoint is committed, informations of records before checkpoint are no need to be retained, so just clear them
                 let newBatchNumMap = updateBatchNumMap (recordIdBatchId checkpointRecordId) sriBatchNumMap
-                Log.info $
-                  "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
-                    <> "} to "
-                    <> "{"
-                    <> Log.buildString (show newLowerBound)
-                    <> "}"
-                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound, sriBatchNumMap = newBatchNumMap}
+                Log.info $ "update window lower bound, from {"
+                        <> Log.buildString (show sriWindowLowerBound)
+                        <> "} to {"
+                        <> Log.buildString (show newLowerBound)
+                        <> "}"
+                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
               Nothing ->
                 return $ info {sriAckedRanges = newAckedRanges}
           else return info
