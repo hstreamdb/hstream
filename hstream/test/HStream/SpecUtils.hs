@@ -183,10 +183,14 @@ withRandomStreamName = provideRunTest setup clean
     setup _api = TL.fromStrict <$> newRandomText 20
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
 
-withRandomStreamNames :: ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
-withRandomStreamNames = provideRunTest setup clean
+withRandomStreamNames
+  :: Int
+  -> ActionWith (HStreamClientApi, [TL.Text])
+  -> HStreamClientApi
+  -> IO ()
+withRandomStreamNames n = provideRunTest setup clean
   where
-    setup _api = replicateM 5 $ TL.fromStrict <$> newRandomText 20
+    setup _api = replicateM n $ TL.fromStrict <$> newRandomText 20
     clean api names = forM_ names $ \name -> do
       cleanStreamReq api name `shouldReturn` PB.Empty
 
@@ -198,6 +202,16 @@ withRandomStream = provideRunTest setup clean
                    threadDelay 1000000
                    return name
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
+
+withRandomStreams :: Int -> ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
+withRandomStreams n = provideRunTest setup clean
+  where
+    setup api = replicateM n $ do name <- TL.fromStrict <$> newRandomText 20
+                                  _ <- createStreamReq api (Stream name 1)
+                                  threadDelay 1000000
+                                  return name
+    clean api names = forM_ names $ \name -> do
+      cleanStreamReq api name `shouldReturn` PB.Empty
 
 createStreamReq :: HStreamClientApi -> Stream -> IO Stream
 createStreamReq HStreamApi{..} stream =
