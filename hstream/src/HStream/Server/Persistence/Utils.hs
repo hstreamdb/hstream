@@ -214,7 +214,6 @@ decodeZNodeValue zk nodePath = do
 
 decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
 decodeZNodeValue' zk nodePath = do
-  Log.i $ Log.buildCBytes nodePath
   zooGet zk nodePath <&> decodeDataCompletion'
 
 encodeValueToBytes :: ToJSON a => a -> Bytes

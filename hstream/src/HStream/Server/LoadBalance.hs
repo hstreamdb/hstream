@@ -35,12 +35,12 @@ import           ZooKeeper                        (zooGetChildren, zooSet,
 import           ZooKeeper.Types
 
 import           HStream.Client.Utils             (mkClientNormalRequest,
-                                                   mkGRPCClientConf,
-                                                   serverNodeToSocketAddr)
+                                                   mkGRPCClientConf)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (ServerNode)
 import           HStream.Server.HStreamInternal
-import           HStream.Server.Persistence       (getServerNode,
+import           HStream.Server.Persistence       (getServerInternalAddr,
+                                                   getServerNode,
                                                    serverLoadPath,
                                                    serverRootPath)
 import           HStream.Server.Types
@@ -57,8 +57,8 @@ getNodesRanking ServerContext{..} = do
     True -> do
       getRanking >>= mapM (getServerNode zkHandle)
     False -> do
-      leaderNode <- getServerNode zkHandle leader
-      withGRPCClient (mkGRPCClientConf . serverNodeToSocketAddr $ leaderNode) $ \client -> do
+      addr <- getServerInternalAddr zkHandle leader
+      withGRPCClient (mkGRPCClientConf addr) $ \client -> do
         HStreamInternal{..} <- hstreamInternalClient client
         hstreamInternalGetNodesRanking (mkClientNormalRequest Empty) >>= \case
           ClientNormalResponse (GetNodesRankingResponse nodes) _meta1 _meta2 _code _details -> do

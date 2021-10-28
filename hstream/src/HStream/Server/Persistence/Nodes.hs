@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence.Nodes (
@@ -16,6 +17,7 @@ module HStream.Server.Persistence.Nodes (
   , setNodeStatus
 
   , getReadyServers
+  , getServerInternalAddr
   ) where
 
 import           Control.Exception                 (SomeException, try)
@@ -26,6 +28,7 @@ import qualified Data.Text.Lazy                    as TL
 import           GHC.Generics                      (Generic)
 import           GHC.Stack                         (HasCallStack)
 import           Z.Data.CBytes                     (CBytes)
+import           Z.IO.Network                      (SocketAddr, ipv4)
 import           ZooKeeper                         (zooGetChildren, zooSet)
 import           ZooKeeper.Types                   (StringVector (StringVector),
                                                     StringsCompletion (StringsCompletion),
@@ -36,7 +39,8 @@ import           HStream.Server.HStreamApi         (ServerNode (..))
 import           HStream.Server.Persistence.Common ()
 import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
-import           HStream.Utils                     (valueToBytes)
+import           HStream.Utils                     (lazyTextToCBytes,
+                                                    valueToBytes)
 
 data NodeStatus = Starting | Ready | Working
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
@@ -65,6 +69,11 @@ getServerUri zk name = do
   host <- getServerHost zk name
   port <- getServerPort zk name
   return $ host <> ":" <> TL.pack (show port)
+
+getServerInternalAddr :: ZHandle -> CBytes -> IO SocketAddr
+getServerInternalAddr zk name = do
+  NodeInfo {..} <- getNodeInfo zk name
+  return (ipv4 (lazyTextToCBytes serverHost) (fromIntegral serverInternalPort))
 
 setNodeStatus :: HasCallStack => ZHandle -> CBytes -> NodeStatus -> IO ()
 setNodeStatus zk name status = do
