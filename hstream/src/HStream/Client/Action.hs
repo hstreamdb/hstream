@@ -318,7 +318,7 @@ callStreamingFetch ctx startRecordIds subId clientId = do
   m_node <- lookupSubscription ctx curNode subId
   case m_node of
     Nothing   -> print "Subscription not found"
-    Just node -> withGRPCClient (mkGRPCClientConf node) $ \client -> do
+    Just node -> withGRPCClient (mkGRPCClientConf . serverNodeToSocketAddr $ node) $ \client -> do
       API.HStreamApi{..} <- API.hstreamApiClient client
       hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty action)
       return ()

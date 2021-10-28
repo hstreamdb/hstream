@@ -33,10 +33,12 @@ import           System.Statgrab
 import           ZooKeeper                        (zooGetChildren, zooSet,
                                                    zooWatchGet)
 import           ZooKeeper.Types
+import qualified Z.Data.CBytes as CB
 
 import           HStream.Client.Utils             (mkClientNormalRequest,
                                                    mkGRPCClientConf,
-                                                   serverNodeToSocketAddr)
+                                                   serverNodeToSocketAddr,
+                                                   serverNodeToInternalSocketAddr)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (ServerNode)
 import           HStream.Server.HStreamInternal
@@ -64,9 +66,9 @@ getNodesRanking ServerContext{..} = do
         hstreamInternalGetNodesRanking (mkClientNormalRequest Empty) >>= \case
           ClientNormalResponse (GetNodesRankingResponse nodes) _meta1 _meta2 _code _details -> do
             return $ V.toList nodes
-          _ -> do
+          ClientErrorResponse err -> do
             Log.warning . Log.buildCBytes $
-              "Failed to get nodes ranking from leader " <> leader
+              "Failed to get nodes ranking from leader " <> leader <> ": " <> CB.pack (show err)
             return []
 
 --------------------------------------------------------------------------------

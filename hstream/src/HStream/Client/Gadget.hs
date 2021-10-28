@@ -90,8 +90,9 @@ doActionWithAddr ctx@ClientContext{..} addr getRespApp handleRespApp = do
   withGRPCClient (mkGRPCClientConf addr) $ \client -> do
     resp <- getRespApp client
     case resp of
-      ClientErrorResponse _ -> do
-        Log.w . Log.buildString $ "Failed to connect to Node " <> show uri <> ", redirecting..."
+      ClientErrorResponse err -> do
+        Log.w . Log.buildString $
+          "Failed to connect to Node " <> show uri <> ": " <> show err <> ", redirecting..."
         modifyMVar_ availableServers (return . L.delete addr)
         curServers <- readMVar availableServers
         case L.null curServers of
@@ -102,9 +103,6 @@ doActionWithAddr ctx@ClientContext{..} addr getRespApp handleRespApp = do
             Log.w . Log.buildString $ "Available servers: " <> show curServers
             let newAddr = head curServers
             doActionWithAddr ctx newAddr getRespApp handleRespApp
-      ClientErrorResponse err -> do
-        Log.w . Log.buildString $ "Error when executing an action: " <> show err
-        return Nothing
       _ -> handleRespApp resp
   where uri = show addr
 
@@ -114,4 +112,4 @@ doAction :: ClientContext
          -> IO (Maybe b)
 doAction ctx getRespApp handleRespApp = do
   curServer <- readMVar (currentServer ctx)
-  doActionWithNode ctx curServer getRespApp handleRespApp
+  doActionWithAddr ctx curServer getRespApp handleRespApp

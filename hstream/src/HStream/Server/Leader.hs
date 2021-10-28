@@ -22,8 +22,7 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.UUID                        as UUID
 import           Data.UUID.V4                     (nextRandom)
 import           GHC.IO                           (unsafePerformIO)
-import           HStream.Client.Utils             (mkClientNormalRequest,
-                                                   mkGRPCInternalClientConf)
+import           HStream.Client.Utils             (mkClientNormalRequest, serverNodeToInternalSocketAddr, mkGRPCClientConf)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (ServerNode (serverNodeName))
 import           HStream.Server.HStreamInternal
@@ -33,7 +32,7 @@ import           HStream.Server.LoadBalance       (getNodesRanking,
 import           HStream.Server.Persistence       (decodeZNodeValue,
                                                    decodeZNodeValue',
                                                    encodeValueToBytes,
-                                                   serverIdPath, setZkData)
+                                                   serverIdPath, setZkData, leaderPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (LoadManager (..),
                                                    ProducerContext (ProducerContext, _prdctxNode, _prdctxStream),
@@ -52,6 +51,8 @@ import           ZooKeeper.Types
 
 selectLeader :: ServerContext -> LoadManager -> IO ()
 selectLeader ctx@ServerContext{..} lm = do
+  void $ forkIO $ do
+    zooWatchGet zkHandle leaderPath (\_ -> watcherApp) (\_ -> return ())
   uuid <- nextRandom
   void . forkIO $ election zkHandle "/election" (CB.pack . UUID.toString $ uuid)
     (do
@@ -66,8 +67,16 @@ selectLeader ctx@ServerContext{..} lm = do
       -- Set watcher for nodes changes
       watchNodes ctx lm
     )
-    (\_ -> return ())
+    (\_ -> stepApp)
   where
+    watcherApp = do
+      stepApp
+      zooWatchGet zkHandle leaderPath (\_ -> watcherApp) (\_ -> return ())
+    stepApp = do
+      DataCompletion v _ <- zooGet zkHandle leaderPath
+      case v of
+        Just x  -> updateLeader (CB.fromBytes x)
+        Nothing -> pure ()
     updateLeader new = do
       noLeader <- isEmptyMVar leaderName
       case () of
@@ -130,7 +139,7 @@ restartSubscription ctx SubscriptionContext{..} = do
       Log.warning . Log.buildString $
         "No available node to restart subscription " <> _subctxSubId
       return False
-    go (node:nodes) = withGRPCClient (mkGRPCInternalClientConf node) $ \client -> do
+    go (node:nodes) = withGRPCClient (mkGRPCClientConf . serverNodeToInternalSocketAddr $ node) $ \client -> do
       HStreamInternal{..} <- hstreamInternalClient client
       let req = TakeSubscriptionRequest (TL.pack _subctxSubId)
       hstreamInternalTakeSubscription (mkClientNormalRequest req) >>= \case
@@ -160,10 +169,11 @@ restartProducer ctx ProducerContext{..} = do
       Log.warning . Log.buildString $
         "No available node to transfer stream " <> T.unpack _prdctxStream
       return False
-    go (node:nodes) = withGRPCClient (mkGRPCInternalClientConf node) $ \client -> do
+    go (node:nodes) = withGRPCClient (mkGRPCClientConf . serverNodeToInternalSocketAddr $ node) $ \client -> do
+      Log.debug . Log.buildString $ "Sending producer to " <> show node
       HStreamInternal{..} <- hstreamInternalClient client
-      let req = TakeSubscriptionRequest (TL.fromStrict _prdctxStream)
-      hstreamInternalTakeSubscription (mkClientNormalRequest req) >>= \case
+      let req = TakeStreamRequest (TL.fromStrict _prdctxStream)
+      hstreamInternalTakeStream (mkClientNormalRequest req) >>= \case
         (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
           return True
         (ClientErrorResponse err) -> do
