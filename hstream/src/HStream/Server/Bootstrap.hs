@@ -18,8 +18,6 @@ import           HStream.Server.Types          (ServerOpts (..))
 
 startServer :: ZHandle -> ServerOpts -> IO () -> IO ()
 startServer zk ServerOpts {..} myApp = do
-  let serverUri         = TL.pack $ _serverAddress <> ":" <> show _serverPort
-      serverInternalUri = TL.pack $ _serverAddress <> ":" <> show _serverInternalPort
-  initNodePath zk _serverName serverUri serverInternalUri
+  initNodePath zk _serverName (TL.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
   setNodeStatus zk _serverName Working
   myApp

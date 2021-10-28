@@ -8,7 +8,11 @@ module HStream.Server.Persistence.Nodes (
   , NodeInfo (..)
 
   , getNodeStatus
+  , getServerHost
+  , getServerPort
+  , getServerInternalPort
   , getServerUri
+  , getServerNode
   , setNodeStatus
 
   , getReadyServers
@@ -27,6 +31,8 @@ import           ZooKeeper.Types                   (StringVector (StringVector),
                                                     StringsCompletion (StringsCompletion),
                                                     ZHandle)
 
+import           Data.Word                         (Word32)
+import           HStream.Server.HStreamApi         (ServerNode (..))
 import           HStream.Server.Persistence.Common ()
 import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
@@ -36,16 +42,29 @@ data NodeStatus = Starting | Ready | Working
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 data NodeInfo = NodeInfo
-  { nodeStatus        :: NodeStatus
-  , serverUri         :: TL.Text
-  , serverInternalUri :: TL.Text
+  { nodeStatus         :: NodeStatus
+  , serverHost         :: TL.Text
+  , serverPort         :: Word32
+  , serverInternalPort :: Word32
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 getNodeStatus :: ZHandle -> CBytes -> IO NodeStatus
 getNodeStatus zk name = getNodeInfo zk name <&> nodeStatus
 
+getServerHost :: ZHandle -> CBytes -> IO TL.Text
+getServerHost zk name = getNodeInfo zk name <&> serverHost
+
+getServerPort :: ZHandle -> CBytes -> IO Word32
+getServerPort zk name = getNodeInfo zk name <&> serverPort
+
+getServerInternalPort :: ZHandle -> CBytes -> IO Word32
+getServerInternalPort zk name = getNodeInfo zk name <&> serverInternalPort
+
 getServerUri :: ZHandle -> CBytes -> IO TL.Text
-getServerUri zk name = getNodeInfo zk name <&> serverUri
+getServerUri zk name = do
+  host <- getServerHost zk name
+  port <- getServerPort zk name
+  return $ host <> ":" <> TL.pack (show port)
 
 setNodeStatus :: HasCallStack => ZHandle -> CBytes -> NodeStatus -> IO ()
 setNodeStatus zk name status = do
@@ -55,6 +74,16 @@ setNodeStatus zk name status = do
 
 getNodeInfo :: ZHandle -> CBytes -> IO NodeInfo
 getNodeInfo zk name = decodeZNodeValue' zk (serverRootPath <> "/" <> name)
+
+getServerNode :: ZHandle -> CBytes -> IO ServerNode
+getServerNode zk name = do
+  host <- getServerHost zk name
+  port <- getServerPort zk name
+  return $ ServerNode
+           { serverNodeId = 0
+           , serverNodeHost = host
+           , serverNodePort = port
+           }
 
 getReadyServers :: ZHandle -> IO Int
 getReadyServers zk = do

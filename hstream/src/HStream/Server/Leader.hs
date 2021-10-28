@@ -4,13 +4,10 @@
 
 module HStream.Server.Leader (
     selectLeader
-  , leaderAction
   ) where
 
-import           Control.Concurrent         (MVar, forkIO, isEmptyMVar,
-                                             newEmptyMVar, putMVar, swapMVar,
-                                             takeMVar)
-import           Control.Monad              (forever, unless, void, when)
+import           Control.Concurrent
+import           Control.Monad
 import           Data.Foldable              (foldrM)
 import           Data.List                  ((\\))
 import qualified Data.Map.Strict            as M
@@ -34,37 +31,29 @@ import           HStream.Server.Persistence (decodeZNodeValue,
 import           HStream.Server.Types       (LoadManager (..),
                                              ServerContext (..))
 
-selectLeader :: ServerContext -> IO ()
-selectLeader ServerContext{..} = do
+selectLeader :: ServerContext -> LoadManager -> IO ()
+selectLeader ctx@ServerContext{..} lm = do
   uuid <- nextRandom
   void . forkIO $ election zkHandle "/election" (CB.pack . UUID.toString $ uuid)
     (do
       void $ zooSet zkHandle leaderPath (Just $ CB.toBytes serverName) Nothing
       updateLeader serverName
+
+      -- Leader: watch for nodes changes & do load balancing
+      Log.i $ "Current leader: " <> Log.buildString (show serverName)
+      startLoadBalancer zkHandle lm
+      putMVar watchLock ()
+      actionTriggedByNodesChange zkHandle lm
+      -- Set watcher for nodes changes
+      watchNodes ctx lm
     )
-    (\_ -> do
-      DataCompletion v _ <- zooGet zkHandle leaderPath
-      case v of
-        Just x  -> updateLeader (CB.fromBytes x)
-        Nothing -> pure ()
-    )
+    (\_ -> return ())
   where
     updateLeader new = do
       noLeader <- isEmptyMVar leaderName
       case () of
         _ | noLeader  -> putMVar leaderName new
           | otherwise -> void $ swapMVar leaderName new
-
-leaderAction :: ServerContext -> LoadManager -> IO ()
-leaderAction sc@ServerContext{..} lm = forever $ do
-  leader <- takeMVar leaderName
-  when (leader == serverName) $ do
-    Log.i $ "Current leader: " <> Log.buildString (show serverName)
-    startLoadBalancer zkHandle lm
-    putMVar watchLock ()
-    actionTriggedByNodesChange zkHandle lm
-    -- Set watcher for nodes changes
-    watchNodes sc lm
 
 watchNodes :: ServerContext -> LoadManager -> IO ()
 watchNodes sc@ServerContext{..} lm = do

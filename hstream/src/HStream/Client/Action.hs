@@ -98,41 +98,42 @@ insertIntoStream :: ClientContext
   -> IO (ClientResult 'Normal API.AppendResponse)
 insertIntoStream ctx@ClientContext{..} sName insertType payload = do
   curProducers <- readMVar producers
-  curServer    <- readMVar currentServer
-  case Map.lookup (T.unpack sName) curProducers of
+  curNode <- readMVar currentServer
+  case Map.lookup sName curProducers of
+    Just realNode -> go realNode
     Nothing       -> do
-      m_uri <- connect ctx curServer ByLoad
-      case m_uri of
-        Nothing  -> do
+      lookupStream ctx curNode sName >>= \case
+        Nothing -> do
           Log.e "Failed to get any avaliable server."
           return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
-        Just uri -> do
-          modifyMVar_ producers (return . Map.insert (T.unpack sName) uri)
-          go uri
-    Just producer -> go producer
+        Just realNode -> do
+          modifyMVar_ producers (return . Map.insert sName realNode)
+          go realNode
   where
-    go uri_ = withGRPCClient (mkGRPCClientConf uri_) $ \client -> do
-      API.HStreamApi{..} <- API.hstreamApiClient client
-      timestamp <- getProtoTimestamp
-      let header = case insertType of
-            JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
-            RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
-          record = buildRecord header payload
-      resp <- hstreamApiAppend (mkClientNormalRequest def
-              { API.appendRequestStreamName = TL.fromStrict sName
-              , API.appendRequestRecords    = V.singleton record
-              })
-      case resp of
-        (ClientNormalResponse _ _meta1 _meta2 _code _details) -> return resp
-        _ -> do
-          m_uri <- connect ctx uri_ ByLoad
-          case m_uri of
-            Nothing -> do
-              Log.e "Failed to get any avaliable server."
-              return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
-            Just newUri -> do
-              modifyMVar_ producers (return . Map.insert (T.unpack sName) newUri)
-              insertIntoStream ctx sName insertType payload
+    go node_ = do
+      let addr_ = serverNodeToSocketAddr node_
+      withGRPCClient (mkGRPCClientConf addr_) $ \client -> do
+        API.HStreamApi{..} <- API.hstreamApiClient client
+        timestamp <- getProtoTimestamp
+        let header = case insertType of
+              JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+              RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
+            record = buildRecord header payload
+        resp <- hstreamApiAppend (mkClientNormalRequest def
+                                  { API.appendRequestStreamName = TL.fromStrict sName
+                                  , API.appendRequestRecords    = V.singleton record
+                                  })
+        case resp of
+          (ClientNormalResponse _ _meta1 _meta2 _code _details) -> return resp
+          _ -> do
+            m_node <- lookupStream ctx addr_ sName
+            case m_node of
+              Nothing -> do
+                Log.e "Failed to get any avaliable server."
+                return $ ClientErrorResponse (ClientIOError GRPCIOUnknownError)
+              Just newNode -> do
+                modifyMVar_ producers (return . Map.insert sName newNode)
+                insertIntoStream ctx sName insertType payload
 
 createStreamBySelect :: HStreamClientApi
   -> TL.Text -> Int -> [String]

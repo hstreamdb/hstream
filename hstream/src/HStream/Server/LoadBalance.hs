@@ -1,8 +1,12 @@
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.LoadBalance
-  ( startLoadBalancer
+  ( getNodesRanking
+
+  , startLoadBalancer
   , startWritingLoadReport
   , getRanking
 
@@ -11,26 +15,58 @@ module HStream.Server.LoadBalance
   ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Suspend (mDelay, sDelay)
-import           Control.Concurrent.Timer   (newTimer, repeatedStart)
-import           Control.Monad              (forever, void, when)
-import           Data.Aeson                 (decode, encode)
-import qualified Data.HashMap.Strict        as HM
-import           Data.IORef                 (IORef, atomicWriteIORef, newIORef,
-                                             readIORef)
-import           Data.List                  (sortOn, (\\))
-import           Data.Time.Clock.System     (SystemTime (..), getSystemTime)
-import           GHC.IO                     (unsafePerformIO)
+import           Control.Concurrent.Suspend       (mDelay, sDelay)
+import           Control.Concurrent.Timer         (newTimer, repeatedStart)
+import           Control.Monad
+import           Data.Aeson                       (decode, encode)
+import qualified Data.HashMap.Strict              as HM
+import           Data.IORef                       (IORef, atomicWriteIORef,
+                                                   newIORef, readIORef)
+import           Data.List                        (sortOn, (\\))
+import           Data.Time.Clock.System           (SystemTime (..),
+                                                   getSystemTime)
+import qualified Data.Vector                      as V
+import           GHC.IO                           (unsafePerformIO)
+import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           System.Statgrab
-import           ZooKeeper                  (zooGetChildren, zooSet,
-                                             zooWatchGet)
+import           ZooKeeper                        (zooGetChildren, zooSet,
+                                                   zooWatchGet)
 import           ZooKeeper.Types
 
-import qualified HStream.Logger             as Log
-import           HStream.Server.Persistence (serverLoadPath, serverRootPath)
+import           HStream.Client.Utils             (mkClientNormalRequest,
+                                                   mkGRPCClientConf,
+                                                   serverNodeToSocketAddr)
+import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi        (ServerNode)
+import           HStream.Server.HStreamInternal
+import           HStream.Server.Persistence       (getServerNode,
+                                                   serverLoadPath,
+                                                   serverRootPath)
 import           HStream.Server.Types
-import           HStream.Utils              (bytesToLazyByteString,
-                                             lazyByteStringToBytes)
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
+import           HStream.Utils                    (bytesToLazyByteString,
+                                                   lazyByteStringToBytes)
+
+--------------------------------------------------------------------------------
+
+getNodesRanking :: ServerContext -> IO [ServerNode]
+getNodesRanking ServerContext{..} = do
+  leader <- readMVar leaderName
+  case serverName == leader of
+    True -> do
+      getRanking >>= mapM (getServerNode zkHandle)
+    False -> do
+      leaderNode <- getServerNode zkHandle leader
+      withGRPCClient (mkGRPCClientConf . serverNodeToSocketAddr $ leaderNode) $ \client -> do
+        HStreamInternal{..} <- hstreamInternalClient client
+        hstreamInternalGetNodesRanking (mkClientNormalRequest Empty) >>= \case
+          ClientNormalResponse (GetNodesRankingResponse nodes) _meta1 _meta2 _code _details -> do
+            return $ V.toList nodes
+          _ -> do
+            Log.warning . Log.buildCBytes $
+              "Failed to get nodes ranking from leader " <> leader
+            return []
 
 --------------------------------------------------------------------------------
 

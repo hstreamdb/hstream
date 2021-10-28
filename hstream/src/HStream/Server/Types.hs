@@ -23,7 +23,7 @@ import           Z.IO.Network              (PortNumber)
 import           ZooKeeper.Types           (ZHandle)
 
 import qualified HStream.Logger            as Log
-import           HStream.Server.HStreamApi (RecordId (..),
+import           HStream.Server.HStreamApi (RecordId (..), ServerNode,
                                             StreamingFetchResponse (..))
 import qualified HStream.Stats             as Stats
 import           HStream.Store             (Compression)
@@ -146,6 +146,6 @@ data SubscriptionContext = SubscriptionContext
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 data ProducerContext = ProducerContext
-  { _prdctxStream :: String
-  , _prdctxNode   :: String
+  { _prdctxStream :: T.Text
+  , _prdctxNode   :: ServerNode
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)

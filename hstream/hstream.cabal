@@ -79,7 +79,6 @@ library
     , microlens
     , microlens-aeson
     , mysql-haskell
-    , network-uri
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -155,6 +154,8 @@ executable hstream-client
     , raw-strings-qq
     , text
     , unix
+    , Z-Data
+    , Z-IO
 
   default-language: Haskell2010
   ghc-options:
