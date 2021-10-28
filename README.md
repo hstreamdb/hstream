@@ -10,56 +10,67 @@
 
 ![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
-The database built for IoT streaming data storage and real-time stream processing.
+The database built for IoT streaming data storage and real-time stream
+processing.
 
 ## Main Features
 
-- __Push real-time data to your apps__
+- **Push real-time data to your apps**
 
-    By subscribing to streams in HStreamDB, any update of the data stream will be pushed to your apps in real-time, and this promotes your apps to be more responsive.
+  By subscribing to streams in HStreamDB, any update of the data stream will be
+  pushed to your apps in real-time, and this promotes your apps to be more
+  responsive.
 
-    You can also replace message brokers with HStreamDB and everything you do with message brokers can be done better with HStreamDB.
+  You can also replace message brokers with HStreamDB and everything you do with
+  message brokers can be done better with HStreamDB.
 
-- __Stream processing with familiar SQL__
+- **Stream processing with familiar SQL**
 
-    HStreamDB provides built-in support for event-time based stream processing. You can use your familiar SQL to perform basic filtering and transformation operations, statistics and aggregation based on multiple kinds of time windows and even joining between multiple streams.
+  HStreamDB provides built-in support for event-time based stream processing.
+  You can use your familiar SQL to perform basic filtering and transformation
+  operations, statistics and aggregation based on multiple kinds of time windows
+  and even joining between multiple streams.
 
-- __Easy integration with a variety of external systems__
+- **Easy integration with a variety of external systems**
 
-    With connectors provided, you can easily integrate HStreamDB with other external systems, such as MQTT Broker, MySQL, Redis and ElasticSearch. More connectors will be added.
+  With connectors provided, you can easily integrate HStreamDB with other
+  external systems, such as MQTT Broker, MySQL, Redis and ElasticSearch. More
+  connectors will be added.
 
-- __Real-time query based on live materailze views__
+- **Real-time query based on live materailze views**
 
-    With maintaining materialized views incrementally, HStreamDB enables you to gain ahead-of-the-curve data insights that response to your business quickly.
+  With maintaining materialized views incrementally, HStreamDB enables you to
+  gain ahead-of-the-curve data insights that response to your business quickly.
 
-- __Reliable persistent storage with low latency__
+- **Reliable persistent storage with low latency**
 
-    With an optimized storage design based on [LogDevice](https://logdevice.io/), not only can HStreamDB provide reliable and persistent storage but also guarantee excellent performance despite large amounts of data written to it.
+  With an optimized storage design based on [LogDevice](https://logdevice.io/),
+  not only can HStreamDB provide reliable and persistent storage but also
+  guarantee excellent performance despite large amounts of data written to it.
 
-- __Seamless scaling and high availability__
+- **Seamless scaling and high availability**
 
-    With the architecture that separates compute from storage, both compute and storage layers of HStreamDB can be independently scaled seamlessly. And with the consensus algorithm based on the optimized Paxos, data is securely replicated to multiple nodes which ensures high availability of our system.
+  With the architecture that separates compute from storage, both compute and
+  storage layers of HStreamDB can be independently scaled seamlessly. And with
+  the consensus algorithm based on the optimized Paxos, data is securely
+  replicated to multiple nodes which ensures high availability of our system.
 
 For more information, please visit [HStreamDB homepage](https://hstream.io).
 
-## Installation
-
-### Install via HStreamDB Docker Image
-
-```sh
-docker pull hstreamdb/logdevice
-docker pull hstreamdb/hstream
-```
-
 ## Quickstart
 
-**For detailed instructions, follow [HStreamDB quickstart](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html).**
+**For detailed instructions, follow
+[HStreamDB quickstart](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html).**
 
 1. [Install HStreamDB](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#installation).
 2. [Start a local standalone HStream server](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-a-local-standalone-hstream-server-in-docker).
-3. [Start HStreamDB's interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-hstreamdb-s-interactive-sql-cli) and [create your first stream](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#create-a-stream).
+3. [Start HStreamDB's interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-hstreamdb-s-interactive-sql-cli)
+   and
+   [create your first stream](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#create-a-stream).
 4. [Run a continuous query](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#run-a-continuous-query-over-the-stream).
-5. [Start another interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-another-cli-session), then [insert some data into the stream and get query results](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#insert-data-into-the-stream).
+5. [Start another interactive CLI](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#start-another-cli-session),
+   then
+   [insert some data into the stream and get query results](https://hstream.io/docs/en/latest/start/quickstart-with-docker.html#insert-data-into-the-stream).
 
 ## Documentation
 
@@ -73,8 +84,8 @@ You can reach the HStreamDB community and developers via the following channels:
 - [Twitter](https://twitter.com/HStreamDB)
 - [Reddit](https://www.reddit.com/r/HStreamDB)
 
-Please submit any bugs, issues, and feature requests to [hstreamdb/hstream](https://github.com/hstreamdb/hstream/issues).
-
+Please submit any bugs, issues, and feature requests to
+[hstreamdb/hstream](https://github.com/hstreamdb/hstream/issues).
 
 ## How to build (for developers only)
 
@@ -99,19 +110,21 @@ script/dev-tools update-images
 
 **Start all required services**
 
-You must have all required services (including a dev-cluster) started before entering an interactive shell to do further development.
+You must have all required services started before entering an interactive shell
+to do further development (especially for running tests).
 
 ```sh
 script/dev-tools start-services
 ```
 
-This script also involves starting a MySQL server. To inspect the server port, use `echo "$MYSQL_LOCAL_PORT"`.
-
-*A dev-cluster is required while running tests. All data are stored under `your-project-root/local-data/logdevice`*
+To see information about all started services, run
 
 ```sh
-script/dev-tools cluster-start
+script/dev-tools get-info
 ```
+
+> _A dev-cluster is required while running tests. All data are stored under
+> `your-project-root/local-data/logdevice`_
 
 **Enter in an interactive shell**
 
@@ -121,17 +134,18 @@ script/dev-tools shell
 
 **Build as other Haskell projects**
 
-*Inside the interactive shell, you have all extra dependencies installed.*
+_Inside the interactive shell, you have all extra dependencies installed._
 
 ```
 I have no name!@649bc6bb75ed:~$ make
 I have no name!@649bc6bb75ed:~$ cabal build all
 ```
 
-
 ## License
 
-HStreamDB is under the BSD 3-Clause license. See the [LICENSE](https://github.com/hstreamdb/hstream/blob/master/LICENSE) file for details.
+HStreamDB is under the BSD 3-Clause license. See the
+[LICENSE](https://github.com/hstreamdb/hstream/blob/master/LICENSE) file for
+details.
 
 ## Acknowledgments
 
