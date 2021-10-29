@@ -16,13 +16,10 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated (GRPCIOError (..),
-                                                   withGRPCClient)
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
 import           HStream.Client.Utils
-import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (ServerNode (serverNodeHost))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
@@ -91,16 +88,16 @@ doActionWithAddr ctx@ClientContext{..} addr getRespApp handleRespApp = do
     resp <- getRespApp client
     case resp of
       ClientErrorResponse err -> do
-        Log.w . Log.buildString $
-          "Failed to connect to Node " <> show uri <> ": " <> show err <> ", redirecting..."
+        print $
+          "Failed to connect to Node " <> uri <> ": " <> show err <> ", redirecting..."
         modifyMVar_ availableServers (return . L.delete addr)
         curServers <- readMVar availableServers
         case L.null curServers of
           True  -> do
-            Log.w . Log.buildString $ "Error when executing an action."
+            print ("Error when executing an action." :: String)
             return Nothing
           False -> do
-            Log.w . Log.buildString $ "Available servers: " <> show curServers
+            print $ "Available servers: " <> show curServers
             let newAddr = head curServers
             doActionWithAddr ctx newAddr getRespApp handleRespApp
       _ -> handleRespApp resp

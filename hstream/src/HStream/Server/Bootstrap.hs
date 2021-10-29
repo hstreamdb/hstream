@@ -22,6 +22,6 @@ import           HStream.Server.Types          (ServerOpts (..))
 
 startServer :: ZHandle -> ServerOpts -> IO () -> IO ()
 startServer zk ServerOpts {..} myApp = do
-  initNodePath zk _serverName (TL.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
-  setNodeStatus zk _serverName Working
+  initNodePath zk _serverID (TL.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+  setNodeStatus zk _serverID Working
   myApp

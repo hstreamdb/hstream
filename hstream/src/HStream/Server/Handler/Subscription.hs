@@ -34,7 +34,6 @@ import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
-import qualified Z.Data.CBytes                    as CB
 import           Z.Data.Vector                    (Bytes)
 import qualified Z.Data.Vector                    as ZV
 import           Z.Foreign                        (toByteString)
@@ -87,7 +86,7 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
                        { _subctxSubId = subId
                        , _subctxStream = TL.unpack subscriptionStreamName
                        , _subctxOffset = offset
-                       , _subctxNode = CB.unpack serverName
+                       , _subctxNode = serverID
                        , _subctxCurOffset = offset
                        , _subctxClients = mempty
                        }

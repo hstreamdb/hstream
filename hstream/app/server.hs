@@ -53,9 +53,8 @@ parseConfig =
                   <> showDefault <> value 6571
                   <> help "server channel port value for internal communication"
                   )
-    <*> strOption ( long "name" <> metavar "NAME"
-                 <> showDefault <> value "hserver-1"
-                 <> help "name of the hstream server node"
+    <*> option auto ( long "server-id" <> metavar "UINT32"
+                 <> help "ID of the hstream server node"
                   )
     <*> strOption ( long "zkuri" <> metavar "STR"
                  <> showDefault

@@ -40,19 +40,18 @@ import           HStream.Store                    (HsLogAttrs (HsLogAttrs),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
 import qualified HStream.Store.Admin.API          as AA
-import           HStream.Utils                    (valueToBytes)
 
-initNodePath :: ZHandle -> CB.CBytes -> TL.Text -> Word32 -> Word32 -> IO ()
-initNodePath zk serverName host port port' = do
+initNodePath :: ZHandle -> ServerID -> TL.Text -> Word32 -> Word32 -> IO ()
+initNodePath zk serverID host port port' = do
   let nodeInfo = NodeInfo { nodeStatus = Ready
                           , serverHost = host
                           , serverPort = port
                           , serverInternalPort = port'
                           }
-  let ops = [ createEphemeral (serverRootPath, Just $ valueToBytes nodeInfo)
+  let ops = [ createEphemeral (serverRootPath, Just $ encodeValueToBytes nodeInfo)
             , createEphemeral (serverLoadPath, Nothing)
             , zooCreateOpInit (serverIdPath <> "/")
-                      (Just (encodeValueToBytes serverName)) 0 zooOpenAclUnsafe ZooEphemeralSequential
+                      (Just (encodeValueToBytes serverID)) 0 zooOpenAclUnsafe ZooEphemeralSequential
             ]
   e' <- try $ zooMulti zk ops
   case e' of
@@ -62,7 +61,7 @@ initNodePath zk serverName host port port' = do
     Right _ -> return ()
   where
     createEphemeral (path, content) =
-      zooCreateOpInit (path <> "/" <> serverName)
+      zooCreateOpInit (path <> "/" <> CB.pack (show serverID))
                       content 0 zooOpenAclUnsafe ZooEphemeral
 
 initializeServer
@@ -103,7 +102,7 @@ initializeServer ServerOpts{..} zk = do
     ServerContext {
       zkHandle                 = zk
     , scLDClient               = ldclient
-    , serverName               = _serverName
+    , serverID               = _serverID
     , scDefaultStreamRepFactor = _topicRepFactor
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
@@ -112,10 +111,10 @@ initializeServer ServerOpts{..} zk = do
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
-    , leaderName               = currentLeader
+    , leaderID               = currentLeader
     },
     LoadManager {
-      sName           = _serverName
+      sID             = _serverID
     , loadReport      = currentLoadReport
     , lastSysResUsage = lastSysResUsage
     , loadReports     = currentLoadReports

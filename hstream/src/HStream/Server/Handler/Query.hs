@@ -249,7 +249,7 @@ executePushQueryHandler
                 (getTaskName taskBuilder)
                 (TL.toStrict commandPushQueryQueryText)
                 (P.PlainQuery $ textToCBytes <$> sources)
-                serverName
+                (CB.pack . show $ serverID)
                 zkHandle
             -- run task
             -- FIXME: take care of the life cycle of the thread and global state

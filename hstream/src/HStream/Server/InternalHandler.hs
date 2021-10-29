@@ -12,6 +12,7 @@ import qualified Data.Map                         as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamInternal
 import           HStream.Server.LoadBalance       (getRanking)
 import           HStream.Server.Persistence       (getServerNode)
@@ -22,8 +23,6 @@ import           HStream.Server.Types             (ProducerContext (ProducerCont
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (returnErrResp, returnResp)
 import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.CBytes                    as CB
-import HStream.Server.Exception (defaultExceptionHandle)
 
 internalHandlers :: ServerContext -> IO (HStreamInternal ServerRequest ServerResponse)
 internalHandlers ctx = pure HStreamInternal {
@@ -61,7 +60,7 @@ takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionReque
           Nothing -> return (subctxs, Nothing)
           Just subctxMVar -> do
             modifyMVar_ subctxMVar
-              (\subctx -> return $ subctx { _subctxNode = CB.unpack serverName })
+              (\subctx -> return $ subctx { _subctxNode = serverID })
             return (subctxs, Nothing)
     )
   case err_m of
@@ -70,7 +69,7 @@ takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionReque
         Nothing -> returnErrResp StatusInternal "Tring to recover a deleted subscription"
         Just subctx -> do
           P.storeObject (TL.toStrict subId)
-            (subctx { _subctxNode = CB.unpack serverName }) zkHandle
+            (subctx { _subctxNode = serverID }) zkHandle
           returnResp Empty
     Just err -> returnErrResp StatusInternal err
 
@@ -78,7 +77,7 @@ takeStream :: ServerContext
            -> ServerRequest 'Normal TakeStreamRequest Empty
            -> IO (ServerResponse 'Normal Empty)
 takeStream ServerContext{..} (ServerNormalRequest _ (TakeStreamRequest stream)) = defaultExceptionHandle $ do
-  node <- getServerNode zkHandle serverName
+  node <- getServerNode zkHandle serverID
   Log.debug . Log.buildString $ "I took the stream " <> TL.unpack stream
   P.storeObject (TL.toStrict stream) (ProducerContext (TL.toStrict stream) node) zkHandle
   returnResp Empty

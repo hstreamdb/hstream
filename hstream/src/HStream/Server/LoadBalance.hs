@@ -30,15 +30,13 @@ import           GHC.IO                           (unsafePerformIO)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           System.Statgrab
+import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper                        (zooGetChildren, zooSet,
                                                    zooWatchGet)
 import           ZooKeeper.Types
-import qualified Z.Data.CBytes as CB
 
 import           HStream.Client.Utils             (mkClientNormalRequest,
-                                                   mkGRPCClientConf,
-                                                   serverNodeToSocketAddr,
-                                                   serverNodeToInternalSocketAddr)
+                                                   mkGRPCClientConf)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (ServerNode)
 import           HStream.Server.HStreamInternal
@@ -54,9 +52,9 @@ import           HStream.Utils                    (bytesToLazyByteString,
 --------------------------------------------------------------------------------
 
 getNodesRanking :: ServerContext -> IO [ServerNode]
-getNodesRanking ServerContext{..} = do
-  leader <- readMVar leaderName
-  case serverName == leader of
+getNodesRanking ctx@ServerContext{..} = do
+  leader <- readMVar leaderID
+  case serverID == leader of
     True -> do
       getRanking >>= mapM (getServerNode zkHandle)
     False -> do
@@ -67,9 +65,9 @@ getNodesRanking ServerContext{..} = do
           ClientNormalResponse (GetNodesRankingResponse nodes) _meta1 _meta2 _code _details -> do
             return $ V.toList nodes
           ClientErrorResponse err -> do
-            Log.warning . Log.buildCBytes $
-              "Failed to get nodes ranking from leader " <> leader <> ": " <> CB.pack (show err)
-            return []
+            Log.warning . Log.buildString $
+              "Failed to get nodes ranking from leader " <> show leader <> ": " <> show err
+            getNodesRanking ctx
 
 --------------------------------------------------------------------------------
 
@@ -87,17 +85,17 @@ startLoadBalancer zk lm@LoadManager{..} = do
 startWritingLoadReport :: ZHandle -> LoadManager -> IO ()
 startWritingLoadReport zk lm@LoadManager{..} = do
   lr <- readMVar loadReport
-  writeLoadReportToZooKeeper zk sName lr
+  writeLoadReportToZooKeeper zk sID lr
   localReportUpdateTimer lm
 --------------------------------------------------------------------------------
 
-serverRanking :: IORef [ServerName]
+serverRanking :: IORef [ServerID]
 serverRanking = unsafePerformIO $ newIORef []
 {-# NOINLINE serverRanking #-}
 
-writeLoadReportToZooKeeper :: ZHandle -> ServerName -> LoadReport -> IO ()
-writeLoadReportToZooKeeper zk name lr = void $
-  zooSet zk (serverLoadPath <> "/" <> name) (Just ((lazyByteStringToBytes . encode) lr)) Nothing
+writeLoadReportToZooKeeper :: ZHandle -> ServerID -> LoadReport -> IO ()
+writeLoadReportToZooKeeper zk sID lr = void $
+  zooSet zk (serverLoadPath <> "/" <> CB.pack (show sID)) (Just ((lazyByteStringToBytes . encode) lr)) Nothing
 
 -- Update data on the server according to the data in zk and set watch for any new updates
 updateLoadReports
@@ -106,8 +104,8 @@ updateLoadReports
 updateLoadReports zk hmapM  = do
   Log.debug "Updating local load reports map and set watch on every server"
   names <- unStrVec . strsCompletionValues <$> zooGetChildren zk serverRootPath
-  _names <- HM.keys <$> readMVar hmapM
-  mapM_ (getAndWatchReport zk hmapM) (names \\ _names)
+  _IDs <- HM.keys <$> readMVar hmapM
+  mapM_ (getAndWatchReport zk hmapM) ((read . CB.unpack <$> names) \\ _IDs)
 
 --------------------------------------------------------------------------------
 -- Timer
@@ -122,7 +120,7 @@ localReportUpdateTimer LoadManager{..} = do
       lr' <- readMVar loadReport
       Log.debug . Log.buildString $ "Scheduled local report update" <> show lr'
       when (abs (getPercentageUsage lr' -
-            maybe 0 getPercentageUsage (HM.lookup sName hmap)) > 5)
+            maybe 0 getPercentageUsage (HM.lookup sID hmap)) > 5)
         (putMVar ifUpdateZK ()))
     (sDelay 5)
 
@@ -137,7 +135,7 @@ zkReportUpdateTimer zk LoadManager {..} = do
   void $ forkIO $ forever $ do
     _ <- takeMVar ifUpdateZK
     readMVar loadReport >>=
-      writeLoadReportToZooKeeper zk sName
+      writeLoadReportToZooKeeper zk sID
 
 ifUpdateZK :: MVar ()
 ifUpdateZK = unsafePerformIO $ newMVar ()
@@ -156,19 +154,19 @@ updateLoadReport mSysResUsg mLoadReport = do
 getAndWatchReport
   :: ZHandle
   -> MVar ServerLoadReports
-  -> ServerName
+  -> ServerID
   -> IO ()
-getAndWatchReport zk hmapM name = do
+getAndWatchReport zk hmapM sID = do
   _ <- forkIO $ zooWatchGet zk
-                (serverLoadPath <> "/" <> name)
-                (watchFun hmapM name)
-                (getReportCB hmapM name)
-  Log.debug . Log.buildCBytes $ "Got data from zk and set watch for server " <> name
+                (serverLoadPath <> "/" <> CB.pack (show sID))
+                (watchFun hmapM sID)
+                (getReportCB hmapM sID)
+  Log.debug . Log.buildString $ "Got data from zk and set watch for server " <> show sID
 
 -- | The watch function set on every server load report in zk
 watchFun
   :: MVar ServerLoadReports
-  -> ServerName
+  -> ServerID
   -> HsWatcherCtx -> IO ()
 watchFun hmapM address HsWatcherCtx{..} = do
   Log.debug . Log.buildString $ "Watch triggered, updating map and ranking "
@@ -181,7 +179,7 @@ watchFun hmapM address HsWatcherCtx{..} = do
     _ -> return ()
 
 -- | The call back function when we get load report info
-getReportCB :: MVar ServerLoadReports -> ServerName ->
+getReportCB :: MVar ServerLoadReports -> ServerID ->
   DataCompletion -> IO ()
 getReportCB hmapM  address DataCompletion{..} = do
   let lr = decode . bytesToLazyByteString <$> dataCompletionValue
@@ -203,16 +201,16 @@ updateMapAndRanking hmapM = do
 -- Update the load report map stored in the server local data
 insertLoadReportsMap
   :: MVar ServerLoadReports
-  -> ServerName
+  -> ServerID
   -> Maybe (Maybe LoadReport)
   -> IO ()
-insertLoadReportsMap mVar name (Just (Just x)) = do
-  modifyMVar_ mVar (return . HM.insert name x)
-  Log.debug . Log.buildCBytes $ "Load info of " <> name <> " in load reports map updated"
+insertLoadReportsMap mVar sID (Just (Just x)) = do
+  modifyMVar_ mVar (return . HM.insert sID x)
+  Log.debug . Log.buildString $ "Load info of " <> show sID <> " in load reports map updated"
 insertLoadReportsMap _ _ _ = pure ()
 
 -- TODO: This should return a list of list instead / or just the candidates
-generateRanking :: HM.HashMap ServerName LoadReport -> [ServerName]
+generateRanking :: HM.HashMap ServerID LoadReport -> [ServerID]
 generateRanking hmap = fst <$> sortOn (getPercentageUsage . snd) (HM.toList hmap)
 
 -- TODO: add a more sophisticated algorithm to decide the score of a server

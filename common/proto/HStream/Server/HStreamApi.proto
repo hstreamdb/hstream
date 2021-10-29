@@ -460,8 +460,6 @@ message ServerNode {
   uint32 id = 1;
   string host = 2;
   uint32 port = 3;
-  uint32 internalPort = 4;
-  string name = 5;
 }
 
 message LookupStreamRequest {

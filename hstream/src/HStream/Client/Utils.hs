@@ -12,7 +12,6 @@ module HStream.Client.Utils
   , extractSelect
   , mkGRPCClientConf
   , serverNodeToSocketAddr
-  , serverNodeToInternalSocketAddr
   ) where
 
 import qualified Data.ByteString.Char8         as BSC
@@ -64,7 +63,3 @@ mkGRPCClientConf = \case
 serverNodeToSocketAddr :: ServerNode -> SocketAddr
 serverNodeToSocketAddr ServerNode{..} = do
   ipv4 (lazyTextToCBytes serverNodeHost) (fromIntegral serverNodePort)
-
-serverNodeToInternalSocketAddr :: ServerNode -> SocketAddr
-serverNodeToInternalSocketAddr ServerNode{..} = do
-  ipv4 (lazyTextToCBytes serverNodeHost) (fromIntegral serverNodeInternalPort)

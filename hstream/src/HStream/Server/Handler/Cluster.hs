@@ -19,7 +19,6 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types
 
 import           HStream.Server.Exception         (defaultExceptionHandle)
@@ -27,6 +26,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.LoadBalance       (getNodesRanking)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import qualified HStream.Server.Types             as Types
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils
 
@@ -36,8 +36,8 @@ describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
                        -> IO (ServerResponse 'Normal DescribeClusterResponse)
 describeClusterHandler ctx@ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
-  let protocolVer = "0.1.0"
-      serverVer = "0.6.0"
+  let protocolVer = Types.protocolVersion
+      serverVer   = Types.serverVersion
   nodes <- getNodesRanking ctx <&> V.fromList
   return $ ServerNormalResponse (Just $ DescribeClusterResponse protocolVer serverVer nodes) mempty StatusOk ""
 
@@ -74,7 +74,7 @@ lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSu
   case Map.lookup (TL.toStrict subId) subCtxs of
     Nothing -> returnErrResp StatusInternal "No subscription found"
     Just SubscriptionContext{..} -> do
-      serverNode <- P.getServerNode zkHandle (CB.pack _subctxNode)
+      serverNode <- P.getServerNode zkHandle _subctxNode
       let resp = LookupSubscriptionResponse
                  { lookupSubscriptionResponseSubscriptionId = subId
                  , lookupSubscriptionResponseServerNode = Just serverNode

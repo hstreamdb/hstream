@@ -1,5 +1,6 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module HStream.Server.Types where
 
@@ -30,12 +31,18 @@ import           HStream.Store             (Compression)
 import qualified HStream.Store             as HS
 import qualified HStream.Store.Admin.API   as AA
 
+protocolVersion :: TL.Text
+protocolVersion = "0.1.0"
+
+serverVersion :: TL.Text
+serverVersion = "0.6.0"
+
 data ServerOpts = ServerOpts
   { _serverHost         :: CBytes
   , _serverPort         :: PortNumber
   , _serverAddress      :: String
   , _serverInternalPort :: PortNumber
-  , _serverName         :: CBytes
+  , _serverID           :: Word32
   , _zkUri              :: CBytes
   , _ldConfigPath       :: CBytes
   , _topicRepFactor     :: Int
@@ -54,15 +61,15 @@ data ServerOpts = ServerOpts
 
 type Timestamp = Int64
 
-type ServerName = CBytes
-type ServerRanking = [ServerName]
+type ServerID = Word32
+type ServerRanking = [ServerID]
 
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
-  , serverName               :: CBytes
+  , serverID                 :: Word32
   , scDefaultStreamRepFactor :: Int
   , minServers               :: Int
-  , leaderName               :: MVar CBytes
+  , leaderID                 :: MVar Word32
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
@@ -101,10 +108,10 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriSignals           :: V.Vector (MVar ())
 }
 
-type ServerLoadReports = HM.HashMap ServerName LoadReport
+type ServerLoadReports = HM.HashMap ServerID LoadReport
 
 data LoadManager = LoadManager {
-    sName           :: ServerName
+    sID             :: ServerID
   , lastSysResUsage :: MVar SystemResourceUsage
   , loadReport      :: MVar LoadReport
   , loadReports     :: MVar ServerLoadReports
@@ -140,7 +147,7 @@ data SubscriptionContext = SubscriptionContext
   { _subctxSubId     :: String
   , _subctxStream    :: String
   , _subctxOffset    :: RecordId
-  , _subctxNode      :: String
+  , _subctxNode      :: Word32
   , _subctxCurOffset :: RecordId
   , _subctxClients   :: Set String
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)

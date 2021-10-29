@@ -14,11 +14,10 @@ module HStream.Server.Persistence.Nodes (
   , getServerInternalPort
   , getServerUri
   , getServerNode
-  , getInternalServerNode
   , setNodeStatus
+  , getServerInternalAddr
 
   , getReadyServers
-  , getServerInternalAddr
   ) where
 
 import           Control.Exception                 (SomeException, try)
@@ -28,7 +27,7 @@ import           Data.Functor                      (void, (<&>))
 import qualified Data.Text.Lazy                    as TL
 import           GHC.Generics                      (Generic)
 import           GHC.Stack                         (HasCallStack)
-import           Z.Data.CBytes                     (CBytes)
+import qualified Z.Data.CBytes                     as CB
 import           Z.IO.Network                      (SocketAddr, ipv4)
 import           ZooKeeper                         (zooGetChildren, zooSet)
 import           ZooKeeper.Types                   (StringVector (StringVector),
@@ -40,6 +39,7 @@ import           HStream.Server.HStreamApi         (ServerNode (..))
 import           HStream.Server.Persistence.Common ()
 import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
+import           HStream.Server.Types              (ServerID)
 import           HStream.Utils                     (lazyTextToCBytes,
                                                     valueToBytes)
 
@@ -53,57 +53,46 @@ data NodeInfo = NodeInfo
   , serverInternalPort :: Word32
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
-getNodeStatus :: ZHandle -> CBytes -> IO NodeStatus
-getNodeStatus zk name = getNodeInfo zk name <&> nodeStatus
+getNodeStatus :: ZHandle -> ServerID -> IO NodeStatus
+getNodeStatus zk sID = getNodeInfo zk sID <&> nodeStatus
 
-getServerHost :: ZHandle -> CBytes -> IO TL.Text
-getServerHost zk name = getNodeInfo zk name <&> serverHost
+getServerHost :: ZHandle -> ServerID -> IO TL.Text
+getServerHost zk sID = getNodeInfo zk sID <&> serverHost
 
-getServerPort :: ZHandle -> CBytes -> IO Word32
-getServerPort zk name = getNodeInfo zk name <&> serverPort
+getServerPort :: ZHandle -> ServerID -> IO Word32
+getServerPort zk sID = getNodeInfo zk sID <&> serverPort
 
-getServerInternalPort :: ZHandle -> CBytes -> IO Word32
-getServerInternalPort zk name = getNodeInfo zk name <&> serverInternalPort
+getServerInternalPort :: ZHandle -> ServerID -> IO Word32
+getServerInternalPort zk sID = getNodeInfo zk sID <&> serverInternalPort
 
-getServerUri :: ZHandle -> CBytes -> IO TL.Text
-getServerUri zk name = do
-  host <- getServerHost zk name
-  port <- getServerPort zk name
+getServerUri :: ZHandle -> ServerID -> IO TL.Text
+getServerUri zk sID = do
+  host <- getServerHost zk sID
+  port <- getServerPort zk sID
   return $ host <> ":" <> TL.pack (show port)
 
-getServerInternalAddr :: ZHandle -> CBytes -> IO SocketAddr
-getServerInternalAddr zk name = do
-  NodeInfo {..} <- getNodeInfo zk name
+-- FIXME: It only supports IPv4 addresses and can throw 'InvalidArgument' exception.
+getServerInternalAddr :: HasCallStack => ZHandle -> ServerID -> IO SocketAddr
+getServerInternalAddr zk sID = do
+  NodeInfo {..} <- getNodeInfo zk sID
   return (ipv4 (lazyTextToCBytes serverHost) (fromIntegral serverInternalPort))
 
-setNodeStatus :: HasCallStack => ZHandle -> CBytes -> NodeStatus -> IO ()
-setNodeStatus zk name status = do
-  nodeInfo <- getNodeInfo zk name
+setNodeStatus :: HasCallStack => ZHandle -> ServerID -> NodeStatus -> IO ()
+setNodeStatus zk sID status = do
+  nodeInfo <- getNodeInfo zk sID
   let nodeInfo' = nodeInfo { nodeStatus = status }
-  void $ zooSet zk (serverRootPath <> "/" <> name) (Just $ valueToBytes nodeInfo') Nothing
+  void $ zooSet zk (serverRootPath <> "/" <> CB.pack (show sID)) (Just $ valueToBytes nodeInfo') Nothing
 
-getNodeInfo :: ZHandle -> CBytes -> IO NodeInfo
-getNodeInfo zk name = decodeZNodeValue' zk (serverRootPath <> "/" <> name)
+getNodeInfo :: ZHandle -> ServerID -> IO NodeInfo
+getNodeInfo zk sID = do
+  decodeZNodeValue' zk (serverRootPath <> "/" <> CB.pack (show sID))
 
-getServerNode :: ZHandle -> CBytes -> IO ServerNode
-getServerNode zk name = do
-  host <- getServerHost zk name
-  port <- getServerPort zk name
-  port' <- getServerInternalPort zk name
+getServerNode :: ZHandle -> ServerID -> IO ServerNode
+getServerNode zk sID = do
+  host <- getServerHost zk sID
+  port <- getServerPort zk sID
   return $ ServerNode
-           { serverNodeId = 0
-           , serverNodeHost = host
-           , serverNodePort = port
-           , serverNodeInternalPort = port'
-           , serverNodeName = cBytesToLazyText name
-           }
-
-getInternalServerNode :: ZHandle -> CBytes -> IO ServerNode
-getInternalServerNode zk name = do
-  host <- getServerHost zk name
-  port <- getServerInternalPort zk name
-  return $ ServerNode
-           { serverNodeId = 0
+           { serverNodeId   = sID
            , serverNodeHost = host
            , serverNodePort = port
            }
@@ -111,8 +100,8 @@ getInternalServerNode zk name = do
 getReadyServers :: ZHandle -> IO Int
 getReadyServers zk = do
   (StringsCompletion (StringVector servers)) <- zooGetChildren zk serverRootPath
-  (sum <$>) . forM servers $ \name -> do
-    (e' :: Either SomeException NodeStatus) <- try $ getNodeStatus zk name
+  (sum <$>) . forM (read . CB.unpack <$> servers) $ \sID -> do
+    (e' :: Either SomeException NodeStatus) <- try $ getNodeStatus zk sID
     case e' of
       Right Ready   -> return (1 :: Int)
       Right Working -> return (1 :: Int)
