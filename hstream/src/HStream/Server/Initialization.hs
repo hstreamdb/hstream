@@ -102,7 +102,7 @@ initializeServer ServerOpts{..} zk = do
     ServerContext {
       zkHandle                 = zk
     , scLDClient               = ldclient
-    , serverID               = _serverID
+    , serverID                 = _serverID
     , scDefaultStreamRepFactor = _topicRepFactor
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
@@ -111,7 +111,7 @@ initializeServer ServerOpts{..} zk = do
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
-    , leaderID               = currentLeader
+    , leaderID                 = currentLeader
     },
     LoadManager {
       sID             = _serverID
