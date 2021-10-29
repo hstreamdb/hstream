@@ -79,11 +79,12 @@ actionTriggedByNodesChange zkHandle LoadManager{..} = do
   let newNodes = children \\ M.keys oldNodes
   let failedNodes = M.keys oldNodes \\ children
   unless (null newNodes) $ do
-    Log.info "Some node started. "
+    Log.debug "Some node started. "
     updateLoadReports zkHandle loadReports
   unless (null failedNodes) $ do
     let failedNodesNames = map (`M.lookup` oldNodes) failedNodes
-    Log.info $ fromString (show failedNodesNames) <>  " failed. "
+    Log.debug $ fromString (show failedNodesNames)
+             <> " failed/terminated since last checked. "
   setPrevServers zkHandle serverMap
   putMVar watchLock ()
 

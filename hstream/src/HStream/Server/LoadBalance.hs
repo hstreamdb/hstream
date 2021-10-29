@@ -156,12 +156,11 @@ getAndWatchReport
   -> ServerName
   -> IO ()
 getAndWatchReport zk hmapM name = do
-  Log.debug . Log.buildCBytes $ "Getting data from zk and setting watch for server " <> name
   _ <- forkIO $ zooWatchGet zk
                 (serverLoadPath <> "/" <> name)
                 (watchFun hmapM name)
                 (getReportCB hmapM name)
-  Log.debug . Log.buildCBytes $ "Getting data from zk and set watch for server " <> name <> " done"
+  Log.debug . Log.buildCBytes $ "Got data from zk and set watch for server " <> name
 
 -- | The watch function set on every server load report in zk
 watchFun
@@ -192,9 +191,11 @@ updateMapAndRanking hmapM = do
   Log.debug . Log.buildString $
     "Local loads map updated: " <> show hmap
   let newRanking = generateRanking hmap
-  atomicWriteIORef serverRanking newRanking
-  Log.info . Log.buildString $
-    "Ranking updated, new ranking is " <> show newRanking
+  oldRanking <- readIORef serverRanking
+  when (oldRanking /= newRanking) $ do
+    atomicWriteIORef serverRanking newRanking
+    Log.info . Log.buildString $
+      "Ranking updated, new ranking is " <> show newRanking
 
 -- Update the load report map stored in the server local data
 insertLoadReportsMap
@@ -203,7 +204,6 @@ insertLoadReportsMap
   -> Maybe (Maybe LoadReport)
   -> IO ()
 insertLoadReportsMap mVar name (Just (Just x)) = do
-  Log.debug . Log.buildCBytes $ "Updating load info of " <> name <> " in load reports map"
   modifyMVar_ mVar (return . HM.insert name x)
   Log.debug . Log.buildCBytes $ "Load info of " <> name <> " in load reports map updated"
 insertLoadReportsMap _ _ _ = pure ()

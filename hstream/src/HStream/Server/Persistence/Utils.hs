@@ -158,8 +158,7 @@ setZkData zk path contents =
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
-  \(_ :: ZNODEEXISTS) -> do
-    Log.warning . Log.buildString $ "create path failed: " <> show path <> " has existed in zk"
+  \(_ :: ZNODEEXISTS) -> pure ()
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path = do
@@ -184,13 +183,11 @@ deleteAllPath zk path = do
 tryDeletePath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeletePath zk path = catch (deletePath zk path) $
   \(_ :: ZNONODE) -> do
-    Log.warning . Log.buildString $ "delete path error: " <> show path <> " not exist."
     pure ()
 
 tryDeleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
   \(_ :: ZNONODE) -> do
-    Log.warning . Log.buildString $ "delete all path error: " <> show path <> " not exist."
     pure ()
 
 decodeDataCompletion :: FromJSON a => DataCompletion -> Maybe a
