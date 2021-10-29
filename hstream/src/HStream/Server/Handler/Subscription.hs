@@ -43,7 +43,8 @@ import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (getSuccessor,
+import           HStream.Server.Handler.Common    (getStartRecordId,
+                                                   getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
@@ -83,12 +84,7 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
         Just _  -> returnErrResp StatusUnknown "Subsctiption already exists"
         Nothing -> do
           let subCtx = SubscriptionContext
-                       { _subctxSubId = subId
-                       , _subctxStream = TL.unpack subscriptionStreamName
-                       , _subctxOffset = offset
-                       , _subctxNode = serverID
-                       , _subctxCurOffset = offset
-                       , _subctxClients = mempty
+                       { _subctxNode = serverID
                        }
           modifyMVar_ subscriptionCtx (\ctxs -> do
                                           newCtxMVar <- newMVar subCtx
@@ -229,24 +225,19 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                               case mSub of
                                 Nothing -> return (store, Just "Subscription has been removed")
                                 Just sub@Subscription {..} -> do
-
-                                  mSubCtx <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
-                                  case mSubCtx of
-                                    Nothing -> return (store, Just "Subscription context internal error")
-                                    Just SubscriptionContext{..} -> do
-                                      let startRecordId = _subctxCurOffset
-                                      newInfoMVar <-
-                                        initSubscribe
-                                        scLDClient
-                                        streamingFetchRequestSubscriptionId
-                                        subscriptionStreamName
-                                        streamingFetchRequestConsumerName
-                                        startRecordId
-                                        streamSend
-                                        subscriptionAckTimeoutSeconds
-                                      Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
-                                      let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                                      return (newStore, Nothing)
+                                  let startRecordId = getStartRecordId sub
+                                  newInfoMVar <-
+                                    initSubscribe
+                                    scLDClient
+                                    streamingFetchRequestSubscriptionId
+                                    subscriptionStreamName
+                                    streamingFetchRequestConsumerName
+                                    startRecordId
+                                    streamSend
+                                    subscriptionAckTimeoutSeconds
+                                  Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
+                                  let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                                  return (newStore, Nothing)
                       )
                   case mRes of
                     Just errorMsg ->
@@ -274,24 +265,12 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       if V.null acks
         then handleRequest False consumerNameRef subscriptionIdRef
         else do
-          withMVar
-            subscribeRuntimeInfo
-            ( return . HM.lookup subId
-            )
-            >>= \case
-              Just infoMVar -> do
-                withMVar
-                  subscriptionCtx
-                  ( return . Map.lookup (TL.unpack subId)
-                  )
-                  >>= \case
-                    Just subCtxMVar -> do
-                      doAck scLDClient subCtxMVar infoMVar acks
-                      handleRequest False consumerNameRef subscriptionIdRef
-                    Nothing ->
-                      return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription context internal error")
-              Nothing ->
-                return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
+          withMVar subscribeRuntimeInfo ( return . HM.lookup subId ) >>= \case
+            Just infoMVar -> do
+              doAck scLDClient infoMVar acks
+              handleRequest False consumerNameRef subscriptionIdRef
+            Nothing ->
+              return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
 
     -- We should cleanup according streamSend before returning ServerBiDiResponse.
     cleanupStreamSend isFirst consumerNameRef subscriptionIdRef = do
@@ -562,11 +541,10 @@ dispatchRecords records streamSends
 
 doAck ::
   S.LDClient ->
-  MVar SubscriptionContext ->
   MVar SubscribeRuntimeInfo ->
   V.Vector RecordId ->
   IO ()
-doAck client subctxMVar infoMVar ackRecordIds =
+doAck client infoMVar ackRecordIds =
   modifyMVar_
     infoMVar
     ( \info@SubscribeRuntimeInfo {..} -> do
@@ -584,7 +562,6 @@ doAck client subctxMVar infoMVar ackRecordIds =
                     <> "{"
                     <> Log.buildString (show newLowerBound)
                     <> "}"
-                modifyMVar_ subctxMVar (\subctx -> return $ subctx{ _subctxCurOffset = newLowerBound })
                 return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
               Nothing ->
                 return $ info {sriAckedRanges = newAckedRanges}
