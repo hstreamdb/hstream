@@ -16,12 +16,10 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated (GRPCIOError (..),
-                                                   withGRPCClient)
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
 import           HStream.Client.Utils
-import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
@@ -31,7 +29,7 @@ data ClientContext = ClientContext
   , producers                      :: MVar (Map.Map T.Text API.ServerNode)
   , clientId                       :: String
   , availableServersUpdateInterval :: Int
-}
+  }
 
 --------------------------------------------------------------------------------
 
@@ -89,20 +87,26 @@ doActionWithAddr ctx@ClientContext{..} addr getRespApp handleRespApp = do
   withGRPCClient (mkGRPCClientConf addr) $ \client -> do
     resp <- getRespApp client
     case resp of
-      ClientErrorResponse (ClientIOError GRPCIOTimeout) -> do
-        Log.w . Log.buildString $ "Failed to connect to Node " <> show uri <> ", redirecting..."
+      ClientErrorResponse err -> do
+        print $
+          "Failed to connect to Node " <> uri <> ": " <> show err <> ", redirecting..."
         modifyMVar_ availableServers (return . L.delete addr)
         curServers <- readMVar availableServers
         case L.null curServers of
           True  -> do
-            Log.w . Log.buildString $ "Error when executing an action."
+            print ("Error when executing an action." :: String)
             return Nothing
           False -> do
-            Log.w . Log.buildString $ "Available servers: " <> show curServers
+            print $ "Available servers: " <> show curServers
             let newAddr = head curServers
             doActionWithAddr ctx newAddr getRespApp handleRespApp
-      ClientErrorResponse err -> do
-        Log.w . Log.buildString $ "Error when executing an action: " <> show err
-        return Nothing
       _ -> handleRespApp resp
   where uri = show addr
+
+doAction :: ClientContext
+         -> (Client -> IO (ClientResult typ a))
+         -> (ClientResult typ a -> IO (Maybe b))
+         -> IO (Maybe b)
+doAction ctx getRespApp handleRespApp = do
+  curServer <- readMVar (currentServer ctx)
+  doActionWithAddr ctx curServer getRespApp handleRespApp

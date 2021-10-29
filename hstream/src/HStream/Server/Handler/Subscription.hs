@@ -20,10 +20,8 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Monad                    (forM, forever, when,
-                                                   zipWithM)
+import           Control.Monad
 import           Data.Function                    (on)
-import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (newIORef, readIORef,
                                                    writeIORef)
@@ -45,8 +43,7 @@ import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (getStartRecordId,
-                                                   getSuccessor,
+import           HStream.Server.Handler.Common    (getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
@@ -79,9 +76,29 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
     else do
       logId <- S.getUnderlyingLogId scLDClient (transToStreamName . TL.toStrict $ subscriptionStreamName)
       offset <- convertOffsetToRecordId logId
-      let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-      P.storeObject (TL.toStrict subscriptionSubscriptionId) newSub zkHandle
-      returnResp subscription
+
+      let subId = TL.unpack subscriptionSubscriptionId
+      subs <- readMVar subscriptionCtx
+      case Map.lookup subId subs of
+        Just _  -> returnErrResp StatusUnknown "Subsctiption already exists"
+        Nothing -> do
+          let subCtx = SubscriptionContext
+                       { _subctxSubId = subId
+                       , _subctxStream = TL.unpack subscriptionStreamName
+                       , _subctxOffset = offset
+                       , _subctxNode = serverID
+                       , _subctxCurOffset = offset
+                       , _subctxClients = mempty
+                       }
+          modifyMVar_ subscriptionCtx (\ctxs -> do
+                                          newCtxMVar <- newMVar subCtx
+                                          return $ Map.insert subId newCtxMVar ctxs
+                                      )
+          P.storeObject (T.pack subId) subCtx zkHandle -- sync subctx to zk
+
+          let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
+          P.storeObject (TL.toStrict subscriptionSubscriptionId) newSub zkHandle
+          returnResp subscription
   where
     convertOffsetToRecordId logId = do
       let SubscriptionOffset {..} = fromJust subscriptionOffset
@@ -116,15 +133,22 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
                     -- remove sub from zk
                     P.removeObject @ZHandle @'SubRep
                       (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+                    -- remove subctx from zk
+                    P.removeObject @ZHandle @'SubCtxRep
+                      (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
                     let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
                     return (newInfo, True)
                   else return (info, False)
             )
         if shouldDelete
-          then return $ HM.delete deleteSubscriptionRequestSubscriptionId store
+          then do
+          modifyMVar_ subscriptionCtx (return . Map.delete (TL.unpack deleteSubscriptionRequestSubscriptionId))
+          return $ HM.delete deleteSubscriptionRequestSubscriptionId store
           else return store
       Nothing -> do
         P.removeObject @ZHandle @'SubRep
+          (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+        P.removeObject @ZHandle @'SubCtxRep
           (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
         return store
 
@@ -180,42 +204,50 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                   writeIORef consumerNameRef streamingFetchRequestConsumerName
                   writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
 
-                  mRes <- modifyMVar subscribeRuntimeInfo
-                    ( \store -> do
-                        case HM.lookup streamingFetchRequestSubscriptionId store of
-                          Just infoMVar -> do
-                            modifyMVar_ infoMVar
-                              ( \info@SubscribeRuntimeInfo {..} -> do
-                                  -- bind a new sender to current client
-                                  let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                                  if V.null sriSignals
-                                    then return $ info {sriStreamSends = newSends}
-                                    else do
-                                      -- wake up all threads waiting for a new
-                                      -- consumer to join
-                                      V.forM_ sriSignals $ flip putMVar ()
-                                      return $ info {sriStreamSends = newSends, sriSignals = V.empty}
-                              )
-                            return (store, Nothing)
-                          Nothing -> do
-                            mSub <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
-                            case mSub of
-                              Nothing -> return (store, Just "Subscription has been removed")
-                              Just sub@Subscription {..} -> do
-                                let startRecordId = getStartRecordId sub
-                                newInfoMVar <-
-                                  initSubscribe
-                                    scLDClient
-                                    streamingFetchRequestSubscriptionId
-                                    subscriptionStreamName
-                                    streamingFetchRequestConsumerName
-                                    startRecordId
-                                    streamSend
-                                    subscriptionAckTimeoutSeconds
-                                Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
-                                let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                                return (newStore, Nothing)
-                    )
+                  mRes <-
+                    modifyMVar
+                      subscribeRuntimeInfo
+                      ( \store -> do
+                          case HM.lookup streamingFetchRequestSubscriptionId store of
+                            Just infoMVar -> do
+                              modifyMVar_
+                                infoMVar
+                                ( \info@SubscribeRuntimeInfo {..} -> do
+                                    -- bind a new sender to current client
+                                    let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
+                                    if V.null sriSignals
+                                      then return $ info {sriStreamSends = newSends}
+                                      else do
+                                        -- wake up all threads waiting for a new
+                                        -- consumer to join
+                                        V.forM_ sriSignals $ flip putMVar ()
+                                        return $ info {sriStreamSends = newSends, sriSignals = V.empty}
+                                )
+                              return (store, Nothing)
+                            Nothing -> do
+                              mSub <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                              case mSub of
+                                Nothing -> return (store, Just "Subscription has been removed")
+                                Just sub@Subscription {..} -> do
+
+                                  mSubCtx <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                                  case mSubCtx of
+                                    Nothing -> return (store, Just "Subscription context internal error")
+                                    Just SubscriptionContext{..} -> do
+                                      let startRecordId = _subctxCurOffset
+                                      newInfoMVar <-
+                                        initSubscribe
+                                        scLDClient
+                                        streamingFetchRequestSubscriptionId
+                                        subscriptionStreamName
+                                        streamingFetchRequestConsumerName
+                                        startRecordId
+                                        streamSend
+                                        subscriptionAckTimeoutSeconds
+                                      Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
+                                      let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                                      return (newStore, Nothing)
+                      )
                   case mRes of
                     Just errorMsg ->
                       return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
@@ -242,12 +274,24 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       if V.null acks
         then handleRequest False consumerNameRef subscriptionIdRef
         else do
-          withMVar subscribeRuntimeInfo (return . HM.lookup subId) >>= \case
-            Just infoMVar -> do
-              doAck scLDClient infoMVar acks
-              handleRequest False consumerNameRef subscriptionIdRef
-            Nothing ->
-              return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
+          withMVar
+            subscribeRuntimeInfo
+            ( return . HM.lookup subId
+            )
+            >>= \case
+              Just infoMVar -> do
+                withMVar
+                  subscriptionCtx
+                  ( return . Map.lookup (TL.unpack subId)
+                  )
+                  >>= \case
+                    Just subCtxMVar -> do
+                      doAck scLDClient subCtxMVar infoMVar acks
+                      handleRequest False consumerNameRef subscriptionIdRef
+                    Nothing ->
+                      return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription context internal error")
+              Nothing ->
+                return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
 
     -- We should cleanup according streamSend before returning ServerBiDiResponse.
     cleanupStreamSend isFirst consumerNameRef subscriptionIdRef = do
@@ -516,30 +560,36 @@ dispatchRecords records streamSends
         Right _ -> do
           return $ Just (name, sender)
 
-doAck
-  :: S.LDClient
-  -> MVar SubscribeRuntimeInfo
-  -> V.Vector RecordId
-  -> IO ()
-doAck client infoMVar ackRecordIds =
-  modifyMVar_ infoMVar $ \info@SubscribeRuntimeInfo {..} -> do
-    if sriValid
-      then do
-        Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges) <> " ackedRanges = " <> Log.buildString (show sriAckedRanges)
-        let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
-        Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges) <> " ackedRanges = " <> Log.buildString (show newAckedRanges)
-        case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-          Just (ranges, newLowerBound, checkpointRecordId) -> do
-            commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
-            Log.info $ "update window lower bound, from {"
-                    <> Log.buildString (show sriWindowLowerBound)
-                    <> "} to {"
+doAck ::
+  S.LDClient ->
+  MVar SubscriptionContext ->
+  MVar SubscribeRuntimeInfo ->
+  V.Vector RecordId ->
+  IO ()
+doAck client subctxMVar infoMVar ackRecordIds =
+  modifyMVar_
+    infoMVar
+    ( \info@SubscribeRuntimeInfo {..} -> do
+        if sriValid
+          then do
+            Log.e $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
+            let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
+            Log.e $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+            case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
+              Just (ranges, newLowerBound, checkpointRecordId) -> do
+                commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
+                Log.info $
+                  "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
+                    <> "} to "
+                    <> "{"
                     <> Log.buildString (show newLowerBound)
                     <> "}"
-            return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
-          Nothing ->
-            return $ info {sriAckedRanges = newAckedRanges}
-      else return info
+                modifyMVar_ subctxMVar (\subctx -> return $ subctx{ _subctxCurOffset = newLowerBound })
+                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+              Nothing ->
+                return $ info {sriAckedRanges = newAckedRanges}
+          else return info
+    )
 
 tryUpdateWindowLowerBound ::
   -- | ackedRanges

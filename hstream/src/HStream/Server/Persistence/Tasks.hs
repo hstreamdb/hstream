@@ -20,8 +20,7 @@ import           ZooKeeper.Types
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
-import           HStream.Utils                        (TaskStatus (..),
-                                                       cBytesToText)
+import           HStream.Utils                        (TaskStatus (..))
 --------------------------------------------------------------------------------
 
 instance TaskPersistence ZHandle where

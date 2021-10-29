@@ -124,7 +124,6 @@ paths = [ "/hstreamdb"
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
 initializeAncestors zk = do
-  tryDeleteAllPath zk producerCtxsPath -- FIXME: It is because the recovery mechanism of 'ProducerConetext' is unfinished. This line will be deleted after that.
   mapM_ (tryCreate zk) paths
 
 mkQueryPath :: CBytes -> CBytes

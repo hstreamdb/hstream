@@ -154,6 +154,7 @@ executable hstream-client
     , raw-strings-qq
     , text
     , unix
+    , vector
     , Z-Data
     , Z-IO
 

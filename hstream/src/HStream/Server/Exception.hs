@@ -23,6 +23,7 @@ import           HStream.Utils                        (TaskStatus,
                                                        returnStreamingResp)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
+import           ZooKeeper.Exception
 
 -- TODO: More exception handle needs specific handling.
 mkExceptionHandle :: (StatusCode -> StatusDetails -> IO (ServerResponse t a))
@@ -57,7 +58,9 @@ mkExceptionHandle retFun cleanFun = flip catches [
     let ConnectorRestartErr st = err
     retFun StatusInternal $ StatusDetails ("Cannot restart a connector with status  " <> BS.pack (show st))),
   Handler (\(_ :: ConnectorNotExist) -> do
-    retFun StatusInternal "Connector not found")
+    retFun StatusInternal "Connector not found"),
+  Handler (\(err :: ZooException) -> do
+    retFun StatusInternal $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err)))
   ]
 
 defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)

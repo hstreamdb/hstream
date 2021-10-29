@@ -19,6 +19,7 @@ import           Data.Functor                     ((<&>))
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
+import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified Options.Applicative              as O
@@ -123,7 +124,13 @@ app ctx@ClientContext{..} config@ClientConfig{..} = withGRPCClient config $ \cli
         | otherwise -> liftIO (commandExec ctx api $ "ADMIN:: " <> str) >> loopAdmin api
 
 commandExec :: ClientContext -> HStreamClientApi -> String -> IO ()
-commandExec ctx api xs = case words xs of
+commandExec ctx@ClientContext{..} api xs = case words xs of
+
+  ":sub":subId:stream:_ -> callSubscription ctx (T.pack subId) (T.pack stream)
+  ":delSub":subId:_     -> callDeleteSubscription ctx (T.pack subId)
+  ":fetch":subId:_      -> callStreamingFetch ctx V.empty (T.pack subId) (T.pack clientId)
+  ":listSubs":_         -> callListSubscriptions ctx
+
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
