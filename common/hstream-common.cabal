@@ -73,6 +73,7 @@ library
     , base                  >=4.11  && <5
     , bytestring
     , containers
+    , data-default
     , deepseq
     , ghc-prim              >=0.5   && <1.0
     , grpc-haskell

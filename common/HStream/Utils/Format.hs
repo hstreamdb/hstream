@@ -8,6 +8,7 @@ module HStream.Utils.Format where
 
 import qualified Data.Aeson                       as A
 import qualified Data.Aeson.Text                  as A
+import           Data.Default                     (def)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as M
@@ -15,11 +16,7 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock                  (NominalDiffTime)
 import qualified Data.Vector                      as V
-import           Text.Layout.Table                (center, colsAllG, column,
-                                                   expand, justify, left,
-                                                   noAlign, singleCutMark,
-                                                   tableString, titlesH,
-                                                   unicodeRoundS)
+import qualified Text.Layout.Table                as Table
 
 import qualified Google.Protobuf.Empty            as Protobuf
 import qualified Google.Protobuf.Struct           as P
@@ -29,6 +26,7 @@ import           Network.GRPC.HighLevel.Generated (ClientResult (..),
                                                    GRPCMethodType (..))
 
 --------------------------------------------------------------------------------
+
 type Width = Int
 
 renderTableResult :: Width -> V.Vector P.Value -> String
@@ -119,17 +117,17 @@ renderJSONObjectToTable w os = renderJSONObjectsToTable w [os]
 renderJSONObjectsToTable :: Width -> [A.Object] -> String
 renderJSONObjectsToTable _ [] = "\n"
 renderJSONObjectsToTable l os@(o:_) =
-  tableString colout unicodeRoundS (titlesH keys)
-  (map (colsAllG center . renderContents ((l - size*2 - 6)`div` size)) elems) ++ "\n"
+  Table.tableString colout Table.unicodeRoundS (Table.titlesH keys)
+  (map (Table.colsAllG Table.center . renderContents ((l - size*2 - 6)`div` size)) elems) ++ "\n"
   where
     keys  = sort $ map T.unpack (HM.keys o)
     elems = map (map snd . sort . HM.toList) os
     size  = length o
     colout = replicate size
-      $ column expand left noAlign (singleCutMark "...")
+      $ Table.column Table.expand Table.left Table.noAlign (Table.singleCutMark "...")
 
 renderContents :: Width -> [A.Value] -> [[String]]
-renderContents width = map $ concatMap (justify width . words') . lines . formatJSONValue
+renderContents width = map $ concatMap (Table.justify width . words') . lines . formatJSONValue
 
 --------------------------------------------------------------------------------
 
@@ -158,3 +156,15 @@ getObjects :: [A.Value] -> [A.Object]
 
 words' :: String -> [String]
 words' s = let (m, n) = break (== '-') s in words m ++ words n
+
+--------------------------------------------------------------------------------
+
+simpleShowTable :: [(String, Int, Table.Position Table.H)] -> [[String]] -> String
+simpleShowTable _ [] = ""
+simpleShowTable colconfs rols =
+  let titles = map (\(t, _, _) -> t) colconfs
+      colout = map (\(_, maxlen, pos) -> Table.column (Table.expandUntil maxlen) pos def def) colconfs
+   in Table.tableString colout
+                        Table.asciiS
+                        (Table.titlesH titles)
+                        [ Table.rowsG rols ]

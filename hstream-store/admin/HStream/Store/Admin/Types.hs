@@ -1,19 +1,22 @@
 module HStream.Store.Admin.Types where
 
+import qualified Control.Exception        as E
 import           Control.Monad
 import           Data.Int
-import qualified Data.Map.Strict         as Map
-import           Data.Text               (Text)
+import qualified Data.Map.Strict          as Map
+import           Data.Text                (Text)
 import           Options.Applicative
-import qualified Text.Read               as Read
-import           Z.Data.ASCII            (c2w)
-import           Z.Data.CBytes           (CBytes, fromBytes)
-import qualified Z.Data.Parser           as P
-import           Z.Data.Vector           (Bytes)
-import qualified Z.Data.Vector           as V
+import qualified Options.Applicative.Help as Opt
+import qualified Text.Read                as Read
+import           Z.Data.ASCII             (c2w)
+import           Z.Data.CBytes            (CBytes, fromBytes)
+import qualified Z.Data.Parser            as P
+import qualified Z.Data.Text              as T
+import           Z.Data.Vector            (Bytes)
+import qualified Z.Data.Vector            as V
 
-import qualified HStream.Store           as S
-import qualified HStream.Store.Admin.API as AA
+import qualified HStream.Store            as S
+import qualified HStream.Store.Admin.API  as AA
 
 -------------------------------------------------------------------------------
 
@@ -850,3 +853,12 @@ startSQLReplOptsParser = StartSQLReplOpts
                          <> short 'e'
                          <> help "Run sql expression non-interactively."
                           ))
+
+-------------------------------------------------------------------------------
+
+handleStoreError :: IO () -> IO ()
+handleStoreError action =
+  let putErr = Opt.putDoc . Opt.red . Opt.string . (\s -> "Error: " <> s <> "\n") .  T.toString . S.sseDescription
+   in action `E.catches` [ E.Handler (\(S.StoreError ex) -> putErr ex)
+                         , E.Handler (\(ex :: S.SomeHStoreException) -> print ex)
+                         ]
