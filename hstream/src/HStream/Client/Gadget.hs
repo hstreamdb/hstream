@@ -17,6 +17,7 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Network.Socket                   (PortNumber)
 import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
 import           HStream.Client.Utils
@@ -24,7 +25,9 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 
 data ClientContext = ClientContext
-  { availableServers               :: MVar [SocketAddr]
+  { cctxServerHost                 :: String
+  , cctxServerPort                 :: PortNumber
+  , availableServers               :: MVar [SocketAddr]
   , currentServer                  :: MVar SocketAddr
   , producers                      :: MVar (Map.Map T.Text API.ServerNode)
   , clientId                       :: String
