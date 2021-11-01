@@ -589,17 +589,21 @@ doAck client infoMVar ackRecordIds =
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
                 commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
+                -- after a checkpoint is committed, informations of records before checkpoint are no need to be retained, so just clear them
+                let newBatchNumMap = updateBatchNumMap (recordIdBatchId checkpointRecordId) sriBatchNumMap
                 Log.info $
                   "update window lower bound, from {" <> Log.buildString (show sriWindowLowerBound)
                     <> "} to "
                     <> "{"
                     <> Log.buildString (show newLowerBound)
                     <> "}"
-                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound, sriBatchNumMap = newBatchNumMap}
               Nothing ->
                 return $ info {sriAckedRanges = newAckedRanges}
           else return info
     )
+  where
+    updateBatchNumMap checkedLSN mp = snd $ Map.split checkedLSN mp
 
 tryUpdateWindowLowerBound ::
   -- | ackedRanges
