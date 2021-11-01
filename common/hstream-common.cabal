@@ -1,4 +1,4 @@
-cabal-version:      2.2
+cabal-version:      2.4
 name:               hstream-common
 version:            0.1.0.0
 synopsis:
@@ -19,9 +19,11 @@ homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
-  clib/*.h
-  include/*.h
-  include/*.inc
+  cbits/**/*.h
+  clib/**/*.h
+  clients/**/*.h
+  include/**/*.h
+  include/**/*.inc
 
 custom-setup
   setup-depends:
@@ -34,6 +36,7 @@ source-repository head
 
 library
   exposed-modules:
+    HStream.Common.Query
     HStream.Foreign
     HStream.Logger
     HStream.Server.HStreamApi
@@ -54,7 +57,7 @@ library
     HStream.Utils.TimeInterval
 
   hs-source-dirs:     . gen-hs
-  include-dirs:       include clib cbits gen-cpp /usr/local/include
+  include-dirs:       . include clib gen-cpp /usr/local/include
   includes:
     hs_common.h
     hs_cpp_lib.h
@@ -63,8 +66,14 @@ library
   cxx-sources:
     cbits/hs_stats.cpp
     cbits/hs_utils.cpp
+    cbits/query/Query.cpp
+    cbits/query/tables/AdminCommandTable.cpp
+    cbits/query.cpp
     clib/stats.cpp
     clib/struct.cpp
+    clients/cpp/AdminClient.cpp
+    gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
+    gen-cpp/HStream/Server/HStreamApi.pb.cc
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
@@ -73,6 +82,7 @@ library
     , base                  >=4.11  && <5
     , bytestring
     , containers
+    , data-default
     , deepseq
     , ghc-prim              >=0.5   && <1.0
     , grpc-haskell
@@ -104,6 +114,7 @@ library
     protobuf
     folly
     logdevice
+    ldquery
     glog
     boost_context
 

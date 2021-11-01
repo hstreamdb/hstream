@@ -54,6 +54,7 @@ extern "C" {
 #endif
 
 void delete_vector_of_string(std::vector<std::string>* ss);
+void delete_vector_of_int(std::vector<int>* ss);
 
 // ----------------------------------------------------------------------------
 #ifdef __cplusplus

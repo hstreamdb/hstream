@@ -14,9 +14,9 @@ import           Text.Layout.Table                (asciiS, center, colsAllG,
 import           Z.Data.CBytes                    (pack, unpack)
 
 import           HStream.Store.Admin.API
-import           HStream.Store.Admin.Format
 import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
+import           HStream.Utils                    (simpleShowTable)
 
 
 runShowTables :: S.LDQuery -> IO String

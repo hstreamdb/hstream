@@ -2,28 +2,28 @@ module HStream.Store.Admin.Command.Maintenance
   ( runMaintenanceCmd
   ) where
 
-import           Control.Monad              (forM_, guard, unless, when, (<=<))
-import           Data.Char                  (toUpper)
-import           Data.Int                   (Int64)
-import           Data.List                  (group, intercalate, intersect, nub,
-                                             sort, union)
-import qualified Data.Map                   as Map
-import           Data.Maybe                 (catMaybes, fromMaybe, mapMaybe)
-import           Data.Set                   (elems, member)
-import           Data.Text                  (Text, pack)
-import qualified Data.Text                  as Text
-import           System.IO                  (hFlush, stdout)
-import           System.IO.Unsafe           (unsafePerformIO)
-import qualified Text.Layout.Table          as Table
-import           Z.Data.CBytes              (CBytes, unpack)
-import           Z.IO                       (getEnv)
-import           Z.IO.Time                  (SystemTime (MkSystemTime),
-                                             formatSystemTime, simpleDateFormat)
+import           Control.Monad             (forM_, guard, unless, when, (<=<))
+import           Data.Char                 (toUpper)
+import           Data.Int                  (Int64)
+import           Data.List                 (group, intercalate, intersect, nub,
+                                            sort, union)
+import qualified Data.Map                  as Map
+import           Data.Maybe                (catMaybes, fromMaybe, mapMaybe)
+import           Data.Set                  (elems, member)
+import           Data.Text                 (Text, pack)
+import qualified Data.Text                 as Text
+import           System.IO                 (hFlush, stdout)
+import           System.IO.Unsafe          (unsafePerformIO)
+import qualified Text.Layout.Table         as Table
+import           Z.Data.CBytes             (CBytes, unpack)
+import           Z.IO                      (getEnv)
+import           Z.IO.Time                 (SystemTime (MkSystemTime),
+                                            formatSystemTime, simpleDateFormat)
 
 import           HStream.Store.Admin.API
-import qualified HStream.Store.Admin.API    as AA
-import           HStream.Store.Admin.Format (simpleShowTable)
+import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
+import           HStream.Utils             (simpleShowTable)
 
 
 runMaintenanceCmd :: HeaderConfig AdminAPI -> MaintenanceOpts -> IO ()

@@ -29,7 +29,6 @@ library
   exposed-modules:
     HStream.Store.Admin.API
     HStream.Store.Admin.Command
-    HStream.Store.Admin.Format
     HStream.Store.Admin.Types
 
   other-modules:

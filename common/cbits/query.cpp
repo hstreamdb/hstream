@@ -1,24 +1,26 @@
-#include "hs_logdevice.h"
+#include "hs_common.h"
+
+#include "cbits/query/Query.h"
+#include "clients/cpp/AdminClient.h"
+
 #include <logdevice/ops/ldquery/Errors.h>
-#include <logdevice/ops/ldquery/LDQuery.h>
+#include <logdevice/ops/ldquery/QueryBase.h>
 
-using namespace facebook::logdevice::ldquery;
+using namespace hstream::client;
+namespace ldquery = facebook::logdevice::ldquery;
+using ldquery::QueryBase;
+using ldquery::TableMetadata;
 
-// TODO: use common/cbits/query.cpp instead
+static bool order_by_name(const TableMetadata& l, const TableMetadata& r) {
+  return l.name < r.name;
+}
 
 extern "C" {
 // ----------------------------------------------------------------------------
+// QueryBase
 
-LDQuery* new_ldquery(const char* config_path, int64_t command_timeout,
-                     bool use_ssl) {
-  return new LDQuery(config_path, std::chrono::milliseconds(command_timeout),
-                     use_ssl);
-}
-
-void delete_ldquery(LDQuery* ldq) { delete ldq; };
-
-void ldquery_show_tables(
-    LDQuery* ldq, size_t* len,
+void query_show_tables(
+    QueryBase* ldq, size_t* len,
     //
     std::string** tables_name_val,
     std::vector<std::string>** tables_name_, // for deletion on haskell side
@@ -48,8 +50,8 @@ void ldquery_show_tables(
   }
 }
 
-void ldquery_show_table_columns(
-    LDQuery* ldq, const char* table_name, size_t* len,
+void query_show_table_columns(
+    QueryBase* ldq, const char* table_name, size_t* len,
     //
     std::string** cols_name_val, std::vector<std::string>** cols_name_,
     //
@@ -83,12 +85,14 @@ void ldquery_show_table_columns(
   }
 }
 
-void ldquery_query(LDQuery* ldq, const char* query, size_t* results_len,
-                   LDQuery::QueryResults** results_val, char** exinfo) {
+void run_query(QueryBase* ldq, const char* query,
+               // Rerurn
+               size_t* results_len, QueryBase::QueryResults** results_val,
+               char** exinfo) {
   try {
-    LDQuery::QueryResults results_ = ldq->query(query);
+    QueryBase::QueryResults results_ = ldq->query(query);
     if (!results_.empty()) {
-      LDQuery::QueryResults* results = new LDQuery::QueryResults;
+      QueryBase::QueryResults* results = new QueryBase::QueryResults;
       *results = results_;
       *results_len = results->size();
       *results_val = results;
@@ -96,13 +100,13 @@ void ldquery_query(LDQuery* ldq, const char* query, size_t* results_len,
       *results_len = 0;
     }
     *exinfo = NULL;
-  } catch (LDQueryError& e) {
+  } catch (ldquery::LDQueryError& e) {
     *results_len = 0;
     *exinfo = strdup(e.what());
   }
 }
 
-void delete_query_results(LDQuery::QueryResults* rs) { delete rs; }
+void delete_query_results(QueryBase::QueryResults* rs) { delete rs; }
 
 #define GET_VEC_INDEX_VAL(FUN_NAME, FROM_TYPE, ELE_SIZE_FUN, ELE_DATA_FUN,     \
                           ELE_TYPE)                                            \
@@ -113,34 +117,34 @@ void delete_query_results(LDQuery::QueryResults* rs) { delete rs; }
     *ret_val = data.ELE_DATA_FUN();                                            \
   }
 
-GET_VEC_INDEX_VAL(queryResults__headers, LDQuery::QueryResults, headers.size,
+GET_VEC_INDEX_VAL(queryResults__headers, QueryBase::QueryResults, headers.size,
                   headers.data, std::string)
-GET_VEC_INDEX_VAL(queryResults__cols_max_size, LDQuery::QueryResults,
+GET_VEC_INDEX_VAL(queryResults__cols_max_size, QueryBase::QueryResults,
                   cols_max_size.size, cols_max_size.data, size_t)
 
-size_t queryResults_rows_len(LDQuery::QueryResults* datas, HsInt index) {
+size_t queryResults__rows_len(QueryBase::QueryResults* datas, HsInt index) {
   return (*datas)[index].rows.size();
 }
 
-void queryResults_rows_val(LDQuery::QueryResults* datas, HsInt index, HsInt row,
-                           size_t* len, std::string** row_val) {
+void queryResults__rows_val(QueryBase::QueryResults* datas, HsInt index,
+                            HsInt row, size_t* len, std::string** row_val) {
   auto& data = (*datas)[index].rows[row];
   *len = data.size();
   *row_val = data.data();
 }
 
-uint64_t queryResults__metadata_contacted_nodes(LDQuery::QueryResults* datas,
+uint64_t queryResults__metadata_contacted_nodes(QueryBase::QueryResults* datas,
                                                 HsInt index) {
   return (*datas)[index].metadata.contacted_nodes;
 }
 
-uint64_t queryResults__metadata_latency(LDQuery::QueryResults* datas,
+uint64_t queryResults__metadata_latency(QueryBase::QueryResults* datas,
                                         HsInt index) {
   return (*datas)[index].metadata.latency;
 }
 
 void queryResults__metadata_failures(
-    LDQuery::QueryResults* datas, HsInt index,
+    QueryBase::QueryResults* datas, HsInt index,
     //
     size_t* len,
     //
@@ -174,4 +178,13 @@ void queryResults__metadata_failures(
 }
 
 // ----------------------------------------------------------------------------
+// Query
+
+query::Query* new_hstream_query(const char* addr) {
+  return new query::Query(std::string(addr));
 }
+
+void delete_hstream_query(query::Query* q) { delete q; }
+
+// ----------------------------------------------------------------------------
+} // End extern "C"

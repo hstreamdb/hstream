@@ -3,18 +3,17 @@ module HStream.Store.Admin.Command.Status
   ) where
 
 import           Control.Monad
-import           Data.Int                   (Int64)
-import           Data.List                  (elemIndex, sortBy)
-import           Data.Maybe                 (fromJust)
-import qualified Data.Text                  as Text
-import qualified Data.Text.Encoding         as Text
-import           Data.Time.Clock.POSIX      (POSIXTime, getPOSIXTime)
-import qualified Text.Layout.Table          as Table
+import           Data.Int                  (Int64)
+import           Data.List                 (elemIndex, sortBy)
+import           Data.Maybe                (fromJust)
+import qualified Data.Text                 as Text
+import qualified Data.Text.Encoding        as Text
+import           Data.Time.Clock.POSIX     (POSIXTime, getPOSIXTime)
+import qualified Text.Layout.Table         as Table
 
-import qualified HStream.Store.Admin.API    as AA
-import           HStream.Store.Admin.Format (simpleShowTable)
+import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
-import           HStream.Utils              (approxNaturaltime)
+import           HStream.Utils             (approxNaturaltime, simpleShowTable)
 
 data NodeState' = NodeState'
   { stateState      :: AA.NodeState
