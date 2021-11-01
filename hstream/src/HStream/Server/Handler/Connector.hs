@@ -136,7 +136,7 @@ createConnector sc@ServerContext{..} sql = do
     return $ hstreamConnectorToConnector connector
   else do
     MkSystemTime timestamp _ <- getSystemTime'
-    P.insertConnector cid sql timestamp (CB.pack . show $ serverID) zkHandle
+    P.insertConnector cid sql timestamp serverID zkHandle
     handleCreateSinkConnector sc cid sName cConfig <&> hstreamConnectorToConnector
 
 restartConnector :: ServerContext -> CB.CBytes -> IO ()

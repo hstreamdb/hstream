@@ -1,8 +1,9 @@
 #include "hs_common.h"
 #include "hs_cpp_lib.h"
-#include "stats.h"
 
 #include <logdevice/common/debug.h>
+
+using namespace hstream::common;
 
 extern "C" {
 // ----------------------------------------------------------------------------

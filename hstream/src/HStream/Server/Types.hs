@@ -68,7 +68,6 @@ data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverID                 :: Word32
   , scDefaultStreamRepFactor :: Int
-  , minServers               :: Int
   , leaderID                 :: MVar Word32
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
@@ -144,12 +143,7 @@ instance FromJSON SystemResourcePercentageUsage
 instance ToJSON SystemResourcePercentageUsage
 
 data SubscriptionContext = SubscriptionContext
-  { _subctxSubId     :: String
-  , _subctxStream    :: String
-  , _subctxOffset    :: RecordId
-  , _subctxNode      :: Word32
-  , _subctxCurOffset :: RecordId
-  , _subctxClients   :: Set String
+  { _subctxNode      :: Word32
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 data ProducerContext = ProducerContext

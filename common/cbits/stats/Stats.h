@@ -19,6 +19,8 @@ using facebook::logdevice::StatsAgg;
 using facebook::logdevice::StatsAggOptional;
 using facebook::logdevice::StatsCounter;
 
+namespace hstream { namespace common {
+
 /**
  * A simple wrapper for folly::MultiLevelTimeSeries, which support addValue for
  * current time.
@@ -342,3 +344,5 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
       }                                                                        \
     }                                                                          \
   } while (0)
+
+}} // namespace hstream::common

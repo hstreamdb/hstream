@@ -20,7 +20,6 @@ bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
   cbits/**/*.h
-  clib/**/*.h
   clients/**/*.h
   include/**/*.h
   include/**/*.inc
@@ -57,20 +56,20 @@ library
     HStream.Utils.TimeInterval
 
   hs-source-dirs:     . gen-hs
-  include-dirs:       . include clib gen-cpp /usr/local/include
+  include-dirs:       . include gen-cpp /usr/local/include
   includes:
     hs_common.h
     hs_cpp_lib.h
 
   install-includes:   hs_cpp_lib.h
   cxx-sources:
-    cbits/hs_stats.cpp
+    cbits/hs_struct.cpp
     cbits/hs_utils.cpp
     cbits/query/Query.cpp
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
-    clib/stats.cpp
-    clib/struct.cpp
+    cbits/stats/Stats.cpp
+    cbits/stats.cpp
     clients/cpp/AdminClient.cpp
     gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
     gen-cpp/HStream/Server/HStreamApi.pb.cc
