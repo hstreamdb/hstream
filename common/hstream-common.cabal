@@ -21,6 +21,7 @@ build-type:         Custom
 extra-source-files:
   cbits/**/*.h
   clients/**/*.h
+  gen-cpp/**/*.h
   include/**/*.h
   include/**/*.inc
 
