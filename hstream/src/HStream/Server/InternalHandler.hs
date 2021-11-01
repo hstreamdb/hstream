@@ -11,6 +11,8 @@ import           Control.Concurrent
 import qualified Data.Map                         as Map
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import           Network.GRPC.HighLevel.Generated
+
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamInternal
@@ -22,7 +24,6 @@ import           HStream.Server.Types             (ProducerContext (ProducerCont
                                                    SubscriptionContext (..))
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (returnErrResp, returnResp)
-import           Network.GRPC.HighLevel.Generated
 
 internalHandlers :: ServerContext -> IO (HStreamInternal ServerRequest ServerResponse)
 internalHandlers ctx = pure HStreamInternal {
@@ -66,7 +67,7 @@ takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionReque
   case err_m of
     Nothing -> do
       P.getObject (TL.toStrict subId) zkHandle >>= \case
-        Nothing -> returnErrResp StatusInternal "Tring to recover a deleted subscription"
+        Nothing -> returnErrResp StatusInternal "Trying to recover a deleted subscription"
         Just subctx -> do
           P.storeObject (TL.toStrict subId)
             (subctx { _subctxNode = serverID }) zkHandle
