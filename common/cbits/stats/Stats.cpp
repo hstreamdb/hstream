@@ -1,4 +1,4 @@
-#include "stats.h"
+#include "Stats.h"
 
 #include <folly/String.h>
 #include <iostream>
@@ -30,6 +30,8 @@ static void aggregateStat(StatsAgg agg, StatsAggOptional override,
 }
 
 // ----------------------------------------------------------------------------
+
+namespace hstream { namespace common {
 
 void PerStreamStats::aggregate(PerStreamStats const& other,
                                StatsAggOptional agg_override) {
@@ -182,3 +184,5 @@ StatsHolder::~StatsHolder() {
     x.owner = nullptr;
   }
 }
+
+}} // namespace hstream::common

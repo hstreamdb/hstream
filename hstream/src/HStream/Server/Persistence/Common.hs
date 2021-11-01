@@ -5,10 +5,6 @@
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE TypeFamilies           #-}
 
@@ -33,7 +29,7 @@ import           GHC.Stack                 (HasCallStack)
 import           Z.Data.CBytes             (CBytes)
 
 import           HStream.Server.HStreamApi (Subscription)
-import           HStream.Server.Types      (ProducerContext,
+import           HStream.Server.Types      (ProducerContext, ServerID,
                                             SubscriptionContext)
 import           HStream.Utils             (TaskStatus (..), cBytesToText,
                                             textToCBytes)
@@ -59,7 +55,7 @@ data PersistentQuery = PersistentQuery
   , queryType        :: QueryType
   , queryStatus      :: TaskStatus
   , queryTimeCkp     :: Int64
-  , queryHServer     :: CBytes
+  , queryHServer     :: ServerID
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 data PersistentConnector = PersistentConnector
@@ -68,7 +64,7 @@ data PersistentConnector = PersistentConnector
   , connectorCreatedTime :: Int64
   , connectorStatus      :: TaskStatus
   , connectorTimeCkp     :: Int64
-  , connectorHServer     :: CBytes
+  , connectorHServer     :: ServerID
   } deriving (Generic, Show, FromJSON, ToJSON)
 
 data QueryType
@@ -80,8 +76,8 @@ data QueryType
 --------------------------------------------------------------------------------
 
 class TaskPersistence handle where
-  insertQuery        :: HasCallStack => CBytes -> T.Text -> Int64 -> QueryType -> CBytes -> handle -> IO ()
-  insertConnector    :: HasCallStack => CBytes -> T.Text -> Int64 -> CBytes -> handle -> IO ()
+  insertQuery        :: HasCallStack => CBytes -> T.Text -> Int64 -> QueryType -> ServerID -> handle -> IO ()
+  insertConnector    :: HasCallStack => CBytes -> T.Text -> Int64 -> ServerID -> handle -> IO ()
 
   setQueryStatus      :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()
   setConnectorStatus  :: HasCallStack => CBytes -> TaskStatus -> handle -> IO ()

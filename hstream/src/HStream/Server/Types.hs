@@ -68,7 +68,6 @@ data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverID                 :: Word32
   , scDefaultStreamRepFactor :: Int
-  , minServers               :: Int
   , leaderID                 :: MVar Word32
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)

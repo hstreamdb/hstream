@@ -253,7 +253,7 @@ handleCreateAsSelect :: ServerContext
                      -> IO (CB.CBytes, Int64)
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
-    (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType (CB.pack . show $ serverID) zkHandle
+    (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid

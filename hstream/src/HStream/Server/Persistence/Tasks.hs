@@ -20,6 +20,7 @@ import           ZooKeeper.Types
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
+import           HStream.Server.Types                 (ServerID)
 import           HStream.Utils                        (TaskStatus (..))
 --------------------------------------------------------------------------------
 
@@ -122,7 +123,7 @@ getQuerySink PersistentQuery{..} =
     (StreamQuery _ s) -> s
     (ViewQuery _ s _) -> s
 
-createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> CBytes ->  ZHandle -> IO (CBytes, Int64)
+createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> ServerID ->  ZHandle -> IO (CBytes, Int64)
 createInsertPersistentQuery taskName queryText queryType queryHServer zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
   let qid   = Z.Data.CBytes.pack (T.unpack taskName)
