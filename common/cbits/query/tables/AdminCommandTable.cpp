@@ -9,6 +9,7 @@
 #include <logdevice/common/debug.h>
 
 #include "HStream/Server/HStreamApi.pb.h"
+#include "cbits/checks.h"
 
 using hstream::server::ServerNode;
 using std::chrono::steady_clock;
@@ -33,7 +34,7 @@ std::shared_ptr<ldquery::TableData>
 AdminCommandTable::getData(ldquery::QueryContext& ctx) {
   // First, refill the cache if necessary.
   refillCache(ctx);
-  ld_check(admin_cmd_cache_.count(ctx.used_constraints));
+  hs_check(admin_cmd_cache_.count(ctx.used_constraints));
 
   Data& cached = admin_cmd_cache_[ctx.used_constraints]->get();
 
@@ -140,7 +141,7 @@ AdminCommandTable::aggregate(std::vector<ldquery::TableData> results) const {
       const ldquery::ColumnName& name = kv.first;
       const ldquery::Column& c = kv.second;
 
-      ld_check(rows_in_current == 0 || rows_in_current == c.size());
+      hs_check(rows_in_current == 0 || rows_in_current == c.size());
       rows_in_current = c.size();
 
       ldquery::Column& res = result.cols[name];
@@ -156,7 +157,7 @@ AdminCommandTable::aggregate(std::vector<ldquery::TableData> results) const {
     }
     rows_so_far += rows_in_current;
   }
-  ld_check(rows_so_far == total_rows);
+  hs_check(rows_so_far == total_rows);
 
   for (auto& kv : result.cols) {
     // If the last of the `results` didn't contain some of the columns, fill
@@ -194,8 +195,8 @@ bool AdminCommandTable::dataIsInCacheForUsedConstraints(
 
 void AdminCommandTable::buildIndexForConstraint(
     Data& data, int col, const ldquery::Constraint* ctx) {
-  ld_check(ctx->op == SQLITE_INDEX_CONSTRAINT_EQ);
-  ld_check(col < getColumnsImpl().size());
+  hs_check(ctx->op == SQLITE_INDEX_CONSTRAINT_EQ);
+  hs_check(col < getColumnsImpl().size());
   const ldquery::ColumnName& col_name = getColumnsImpl()[col].name;
 
   ld_info("Building index for column `%s`...", col_name.c_str());
@@ -333,7 +334,7 @@ PartialTableData AdminCommandTable::jsonToTableData(std::string json) const {
         columns_present.emplace_back();
       } else {
         const int col_pos = it->second;
-        ld_check(getFetchableColumns()[col_pos].name == name);
+        hs_check(getFetchableColumns()[col_pos].name == name);
         ColumnAndDataType column_info;
         column_info.type = getFetchableColumns()[col_pos].type;
         column_info.data = &results.cols[name];
@@ -350,7 +351,7 @@ PartialTableData AdminCommandTable::jsonToTableData(std::string json) const {
     }
     size_t col = 0;
     for (const auto& i : o) {
-      ld_check(i);
+      hs_check(i);
       if (col >= columns_present.size()) {
         ++col;
         // The error will be reported after the loop.
@@ -441,7 +442,7 @@ AdminCommandTable::transformData(std::string response_from_node) const {
   }
 
   // Should never be here, the compiler should complain if there is a missing
-  // case in the above switch statement.  ld_check(false);
+  // case in the above switch statement.  hs_check(false);
   return PartialTableData{folly::none, false, "UNEXPECTED"};
 }
 
@@ -524,7 +525,7 @@ AdminCommandTable::selectNodes(std::vector<ServerNode>& nodes,
 void AdminCommandTable::refillCache(ldquery::QueryContext& ctx) {
   auto client = ctx_->getClient();
   auto nodes_configuration = client->getNodesConfiguration();
-  ld_check(nodes_configuration);
+  hs_check(nodes_configuration, "GetNodesConfiguration failed");
 
   // `selectNodes` may decide to select by `node_id`. In that case it will
   // mutate `ctx.used_constraints`.
@@ -585,7 +586,7 @@ void AdminCommandTable::refillCache(ldquery::QueryContext& ctx) {
 
   steady_clock::time_point tstart = steady_clock::now();
   auto responses = client->send(requests);
-  ld_check(requests.size() == responses.size());
+  hs_check(requests.size() == responses.size());
   steady_clock::time_point tend = steady_clock::now();
   double duration =
       std::chrono::duration_cast<std::chrono::duration<double>>(tend - tstart)
@@ -601,7 +602,7 @@ void AdminCommandTable::refillCache(ldquery::QueryContext& ctx) {
 
   ld_info("Parsing json data...");
   std::vector<ldquery::TableData> results = transformDataParallel(responses);
-  ld_check(results.size() == responses.size());
+  hs_check(results.size() == responses.size());
   for (int i = 0; i < results.size(); ++i) {
     if (!results[i].cols.empty()) {
       size_t rows = results[i].cols.begin()->second.size();

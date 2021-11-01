@@ -12,7 +12,6 @@ import           Control.Concurrent
 import           Control.Exception                (finally, handle)
 import           Control.Monad
 import           Control.Monad.IO.Class           (liftIO)
-import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
 import           Data.Char                        (toUpper)
 import           Data.Functor                     ((<&>))
@@ -22,6 +21,7 @@ import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
+import           Network.Socket                   (PortNumber)
 import qualified Options.Applicative              as O
 import           System.Console.ANSI              (getTerminalSize)
 import qualified System.Console.Haskeline         as H
@@ -34,19 +34,21 @@ import           Z.IO.Network.SocketAddr          (ipv4)
 
 import           HStream.Client.Action
 import           HStream.Client.Gadget
+import qualified HStream.Common.Query             as Query
 import qualified HStream.Logger                   as Log
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.Server.HStreamApi
+import           HStream.Store.Logger
 import           HStream.Utils                    (Format, HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
                                                    setupSigsegvHandler)
 
 data UserConfig = UserConfig
-  { _serverHost                     :: ByteString
-  , _serverPort                     :: Int
+  { _serverHost                     :: String
+  , _serverPort                     :: PortNumber
   , _clientId                       :: String
   , _availableServersUpdateInterval :: Int
   }
@@ -69,59 +71,62 @@ main = do
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
-  let _addr = ipv4 (CB.pack . BSC.unpack $ _serverHost) (fromIntegral _serverPort)
+  let _addr = ipv4 (CB.pack _serverHost) (fromIntegral _serverPort)
   available <- newMVar []
   current <- newMVar _addr
   producers_ <- newMVar mempty
-  let ctx = ClientContext
-        { availableServers = available
-        , currentServer    = current
-        , producers        = producers_
-        , clientId         = _clientId
-        , availableServersUpdateInterval = _availableServersUpdateInterval
-        }
-      clientConfig = ClientConfig { clientServerHost = Host _serverHost
-                                  , clientServerPort = Port _serverPort
-                                  , clientArgs       = []
-                                  , clientSSLConfig  = Nothing
-                                  , clientAuthority  = Nothing
-                                  }
+  let ctx = ClientContext { cctxServerHost = _serverHost
+                          , cctxServerPort = _serverPort
+                          , availableServers = available
+                          , currentServer    = current
+                          , producers        = producers_
+                          , clientId         = _clientId
+                          , availableServersUpdateInterval = _availableServersUpdateInterval
+                          }
   setupSigsegvHandler
+  setLogDeviceDbgLevel C_DBG_ERROR
   m_desc <- describeCluster ctx _addr
   case m_desc of
-    Just _  -> app ctx clientConfig
+    Just _  -> app ctx
     Nothing -> do
       Log.e "Connection timed out. Please check the server URI and try again."
 
-app :: ClientContext -> ClientConfig -> IO ()
-app ctx@ClientContext{..} config@ClientConfig{..} = withGRPCClient config $ \client -> do
-  api@HStreamApi{..} <- hstreamApiClient client
-  putStrLn helpInfo
-  void $ forkIO maintainAvailableNodes
-  H.runInputT H.defaultSettings (loop api)
+app :: ClientContext -> IO ()
+app ctx@ClientContext{..} =
+  let config = ClientConfig { clientServerHost = Host (BSC.pack cctxServerHost)
+                            , clientServerPort = Port (fromIntegral cctxServerPort)
+                            , clientArgs       = []
+                            , clientSSLConfig  = Nothing
+                            , clientAuthority  = Nothing
+                            }
+   in withGRPCClient config $ \client -> do
+        api <- hstreamApiClient client
+        query <- Query.newHStreamQuery (CB.pack $ cctxServerHost <> ":" <> show cctxServerPort)
+        putStrLn helpInfo
+        void $ forkIO maintainAvailableNodes
+        H.runInputT H.defaultSettings (loop api query)
   where
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
         []     -> return ()
         node:_ -> void $ describeCluster ctx node
       threadDelay $ availableServersUpdateInterval * 1000 * 1000
-    loop :: HStreamClientApi -> H.InputT IO ()
-    loop api = H.getInputLine "> " >>= \case
+    loop :: HStreamClientApi -> Query.HStreamQuery -> H.InputT IO ()
+    loop api query = H.getInputLine "> " >>= \case
       Nothing   -> return ()
       Just str
         | take 1 (words str) == [":q"] -> return ()
         | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
           take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
-            loopAdmin api
-        | otherwise -> liftIO (commandExec ctx api str) >> loop api
-    loopAdmin api = H.getInputLine "ADMIN> " >>= \case
+            loopAdmin api query
+        | otherwise -> liftIO (commandExec ctx api str) >> loop api query
+    loopAdmin api query = H.getInputLine "ADMIN> " >>= \case
       Nothing   -> return ()
       Just str
         | take 1 (words str) == [":q"] -> return ()
         | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
-          take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     ->
-            loop api
-        | otherwise -> liftIO (commandExec ctx api $ "ADMIN:: " <> str) >> loopAdmin api
+          take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     -> loop api query
+        | otherwise -> liftIO (mapM_ putStrLn =<< Query.runQuery query (CB.pack str)) >> loopAdmin api query
 
 commandExec :: ClientContext -> HStreamClientApi -> String -> IO ()
 commandExec ctx@ClientContext{..} api xs = case words xs of
