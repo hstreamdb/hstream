@@ -43,5 +43,7 @@ sql-deps::
 
 clean:
 	(find . -type d -name "gen-hs2"|xargs rm -rf)
+	(find . -type d -name "gen-hs"|xargs rm -rf)
+	(find . -type d -name "gen-cpp"|xargs rm -rf)
 	(find . -type d -name "gen-sql"|xargs rm -rf)
 	(find . -type d -name "gen-src"|xargs rm -rf)
