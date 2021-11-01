@@ -121,31 +121,35 @@ actionTriggedByNodesChange ctx zkHandle LoadManager{..} = do
 
 --------------------------------------------------------------------------------
 
-getFailedSubcsriptions :: ServerContext -> [ServerID] -> IO [SubscriptionContext]
+getFailedSubcsriptions :: ServerContext -> [ServerID] -> IO [String]
 getFailedSubcsriptions ServerContext{..} deadServers = do
   subs <- try (P.listObjects zkHandle) >>= \case
-    Left (_ :: ZooException) -> readMVar subscriptionCtx >>= mapM readMVar . Map.elems
-    Right subs_ -> return $ Map.elems subs_
-  let deads = foldr (\sub@SubscriptionContext{..} xs ->
+    Left (_ :: ZooException) -> do
+      ms <- readMVar subscriptionCtx
+      let ks = Map.keys ms
+      vs <- mapM readMVar (Map.elems ms)
+      return $ ks `zip` vs
+    Right subs_ -> return . Map.toList $ Map.mapKeys T.unpack subs_
+  let deads = foldr (\(subId, SubscriptionContext{..}) xs ->
                         if _subctxNode `elem` deadServers
-                        then sub:xs else xs
+                        then subId:xs else xs
                     ) [] subs
   Log.warning . Log.buildString $ "Following subscriptions died: " <> show deads
   return deads
 
-restartSubscription :: ServerContext -> SubscriptionContext -> IO Bool
-restartSubscription ctx@ServerContext{..} SubscriptionContext{..} = do
+restartSubscription :: ServerContext -> String -> IO Bool
+restartSubscription ctx@ServerContext{..} subID = do
   getNodesRanking ctx >>= go
   where
     go [] = do
       Log.warning . Log.buildString $
-        "No available node to restart subscription " <> _subctxSubId
+        "No available node to restart subscription " <> subID
       return False
     go (node:nodes) = do
       addr <- getServerInternalAddr zkHandle (serverNodeId node)
       withGRPCClient (mkGRPCClientConf addr) $ \client -> do
         HStreamInternal{..} <- hstreamInternalClient client
-        let req = TakeSubscriptionRequest (TL.pack _subctxSubId)
+        let req = TakeSubscriptionRequest (TL.pack subID)
         hstreamInternalTakeSubscription (mkClientNormalRequest req) >>= \case
           (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
             return True
