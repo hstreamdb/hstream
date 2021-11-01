@@ -12,6 +12,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (race)
 import           Control.Monad                    (forM_, replicateM,
                                                    replicateM_, void, when)
+import           Data.IORef
 import           Data.Int                         (Int32)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
@@ -264,17 +265,20 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 
     it "test streamFetch request" $ \(api, (streamName, subName)) -> do
       originCh <- newChan
-      hackerCh <- newChan
       terminate <- newChan
-      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate defaultHacker)
+      void $ forkIO (streamFetchRequest api subName originCh terminate)
 
-      let numMsg = 1000
-          batchSize = 5
+      let numMsg = 30
+      batchSize <- newIORef 0
       reqRids <- replicateM numMsg $ do
-        payload <- V.map (buildRecord header) <$> V.replicateM batchSize (newRandomByteString 2)
+        size <- randomRIO (1, 1300)
+        payload <- V.map (buildRecord header) <$> V.replicateM size (newRandomByteString 2)
+        modifyIORef' batchSize (+size)
         appendResponseRecordIds <$> appendRequest api streamName payload
       Log.debug . Log.buildString $ "length of record = " <> show (length reqRids)
-      ack <- collectRecord 0 (numMsg * batchSize) [] originCh
+      sz <- readIORef batchSize
+      Log.debug $ "total batchSize = " <> Log.buildInt sz
+      ack <- collectRecord 0 sz [] originCh
       ack `shouldBe` V.concat reqRids
       writeChan terminate ()
       Log.debug "streamFetch test done !!!!!!!!!!!"
@@ -283,7 +287,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       originCh <- newChan
       hackerCh <- newChan
       terminate <- newChan
-      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate randomKillHacker)
+      void $ forkIO (streamFetchRequestWithChaos api subName originCh hackerCh terminate randomKillHacker)
 
       replicateM_ 1000 $ do
         payload <- V.map (buildRecord header) <$> V.replicateM 2 (newRandomByteString 2)
@@ -301,7 +305,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       originCh <- newChan
       hackerCh <- newChan
       terminate <- newChan
-      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate timeoutHacker)
+      void $ forkIO (streamFetchRequestWithChaos api subName originCh hackerCh terminate timeoutHacker)
 
       replicateM_ 500 $ do
         payload <- V.map (buildRecord header) <$> V.replicateM 5 (newRandomByteString 2)
@@ -310,6 +314,8 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       let hackedAck = V.empty
       retransAck <- collectRetrans 0 originCh (V.length originAck - V.length hackedAck) []
       Log.debug . Log.buildString $ "retransAck length = " <> show (length retransAck)
+      -- delay here to give server some time to complete previous retrans
+      threadDelay 1000000
       retransAck `shouldBe` originAck
       writeChan terminate ()
       Log.debug "retrans timeout msg done !!!!!!!!!!!"
@@ -324,7 +330,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       let record = buildRecord header "1"
       RecordId{..} <- V.head . appendResponseRecordIds <$> appendRequest api streamName (V.singleton record)
       let !latesLSN = recordIdBatchId + 1
-      void $ forkIO (streamFetchRequest api subName originCh hackerCh terminate (wrongRidHacker latesLSN))
+      void $ forkIO (streamFetchRequestWithChaos api subName originCh hackerCh terminate (wrongRidHacker latesLSN))
 
       replicateM_ 5 $ do
         payload <- V.map (buildRecord header) <$> V.replicateM 2 (newRandomByteString 2)
@@ -349,11 +355,9 @@ streamFetchRequest
   :: HStreamClientApi
   -> TL.Text
   -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
-  -> Chan (V.Vector RecordId) -- channel use to trans record after hacker
   -> Chan ()                  -- channel use to close client request
-  -> (V.Vector RecordId -> IO (V.Vector RecordId)) -- hacker function
   -> IO ()
-streamFetchRequest HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
+streamFetchRequest HStreamApi{..} subscribeId originCh terminate = do
   consumerName <- newRandomLazyText 5
   let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
   hstreamApiStreamingFetch req >>= \case
@@ -368,6 +372,61 @@ streamFetchRequest HStreamApi{..} subscribeId originCh hackerCh terminate hacker
         streamSend initReq >>= \case
           Left err -> do
             Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
+            clientCallCancel call
+          Right _ -> return ()
+      void $ race (doFetch streamRecv streamSend call consumerName) (notifyDone call)
+
+    doFetch streamRecv streamSend call consumerName = do
+      streamRecv >>= \case
+        Left err -> do
+          Log.e . Log.buildString $ "Error happened when recv from server " <> show err
+          clientCallCancel call
+        Right Nothing -> do
+          Log.debug "server close, fetch request end."
+          clientCallCancel call
+        Right (Just StreamingFetchResponse{..}) -> do
+          -- get recordId from response
+          let ackIds = V.map (fromJust . receivedRecordRecordId) streamingFetchResponseReceivedRecords
+          -- select ackIds
+          writeChan originCh ackIds
+
+          -- send ack
+          let fetReq = StreamingFetchRequest subscribeId consumerName ackIds
+          streamSend fetReq >>= \case
+            Left err -> do
+              Log.e . Log.buildString $ "Error happened when send ack: " <> show err <> "\n ack context: " <> show fetReq
+              clientCallCancel call
+            Right _ -> do
+              doFetch streamRecv streamSend call consumerName
+
+    notifyDone call = do
+      void $ readChan terminate
+      clientCallCancel call
+      Log.d "client cancel fetch request"
+
+streamFetchRequestWithChaos
+  :: HStreamClientApi
+  -> TL.Text
+  -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
+  -> Chan (V.Vector RecordId) -- channel use to trans record after hacker
+  -> Chan ()                  -- channel use to close client request
+  -> (V.Vector RecordId -> IO (V.Vector RecordId)) -- hacker function
+  -> IO ()
+streamFetchRequestWithChaos HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
+  consumerName <- newRandomLazyText 5
+  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
+  hstreamApiStreamingFetch req >>= \case
+    ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
+    ClientBiDiResponse _meta StatusOk _msg -> Log.debug "fetch request done"
+    ClientBiDiResponse _meta stats detail -> Log.fatal . Log.buildString $ "abnormal status: " <> show stats <> ", msg: " <> show detail
+    ClientErrorResponse err -> Log.e . Log.buildString $ "fetch request err: " <> show err
+  where
+    action isInit consumerName call _meta streamRecv streamSend _done = do
+      when isInit $ do
+        let initReq = StreamingFetchRequest subscribeId consumerName V.empty
+        streamSend initReq >>= \case
+          Left err -> do
+            Log.e . Log.buildString $ "Server error happened when send init streamFetchRequestWithChaos err: " <> show err
             clientCallCancel call
           Right _ -> return ()
       void $ race (doFetch streamRecv streamSend hacker call consumerName) (notifyDone call)
@@ -421,7 +480,9 @@ collectRecord cnt maxCount res channel
   | otherwise = do
       rids <- readChan channel
       let nres = res L.++ [rids]
-      collectRecord (cnt + V.length rids) maxCount nres channel
+          total = cnt + V.length rids
+      Log.debug $ "collectRecord num: " <> Log.buildInt total
+      collectRecord total maxCount nres channel
 
 defaultHacker :: V.Vector RecordId -> IO (V.Vector RecordId)
 defaultHacker = pure

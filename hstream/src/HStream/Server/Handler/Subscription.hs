@@ -20,7 +20,7 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Monad
+import           Control.Monad                    (void, when, zipWithM)
 import           Data.Function                    (on)
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (newIORef, readIORef,
@@ -31,7 +31,7 @@ import           Data.Maybe                       (catMaybes, fromJust)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
-import           Data.Word                        (Word32, Word64)
+import           Data.Word                        (Word32, Word64, Word8)
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (Enumerated (..))
 import           Z.Data.Vector                    (Bytes)
@@ -312,11 +312,11 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
       -- set ldCkpReader timeout to 0
       _ <- S.ckpReaderSetTimeout ldCkpReader 0
-      Log.debug $ Log.buildString "created a ldCkpReader for subscription {" <> Log.buildLazyText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
+      Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildLazyText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
 
       -- create a ldReader for rereading unacked records
       ldReader <- S.newLDReader ldclient 1 Nothing
-      Log.debug $ Log.buildString "created a ldReader for subscription {" <> Log.buildLazyText subscriptionId <> "}"
+      Log.debug $ "created a ldReader for subscription {" <> Log.buildLazyText subscriptionId <> "}"
 
       -- init SubscribeRuntimeInfo
       let info =
@@ -342,81 +342,114 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     -- read records from logdevice and dispatch them to consumers
     readAndDispatchRecords runtimeInfoMVar = do
-      Log.debug $ Log.buildString "enter readAndDispatchRecords"
+      Log.debug "enter readAndDispatchRecords"
 
-      modifyMVar runtimeInfoMVar
-        ( \info@SubscribeRuntimeInfo {..} ->
-            if sriValid
-              then do
-                if not (HM.null sriStreamSends)
-                  then do
-                    void $ registerLowResTimer 10 $ void . forkIO $ readAndDispatchRecords runtimeInfoMVar
-                    S.ckpReaderReadAllowGap sriLdCkpReader 1000 >>= \case
-                      Left gap@S.GapRecord {..} -> do
-                        -- insert gap range to ackedRanges
-                        let gapLoRecordId = RecordId gapLoLSN minBound
-                            gapHiRecordId = RecordId gapHiLSN maxBound
-                            newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) sriAckedRanges
-                            -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
-                            -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
-                            groupNums = map (, 0) [gapLoLSN, gapHiLSN]
-                            newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
-                            newInfo = info { sriAckedRanges = newRanges
-                                           , sriBatchNumMap = newBatchNumMap
-                                           }
-                        Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show sriStreamName <> ", the gap is " <> show gap
-                        Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
-                        Log.debug . Log.buildString $ "update batchNumMap to " <> show newBatchNumMap
-                        return (newInfo, Nothing)
-                      Right dataRecords -> do
-                        if null dataRecords
-                          then do
-                            Log.debug . Log.buildString $ "reader read empty dataRecords from stream " <> show sriStreamName
-                            return (info, Nothing)
-                          else do
-                            Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records"
+      modifyMVar runtimeInfoMVar doReadAndDispatch >>= \case
+        Nothing -> return ()
+        Just signal -> do
+          void $ takeMVar signal
+          readAndDispatchRecords runtimeInfoMVar
+      where
+        doReadAndDispatch info@SubscribeRuntimeInfo {..}
+          | not sriValid = do
+              return (info, Nothing)
+          | HM.null sriStreamSends = do
+              signal <- newEmptyMVar
+              return (info {sriSignals = V.cons signal sriSignals}, Just signal)
+          | otherwise = do
+              void $ registerLowResTimer 10 $ void . forkIO $ readAndDispatchRecords runtimeInfoMVar
+              doRead info >>= \case
+                (newInfo, Nothing)      -> return (newInfo, Nothing)
+                (newInfo, Just records) -> doDispatch records newInfo
 
-                            -- XXX: Should we add a server option to toggle Stats?
-                            --
-                            -- WARNING: we assume there is one stream name in all dataRecords.
-                            --
-                            -- Make sure you have read only ONE stream(log), otherwise you should
-                            -- group dataRecords by stream name.
-                            let len_bs = sum $ map (ZV.length . S.recordPayload) dataRecords
-                            Stats.stream_time_series_add_record_bytes scStatsHolder (textToCBytes sriStreamName) (fromIntegral len_bs)
+        doRead info@SubscribeRuntimeInfo {..} = do
+          S.ckpReaderReadAllowGap sriLdCkpReader 1000 >>= \case
+            Left gap@S.GapRecord {..} -> do
+              -- insert gap range to ackedRanges
+              let gapLoRecordId = RecordId gapLoLSN minBound
+                  gapHiRecordId = RecordId gapHiLSN maxBound
+                  newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) sriAckedRanges
+                  -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
+                  -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
+                  groupNums = map (, 0) [gapLoLSN, gapHiLSN]
+                  newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
+                  newInfo = info { sriAckedRanges = newRanges
+                                 , sriBatchNumMap = newBatchNumMap
+                                 }
+              Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show sriStreamName <> ", the gap is " <> show gap
+              Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
+              Log.debug . Log.buildString $ "update batchNumMap to " <> show newBatchNumMap
+              return (newInfo, Nothing)
+            Right dataRecords
+              | null dataRecords -> do
+                  Log.debug . Log.buildString $ "reader read empty dataRecords from stream " <> show sriStreamName
+                  return (info, Nothing)
+              | otherwise -> do
+                  Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records: " <> show (formatDataRecords dataRecords)
 
-                            let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
-                                groupNums = map (\group -> (S.recordLSN $ head group, (fromIntegral $ length group) :: Word32)) groups
-                                lastBatch = last groups
-                                maxRecordId = RecordId (S.recordLSN $ head lastBatch) (fromIntegral $ length lastBatch - 1)
-                                -- update window upper bound and batchNumMap
-                                newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
-                                receivedRecords = fetchResult groups
+                  -- XXX: Should we add a server option to toggle Stats?
+                  --
+                  -- WARNING: we assume there is one stream name in all dataRecords.
+                  --
+                  -- Make sure you have read only ONE stream(log), otherwise you should
+                  -- group dataRecords by stream name.
+                  let len_bs = sum $ map (ZV.length . S.recordPayload) dataRecords
+                  Stats.stream_time_series_add_record_bytes scStatsHolder (textToCBytes sriStreamName) (fromIntegral len_bs)
 
-                            newStreamSends <- dispatchRecords receivedRecords sriStreamSends
-                            let receivedRecordIds = V.map (fromJust . receivedRecordRecordId) receivedRecords
-                                newInfo =
-                                  info
-                                    { sriBatchNumMap = newBatchNumMap,
-                                      sriWindowUpperBound = maxRecordId,
-                                      sriStreamSends = newStreamSends
-                                    }
-                            -- register task for resending timeout records
-                            void $
-                              registerLowResTimer
-                                (fromIntegral sriAckTimeoutSeconds * 10)
-                                (void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar)
-                            return (newInfo, Nothing)
-                  else do
-                    signal <- newEmptyMVar
-                    return (info {sriSignals = V.cons signal sriSignals}, Just signal)
-              else return (info, Nothing)
-        )
-        >>= \case
-          Nothing -> return ()
-          Just signal -> do
-            void $ takeMVar signal
-            readAndDispatchRecords runtimeInfoMVar
+                  -- TODO: List operations are very inefficient, use a more efficient data structure(vector or sth.) to replace
+                  let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
+                      len = length groups
+                      (batch, lastBatch) = splitAt (len - 1) groups
+                      -- When the number of records in an LSN exceeds the maximum number of records we
+                      -- can fetch in a single read call, `batch' will be an empty list.
+                      maxReadSize = if null batch
+                                      then length . last $ lastBatch
+                                      else length . last $ batch
+                      lastLSN = S.recordLSN . head . head $ lastBatch
+                  Log.debug $ "length batch=" <> Log.buildInt (length batch)
+                           <> ", length lastBatch=" <> Log.buildInt (length lastBatch)
+                           <> ", lastLSN=" <> Log.buildInt lastLSN
+
+                  lastBatchRecords <- fetchLastLSN sriLogId lastLSN sriLdCkpReader maxReadSize
+
+                  let newGroups = batch ++ [lastBatchRecords]
+                      groupNums = map (\gp -> (S.recordLSN $ head gp, (fromIntegral $ length gp) :: Word32)) newGroups
+                      maxRecordId = RecordId lastLSN (fromIntegral $ length lastBatchRecords - 1)
+                      -- update window upper bound and batchNumMap
+                      newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
+                      receivedRecords = fetchResult newGroups
+                      newInfo = info { sriBatchNumMap = newBatchNumMap
+                                     , sriWindowUpperBound = maxRecordId
+                                     }
+
+                  void $ S.ckpReaderSetTimeout sriLdCkpReader 0
+                  S.ckpReaderStartReading sriLdCkpReader sriLogId (lastLSN + 1) S.LSN_MAX
+                  return (newInfo, Just receivedRecords)
+
+        doDispatch receivedRecords info@SubscribeRuntimeInfo {..} = do
+          newStreamSends <- dispatchRecords receivedRecords sriStreamSends
+          let receivedRecordIds = V.map (fromJust . receivedRecordRecordId) receivedRecords
+              newInfo = info { sriStreamSends = newStreamSends }
+          -- register task for resending timeout records
+          void $ registerLowResTimer
+               (fromIntegral sriAckTimeoutSeconds * 10)
+               (void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar)
+          return (newInfo, Nothing)
+
+        fetchLastLSN :: S.C_LogID -> S.LSN -> S.LDSyncCkpReader -> Int -> IO [S.DataRecord (ZV.PrimVector Word8)]
+        fetchLastLSN logId lsn reader size = do
+          void $ S.ckpReaderSetTimeout reader 10
+          S.ckpReaderStartReading reader logId lsn lsn
+          run []
+          where
+            run res = do
+              records <- S.ckpReaderRead reader size
+              if null records
+                then return res
+                else run (res ++ records)
+
+        formatDataRecords records =
+          L.foldl' (\acc s -> acc ++ ["(" <> show (S.recordLSN s) <> "," <> show (S.recordBatchOffset s) <> ")"]) [] records
 
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       flip V.filter recordIds $ \recordId ->
