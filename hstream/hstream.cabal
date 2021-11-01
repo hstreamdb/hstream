@@ -41,6 +41,7 @@ library
     HStream.Server.Types
 
   other-modules:
+    HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
     HStream.Server.Handler.Query
@@ -49,7 +50,6 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
-    HStream.Server.Handler.Admin
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Nodes
@@ -79,6 +79,7 @@ library
     , microlens
     , microlens-aeson
     , mysql-haskell
+    , network
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -149,6 +150,7 @@ executable hstream-client
     , hstream-common
     , hstream-sql
     , hstream-store
+    , network
     , optparse-applicative
     , random
     , raw-strings-qq
