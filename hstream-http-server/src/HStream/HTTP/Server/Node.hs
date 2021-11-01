@@ -16,7 +16,6 @@ import           Data.Aeson                   (FromJSON, ToJSON)
 import           Data.Int                     (Int32)
 import           Data.Swagger                 (ToSchema)
 import qualified Data.Text                    as T
-import qualified Data.Text.Lazy               as TL
 import qualified Data.Vector                  as V
 import           GHC.Generics                 (Generic)
 import           Network.GRPC.LowLevel.Client (Client)
@@ -47,7 +46,7 @@ type NodesAPI
 
 nodeToNodeBO :: Node -> NodeBO
 nodeToNodeBO (Node id' roles address status) =
-  NodeBO id' (V.toList roles) (TL.toStrict address) (TL.toStrict status)
+  NodeBO id' (V.toList roles) address status
 
 listStoreNodesHandler :: Client -> Handler [NodeBO]
 listStoreNodesHandler hClient = do

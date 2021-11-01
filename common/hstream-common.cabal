@@ -5,7 +5,7 @@ synopsis:
   High performance stream processing platform for IoT data written in Haskell.
 
 description:
-  Please see the README on Github at
+  Please see the README on GitHub at
   <https://github.com/hstreamdb/hstream#readme>
 
 license:            BSD-3-Clause
@@ -56,6 +56,12 @@ library
     HStream.Utils.RPC
     HStream.Utils.TimeInterval
 
+  autogen-modules:
+    HStream.Server.HStreamApi
+    HStream.Server.HStreamInternal
+    Google.Protobuf.Empty
+    Google.Protobuf.Struct
+
   hs-source-dirs:     . gen-hs
   include-dirs:       . include gen-cpp /usr/local/include
   includes:
@@ -88,7 +94,7 @@ library
     , grpc-haskell
     , grpc-haskell-core
     , primitive             ^>=0.7
-    , proto3-suite          ^>=0.4.2
+    , proto3-suite
     , proto3-wire
     , random
     , raw-strings-qq

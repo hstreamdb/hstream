@@ -9,7 +9,7 @@ import           Control.Monad
 import qualified Data.Aeson                       as A
 import qualified Data.HashMap.Internal            as HM
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Text                        as Text
+import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Text.Lazy.Encoding          as TL
 import qualified Data.Vector                      as V
@@ -34,21 +34,21 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
     it "stats append" $ \(api, streamNames) -> do
 
       timeStamp <- getProtoTimestamp
-      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
       payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
       forM_ streamNames $ \name -> replicateM_ 100 $ appendRequest api name payloads
 
       resp <- adminCommandStatsReq api
       let Just (Just resultObj) =
-            A.decode @(Maybe A.Object) . TL.encodeUtf8 . adminCommandResponseResult $ resp
+            A.decode @(Maybe A.Object) . TL.encodeUtf8 . TL.fromStrict . adminCommandResponseResult $ resp
       let Just (A.Array rows) = HM.lookup "rows" resultObj
 
       forM_ rows $ \(A.Array row) -> do
         let (A.String name) = row V.! 0
-        when (TL.fromStrict name `elem` streamNames) $ do
+        when (name `elem` streamNames) $ do
           Log.i $ "Check stream " <> Log.buildText name
-          row V.! 1 `shouldSatisfy` (\(A.String x) -> read @Double (Text.unpack x) > 0)
-          row V.! 2 `shouldSatisfy` (\(A.String x) -> read @Double (Text.unpack x) > 0)
+          row V.! 1 `shouldSatisfy` (\(A.String x) -> read @Double (T.unpack x) > 0)
+          row V.! 2 `shouldSatisfy` (\(A.String x) -> read @Double (T.unpack x) > 0)
 
 adminCommandStatsReq :: HStreamApi ClientRequest ClientResult -> IO AdminCommandResponse
 adminCommandStatsReq HStreamApi{..} = do

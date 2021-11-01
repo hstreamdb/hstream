@@ -10,7 +10,7 @@ module HStream.Server.Bootstrap
   ( startServer
   ) where
 
-import qualified Data.Text.Lazy                as TL
+import qualified Data.Text                     as T
 import           ZooKeeper.Types
 
 
@@ -22,6 +22,6 @@ import           HStream.Server.Types          (ServerOpts (..))
 
 startServer :: ZHandle -> ServerOpts -> IO () -> IO ()
 startServer zk ServerOpts {..} myApp = do
-  initNodePath zk _serverID (TL.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+  initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
   setNodeStatus zk _serverID Working
   myApp

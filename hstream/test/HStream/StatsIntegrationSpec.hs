@@ -4,7 +4,7 @@ import           Test.Hspec
 
 import           Control.Monad
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
@@ -33,7 +33,7 @@ perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeS
       resp' `shouldBe` Nothing
 
       timeStamp <- getProtoTimestamp
-      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
       payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
       replicateM_ 100 $ appendRequest api name payloads
 
@@ -46,7 +46,7 @@ perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeS
 
 perStreamTimeSeriesReq
   :: HStreamApi ClientRequest ClientResult
-  -> TL.Text
+  -> T.Text
   -> IO PerStreamTimeSeriesStatsAllResponse
 perStreamTimeSeriesReq HStreamApi{..} name = do
   let requestTimeout = 10
@@ -56,8 +56,8 @@ perStreamTimeSeriesReq HStreamApi{..} name = do
 
 perStreamTimeSeriesGetReq
   :: HStreamApi ClientRequest ClientResult
-  -> TL.Text
-  -> TL.Text
+  -> T.Text
+  -> T.Text
   -> IO PerStreamTimeSeriesStatsResponse
 perStreamTimeSeriesGetReq HStreamApi{..} name sName = do
   let requestTimeout = 10

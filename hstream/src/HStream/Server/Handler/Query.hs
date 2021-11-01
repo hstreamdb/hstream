@@ -29,7 +29,6 @@ import           Data.Scientific
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as TE
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Time                        as Time
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
@@ -75,12 +74,10 @@ createQueryStreamHandler ::
 createQueryStreamHandler
   sc@ServerContext {..}
   (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = defaultExceptionHandle $ do
-    RQSelect select <- parseAndRefine $ TL.toStrict createQueryStreamRequestQueryStatements
+    RQSelect select <- parseAndRefine createQueryStreamRequestQueryStatements
     tName <- genTaskName
-    let sName =
-          TL.toStrict . streamStreamName
-            <$> createQueryStreamRequestQueryStream
-        rFac = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
+    let sName = streamStreamName <$> createQueryStreamRequestQueryStream
+        rFac  = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
     (builder, source, sink, _) <-
       genStreamBuilderWithStream tName sName select
     S.createStream scLDClient (transToStreamName sink) $ S.LogAttrs (S.HsLogAttrs rFac Map.empty)
@@ -92,9 +89,9 @@ createQueryStreamHandler
         createQueryStreamRequestQueryStatements
         query
         S.StreamTypeStream
-    let streamResp = Stream (TL.fromStrict sink) (fromIntegral rFac)
+    let streamResp = Stream sink (fromIntegral rFac)
         -- FIXME: The value query returned should have been fully assigned
-        queryResp = def {queryId = TL.fromStrict tName}
+        queryResp = def { queryId = tName }
     returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
 
 --------------------------------------------------------------------------------
@@ -104,8 +101,8 @@ executeQueryHandler ::
   ServerRequest 'Normal CommandQuery CommandQueryResponse ->
   IO (ServerResponse 'Normal CommandQueryResponse)
 executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata CommandQuery {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Query Request: " <> Log.buildString (TL.unpack commandQueryStmtText)
-  plan' <- streamCodegen (TL.toStrict commandQueryStmtText)
+  Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
+  plan' <- streamCodegen commandQueryStmtText
   case plan' of
     SelectPlan {} -> returnErrResp StatusInternal "inconsistent method called"
     -- execute plans that can be executed with this method
@@ -121,7 +118,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
         >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
         >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
-      createConnector sc (TL.toStrict commandQueryStmtText) >> returnCommandQueryEmptyResp
+      createConnector sc commandQueryStmtText >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
       queries   <- P.getQueries zkHandle
       condNameM <- getGrpByFieldName queries rSelectViewFrom
@@ -227,8 +224,8 @@ executePushQueryHandler ::
 executePushQueryHandler
   ServerContext {..}
   (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultStreamExceptionHandle $ do
-    Log.debug $ "Receive Push Query Request: " <> Log.buildString (TL.unpack commandPushQueryQueryText)
-    plan' <- streamCodegen (TL.toStrict commandPushQueryQueryText)
+    Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
+    plan' <- streamCodegen commandPushQueryQueryText
     case plan' of
       SelectPlan sources sink taskBuilder -> do
         exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
@@ -247,7 +244,7 @@ executePushQueryHandler
             (qid, _) <-
               P.createInsertPersistentQuery
                 (getTaskName taskBuilder)
-                (TL.toStrict commandPushQueryQueryText)
+                commandPushQueryQueryText
                 (P.PlainQuery $ textToCBytes <$> sources)
                 serverID
                 zkHandle
@@ -363,10 +360,10 @@ diffTimeToScientific = flip scientific (-9) . Time.diffTimeToPicoseconds
 hstreamQueryToQuery :: P.PersistentQuery -> Query
 hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _ _) =
   Query
-  { queryId = cBytesToLazyText queryId
-  , queryStatus = getPBStatus status
+  { queryId          = cBytesToText queryId
+  , queryStatus      = getPBStatus status
   , queryCreatedTime = createdTime
-  , queryQueryText = TL.fromStrict sqlStatement
+  , queryQueryText   = sqlStatement
   }
 
 createQueryHandler
@@ -375,12 +372,12 @@ createQueryHandler
   -> IO (ServerResponse 'Normal Query)
 createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create Query Request."
-    <> "Query ID: " <> Log.buildString (TL.unpack createQueryRequestId)
-    <> "Query Command: " <> Log.buildString (TL.unpack createQueryRequestQueryText)
-  plan <- HSC.streamCodegen (TL.toStrict createQueryRequestQueryText)
+    <> "Query ID: "      <> Log.buildText createQueryRequestId
+    <> "Query Command: " <> Log.buildText createQueryRequestQueryText
+  plan <- HSC.streamCodegen createQueryRequestQueryText
   case plan of
     HSC.SelectPlan sources sink taskBuilder -> do
-      let taskBuilder' = taskBuilderWithName taskBuilder $ T.pack (TL.unpack createQueryRequestId)
+      let taskBuilder' = taskBuilderWithName taskBuilder createQueryRequestId
       exists <- mapM (HS.doesStreamExist scLDClient . HCH.transToStreamName) sources
       if (not . and) exists
       then do
@@ -399,10 +396,10 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
         subscribeToStream sc sink Latest
         returnResp $
           Query
-          { queryId = cBytesToLazyText qid
-          , queryStatus = getPBStatus Running
+          { queryId          = cBytesToText qid
+          , queryStatus      = getPBStatus Running
           , queryCreatedTime = timestamp
-          , queryQueryText = createQueryRequestQueryText
+          , queryQueryText   = createQueryRequestQueryText
           }
     _ -> do
       Log.fatal "Push Query: Inconsistent Method Called"
@@ -416,7 +413,7 @@ listQueriesHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
   Log.debug "Receive List Query Request"
   queries <- P.getQueries zkHandle
   let records = map hstreamQueryToQuery queries
-  let resp = ListQueriesResponse . V.fromList $ records
+  let resp    = ListQueriesResponse . V.fromList $ records
   returnResp resp
 
 getQueryHandler
@@ -425,10 +422,10 @@ getQueryHandler
   -> IO (ServerResponse 'Normal Query)
 getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest{..}) = do
   Log.debug $ "Receive Get Query Request. "
-    <> "Query ID: " <> Log.buildString (TL.unpack getQueryRequestId)
+    <> "Query ID: " <> Log.buildText getQueryRequestId
   query <- do
     queries <- P.getQueries zkHandle
-    return $ find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == getQueryRequestId) queries
+    return $ find (\P.PersistentQuery{..} -> cBytesToText queryId == getQueryRequestId) queries
   case query of
     Just q -> returnResp $ hstreamQueryToQuery q
     _      -> returnErrResp StatusInternal "Query does not exist"
@@ -443,14 +440,14 @@ terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata Term
   qids <-
     if terminateQueriesRequestAll
       then HM.keys <$> readMVar runningQueries
-      else return . V.toList $ lazyTextToCBytes <$> terminateQueriesRequestQueryId
+      else return . V.toList $ textToCBytes <$> terminateQueriesRequestQueryId
   terminatedQids <- handleQueryTerminate sc (HSC.ManyQueries qids)
   if length terminatedQids < length qids
     then do
       Log.warning $ "Following queries cannot be terminated: "
         <> Log.buildString (show $ qids \\ terminatedQids)
       returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
-    else returnResp $ TerminateQueriesResponse (V.fromList $ cBytesToLazyText <$> terminatedQids)
+    else returnResp $ TerminateQueriesResponse (V.fromList $ cBytesToText <$> terminatedQids)
 
 deleteQueryHandler
   :: ServerContext
@@ -459,8 +456,8 @@ deleteQueryHandler
 deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) =
   defaultExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
-      <> "Query ID: " <> Log.buildString (TL.unpack deleteQueryRequestId)
-    P.removeQuery (lazyTextToCBytes deleteQueryRequestId) zkHandle
+      <> "Query ID: " <> Log.buildText deleteQueryRequestId
+    P.removeQuery (textToCBytes deleteQueryRequestId) zkHandle
     returnResp Empty
 
 -- FIXME: Incorrect implementation!

@@ -21,7 +21,6 @@ import           Data.Int                         (Int64)
 import qualified Data.Map.Strict                  as Map
 import           Data.Swagger                     (ToSchema)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Generated
@@ -59,10 +58,10 @@ type QueriesAPI
 
 queryToQueryBO :: Query -> QueryBO
 queryToQueryBO Query{..} = QueryBO
-  { id          = TL.toStrict queryId
+  { id          = queryId
   , status      = Just (TaskStatus queryStatus)
   , createdTime = Just queryCreatedTime
-  , queryText   = TL.toStrict queryQueryText
+  , queryText   = queryQueryText
   }
 
 -- FIXME: This is broken
@@ -70,8 +69,8 @@ createQueryHandler :: Client -> QueryBO -> Handler QueryBO
 createQueryHandler hClient (QueryBO qid _ _ queryText) = liftIO $ do
   HStreamApi{..} <- hstreamApiClient hClient
   let createQueryRequest = def
-        { createQueryRequestId = TL.fromStrict qid
-        , createQueryRequestQueryText = TL.fromStrict queryText
+        { createQueryRequestId        = qid
+        , createQueryRequestQueryText = queryText
         }
   resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
   case resp of
@@ -96,7 +95,7 @@ deleteQueryHandler hClient qid = do
              <> "Query ID: " <> Log.buildString qid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiDeleteQuery . mkClientNormalRequest $ def
-      { deleteQueryRequestId = TL.pack qid }
+      { deleteQueryRequestId = T.pack qid }
   void $ getServerResp' resp
 
 getQueryHandler :: Client -> String -> Handler QueryBO
@@ -106,7 +105,7 @@ getQueryHandler hClient qid = do
              <> "Query ID: " <> Log.buildString qid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiGetQuery . mkClientNormalRequest $ def
-      { getQueryRequestId = TL.pack qid }
+      { getQueryRequestId = T.pack qid }
   queryToQueryBO <$> getServerResp' resp
 
 restartQueryHandler :: Client -> String -> Handler ()
@@ -116,7 +115,7 @@ restartQueryHandler hClient qid = do
              <> "Query ID: " <> Log.buildString qid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiRestartQuery . mkClientNormalRequest $ def
-      { restartQueryRequestId = TL.pack qid }
+      { restartQueryRequestId = T.pack qid }
   void $ getServerResp' resp
 
 cancelQueryHandler :: Client -> String -> Handler ()
@@ -126,7 +125,7 @@ cancelQueryHandler hClient qid = do
             <> "Query ID: " <> Log.buildString qid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiTerminateQueries . mkClientNormalRequest $ def
-      { terminateQueriesRequestQueryId = V.singleton $ TL.pack qid
+      { terminateQueriesRequestQueryId = V.singleton $ T.pack qid
       , terminateQueriesRequestAll     = False
       }
   void $ getServerResp' resp

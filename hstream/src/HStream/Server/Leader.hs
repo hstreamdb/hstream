@@ -149,7 +149,7 @@ restartSubscription ctx@ServerContext{..} subID = do
       addr <- getServerInternalAddr zkHandle (serverNodeId node)
       withGRPCClient (mkGRPCClientConf addr) $ \client -> do
         HStreamInternal{..} <- hstreamInternalClient client
-        let req = TakeSubscriptionRequest (TL.pack subID)
+        let req = TakeSubscriptionRequest (T.pack subID)
         hstreamInternalTakeSubscription (mkClientNormalRequest req) >>= \case
           (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
             return True
@@ -182,7 +182,7 @@ restartProducer ctx@ServerContext{..} ProducerContext{..} = do
       withGRPCClient (mkGRPCClientConf addr) $ \client -> do
         Log.debug . Log.buildString $ "Sending producer to " <> show node
         HStreamInternal{..} <- hstreamInternalClient client
-        let req = TakeStreamRequest (TL.fromStrict _prdctxStream)
+        let req = TakeStreamRequest _prdctxStream
         hstreamInternalTakeStream (mkClientNormalRequest req) >>= \case
           (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
             return True

@@ -20,7 +20,6 @@ import           Data.Aeson                   (FromJSON, ToJSON)
 import           Data.Int                     (Int64)
 import           Data.Swagger                 (ToSchema)
 import qualified Data.Text                    as T
-import qualified Data.Text.Lazy               as TL
 import qualified Data.Vector                  as V
 import           GHC.Generics                 (Generic)
 import           Network.GRPC.LowLevel.Client (Client)
@@ -56,10 +55,10 @@ type ConnectorsAPI
 
 connectorToConnectorBO :: Connector -> ConnectorBO
 connectorToConnectorBO Connector{..} = ConnectorBO
-  { id          = Just $ TL.toStrict connectorId
+  { id          = Just connectorId
   , status      = Just $ TaskStatus connectorStatus
   , createdTime = Just connectorCreatedTime
-  , sql         = TL.toStrict connectorSql
+  , sql         = connectorSql
   }
 
 createConnectorHandler :: Client -> SQLCmd -> Handler ConnectorBO
@@ -69,7 +68,7 @@ createConnectorHandler hClient SQLCmd{..} = do
              <> "SQL statement: " <> Log.buildText sqlCmd
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiCreateSinkConnector . mkClientNormalRequest $ def
-      { createSinkConnectorRequestSql = TL.fromStrict sqlCmd }
+      { createSinkConnectorRequestSql = sqlCmd }
   connectorToConnectorBO <$> getServerResp' resp
 
 listConnectorsHandler :: Client -> Handler [ConnectorBO]
@@ -88,7 +87,7 @@ deleteConnectorHandler hClient cid = do
              <> "SQL statement: " <> Log.buildString cid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiDeleteConnector . mkClientNormalRequest $ def
-      { deleteConnectorRequestId = TL.pack cid }
+      { deleteConnectorRequestId = T.pack cid }
   void $ getServerResp' resp
 
 getConnectorHandler :: Client -> String -> Handler ConnectorBO
@@ -98,7 +97,7 @@ getConnectorHandler hClient cid = do
             <> "Connector ID: " <> Log.buildString cid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiGetConnector . mkClientNormalRequest $ def
-      { getConnectorRequestId = TL.pack cid }
+      { getConnectorRequestId = T.pack cid }
   connectorToConnectorBO <$> getServerResp' resp
 
 restartConnectorHandler :: Client -> String -> Handler ()
@@ -108,7 +107,7 @@ restartConnectorHandler hClient cid = do
             <> "Connector ID: " <> Log.buildString cid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiRestartConnector . mkClientNormalRequest $ def
-      { restartConnectorRequestId = TL.pack cid }
+      { restartConnectorRequestId = T.pack cid }
   void $ getServerResp' resp
 
 terminateConnectorHandler :: Client -> String -> Handler ()
@@ -118,7 +117,7 @@ terminateConnectorHandler hClient cid = do
             <> "Connector ID: " <> Log.buildString cid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiTerminateConnector . mkClientNormalRequest $ def
-      { terminateConnectorRequestConnectorId = TL.pack cid }
+      { terminateConnectorRequestConnectorId = T.pack cid }
   void $ getServerResp' resp
 
 connectorServer :: Client -> Server ConnectorsAPI

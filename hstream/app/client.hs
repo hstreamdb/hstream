@@ -18,7 +18,6 @@ import           Data.Char                        (toUpper)
 import           Data.Functor                     ((<&>))
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
@@ -136,9 +135,9 @@ commandExec ctx@ClientContext{..} api xs = case words xs of
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
   xs'@(_:_)   -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     (parseAndRefine . T.pack) xs >>= \case
-      RQSelect{} -> sqlStreamAction api (TL.pack xs)
+      RQSelect{} -> sqlStreamAction api (T.pack xs)
       RQCreate (RCreateAs stream _ rOptions) ->
-        createStreamBySelect api (TL.fromStrict stream) (rRepFactor rOptions) xs'
+        createStreamBySelect api stream (rRepFactor rOptions) xs'
         >>= printResult
       RQSelectStats (RSelectStats colNames tableKind streamNames) ->
         sqlStatsAction api (colNames, tableKind, streamNames)
@@ -153,11 +152,11 @@ commandExec ctx@ClientContext{..} api xs = case words xs of
           -> dropAction api checkIfExists dropObj >>= printResult
         InsertPlan sName insertType payload
           -> insertIntoStream ctx sName insertType payload >>= printResult
-        _ -> sqlAction api (TL.pack xs)
+        _ -> sqlAction api (T.pack xs)
 
   [] -> return ()
 
-sqlStreamAction :: HStreamClientApi -> TL.Text -> IO ()
+sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ClientReaderResponse _meta _status _details <-
@@ -174,7 +173,7 @@ sqlStreamAction HStreamApi{..} sql = do
           putStr $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
           action call _meta recv
 
-sqlAction :: HStreamClientApi -> TL.Text -> IO ()
+sqlAction :: HStreamClientApi -> T.Text -> IO ()
 sqlAction HStreamApi{..} sql = do
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])

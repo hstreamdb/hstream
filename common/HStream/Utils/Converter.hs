@@ -30,7 +30,7 @@ module HStream.Utils.Converter
   ) where
 
 import qualified Data.Aeson             as Aeson
-import           Data.Bifunctor         (Bifunctor (bimap))
+import           Data.Bifunctor         (Bifunctor (second))
 import qualified Data.ByteString.Lazy   as BL
 import qualified Data.HashMap.Strict    as HM
 import qualified Data.Map               as M
@@ -55,19 +55,19 @@ pattern V x = PB.Value (Just x)
 jsonObjectToStruct :: Aeson.Object -> PB.Struct
 jsonObjectToStruct object = PB.Struct kvmap
   where
-    kvmap = M.fromList $ map (\(k,v) -> (TL.fromStrict k, Just (jsonValueToValue v))) (HM.toList object)
+    kvmap = M.fromList $ map (\(k,v) -> (k, Just (jsonValueToValue v))) (HM.toList object)
 
 jsonValueToValue :: Aeson.Value -> PB.Value
 jsonValueToValue (Aeson.Object object) = V $ PB.ValueKindStructValue (jsonObjectToStruct object)
 jsonValueToValue (Aeson.Array  array)  = V $ PB.ValueKindListValue   (PB.ListValue $ jsonValueToValue <$> array)
-jsonValueToValue (Aeson.String text)   = V $ PB.ValueKindStringValue (TL.fromStrict text)
+jsonValueToValue (Aeson.String text)   = V $ PB.ValueKindStringValue text
 jsonValueToValue (Aeson.Number sci)    = V $ PB.ValueKindNumberValue (toRealFloat sci)
 jsonValueToValue (Aeson.Bool   bool)   = V $ PB.ValueKindBoolValue   bool
 jsonValueToValue Aeson.Null            = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
 
 structToJsonObject :: PB.Struct -> Aeson.Object
 structToJsonObject (PB.Struct kvmap) = HM.fromList $
-  bimap TL.toStrict convertMaybeValue <$> kvTuples
+  second convertMaybeValue <$> kvTuples
   where
     kvTuples = Map.toList kvmap
     convertMaybeValue Nothing  = error "Nothing encountered"
@@ -76,7 +76,7 @@ structToJsonObject (PB.Struct kvmap) = HM.fromList $
 valueToJsonValue :: PB.Value -> Aeson.Value
 valueToJsonValue (V (PB.ValueKindStructValue struct))           = Aeson.Object (structToJsonObject struct)
 valueToJsonValue (V (PB.ValueKindListValue   (PB.ListValue list))) = Aeson.Array  (valueToJsonValue <$> list)
-valueToJsonValue (V (PB.ValueKindStringValue text))             = Aeson.String (TL.toStrict text)
+valueToJsonValue (V (PB.ValueKindStringValue text))             = Aeson.String text
 valueToJsonValue (V (PB.ValueKindNumberValue num))              = Aeson.Number (read . show $ num)
 valueToJsonValue (V (PB.ValueKindBoolValue   bool))             = Aeson.Bool   bool
 valueToJsonValue (V (PB.ValueKindNullValue   _))                = Aeson.Null
@@ -87,12 +87,12 @@ valueToJsonValue (PB.Value (Just _)) = error "impossible happened"
 zJsonObjectToStruct :: ZObject -> PB.Struct
 zJsonObjectToStruct object = PB.Struct kvmap
  where
-   kvmap = M.fromList $ map (\(k,v) -> (TL.pack $ ZT.unpack k, Just (zJsonValueToValue v))) (ZV.unpack object)
+   kvmap = M.fromList $ map (\(k,v) -> (T.pack $ ZT.unpack k, Just (zJsonValueToValue v))) (ZV.unpack object)
 
 zJsonValueToValue :: Z.Value -> PB.Value
 zJsonValueToValue (Z.Object object) = V $ PB.ValueKindStructValue (zJsonObjectToStruct object)
 zJsonValueToValue (Z.Array  array)  = V $ PB.ValueKindListValue   (PB.ListValue $ V.fromList $ zJsonValueToValue <$> ZV.unpack array)
-zJsonValueToValue (Z.String text)   = V $ PB.ValueKindStringValue (TL.pack $ ZT.unpack text)
+zJsonValueToValue (Z.String text)   = V $ PB.ValueKindStringValue (T.pack $ ZT.unpack text)
 zJsonValueToValue (Z.Number sci)    = V $ PB.ValueKindNumberValue (toRealFloat sci)
 zJsonValueToValue (Z.Bool   bool)   = V $ PB.ValueKindBoolValue   bool
 zJsonValueToValue Z.Null            = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
@@ -100,7 +100,7 @@ zJsonValueToValue Z.Null            = V $ PB.ValueKindNullValue   (Enumerated $ 
 type ZObject = ZV.Vector (ZT.Text, Z.Value)
 structToZJsonObject :: PB.Struct -> ZObject
 structToZJsonObject (PB.Struct kvmap) = ZV.pack $
-  (\(text,value) -> (ZT.pack $ TL.unpack text, convertMaybeValue value)) <$> kvTuples
+  (\(text,value) -> (ZT.pack $ T.unpack text, convertMaybeValue value)) <$> kvTuples
   where
     kvTuples = Map.toList kvmap
     convertMaybeValue Nothing  = error "Nothing encountered"
@@ -109,7 +109,7 @@ structToZJsonObject (PB.Struct kvmap) = ZV.pack $
 valueToZJsonValue :: PB.Value -> Z.Value
 valueToZJsonValue (V (PB.ValueKindStructValue struct))           = Z.Object (structToZJsonObject struct)
 valueToZJsonValue (V (PB.ValueKindListValue   (PB.ListValue list))) = Z.Array  (ZV.pack $ V.toList $ valueToZJsonValue <$> list)
-valueToZJsonValue (V (PB.ValueKindStringValue text))             = Z.String (ZT.pack $ TL.unpack text)
+valueToZJsonValue (V (PB.ValueKindStringValue text))             = Z.String (ZT.pack $ T.unpack text)
 valueToZJsonValue (V (PB.ValueKindNumberValue num))              = Z.Number (read . show $ num)
 valueToZJsonValue (V (PB.ValueKindBoolValue   bool))             = Z.Bool   bool
 valueToZJsonValue (V (PB.ValueKindNullValue   _))                = Z.Null
@@ -124,7 +124,7 @@ cBytesToLazyText :: ZCB.CBytes -> TL.Text
 cBytesToLazyText = TL.fromStrict . cBytesToText
 
 cBytesToValue :: ZCB.CBytes -> PB.Value
-cBytesToValue = PB.Value . Just . PB.ValueKindStringValue . TL.fromStrict . cBytesToText
+cBytesToValue = PB.Value . Just . PB.ValueKindStringValue . cBytesToText
 
 textToCBytes :: T.Text -> ZCB.CBytes
 textToCBytes = ZCB.pack . T.unpack
@@ -146,14 +146,14 @@ cBytesToLazyByteString = BL.fromStrict . ZF.toByteString . ZCB.toBytes
 lazyByteStringToCBytes :: BL.ByteString -> ZCB.CBytes
 lazyByteStringToCBytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
 
-listToStruct :: TL.Text -> [PB.Value] -> PB.Struct
+listToStruct :: T.Text -> [PB.Value] -> PB.Struct
 listToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindListValue . PB.ListValue . V.fromList
 
-structToStruct :: TL.Text -> PB.Struct -> PB.Struct
+structToStruct :: T.Text -> PB.Struct -> PB.Struct
 structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindStructValue
 
 stringToValue :: String -> PB.Value
-stringToValue = PB.Value . Just . PB.ValueKindStringValue . TL.pack
+stringToValue = PB.Value . Just . PB.ValueKindStringValue . T.pack
 
 lazyByteStringToBytes :: BL.ByteString -> ZV.Bytes
 lazyByteStringToBytes = ZV.pack . BL.unpack

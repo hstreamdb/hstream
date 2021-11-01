@@ -15,6 +15,8 @@ packages:
   external/hsthrift/common/mangle/mangle.cabal
   external/hsthrift/lib/thrift-lib.cabal
   external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
+  external/proto3-wire/proto3-wire.cabal
+  external/proto3-suite/proto3-suite.cabal
 
 -- https://github.com/haskell/cabal/issues/4271
 package thrift-lib
@@ -39,10 +41,14 @@ package grpc-haskell
 package grpc-haskell-core
   tests: false
 
+package proto3-wire
+  tests: false
+
+package proto3-suite
+  tests: false
+
 constraints:
-    Z-IO == 0.8.1.1
-  , Z-Data == 0.8.8.0
-  , zoovisitor == 0.1.4.0
-  , proto3-suite == 0.4.2
-  , proto3-wire == 1.2.2
+    Z-IO          == 0.8.1.1
+  , Z-Data        == 0.8.8.0
+  , zoovisitor    == 0.1.4.0
   , blaze-textual == 0.2.1.0

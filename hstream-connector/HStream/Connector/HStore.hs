@@ -21,7 +21,7 @@ import           Data.Int                     (Int64)
 import qualified Data.Map.Strict              as M
 import qualified Data.Map.Strict              as Map
 import           Data.Maybe                   (fromJust, isJust)
-import qualified Data.Text.Lazy               as TL
+import qualified Data.Text                    as T
 import           Proto3.Suite                 (Enumerated (..))
 import           Z.Data.Vector                (Bytes)
 import           Z.Foreign                    (toByteString)
@@ -155,7 +155,7 @@ writeRecordToHStore ldclient streamType SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
   logId <- S.getUnderlyingLogId ldclient streamId
   timestamp <- getProtoTimestamp
-  let header = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+  let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
   let payload = encodeRecord $ buildRecord header (BL.toStrict snkValue)
   _ <- S.appendBS ldclient logId payload Nothing
   return ()

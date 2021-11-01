@@ -27,7 +27,7 @@ grpc-cpp:
 	)
 
 grpc-deps:
-	(cd ~ && command -v $(PROTO_COMPILE_HS) || cabal install proto3-suite --constraint 'proto3-suite == 0.4.1')
+	(command -v $(PROTO_COMPILE_HS) || (cd external/proto3-suite && cabal install proto3-suite))
 
 sql:: sql-deps
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)

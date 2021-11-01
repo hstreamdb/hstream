@@ -9,7 +9,7 @@ module HStream.Server.InternalHandler where
 
 import           Control.Concurrent
 import qualified Data.Map                         as Map
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
@@ -54,10 +54,10 @@ takeSubscription :: ServerContext
                  -> ServerRequest 'Normal TakeSubscriptionRequest Empty
                  -> IO (ServerResponse 'Normal Empty)
 takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionRequest subId))= defaultExceptionHandle $ do
-  Log.debug . Log.buildString $ "I took the subscription " <> TL.unpack subId
+  Log.debug . Log.buildString $ "I took the subscription " <> T.unpack subId
   err_m <- modifyMVar subscriptionCtx
     (\subctxs -> do
-        case Map.lookup (TL.unpack subId) subctxs of
+        case Map.lookup (T.unpack subId) subctxs of
           Nothing -> return (subctxs, Nothing)
           Just subctxMVar -> do
             modifyMVar_ subctxMVar
@@ -66,10 +66,10 @@ takeSubscription ServerContext{..} (ServerNormalRequest _ (TakeSubscriptionReque
     )
   case err_m of
     Nothing -> do
-      P.getObject (TL.toStrict subId) zkHandle >>= \case
+      P.getObject subId zkHandle >>= \case
         Nothing -> returnErrResp StatusInternal "Trying to recover a deleted subscription"
         Just subctx -> do
-          P.storeObject (TL.toStrict subId)
+          P.storeObject subId
             (subctx { _subctxNode = serverID }) zkHandle
           returnResp Empty
     Just err -> returnErrResp StatusInternal err
@@ -79,6 +79,6 @@ takeStream :: ServerContext
            -> IO (ServerResponse 'Normal Empty)
 takeStream ServerContext{..} (ServerNormalRequest _ (TakeStreamRequest stream)) = defaultExceptionHandle $ do
   node <- getServerNode zkHandle serverID
-  Log.debug . Log.buildString $ "I took the stream " <> TL.unpack stream
-  P.storeObject (TL.toStrict stream) (ProducerContext (TL.toStrict stream) node) zkHandle
+  Log.debug . Log.buildString $ "I took the stream " <> T.unpack stream
+  P.storeObject stream (ProducerContext stream node) zkHandle
   returnResp Empty

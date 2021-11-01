@@ -11,7 +11,7 @@ import qualified Data.ByteString.Lazy      as BL
 import           Data.Int                  (Int64)
 import           Data.Map.Strict           (Map)
 import           Data.Maybe                (fromJust)
-import           Data.Text.Lazy            (Text)
+import           Data.Text                 (Text)
 import qualified Proto3.Suite              as PT
 import           Z.Data.Vector             (Bytes)
 import           Z.Foreign                 (fromByteString, toByteString)
@@ -27,10 +27,10 @@ buildRecordHeader
   -> HStreamRecordHeader
 buildRecordHeader flag mp timestamp key =
   HStreamRecordHeader
-    { hstreamRecordHeaderFlag = PT.Enumerated (Right flag)
-    , hstreamRecordHeaderAttributes = mp
+    { hstreamRecordHeaderFlag        = PT.Enumerated (Right flag)
+    , hstreamRecordHeaderAttributes  = mp
     , hstreamRecordHeaderPublishTime = Just timestamp
-    , hstreamRecordHeaderKey = key
+    , hstreamRecordHeaderKey         = key
     }
 {-# INLINE buildRecordHeader #-}
 

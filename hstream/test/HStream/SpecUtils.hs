@@ -22,6 +22,7 @@ import           Data.IORef
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
 import           Data.Text                        (Text)
+import qualified Data.Text                        as T
 import qualified Data.Text                        as Text
 import qualified Data.Text.Encoding               as Text
 import qualified Data.Text.Lazy                   as TL
@@ -86,15 +87,15 @@ mysqlConnectInfo = unsafePerformIO $ do
                              }
 {-# NOINLINE mysqlConnectInfo #-}
 
-createMySqlConnectorSql :: TL.Text -> TL.Text -> TL.Text
+createMySqlConnectorSql :: T.Text -> T.Text -> T.Text
 createMySqlConnectorSql name stream
   = "CREATE SINK CONNECTOR " <> name <> " WITH (type=mysql, "
- <> "host=" <> TL.pack (show $ MySQL.ciHost mysqlConnectInfo) <> ","
- <> "port=" <> TL.pack (show $ MySQL.ciPort mysqlConnectInfo) <> ","
- <> "username=" <> TL.pack (show $ MySQL.ciUser mysqlConnectInfo) <> ","
- <> "password=" <> TL.pack (show $ MySQL.ciPassword mysqlConnectInfo) <> ","
- <> "database=" <> TL.pack (show $ MySQL.ciDatabase mysqlConnectInfo) <> ","
- <> "stream=" <> stream
+ <> "host="     <> T.pack (show $ MySQL.ciHost     mysqlConnectInfo) <> ","
+ <> "port="     <> T.pack (show $ MySQL.ciPort     mysqlConnectInfo) <> ","
+ <> "username=" <> T.pack (show $ MySQL.ciUser     mysqlConnectInfo) <> ","
+ <> "password=" <> T.pack (show $ MySQL.ciPassword mysqlConnectInfo) <> ","
+ <> "database=" <> T.pack (show $ MySQL.ciDatabase mysqlConnectInfo) <> ","
+ <> "stream="   <> stream
  <> ");"
 
 clickHouseConnectInfo :: ClickHouse.ConnParams
@@ -109,15 +110,15 @@ clickHouseConnectInfo = unsafePerformIO $ do
                                  }
 {-# NOINLINE clickHouseConnectInfo #-}
 
-createClickHouseConnectorSql :: TL.Text -> TL.Text -> TL.Text
+createClickHouseConnectorSql :: T.Text -> T.Text -> T.Text
 createClickHouseConnectorSql name stream
   = "CREATE SINK CONNECTOR " <> name <> " WITH (type=clickhouse, "
- <> "host=" <> TL.pack (show $ ClickHouse.host' clickHouseConnectInfo) <> ","
- <> "port=" <> TL.fromStrict (Text.decodeUtf8 $ ClickHouse.port' clickHouseConnectInfo) <> ","
- <> "username=" <> TL.pack (show $ ClickHouse.username' clickHouseConnectInfo) <> ","
- <> "password=" <> TL.pack (show $ ClickHouse.password' clickHouseConnectInfo) <> ","
- <> "database=" <> TL.pack (show $ ClickHouse.database' clickHouseConnectInfo) <> ","
- <> "stream=" <> stream
+ <> "host="     <> T.pack (show $ ClickHouse.host' clickHouseConnectInfo)     <> ","
+ <> "port="     <> (Text.decodeUtf8 $ ClickHouse.port' clickHouseConnectInfo) <> ","
+ <> "username=" <> T.pack (show $ ClickHouse.username' clickHouseConnectInfo) <> ","
+ <> "password=" <> T.pack (show $ ClickHouse.password' clickHouseConnectInfo) <> ","
+ <> "database=" <> T.pack (show $ ClickHouse.database' clickHouseConnectInfo) <> ","
+ <> "stream="   <> stream
  <> ");"
 
 newRandomText :: Int -> IO Text
@@ -152,15 +153,15 @@ provideRunTest
 provideRunTest setup clean runTest api =
   bracket (setup api) (clean api) (runTest . (api,))
 
-mkQueryReqSimple :: TL.Text -> ClientRequest 'Normal CommandQuery a
+mkQueryReqSimple :: T.Text -> ClientRequest 'Normal CommandQuery a
 mkQueryReqSimple sql =
   let req = CommandQuery{ commandQueryStmtText = sql }
    in ClientNormalRequest req 5 (MetadataMap Map.empty)
 
-runQuerySimple :: HStreamClientApi -> TL.Text -> IO (ClientResult 'Normal CommandQueryResponse)
+runQuerySimple :: HStreamClientApi -> T.Text -> IO (ClientResult 'Normal CommandQueryResponse)
 runQuerySimple HStreamApi{..} sql = hstreamApiExecuteQuery $ mkQueryReqSimple sql
 
-runQuerySimple_ :: HStreamClientApi -> TL.Text -> IO ()
+runQuerySimple_ :: HStreamClientApi -> T.Text -> IO ()
 runQuerySimple_ HStreamApi{..} sql = do
   hstreamApiExecuteQuery (mkQueryReqSimple sql) `grpcShouldReturn` querySuccessResp
 
@@ -177,36 +178,36 @@ grpcShouldThrow
   => IO (ClientResult 'Normal a) -> Selector e -> Expectation
 action `grpcShouldThrow` p = (getServerResp =<< action) `shouldThrow` p
 
-withRandomStreamName :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
+withRandomStreamName :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi -> IO ()
 withRandomStreamName = provideRunTest setup clean
   where
-    setup _api = TL.fromStrict <$> newRandomText 20
+    setup _api = newRandomText 20
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
 
 withRandomStreamNames
   :: Int
-  -> ActionWith (HStreamClientApi, [TL.Text])
+  -> ActionWith (HStreamClientApi, [T.Text])
   -> HStreamClientApi
   -> IO ()
 withRandomStreamNames n = provideRunTest setup clean
   where
-    setup _api = replicateM n $ TL.fromStrict <$> newRandomText 20
+    setup _api = replicateM n $ newRandomText 20
     clean api names = forM_ names $ \name -> do
       cleanStreamReq api name `shouldReturn` PB.Empty
 
-withRandomStream :: ActionWith (HStreamClientApi, TL.Text) -> HStreamClientApi -> IO ()
+withRandomStream :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi -> IO ()
 withRandomStream = provideRunTest setup clean
   where
-    setup api = do name <- TL.fromStrict <$> newRandomText 20
+    setup api = do name <- newRandomText 20
                    _ <- createStreamReq api (Stream name 1)
                    threadDelay 1000000
                    return name
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
 
-withRandomStreams :: Int -> ActionWith (HStreamClientApi, [TL.Text]) -> HStreamClientApi -> IO ()
+withRandomStreams :: Int -> ActionWith (HStreamClientApi, [T.Text]) -> HStreamClientApi -> IO ()
 withRandomStreams n = provideRunTest setup clean
   where
-    setup api = replicateM n $ do name <- TL.fromStrict <$> newRandomText 20
+    setup api = replicateM n $ do name <- newRandomText 20
                                   _ <- createStreamReq api (Stream name 1)
                                   threadDelay 1000000
                                   return name
@@ -218,14 +219,14 @@ createStreamReq HStreamApi{..} stream =
   let req = ClientNormalRequest stream requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiCreateStream req
 
-cleanStreamReq :: HStreamClientApi -> TL.Text -> IO PB.Empty
+cleanStreamReq :: HStreamClientApi -> T.Text -> IO PB.Empty
 cleanStreamReq HStreamApi{..} streamName =
-  let delReq = def { deleteStreamRequestStreamName = streamName
+  let delReq = def { deleteStreamRequestStreamName     = streamName
                    , deleteStreamRequestIgnoreNonExist = True }
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiDeleteStream req
 
-appendRequest :: HStreamClientApi -> TL.Text -> V.Vector HStreamRecord -> IO AppendResponse
+appendRequest :: HStreamClientApi -> T.Text -> V.Vector HStreamRecord -> IO AppendResponse
 appendRequest HStreamApi{..} streamName records =
   let appReq = AppendRequest streamName records
       req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
@@ -239,7 +240,7 @@ mkStruct = jsonObjectToStruct . HM.fromList
 mkViewResponse :: Struct -> CommandQueryResponse
 mkViewResponse = CommandQueryResponse . V.singleton . structToStruct "SELECTVIEW"
 
-executeCommandQuery :: TL.Text -> IO (Maybe CommandQueryResponse)
+executeCommandQuery :: T.Text -> IO (Maybe CommandQueryResponse)
 executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
@@ -251,7 +252,7 @@ executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do
       putStrLn $ "Client Error: " <> show clientError
       return Nothing
 
-executeCommandQuery' :: TL.Text -> IO CommandQueryResponse
+executeCommandQuery' :: T.Text -> IO CommandQueryResponse
 executeCommandQuery' sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
@@ -262,7 +263,7 @@ executeCommandQuery' sql = withGRPCClient clientConfig $ \client -> do
       error $ "Impossible happened..." <> show _status
     ClientErrorResponse err -> error $ "Server error happened: " <> show err
 
-executeCommandPushQuery :: TL.Text -> IO [Struct]
+executeCommandPushQuery :: T.Text -> IO [Struct]
 executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
@@ -330,15 +331,16 @@ fetchClickHouse source =
 
 --------------------------------------------------------------------------------
 
-runCreateStreamSql :: HStreamClientApi -> TL.Text -> Expectation
+runCreateStreamSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateStreamSql api sql = do
-  CreatePlan sName rFac <- streamCodegen $ TL.toStrict sql
+  CreatePlan sName rFac <- streamCodegen sql
   createStream api sName rFac `grpcShouldReturn`
-    def { streamStreamName = TL.fromStrict sName,
-          streamReplicationFactor = fromIntegral rFac}
+    def { streamStreamName        = sName
+        , streamReplicationFactor = fromIntegral rFac
+        }
 
-runInsertSql :: HStreamClientApi -> TL.Text -> Expectation
-runInsertSql api sql = do
+runInsertSql :: HStreamClientApi -> T.Text -> Expectation
+runInsertSql _api sql = do
   let (Host host) = clientServerHost clientConfig
       (Port port) = clientServerPort clientConfig
   let addr = ipv4 (CB.pack . BSC.unpack $ host) (fromIntegral port)
@@ -351,29 +353,29 @@ runInsertSql api sql = do
             , producers        = producers_
             , clientId         = "client_01"
             }
-  InsertPlan sName insertType payload <- streamCodegen $ TL.toStrict sql
+  InsertPlan sName insertType payload <- streamCodegen sql
   resp <- getServerResp =<< insertIntoStream ctx sName insertType payload
-  appendResponseStreamName resp `shouldBe` TL.fromStrict sName
+  appendResponseStreamName resp `shouldBe` sName
 
-runCreateWithSelectSql :: HStreamClientApi -> TL.Text -> Expectation
+runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateWithSelectSql api sql = do
-  RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine $ TL.toStrict sql
-  resp <- getServerResp =<< createStreamBySelect api (TL.fromStrict stream) (rRepFactor rOptions) (words $ TL.unpack sql)
+  RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine sql
+  resp <- getServerResp =<< createStreamBySelect api stream (rRepFactor rOptions) (words $ T.unpack sql)
   createQueryStreamResponseQueryStream resp `shouldBe`
-    Just def { streamStreamName = TL.fromStrict stream
+    Just def { streamStreamName        = stream
              , streamReplicationFactor = fromIntegral $ rRepFactor rOptions}
 
-runShowStreamsSql :: HStreamClientApi -> TL.Text -> IO String
+runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
-  ShowPlan SStreams <- streamCodegen $ TL.toStrict sql
+  ShowPlan SStreams <- streamCodegen sql
   formatResult 0 <$> listStreams api
 
-runShowViewsSql :: HStreamClientApi -> TL.Text -> IO String
+runShowViewsSql :: HStreamClientApi -> T.Text -> IO String
 runShowViewsSql api sql = do
-  ShowPlan SViews <- streamCodegen $ TL.toStrict sql
+  ShowPlan SViews <- streamCodegen sql
   formatResult 0 <$> listViews api
 
-runDropSql :: HStreamClientApi -> TL.Text -> Expectation
+runDropSql :: HStreamClientApi -> T.Text -> Expectation
 runDropSql api sql = do
-  DropPlan checkIfExists dropObj <- streamCodegen $ TL.toStrict sql
+  DropPlan checkIfExists dropObj <- streamCodegen sql
   dropAction api checkIfExists dropObj `grpcShouldReturn` Empty
