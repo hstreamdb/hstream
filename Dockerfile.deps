@@ -10,10 +10,8 @@ repository $CABAL_MIRROR_NAME \n\
     cabal update
 
 COPY . /hstream
-RUN find /hstream \! -name "*.cabal" \! -name "cabal.project" -type f -print | xargs rm -rf && \
-    find /hstream -empty -type d -delete && \
-    cd /hstream && cabal build --only-dependencies --enable-tests --enable-benchmarks all && \
+RUN cd /hstream && make all && \
+    cabal build --only-dependencies --enable-tests --enable-benchmarks all && \
     rm -rf /hstream
-
 
 # vim: set ft=dockerfile:
