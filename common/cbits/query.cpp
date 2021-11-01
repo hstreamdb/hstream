@@ -1,5 +1,6 @@
 #include "hs_common.h"
 
+#include "cbits/checks.h"
 #include "cbits/query/Query.h"
 #include "clients/cpp/AdminClient.h"
 
@@ -100,6 +101,9 @@ void run_query(QueryBase* ldq, const char* query,
       *results_len = 0;
     }
     *exinfo = NULL;
+  } catch (hstream::common::dbg::ToHsException& e) {
+    *results_len = 0;
+    *exinfo = strdup(e.what());
   } catch (ldquery::LDQueryError& e) {
     *results_len = 0;
     *exinfo = strdup(e.what());

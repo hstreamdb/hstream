@@ -23,8 +23,8 @@ AdminCommandClient::getNodesConfiguration(std::chrono::milliseconds timeout) {
     }
     return nodesConfiguration;
   } else {
-    std::cout << "Run getNodesConfiguration error " << status.error_code()
-              << ": " << status.error_message() << std::endl;
+    ld_error("Run getNodesConfiguration error %d: %s", status.error_code(),
+             status.error_message().c_str());
     return folly::none;
   }
 }
