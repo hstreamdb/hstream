@@ -48,7 +48,7 @@ module HStream.Server.Persistence.Utils
 -- Path
 
 import           Control.Exception                    (Exception, catch, handle,
-                                                       throw)
+                                                       throw, try)
 import           Control.Monad                        (void)
 import           Data.Aeson                           (FromJSON, ToJSON)
 import qualified Data.Aeson                           as Aeson
@@ -206,7 +206,10 @@ decodeDataCompletion' (DataCompletion Nothing _) = throw FailedToDecode
 
 decodeZNodeValue :: FromJSON a => ZHandle -> CBytes -> IO (Maybe a)
 decodeZNodeValue zk nodePath = do
-  zooGet zk nodePath <&> decodeDataCompletion
+  e_a <- try $ zooGet zk nodePath
+  case e_a of
+    Left (_ :: ZooException) -> return Nothing
+    Right a                  -> return $ decodeDataCompletion a
 
 decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
 decodeZNodeValue' zk nodePath = do

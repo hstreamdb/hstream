@@ -14,8 +14,10 @@ module HStream.Server.Handler.Cluster
   , lookupSubscriptionHandler
   ) where
 
+import           Control.Concurrent
 import           Data.Functor
 import qualified Data.Map.Strict                  as Map
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           ZooKeeper.Types
@@ -68,14 +70,31 @@ lookupStreamHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupStre
 lookupSubscriptionHandler :: ServerContext
                     -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
                     -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
-lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
+lookupSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
   subCtxs <- P.listObjects zkHandle
   case Map.lookup subId subCtxs of
-    Nothing -> returnErrResp StatusInternal "No subscription found"
+    Nothing -> do
+      P.checkIfExist @ZHandle @'P.SubRep subId zkHandle >>= \case
+        False -> returnErrResp StatusInternal "No subscription found"
+        True  -> do
+          getNodesRanking ctx >>= \case
+            []     -> returnErrResp StatusInternal "No available node for the subscription"
+            node:_ -> do
+              let subCtx = SubscriptionContext { _subctxNode = serverNodeId node }
+              modifyMVar_ subscriptionCtx
+                (\ctxs -> do
+                    newCtxMVar <- newMVar subCtx
+                    return $ Map.insert (T.unpack subId) newCtxMVar ctxs
+                )
+              P.storeObject subId subCtx zkHandle -- sync subctx to zk
+              doResp subId node
     Just SubscriptionContext{..} -> do
       serverNode <- P.getServerNode zkHandle _subctxNode
+      doResp subId serverNode
+  where
+    doResp subscriptionId node = do
       let resp = LookupSubscriptionResponse
-                 { lookupSubscriptionResponseSubscriptionId = subId
-                 , lookupSubscriptionResponseServerNode = Just serverNode
+                 { lookupSubscriptionResponseSubscriptionId = subscriptionId
+                 , lookupSubscriptionResponseServerNode = Just node
                  }
       returnResp resp
