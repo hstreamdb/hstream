@@ -56,12 +56,6 @@ library
     HStream.Utils.RPC
     HStream.Utils.TimeInterval
 
-  autogen-modules:
-    HStream.Server.HStreamApi
-    HStream.Server.HStreamInternal
-    Google.Protobuf.Empty
-    Google.Protobuf.Struct
-
   hs-source-dirs:     . gen-hs
   include-dirs:       . include gen-cpp /usr/local/include
   includes:
@@ -85,12 +79,12 @@ library
   build-depends:
     , aeson
     , attoparsec
-    , base                  >=4.11  && <5
+    , base                  >=4.11 && <5
     , bytestring
     , containers
     , data-default
     , deepseq
-    , ghc-prim              >=0.5   && <1.0
+    , ghc-prim              >=0.5  && <1.0
     , grpc-haskell
     , grpc-haskell-core
     , primitive             ^>=0.7
