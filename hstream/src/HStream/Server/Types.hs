@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module HStream.Server.Types where
 
@@ -87,7 +88,16 @@ instance Bounded RecordId where
 data RecordIdRange = RecordIdRange
   { startRecordId :: RecordId,
     endRecordId   :: RecordId
-  } deriving (Show, Eq)
+  } deriving (Eq)
+
+instance Show RecordIdRange where
+  show RecordIdRange{..} = "{(" <> show (recordIdBatchId startRecordId) <> "," 
+                                <> show (recordIdBatchIndex startRecordId) <> "), "
+                                <> show (recordIdBatchId endRecordId) <> "," 
+                                <> show (recordIdBatchIndex endRecordId) <> ")}"
+
+printAckedRanges :: Map.Map RecordId RecordIdRange -> String
+printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
 

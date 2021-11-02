@@ -578,11 +578,14 @@ doAck client infoMVar ackRecordIds =
         if sriValid
           then do
             Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
+                     <> ", ackedRanges: " <> Log.buildString (printAckedRanges sriAckedRanges)
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
             Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
+                     <> ", ackedRanges: " <> Log.buildString (printAckedRanges newAckedRanges)
 
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
+                Log.debug . Log.buildString $ "newWindowLowerBound = " <> show newLowerBound <> ", checkpointRecordId = " <> show checkpointRecordId
                 commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
                 -- after a checkpoint is committed, informations of records before checkpoint are no need to be retained, so just clear them
                 let newBatchNumMap = updateBatchNumMap (recordIdBatchId checkpointRecordId) sriBatchNumMap
@@ -591,13 +594,17 @@ doAck client infoMVar ackRecordIds =
                         <> "} to {"
                         <> Log.buildString (show newLowerBound)
                         <> "}"
-                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound}
+                return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound, sriBatchNumMap = newBatchNumMap}
               Nothing ->
                 return $ info {sriAckedRanges = newAckedRanges}
           else return info
     )
   where
-    updateBatchNumMap checkedLSN mp = snd $ Map.split checkedLSN mp
+    -- `checkedLSN - 1` because data gathered by recordLSN in batchNumMap, but 
+    -- acked by (recordLSN, recordOffset) in ackedRanges, we must ensure that 
+    -- all records contained in same recordLSN are acked before clearing the 
+    -- information about the recordLSN in the batchNumMap.
+    updateBatchNumMap checkedLSN mp = snd $ Map.split (checkedLSN - 1) mp
 
 tryUpdateWindowLowerBound ::
   -- | ackedRanges

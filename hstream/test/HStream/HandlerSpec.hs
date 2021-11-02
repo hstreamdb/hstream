@@ -655,6 +655,8 @@ verifyConsumerGroup api subName totalSize reqRids hackers = do
 
   void $ readMVar condVar
   Log.d "receive signal"
+  -- delay here to give server some time to complete previous retrans
+  threadDelay 1000000
   writeChan terminate ()
   result <- forM res readIORef
 
