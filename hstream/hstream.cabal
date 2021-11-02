@@ -57,7 +57,7 @@ library
     HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.Utils
 
-  hs-source-dirs:   src
+  hs-source-dirs:     src
   build-depends:
     , aeson
     , aeson-pretty
@@ -99,7 +99,20 @@ library
     , Z-IO
     , zoovisitor
 
-  default-language: Haskell2010
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    UnliftedFFITypes
+
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints

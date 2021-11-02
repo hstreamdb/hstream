@@ -1,26 +1,19 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs     #-}
 
-module HStream.Server.Handler.Admin where
+module HStream.Server.Handler.Admin (adminCommandHandler) where
 
-import           Control.Monad                    (join)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (maybeToList)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
-import           Data.Text.Lazy.Encoding          (decodeUtf8)
+import qualified Data.Text.Lazy.Encoding          as TL
 import qualified Data.Vector                      as V
 import qualified GHC.IO.Exception                 as E
 import           Network.GRPC.HighLevel.Generated
 import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
-import           System.Exit                      (ExitCode (..), exitSuccess,
-                                                   exitWith)
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
 
@@ -29,19 +22,11 @@ import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
+import qualified HStream.Store                    as S
 import           HStream.Utils                    (Interval, interval2ms,
                                                    parserInterval, returnResp)
 
-newtype AdminCommand
-  = AdminStatsCommand StatsCommand
-
-adminCommandInfo :: O.ParserInfo AdminCommand
-adminCommandInfo = O.info adminCommandParser (O.progDesc "The parser to use for admin commands")
-
-adminCommandParser :: O.Parser AdminCommand
-adminCommandParser = O.subparser
-  ( O.command "stats" (O.info (AdminStatsCommand <$> statsOptsParser) (O.progDesc "Get the stats of an operation on a stream"))
-  )
+------------------------------------------------------------------------------
 
 adminCommandHandler
   :: ServerContext
@@ -53,7 +38,8 @@ adminCommandHandler sc (ServerNormalRequest _ (AdminCommandRequest cmd)) = defau
 
   adminCommand <- handleParseResult $ O.execParserPure O.defaultPrefs adminCommandInfo args
   result <- case adminCommand of
-              AdminStatsCommand c -> runStats sc c
+              AdminStatsCommand c  -> runStats sc c
+              AdminStreamCommand c -> runStream sc c
   returnResp $ AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
@@ -69,6 +55,22 @@ handleParseResult (O.CompletionInvoked compl) = do
   E.ioError $ E.IOError Nothing E.InvalidArgument errloc errmsg Nothing Nothing
 
 ------------------------------------------------------------------------------
+
+data AdminCommand
+  = AdminStatsCommand StatsCommand
+  | AdminStreamCommand StreamCommand
+
+adminCommandInfo :: O.ParserInfo AdminCommand
+adminCommandInfo = O.info adminCommandParser (O.progDesc "The parser to use for admin commands")
+
+adminCommandParser :: O.Parser AdminCommand
+adminCommandParser = O.subparser
+  ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser) (O.progDesc "Get the stats of an operation on a stream"))
+ <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser) (O.progDesc "Stream command"))
+  )
+
+
+------------------------------------------------------------------------------
 -- Admin Stats Command
 
 data StatsCommand = StatsCommand
@@ -76,8 +78,8 @@ data StatsCommand = StatsCommand
   , statsIntervals :: [Interval]
   }
 
-statsOptsParser :: O.Parser StatsCommand
-statsOptsParser = StatsCommand
+statsCmdParser :: O.Parser StatsCommand
+statsCmdParser = StatsCommand
   <$> O.strArgument ( O.help "the operations to be collected" )
   <*> O.many ( O.option ( O.eitherReader parserInterval)
                         ( O.long "intervals" <> O.short 'i'
@@ -85,10 +87,29 @@ statsOptsParser = StatsCommand
              )
 
 runStats :: ServerContext -> StatsCommand -> IO T.Text
-runStats ServerContext {..} StatsCommand{..} = do
+runStats ServerContext{..} StatsCommand{..} = do
   let intervals = map interval2ms statsIntervals
   m <- Stats.stream_time_series_getall_by_name scStatsHolder statsType intervals
   let headers = "stream_name" : (("throughput_" <>) . T.pack . show <$> statsIntervals)
-      rows = Map.foldMapWithKey (\k vs -> [(CB.unpack k) : (show . floor <$> vs)]) m
-  return . TL.toStrict . decodeUtf8 . Aeson.encode $
+      rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
+  return . TL.toStrict . TL.decodeUtf8 . Aeson.encode $
+    Aeson.object ["headers" .= headers, "rows" .= rows]
+
+------------------------------------------------------------------------------
+-- Admin Stream Command
+
+data StreamCommand = StreamCmdList
+
+streamCmdParser :: O.Parser StreamCommand
+streamCmdParser = O.subparser
+  ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams")))
+
+runStream :: ServerContext -> StreamCommand -> IO T.Text
+runStream ServerContext{..} StreamCmdList = do
+  let headers = ["name" :: T.Text, "replication_property"]
+  streams <- S.findStreams scLDClient S.StreamTypeStream True
+  rows <- V.forM (V.fromList streams) $ \stream -> do
+    refactor <- S.getStreamReplicaFactor scLDClient stream
+    return [T.pack . S.showStreamName $ stream, "node:" <> T.pack (show refactor)]
+  return . TL.toStrict . TL.decodeUtf8 . Aeson.encode $
     Aeson.object ["headers" .= headers, "rows" .= rows]
