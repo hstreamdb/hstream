@@ -117,7 +117,9 @@ isPrecursor r1 r2 batchNumMap
 isLastInBatch :: RecordId -> Map.Map Word64 Word32 -> Bool
 isLastInBatch recordId batchNumMap =
   case Map.lookup (recordIdBatchId recordId) batchNumMap of
-    Nothing  -> error "no recordIdBatchId found"
+    Nothing  ->
+      let msg = "no recordIdBatchId found: " <> show recordId <> ", head of batchNumMap: " <> show (Map.lookupMin batchNumMap)
+       in error msg
     Just num | num == 0 -> True
              | otherwise -> recordIdBatchIndex recordId == num - 1
 
