@@ -1,12 +1,12 @@
-module HStream.Utils.TimeInterval (
-    Interval (..)
+module HStream.Utils.TimeInterval
+  ( Interval (..)
   , parserInterval
   , interval2ms
   ) where
 
 import           Control.Applicative  ((<|>))
-import           Data.Attoparsec.Text (Parser, choice, parseOnly, rational,
-                                       string)
+import           Data.Attoparsec.Text (Parser, choice, endOfInput, parseOnly,
+                                       rational, string)
 import qualified Data.Text            as T
 
 data Interval
@@ -14,6 +14,7 @@ data Interval
   | Seconds Double
   | Minutes Double
   | Hours Double
+  deriving (Eq)
 
 instance Show Interval where
   show (Seconds x)      = showInInt x <> "s"
@@ -37,14 +38,15 @@ intervalParser :: Parser Interval
 intervalParser = do
   x <- rational
   f <- intervalConstructorParser
+  endOfInput
   return (f x)
 
 intervalConstructorParser :: Parser (Double -> Interval)
 intervalConstructorParser =
       Milliseconds <$ choice (string <$> ["ms","milliseconds","millisecond"])
-  <|> Seconds <$ choice (string <$> ["seconds","s","second"])
-  <|> Minutes <$ choice (string <$> ["minutes","min","minute"])
-  <|> Hours   <$ choice (string <$> ["hours","h","hr","hrs","hour"])
+  <|> Seconds <$ choice (string <$> ["seconds", "s", "second"])
+  <|> Minutes <$ choice (string <$> ["minutes", "min", "minute"])
+  <|> Hours   <$ choice (string <$> ["hours", "h", "hr", "hrs", "hour"])
 
 parserInterval :: String -> Either String Interval
 parserInterval = parseOnly intervalParser . T.pack
