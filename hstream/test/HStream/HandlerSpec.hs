@@ -471,7 +471,7 @@ streamFetchRequest
   -> IORef (Set RecordId)
   -> Chan ()                  -- channel use to close client request
   -> MVar (Set RecordId, CondVar)       -- use as a condition var
-  -> Int                      -- signal of receive enough response
+  -> Int                      -- total response need to check
   -> [Hacker]
   -> IO ()
 streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total hackers = do
@@ -490,7 +490,7 @@ streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total h
           Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
           clientCallCancel call
         Right _ -> return ()
-      void $ race (doFetch streamRecv streamSend call consumerName hackers) (notifyDone consumerName call)
+      void $ race (doFetch streamRecv streamSend call consumerName hackerList) (notifyDone consumerName call)
 
     doFetch streamRecv streamSend call consumerName hackers = do
       streamRecv >>= \case

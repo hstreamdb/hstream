@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.Types where
 
@@ -91,9 +91,9 @@ data RecordIdRange = RecordIdRange
   } deriving (Eq)
 
 instance Show RecordIdRange where
-  show RecordIdRange{..} = "{(" <> show (recordIdBatchId startRecordId) <> "," 
+  show RecordIdRange{..} = "{(" <> show (recordIdBatchId startRecordId) <> ","
                                 <> show (recordIdBatchIndex startRecordId) <> "), "
-                                <> show (recordIdBatchId endRecordId) <> "," 
+                                <> show (recordIdBatchId endRecordId) <> ","
                                 <> show (recordIdBatchIndex endRecordId) <> ")}"
 
 printAckedRanges :: Map.Map RecordId RecordIdRange -> String

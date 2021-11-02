@@ -578,10 +578,10 @@ doAck client infoMVar ackRecordIds =
         if sriValid
           then do
             Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
-                     <> ", ackedRanges: " <> Log.buildString (printAckedRanges sriAckedRanges)
+                     <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 sriAckedRanges)
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
             Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
-                     <> ", ackedRanges: " <> Log.buildString (printAckedRanges newAckedRanges)
+                     <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)
 
             case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
               Just (ranges, newLowerBound, checkpointRecordId) -> do
@@ -600,9 +600,9 @@ doAck client infoMVar ackRecordIds =
           else return info
     )
   where
-    -- `checkedLSN - 1` because data gathered by recordLSN in batchNumMap, but 
-    -- acked by (recordLSN, recordOffset) in ackedRanges, we must ensure that 
-    -- all records contained in same recordLSN are acked before clearing the 
+    -- `checkedLSN - 1` because data gathered by recordLSN in batchNumMap, but
+    -- acked by (recordLSN, recordOffset) in ackedRanges, we must ensure that
+    -- all records contained in same recordLSN are acked before clearing the
     -- information about the recordLSN in the batchNumMap.
     updateBatchNumMap checkedLSN mp = snd $ Map.split (checkedLSN - 1) mp
 
