@@ -121,7 +121,7 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
       Just infoMVar -> do
         modifyMVar infoMVar removeSubscriptionFromZK >>= \case
           True -> do
-            modifyMVar_ subscriptionCtx (return . Map.delete (TL.unpack deleteSubscriptionRequestSubscriptionId))
+            modifyMVar_ subscriptionCtx (return . Map.delete (T.unpack deleteSubscriptionRequestSubscriptionId))
             return $ HM.delete deleteSubscriptionRequestSubscriptionId store
           False -> return store
       Nothing -> do
@@ -588,7 +588,7 @@ doAck client infoMVar ackRecordIds =
                 Log.debug . Log.buildString $ "newWindowLowerBound = " <> show newLowerBound <> ", checkpointRecordId = " <> show checkpointRecordId
                 commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
                 -- after a checkpoint is committed, informations of records before checkpoint are no need to be retained, so just clear them
-                let newBatchNumMap = updateBatchNumMap (recordIdBatchId checkpointRecordId) sriBatchNumMap
+                let newBatchNumMap = updateBatchNumMap newLowerBound sriBatchNumMap
                 Log.info $ "update window lower bound, from {"
                         <> Log.buildString (show sriWindowLowerBound)
                         <> "} to {"
@@ -600,11 +600,7 @@ doAck client infoMVar ackRecordIds =
           else return info
     )
   where
-    -- `checkedLSN - 1` because data gathered by recordLSN in batchNumMap, but
-    -- acked by (recordLSN, recordOffset) in ackedRanges, we must ensure that
-    -- all records contained in same recordLSN are acked before clearing the
-    -- information about the recordLSN in the batchNumMap.
-    updateBatchNumMap checkedLSN mp = snd $ Map.split (checkedLSN - 1) mp
+    updateBatchNumMap RecordId{..} mp = Map.dropWhileAntitone (< recordIdBatchId) mp
 
 tryUpdateWindowLowerBound ::
   -- | ackedRanges

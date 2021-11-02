@@ -354,7 +354,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
   aroundWith withConsumerSpecEnv $ do
 
      timeStamp <- runIO getProtoTimestamp
-     let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+     let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
 
      it "test consumerGroup" $ \(api, (streamName, subName)) -> do
        let msgCnt = 500
@@ -421,6 +421,8 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
          Log.d $ "kill " <> Log.buildInt index
          killThread . fst $ res V.! index
        void $ readMVar condVar
+       -- delay here to give server some time to complete previous retrans
+       threadDelay 1000000
        Log.debug "receive signal"
        writeChan terminate ()
        result <- forM res $ readIORef . snd
@@ -474,7 +476,7 @@ streamFetchRequest
   -> Int                      -- total response need to check
   -> [Hacker]
   -> IO ()
-streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total hackers = do
+streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total hackerList = do
   consumerName <- newRandomText 5
   let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action consumerName)
   hstreamApiStreamingFetch req >>= \case
@@ -503,7 +505,7 @@ streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total h
         Right (Just StreamingFetchResponse{..}) -> do
           -- get recordId from response
           let ackIds = V.map (fromJust . receivedRecordRecordId) streamingFetchResponseReceivedRecords
-          Log.debug $ "consumer " <> Log.buildLazyText consumerName <> " get length of response: " <> Log.buildInt (V.length ackIds)
+          -- Log.debug $ "consumer " <> Log.buildText consumerName <> " get length of response: " <> Log.buildInt (V.length ackIds)
 
           let curHacker = head hackers
           let newHackers = if length hackers == 1 then hackers else tail hackers
@@ -536,7 +538,7 @@ streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total h
     notifyDone consumerName call = do
       void $ readChan terminate
       res <- readIORef responses
-      Log.debug $ "finally consumer " <> Log.buildText (TL.toStrict consumerName) <> " get length of response: " <> Log.buildInt (Set.size res)
+      Log.debug $ "finally consumer " <> Log.buildText consumerName <> " get length of response: " <> Log.buildInt (Set.size res)
       clientCallCancel call
       Log.d "client cancel fetch request"
 
@@ -602,7 +604,7 @@ type Hacker = V.Vector RecordId -> IO(V.Vector RecordId)
 produceRecords
   :: HStreamClientApi
   -> HStreamRecordHeader
-  -> TL.Text
+  -> T.Text
   -> Int -> Int
   -> IO([V.Vector RecordId], Int)
 produceRecords api header streamName msgCount maxBatchSize = do
@@ -617,7 +619,7 @@ produceRecords api header streamName msgCount maxBatchSize = do
 
 doConsume
   :: HStreamClientApi
-  -> TL.Text
+  -> T.Text
   -> MVar (Set RecordId, CondVar)
   -> Int
   -> Chan()
@@ -631,7 +633,7 @@ doConsume api subName sig totalSize terminateCh hackers = do
 
 verifyConsumer
   :: HStreamClientApi
-  -> TL.Text
+  -> T.Text
   -> Int
   -> [V.Vector RecordId]
   -> [Hacker]
@@ -641,7 +643,7 @@ verifyConsumer api subName totalSize reqRids hackers = do
 
 verifyConsumerGroup
   :: HStreamClientApi
-  -> TL.Text
+  -> T.Text
   -> Int
   -> [V.Vector RecordId]
   -> V.Vector [Hacker]
