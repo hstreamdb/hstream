@@ -38,11 +38,8 @@ import qualified System.IO.Streams                as Streams
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
-import qualified Z.Data.CBytes                    as CB
-import           Z.IO.Network.SocketAddr          (ipv4)
 
 import           HStream.Client.Action
-import           HStream.Client.Gadget
 import           HStream.Client.Utils
 import           HStream.SQL
 import           HStream.Server.HStreamApi
@@ -114,7 +111,7 @@ createClickHouseConnectorSql :: T.Text -> T.Text -> T.Text
 createClickHouseConnectorSql name stream
   = "CREATE SINK CONNECTOR " <> name <> " WITH (type=clickhouse, "
  <> "host="     <> T.pack (show $ ClickHouse.host' clickHouseConnectInfo)     <> ","
- <> "port="     <> (Text.decodeUtf8 $ ClickHouse.port' clickHouseConnectInfo) <> ","
+ <> "port="     <> Text.decodeUtf8 (ClickHouse.port' clickHouseConnectInfo)  <> ","
  <> "username=" <> T.pack (show $ ClickHouse.username' clickHouseConnectInfo) <> ","
  <> "password=" <> T.pack (show $ ClickHouse.password' clickHouseConnectInfo) <> ","
  <> "database=" <> T.pack (show $ ClickHouse.database' clickHouseConnectInfo) <> ","
@@ -334,33 +331,21 @@ fetchClickHouse source =
 runCreateStreamSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateStreamSql api sql = do
   CreatePlan sName rFac <- streamCodegen sql
-  createStream api sName rFac `grpcShouldReturn`
+  createStream sName rFac api`grpcShouldReturn`
     def { streamStreamName        = sName
         , streamReplicationFactor = fromIntegral rFac
         }
 
 runInsertSql :: HStreamClientApi -> T.Text -> Expectation
-runInsertSql _api sql = do
-  let (Host host) = clientServerHost clientConfig
-      (Port port) = clientServerPort clientConfig
-  let addr = ipv4 (CB.pack . BSC.unpack $ host) (fromIntegral port)
-  available  <- newMVar []
-  current    <- newMVar addr
-  producers_ <- newMVar mempty
-  let ctx = ClientContext
-            { availableServers = available
-            , currentServer    = current
-            , producers        = producers_
-            , clientId         = "client_01"
-            }
+runInsertSql api sql = do
   InsertPlan sName insertType payload <- streamCodegen sql
-  resp <- getServerResp =<< insertIntoStream ctx sName insertType payload
+  resp <- getServerResp =<< insertIntoStream sName insertType payload api
   appendResponseStreamName resp `shouldBe` sName
 
 runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateWithSelectSql api sql = do
   RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine sql
-  resp <- getServerResp =<< createStreamBySelect api stream (rRepFactor rOptions) (words $ T.unpack sql)
+  resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (words $ T.unpack sql) api
   createQueryStreamResponseQueryStream resp `shouldBe`
     Just def { streamStreamName        = stream
              , streamReplicationFactor = fromIntegral $ rRepFactor rOptions}
@@ -378,4 +363,4 @@ runShowViewsSql api sql = do
 runDropSql :: HStreamClientApi -> T.Text -> Expectation
 runDropSql api sql = do
   DropPlan checkIfExists dropObj <- streamCodegen sql
-  dropAction api checkIfExists dropObj `grpcShouldReturn` Empty
+  dropAction checkIfExists dropObj api `grpcShouldReturn` Empty

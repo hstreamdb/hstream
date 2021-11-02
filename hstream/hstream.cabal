@@ -26,7 +26,10 @@ source-repository head
 library
   exposed-modules:
     HStream.Client.Action
+    HStream.Client.Execute
     HStream.Client.Gadget
+    HStream.Client.Internal
+    HStream.Client.Type
     HStream.Client.Utils
     HStream.Server.Bootstrap
     HStream.Server.Exception
