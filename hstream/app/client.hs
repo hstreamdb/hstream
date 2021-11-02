@@ -13,7 +13,7 @@ import           Control.Exception                (finally, handle)
 import           Control.Monad
 import           Control.Monad.IO.Class           (liftIO)
 import qualified Data.ByteString.Char8            as BSC
-import           Data.Char                        (toUpper)
+import           Data.Char                        (toLower, toUpper)
 import           Data.Functor                     ((<&>))
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
@@ -125,7 +125,7 @@ app ctx@ClientContext{..} =
         | take 1 (words str) == [":q"] -> return ()
         | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
           take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     -> loop api query
-        | otherwise -> liftIO (mapM_ putStrLn =<< Query.runQuery query (CB.pack str)) >> loopAdmin api query
+        | otherwise -> liftIO (adminCommandExec query str) >> loopAdmin api query
 
 commandExec :: ClientContext -> HStreamClientApi -> String -> IO ()
 commandExec ctx@ClientContext{..} api xs = case words xs of
@@ -160,6 +160,20 @@ commandExec ctx@ClientContext{..} api xs = case words xs of
         _ -> sqlAction api (T.pack xs)
 
   [] -> return ()
+
+adminCommandExec :: Query.HStreamQuery -> String -> IO ()
+adminCommandExec q str =
+  case words (map toLower str) of
+    [] -> return ()
+    ["show", "tables"]      -> putStrLn =<< Query.showTables q
+    ["show", "tables", ";"] -> putStrLn =<< Query.showTables q
+    ["show", "tables;"]     -> putStrLn =<< Query.showTables q
+    ["describe", name_]     -> if last name_ == ';'
+                                  then putStrLn =<< Query.showTableColumns q (CB.pack $ init name_)
+                                  else putStrLn =<< Query.showTableColumns q (CB.pack name_)
+    ["describe", name, ";"] -> putStrLn =<< Query.showTableColumns q (CB.pack name)
+    "select" : _ -> mapM_ putStrLn =<< Query.runQuery q (CB.pack str)
+    _            -> putStrLn $ "Unknown statement: " <> str
 
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
