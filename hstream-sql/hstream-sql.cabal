@@ -49,13 +49,6 @@ library
     HStream.SQL.Print
     HStream.SQL.Validate.Utils
 
-  autogen-modules:
-    HStream.SQL.Abs
-    HStream.SQL.ErrM
-    HStream.SQL.Lex
-    HStream.SQL.Par
-    HStream.SQL.Print
-
   hs-source-dirs:     src gen-sql
   build-depends:
     , aeson

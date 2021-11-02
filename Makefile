@@ -15,7 +15,7 @@ thrift::
 grpc:: grpc-cpp grpc-hs
 
 grpc-hs: grpc-cpp
-	(command -v $(PROTO_COMPILE_HS) || (cd external/proto3-suite && cabal install proto3-suite))
+	(cabal build proto3-suite && find dist-newstyle/ -type f -name "compile-proto-file" | xargs -I{} cp {} ~/.local/bin/)
 	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/struct.proto --out ../gen-hs)
 	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/empty.proto --out ../gen-hs)
 	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --includeDir . --proto HStream/Server/HStreamApi.proto --out ../gen-hs)
@@ -40,8 +40,11 @@ sql-deps::
 	(cd ~ && command -v happy || cabal install happy)
 
 clean:
-	(find . -type d -name "gen-hs2"|xargs rm -rf)
-	(find . -type d -name "gen-hs"|xargs rm -rf)
-	(find . -type d -name "gen-cpp"|xargs rm -rf)
-	(find . -type d -name "gen-sql"|xargs rm -rf)
-	(find . -type d -name "gen-src"|xargs rm -rf)
+	find . -maxdepth 2 -type d \
+		-name "gen-hs2" \
+		-o -name "gen-hs" \
+		-o -name "gen-cpp" \
+		-o -name "gen-sql" \
+		-o -name "gen-src" \
+		| xargs rm -rf
+	rm -rf ~/.local/bin/$(PROTO_COMPILE_HS)
