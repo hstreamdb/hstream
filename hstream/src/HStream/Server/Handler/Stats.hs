@@ -32,10 +32,10 @@ perStreamTimeSeriesStatsAll holder req = defaultExceptionHandle $ do
   where
     emptyResp = PerStreamTimeSeriesStatsAllResponse Map.empty
     getall method intervals = do
-      let name = U.lazyTextToCBytes method
+      let name       = U.textToCBytes method
           intervals' = map fromIntegral . V.toList . statsIntervalValsIntervals $ intervals
       m <- Stats.stream_time_series_getall_by_name holder name intervals'
-      let m' = Map.map (Just . StatsDoubleVals . V.fromList) . Map.mapKeys U.cBytesToLazyText $ m
+      let m' = Map.map (Just . StatsDoubleVals . V.fromList) . Map.mapKeys U.cBytesToText $ m
       return $ PerStreamTimeSeriesStatsAllResponse m'
 
 perStreamTimeSeriesStats
@@ -46,7 +46,7 @@ perStreamTimeSeriesStats holder (ServerNormalRequest _ PerStreamTimeSeriesStatsR
     maybe (pure Nothing) (Stats.stream_time_series_get holder methodName sName) intervals
     >>= U.returnResp . PerStreamTimeSeriesStatsResponse . fmap (StatsDoubleVals . V.fromList)
   where
-    methodName = U.lazyTextToCBytes perStreamTimeSeriesStatsRequestMethod
-    sName = U.lazyTextToCBytes perStreamTimeSeriesStatsRequestStreamName
-    intervals = map fromIntegral . V.toList . statsIntervalValsIntervals <$>
+    methodName = U.textToCBytes perStreamTimeSeriesStatsRequestMethod
+    sName      = U.textToCBytes perStreamTimeSeriesStatsRequestStreamName
+    intervals  = map fromIntegral . V.toList . statsIntervalValsIntervals <$>
       perStreamTimeSeriesStatsRequestIntervals

@@ -17,9 +17,9 @@ module HStream.Client.Utils
 import qualified Data.ByteString.Char8         as BSC
 import           Data.Char                     (toUpper)
 import qualified Data.Map                      as Map
-import qualified Data.Text.Lazy                as TL
+import qualified Data.Text                     as T
 import           HStream.Server.HStreamApi     (ServerNode (..))
-import           HStream.Utils                 (lazyTextToCBytes)
+import           HStream.Utils                 (textToCBytes)
 import           Network.GRPC.HighLevel.Client
 import           Proto3.Suite.Class            (HasDefault, def)
 import           Z.IO.Network.SocketAddr       (SocketAddr (..), ipv4)
@@ -33,8 +33,8 @@ requestTimeout = 1000
 mkClientNormalRequest :: a -> ClientRequest 'Normal a b
 mkClientNormalRequest x = ClientNormalRequest x requestTimeout (MetadataMap Map.empty)
 
-extractSelect :: [String] -> TL.Text
-extractSelect = TL.pack .
+extractSelect :: [String] -> T.Text
+extractSelect = T.pack .
   unwords . reverse . ("CHANGES;" :) .
   dropWhile ((/= "EMIT") . map toUpper) .
   reverse .
@@ -62,4 +62,4 @@ mkGRPCClientConf = \case
 -- FIXME: It only supports IPv4 addresses and can throw 'InvalidArgument' exception.
 serverNodeToSocketAddr :: ServerNode -> SocketAddr
 serverNodeToSocketAddr ServerNode{..} = do
-  ipv4 (lazyTextToCBytes serverNodeHost) (fromIntegral serverNodePort)
+  ipv4 (textToCBytes serverNodeHost) (fromIntegral serverNodePort)

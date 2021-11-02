@@ -19,7 +19,7 @@ where
 
 import qualified Data.ByteString                  as BS
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
@@ -42,9 +42,8 @@ createStreamHandler ::
   ServerRequest 'Normal Stream Stream ->
   IO (ServerResponse 'Normal Stream)
 createStreamHandler ServerContext {..} (ServerNormalRequest _metadata stream@Stream {..}) = defaultExceptionHandle $ do
-  let streamName = TL.toStrict streamStreamName
-  Log.debug $ "Receive Create Stream Request: New Stream Name: " <> Log.buildText streamName
-  S.createStream scLDClient (transToStreamName streamName) $
+  Log.debug $ "Receive Create Stream Request: New Stream Name: " <> Log.buildText streamStreamName
+  S.createStream scLDClient (transToStreamName streamStreamName) $
     S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
   returnResp stream
 
@@ -53,7 +52,7 @@ deleteStreamHandler ::
   ServerRequest 'Normal DeleteStreamRequest Empty ->
   IO (ServerResponse 'Normal Empty)
 deleteStreamHandler sc (ServerNormalRequest _metadata DeleteStreamRequest {..}) = defaultExceptionHandle $ do
-  let streamName = TL.toStrict deleteStreamRequestStreamName
+  let streamName = deleteStreamRequestStreamName
   Log.debug $ "Receive Delete Stream Request: Stream to Delete: " <> Log.buildText streamName
   dropHelper sc streamName deleteStreamRequestIgnoreNonExist False
 
@@ -66,7 +65,7 @@ listStreamsHandler ServerContext {..} (ServerNormalRequest _metadata ListStreams
   streams <- S.findStreams scLDClient S.StreamTypeStream True
   res <- V.forM (V.fromList streams) $ \stream -> do
     refactor <- S.getStreamReplicaFactor scLDClient stream
-    return $ Stream (TL.pack . S.showStreamName $ stream) (fromIntegral refactor)
+    return $ Stream (T.pack . S.showStreamName $ stream) (fromIntegral refactor)
   returnResp $ ListStreamsResponse res
 
 appendHandler ::
@@ -74,11 +73,11 @@ appendHandler ::
   ServerRequest 'Normal AppendRequest AppendResponse ->
   IO (ServerResponse 'Normal AppendResponse)
 appendHandler ServerContext {..} (ServerNormalRequest _metadata AppendRequest {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Append Stream Request. Append Data to the Stream: " <> Log.buildText (TL.toStrict appendRequestStreamName)
+  Log.debug $ "Receive Append Stream Request. Append Data to the Stream: " <> Log.buildText appendRequestStreamName
   timestamp <- getProtoTimestamp
   let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
       payloadSize = V.sum $ BS.length . hstreamRecordPayload <$> appendRequestRecords
-      streamName = lazyTextToCBytes appendRequestStreamName
+      streamName = textToCBytes appendRequestStreamName
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
   S.AppendCompletion {..} <- batchAppend scLDClient streamName payloads cmpStrategy

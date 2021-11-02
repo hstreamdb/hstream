@@ -48,8 +48,8 @@ adminCommandHandler
   -> ServerRequest 'Normal AdminCommandRequest AdminCommandResponse
   -> IO (ServerResponse 'Normal AdminCommandResponse)
 adminCommandHandler sc (ServerNormalRequest _ (AdminCommandRequest cmd)) = defaultExceptionHandle $ do
-  let args = words (TL.unpack cmd)
-  Log.info $ "Receive amdin command: " <> Log.buildLazyText cmd
+  let args = words (T.unpack cmd)
+  Log.info $ "Receive amdin command: " <> Log.buildText cmd
 
   adminCommand <- handleParseResult $ O.execParserPure O.defaultPrefs adminCommandInfo args
   result <- case adminCommand of
@@ -84,11 +84,11 @@ statsOptsParser = StatsCommand
                        <> O.help "the list of intervals to be collected" )
              )
 
-runStats :: ServerContext -> StatsCommand -> IO TL.Text
+runStats :: ServerContext -> StatsCommand -> IO T.Text
 runStats ServerContext {..} StatsCommand{..} = do
   let intervals = map interval2ms statsIntervals
   m <- Stats.stream_time_series_getall_by_name scStatsHolder statsType intervals
   let headers = "stream_name" : (("throughput_" <>) . T.pack . show <$> statsIntervals)
       rows = Map.foldMapWithKey (\k vs -> [(CB.unpack k) : (show . floor <$> vs)]) m
-  return . decodeUtf8 . Aeson.encode $
+  return . TL.toStrict . decodeUtf8 . Aeson.encode $
     Aeson.object ["headers" .= headers, "rows" .= rows]

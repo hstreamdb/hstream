@@ -13,7 +13,6 @@ import           Control.Monad
 import qualified Data.List                        as L
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
@@ -57,7 +56,7 @@ lookupStream ctx@ClientContext{..} addr stream = do
   where
     getRespApp client = do
       API.HStreamApi{..} <- API.hstreamApiClient client
-      let req = API.LookupStreamRequest { lookupStreamRequestStreamName = TL.fromStrict stream }
+      let req = API.LookupStreamRequest { lookupStreamRequestStreamName = stream }
       hstreamApiLookupStream (mkClientNormalRequest req)
     handleRespApp :: ClientResult 'Normal API.LookupStreamResponse -> IO (Maybe API.ServerNode)
     handleRespApp
@@ -73,7 +72,7 @@ lookupSubscription ctx addr subId = do
   where
     getRespApp client = do
       API.HStreamApi{..} <- API.hstreamApiClient client
-      let req = API.LookupSubscriptionRequest { lookupSubscriptionRequestSubscriptionId = TL.fromStrict subId }
+      let req = API.LookupSubscriptionRequest { lookupSubscriptionRequestSubscriptionId = subId }
       hstreamApiLookupSubscription (mkClientNormalRequest req)
     handleRespApp :: ClientResult 'Normal API.LookupSubscriptionResponse -> IO (Maybe API.ServerNode)
     handleRespApp (ClientNormalResponse (API.LookupSubscriptionResponse _ Nothing) _meta1 _meta2 _code _details) = return Nothing

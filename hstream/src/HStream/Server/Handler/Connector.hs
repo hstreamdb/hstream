@@ -11,7 +11,6 @@ import           Control.Exception                (throwIO)
 import           Control.Monad                    (unless, void, when)
 import           Data.Functor                     ((<&>))
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
@@ -33,8 +32,8 @@ import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToLazyText,
-                                                   lazyTextToCBytes, returnResp)
+                                                   cBytesToText, returnResp,
+                                                   textToCBytes)
 
 createSinkConnectorHandler
   :: ServerContext
@@ -43,7 +42,7 @@ createSinkConnectorHandler
 createSinkConnectorHandler sc
   (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = defaultExceptionHandle $ do
     Log.debug "Receive Create Sink Connector Request"
-    connector <- createConnector sc (TL.toStrict createSinkConnectorRequestSql)
+    connector <- createConnector sc createSinkConnectorRequestSql
     returnResp connector
 
 listConnectorsHandler
@@ -64,8 +63,8 @@ getConnectorHandler
 getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get Connector Request. "
-    <> "Connector ID: " <> Log.buildString (TL.unpack getConnectorRequestId)
-  connector <- P.getConnector (lazyTextToCBytes getConnectorRequestId) zkHandle
+    <> "Connector ID: " <> Log.buildString (T.unpack getConnectorRequestId)
+  connector <- P.getConnector (textToCBytes getConnectorRequestId) zkHandle
   returnResp $ hstreamConnectorToConnector connector
 
 deleteConnectorHandler
@@ -75,8 +74,8 @@ deleteConnectorHandler
 deleteConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
-    <> "Connector ID: " <> Log.buildString (TL.unpack deleteConnectorRequestId)
-  let cName = lazyTextToCBytes deleteConnectorRequestId
+    <> "Connector ID: " <> Log.buildText deleteConnectorRequestId
+  let cName = textToCBytes deleteConnectorRequestId
   P.removeConnector cName zkHandle
   returnResp Empty
 
@@ -87,8 +86,8 @@ restartConnectorHandler
 restartConnectorHandler sc@ServerContext{..}
   (ServerNormalRequest _metadata RestartConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Restart Connector Request. "
-    <> "Connector ID: " <> Log.buildString (TL.unpack restartConnectorRequestId)
-  let cid = lazyTextToCBytes restartConnectorRequestId
+    <> "Connector ID: " <> Log.buildText restartConnectorRequestId
+  let cid = textToCBytes restartConnectorRequestId
   cStatus <- P.getConnectorStatus cid zkHandle
   when (cStatus `elem` [Created, Creating, Running]) $ do
     Log.warning . Log.buildString $ "The connector " <> show cid
@@ -103,8 +102,8 @@ terminateConnectorHandler
 terminateConnectorHandler sc
   (ServerNormalRequest _metadata TerminateConnectorRequest{..}) = do
   Log.debug $ "Receive Terminate Connector Request. "
-    <> "Connector ID: " <> Log.buildString (TL.unpack terminateConnectorRequestConnectorId)
-  let cid = lazyTextToCBytes terminateConnectorRequestConnectorId
+    <> "Connector ID: " <> Log.buildText terminateConnectorRequestConnectorId
+  let cid = textToCBytes terminateConnectorRequestConnectorId
   handleTerminateConnector sc cid
   returnResp Empty
 
@@ -112,17 +111,17 @@ terminateConnectorHandler sc
 
 hstreamConnectorToConnector :: P.PersistentConnector -> Connector
 hstreamConnectorToConnector P.PersistentConnector{..} =
-  Connector (cBytesToLazyText connectorId)
+  Connector (cBytesToText connectorId)
     (getPBStatus connectorStatus) connectorCreatedTime
-    (TL.fromStrict connectorBindedSql)
+    connectorBindedSql
 
 createConnector :: ServerContext -> T.Text -> IO Connector
 createConnector sc@ServerContext{..} sql = do
   (CodeGen.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) <- CodeGen.streamCodegen sql
   Log.debug $ "CreateConnector CodeGen"
            <> ", connector name: " <> Log.buildText cName
-           <> ", stream name: " <> Log.buildText sName
-           <> ", config: " <> Log.buildString (show cConfig)
+           <> ", stream name: "    <> Log.buildText sName
+           <> ", config: "         <> Log.buildString (show cConfig)
   streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)
   connectorIds <- P.getConnectorIds zkHandle
   let cid = CB.pack $ T.unpack cName

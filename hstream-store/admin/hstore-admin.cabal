@@ -3,7 +3,7 @@ name:               hstore-admin
 version:            0.1.0.0
 synopsis:           HStore Admin
 description:
-  Please see the README on Github at
+  Please see the README on GitHub at
   <https://github.com/hstreamdb/hstream#readme>
 
 license:            BSD-3-Clause

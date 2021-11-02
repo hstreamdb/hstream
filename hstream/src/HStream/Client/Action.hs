@@ -19,7 +19,6 @@ import qualified Data.List                        as L
 import qualified Data.Map                         as Map
 import           Data.Maybe
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           GHC.Int                          (Int32)
 import           HStream.Client.Gadget
@@ -35,7 +34,7 @@ import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (HStreamClientApi,
                                                    buildRecord,
                                                    buildRecordHeader,
-                                                   cBytesToLazyText,
+                                                   cBytesToText,
                                                    getProtoTimestamp,
                                                    getServerResp)
 import           Network.GRPC.HighLevel.Generated (ClientError (..),
@@ -52,7 +51,7 @@ import qualified Text.Layout.Table                as LT
 createStream :: HStreamClientApi -> StreamName -> Int -> IO (ClientResult 'Normal API.Stream)
 createStream API.HStreamApi{..} sName rFac =
   hstreamApiCreateStream (mkClientNormalRequest def
-    { API.streamStreamName        = TL.fromStrict sName
+    { API.streamStreamName        = sName
     , API.streamReplicationFactor = fromIntegral rFac})
 
 listStreams :: HStreamClientApi -> IO (ClientResult 'Normal API.ListStreamsResponse)
@@ -69,30 +68,30 @@ terminateQueries :: HStreamClientApi
   -> IO (ClientResult 'Normal API.TerminateQueriesResponse )
 terminateQueries API.HStreamApi{..} (OneQuery qid) =
   hstreamApiTerminateQueries
-    (mkClientNormalRequest def{API.terminateQueriesRequestQueryId = V.singleton $ cBytesToLazyText qid})
+    (mkClientNormalRequest def{API.terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid})
 terminateQueries API.HStreamApi{..} AllQueries =
   hstreamApiTerminateQueries
     (mkClientNormalRequest def{API.terminateQueriesRequestAll = True})
 terminateQueries API.HStreamApi{..} (ManyQueries qids) =
   hstreamApiTerminateQueries
     (mkClientNormalRequest
-      def {API.terminateQueriesRequestQueryId = V.fromList $ cBytesToLazyText <$> qids})
+      def {API.terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids})
 
 dropAction :: HStreamClientApi -> Bool -> DropObject -> IO (ClientResult 'Normal Empty)
 dropAction API.HStreamApi{..} checkIfExist dropObject = do
   case dropObject of
     DStream    txt -> hstreamApiDeleteStream (mkClientNormalRequest def
-                      { API.deleteStreamRequestStreamName     = TL.fromStrict txt
+                      { API.deleteStreamRequestStreamName     = txt
                       , API.deleteStreamRequestIgnoreNonExist = checkIfExist
                       })
 
     DView      txt -> hstreamApiDeleteView (mkClientNormalRequest def
-                      { API.deleteViewRequestViewId = TL.fromStrict txt
+                      { API.deleteViewRequestViewId = txt
                       -- , API.deleteViewRequestIgnoreNonExist = checkIfExist
                       })
 
     DConnector txt -> hstreamApiDeleteConnector (mkClientNormalRequest def
-                      { API.deleteConnectorRequestId = TL.fromStrict txt
+                      { API.deleteConnectorRequestId = txt
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
 
@@ -119,11 +118,11 @@ insertIntoStream ctx@ClientContext{..} sName insertType payload = do
         API.HStreamApi{..} <- API.hstreamApiClient client
         timestamp <- getProtoTimestamp
         let header = case insertType of
-              JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
-              RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp TL.empty
+              JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
+              RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW  Map.empty timestamp T.empty
             record = buildRecord header payload
         resp <- hstreamApiAppend (mkClientNormalRequest def
-                                  { API.appendRequestStreamName = TL.fromStrict sName
+                                  { API.appendRequestStreamName = sName
                                   , API.appendRequestRecords    = V.singleton record
                                   })
         case resp of
@@ -139,7 +138,7 @@ insertIntoStream ctx@ClientContext{..} sName insertType payload = do
                 insertIntoStream ctx sName insertType payload
 
 createStreamBySelect :: HStreamClientApi
-  -> TL.Text -> Int -> [String]
+  -> T.Text -> Int -> [String]
   -> IO (ClientResult 'Normal API.CreateQueryStreamResponse)
 createStreamBySelect API.HStreamApi{..} sName rFac sql =
   hstreamApiCreateQueryStream (mkClientNormalRequest def
@@ -187,16 +186,14 @@ queryPerStreamTimeSeriesStatsAll :: HStreamClientApi
 queryPerStreamTimeSeriesStatsAll API.HStreamApi{..} tableName methodNames intervalVec = do
   let statsRequestTimeOut  = 10
       colNames :: [T.Text] = methodNames
-      statsRequest         = API.PerStreamTimeSeriesStatsAllRequest (TL.fromStrict tableName) (Just $ API.StatsIntervalVals intervalVec)
+      statsRequest         = API.PerStreamTimeSeriesStatsAllRequest tableName (Just $ API.StatsIntervalVals intervalVec)
       resRequest           = ClientNormalRequest statsRequest statsRequestTimeOut (MetadataMap Map.empty)
   API.PerStreamTimeSeriesStatsAllResponse respM <- hstreamApiPerStreamTimeSeriesStatsAll resRequest >>= getServerResp
   let resp  = filter (isJust . snd) (Map.toList respM) <&> second (map REAL . V.toList . API.statsDoubleValsVals . fromJust)
       lbled = (map . second) (zip colNames) resp
       named = lbled <&> \(proj0, proj1) ->
-        let streamId = TL.toStrict proj0
-        in  (proj0, ("stream_id", TEXT streamId) : proj1)
+        (proj0, ("stream_id", TEXT proj0) : proj1)
   pure . HM.fromList
-    $ (map .  first) TL.toStrict
     $ (map . second) HM.fromList named
 
 processTable :: Show a => HM.HashMap T.Text (HM.HashMap T.Text a)
@@ -259,8 +256,8 @@ callSubscription ctx subId stream = void $ doAction ctx getRespApp handleRespApp
   where
     getRespApp client = do
       let subReq = API.Subscription
-                   { API.subscriptionSubscriptionId = TL.fromStrict subId
-                   , API.subscriptionStreamName = TL.fromStrict stream
+                   { API.subscriptionSubscriptionId = subId
+                   , API.subscriptionStreamName     = stream
                    , API.subscriptionOffset = Just $ API.SubscriptionOffset
                      (Just $ API.SubscriptionOffsetOffsetSpecialOffset
                        (Enumerated (Right API.SubscriptionOffset_SpecialOffsetLATEST))
@@ -283,7 +280,7 @@ callDeleteSubscription ctx subId = void $ doAction ctx getRespApp handleRespApp
   where
     getRespApp client = do
       let req = API.DeleteSubscriptionRequest
-                { deleteSubscriptionRequestSubscriptionId = TL.fromStrict subId
+                { deleteSubscriptionRequestSubscriptionId = subId
                 }
       API.HStreamApi{..} <- API.hstreamApiClient client
       hstreamApiDeleteSubscription (mkClientNormalRequest req)
@@ -328,8 +325,8 @@ callStreamingFetch ctx startRecordIds subId clientId = do
       where
         go recordIds = do
           let req = API.StreamingFetchRequest
-                    { API.streamingFetchRequestSubscriptionId = TL.fromStrict subId
-                    , API.streamingFetchRequestConsumerName = TL.fromStrict clientId
+                    { API.streamingFetchRequestSubscriptionId = subId
+                    , API.streamingFetchRequestConsumerName   = clientId
                     , API.streamingFetchRequestAckIds = recordIds
                     }
           void $ streamSend req

@@ -18,7 +18,6 @@ import           Data.Aeson                   (FromJSON, ToJSON)
 import           Data.Int                     (Int64)
 import           Data.Swagger                 (ToSchema)
 import qualified Data.Text                    as T
-import qualified Data.Text.Lazy               as TL
 import qualified Data.Vector                  as V
 import           GHC.Generics                 (Generic)
 import           Network.GRPC.LowLevel.Client (Client)
@@ -46,7 +45,7 @@ instance ToSchema ViewBO
 
 viewToViewBO :: View -> ViewBO
 viewToViewBO (View id' status createdTime sql _) =
-  ViewBO (Just $ TL.toStrict id') (Just . TaskStatus $ status) (Just createdTime) (TL.toStrict sql)
+  ViewBO (Just id') (Just . TaskStatus $ status) (Just createdTime) sql
 
 type ViewsAPI
   =    "views" :> Get '[JSON] [ViewBO]
@@ -61,7 +60,7 @@ createViewHandler hClient (ViewBO _ _ _ sql) = do
              <> "SQL Statement: " <> Log.buildText sql
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiCreateView $ mkClientNormalRequest def
-      { createViewRequestSql = TL.pack $ T.unpack sql }
+      { createViewRequestSql = T.pack $ T.unpack sql }
   viewToViewBO <$> getServerResp' resp
 
 listViewsHandler :: Client -> Handler [ViewBO]
@@ -79,7 +78,7 @@ deleteViewHandler hClient vid = do
              <> "View ID: " <> Log.buildString vid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiDeleteView $ mkClientNormalRequest def
-      { deleteViewRequestViewId = TL.pack vid }
+      { deleteViewRequestViewId = T.pack vid }
   void $ getServerResp' resp
 
 getViewHandler :: Client -> String -> Handler ViewBO
@@ -89,7 +88,7 @@ getViewHandler hClient vid = do
              <> "View ID: " <> Log.buildString vid
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiGetView $ mkClientNormalRequest def
-      { getViewRequestViewId = TL.pack vid }
+      { getViewRequestViewId = T.pack vid }
   viewToViewBO <$> getServerResp' resp
 
 viewServer :: Client -> Server ViewsAPI

@@ -18,7 +18,7 @@ import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
 import qualified Data.Set                         as Set
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word64)
 import           Network.GRPC.HighLevel.Generated
@@ -89,7 +89,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       payload2 <- newRandomByteString 5
       timeStamp <- getProtoTimestamp
       let stream = Stream name 1
-          header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+          header  = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
           record1 = buildRecord header payload1
           record2 = buildRecord header payload2
       -- append to a nonexistent stream should throw exception
@@ -115,7 +115,7 @@ listStreamRequest HStreamApi{..} =
   let req = ClientNormalRequest ListStreamsRequest requestTimeout $ MetadataMap Map.empty
   in listStreamsResponseStreams <$> (getServerResp =<< hstreamApiListStreams req)
 
-deleteStreamRequest :: HStreamClientApi -> TL.Text -> IO PB.Empty
+deleteStreamRequest :: HStreamClientApi -> T.Text -> IO PB.Empty
 deleteStreamRequest HStreamApi{..} streamName =
   let delReq = def { deleteStreamRequestStreamName = streamName }
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
@@ -124,24 +124,24 @@ deleteStreamRequest HStreamApi{..} streamName =
 ----------------------------------------------------------------------------------------------------------
 -- SubscribeSpec
 
-withSubscription :: ActionWith (HStreamClientApi, (TL.Text, TL.Text)) -> HStreamClientApi -> IO ()
+withSubscription :: ActionWith (HStreamClientApi, (T.Text, T.Text)) -> HStreamClientApi -> IO ()
 withSubscription = provideRunTest setup clean
   where
     setup _api = do
-      stream <- TL.fromStrict <$> newRandomText 5
-      subscription <- TL.fromStrict <$> newRandomText 5
+      stream       <- newRandomText 5
+      subscription <- newRandomText 5
       return ("StreamSpec_" <> stream, "SubscriptionSpec_" <> subscription)
     clean api (streamName, subscriptionName) = do
       deleteSubscriptionRequest api subscriptionName `shouldReturn` True
       cleanStreamReq api streamName `shouldReturn` PB.Empty
 
-withSubscriptions :: ActionWith (HStreamClientApi, (V.Vector TL.Text, V.Vector TL.Text))
+withSubscriptions :: ActionWith (HStreamClientApi, (V.Vector T.Text, V.Vector T.Text))
                   -> HStreamClientApi -> IO ()
 withSubscriptions = provideRunTest setup clean
   where
     setup _api = do
-      stream <- V.replicateM 5 $ TL.fromStrict <$> newRandomText 5
-      subscription <- V.replicateM 5 $ TL.fromStrict <$> newRandomText 5
+      stream       <- V.replicateM 5 $ newRandomText 5
+      subscription <- V.replicateM 5 $ newRandomText 5
       return (("StreamSpec_" <>) <$> stream, ("SubscriptionSpec_" <>) <$> subscription)
     clean api (streamNames, subscriptionNames) = do
       forM_ streamNames $ \name -> do
@@ -210,7 +210,7 @@ subscribeSpec = aroundAll provideHstreamApi $
 
 ----------------------------------------------------------------------------------------------------------
 
-createSubscriptionRequest :: HStreamClientApi -> TL.Text -> TL.Text -> SubscriptionOffset -> IO Bool
+createSubscriptionRequest :: HStreamClientApi -> T.Text -> T.Text -> SubscriptionOffset -> IO Bool
 createSubscriptionRequest HStreamApi{..} subscriptionId streamName offset =
   let subscription = Subscription subscriptionId streamName (Just offset) streamingAckTimeout
       req = ClientNormalRequest subscription requestTimeout $ MetadataMap Map.empty
@@ -221,13 +221,13 @@ listSubscriptionRequest HStreamApi{..} =
   let req = ClientNormalRequest ListSubscriptionsRequest requestTimeout $ MetadataMap Map.empty
   in listSubscriptionsResponseSubscription <$> (getServerResp =<< hstreamApiListSubscriptions req)
 
-deleteSubscriptionRequest :: HStreamClientApi -> TL.Text -> IO Bool
+deleteSubscriptionRequest :: HStreamClientApi -> T.Text -> IO Bool
 deleteSubscriptionRequest HStreamApi{..} subscribeId =
   let delReq = DeleteSubscriptionRequest subscribeId
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
   in True <$ (getServerResp =<< hstreamApiDeleteSubscription req)
 
-checkSubscriptionExistRequest :: HStreamClientApi -> TL.Text -> IO Bool
+checkSubscriptionExistRequest :: HStreamClientApi -> T.Text -> IO Bool
 checkSubscriptionExistRequest HStreamApi{..} subscribeId =
   let checkReq = CheckSubscriptionExistRequest subscribeId
       req = ClientNormalRequest checkReq requestTimeout $ MetadataMap Map.empty
@@ -236,13 +236,13 @@ checkSubscriptionExistRequest HStreamApi{..} subscribeId =
 ----------------------------------------------------------------------------------------------------------
 -- ConsumerSpec
 
-withConsumerSpecEnv :: ActionWith (HStreamClientApi, (TL.Text, TL.Text))
+withConsumerSpecEnv :: ActionWith (HStreamClientApi, (T.Text, T.Text))
                     -> HStreamClientApi -> IO ()
 withConsumerSpecEnv = provideRunTest setup clean
   where
     setup api = do
-      streamName <- ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
-      subName <- ("ConsumerSpec_" <>) . TL.fromStrict <$> newRandomText 20
+      streamName <- ("ConsumerSpec_" <>) <$> newRandomText 20
+      subName    <- ("ConsumerSpec_" <>) <$> newRandomText 20
 
       let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset
                    . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
@@ -261,7 +261,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
   aroundWith withConsumerSpecEnv $ do
 
     timeStamp <- runIO getProtoTimestamp
-    let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp TL.empty
+    let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
 
     it "test streamFetch request" $ \(api, (streamName, subName)) -> do
       originCh <- newChan
@@ -353,12 +353,12 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 
 streamFetchRequest
   :: HStreamClientApi
-  -> TL.Text
+  -> T.Text
   -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
   -> Chan ()                  -- channel use to close client request
   -> IO ()
 streamFetchRequest HStreamApi{..} subscribeId originCh terminate = do
-  consumerName <- newRandomLazyText 5
+  consumerName <- newRandomText 5
   let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
@@ -406,14 +406,14 @@ streamFetchRequest HStreamApi{..} subscribeId originCh terminate = do
 
 streamFetchRequestWithChaos
   :: HStreamClientApi
-  -> TL.Text
+  -> T.Text
   -> Chan (V.Vector RecordId) -- channel use to trans record recevied from server
   -> Chan (V.Vector RecordId) -- channel use to trans record after hacker
   -> Chan ()                  -- channel use to close client request
   -> (V.Vector RecordId -> IO (V.Vector RecordId)) -- hacker function
   -> IO ()
 streamFetchRequestWithChaos HStreamApi{..} subscribeId originCh hackerCh terminate hacker = do
-  consumerName <- newRandomLazyText 5
+  consumerName <- newRandomText 5
   let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action True consumerName)
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail

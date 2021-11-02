@@ -11,7 +11,7 @@ import           Control.Concurrent               (MVar, newEmptyMVar, newMVar)
 import           Control.Exception                (SomeException, try)
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map                         as Map
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import           Data.Time.Clock.System           (SystemTime (..),
                                                    getSystemTime)
 import           Network.GRPC.HighLevel.Generated
@@ -41,7 +41,7 @@ import           HStream.Store                    (HsLogAttrs (HsLogAttrs),
                                                    newLDClient)
 import qualified HStream.Store.Admin.API          as AA
 
-initNodePath :: ZHandle -> ServerID -> TL.Text -> Word32 -> Word32 -> IO ()
+initNodePath :: ZHandle -> ServerID -> T.Text -> Word32 -> Word32 -> IO ()
 initNodePath zk serverID host port port' = do
   let nodeInfo = NodeInfo { nodeStatus = Ready
                           , serverHost = host

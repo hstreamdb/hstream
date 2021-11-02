@@ -15,7 +15,7 @@ thrift::
 grpc:: grpc-cpp grpc-hs
 
 grpc-hs: grpc-cpp
-	(cd ~ && command -v $(PROTO_COMPILE_HS) || cabal install proto3-suite --constraint 'proto3-suite == 0.4.1')
+	(command -v $(PROTO_COMPILE_HS) || (cd external/proto3-suite && cabal install proto3-suite))
 	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/struct.proto --out ../gen-hs)
 	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/empty.proto --out ../gen-hs)
 	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --includeDir . --proto HStream/Server/HStreamApi.proto --out ../gen-hs)

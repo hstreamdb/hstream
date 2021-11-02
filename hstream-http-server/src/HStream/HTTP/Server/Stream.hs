@@ -28,7 +28,6 @@ import qualified Data.Map                     as Map
 import           Data.Swagger                 (ToSchema (..))
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as T
-import qualified Data.Text.Lazy               as TL
 import qualified Data.Vector                  as V
 import           Data.Word                    (Word32)
 import           GHC.Generics                 (Generic)
@@ -52,10 +51,10 @@ instance A.FromJSON StreamBO
 instance ToSchema   StreamBO
 
 streamToStreamBO :: Stream -> StreamBO
-streamToStreamBO (Stream name rep) = StreamBO (TL.toStrict name) rep
+streamToStreamBO (Stream name rep) = StreamBO name rep
 
 streamBOTOStream :: StreamBO -> Stream
-streamBOTOStream (StreamBO name rep) = Stream (TL.fromStrict name) rep
+streamBOTOStream (StreamBO name rep) = Stream name rep
 
 data AppendBO = AppendBO
   { streamName :: T.Text
@@ -119,7 +118,7 @@ deleteStreamHandler hClient sName = do
     HStreamApi{..} <- hstreamApiClient hClient
     hstreamApiDeleteStream $
       mkClientNormalRequest def
-        { deleteStreamRequestStreamName     = TL.fromStrict sName
+        { deleteStreamRequestStreamName     = sName
         , deleteStreamRequestIgnoreNonExist = False
         }
   void $ getServerResp' resp
@@ -138,10 +137,10 @@ appendHandler hClient appendBO = do
     timestamp      <- getProtoTimestamp
     Log.debug $ "Append records to HStream server. "
              <> "Stream Name: " <> Log.buildText (streamName appendBO)
-    let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp TL.empty
+    let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
         record  = buildRecord header `V.map` processRecords appendBO
     hstreamApiAppend . mkClientNormalRequest $ def
-      { appendRequestStreamName = TL.fromStrict (streamName appendBO)
+      { appendRequestStreamName = streamName appendBO
       , appendRequestRecords    = record
       }
   AppendResult . appendResponseRecordIds <$> getServerResp' resp

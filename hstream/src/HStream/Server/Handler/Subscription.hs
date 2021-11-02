@@ -29,7 +29,6 @@ import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, fromJust)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64, Word8)
 import           Network.GRPC.HighLevel.Generated
@@ -65,7 +64,7 @@ createSubscriptionHandler ::
 createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subscription@Subscription {..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
 
-  let streamName = transToStreamName $ TL.toStrict subscriptionStreamName
+  let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
   if not streamExists
     then do
@@ -75,10 +74,10 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
           <> Log.buildString (show streamName)
       returnErrResp StatusInternal $ StatusDetails "stream not exist"
     else do
-      logId <- S.getUnderlyingLogId scLDClient (transToStreamName . TL.toStrict $ subscriptionStreamName)
+      logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName)
       offset <- convertOffsetToRecordId logId
 
-      let subId = TL.unpack subscriptionSubscriptionId
+      let subId = T.unpack subscriptionSubscriptionId
       subs <- readMVar subscriptionCtx
       case Map.lookup subId subs of
         Just _  -> returnErrResp StatusUnknown "Subsctiption already exists"
@@ -93,7 +92,7 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
           P.storeObject (T.pack subId) subCtx zkHandle -- sync subctx to zk
 
           let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-          P.storeObject (TL.toStrict subscriptionSubscriptionId) newSub zkHandle
+          P.storeObject subscriptionSubscriptionId newSub zkHandle
           returnResp subscription
   where
     convertOffsetToRecordId logId = do
@@ -128,24 +127,24 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
                   then do
                     -- remove sub from zk
                     P.removeObject @ZHandle @'SubRep
-                      (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+                      deleteSubscriptionRequestSubscriptionId zkHandle
                     -- remove subctx from zk
                     P.removeObject @ZHandle @'SubCtxRep
-                      (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+                      deleteSubscriptionRequestSubscriptionId zkHandle
                     let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
                     return (newInfo, True)
                   else return (info, False)
             )
         if shouldDelete
           then do
-          modifyMVar_ subscriptionCtx (return . Map.delete (TL.unpack deleteSubscriptionRequestSubscriptionId))
+          modifyMVar_ subscriptionCtx (return . Map.delete (T.unpack deleteSubscriptionRequestSubscriptionId))
           return $ HM.delete deleteSubscriptionRequestSubscriptionId store
           else return store
       Nothing -> do
         P.removeObject @ZHandle @'SubRep
-          (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+          deleteSubscriptionRequestSubscriptionId zkHandle
         P.removeObject @ZHandle @'SubCtxRep
-          (TL.toStrict deleteSubscriptionRequestSubscriptionId) zkHandle
+          deleteSubscriptionRequestSubscriptionId zkHandle
         return store
 
   returnResp Empty
@@ -156,7 +155,7 @@ checkSubscriptionExistHandler ::
   IO (ServerResponse 'Normal CheckSubscriptionExistResponse)
 checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
-  let sid = TL.toStrict checkSubscriptionExistRequestSubscriptionId
+  let sid = checkSubscriptionExistRequestSubscriptionId
   res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
   returnResp . CheckSubscriptionExistResponse $ res
 
@@ -177,8 +176,8 @@ streamingFetchHandler
 streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
-  consumerNameRef <- newIORef TL.empty
-  subscriptionIdRef <- newIORef TL.empty
+  consumerNameRef   <- newIORef T.empty
+  subscriptionIdRef <- newIORef T.empty
   handleRequest True consumerNameRef subscriptionIdRef
   where
     handleRequest isFirst consumerNameRef subscriptionIdRef = do
@@ -221,7 +220,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                                 )
                               return (store, Nothing)
                             Nothing -> do
-                              mSub <- P.getObject (TL.toStrict streamingFetchRequestSubscriptionId) zkHandle
+                              mSub <- P.getObject streamingFetchRequestSubscriptionId zkHandle
                               case mSub of
                                 Nothing -> return (store, Just "Subscription has been removed")
                                 Just sub@Subscription {..} -> do
@@ -300,28 +299,28 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       ldCkpReader <-
         S.newLDRsmCkpReader
           ldclient
-          (textToCBytes $ TL.toStrict subscriptionId)
+          (textToCBytes subscriptionId)
           S.checkpointStoreLogID
           5000
           1
           Nothing
           10
       -- seek ldCkpReader to start offset
-      logId <- S.getUnderlyingLogId ldclient (transToStreamName (TL.toStrict streamName))
+      logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
       let startLSN = recordIdBatchId startRecordId
       S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
       -- set ldCkpReader timeout to 0
       _ <- S.ckpReaderSetTimeout ldCkpReader 0
-      Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildLazyText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
+      Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
 
       -- create a ldReader for rereading unacked records
       ldReader <- S.newLDReader ldclient 1 Nothing
-      Log.debug $ "created a ldReader for subscription {" <> Log.buildLazyText subscriptionId <> "}"
+      Log.debug $ "created a ldReader for subscription {" <> Log.buildText subscriptionId <> "}"
 
       -- init SubscribeRuntimeInfo
       let info =
             SubscribeRuntimeInfo
-              { sriStreamName = TL.toStrict streamName,
+              { sriStreamName = streamName,
                 sriLogId = logId,
                 sriAckTimeoutSeconds = ackTimeout,
                 sriLdCkpReader = ldCkpReader,
@@ -563,7 +562,7 @@ dispatchRecords records streamSends
     return . HM.fromList . catMaybes $ newSenders
   where
     doDispatch (name, sender) record = do
-      Log.debug $ Log.buildString "dispatch " <> Log.buildInt (V.length record) <> " records to " <> "consumer " <> Log.buildLazyText name
+      Log.debug $ Log.buildString "dispatch " <> Log.buildInt (V.length record) <> " records to " <> "consumer " <> Log.buildText name
       sender (StreamingFetchResponse record) >>= \case
         Left err -> do
           -- if send record error, this batch of records will resend next round

@@ -13,7 +13,6 @@ import           Data.Map                  (Map)
 import qualified Data.Map                  as Map
 import           Data.Set                  (Set)
 import qualified Data.Text                 as T
-import qualified Data.Text.Lazy            as TL
 import qualified Data.Vector               as V
 import           Data.Word                 (Word32, Word64)
 import           GHC.Generics              (Generic)
@@ -31,10 +30,10 @@ import           HStream.Store             (Compression)
 import qualified HStream.Store             as HS
 import qualified HStream.Store.Admin.API   as AA
 
-protocolVersion :: TL.Text
+protocolVersion :: T.Text
 protocolVersion = "0.1.0"
 
-serverVersion :: TL.Text
+serverVersion :: T.Text
 serverVersion = "0.6.0"
 
 data ServerOpts = ServerOpts
@@ -79,7 +78,7 @@ data ServerContext = ServerContext {
   , scStatsHolder            :: Stats.StatsHolder
 }
 
-type SubscriptionId = TL.Text
+type SubscriptionId = T.Text
 
 instance Bounded RecordId where
   minBound = RecordId minBound minBound
@@ -90,7 +89,7 @@ data RecordIdRange = RecordIdRange
     endRecordId   :: RecordId
   } deriving (Show, Eq)
 
-type ConsumerName = TL.Text
+type ConsumerName = T.Text
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
     sriStreamName        :: T.Text

@@ -7,7 +7,7 @@
 module HStream.RunQuerySpec (spec) where
 
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
@@ -19,13 +19,13 @@ import           HStream.Store.Logger             (pattern C_DBG_ERROR,
 import           HStream.Utils                    (TaskStatus (..),
                                                    setupSigsegvHandler)
 
-getQueryResponseIdIs :: TL.Text -> Query -> Bool
+getQueryResponseIdIs :: T.Text -> Query -> Bool
 getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
 
-createQuery :: TL.Text -> TL.Text -> IO (Maybe Query)
+createQuery :: T.Text -> T.Text -> IO (Maybe Query)
 createQuery qid sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
-  let createQueryRequest = CreateQueryRequest { createQueryRequestId = qid
+  let createQueryRequest = CreateQueryRequest { createQueryRequestId        = qid
                                               , createQueryRequestQueryText = sql
                                               }
   resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
@@ -50,7 +50,7 @@ listQueries = withGRPCClient clientConfig $ \client -> do
       return Nothing
     _ -> return Nothing
 
-getQuery :: TL.Text -> IO (Maybe Query)
+getQuery :: T.Text -> IO (Maybe Query)
 getQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let getQueryRequest = GetQueryRequest { getQueryRequestId = qid }
@@ -63,7 +63,7 @@ getQuery qid = withGRPCClient clientConfig $ \client -> do
       return Nothing
     _ -> return Nothing
 
-deleteQuery :: TL.Text -> IO Bool
+deleteQuery :: T.Text -> IO Bool
 deleteQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let deleteQueryRequest = DeleteQueryRequest { deleteQueryRequestId = qid }
@@ -75,7 +75,7 @@ deleteQuery qid = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-terminateQuery :: TL.Text -> IO Bool
+terminateQuery :: T.Text -> IO Bool
 terminateQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let terminateQueryRequest = TerminateQueriesRequest { terminateQueriesRequestQueryId = V.singleton qid,
@@ -88,7 +88,7 @@ terminateQuery qid = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-restartQuery :: TL.Text -> IO Bool
+restartQuery :: T.Text -> IO Bool
 restartQuery qid = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let restartQueryRequest = RestartQueryRequest { restartQueryRequestId = qid }
@@ -106,7 +106,7 @@ spec = aroundAll provideHstreamApi $
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
-  source1 <- runIO $ TL.fromStrict <$> newRandomText 20
+  source1 <- runIO $ newRandomText 20
   let queryname1 = "testquery1"
 
   it "clean streams" $ \api -> do

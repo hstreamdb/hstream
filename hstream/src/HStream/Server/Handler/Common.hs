@@ -27,7 +27,6 @@ import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
@@ -247,13 +246,13 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
                      -> TaskBuilder
-                     -> TL.Text
+                     -> T.Text
                      -> P.QueryType
                      -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
 handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
-    (getTaskName taskBuilder) (TL.toStrict commandQueryStmtText) queryType serverID zkHandle
+    (getTaskName taskBuilder) commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid

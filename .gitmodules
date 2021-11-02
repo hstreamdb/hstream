@@ -4,3 +4,9 @@
 [submodule "external/hsthrift"]
 	path = external/hsthrift
 	url = git@github.com:hstreamdb/hsthrift.git
+[submodule "external/proto3-suite"]
+	path = external/proto3-suite
+	url = git@github.com:hstreamdb/proto3-suite.git
+[submodule "external/proto3-wire"]
+	path = external/proto3-wire
+	url = git@github.com:hstreamdb/proto3-wire.git

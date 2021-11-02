@@ -16,7 +16,6 @@ module HStream.Server.Handler.Cluster
 
 import           Data.Functor
 import qualified Data.Map.Strict                  as Map
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           ZooKeeper.Types
@@ -46,14 +45,14 @@ lookupStreamHandler :: ServerContext
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
 lookupStreamHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream)) = defaultExceptionHandle $ do
   prdCtxs <- P.listObjects @ZHandle @'P.PrdCtxRep zkHandle
-  case Map.lookup (TL.toStrict stream) prdCtxs of
+  case Map.lookup stream prdCtxs of
     Nothing -> do
       allNodes <- getNodesRanking ctx
       case allNodes of
         []       -> returnErrResp StatusInternal "No available server node"
         newNode:_ -> do
-          let prdCtx = ProducerContext (TL.toStrict stream) newNode
-          P.storeObject (TL.toStrict stream) prdCtx zkHandle
+          let prdCtx = ProducerContext stream newNode
+          P.storeObject stream prdCtx zkHandle
           let resp = LookupStreamResponse
                      { lookupStreamResponseStreamName = stream
                      , lookupStreamResponseServerNode = Just newNode
@@ -61,7 +60,7 @@ lookupStreamHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupStre
           returnResp resp
     Just ProducerContext{..} -> do
       let resp = LookupStreamResponse
-                 { lookupStreamResponseStreamName = TL.fromStrict _prdctxStream
+                 { lookupStreamResponseStreamName = _prdctxStream
                  , lookupStreamResponseServerNode = Just _prdctxNode
                  }
       returnResp resp
@@ -71,7 +70,7 @@ lookupSubscriptionHandler :: ServerContext
                     -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
 lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
   subCtxs <- P.listObjects zkHandle
-  case Map.lookup (TL.toStrict subId) subCtxs of
+  case Map.lookup subId subCtxs of
     Nothing -> returnErrResp StatusInternal "No subscription found"
     Just SubscriptionContext{..} -> do
       serverNode <- P.getServerNode zkHandle _subctxNode

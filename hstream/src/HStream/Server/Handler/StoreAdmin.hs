@@ -15,7 +15,6 @@ import           Data.List                        (find)
 import           Data.Maybe                       (fromMaybe)
 import           Data.Scientific                  (floatingOrInteger)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Lens.Micro
 import           Lens.Micro.Aeson
@@ -42,8 +41,8 @@ toArrInt :: Value -> V.Vector Int32
 toArrInt (Array v) = fmap toInt v
 toArrInt _         = V.empty
 
-toString :: Value -> TL.Text
-toString (String s) = TL.pack $ T.unpack s
+toString :: Value -> T.Text
+toString (String s) = s
 toString _          = ""
 
 statusOpts :: StatusOpts
@@ -81,7 +80,7 @@ getNodes headerConfig StatusOpts{..} = do
       nodeId <- toInt <$> node ^? key "node_index"
       info <- find (\(id':_) -> show nodeId == id') statusList
       case info of
-        _:_:_:[status] -> Just $ TL.pack status
+        _:_:_:[status] -> Just $ T.pack status
         _              -> Nothing
 
 listStoreNodesHandler

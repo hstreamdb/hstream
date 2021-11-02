@@ -9,7 +9,7 @@ module HStream.RunConnectorSpec (spec) where
 import           Control.Concurrent               (threadDelay)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (isJust)
-import qualified Data.Text.Lazy                   as TL
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
@@ -21,12 +21,12 @@ import           HStream.Store.Logger             (pattern C_DBG_ERROR,
 import           HStream.Utils                    (TaskStatus (..),
                                                    setupSigsegvHandler)
 
-getConnectorResponseIdIs :: TL.Text -> Connector -> Bool
+getConnectorResponseIdIs :: T.Text -> Connector -> Bool
 getConnectorResponseIdIs targetId (Connector connectorId _ _ _ ) = connectorId == targetId
 
 -- TODO: mv to hstream-client library
 
-createSinkConnector :: TL.Text -> IO (Maybe Connector)
+createSinkConnector :: T.Text -> IO (Maybe Connector)
 createSinkConnector sql = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let createSinkConnectorRequest = CreateSinkConnectorRequest { createSinkConnectorRequestSql = sql }
@@ -49,7 +49,7 @@ listConnectors = withGRPCClient clientConfig $ \client -> do
       putStrLn $ "List Connectors Client Error: " <> show clientError
       return Nothing
 
-getConnector :: TL.Text -> IO (Maybe Connector)
+getConnector :: T.Text -> IO (Maybe Connector)
 getConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let getConnectorRequest = GetConnectorRequest { getConnectorRequestId = connectorId }
@@ -61,7 +61,7 @@ getConnector connectorId = withGRPCClient clientConfig $ \client -> do
       putStrLn $ "Get Connector Client Error: " <> show clientError
       return Nothing
 
-deleteConnector :: TL.Text -> IO Bool
+deleteConnector :: T.Text -> IO Bool
 deleteConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let deleteConnectorRequest = DeleteConnectorRequest { deleteConnectorRequestId = connectorId }
@@ -73,7 +73,7 @@ deleteConnector connectorId = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-terminateConnector :: TL.Text -> IO Bool
+terminateConnector :: T.Text -> IO Bool
 terminateConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let terminateConnectorRequest = TerminateConnectorRequest { terminateConnectorRequestConnectorId = connectorId }
@@ -85,7 +85,7 @@ terminateConnector connectorId = withGRPCClient clientConfig $ \client -> do
       return False
     _ -> return False
 
-restartConnector :: TL.Text -> IO Bool
+restartConnector :: T.Text -> IO Bool
 restartConnector connectorId = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
   let restartConnectorRequest = RestartConnectorRequest { restartConnectorRequestId = connectorId }
@@ -102,11 +102,11 @@ spec = aroundAll provideHstreamApi $
   describe "HStream.RunConnectorSpec" $ do
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
   runIO setupSigsegvHandler
-  source1 <- runIO $ TL.fromStrict <$> newRandomText 20
+  source1 <- runIO $ newRandomText 20
   let mysqlConnector = "mysql"
 
   it "create mysql sink connector" $ \api -> do
-    runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS ;"
+    runDropSql         api $ "DROP STREAM "   <> source1 <> " IF EXISTS ;"
     runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
 
     createSinkConnector (createMySqlConnectorSql mysqlConnector source1)

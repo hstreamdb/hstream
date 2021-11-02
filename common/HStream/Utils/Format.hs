@@ -48,7 +48,7 @@ instance Format Protobuf.Empty where
   formatResult _ = const "Done. No results.\n"
 
 instance Format API.Stream where
-  formatResult _ = (<> "\n") . TL.unpack . API.streamStreamName
+  formatResult _ = (<> "\n") . T.unpack . API.streamStreamName
 
 instance Format API.View where
   formatResult _ = show . API.viewViewId

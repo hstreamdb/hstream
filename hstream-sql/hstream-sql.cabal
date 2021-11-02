@@ -5,7 +5,7 @@ synopsis:
   High performance stream processing platform for IoT data written in Haskell.
 
 description:
-  Please see the README on Github at
+  Please see the README on GitHub at
   <https://github.com/hstream-io/hstream#readme>
 
 license:            BSD-3-Clause
@@ -48,6 +48,13 @@ library
     HStream.SQL.Preprocess
     HStream.SQL.Print
     HStream.SQL.Validate.Utils
+
+  autogen-modules:
+    HStream.SQL.Abs
+    HStream.SQL.ErrM
+    HStream.SQL.Lex
+    HStream.SQL.Par
+    HStream.SQL.Print
 
   hs-source-dirs:     src gen-sql
   build-depends:
