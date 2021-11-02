@@ -85,6 +85,7 @@ initializeServer ServerOpts{..} zk = do
   currentLoadReports <- newMVar HM.empty
 
   currentLeader <- newEmptyMVar
+  isValid <- newMVar True
 
   return (
     defaultServiceOptions {
@@ -112,6 +113,7 @@ initializeServer ServerOpts{..} zk = do
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
     , leaderID                 = currentLeader
+    , isValid                  = isValid
     },
     LoadManager {
       sID             = _serverID

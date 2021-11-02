@@ -174,57 +174,61 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
   handleRequest True consumerNameRef subscriptionIdRef
   where
     handleRequest isFirst consumerNameRef subscriptionIdRef = do
-      streamRecv >>= \case
-        Left (err :: grpcIOError) -> do
-          Log.fatal . Log.buildString $ "streamRecv error: " <> show err
+      readMVar isValid >>= \case
+        False ->
+          return $ ServerBiDiResponse [] StatusInternal "The node can not provice services, shutting down..."
+        True  -> do
+          streamRecv >>= \case
+            Left (err :: grpcIOError) -> do
+              Log.fatal . Log.buildString $ "streamRecv error: " <> show err
 
-          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
-            Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
-            Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
-        Right ma ->
-          case ma of
-            Just streamingFetchReq@StreamingFetchRequest {..} -> do
-              -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-              if isFirst
-                then do
-                  Log.debug "stream recive requst, do check in isFirst branch"
-
-                  -- the subscription has to exist and be bound to a server node
-                  P.checkIfExist @ZHandle @'SubRep
-                    streamingFetchRequestSubscriptionId zkHandle >>= \case
-                    False ->
-                      return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
-                    True  -> do
-                      P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
-                        Nothing -> do
-                          nodeIDs <- getNodesRanking ctx <&> fmap serverNodeId
-                          case L.elem serverID nodeIDs of
-                            False -> return $ ServerBiDiResponse [] StatusInternal "There is no available node for allocating the subscription"
-                            True  -> do
-                              let subCtx = SubscriptionContext { _subctxNode = serverID }
-                              modifyMVar_ subscriptionCtx
-                                (\ctxs -> do
-                                    newCtxMVar <- newMVar subCtx
-                                    return $ Map.insert (T.unpack streamingFetchRequestSubscriptionId) newCtxMVar ctxs
-                                )
-                              P.storeObject streamingFetchRequestSubscriptionId subCtx zkHandle -- sync subctx to zk
-                              doFirstFetchCheck streamingFetchReq
-                        Just subctx -> do
-                          if _subctxNode subctx == serverID
-                            then doFirstFetchCheck streamingFetchReq
-                            else return $ ServerBiDiResponse [] StatusInternal "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
-                else
-                  handleAcks
-                    streamingFetchRequestSubscriptionId
-                    streamingFetchRequestAckIds
-                    consumerNameRef
-                    subscriptionIdRef
-            Nothing -> do
-              -- This means that the consumer finished sending acks actively.
-              Log.info "consumer closed"
               cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
                 Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
                 Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
+            Right ma ->
+              case ma of
+                Just streamingFetchReq@StreamingFetchRequest {..} -> do
+                  -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
+                  if isFirst
+                    then do
+                      Log.debug "stream recive requst, do check in isFirst branch"
+
+                      -- the subscription has to exist and be bound to a server node
+                      P.checkIfExist @ZHandle @'SubRep
+                        streamingFetchRequestSubscriptionId zkHandle >>= \case
+                        False ->
+                          return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
+                        True  -> do
+                          P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
+                            Nothing -> do
+                              nodeIDs <- getNodesRanking ctx <&> fmap serverNodeId
+                              case L.elem serverID nodeIDs of
+                                False -> return $ ServerBiDiResponse [] StatusInternal "There is no available node for allocating the subscription"
+                                True  -> do
+                                  let subCtx = SubscriptionContext { _subctxNode = serverID }
+                                  modifyMVar_ subscriptionCtx
+                                    (\ctxs -> do
+                                        newCtxMVar <- newMVar subCtx
+                                        return $ Map.insert (T.unpack streamingFetchRequestSubscriptionId) newCtxMVar ctxs
+                                    )
+                                  P.storeObject streamingFetchRequestSubscriptionId subCtx zkHandle -- sync subctx to zk
+                                  doFirstFetchCheck streamingFetchReq
+                            Just subctx -> do
+                              if _subctxNode subctx == serverID
+                                then doFirstFetchCheck streamingFetchReq
+                                else return $ ServerBiDiResponse [] StatusInternal "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
+                    else
+                      handleAcks
+                        streamingFetchRequestSubscriptionId
+                        streamingFetchRequestAckIds
+                        consumerNameRef
+                        subscriptionIdRef
+                Nothing -> do
+                  -- This means that the consumer finished sending acks actively.
+                  Log.info "consumer closed"
+                  cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
+                    Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
+                    Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
       where
         doFirstFetchCheck StreamingFetchRequest{..} = do
           writeIORef consumerNameRef streamingFetchRequestConsumerName

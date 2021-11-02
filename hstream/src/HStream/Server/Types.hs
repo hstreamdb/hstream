@@ -77,6 +77,7 @@ data ServerContext = ServerContext {
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
+  , isValid                  :: MVar Bool
 }
 
 type SubscriptionId = T.Text

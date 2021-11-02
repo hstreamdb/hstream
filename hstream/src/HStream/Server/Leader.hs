@@ -18,7 +18,6 @@ import qualified Data.Map.Strict                  as M
 import           Data.Maybe                       (mapMaybe)
 import           Data.String                      (fromString)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.UUID                        as UUID
 import           Data.UUID.V4                     (nextRandom)
 import           Data.Word                        (Word32)
@@ -42,10 +41,12 @@ import           HStream.Server.Types             (LoadManager (..),
                                                    ProducerContext (ProducerContext, _prdctxNode, _prdctxStream),
                                                    ServerContext (..), ServerID,
                                                    SubscriptionContext (..))
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Network.SocketAddr          (SocketAddr)
 import           ZooKeeper
 import           ZooKeeper.Exception
 import           ZooKeeper.Recipe.Election        (election)
@@ -53,6 +54,8 @@ import           ZooKeeper.Types
 
 selectLeader :: ServerContext -> LoadManager -> IO ()
 selectLeader ctx@ServerContext{..} lm = do
+  nodesCache <- newMVar Map.empty
+
   void $ forkIO $ do
     zooWatchGet zkHandle leaderPath (\_ -> watcherApp) (\_ -> return ())
   uuid <- nextRandom
@@ -65,9 +68,9 @@ selectLeader ctx@ServerContext{..} lm = do
       Log.i $ "Current leader: " <> Log.buildString (show serverID)
       startLoadBalancer zkHandle lm
       putMVar watchLock ()
-      actionTriggedByNodesChange ctx zkHandle lm
+      actionTriggedByNodesChange ctx zkHandle lm nodesCache
       -- Set watcher for nodes changes
-      watchNodes ctx lm
+      watchNodes ctx lm nodesCache
     )
     (\_ -> stepApp)
   where
@@ -85,36 +88,53 @@ selectLeader ctx@ServerContext{..} lm = do
         _ | noLeader  -> putMVar leaderID new
           | otherwise -> void $ swapMVar leaderID new
 
-watchNodes :: ServerContext -> LoadManager -> IO ()
-watchNodes sc@ServerContext{..} lm = do
+watchNodes :: ServerContext
+           -> LoadManager
+           -> MVar (Map.Map ServerID (ServerNode, SocketAddr))
+           -> IO ()
+watchNodes sc@ServerContext{..} lm nodesCache = do
   zooWatchGetChildren zkHandle serverIdPath callback result
   where
     callback HsWatcherCtx{..} = do
-      _ <- forkIO $ watchNodes sc lm
-      actionTriggedByNodesChange sc watcherCtxZHandle lm
+      _ <- forkIO $ watchNodes sc lm nodesCache
+      actionTriggedByNodesChange sc watcherCtxZHandle lm nodesCache
     result _ = pure ()
 
-actionTriggedByNodesChange :: ServerContext -> ZHandle -> LoadManager -> IO ()
-actionTriggedByNodesChange ctx zkHandle LoadManager{..} = do
+actionTriggedByNodesChange :: ServerContext
+                           -> ZHandle
+                           -> LoadManager
+                           -> MVar (Map.Map ServerID (ServerNode, SocketAddr))
+                           -> IO ()
+actionTriggedByNodesChange ctx zkHandle LoadManager{..} nodesCache = do
   void $ takeMVar watchLock
   StringsCompletion (StringVector children) <-
     zooGetChildren zkHandle serverIdPath
+  -- FIXME: Hide implementation details!
   serverMap <- getCurrentServers zkHandle children
   oldNodes <- getPrevServers zkHandle
   let newNodes = children \\ M.keys oldNodes
   let failedNodes = M.keys oldNodes \\ children
   unless (null newNodes) $ do
-    Log.debug "Some node started. "
+    let newNodesIDs = mapMaybe (`M.lookup` serverMap) newNodes
+    Log.debug . Log.buildString $ "Nodes started: " <> show newNodesIDs
+    -- update local nodes cache
+    mapM_ (\nodeId -> do
+              node <- P.getServerNode zkHandle nodeId
+              internalAddr <- getServerInternalAddr zkHandle nodeId
+              modifyMVar_ nodesCache (return . Map.insert nodeId (node, internalAddr))
+          ) newNodesIDs
     updateLoadReports zkHandle loadReports
   unless (null failedNodes) $ do
-    let failedNodesNames = mapMaybe (`M.lookup` oldNodes) failedNodes
-    Log.debug $ fromString (show failedNodesNames)
+    let failedNodesIDs = mapMaybe (`M.lookup` oldNodes) failedNodes
+    Log.debug $ fromString (show failedNodesIDs)
              <> " failed/terminated since last checked. "
+    -- mark the node as invalid
+    mapM_ (shutdownNode nodesCache) failedNodesIDs
     -- recover subscriptions
-    getFailedSubcsriptions ctx failedNodesNames
+    getFailedSubcsriptions ctx failedNodesIDs
       >>= mapM_ (restartSubscription ctx)
     -- recover streams
-    getFailedProducers ctx failedNodesNames
+    getFailedProducers ctx failedNodesIDs
       >>= mapM_ (restartProducer ctx)
   setPrevServers zkHandle serverMap
   putMVar watchLock ()
@@ -189,6 +209,19 @@ restartProducer ctx@ServerContext{..} ProducerContext{..} = do
           (ClientErrorResponse err) -> do
             Log.warning . Log.buildString $ show err
             go nodes
+
+shutdownNode :: MVar (Map.Map ServerID (ServerNode, SocketAddr))
+             -> ServerID
+             -> IO Bool
+shutdownNode nodesCache nodeId = do
+  cache <- readMVar nodesCache
+  case Map.lookup nodeId cache of
+    Nothing       -> return False
+    Just (_,addr) -> withGRPCClient (mkGRPCClientConf addr) $ \client -> do
+      HStreamInternal{..} <- hstreamInternalClient client
+      hstreamInternalShutdown (mkClientNormalRequest Empty) >>= \case
+        (ClientNormalResponse _ _meta1 _meta2 _code _details) -> return True
+        _                                                     -> return False
 
 --------------------------------------------------------------------------------
 

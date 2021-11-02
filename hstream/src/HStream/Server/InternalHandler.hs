@@ -8,6 +8,7 @@
 module HStream.Server.InternalHandler where
 
 import           Control.Concurrent
+import           Control.Monad
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -38,6 +39,7 @@ internalHandlers ctx = pure HStreamInternal {
   , hstreamInternalGetNodesRanking     = getNodesRankingHandler ctx
   , hstreamInternalTakeSubscription    = takeSubscription ctx
   , hstreamInternalTakeStream          = takeStream ctx
+  , hstreamInternalShutdown            = shutdown ctx
   }
   where
     unimplemented = const (returnErrResp StatusInternal "unimplemented method called")
@@ -81,4 +83,11 @@ takeStream ServerContext{..} (ServerNormalRequest _ (TakeStreamRequest stream)) 
   node <- getServerNode zkHandle serverID
   Log.debug . Log.buildString $ "I took the stream " <> T.unpack stream
   P.storeObject stream (ProducerContext stream node) zkHandle
+  returnResp Empty
+
+shutdown :: ServerContext
+         -> ServerRequest 'Normal Empty Empty
+         -> IO (ServerResponse 'Normal Empty)
+shutdown ServerContext{..} (ServerNormalRequest _ _) = defaultExceptionHandle $ do
+  void $ swapMVar isValid False
   returnResp Empty
