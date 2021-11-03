@@ -172,7 +172,7 @@ adminCommandExec q str =
                                   then putStrLn =<< Query.showTableColumns q (CB.pack $ init name_)
                                   else putStrLn =<< Query.showTableColumns q (CB.pack name_)
     ["describe", name, ";"] -> putStrLn =<< Query.showTableColumns q (CB.pack name)
-    "select" : _ -> mapM_ putStrLn =<< Query.runQuery q (CB.pack str)
+    "select" : _ -> either putStrLn (mapM_ putStrLn) =<< Query.runQuery q (CB.pack str)
     _            -> putStrLn $ "Unknown statement: " <> str
 
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
