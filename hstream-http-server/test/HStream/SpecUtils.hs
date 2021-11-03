@@ -21,7 +21,10 @@ appendStream appendBO = do
   req <- buildRequest "POST" $ "streams/publish"
   let request = setRequestBodyJSON appendBO req
   resp <- httpLBS request
-  pure $ fromJust (decode (getResponseBody resp) :: Maybe AppendResult)
+  let xs = getResponseBody resp
+  case (decode xs :: Maybe AppendResult) of
+    Nothing -> error $ "Could not decode response: " ++ show xs ++ " from " ++ show resp
+    Just x  -> pure x
 
 deleteStream :: String -> IO ()
 deleteStream sName = do
