@@ -1,12 +1,14 @@
 #include "Query.h"
 
 #include "cbits/query/tables/AppendThroughput.h"
+#include "cbits/query/tables/ReadThroughput.h"
 #include "cbits/query/tables/Streams.h"
 
 namespace hstream { namespace client { namespace query {
 
 void Query::registerTables() {
   table_registry_.registerTable<tables::AppendThroughput>(ctx_);
+  table_registry_.registerTable<tables::ReadThroughput>(ctx_);
   table_registry_.registerTable<tables::Streams>(ctx_);
 
   if (table_registry_.attachTables(db_) != 0) {
