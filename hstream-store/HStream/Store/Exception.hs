@@ -265,7 +265,8 @@ instance Show SomeHStoreException where
 instance T.Print SomeHStoreException where
   toUTF8BuilderP _ (SomeHStoreException e) = fromString $ show e
 
-instance E.Exception SomeHStoreException
+instance E.Exception SomeHStoreException where
+  displayException (SomeHStoreException e) = displayException e
 
 someHStoreExceptionToException :: E.Exception e => e -> E.SomeException
 someHStoreExceptionToException = E.toException . SomeHStoreException
@@ -299,7 +300,8 @@ instance Show SSEInfo where
 newtype e = e SSEInfo deriving (Show);                                         \
 instance Exception e where                                                     \
 { toException = someHStoreExceptionToException;                                \
-  fromException = someHStoreExceptionFromException                             \
+  fromException = someHStoreExceptionFromException;                            \
+  displayException (e SSEInfo{..}) = T.toString sseDescription;                \
 }
 
 #define MAKE_THROW_SSE(c, e)                                                   \
