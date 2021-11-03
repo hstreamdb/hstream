@@ -8,8 +8,11 @@ module HStream.Common.Query
   , QueryResult (..)
   , ActiveQueryMetadata (..)
   , FailedNodeDetails (..)
+    -- * Show tables
   , showTables, getTables, formatTables
+    -- * Describe table
   , showTableColumns, getTableColumns, formatTableColumns
+    -- * Run queries
   , runQuery, execStatement, formatQueryResults
     -- * HStreamQuery
   , HStreamQuery
@@ -18,6 +21,7 @@ module HStream.Common.Query
 
 import           Control.Exception
 import           Control.Monad         (forM)
+import           Data.Bifunctor        (second)
 import           Data.Default          (def)
 import           Data.IntMap.Strict    (IntMap)
 import qualified Data.IntMap.Strict    as IntMap
@@ -27,7 +31,6 @@ import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc (free)
 import           Foreign.Ptr
-import           GHC.Stack
 import qualified Text.Layout.Table     as Table
 import           Z.Data.CBytes         (CBytes)
 import qualified Z.Data.CBytes         as CBytes
@@ -140,19 +143,20 @@ formatTableColumns _ (cols, typs, descs) =
                 ]
    in Table.tableString colSpec Table.asciiS (Table.titlesH titles) (Table.colsAllG Table.center <$> format)
 
-runQuery :: QueryBaseRep a => a -> CBytes -> IO [String]
-runQuery ldq query = formatQueryResults <$> execStatement ldq query
+runQuery :: QueryBaseRep a => a -> CBytes -> IO (Either String [String])
+runQuery ldq query = second formatQueryResults <$> execStatement ldq query
 
-execStatement :: QueryBaseRep a => a -> CBytes -> IO [QueryResult]
-execStatement ldq query = do
-  (n, results) <- fetchQueryResults ldq query
-  if n >= 1
-     then forM [0..n-1] $ \i ->
-            QueryResult <$> queryResultHeaders results i
-                        <*> queryResultRows results i
-                        <*> queryResultColsMaxSize results i
-                        <*> queryResultMetadata results i
-     else return []
+execStatement :: QueryBaseRep a => a -> CBytes -> IO (Either String [QueryResult])
+execStatement ldq query = fetchQueryResults ldq query >>= either (pure . Left) (fmap Right . peekResults)
+  where
+    peekResults (n, results) =
+      if n >= 1
+         then forM [0..n-1] $ \i ->
+                QueryResult <$> queryResultHeaders results i
+                            <*> queryResultRows results i
+                            <*> queryResultColsMaxSize results i
+                            <*> queryResultMetadata results i
+         else return []
 
 formatQueryResults :: [QueryResult] -> [String]
 formatQueryResults = map formatter
@@ -166,10 +170,10 @@ formatQueryResults = map formatter
                  colconf = zipWith (,, Table.left) titles maxSize
               in simpleShowTable colconf rows
 
-fetchQueryResultsEither
+fetchQueryResults
   :: QueryBaseRep a
   => a -> CBytes -> IO (Either String (Int, QueryResults))
-fetchQueryResultsEither ldq query =
+fetchQueryResults ldq query =
   withForeignPtr (eqQueryBaseRep ldq) $ \ldq' ->
   CBytes.withCBytes query $ \query' -> do
     (len, (results_ptr, (exinfo_ptr, _))) <-
@@ -182,13 +186,6 @@ fetchQueryResultsEither ldq query =
                return $ Right (fromIntegral len, i)
        else do desc <- finally (CBytes.fromCString exinfo_ptr) (free exinfo_ptr)
                return $ Left (CBytes.unpack desc)
-
-fetchQueryResults
-  :: (HasCallStack, QueryBaseRep a)
-  => a -> CBytes -> IO (Int, QueryResults)
-fetchQueryResults ldq query = do
-  result <- fetchQueryResultsEither ldq query
-  return $ either error id result
 
 queryResultHeaders :: QueryResults -> Int -> IO [CBytes]
 queryResultHeaders results idx = withForeignPtr results $ \results_ptr -> do
