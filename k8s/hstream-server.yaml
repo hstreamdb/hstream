@@ -11,10 +11,11 @@ spec:
     app: hstream-server
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: hstream-server-deployment
+  name: hstream-server
 spec:
+  serviceName: "hstream-server"
   replicas: 3
   selector:
     matchLabels:
@@ -28,22 +29,28 @@ spec:
         - name: hstream-server
           image: "hstreamdb/hstream"
           command:
-            - "/usr/local/bin/hstream-server"
-            - "--host"
-            - "0.0.0.0"
-            - "--port"
-            - "6570"
-            - "--persistent"
-            - "--zkuri"
-            - "zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181"
-            - "--store-config"
-            - "/etc/logdevice/config.json"
-            - "--hadmin-host"
-            - "logdevice-admin-server-service"
-            - "--replicate-factor"
-            - "3"
+            - bash
+            - "-c"
+            - |
+              set -ex
+              # Generate server-id from pod ordinal index.
+              [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
+              ordinal=${BASH_REMATCH[1]}
+              /usr/local/bin/hstream-server \
+                --host 0.0.0.0 --port 6570 --internal-port 6571 \
+                --address $(POD_IP) \
+                --server-id $((100 + $ordinal)) \
+                --zkuri zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181 \
+                --store-config /etc/logdevice/config.json \
+                --store-admin-host logdevice-admin-server-service \
+                --replicate-factor 3
           ports:
             - containerPort: 6570
+          env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
           volumeMounts:
             - name: config
               mountPath: /etc/logdevice
