@@ -20,11 +20,12 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Monad                    (void, when, zipWithM)
+import           Control.Monad                    (when, zipWithM)
 import           Data.Function                    (on)
+import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (newIORef, readIORef,
-                                                   writeIORef)
+import           Data.IORef                       (modifyIORef', newIORef,
+                                                   readIORef, writeIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, fromJust)
@@ -37,6 +38,7 @@ import           Z.Data.Vector                    (Bytes)
 import qualified Z.Data.Vector                    as ZV
 import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
+import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
@@ -45,6 +47,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
+import           HStream.Server.LoadBalance       (getNodesRanking)
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
@@ -53,7 +56,6 @@ import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (returnErrResp, returnResp,
                                                    textToCBytes)
-import           ZooKeeper.Types                  (ZHandle)
 
 --------------------------------------------------------------------------------
 
@@ -77,20 +79,10 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
       logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName)
       offset <- convertOffsetToRecordId logId
 
-      let subId = T.unpack subscriptionSubscriptionId
-      subs <- readMVar subscriptionCtx
-      case Map.lookup subId subs of
-        Just _  -> returnErrResp StatusUnknown "Subsctiption already exists"
-        Nothing -> do
-          let subCtx = SubscriptionContext
-                       { _subctxNode = serverID
-                       }
-          modifyMVar_ subscriptionCtx (\ctxs -> do
-                                          newCtxMVar <- newMVar subCtx
-                                          return $ Map.insert subId newCtxMVar ctxs
-                                      )
-          P.storeObject (T.pack subId) subCtx zkHandle -- sync subctx to zk
-
+      P.checkIfExist @ZHandle @'SubRep
+        subscriptionSubscriptionId zkHandle >>= \case
+        True  -> returnErrResp StatusUnknown "Subsctiption already exists"
+        False -> do
           let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
           P.storeObject subscriptionSubscriptionId newSub zkHandle
           returnResp subscription
@@ -127,8 +119,14 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
       Nothing -> do
         P.removeObject @ZHandle @'SubRep
           deleteSubscriptionRequestSubscriptionId zkHandle
-        P.removeObject @ZHandle @'SubCtxRep
-          deleteSubscriptionRequestSubscriptionId zkHandle
+
+        -- Note: The subscription may never be fetched so there is no 'SubscriptionContext' in zk
+        P.checkIfExist @ZHandle @'SubCtxRep
+          deleteSubscriptionRequestSubscriptionId zkHandle >>= \case
+          True  -> P.removeObject @ZHandle @'SubCtxRep
+                    deleteSubscriptionRequestSubscriptionId zkHandle
+          False -> return ()
+
         return store
   returnResp Empty
   where
@@ -168,7 +166,7 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
+streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
   consumerNameRef   <- newIORef T.empty
@@ -185,63 +183,36 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
             Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
         Right ma ->
           case ma of
-            Just StreamingFetchRequest {..} -> do
+            Just streamingFetchReq@StreamingFetchRequest {..} -> do
               -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
               if isFirst
                 then do
                   Log.debug "stream recive requst, do check in isFirst branch"
 
-                  writeIORef consumerNameRef streamingFetchRequestConsumerName
-                  writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
-
-                  mRes <-
-                    modifyMVar
-                      subscribeRuntimeInfo
-                      ( \store -> do
-                          case HM.lookup streamingFetchRequestSubscriptionId store of
-                            Just infoMVar -> do
-                              modifyMVar_
-                                infoMVar
-                                ( \info@SubscribeRuntimeInfo {..} -> do
-                                    -- bind a new sender to current client
-                                    let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                                    if V.null sriSignals
-                                      then return $ info {sriStreamSends = newSends}
-                                      else do
-                                        -- wake up all threads waiting for a new
-                                        -- consumer to join
-                                        V.forM_ sriSignals $ flip putMVar ()
-                                        return $ info {sriStreamSends = newSends, sriSignals = V.empty}
+                  -- the subscription has to exist and be bound to a server node
+                  P.checkIfExist @ZHandle @'SubRep
+                    streamingFetchRequestSubscriptionId zkHandle >>= \case
+                    False ->
+                      return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
+                    True  -> do
+                      P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
+                        Nothing -> do
+                          nodeIDs <- getNodesRanking ctx <&> fmap serverNodeId
+                          case L.elem serverID nodeIDs of
+                            False -> return $ ServerBiDiResponse [] StatusInternal "There is no available node for allocating the subscription"
+                            True  -> do
+                              let subCtx = SubscriptionContext { _subctxNode = serverID }
+                              modifyMVar_ subscriptionCtx
+                                (\ctxs -> do
+                                    newCtxMVar <- newMVar subCtx
+                                    return $ Map.insert (T.unpack streamingFetchRequestSubscriptionId) newCtxMVar ctxs
                                 )
-                              return (store, Nothing)
-                            Nothing -> do
-                              mSub <- P.getObject streamingFetchRequestSubscriptionId zkHandle
-                              case mSub of
-                                Nothing -> return (store, Just "Subscription has been removed")
-                                Just sub@Subscription {..} -> do
-                                  let startRecordId = getStartRecordId sub
-                                  newInfoMVar <-
-                                    initSubscribe
-                                    scLDClient
-                                    streamingFetchRequestSubscriptionId
-                                    subscriptionStreamName
-                                    streamingFetchRequestConsumerName
-                                    startRecordId
-                                    streamSend
-                                    subscriptionAckTimeoutSeconds
-                                  Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
-                                  let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                                  return (newStore, Nothing)
-                      )
-                  case mRes of
-                    Just errorMsg ->
-                      return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
-                    Nothing ->
-                      handleAcks
-                        streamingFetchRequestSubscriptionId
-                        streamingFetchRequestAckIds
-                        consumerNameRef
-                        subscriptionIdRef
+                              P.storeObject streamingFetchRequestSubscriptionId subCtx zkHandle -- sync subctx to zk
+                              doFirstFetchCheck streamingFetchReq
+                        Just subctx -> do
+                          if _subctxNode subctx == serverID
+                            then doFirstFetchCheck streamingFetchReq
+                            else return $ ServerBiDiResponse [] StatusInternal "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
                 else
                   handleAcks
                     streamingFetchRequestSubscriptionId
@@ -254,6 +225,59 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
               cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
                 Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
                 Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
+      where
+        doFirstFetchCheck StreamingFetchRequest{..} = do
+          writeIORef consumerNameRef streamingFetchRequestConsumerName
+          writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
+
+          mRes <-
+            modifyMVar
+              subscribeRuntimeInfo
+              ( \store -> do
+                  case HM.lookup streamingFetchRequestSubscriptionId store of
+                    Just infoMVar -> do
+                      modifyMVar_
+                        infoMVar
+                        ( \info@SubscribeRuntimeInfo {..} -> do
+                            -- bind a new sender to current client
+                            let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
+                            if V.null sriSignals
+                              then return $ info {sriStreamSends = newSends}
+                              else do
+                                -- wake up all threads waiting for a new
+                                -- consumer to join
+                                V.forM_ sriSignals $ flip putMVar ()
+                                return $ info {sriStreamSends = newSends, sriSignals = V.empty}
+                        )
+                      return (store, Nothing)
+                    Nothing -> do
+                      mSub <- P.getObject streamingFetchRequestSubscriptionId zkHandle
+                      case mSub of
+                        Nothing -> return (store, Just "Subscription has been removed")
+                        Just sub@Subscription {..} -> do
+                          let startRecordId = getStartRecordId sub
+                          newInfoMVar <-
+                            initSubscribe
+                            scLDClient
+                            streamingFetchRequestSubscriptionId
+                            subscriptionStreamName
+                            streamingFetchRequestConsumerName
+                            startRecordId
+                            streamSend
+                            subscriptionAckTimeoutSeconds
+                          Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
+                          let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                          return (newStore, Nothing)
+              )
+          case mRes of
+            Just errorMsg ->
+              return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
+            Nothing ->
+              handleAcks
+              streamingFetchRequestSubscriptionId
+              streamingFetchRequestAckIds
+              consumerNameRef
+              subscriptionIdRef
 
     handleAcks subId acks consumerNameRef subscriptionIdRef =
       if V.null acks
@@ -464,33 +488,31 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
           registerLowResTimer timeout $
             void . forkIO $ tryResendTimeoutRecords records logId infoMVar
 
-        resendTimeoutRecords info@SubscribeRuntimeInfo{..} = do
-          if sriValid
-            then do
-              let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
-              if V.null unackedRecordIds
-                then return (info, Nothing)
-                else do
-                  Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
-                  doResend info unackedRecordIds
-            else return (info, Nothing)
+        resendTimeoutRecords info@SubscribeRuntimeInfo{sriValid = False} = return (info, Nothing)
+        resendTimeoutRecords info@SubscribeRuntimeInfo{sriValid = True, ..} = do
+          let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
+          if V.null unackedRecordIds
+            then return (info, Nothing)
+            else do
+              Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
+              doResend info unackedRecordIds
 
         -- TODO: maybe we can read these unacked records concurrently
         -- TODO: if all senders in streamSendValidRef are invalid, no need to do resend
-        doResend info@SubscribeRuntimeInfo {..} unackedRecordIds = do
-          let consumerNum = HM.size sriStreamSends
-          if consumerNum == 0
-            then do
+        doResend info@SubscribeRuntimeInfo {..} unackedRecordIds
+          | HM.null sriStreamSends = do
               Log.debug . Log.buildString $ "no consumer to resend unacked msg, will block"
               signal <- newEmptyMVar
               return (info {sriSignals = V.cons signal sriSignals}, Just signal)
-            else do
+          | otherwise = do
+              let consumerNum = HM.size sriStreamSends
               streamSendValidRef <- newIORef $ V.replicate consumerNum True
               let senders = HM.toList sriStreamSends
+
+              cache <- newIORef Map.empty
+              lastResendLSN <- newIORef 0
               V.iforM_ unackedRecordIds $ \i RecordId {..} -> do
-                S.readerStartReading (fromJust sriLdReader) logId recordIdBatchId recordIdBatchId
-                let batchSize = fromJust $ Map.lookup recordIdBatchId sriBatchNumMap
-                dataRecords <- S.readerRead (fromJust sriLdReader) (fromIntegral batchSize)
+                dataRecords <- getDataRecords cache lastResendLSN recordIdBatchId
                 if null dataRecords
                   then do
                     -- TODO: retry or error
@@ -503,7 +525,6 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                           rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
                       cs (StreamingFetchResponse $ V.singleton rr) >>= \case
                         Left grpcIOError -> do
-                          -- TODO: maybe we can cache these records so that the next round resend can reuse it without read from logdevice
                           Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
                           let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
                           writeIORef streamSendValidRef newStreamSendValid
@@ -514,6 +535,19 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
               valids <- readIORef streamSendValidRef
               let newStreamSends = map snd $ L.filter (\(i, _) -> valids V.! i) $ zip [0 ..] senders
               return (info {sriStreamSends = HM.fromList newStreamSends}, Nothing)
+          where
+            getDataRecords cache lastResendLSN recordIdBatchId = do
+              lastLSN <- readIORef lastResendLSN
+              if lastLSN == recordIdBatchId
+                 then do
+                   readIORef cache <&> fromJust . Map.lookup recordIdBatchId
+                 else do
+                   S.readerStartReading (fromJust sriLdReader) logId recordIdBatchId recordIdBatchId
+                   let batchSize = fromJust $ Map.lookup recordIdBatchId sriBatchNumMap
+                   res <- S.readerRead (fromJust sriLdReader) (fromIntegral batchSize)
+                   modifyIORef' cache (pure $ Map.singleton recordIdBatchId res)
+                   modifyIORef' lastResendLSN (pure recordIdBatchId)
+                   return res
 
 --------------------------------------------------------------------------------
 --
@@ -578,7 +612,6 @@ doAck client infoMVar ackRecordIds =
         if sriValid
           then do
             Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
-                     <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 sriAckedRanges)
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
             Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
                      <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)
