@@ -42,7 +42,6 @@ getServerResp' result = do
     ClientNormalResponse _resp _meta1 _meta2 status _details -> do
       liftIO $ Log.e . Log.buildString $ "Impossible happened..." <> show status
       throwError $ err500 { errBody = coeErrStr $ "Impossible happened..." <> show status }
-
     ClientErrorResponse err -> do
       liftIO $ Log.e . Log.buildString $ "Server error happened: " <> show err
       throwError $ err500 { errBody = coeErrStr $ "Server error happened: " <> show err }
