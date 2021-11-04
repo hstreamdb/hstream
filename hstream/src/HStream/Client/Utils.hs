@@ -12,17 +12,22 @@ module HStream.Client.Utils
   , extractSelect
   , mkGRPCClientConf
   , serverNodeToSocketAddr
+  , printResult
   ) where
 
 import qualified Data.ByteString.Char8         as BSC
 import           Data.Char                     (toUpper)
+import           Data.Functor                  ((<&>))
 import qualified Data.Map                      as Map
 import qualified Data.Text                     as T
-import           HStream.Server.HStreamApi     (ServerNode (..))
-import           HStream.Utils                 (textToCBytes)
 import           Network.GRPC.HighLevel.Client
 import           Proto3.Suite.Class            (HasDefault, def)
+import           System.Console.ANSI           (getTerminalSize)
 import           Z.IO.Network.SocketAddr       (SocketAddr (..), ipv4)
+
+import           HStream.Server.HStreamApi     (ServerNode (..))
+import           HStream.Utils                 (Format (formatResult),
+                                                textToCBytes)
 
 clientDefaultRequest :: HasDefault a => ClientRequest 'Normal a b
 clientDefaultRequest = mkClientNormalRequest def
@@ -63,3 +68,11 @@ mkGRPCClientConf = \case
 serverNodeToSocketAddr :: ServerNode -> SocketAddr
 serverNodeToSocketAddr ServerNode{..} = do
   ipv4 (textToCBytes serverNodeHost) (fromIntegral serverNodePort)
+
+--------------------------------------------------------------------------------
+
+printResult :: Format a => a -> IO ()
+printResult resp = getWidth >>= putStr . flip formatResult resp
+
+getWidth :: IO Int
+getWidth = getTerminalSize <&> (\case Nothing -> 80; Just (_, w) -> w)

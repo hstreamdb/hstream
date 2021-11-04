@@ -8,6 +8,7 @@ module HStream.Utils.Format where
 
 import qualified Data.Aeson                       as A
 import qualified Data.Aeson.Text                  as A
+import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
@@ -16,14 +17,13 @@ import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock                  (NominalDiffTime)
 import qualified Data.Vector                      as V
-import qualified Text.Layout.Table                as Table
-
 import qualified Google.Protobuf.Empty            as Protobuf
 import qualified Google.Protobuf.Struct           as P
+import           Network.GRPC.HighLevel.Generated
+import qualified Text.Layout.Table                as Table
+
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils.Converter          (valueToJsonValue)
-import           Network.GRPC.HighLevel.Generated (ClientResult (..),
-                                                   GRPCMethodType (..))
 
 --------------------------------------------------------------------------------
 
@@ -67,6 +67,8 @@ instance Format [API.Connector] where
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult w (ClientNormalResponse response _ _ _ _) = formatResult w response
+  formatResult _  (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)))
+    = "Error: " <> BS.unpack (unStatusDetails details) <> "\n"
   formatResult _ (ClientErrorResponse err) = "Server Error: " <> show err <> "\n"
 
 instance Format API.ListStreamsResponse where
