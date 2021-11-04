@@ -24,8 +24,8 @@ import           Control.Monad                    (when, zipWithM)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (newIORef, readIORef,
-                                                   writeIORef)
+import           Data.IORef                       (modifyIORef', newIORef,
+                                                   readIORef, writeIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, fromJust)
@@ -488,33 +488,31 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
           registerLowResTimer timeout $
             void . forkIO $ tryResendTimeoutRecords records logId infoMVar
 
-        resendTimeoutRecords info@SubscribeRuntimeInfo{..} = do
-          if sriValid
-            then do
-              let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
-              if V.null unackedRecordIds
-                then return (info, Nothing)
-                else do
-                  Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
-                  doResend info unackedRecordIds
-            else return (info, Nothing)
+        resendTimeoutRecords info@SubscribeRuntimeInfo{sriValid = False} = return (info, Nothing)
+        resendTimeoutRecords info@SubscribeRuntimeInfo{sriValid = True, ..} = do
+          let unackedRecordIds = filterUnackedRecordIds recordIds sriAckedRanges sriWindowLowerBound
+          if V.null unackedRecordIds
+            then return (info, Nothing)
+            else do
+              Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
+              doResend info unackedRecordIds
 
         -- TODO: maybe we can read these unacked records concurrently
         -- TODO: if all senders in streamSendValidRef are invalid, no need to do resend
-        doResend info@SubscribeRuntimeInfo {..} unackedRecordIds = do
-          let consumerNum = HM.size sriStreamSends
-          if consumerNum == 0
-            then do
+        doResend info@SubscribeRuntimeInfo {..} unackedRecordIds
+          | HM.null sriStreamSends = do
               Log.debug . Log.buildString $ "no consumer to resend unacked msg, will block"
               signal <- newEmptyMVar
               return (info {sriSignals = V.cons signal sriSignals}, Just signal)
-            else do
+          | otherwise = do
+              let consumerNum = HM.size sriStreamSends
               streamSendValidRef <- newIORef $ V.replicate consumerNum True
               let senders = HM.toList sriStreamSends
+
+              cache <- newIORef Map.empty
+              lastResendLSN <- newIORef 0
               V.iforM_ unackedRecordIds $ \i RecordId {..} -> do
-                S.readerStartReading (fromJust sriLdReader) logId recordIdBatchId recordIdBatchId
-                let batchSize = fromJust $ Map.lookup recordIdBatchId sriBatchNumMap
-                dataRecords <- S.readerRead (fromJust sriLdReader) (fromIntegral batchSize)
+                dataRecords <- getDataRecords cache lastResendLSN recordIdBatchId
                 if null dataRecords
                   then do
                     -- TODO: retry or error
@@ -527,7 +525,6 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                           rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
                       cs (StreamingFetchResponse $ V.singleton rr) >>= \case
                         Left grpcIOError -> do
-                          -- TODO: maybe we can cache these records so that the next round resend can reuse it without read from logdevice
                           Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
                           let newStreamSendValid = V.update streamSendValid (V.singleton (ci, False))
                           writeIORef streamSendValidRef newStreamSendValid
@@ -538,6 +535,19 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
               valids <- readIORef streamSendValidRef
               let newStreamSends = map snd $ L.filter (\(i, _) -> valids V.! i) $ zip [0 ..] senders
               return (info {sriStreamSends = HM.fromList newStreamSends}, Nothing)
+          where
+            getDataRecords cache lastResendLSN recordIdBatchId = do
+              lastLSN <- readIORef lastResendLSN
+              if lastLSN == recordIdBatchId
+                 then do
+                   readIORef cache <&> fromJust . Map.lookup recordIdBatchId
+                 else do
+                   S.readerStartReading (fromJust sriLdReader) logId recordIdBatchId recordIdBatchId
+                   let batchSize = fromJust $ Map.lookup recordIdBatchId sriBatchNumMap
+                   res <- S.readerRead (fromJust sriLdReader) (fromIntegral batchSize)
+                   modifyIORef' cache (pure $ Map.singleton recordIdBatchId res)
+                   modifyIORef' lastResendLSN (pure recordIdBatchId)
+                   return res
 
 --------------------------------------------------------------------------------
 --
@@ -602,7 +612,6 @@ doAck client infoMVar ackRecordIds =
         if sriValid
           then do
             Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
-                     <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 sriAckedRanges)
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
             Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
                      <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)
