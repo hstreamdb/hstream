@@ -18,7 +18,6 @@ import qualified Data.Map.Strict                  as M
 import           Data.Maybe                       (mapMaybe)
 import           Data.String                      (fromString)
 import qualified Data.Text                        as T
-import qualified Data.Text.Lazy                   as TL
 import qualified Data.UUID                        as UUID
 import           Data.UUID.V4                     (nextRandom)
 import           Data.Word                        (Word32)
@@ -54,7 +53,7 @@ import           ZooKeeper.Types
 selectLeader :: ServerContext -> LoadManager -> IO ()
 selectLeader ctx@ServerContext{..} lm = do
   void $ forkIO $ do
-    zooWatchGet zkHandle leaderPath (\_ -> watcherApp) (\_ -> return ())
+    zooWatchGet zkHandle leaderPath (const watcherApp) (\_ -> return ())
   uuid <- nextRandom
   void . forkIO $ election zkHandle "/election" (CB.pack . UUID.toString $ uuid)
     (do
@@ -69,21 +68,20 @@ selectLeader ctx@ServerContext{..} lm = do
       -- Set watcher for nodes changes
       watchNodes ctx lm
     )
-    (\_ -> stepApp)
+    (const stepApp)
   where
     watcherApp = do
       stepApp
-      zooWatchGet zkHandle leaderPath (\_ -> watcherApp) (\_ -> return ())
+      zooWatchGet zkHandle leaderPath (const watcherApp) (\_ -> return ())
     stepApp = do
       DataCompletion v _ <- zooGet zkHandle leaderPath
       case v of
         Just x  -> updateLeader (read . CB.unpack . CB.fromBytes $ x)
         Nothing -> pure ()
     updateLeader new = do
-      noLeader <- isEmptyMVar leaderID
-      case () of
-        _ | noLeader  -> putMVar leaderID new
-          | otherwise -> void $ swapMVar leaderID new
+      isEmptyMVar leaderID >>= \case
+        True  -> putMVar leaderID new
+        False -> void $ swapMVar leaderID new
 
 watchNodes :: ServerContext -> LoadManager -> IO ()
 watchNodes sc@ServerContext{..} lm = do
