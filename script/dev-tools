@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-
+# PYTHON_ARGCOMPLETE_OK
+#
+# If you want to enable tab completion of this script, you must install
+# argcomplete, for details, see:
+#
+# https://kislyuk.github.io/argcomplete/#installation
 import argparse
 import os
 import sys
@@ -11,6 +16,17 @@ import re
 import string
 import random
 
+logerr = lambda s: print(f"\033[91m{s}\033[0m")
+logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
+loginfo = lambda s: print(f"\033[96m{s}\033[0m")
+logwarn = lambda s: print(f"\033[33m{s}\033[0m")
+
+try:
+    import argcomplete
+except Exception:
+    from unittest.mock import MagicMock
+    argcomplete = MagicMock()
+    argcomplete.autocomplete = lambda x: logwarn("There is no tab completion supported since no argcomplete found!")
 
 HOME = os.getenv("HOME")
 CABAL_HOME = os.getenv("CABAL_HOME", f"{HOME}/.cabal")
@@ -50,11 +66,6 @@ STORE_ADMIN_PORT_ENV = "STORE_ADMIN_LOCAL_PORT"
 MYSQL_PORT_ENV = 'MYSQL_LOCAL_PORT'
 CLICKHOUSE_PORT_ENV = 'CLICKHOUSE_LOCAL_PORT'
 ZOOKEEPER_PORT_ENV = 'ZOOKEEPER_LOCAL_PORT'
-
-logerr = lambda s: print(f"\033[91m{s}\033[0m")
-logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
-loginfo = lambda s: print(f"\033[96m{s}\033[0m")
-logwarn = lambda s: print(f"\033[33m{s}\033[0m")
 
 gen_randoms = lambda n: ''.join(random.choices(string.ascii_letters + string.digits, k=n))
 
@@ -474,6 +485,13 @@ if __name__ == '__main__':
         help="Stop services, none means all valid services"
     )
 
+    parser_start_hserver = subparsers.add_parser("start-hserver", help="Start hstream-server.")
+    parser_start_hserver.add_argument('--container-bin', default='docker')
+    parser_start_hserver.add_argument('--force-restart', '-f', action='store_true')
+    parser_start_hserver.add_argument('--image', '-i', default=IMAGES['HS_IMAGE'])
+    parser_start_hserver.add_argument("--num-server", "-n", type=int, default=4)
+    parser_start_hserver.add_argument('--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+
     # shell
     parser_haskell = subparsers.add_parser(
         'shell', help='Enter in a shell with all haskell dev dependencies')
@@ -511,8 +529,7 @@ if __name__ == '__main__':
     parser_haskell_cabal.add_argument('cmd_args', nargs='*')
 
     # get-info
-    parser_get_info = subparsers.add_parser(
-        'get-info', help='Get info about services.')
+    parser_get_info = subparsers.add_parser('info', help='Get info about services.')
     parser_get_info.add_argument('--container-bin', default='docker')
     parser_get_info.add_argument('--service', default=None)
     parser_get_info.add_argument('--port-only', default=False, action='store_true')
@@ -563,9 +580,11 @@ if __name__ == '__main__':
     parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
     parser_cluster_ldshell.add_argument('cmd_args', nargs='*')
 
+    argcomplete.autocomplete(parser)
+
     args = vars(parser.parse_args())
     sub_command = args.pop('sub_command')
-
+    # ---
     if sub_command == 'update-images':
         update_images()
     # ---
@@ -573,6 +592,37 @@ if __name__ == '__main__':
         service_start(**args)
     elif sub_command == 'stop-services':
         service_stop(**args)
+    # --- parser_start_hserver ---
+    elif sub_command == 'start-hserver':
+        envs = read_env()
+        num_server = args.pop('num_server')
+        data_dir = args.pop('data_dir')
+        force_restart = args.pop("force_restart")
+
+        def gen_free_port():
+            yield envs.get(HSTREAM_SERVER_PORT_ENV)
+            for _ in range(num_server):
+                yield find_free_port()
+        free_ports = gen_free_port()
+
+        for i in range(num_server):
+            container_name = f'{CUSERNAME}_{CUID}_hstream_server_{i}'
+            if force_restart:
+                run_sh(f"docker rm -f {container_name}")
+            command = "cabal run -- hstream-server"
+            port = next(free_ports)
+            cmd_args = [
+                "--host 127.0.0.1 --address 127.0.0.1",
+                f"--port {port} --internal-port {find_free_port()}",
+                f"--server-id {i}",
+                f"--zkuri 127.0.0.1:{envs.get(ZOOKEEPER_PORT_ENV)}",
+                "--store-config /data/store/logdevice.conf",
+            ]
+            haskell_env(
+                command=command, cmd_args=cmd_args, container_name=container_name,
+                tty=True, interactive=False, detach=True, rm=True,
+                no_services_required=False, check=True, data_dir=data_dir,
+                **args)
     # ---
     elif sub_command == 'shell':
         args['interactive'] = not args.pop('no_interactive')
@@ -593,7 +643,7 @@ if __name__ == '__main__':
         args['tty'] = not args.pop('no_tty')
         haskell_env(command='/opt/ghc/bin/cabal', rm=True, **args)
     # ---
-    elif sub_command == 'get-info':
+    elif sub_command == 'info':
         get_info(**args)
     # ---
     elif sub_command == 'cluster-start':
