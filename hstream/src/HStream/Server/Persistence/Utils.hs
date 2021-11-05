@@ -9,12 +9,16 @@ module HStream.Server.Persistence.Utils
   , rootPath
   , serverRootPath
   , leaderPath
+  , lockPath
   , queriesPath
   , connectorsPath
   , serverLoadPath
   , subscriptionsPath
   , subscriptionCtxsPath
   , producerCtxsPath
+  , subscriptionsLockPath
+  , subscriptionCtxsLockPath
+  , producerCtxsLockPath
   , paths
 
   , initializeAncestors
@@ -86,6 +90,9 @@ serverIdPath = rootPath <> "/serverIds"
 leaderPath :: CBytes
 leaderPath = rootPath <> "/leader"
 
+lockPath :: CBytes
+lockPath = rootPath <> "/lock"
+
 queriesPath :: CBytes
 queriesPath = rootPath <> "/queries"
 
@@ -98,14 +105,24 @@ serverLoadPath = rootPath <> "/loadReports"
 subscriptionsPath :: CBytes
 subscriptionsPath = rootPath <> "/subscriptions"
 
+subscriptionsLockPath :: CBytes
+subscriptionsLockPath = lockPath <> "/subscriptions"
+
 subscriptionCtxsPath :: CBytes
 subscriptionCtxsPath = rootPath <> "/subscriptionCtxs"
+
+subscriptionCtxsLockPath :: CBytes
+subscriptionCtxsLockPath = lockPath <> "/subscriptionCtxs"
 
 producerCtxsPath :: CBytes
 producerCtxsPath = rootPath <> "/producerCtxs"
 
+producerCtxsLockPath :: CBytes
+producerCtxsLockPath = lockPath <> "/producerCtxs"
+
 configPath :: CBytes
 configPath = rootPath <> "/config"
+
 
 paths :: [CBytes]
 paths = [ "/hstreamdb"
@@ -114,12 +131,16 @@ paths = [ "/hstreamdb"
         , serverIdPath
         , configPath
         , leaderPath
+        , lockPath
         , serverLoadPath
         , queriesPath
         , connectorsPath
         , subscriptionsPath
         , subscriptionCtxsPath
         , producerCtxsPath
+        , subscriptionsLockPath
+        , subscriptionCtxsLockPath
+        , producerCtxsLockPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
