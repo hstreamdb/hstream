@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -12,7 +13,6 @@ import qualified Data.HashMap.Strict       as HM
 import           Data.Int                  (Int32, Int64)
 import           Data.Map                  (Map)
 import qualified Data.Map                  as Map
-import           Data.Set                  (Set)
 import qualified Data.Text                 as T
 import qualified Data.Vector               as V
 import           Data.Word                 (Word32, Word64)

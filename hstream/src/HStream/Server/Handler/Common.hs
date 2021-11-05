@@ -200,8 +200,7 @@ responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalRespons
 
 getStartRecordId :: Api.Subscription -> RecordId
 getStartRecordId Api.Subscription{..} =
-  let
-      Api.SubscriptionOffset{..} = fromJust subscriptionOffset
+  let Api.SubscriptionOffset{..} = fromJust subscriptionOffset
       rid = case fromJust subscriptionOffsetOffset of
                Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
                Api.SubscriptionOffsetOffsetRecordOffset r  -> r

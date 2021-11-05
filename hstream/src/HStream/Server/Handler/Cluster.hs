@@ -36,7 +36,7 @@ import           HStream.Utils
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
                        -> IO (ServerResponse 'Normal DescribeClusterResponse)
-describeClusterHandler ctx@ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
+describeClusterHandler ctx (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
   let protocolVer = Types.protocolVersion
       serverVer   = Types.serverVersion
   nodes <- getNodesRanking ctx <&> V.fromList
@@ -68,8 +68,8 @@ lookupStreamHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupStre
       returnResp resp
 
 lookupSubscriptionHandler :: ServerContext
-                    -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
-                    -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
+                          -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
+                          -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
 lookupSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
   subCtxs <- P.listObjects zkHandle
   case Map.lookup subId subCtxs of

@@ -16,8 +16,7 @@ persistenceExceptionToException = toException . PersistenceException
 
 persistenceExceptionFromException :: Exception e => SomeException -> Maybe e
 persistenceExceptionFromException x = do
-  PersistenceException a <- fromException x
-  cast a
+  fromException @PersistenceException x >>= cast
 
 data FailedToSetStatus = FailedToSetStatus
   deriving Show

@@ -11,7 +11,7 @@ cradle:
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
 
-    - path: "common/gen-src"
+    - path: "common/gen-hs"
       component: "lib:hstream-common"
     - path: "common/HStream"
       component: "lib:hstream-common"
@@ -81,6 +81,12 @@ cradle:
 
     - path: "hstream-http-server/src"
       component: "lib:hstream-http-server"
+    - path: "hstream-http-server/app/Main.hs"
+      component: "hstream-http-server:exe:hstream-http-server"
+    - path: "hstream-http-server/app/Swagger.hs"
+      component: "hstream-http-server:exe:hstream-swagger-json"
+    - path: "hstream-http-server/test"
+      component: "hstream-http-server:test:hstream-http-server-test"
 
     - path: "hstream-connector"
       component: "lib:hstream-connector"
