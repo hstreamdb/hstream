@@ -120,7 +120,7 @@ script/dev-tools start-services
 To see information about all started services, run
 
 ```sh
-script/dev-tools get-info
+script/dev-tools info
 ```
 
 > _A dev-cluster is required while running tests. All data are stored under
