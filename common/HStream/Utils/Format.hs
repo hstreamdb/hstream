@@ -1,17 +1,18 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs             #-}
-{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module HStream.Utils.Format where
+module HStream.Utils.Format
+  ( Format (..)
+  , formatCommandQueryResponse
+  , approxNaturalTime
+  , simpleShowTable
+  ) where
 
-import qualified Data.Aeson                       as A
 import qualified Data.Aeson.Text                  as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
-import qualified Data.HashMap.Strict              as HM
-import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -20,77 +21,68 @@ import qualified Data.Vector                      as V
 import qualified Google.Protobuf.Empty            as Protobuf
 import qualified Google.Protobuf.Struct           as P
 import           Network.GRPC.HighLevel.Generated
+import qualified Proto3.Suite                     as PB
 import qualified Text.Layout.Table                as Table
+import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Time                        (SystemTime (MkSystemTime),
+                                                   formatSystemTimeGMT,
+                                                   iso8061DateFormat)
 
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils.Converter          (valueToJsonValue)
 
 --------------------------------------------------------------------------------
 
-type Width = Int
-
-renderTableResult :: Width -> V.Vector P.Value -> String
-renderTableResult width = emptyNotice . renderJSONObjectsToTable width . getObjects . map valueToJsonValue . V.toList
-
-emptyNotice :: String -> String
-emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" else xs
-
-formatCommandQueryResponse :: Width -> API.CommandQueryResponse -> String
-formatCommandQueryResponse w (API.CommandQueryResponse x) = case x of
-  []  -> "Done. No results.\n"
-  [y] -> formatResult w y
-  ys  -> "unknown behaviour" <> show ys
-
 class Format a where
-  formatResult :: Width -> a -> String
+  formatResult ::a -> String
 
 instance Format Protobuf.Empty where
-  formatResult _ = const "Done. No results.\n"
+  formatResult = const "Done. No results.\n"
 
 instance Format API.Stream where
-  formatResult _ = (<> "\n") . T.unpack . API.streamStreamName
+  formatResult = (<> "\n") . T.unpack . API.streamStreamName
 
 instance Format API.View where
-  formatResult _ = show . API.viewViewId
+  formatResult = show . API.viewViewId
 
 instance Format [API.Stream] where
-  formatResult w = emptyNotice . concatMap (formatResult w)
+  formatResult = emptyNotice . concatMap formatResult
 
 instance Format [API.View] where
-  formatResult w = emptyNotice . unlines . map (formatResult w)
+  formatResult = emptyNotice . unlines . map formatResult
 
 instance Format [API.Query] where
-  formatResult w = emptyNotice . renderJSONObjectsToTable w . map ((\(A.Object o) -> o) . A.toJSON)
+  formatResult = emptyNotice . renderQueriesToTable
 
 instance Format [API.Connector] where
-  formatResult w = emptyNotice . renderJSONObjectsToTable w . map ((\(A.Object o) -> o) . A.toJSON)
+  formatResult = emptyNotice . renderConnectorsToTable
 
 instance Format a => Format (ClientResult 'Normal a) where
-  formatResult w (ClientNormalResponse response _ _ _ _) = formatResult w response
-  formatResult _  (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)))
+  formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
+  formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)))
     = "Error: " <> BS.unpack (unStatusDetails details) <> "\n"
-  formatResult _ (ClientErrorResponse err) = "Server Error: " <> show err <> "\n"
+  formatResult (ClientErrorResponse err) = "Server Error: " <> show err <> "\n"
 
 instance Format API.ListStreamsResponse where
-  formatResult w = formatResult w . V.toList . API.listStreamsResponseStreams
+  formatResult = formatResult . V.toList . API.listStreamsResponseStreams
 instance Format API.ListViewsResponse where
-  formatResult w = formatResult w . V.toList . API.listViewsResponseViews
+  formatResult = formatResult . V.toList . API.listViewsResponseViews
 instance Format API.ListQueriesResponse where
-  formatResult w = formatResult w . V.toList . API.listQueriesResponseQueries
+  formatResult = formatResult . V.toList . API.listQueriesResponseQueries
 instance Format API.ListConnectorsResponse where
-  formatResult w = formatResult w . V.toList . API.listConnectorsResponseConnectors
+  formatResult = formatResult . V.toList . API.listConnectorsResponseConnectors
 
 instance Format API.AppendResponse where
-  formatResult _ = const "Done. No results.\n"
+  formatResult = const "Done. No results.\n"
 
 instance Format API.CreateQueryStreamResponse where
-  formatResult _ = const "Done. No results.\n"
+  formatResult = const "Done. No results.\n"
 
 instance Format API.TerminateQueriesResponse where
-  formatResult _ = const "Done. No results.\n"
+  formatResult = const "Done. No results.\n"
 
 instance Format P.Struct where
-  formatResult _ (P.Struct kv) =
+  formatResult (P.Struct kv) =
     case M.toList kv of
       [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
       [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
@@ -98,43 +90,64 @@ instance Format P.Struct where
       x -> show x
 
 --------------------------------------------------------------------------------
+emptyNotice :: String -> String
+emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" else xs
 
-formatJSONObject :: A.Object -> String
-formatJSONObject = unlines . map (\(x, y) -> T.unpack x ++ (": " <> y))
-                . HM.toList . fmap formatJSONValue
+formatCommandQueryResponse :: API.CommandQueryResponse -> String
+formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
+  []  -> "Succeeded. No results.\n"
+  [y] -> formatResult y
+  ys  -> "unknown behaviour" <> show ys
 
-formatJSONValue :: A.Value -> String
-formatJSONValue (A.Object hmap)  = formatJSONObject hmap
-formatJSONValue (A.Array  array) = unwords . V.toList $ formatJSONValue <$> array
-formatJSONValue (A.String text)  = T.unpack text
-formatJSONValue (A.Number sci)   = show sci
-formatJSONValue (A.Bool   bool)  = show bool
-formatJSONValue A.Null           = "NULL"
-
---------------------------------------------------------------------------------
-
-renderJSONObjectToTable :: Width -> A.Object -> String
-renderJSONObjectToTable w os = renderJSONObjectsToTable w [os]
-
-renderJSONObjectsToTable :: Width -> [A.Object] -> String
-renderJSONObjectsToTable _ [] = "\n"
-renderJSONObjectsToTable l os@(o:_) =
-  Table.tableString colout Table.unicodeRoundS (Table.titlesH keys)
-  (map (Table.colsAllG Table.center . renderContents ((l - size*2 - 6)`div` size)) elems) ++ "\n"
+renderQueriesToTable :: [API.Query] -> String
+renderQueriesToTable queries =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
   where
-    keys  = sort $ map T.unpack (HM.keys o)
-    elems = map (map snd . sort . HM.toList) os
-    size  = length o
-    colout = replicate size
-      $ Table.column Table.expand Table.left Table.noAlign (Table.singleCutMark "...")
+    titles = [ "Query ID"
+             , "Status"
+             , "Created Time"
+             , "SQL Text"
+             ]
+    formatRow API.Query {..} =
+      [ [T.unpack queryId]
+      , [formatStatus queryStatus]
+      , [CB.unpack $ formatSystemTimeGMT iso8061DateFormat (MkSystemTime queryCreatedTime 0)]
+      , [T.unpack queryQueryText]
+      ]
+    rows = map formatRow queries
+    colSpec = [ Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              ]
 
-renderContents :: Width -> [A.Value] -> [[String]]
-renderContents width = map $ concatMap (Table.justify width . words') . lines . formatJSONValue
+renderConnectorsToTable :: [API.Connector] -> String
+renderConnectorsToTable connectors =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = [ "Connector ID"
+             , "Status"
+             , "Created Time"
+             , "SQL Text"]
+    formatRow API.Connector {..} =
+      [ [T.unpack connectorId]
+      , [formatStatus connectorStatus]
+      , [CB.unpack $ formatSystemTimeGMT iso8061DateFormat (MkSystemTime connectorCreatedTime 0)]
+      , [T.unpack connectorSql]
+      ]
+    rows = map formatRow connectors
+    colSpec = [ Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              ]
 
---------------------------------------------------------------------------------
-
-approxNaturaltime :: NominalDiffTime -> String
-approxNaturaltime n
+approxNaturalTime :: NominalDiffTime -> String
+approxNaturalTime n
   | n < 0 = ""
   | n == 0 = "0s"
   | n < 1 = show @Int (floor $ n * 1000) ++ "ms"
@@ -148,16 +161,14 @@ approxNaturaltime n
     day = hour * 24
     year = day * 365
 
---------------------------------------------------------------------------------
-
-removePunc :: String -> String
-removePunc xs = [ x | x <- xs, x `notElem` (['}','{','\"','\''] :: [Char])]
-
-getObjects vs = [ object | A.Object object <- vs ]
-getObjects :: [A.Value] -> [A.Object]
-
-words' :: String -> [String]
-words' s = let (m, n) = break (== '-') s in words m ++ words n
+formatStatus ::  PB.Enumerated API.TaskStatusPB -> String
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_RUNNING)) = "RUNNING"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_TERMINATED)) = "TERMINATED"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CONNECTION_ABORT)) = "CONNECTION_ABORT"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATING)) = "CREATING"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATED)) = "CREATED"
+formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATION_ABORT)) = "CREATION_ABORT"
+formatStatus _ = "Unknown Status"
 
 --------------------------------------------------------------------------------
 

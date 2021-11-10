@@ -20,7 +20,6 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Network.Socket                   (PortNumber)
 import qualified Options.Applicative              as O
-import           System.Console.ANSI              (getTerminalSize)
 import qualified System.Console.Haskeline         as H
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
@@ -186,8 +185,7 @@ sqlStreamAction HStreamApi{..} sql = do
         Left err            -> print err
         Right Nothing       -> putStrLn ("\x1b[32m" <> "Terminated" <> "\x1b[0m")
         Right (Just result) -> do
-          width <- getTerminalSize
-          putStr $ formatResult (case width of Nothing -> 80; Just (_, w) -> w) result
+          putStr $ formatResult result
           action call _meta recv
 
 sqlAction :: HStreamClientApi -> T.Text -> IO ()
@@ -196,8 +194,7 @@ sqlAction HStreamApi{..} sql = do
   resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
   case resp of
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details -> do
-      width <- getTerminalSize
-      putStr $ formatCommandQueryResponse (case width of Nothing -> 80; Just (_, w) -> w) x
+      putStr $ formatCommandQueryResponse x
     ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
 
 withInterrupt :: IO () -> IO a -> IO a

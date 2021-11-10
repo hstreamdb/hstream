@@ -17,12 +17,10 @@ module HStream.Client.Utils
 
 import qualified Data.ByteString.Char8         as BSC
 import           Data.Char                     (toUpper)
-import           Data.Functor                  ((<&>))
 import qualified Data.Map                      as Map
 import qualified Data.Text                     as T
 import           Network.GRPC.HighLevel.Client
 import           Proto3.Suite.Class            (HasDefault, def)
-import           System.Console.ANSI           (getTerminalSize)
 import           Z.IO.Network.SocketAddr       (SocketAddr (..), ipv4)
 
 import           HStream.Server.HStreamApi     (ServerNode (..))
@@ -72,7 +70,4 @@ serverNodeToSocketAddr ServerNode{..} = do
 --------------------------------------------------------------------------------
 
 printResult :: Format a => a -> IO ()
-printResult resp = getWidth >>= putStr . flip formatResult resp
-
-getWidth :: IO Int
-getWidth = getTerminalSize <&> (\case Nothing -> 80; Just (_, w) -> w)
+printResult resp = putStr $ formatResult resp
