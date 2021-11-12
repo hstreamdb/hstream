@@ -53,6 +53,8 @@ void cppMapToHs(const Map& map, FunctionK extract_key, FunctionV extract_value,
 extern "C" {
 #endif
 
+std::string* copy_std_string(std::string&& str);
+
 void delete_vector_of_string(std::vector<std::string>* ss);
 void delete_vector_of_int(std::vector<int>* ss);
 
