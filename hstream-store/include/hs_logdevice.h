@@ -47,6 +47,7 @@
 #include <logdevice/include/types.h>
 #include <logdevice/lib/ClientImpl.h>
 
+namespace ld = facebook::logdevice;
 using facebook::logdevice::AppendAttributes;
 using facebook::logdevice::BufferedWriteCodec;
 using facebook::logdevice::BufferedWriteSinglePayloadsCodec;

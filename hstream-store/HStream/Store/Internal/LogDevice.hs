@@ -13,6 +13,7 @@ module HStream.Store.Internal.LogDevice
   , isLogEmpty
 
   , module HStream.Store.Internal.LogDevice.Checkpoint
+  , module HStream.Store.Internal.LogDevice.Configuration
   , module HStream.Store.Internal.LogDevice.LogConfigTypes
   , module HStream.Store.Internal.LogDevice.Reader
   , module HStream.Store.Internal.LogDevice.VersionedConfigStore
@@ -40,6 +41,7 @@ import           HStream.Store.Internal.Types
 
 import           HStream.Store.Internal.Foreign
 import           HStream.Store.Internal.LogDevice.Checkpoint
+import           HStream.Store.Internal.LogDevice.Configuration
 import           HStream.Store.Internal.LogDevice.LDQuery
 import           HStream.Store.Internal.LogDevice.LogConfigTypes
 import           HStream.Store.Internal.LogDevice.Reader

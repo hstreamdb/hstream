@@ -1,6 +1,15 @@
 #include "hs_cpp_lib.h"
 
 // ----------------------------------------------------------------------------
+// StdString
+
+std::string* copy_std_string(std::string&& str) {
+  auto value = new std::string;
+  *value = str;
+  return value;
+}
+
+// ----------------------------------------------------------------------------
 
 #define CAL_OFFSET(NAME, VAL_TYPE)                                             \
   VAL_TYPE* cal_offset_##NAME(VAL_TYPE* current, HsInt offset) {               \
