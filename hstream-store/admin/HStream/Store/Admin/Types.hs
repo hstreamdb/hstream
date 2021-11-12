@@ -841,22 +841,52 @@ startSQLReplOptsParser = StartSQLReplOpts
 -------------------------------------------------------------------------------
 
 parseShard :: ReadM AA.ShardID
-parseShard = eitherReader $ parse . V.packASCII
+parseShard = eitherReader parseShard'
+
+allShards :: AA.ShardIndex
+allShards = -1
+
+-- | Parses a list of strings and intrepret as ShardID objects.
+--
+-- Accepted examples:
+--     0 => ShardID(0, -1)
+--     N0 => ShardID(0, -1)
+--     0:2 => ShardID(0, 2)
+--     N0:2 => ShardID(0, 2)
+--     N0:S2 => ShardID(0, 2)
+parseShard' :: String -> Either String AA.ShardID
+parseShard' i = parse $ V.packASCII i
   where
+    skipn w = w == c2w 'N' || w == c2w 'n'
+    skips w = w == c2w 'S' || w == c2w 's'
     parse :: Bytes -> Either String AA.ShardID
     parse bs =
       case P.parse' parser bs of
-        Left er -> Left $ "cannot parse value: " <> show er
-        Right i -> Right i
+        Left _  -> Left $ "cannot parse ShardID: " <> i
+        Right o -> Right o
+
     parser = do
+      (n, s) <- parseN <|> parseNS
+      return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
+
+    parseN = do
       P.skipSpaces
-      P.char8 'N' <|> P.char8 'n'
+      P.skipWhile skipn
+      n <- P.int
+      P.skipSpaces
+      P.endOfInput
+      return (n, allShards)
+
+    parseNS = do
+      P.skipSpaces
+      P.skipWhile skipn
       n <- P.int
       P.char8 ':'
-      P.char8 'S' <|> P.char8 's'
+      P.skipWhile skips
       s <- P.int
       P.skipSpaces
-      return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
+      P.endOfInput
+      return (n, s)
 
 prettyShardID :: AA.ShardID -> String
 prettyShardID AA.ShardID{..} =
