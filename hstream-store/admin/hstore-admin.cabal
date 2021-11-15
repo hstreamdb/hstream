@@ -117,6 +117,7 @@ executable hadmin
   build-depends:
     , base                  >=4.13    && <5
     , hstore-admin
+    , hstream-common
     , network               ^>=3.1.0
     , optparse-applicative  ^>=0.16
     , text                  ^>=1.2.3.0

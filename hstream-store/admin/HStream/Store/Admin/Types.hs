@@ -20,6 +20,7 @@ import qualified Z.Data.Text              as T
 import           Z.Data.Vector            (Bytes)
 import qualified Z.Data.Vector            as V
 
+import qualified HStream.Logger           as Log
 import qualified HStream.Store            as S
 import qualified HStream.Store.Admin.API  as AA
 
@@ -839,6 +840,13 @@ startSQLReplOptsParser = StartSQLReplOpts
                           ))
 
 -------------------------------------------------------------------------------
+
+logLevelParser :: Parser Log.Level
+logLevelParser =
+  option auto ( long "log-level" <> metavar "[critical|fatal|warning|info|debug]"
+             <> showDefault <> value (Log.Level Log.INFO)
+             <> help "log level"
+              )
 
 parseShard :: ReadM AA.ShardID
 parseShard = eitherReader parseShard'
