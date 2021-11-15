@@ -9,38 +9,44 @@ import           Options.Applicative         ((<**>))
 import qualified Options.Applicative         as O
 import           Z.IO.Time                   (SystemTime (..), getSystemTime')
 
+import qualified HStream.Logger              as Log
 import qualified HStream.Store.Admin.API     as AA
 import           HStream.Store.Admin.Command
 import           HStream.Store.Admin.Types
 
 main :: IO ()
-main = uncurry runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
+main = runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
   where
     opts = O.info
-      (cli <**> O.helper)
+      (cliParser <**> O.helper)
       (O.fullDesc <> O.header "======= HStore Admin CLI =======")
 
 cli :: O.Parser (AA.HeaderConfig AA.AdminAPI, Command)
 cli = liftA2 (,) headerConfigParser commandParser
 
-runCli :: AA.HeaderConfig AA.AdminAPI -> Command -> IO ()
-runCli s (StatusCmd statusOpts) = printTime $ putStrLn =<< runStatus s statusOpts
-runCli s (NodesConfigCmd cmd) = printTime $ runNodesConfigCmd s cmd
-runCli s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
-runCli s (LogsCmd cmd) = printTime $ runLogsCmd s cmd
-runCli s (CheckImpactCmd checkImpactOpts) = printTime $ checkImpact s checkImpactOpts
-runCli s (MaintenanceCmd opts) = printTime $ runMaintenanceCmd s opts
-runCli s (StartSQLReplCmd opts) = startSQLRepl s opts
+runCli :: Cli -> IO ()
+runCli Cli{..} = Log.setLogLevel logLevel True >> runCli' headerConfig command
 
-printTime :: IO a -> IO a
-printTime f = do
-  MkSystemTime sec nano <- getSystemTime'
-  let !start = fromIntegral sec + fromIntegral nano * 1e-9
-  !x <- f
-  MkSystemTime sec' nano' <- getSystemTime'
-  let !end = fromIntegral sec' + fromIntegral nano' * 1e-9
-  putStrLn $ "Took " <> showFFloat @Double (Just 3) (end - start) "s"
-  return x
+runCli' :: AA.HeaderConfig AA.AdminAPI -> Command -> IO ()
+runCli' s (StatusCmd statusOpts) = printTime $ putStrLn =<< runStatus s statusOpts
+runCli' s (NodesConfigCmd cmd) = printTime $ runNodesConfigCmd s cmd
+runCli' s (ConfigCmd _) = printTime $ TIO.putStrLn =<< dumpConfig s
+runCli' s (LogsCmd cmd) = printTime $ runLogsCmd s cmd
+runCli' s (CheckImpactCmd checkImpactOpts) = printTime $ checkImpact s checkImpactOpts
+runCli' s (MaintenanceCmd opts) = printTime $ runMaintenanceCmd s opts
+runCli' s (StartSQLReplCmd opts) = startSQLRepl s opts
+
+data Cli = Cli
+  { headerConfig :: AA.HeaderConfig AA.AdminAPI
+  , logLevel     :: Log.Level
+  , command      :: Command
+  }
+
+cliParser :: O.Parser Cli
+cliParser = Cli
+  <$> headerConfigParser
+  <*> logLevelParser
+  <*> commandParser
 
 data Command
   = StatusCmd StatusOpts
@@ -67,3 +73,15 @@ commandParser = O.hsubparser
  <> O.command "sql" (O.info (StartSQLReplCmd <$> startSQLReplOptsParser)
                       (O.progDesc "Start an interactive SQL shell"))
   )
+
+-------------------------------------------------------------------------------
+
+printTime :: IO a -> IO a
+printTime f = do
+  MkSystemTime sec nano <- getSystemTime'
+  let !start = fromIntegral sec + fromIntegral nano * 1e-9
+  !x <- f
+  MkSystemTime sec' nano' <- getSystemTime'
+  let !end = fromIntegral sec' + fromIntegral nano' * 1e-9
+  putStrLn $ "Took " <> showFFloat @Double (Just 3) (end - start) "s"
+  return x
