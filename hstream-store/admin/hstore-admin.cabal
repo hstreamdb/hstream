@@ -60,6 +60,7 @@ library
   build-depends:
     , aeson
     , aeson-pretty
+    , ansi-wl-pprint        >=0.6.9    && <1
     , base                  >=4.11.1   && <4.15
     , bytestring            ^>=0.10.8.2
     , colourista            ^>=0.1.0.1
@@ -96,6 +97,7 @@ library
     FlexibleContexts
     GADTSyntax
     GeneralizedNewtypeDeriving
+    InstanceSigs
     LambdaCase
     OverloadedStrings
     RankNTypes
@@ -115,6 +117,7 @@ executable hadmin
   build-depends:
     , base                  >=4.13    && <5
     , hstore-admin
+    , hstream-common
     , network               ^>=3.1.0
     , optparse-applicative  ^>=0.16
     , text                  ^>=1.2.3.0

@@ -1,9 +1,14 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module HStream.Store.Admin.Types where
 
 import qualified Control.Exception        as E
 import           Control.Monad
+import           Data.Char                (toLower)
 import           Data.Int
+import           Data.List                (intercalate, stripPrefix)
 import qualified Data.Map.Strict          as Map
+import           Data.Maybe               (fromMaybe)
 import           Data.Text                (Text)
 import           Options.Applicative
 import qualified Options.Applicative.Help as Opt
@@ -15,6 +20,7 @@ import qualified Z.Data.Text              as T
 import           Z.Data.Vector            (Bytes)
 import qualified Z.Data.Vector            as V
 
+import qualified HStream.Logger           as Log
 import qualified HStream.Store            as S
 import qualified HStream.Store.Admin.API  as AA
 
@@ -144,24 +150,6 @@ nodesConfigParser = hsubparser
 
 -------------------------------------------------------------------------------
 
-parseShard :: ReadM AA.ShardID
-parseShard = eitherReader $ parse . V.packASCII
-  where
-    parse :: Bytes -> Either String AA.ShardID
-    parse bs =
-      case P.parse' parser bs of
-        Left er -> Left $ "cannot parse value: " <> show er
-        Right i -> Right i
-    parser = do
-      P.skipSpaces
-      P.char8 'N' <|> P.char8 'n'
-      n <- P.int
-      P.char8 ':'
-      P.char8 'S' <|> P.char8 's'
-      s <- P.int
-      P.skipSpaces
-      return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
-
 headerConfigParser :: Parser (AA.HeaderConfig AA.AdminAPI)
 headerConfigParser = AA.HeaderConfig
   <$> strOption ( long "host"
@@ -251,6 +239,9 @@ instance Read AA.LocationScope where
       Read.Ident "region"     -> return AA.LocationScope_REGION
       Read.Ident "root"       -> return AA.LocationScope_ROOT
       x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
+
+prettyLocationScope :: AA.LocationScope -> String
+prettyLocationScope = map toLower . withoutPrefix "LocationScope_" . show
 
 newtype ReplicationPropertyPair = ReplicationPropertyPair
   { unReplicationPropertyPair :: (AA.LocationScope, Int32) }
@@ -500,11 +491,10 @@ data CheckImpactOpts = CheckImpactOpts
   , skipMetaDataLogs                    :: Bool
   , skipInternalLogs                    :: Bool
   , logs                                :: [AA.Unsigned64]
-  -- TODO : shorts :: Bool
+  , ciShort                             :: Bool
   , maxUnavailableStorageCapacityPct    :: Int32
   , maxUnavailableSequencingCapacityPct :: Int32
   , skipCapacityChecks                  :: Bool
-  , disableSequencers                   :: Bool
   } deriving (Show)
 
 checkImpactOptsParser :: Parser CheckImpactOpts
@@ -551,6 +541,7 @@ checkImpactOptsParser = CheckImpactOpts
                        <> metavar "INT"
                        <> help "If None, checks all logs, but you can specify the log-ids"
                         ))
+  <*> switch (long "short" <> help "Disables the long detailed description of the output")
   <*> option auto ( long "max-unavailable-storage-capacity-pct"
                  <> metavar "INT"
                  <> showDefault
@@ -568,12 +559,6 @@ checkImpactOptsParser = CheckImpactOpts
                  <> showDefault
                  <> value False
                  <> help "Disable capacity checking altogether"
-                  )
-  <*> option auto ( long "disable-sequencers"
-                 <> metavar "BOOL"
-                 <> showDefault
-                 <> value False
-                 <> help "Do we want to validate if sequencers will be disabled on these nodes as well?"
                   )
 
 -------------------------------------------------------------------------------
@@ -856,9 +841,85 @@ startSQLReplOptsParser = StartSQLReplOpts
 
 -------------------------------------------------------------------------------
 
+logLevelParser :: Parser Log.Level
+logLevelParser =
+  option auto ( long "log-level" <> metavar "[critical|fatal|warning|info|debug]"
+             <> showDefault <> value (Log.Level Log.INFO)
+             <> help "log level"
+              )
+
+parseShard :: ReadM AA.ShardID
+parseShard = eitherReader parseShard'
+
+allShards :: AA.ShardIndex
+allShards = -1
+
+-- | Parses a list of strings and intrepret as ShardID objects.
+--
+-- Accepted examples:
+--     0 => ShardID(0, -1)
+--     N0 => ShardID(0, -1)
+--     0:2 => ShardID(0, 2)
+--     N0:2 => ShardID(0, 2)
+--     N0:S2 => ShardID(0, 2)
+parseShard' :: String -> Either String AA.ShardID
+parseShard' i = parse $ V.packASCII i
+  where
+    skipn w = w == c2w 'N' || w == c2w 'n'
+    skips w = w == c2w 'S' || w == c2w 's'
+    parse :: Bytes -> Either String AA.ShardID
+    parse bs =
+      case P.parse' parser bs of
+        Left _  -> Left $ "cannot parse ShardID: " <> i
+        Right o -> Right o
+
+    parser = do
+      (n, s) <- parseN <|> parseNS
+      return $ AA.ShardID (AA.NodeID (Just n) Nothing Nothing) s
+
+    parseN = do
+      P.skipSpaces
+      P.skipWhile skipn
+      n <- P.int
+      P.skipSpaces
+      P.endOfInput
+      return (n, allShards)
+
+    parseNS = do
+      P.skipSpaces
+      P.skipWhile skipn
+      n <- P.int
+      P.char8 ':'
+      P.skipWhile skips
+      s <- P.int
+      P.skipSpaces
+      P.endOfInput
+      return (n, s)
+
+prettyShardID :: AA.ShardID -> String
+prettyShardID AA.ShardID{..} =
+    "N"
+  <> maybe "x" show (AA.nodeID_node_index shardID_node)
+  <> ":S"
+  <> show shardID_shard_index
+
+prettyShardStorageState :: AA.ShardStorageState -> String
+prettyShardStorageState = withoutPrefix "ShardStorageState_" . show
+
+prettySahrdDataHealth :: AA.ShardDataHealth -> String
+prettySahrdDataHealth = withoutPrefix "ShardDataHealth_" . show
+
+impacts2string :: [AA.OperationImpact] -> String
+impacts2string xs = intercalate ", " $ map (withoutPrefix "OperationImpact_" . show) xs
+
+-------------------------------------------------------------------------------
+
+withoutPrefix :: Eq a => [a] -> [a] -> [a]
+withoutPrefix prefix ele = fromMaybe ele $ stripPrefix prefix ele
+
 handleStoreError :: IO () -> IO ()
-handleStoreError action =
+handleStoreError act =
   let putErr = Opt.putDoc . Opt.red . Opt.string . (\s -> "Error: " <> s <> "\n") .  T.toString . S.sseDescription
-   in action `E.catches` [ E.Handler (\(S.StoreError ex) -> putErr ex)
-                         , E.Handler (\(ex :: S.SomeHStoreException) -> print ex)
-                         ]
+   in act `E.catches` [ E.Handler (\(S.StoreError ex) -> putErr ex)
+                      , E.Handler (\(ex :: S.SomeHStoreException) -> print ex)
+                      ]
