@@ -27,6 +27,7 @@ import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Proto3.Suite                     (Enumerated (..))
 import           Proto3.Suite.Class               (HasDefault (def))
 import           System.Random
+import           System.Timeout
 import           Test.Hspec
 
 import qualified HStream.Logger                   as Log
@@ -272,7 +273,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
 
       verifyConsumer api subName totalSize reqRids [defaultHacker]
-      Log.debug "streamFetch test done !!!!!!!!!!!"
+      Log.info "streamFetch test done !!!!!!!!!!!"
 
     it "test retrans unacked msg" $ \(api, (streamName, subName)) -> do
       originCh <- newChan
@@ -290,7 +291,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       let diff = V.toList originAck L.\\ V.toList hackedAck
       retransAck `shouldBe` V.fromList diff
       writeChan terminate ()
-      Log.debug "retrans unacked msg test done !!!!!!!!!!!"
+      Log.info "retrans unacked msg test done !!!!!!!!!!!"
 
     it "test retrans timeout msg" $ \(api, (streamName, subName)) -> do
       originCh <- newChan
@@ -309,7 +310,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       threadDelay 1000000
       retransAck `shouldBe` originAck
       writeChan terminate ()
-      Log.debug "retrans timeout msg done !!!!!!!!!!!"
+      Log.info "retrans timeout msg done !!!!!!!!!!!"
 
     -- FIXME:Wrong ack messages cause the server to fail to update the ack window and commit checkpoints,
     -- but the only way to verify the server's behavior now is check the debug logs, so this test is always successful.
@@ -332,7 +333,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
       Log.debug . Log.buildString $ "retransAck length = " <> show (length retransAck)
       retransAck `shouldBe` originAck
       writeChan terminate ()
-      Log.debug "ack wrong msg test done !!!!!!!!!!!"
+      Log.info "ack wrong msg test done !!!!!!!!!!!"
 
   -- TODO:
   -- test need to add
@@ -364,6 +365,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
 
        let hackers = V.replicate 5 [defaultHacker]
        verifyConsumerGroup api subName totalSize reqRids hackers
+       Log.info "test consumerGroup done !!!!!!!!"
 
      it "test consumerGroup with timeout" $ \(api, (streamName, subName)) -> do
        let msgCnt = 200
@@ -378,6 +380,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
                       V.empty
                       (V.fromList @Int [1..5])
        verifyConsumerGroup api subName totalSize reqRids hackers
+       Log.info "test consumerGroup with timeout done !!!!!!!!"
 
      it "test consumerGroup with unacked" $ \(api, (streamName, subName)) -> do
        let msgCnt = 200
@@ -392,6 +395,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
                       V.empty
                       (V.fromList @Int [1..5])
        verifyConsumerGroup api subName totalSize reqRids hackers
+       Log.info "test consumerGroup with unacked done !!!!!!!!"
 
      it "test consumerGroup with multi chaos" $ \(api, (streamName, subName)) -> do
        let msgCnt = 200
@@ -403,6 +407,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
          idx <- randomRIO (0,2)
          return [hackerList !! idx, defaultHacker]
        verifyConsumerGroup api subName totalSize reqRids hackers
+       Log.info "test consumerGroup with multi chaos done !!!!!!!!"
 
      it "test kill consumer" $ \(api, (streamName, subName)) -> do
        let msgCnt = 200
@@ -420,11 +425,8 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
        forM_ idxs $ \index -> do
          Log.d $ "kill " <> Log.buildInt index
          killThread . fst $ res V.! index
-       void $ readMVar condVar
-       -- delay here to give server some time to complete previous retrans
-       threadDelay 1000000
-       Log.debug "receive signal"
-       writeChan terminate ()
+
+       waitResponse condVar terminate
        result <- forM res $ readIORef . snd
        let reqSet = Set.fromList . V.toList . V.concat $ reqRids
            repSet = Set.unions result
@@ -433,9 +435,10 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
        repSize `shouldBe` reqSize
        Set.difference reqSet repSet `shouldBe` Set.empty
        repSet `shouldBe` reqSet
+       Log.info "test kill consumer done !!!!!!!!"
 
      it "test add consumer" $ \(api, (streamName, subName)) -> do
-       let msgCnt = 1000
+       let msgCnt = 500
        (reqRids, totalSize) <- produceRecords api header streamName msgCnt 20
        Log.debug $ "length reqRids = " <> Log.buildInt (length reqRids) <> ", totalSize = " <> Log.buildInt totalSize
        terminate <- newChan
@@ -453,9 +456,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
        void $ forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
        let res = res' V.++ V.singleton responses
 
-       void $ readMVar condVar
-       Log.debug "receive signal"
-       writeChan terminate ()
+       waitResponse condVar terminate
        result <- forM res readIORef
        let reqSet = Set.fromList . V.toList . V.concat $ reqRids
            repSet = Set.unions result
@@ -464,6 +465,7 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
        repSize `shouldBe` reqSize
        Set.difference reqSet repSet `shouldBe` Set.empty
        repSet `shouldBe` reqSet
+       Log.info "test add consumer done !!!!!!!!"
 
 ----------------------------------------------------------------------------------------------------------
 
@@ -523,7 +525,7 @@ streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total h
           modifyMVar_ conVar $ \(s, sig) -> do
             let totalSet = Set.union s dSet
             -- Log.e $ "consumer is updating total responses, total size before update: " <> Log.buildInt (Set.size s) <> ", after update: " <> Log.buildInt (Set.size totalSet)
-            when (Set.size totalSet == total) $ putMVar sig ()
+            when (Set.size totalSet == total) $ putMVar sig () >> Log.debug "get all result !!!!!"
             return (totalSet, sig)
 
           -- send ack
@@ -652,16 +654,10 @@ verifyConsumerGroup api subName totalSize reqRids hackers = do
   terminate <- newChan
   condVar <- newEmptyMVar
   sig <- newMVar (Set.empty, condVar)
-
   res <- forM hackers $ doConsume api subName sig totalSize terminate
 
-  void $ readMVar condVar
-  Log.d "receive signal"
-  -- delay here to give server some time to complete previous retrans
-  threadDelay 1000000
-  writeChan terminate ()
+  waitResponse condVar terminate
   result <- forM res readIORef
-
   let reqSet = Set.fromList . V.toList . V.concat $ reqRids
       repSet = Set.unions result
       reqSize = Set.size reqSet
@@ -669,6 +665,17 @@ verifyConsumerGroup api subName totalSize reqRids hackers = do
   repSize `shouldBe` reqSize
   Set.difference reqSet repSet `shouldBe` Set.empty
   repSet `shouldBe` reqSet
+
+waitResponse :: MVar a -> Chan () -> IO ()
+waitResponse condVar terminate =
+  timeout 25000000 (readMVar condVar) >>= \case
+    Nothing -> do
+      terminateConnect
+      error "STREAMING FETCH TIME OUT ERROR!"
+    Just _ -> do
+      terminateConnect
+  where
+    terminateConnect = threadDelay 1000000 >> writeChan terminate ()
 
 collectRetrans :: Int -> Chan (V.Vector RecordId) -> Int -> [V.Vector RecordId]-> IO (V.Vector RecordId)
 collectRetrans cnt channel maxCount res
