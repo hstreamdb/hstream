@@ -19,7 +19,7 @@ module HStream.Store.Logger
 
 import           Foreign.C.Types              (CInt)
 import qualified HStream.Store.Internal.Types as FFI
-import qualified Text.Read                as Read
+import qualified Text.Read                    as Read
 
 type FD = CInt
 

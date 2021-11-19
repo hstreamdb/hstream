@@ -30,7 +30,7 @@ import qualified HStream.Stats             as Stats
 import           HStream.Store             (Compression)
 import qualified HStream.Store             as HS
 import qualified HStream.Store.Admin.API   as AA
-import qualified HStream.Store.Logger as HS
+import qualified HStream.Store.Logger      as Log
 
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"
@@ -58,7 +58,7 @@ data ServerOpts = ServerOpts
   , _ldAdminRecvTimeout :: Int
   , _serverLogLevel     :: Log.Level
   , _serverLogWithColor :: Bool
-  , _ldLogLevel         :: HS.LDLogLevel
+  , _ldLogLevel         :: Log.LDLogLevel
   } deriving (Show)
 
 type Timestamp = Int64

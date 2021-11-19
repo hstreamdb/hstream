@@ -483,7 +483,6 @@ streamFetchRequest
   -> [Hacker]
   -> IO ()
 streamFetchRequest HStreamApi{..} consumerName subscribeId responses terminate conVar total hackerList = do
-  -- consumerName <- newRandomText 5
   let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) action
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
