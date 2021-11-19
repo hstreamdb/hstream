@@ -32,6 +32,7 @@ library
     HStream.Client.Type
     HStream.Client.Utils
     HStream.Server.Bootstrap
+    HStream.Server.Config
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -70,6 +71,7 @@ library
     , clickhouse-haskell
     , containers
     , deepseq
+    , directory
     , grpc-haskell
     , grpc-haskell-core
     , haxl
@@ -98,6 +100,7 @@ library
     , unordered-containers
     , uuid
     , vector
+    , yaml
     , Z-Data
     , Z-IO
     , zoovisitor

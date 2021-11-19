@@ -48,7 +48,6 @@ data ServerOpts = ServerOpts
   , _ldConfigPath       :: CBytes
   , _topicRepFactor     :: Int
   , _ckpRepFactor       :: Int
-  , _heartbeatTimeout   :: Int64
   , _compression        :: Compression
   , _ldAdminHost        :: ByteString
   , _ldAdminPort        :: Int
