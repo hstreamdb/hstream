@@ -417,14 +417,15 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
        condVar <- newEmptyMVar
        let idxs = [1, 3]
        sig <- newMVar (Set.empty, condVar)
-       res <- forM (V.fromList @Int [1..5]) $ \_ -> do
+       res <- forM (V.fromList @Int [1..5]) $ \i -> do
+         let consumerName = T.pack $ "consumer_" ++ show i
          responses <- newIORef Set.empty
          tch <- dupChan terminate
-         tid <- forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
+         tid <- forkIO (streamFetchRequest api consumerName subName responses tch sig totalSize [defaultHacker])
          return (tid, responses)
        forM_ idxs $ \index -> do
          Log.d $ "kill " <> Log.buildInt index
-         killThread . fst $ res V.! index
+         killThread . fst $ res V.! (index - 1)
 
        waitResponse condVar terminate
        result <- forM res $ readIORef . snd
@@ -444,16 +445,18 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
        terminate <- newChan
        condVar <- newEmptyMVar
        sig <- newMVar (Set.empty, condVar)
-       res' <- forM (V.fromList @Int [1..5]) $ \_ -> do
+       res' <- forM (V.fromList @Int [1..5]) $ \i -> do
+         let consumerName = T.pack $ "consumer_" ++ show i
          responses <- newIORef Set.empty
          tch <- dupChan terminate
-         void $ forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
+         void $ forkIO (streamFetchRequest api consumerName subName responses tch sig totalSize [defaultHacker])
          return responses
 
        Log.debug "add new consumer"
        responses <- newIORef Set.empty
        tch <- dupChan terminate
-       void $ forkIO (streamFetchRequest api subName responses tch sig totalSize [defaultHacker])
+       let consumerName = T.pack $ "consumer_" ++ show (length res' + 1)
+       void $ forkIO (streamFetchRequest api consumerName subName responses tch sig totalSize [defaultHacker])
        let res = res' V.++ V.singleton responses
 
        waitResponse condVar terminate
@@ -471,38 +474,38 @@ consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $
 
 streamFetchRequest
   :: HStreamClientApi
-  -> T.Text
+  -> T.Text                        -- consumerName
+  -> T.Text                        -- subscriptionID
   -> IORef (Set RecordId)
-  -> Chan ()                  -- channel use to close client request
-  -> MVar (Set RecordId, CondVar)       -- use as a condition var
-  -> Int                      -- total response need to check
+  -> Chan ()                       -- channel use to close client request
+  -> MVar (Set RecordId, CondVar)  -- use as a condition var
+  -> Int                           -- total response need to check
   -> [Hacker]
   -> IO ()
-streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total hackerList = do
-  consumerName <- newRandomText 5
-  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) (action consumerName)
+streamFetchRequest HStreamApi{..} consumerName subscribeId responses terminate conVar total hackerList = do
+  let req = ClientBiDiRequest streamingReqTimeout (MetadataMap Map.empty) action
   hstreamApiStreamingFetch req >>= \case
     ClientBiDiResponse _meta StatusCancelled detail -> Log.info . Log.buildString $ "request cancel" <> show detail
     ClientBiDiResponse _meta StatusOk _msg -> Log.debug "fetch request done"
     ClientBiDiResponse _meta stats detail -> Log.fatal . Log.buildString $ "abnormal status: " <> show stats <> ", msg: " <> show detail
     ClientErrorResponse err -> Log.e . Log.buildString $ "fetch request err: " <> show err
   where
-    action consumerName call _meta streamRecv streamSend _done = do
+    action call _meta streamRecv streamSend _done = do
       let initReq = StreamingFetchRequest subscribeId consumerName V.empty
       streamSend initReq >>= \case
         Left err -> do
           Log.e . Log.buildString $ "Server error happened when send init streamFetchRequest err: " <> show err
           clientCallCancel call
         Right _ -> return ()
-      void $ race (doFetch streamRecv streamSend call consumerName hackerList) (notifyDone consumerName call)
+      void $ race (doFetch streamRecv streamSend call hackerList) (notifyDone call)
 
-    doFetch streamRecv streamSend call consumerName hackers = do
+    doFetch streamRecv streamSend call hackers = do
       streamRecv >>= \case
         Left err -> do
           Log.e . Log.buildString $ "Error happened when recv from server " <> show err
           clientCallCancel call
         Right Nothing -> do
-          Log.debug "server close, fetch request end."
+          Log.debug $ "consumer " <> Log.buildText consumerName <> ", server close, fetch request end."
           clientCallCancel call
         Right (Just StreamingFetchResponse{..}) -> do
           -- get recordId from response
@@ -535,9 +538,9 @@ streamFetchRequest HStreamApi{..} subscribeId responses terminate conVar total h
               Log.e . Log.buildString $ "Error happened when send ack: " <> show err <> "\n ack context: " <> show fetReq
               clientCallCancel call
             Right _ -> do
-              doFetch streamRecv streamSend call consumerName newHackers
+              doFetch streamRecv streamSend call newHackers
 
-    notifyDone consumerName call = do
+    notifyDone call = do
       void $ readChan terminate
       res <- readIORef responses
       Log.debug $ "finally consumer " <> Log.buildText consumerName <> " get length of response: " <> Log.buildInt (Set.size res)
@@ -622,15 +625,16 @@ produceRecords api header streamName msgCount maxBatchSize = do
 doConsume
   :: HStreamClientApi
   -> T.Text
+  -> T.Text
   -> MVar (Set RecordId, CondVar)
   -> Int
   -> Chan()
   -> [Hacker]
   -> IO (IORef (Set RecordId))
-doConsume api subName sig totalSize terminateCh hackers = do
+doConsume api consumerName subName sig totalSize terminateCh hackers = do
   responses <- newIORef Set.empty
   tch <- dupChan terminateCh
-  void $ forkIO (streamFetchRequest api subName responses tch sig totalSize hackers)
+  void $ forkIO (streamFetchRequest api consumerName subName responses tch sig totalSize hackers)
   return responses
 
 verifyConsumer
@@ -654,7 +658,9 @@ verifyConsumerGroup api subName totalSize reqRids hackers = do
   terminate <- newChan
   condVar <- newEmptyMVar
   sig <- newMVar (Set.empty, condVar)
-  res <- forM hackers $ doConsume api subName sig totalSize terminate
+  res <- V.iforM hackers $ \idx hacker -> do
+    let consumerName = T.pack $ "consumer_" ++ show (idx + 1)
+    doConsume api consumerName subName sig totalSize terminate hacker
 
   waitResponse condVar terminate
   result <- forM res readIORef

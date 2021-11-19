@@ -182,14 +182,15 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
             Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
         Right Nothing -> do
           -- This means that the consumer finished sending acks actively.
-          Log.info "consumer closed"
+          name <- readIORef consumerNameRef
+          Log.info $ "consumer closed:" <> Log.buildText name
           cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
             Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
             Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
         Right (Just streamingFetchReq@StreamingFetchRequest {..})
           | isFirst -> do
             -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-              Log.debug "stream recive requst, do check in isFirst branch"
+              Log.debug $ "stream recive requst from " <> Log.buildText streamingFetchRequestConsumerName <> ", do check in isFirst branch"
               -- the subscription has to exist and be bound to a server node
               P.checkIfExist @ZHandle @'SubRep
                 streamingFetchRequestSubscriptionId zkHandle >>= \case
@@ -201,6 +202,7 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                       | otherwise -> return $
                           ServerBiDiResponse [] StatusInternal "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
                     Nothing -> do
+                      Log.debug $ Log.buildText streamingFetchRequestSubscriptionId <> " need to assign to a server node."
                       nodeIDs <- getNodesRanking ctx <&> fmap serverNodeId
                       if serverID `L.elem` nodeIDs
                         then do
@@ -262,7 +264,9 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                         return (newStore, Nothing)
             )
           case mRes of
-            Just errorMsg ->
+            Just errorMsg -> do
+              consumerName <- readIORef consumerNameRef
+              Log.fatal $ "consumer " <> Log.buildText consumerName <> " error: " <> Log.buildString (show errorMsg)
               return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
             Nothing ->
               handleAcks
