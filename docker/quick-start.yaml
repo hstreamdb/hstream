@@ -1,0 +1,58 @@
+version: "3.5"
+
+services:
+  hserver:
+    image: hstreamdb/hstream
+    depends_on:
+      - zookeeper
+      - hstore
+    ports:
+      - "127.0.0.1:6570:6570"
+    expose:
+      - 6570
+    networks:
+      - hstream-quickstart
+    volumes:
+      - ${DATA_DIR:-/data/store}:/data/store
+    command: &start_hserver
+      - bash
+      - "-c"
+      - |
+        set -e
+        /usr/local/script/wait-for-storage.sh hstore 6440 zookeeper 2181 600 \
+        /usr/local/bin/hstream-server \
+        --host 0.0.0.0 --port 6570 \
+        --internal-port 6571 \
+        --address $$(hostname -I | awk '{print $$1}') \
+        --server-id 100 \
+        --zkuri zookeeper:2181 \
+        --store-config /data/store/logdevice.conf \
+        --store-admin-host hstore --store-admin-port 6440 \
+        --replicate-factor 3 \
+
+  hstore:
+    image: hstreamdb/hstream
+    networks:
+      - hstream-quickstart
+    volumes:
+      - ${DATA_DIR:-/data/store}:/data/store
+    command:
+      - bash
+      - "-c"
+      - |
+        set -ex
+        /usr/local/bin/ld-dev-cluster --root /data/store \
+        --use-tcp --tcp-host $$(hostname -I | awk '{print $$1}') \
+        --user-admin-port 6440 \
+        --no-interactive
+
+  zookeeper:
+    image: zookeeper
+    expose:
+      - 2181
+    networks:
+      - hstream-quickstart
+
+networks:
+  hstream-quickstart:
+    name: hstream-quickstart

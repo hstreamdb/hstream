@@ -66,6 +66,8 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-http-server \
                     /root/.cabal/bin/hstream-swagger-json \
                     /usr/local/bin/
+COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh
+
 RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
     /usr/local/bin/hadmin --bash-completion-script /usr/local/bin/hadmin > /etc/bash_completion.d/hadmin
