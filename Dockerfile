@@ -5,7 +5,7 @@ COPY . /hstream
 RUN cabal update && \
     cd /hstream && make && \
     cabal build all && \
-    cabal install hstream hstore-admin hstream-store hstream-http-server && \
+    cabal install hstream hstore-admin hstream-store && \
     rm -rf /hstream
 
 # ------------------------------------------------------------------------------
@@ -63,7 +63,6 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
-                    /root/.cabal/bin/hstream-http-server \
                     /root/.cabal/bin/hstream-swagger-json \
                     /usr/local/bin/
 COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh
