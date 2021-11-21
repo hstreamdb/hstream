@@ -84,7 +84,7 @@ jobs:
             build --enable-tests --enable-benchmarks all
 
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-            install hstream hstream-http-server
+            install hstream
 
       - name: start hstream server
         run: |
