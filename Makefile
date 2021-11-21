@@ -1,12 +1,13 @@
 CABAL ?= cabal
 
-all:: thrift grpc sql
+all:: thrift grpc sql hstream-http-server
 
 THRIFT_COMPILE = thrift-compiler
 BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = compile-proto-file
 PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
+GO_COMPILE ?= /usr/lib/go-1.14/bin/go
 
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
@@ -26,6 +27,30 @@ grpc-cpp:
 		$(PROTO_COMPILE) --cpp_out gen-cpp --grpc_out gen-cpp -I proto --plugin=protoc-gen-grpc=$(PROTO_CPP_PLUGIN) \
 		proto/HStream/Server/HStreamApi.proto \
 	)
+
+grpc-go:
+	(cd common && mkdir -p gen-go && \
+		$(PROTO_COMPILE) -I . -I proto -I /usr/local/include \
+			--go_out           ./gen-go --go_opt           paths=source_relative             \
+			--go-grpc_out      ./gen-go --go-grpc_opt      paths=source_relative             \
+			--grpc-gateway_out ./gen-go --grpc-gateway_opt paths=source_relative             \
+			--grpc-gateway_opt grpc_api_configuration=./proto/HStream/Server/HStreamApi.yaml \
+				proto/HStream/Server/HStreamApi.proto)
+	(mkdir -p hstream-http-server/build && ln -sf ../../common/gen-go/proto hstream-http-server/build/proto)
+
+hstream-http-server: grpc-go
+	(cd hstream-http-server && \
+		GOPATH=$(shell pwd)/.go_path   \
+		GOCACHE=$(shell pwd)/.go_cache \
+		GO111MODULE=on                 \
+			$(GO_COMPILE) build -v -o build/hstream-http-server main.go)
+
+test-hstream-http-server: hstream-http-server
+	(hstream-http-server/build/hstream-http-server & cd hstream-http-server && \
+		GOPATH=$(shell pwd)/.go_path   \
+		GOCACHE=$(shell pwd)/.go_cache \
+		GO111MODULE=on                 \
+			$(GO_COMPILE) test -v src/server_test.go)
 
 sql:: sql-deps
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)

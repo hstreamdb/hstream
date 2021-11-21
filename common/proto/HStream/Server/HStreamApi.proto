@@ -10,6 +10,8 @@ option java_package = "io.hstream";
 option java_multiple_files = true;
 option java_outer_classname = "HStreamProto";
 
+option go_package = "github.com/hstreamdb/hstream/hstream-http-server";
+
 service HStreamApi {
   // ---------------------------------------------------------------------------
   // Stable APIs
