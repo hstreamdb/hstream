@@ -7,12 +7,13 @@ BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = compile-proto-file
 PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
+GO_COMPILE ?= go
 
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-store/admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
-grpc:: grpc-cpp grpc-hs
+grpc:: grpc-cpp grpc-hs grpc-go
 
 grpc-hs: grpc-cpp
 	(cabal build proto3-suite && mkdir -p ~/.local/bin && find dist-newstyle/ -type f -name "compile-proto-file" | xargs -I{} cp {} ~/.local/bin/)
@@ -26,6 +27,16 @@ grpc-cpp:
 		$(PROTO_COMPILE) --cpp_out gen-cpp --grpc_out gen-cpp -I proto --plugin=protoc-gen-grpc=$(PROTO_CPP_PLUGIN) \
 		proto/HStream/Server/HStreamApi.proto \
 	)
+
+grpc-go:
+	(cd common && mkdir -p gen-go && \
+		$(PROTO_COMPILE) -I . -I proto -I /usr/local/include \
+			--go_out           ./gen-go --go_opt           paths=source_relative             \
+			--go-grpc_out      ./gen-go --go-grpc_opt      paths=source_relative             \
+			--grpc-gateway_out ./gen-go --grpc-gateway_opt paths=source_relative             \
+			--grpc-gateway_opt grpc_api_configuration=./proto/HStream/Server/HStreamApi.yaml \
+				proto/HStream/Server/HStreamApi.proto)
+	(mkdir -p hstream-http-server/build && ln -sf ../../common/gen-go/proto hstream-http-server/build/proto)
 
 sql:: sql-deps
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)
