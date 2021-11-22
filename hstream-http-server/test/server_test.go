@@ -2,7 +2,6 @@ package hstream_http_server_test
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,11 +19,36 @@ import (
 )
 
 var (
-	serverPrefix = flag.String("server-prefix", "http://0.0.0.0:6580", "")
+	grpcPort       string
+	httpPort       string
+	mysqlPort      string
+	clickhousePort string
+	serverPrefix   string
 )
 
 func TestMain(m *testing.M) {
-	flag.Parse()
+	if env := os.Getenv("SERVER_LOCAL_PORT"); env != "" {
+		grpcPort = env
+	} else {
+		grpcPort = "6570"
+	}
+	if env := os.Getenv("MYSQL_LOCAL_PORT"); env != "" {
+		mysqlPort = env
+	} else {
+		mysqlPort = "3306"
+	}
+	if env := os.Getenv("CLICKHOUSE_LOCAL_PORT"); env != "" {
+		mysqlPort = env
+	} else {
+		mysqlPort = "9000"
+	}
+	if env := os.Getenv("HTTP_LOCAL_PORT"); env != "" {
+		httpPort = env
+	} else {
+		httpPort = "6580"
+	}
+	serverPrefix = "http://0.0.0.0:" + httpPort
+
 	code := m.Run()
 	os.Exit(code)
 }
@@ -61,7 +85,7 @@ func execResp(t *testing.T, resp *http.Response, err error, unmarshalVar proto.M
 
 func TestStream(t *testing.T) {
 	var listResp hstreamHttpServer.ListStreamsResponse
-	resp, err := http.Get(*serverPrefix + "/streams")
+	resp, err := http.Get(serverPrefix + "/streams")
 	body0 := execResp(t, resp, err, &listResp)
 
 	stream := hstreamHttpServer.Stream{
@@ -74,10 +98,10 @@ func TestStream(t *testing.T) {
 	}
 	streamReader := bytes.NewReader(streamByte)
 	var createResp hstreamHttpServer.Stream
-	resp, err = http.Post(*serverPrefix+"/streams", "application/json", streamReader)
+	resp, err = http.Post(serverPrefix+"/streams", "application/json", streamReader)
 	execResp(t, resp, err, &createResp)
 
-	resp, err = http.Get(*serverPrefix + "/streams")
+	resp, err = http.Get(serverPrefix + "/streams")
 	body1 := execResp(t, resp, err, &listResp)
 	assert.NotEqual(t, body0, body1)
 
@@ -88,24 +112,24 @@ func TestStream(t *testing.T) {
 }`
 	recordReader := strings.NewReader(record)
 	var appendResp hstreamHttpServer.AppendResponse
-	resp, err = http.Post(*serverPrefix+"/streams/test_stream:publish", "application/json", recordReader)
+	resp, err = http.Post(serverPrefix+"/streams/test_stream:publish", "application/json", recordReader)
 	execResp(t, resp, err, &appendResp)
 
 	var deleteResp emptypb.Empty
-	req, err := http.NewRequest(http.MethodDelete, *serverPrefix+"/streams/test_stream", nil)
+	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
 	if err != nil {
 		panic(err)
 	}
 	resp, err = http.DefaultClient.Do(req)
 	execResp(t, resp, err, &deleteResp)
 
-	resp, err = http.Get(*serverPrefix + "/streams")
+	resp, err = http.Get(serverPrefix + "/streams")
 	body1 = execResp(t, resp, err, &listResp)
 	assert.Equal(t, body0, body1)
 }
 
 func TestView(t *testing.T) {
-	resp, err := http.Get(*serverPrefix + "/views")
+	resp, err := http.Get(serverPrefix + "/views")
 	if err != nil {
 		panic(err)
 	}
@@ -130,7 +154,7 @@ func TestView(t *testing.T) {
 		panic(err)
 	}
 	streamReader := bytes.NewReader(streamByte)
-	resp, err = http.Post(*serverPrefix+"/streams", "application/json", streamReader)
+	resp, err = http.Post(serverPrefix+"/streams", "application/json", streamReader)
 	if err != nil {
 		panic(err)
 	}
@@ -148,7 +172,7 @@ func TestView(t *testing.T) {
 	var sql = `{
 	"sql": "CREATE VIEW test_view AS SELECT x, SUM(x) FROM test_stream GROUP BY y EMIT CHANGES;"
 }`
-	resp, err = http.Post(*serverPrefix+"/views",
+	resp, err = http.Post(serverPrefix+"/views",
 		"application/json",
 		strings.NewReader(sql))
 	if err != nil {
@@ -168,18 +192,18 @@ func TestView(t *testing.T) {
 	assert.NotEqual(t, string(body0), string(body1))
 
 	var deleteResp emptypb.Empty
-	req, err := http.NewRequest(http.MethodDelete, *serverPrefix+"/views/test_view", nil)
+	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/views/test_view", nil)
 	if err != nil {
 		panic(err)
 	}
 	resp, err = http.DefaultClient.Do(req)
 	execResp(t, resp, err, &deleteResp)
 
-	resp, err = http.Get(*serverPrefix + "/views")
+	resp, err = http.Get(serverPrefix + "/views")
 	body1 = execResp(t, resp, err, &listResp)
 	assert.Equal(t, string(body0), string(body1))
 
-	req, err = http.NewRequest(http.MethodDelete, *serverPrefix+"/streams/test_stream", nil)
+	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
 	if err != nil {
 		panic(err)
 	}
@@ -189,8 +213,51 @@ func TestView(t *testing.T) {
 
 func TestQuery(t *testing.T) {
 	var listResp hstreamHttpServer.ListQueriesResponse
-	resp, err := http.Get(*serverPrefix + "/queries")
+	resp, err := http.Get(serverPrefix + "/queries")
 	execResp(t, resp, err, &listResp)
+
+	//body0 := execResp(t, resp, err, &listResp)
+	//
+	//var createResp hstreamHttpServer.Query
+	//createReq := hstreamHttpServer.CreateQueryRequest{
+	//	Id:        "test_query",
+	//	QueryText: "SELECT * FROM test_stream EMIT CHANGES;",
+	//}
+	//createReq_, err := protojson.Marshal(&createReq)
+	//fmt.Println(string(createReq_))
+	//if err != nil {
+	//	panic(err)
+	//}
+	//resp, err = http.Post(*erverPrefix+"/v0/queries/pull", "application/json", bytes.NewReader(createReq_))
+	//execResp(t, resp, err, &createResp)
+	//
+	//resp, err = http.Get(*erverPrefix + "/v0/queries")
+	//body1 := execResp(t, resp, err, &listResp)
+	//assert.NotEqual(t, body0, body1)
+	//
+	//terminateReq := hstreamHttpServer.TerminateQueriesRequest{
+	//	QueryId: []string{"test_query"},
+	//	All:     false,
+	//}
+	//terminateReq_, err := protojson.Marshal(&terminateReq)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//var terminateResp hstreamHttpServer.TerminateQueriesResponse
+	//resp, err = http.Post(*erverPrefix+"/v0/queries/terminate", "application/json", bytes.NewReader(terminateReq_))
+	//execResp(t, resp, err, &terminateResp)
+	//
+	//var deleteResp emptypb.Empty
+	//req, err := http.NewRequest(http.MethodDelete, *erverPrefix+"/v0/queries/test_query", nil)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//resp, err = http.DefaultClient.Do(req)
+	//execResp(t, resp, err, &deleteResp)
+	//
+	//resp, err = http.Get(*erverPrefix + "/v0/queries")
+	//body1 = execResp(t, resp, err, &listResp)
+	//assert.Equal(t, body0, body1)
 }
 
 func TestConnector(t *testing.T) {
@@ -203,35 +270,35 @@ func TestConnector(t *testing.T) {
 		panic(err)
 	}
 	streamReader := bytes.NewReader(streamByte)
-	resp, err := http.Post(*serverPrefix+"/streams", "application/json", streamReader)
+	resp, err := http.Post(serverPrefix+"/streams", "application/json", streamReader)
 	var createResp_ hstreamHttpServer.Stream
 	execResp(t, resp, err, &createResp_)
 
 	createReq := hstreamHttpServer.CreateSinkConnectorRequest{
-		Sql: "CREATE SINK CONNECTOR test_connector WITH (type=mysql, host=\"127.0.0.1\", port=57567, username=\"root\", password=\"\", database=\"mysql\", stream=test_stream);",
+		Sql: "CREATE SINK CONNECTOR test_connector WITH (type=mysql, host=\"127.0.0.1\", port=" + mysqlPort + ", username=\"root\", password=\"\", database=\"mysql\", stream=test_stream);",
 	}
 	connectorByte, err := protojson.Marshal(&createReq)
 	if err != nil {
 		panic(err)
 	}
 	connectorReader := bytes.NewReader(connectorByte)
-	resp, err = http.Post(*serverPrefix+"/connectors", "application/json", connectorReader)
+	resp, err = http.Post(serverPrefix+"/connectors", "application/json", connectorReader)
 	var createResp hstreamHttpServer.Connector
 	execResp(t, resp, err, &createResp)
 
 	var terminateResp emptypb.Empty
-	resp, err = http.Post(*serverPrefix+"/connectors/test_connector:terminate", "application/json", bytes.NewReader([]byte{}))
+	resp, err = http.Post(serverPrefix+"/connectors/test_connector:terminate", "application/json", bytes.NewReader([]byte{}))
 	execResp(t, resp, err, &terminateResp)
 
 	var deleteResp hstreamHttpServer.DeleteConnectorResponse
-	req, err := http.NewRequest(http.MethodDelete, *serverPrefix+"/connectors/test_connector", nil)
+	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/connectors/test_connector", nil)
 	if err != nil {
 		panic(err)
 	}
 	resp, err = http.DefaultClient.Do(req)
 	execResp(t, resp, err, &deleteResp)
 
-	req, err = http.NewRequest(http.MethodDelete, *serverPrefix+"/streams/test_stream", nil)
+	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
 	if err != nil {
 		panic(err)
 	}

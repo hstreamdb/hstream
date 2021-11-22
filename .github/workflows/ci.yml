@@ -104,9 +104,20 @@ jobs:
           sleep 5
           docker logs --tail 100 $CONTAINER_NAME
 
+      - name: start hstream-http-server
+        run: |
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            "'hstream-http-server/build/hstream-http-server --gRPCServerPort=$SERVER_LOCAL_PORT --httpServerPort=$HTTP_LOCAL_PORT'"
+
       - name: test
         run: |
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+          "'cd hstream-http-server && \
+            GOPATH=$(pwd)/.go_path    \
+            GOCACHE=$(pwd)/.go_cache  \
+            GO111MODULE=on            \
+              /usr/lib/go-1.14/bin/go test -v -o test/server_test.go -run Stream'"
 
       - name: check
         run: |
