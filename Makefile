@@ -7,7 +7,7 @@ BNFC = bnfc
 PROTO_COMPILE = protoc
 PROTO_COMPILE_HS = compile-proto-file
 PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
-GO_COMPILE ?= /usr/lib/go-1.14/bin/go
+GO_COMPILE ?= go
 
 thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
