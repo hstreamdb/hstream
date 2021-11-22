@@ -100,10 +100,15 @@ jobs:
           sleep 5
           docker logs --tail 100 $CONTAINER_NAME
 
-      - name: start hstream-http-server
+      - name: start hstream http server
         run: |
-          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-            "'hstream-http-server/build/hstream-http-server --gRPCServerPort=$SERVER_LOCAL_PORT --httpServerPort=$HTTP_LOCAL_PORT'"
+          HTTP_PORT=$(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2)
+          SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
+          NAME="test-http-server"
+          EXE=$(find dist-newstyle -name "hstream-http-server" -type f)
+          hstream-http-server/build/hstream-http-server --gRPCServerPort=$SERVER_LOCAL_PORT --httpServerPort=$HTTP_LOCAL_PORT
+          sleep 5
+          docker logs --tail 100 $NAME
 
       - name: test
         run: |
