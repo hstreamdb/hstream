@@ -37,5 +37,3 @@ generated-src/
 gen-src/
 .DS_Store
 swagger.json
-.go_*
-build/

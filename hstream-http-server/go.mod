@@ -1,8 +1,9 @@
-module github.com/hstreamdb/hstream-http-server/hstream-api
+module github.com/hstreamdb/hstream/hstream-http-server
 
 go 1.14
 
-replace github.com/hstreamdb/hstream-http-server/hstream-http-server => ./src/
+replace github.com/hstreamdb/hstream/hstream-http-server => ./
+replace github.com/hstreamdb/hstream/common => ../common
 
 require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.6.0

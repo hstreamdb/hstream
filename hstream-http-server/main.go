@@ -5,11 +5,11 @@ import (
 	"flag"
 	"log"
 	"net/http"
-
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	hstreamApi "github.com/hstreamdb/hstream-http-server/hstream-api/build/proto/HStream/Server"
-	hstreamHttpServer "github.com/hstreamdb/hstream-http-server/hstream-api/src"
 	"google.golang.org/grpc"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	hstreamHttpServer "github.com/hstreamdb/hstream/hstream-http-server/src"
 )
 
 var (

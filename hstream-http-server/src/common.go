@@ -1,7 +1,7 @@
 package hstream_http_server
 
 import (
-	hstreamApi "github.com/hstreamdb/hstream-http-server/hstream-api/build/proto/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

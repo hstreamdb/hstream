@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	hstreamApi "github.com/hstreamdb/hstream-http-server/hstream-api/build/proto/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
 
 	"log"
 	"net/http"
