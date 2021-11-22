@@ -86,6 +86,13 @@ jobs:
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
             install hstream
 
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+          "'cd hstream-http-server && \
+            GOPATH=$(pwd)/.go_path    \
+            GOCACHE=$(pwd)/.go_cache  \
+            GO111MODULE=on            \
+              /usr/lib/go-1.14/bin/go build -v -o build/hstream-http-server main.go'"
+
       - name: start hstream server
         run: |
           export CONTAINER_NAME="test-hstream-server"

@@ -8,7 +8,7 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	hstreamApi "github.com/hstreamdb/hstream-http-server/hstream-api/build/proto/HStream/Server"
-	hstream_http_server "github.com/hstreamdb/hstream-http-server/hstream-api/src"
+	hstreamHttpServer "github.com/hstreamdb/hstream-http-server/hstream-api/src"
 	"google.golang.org/grpc"
 )
 
@@ -16,7 +16,7 @@ var (
 	gRPCServerHost = flag.String("gRPCServerHost", "127.0.0.1", "gRPCServerHost")
 	gRPCServerPort = flag.String("gRPCServerPort", "6570", "gRPCServerPort")
 	httpServerPort = flag.String("httpServerPort", "6580", "httpServerPort")
-	hpCtx          hstream_http_server.HostPortCtx
+	hpCtx          hstreamHttpServer.HostPortCtx
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 	log.Printf("    gRPCServerHost: %v\n", *gRPCServerHost)
 	log.Printf("    gRPCServerPort: %v\n", *gRPCServerPort)
 	log.Printf("    httpServerPort: %v\n", *httpServerPort)
-	hpCtx = hstream_http_server.HostPortCtx{
+	hpCtx = hstreamHttpServer.HostPortCtx{
 		GRPCServerHost: gRPCServerHost,
 		GRPCServerPort: gRPCServerPort,
 		HttpServerPort: httpServerPort,
@@ -68,5 +68,5 @@ func main() {
 // ---------------------------------------------------------------------------------------------------------------------
 
 func handleAppend(s *runtime.ServeMux) error {
-	return s.HandlePath("POST", "/streams/{streamName}:publish", hstream_http_server.DecodeHandler(s, &hpCtx))
+	return s.HandlePath("POST", "/streams/{streamName}:publish", hstreamHttpServer.DecodeHandler(s, &hpCtx))
 }

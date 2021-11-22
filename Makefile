@@ -1,6 +1,6 @@
 CABAL ?= cabal
 
-all:: thrift grpc sql hstream-http-server
+all:: thrift grpc sql
 
 THRIFT_COMPILE = thrift-compiler
 BNFC = bnfc
@@ -13,7 +13,7 @@ thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-store/admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
-grpc:: grpc-cpp grpc-hs
+grpc:: grpc-cpp grpc-hs grpc-go
 
 grpc-hs: grpc-cpp
 	(cabal build proto3-suite && mkdir -p ~/.local/bin && find dist-newstyle/ -type f -name "compile-proto-file" | xargs -I{} cp {} ~/.local/bin/)
@@ -37,20 +37,6 @@ grpc-go:
 			--grpc-gateway_opt grpc_api_configuration=./proto/HStream/Server/HStreamApi.yaml \
 				proto/HStream/Server/HStreamApi.proto)
 	(mkdir -p hstream-http-server/build && ln -sf ../../common/gen-go/proto hstream-http-server/build/proto)
-
-hstream-http-server: grpc-go
-	(cd hstream-http-server && \
-		GOPATH=$(shell pwd)/.go_path   \
-		GOCACHE=$(shell pwd)/.go_cache \
-		GO111MODULE=on                 \
-			$(GO_COMPILE) build -v -o build/hstream-http-server main.go)
-
-test-hstream-http-server: hstream-http-server
-	(hstream-http-server/build/hstream-http-server & cd hstream-http-server && \
-		GOPATH=$(shell pwd)/.go_path   \
-		GOCACHE=$(shell pwd)/.go_cache \
-		GO111MODULE=on                 \
-			$(GO_COMPILE) test -v src/server_test.go)
 
 sql:: sql-deps
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)
