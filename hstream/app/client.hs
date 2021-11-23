@@ -85,7 +85,6 @@ main = do
                           , availableServersUpdateInterval = _availableServersUpdateInterval
                           }
   setupSigsegvHandler
-  setLogDeviceDbgLevel C_DBG_ERROR
   m_desc <- describeCluster ctx _addr
   case m_desc of
     Nothing -> Log.e "Connection timed out. Please check the server URI and try again."

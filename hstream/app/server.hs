@@ -29,6 +29,7 @@ import           HStream.Server.Types           (LoadManager,
                                                  ServerOpts (..))
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Admin.API        as AA
+import qualified HStream.Store.Logger           as Log
 import           HStream.Utils                  (setupSigsegvHandler)
 
 -- TODO
@@ -110,11 +111,17 @@ parseConfig =
                    <> help "server log level"
                     )
     <*> switch ( long "log-with-color"
-              <> help "print logs with color or not" )
+              <> help "print logs with color or not"
+               )
+    <*> option auto ( long "ld-log-level" <> metavar "[critical|error|warning|notify|info|debug|spew]"
+                   <> showDefault <> value (Log.LDLogLevel Log.C_DBG_INFO)
+                   <> help "hstore log level"
+                    )
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupSigsegvHandler
+  Log.setLogDeviceDbgLevel' _ldLogLevel
   withResource (defaultHandle _zkUri) $ \zk -> do
     (options, options', serverContext, lm) <- initializeServer config zk
     initializeAncestors zk

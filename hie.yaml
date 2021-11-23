@@ -75,18 +75,8 @@ cradle:
 
     - path: "hstream-store/admin"
       component: "lib:hstore-admin"
-
     - path: "hstream-store/admin/app/cli.hs"
-      component: "hstore-admin:exe:hstore-admin"
-
-    - path: "hstream-http-server/src"
-      component: "lib:hstream-http-server"
-    - path: "hstream-http-server/app/Main.hs"
-      component: "hstream-http-server:exe:hstream-http-server"
-    - path: "hstream-http-server/app/Swagger.hs"
-      component: "hstream-http-server:exe:hstream-swagger-json"
-    - path: "hstream-http-server/test"
-      component: "hstream-http-server:test:hstream-http-server-test"
+      component: "hstore-admin:exe:hadmin"
 
     - path: "hstream-connector"
       component: "lib:hstream-connector"
