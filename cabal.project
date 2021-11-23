@@ -6,7 +6,6 @@ packages:
   hstream-processing
   hstream-sql
   hstream-connector
-  hstream-http-server
 
   external/gRPC-haskell
   external/gRPC-haskell/core

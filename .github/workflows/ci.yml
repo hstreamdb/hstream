@@ -84,7 +84,9 @@ jobs:
             build --enable-tests --enable-benchmarks all
 
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-            install hstream hstream-http-server
+            install hstream
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            "'cd hstream-http-server && go build -v -o ../dist-newstyle/hstream-http-server main.go'"
 
       - name: start hstream server
         run: |
@@ -102,17 +104,19 @@ jobs:
           HTTP_PORT=$(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2)
           SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
           NAME="test-http-server"
-          EXE=$(find dist-newstyle -name "hstream-http-server" -type f)
+          EXE=$(find dist-newstyle -maxdepth 1 -name "hstream-http-server" -type f)
 
           python3 script/dev-tools shell --check --no-interactive --command "" --detach \
               --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-              $EXE --port $HTTP_PORT --hstream-port $SERVER_PORT
+              $EXE -httpServerPort $HTTP_PORT -gRPCServerPort $SERVER_PORT
           sleep 5
           docker logs --tail 100 $NAME
 
       - name: test
         run: |
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            "'cd hstream-http-server && go test -v -o test/server_test.go -run Stream'"
 
       - name: check
         run: |

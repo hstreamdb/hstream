@@ -25,15 +25,22 @@ try:
     import argcomplete
 except Exception:
     from unittest.mock import MagicMock
+
     argcomplete = MagicMock()
-    argcomplete.autocomplete = lambda x: logwarn("There is no tab completion supported since no argcomplete found!")
+    argcomplete.autocomplete = lambda x: logwarn(
+        "There is no tab completion supported since no argcomplete found!"
+    )
 
 HOME = os.getenv("HOME")
 CABAL_HOME = os.getenv("CABAL_HOME", f"{HOME}/.cabal")
 STACK_HOME = os.getenv("STACK_HOME", f"{HOME}/.stack")
-HOOGLE_HOME = os.getenv("HOOGLE_HOME", f'{HOME}/.hoogle')
+HOOGLE_HOME = os.getenv("HOOGLE_HOME", f"{HOME}/.hoogle")
+GOPATH = os.getenv("GOPATH", f"{HOME}/.go")
+GOCACHE = os.getenv("GOCACHE", f"{HOME}/.cache/.go-build")
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+)
 CUID, CGID = os.getuid(), os.getgid()
 CUSERNAME = getpass.getuser()
 CWD = os.getcwd()
@@ -43,31 +50,33 @@ Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
 DEFAULT_ENV_FILE = os.path.join(PROJECT_ROOT, "local-data/dev_tools.env")
 
 IMAGES = {
-    'HS_IMAGE': 'docker.io/hstreamdb/haskell',
-    'LD_IMAGE': 'docker.io/hstreamdb/logdevice',
-    'DB_IMAGE': 'docker.io/hstreamdb/hstream',
-    'SWAGGER_IMAGE': 'swaggerapi/swagger-ui',
+    "HS_IMAGE": "docker.io/hstreamdb/haskell",
+    "LD_IMAGE": "docker.io/hstreamdb/logdevice",
+    "DB_IMAGE": "docker.io/hstreamdb/hstream",
+    "SWAGGER_IMAGE": "swaggerapi/swagger-ui",
     # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
-    'MYSQL_IMAGE': 'mysql:5.6',
-    'CLICKHOUSE_IMAGE': 'yandex/clickhouse-server',
-    'ZOOKEEPER_IMAGE': 'zookeeper:3.6',
+    "MYSQL_IMAGE": "mysql:5.6",
+    "CLICKHOUSE_IMAGE": "yandex/clickhouse-server",
+    "ZOOKEEPER_IMAGE": "zookeeper:3.6",
 }
 
 SERVICES = {
-    'mysql': f'hstream-test-mysql-{CUID}',
-    'clickhouse': f'hstream-test-clickhouse-{CUID}',
-    'zookeeper': f'hstream-test-zookeeper-{CUID}',
-    'store': f'logdevice-dev-cluster-{CUID}',
+    "mysql": f"hstream-test-mysql-{CUID}",
+    "clickhouse": f"hstream-test-clickhouse-{CUID}",
+    "zookeeper": f"hstream-test-zookeeper-{CUID}",
+    "store": f"logdevice-dev-cluster-{CUID}",
 }
 
 HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
 HSTREAM_HTTP_PORT_ENV = "HTTP_LOCAL_PORT"
 STORE_ADMIN_PORT_ENV = "STORE_ADMIN_LOCAL_PORT"
-MYSQL_PORT_ENV = 'MYSQL_LOCAL_PORT'
-CLICKHOUSE_PORT_ENV = 'CLICKHOUSE_LOCAL_PORT'
-ZOOKEEPER_PORT_ENV = 'ZOOKEEPER_LOCAL_PORT'
+MYSQL_PORT_ENV = "MYSQL_LOCAL_PORT"
+CLICKHOUSE_PORT_ENV = "CLICKHOUSE_LOCAL_PORT"
+ZOOKEEPER_PORT_ENV = "ZOOKEEPER_LOCAL_PORT"
 
-gen_randoms = lambda n: ''.join(random.choices(string.ascii_letters + string.digits, k=n))
+gen_randoms = lambda n: "".join(
+    random.choices(string.ascii_letters + string.digits, k=n)
+)
 
 
 def find_free_port():
@@ -75,7 +84,7 @@ def find_free_port():
     from contextlib import closing
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
+        s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
 
@@ -93,11 +102,10 @@ def is_service_started(container_bin, service_key):
     if not container_bin:
         return logerr("No such container_bin")
     result = run_sh(
-        str(container_bin) + " ps --format {{.Names}}",
-        stdout=subprocess.PIPE
+        str(container_bin) + " ps --format {{.Names}}", stdout=subprocess.PIPE
     )
     if result and result.stdout:
-        rs = result.stdout.decode().strip().split('\n')
+        rs = result.stdout.decode().strip().split("\n")
         if SERVICES[service_key] in rs:
             return True
     return False
@@ -105,20 +113,20 @@ def is_service_started(container_bin, service_key):
 
 def write_env(key, val):
     if not os.path.exists(DEFAULT_ENV_FILE):
-        with open(DEFAULT_ENV_FILE, 'w') as f:
-            f.write(f'{key}={val}\n')
+        with open(DEFAULT_ENV_FILE, "w") as f:
+            f.write(f"{key}={val}\n")
         return None
 
     # NOTE: thread unsafe
     with open(DEFAULT_ENV_FILE) as f:
         lines = f.readlines()
         envs = dict(
-            [x.strip() for x in re.split('=', line, maxsplit=1)]
+            [x.strip() for x in re.split("=", line, maxsplit=1)]
             for line in lines
         )
         envs[key.strip()] = val
-    with open(DEFAULT_ENV_FILE, 'w') as f:
-        f.write(''.join(f'{k}={v}\n' for k, v in envs.items()))
+    with open(DEFAULT_ENV_FILE, "w") as f:
+        f.write("".join(f"{k}={v}\n" for k, v in envs.items()))
 
 
 def read_env():
@@ -128,16 +136,20 @@ def read_env():
     with open(DEFAULT_ENV_FILE) as f:
         lines = f.readlines()
         return dict(
-            [x.strip() for x in re.split('=', line, maxsplit=1)]
+            [x.strip() for x in re.split("=", line, maxsplit=1)]
             for line in lines
         )
 
 
 def get_ldadmin_server_host(container_bin):
-    container_name = SERVICES['store']
-    result = run_sh(f"{container_bin} logs {container_name}", stdout=subprocess.PIPE)
+    container_name = SERVICES["store"]
+    result = run_sh(
+        f"{container_bin} logs {container_name}", stdout=subprocess.PIPE
+    )
     if result and result.stdout:
-        rs = set(re.findall(r'--admin-server-host=([\d\.]*)', result.stdout.decode()))
+        rs = set(
+            re.findall(r"--admin-server-host=([\d\.]*)", result.stdout.decode())
+        )
         if len(rs) == 0:
             return None
         elif len(rs) == 1:
@@ -148,10 +160,14 @@ def get_ldadmin_server_host(container_bin):
 
 
 def get_ldadmin_server_port(container_bin):
-    container_name = SERVICES['store']
-    result = run_sh(f"{container_bin} logs {container_name}", stdout=subprocess.PIPE)
+    container_name = SERVICES["store"]
+    result = run_sh(
+        f"{container_bin} logs {container_name}", stdout=subprocess.PIPE
+    )
     if result and result.stdout:
-        rs = set(re.findall(r'--admin-server-port=(\d*)', result.stdout.decode()))
+        rs = set(
+            re.findall(r"--admin-server-port=(\d*)", result.stdout.decode())
+        )
         if len(rs) == 0:
             return None
         elif len(rs) == 1:
@@ -162,8 +178,10 @@ def get_ldadmin_server_port(container_bin):
 
 
 def admin_addr(container_bin):
-    if not is_service_started(container_bin, 'store'):
-        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+    if not is_service_started(container_bin, "store"):
+        return logerr(
+            "Please start the dev-cluster first. Run: dev-tools cluster-start"
+        )
 
     host = get_ldadmin_server_host(container_bin)
     port = get_ldadmin_server_port(container_bin)
@@ -172,89 +190,105 @@ def admin_addr(container_bin):
 
 
 def run_hadmin(image, container_bin, command, cmd_args):
-    if not is_service_started(container_bin, 'store'):
-        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+    if not is_service_started(container_bin, "store"):
+        return logerr(
+            "Please start the dev-cluster first. Run: dev-tools cluster-start"
+        )
 
-    host = '127.0.0.1'
+    host = "127.0.0.1"
     port = get_ldadmin_server_port(container_bin)
     container_opts = "-it"
     if command == "hadmin":
-        user_command = f'{command} --host={host} --port={port}'
+        user_command = f"{command} --host={host} --port={port}"
         if cmd_args:
             user_command = user_command + " " + " ".join(cmd_args)
             container_opts = ""
     else:
         user_command = command
 
-    name = f'{CUSERNAME}_{CUID}_hadmin_{gen_randoms(10)}'
-    cmd = f'{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}'
+    name = f"{CUSERNAME}_{CUID}_hadmin_{gen_randoms(10)}"
+    cmd = f"{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}"
     run_sh(cmd, check=False)
 
 
 # TODO: wait serive to start
-def _service_mysql_(container_bin='docker', port=None, **kw):
-    if is_service_started(container_bin, 'mysql'):
+def _service_mysql_(container_bin="docker", port=None, **kw):
+    if is_service_started(container_bin, "mysql"):
         return logerr("Already started!")
 
     port = port or os.getenv(MYSQL_PORT_ENV, 3306)
     write_env(MYSQL_PORT_ENV, port)
-    container_name = SERVICES['mysql']
-    cmd = ' '.join([
-        f'{container_bin} run -td -p {port}:3306 --name {container_name} --rm',
-        '-e MYSQL_ALLOW_EMPTY_PASSWORD=yes',
-        IMAGES['MYSQL_IMAGE']
-    ])
+    container_name = SERVICES["mysql"]
+    cmd = " ".join(
+        [
+            f"{container_bin} run -td -p {port}:3306 --name {container_name} --rm",
+            "-e MYSQL_ALLOW_EMPTY_PASSWORD=yes",
+            IMAGES["MYSQL_IMAGE"],
+        ]
+    )
     run_sh(cmd)
     loginfo("done")
 
 
 # TODO: wait serive to start
-def _service_clickhouse_(container_bin='docker', port=None, **kw):
-    if is_service_started(container_bin, 'clickhouse'):
+def _service_clickhouse_(container_bin="docker", port=None, **kw):
+    if is_service_started(container_bin, "clickhouse"):
         return logerr("Already started!")
 
     port = port or os.getenv(CLICKHOUSE_PORT_ENV, 9000)
     write_env(CLICKHOUSE_PORT_ENV, port)
-    container_name = SERVICES['clickhouse']
-    cmd = ' '.join([
-        f'{container_bin} run -td -p {port}:9000 --name {container_name} --rm',
-        '--ulimit nofile=262144:262144',
-        IMAGES['CLICKHOUSE_IMAGE']
-    ])
+    container_name = SERVICES["clickhouse"]
+    cmd = " ".join(
+        [
+            f"{container_bin} run -td -p {port}:9000 --name {container_name} --rm",
+            "--ulimit nofile=262144:262144",
+            IMAGES["CLICKHOUSE_IMAGE"],
+        ]
+    )
     run_sh(cmd)
     loginfo("done")
 
 
 # TODO: wait serive to start
-def _service_zookeeper_(container_bin='docker', port=None, **kw):
-    if is_service_started(container_bin, 'zookeeper'):
+def _service_zookeeper_(container_bin="docker", port=None, **kw):
+    if is_service_started(container_bin, "zookeeper"):
         return logerr("Already started!")
 
     port = port or os.getenv(ZOOKEEPER_PORT_ENV, 9000)
     write_env(ZOOKEEPER_PORT_ENV, port)
-    container_name = SERVICES['zookeeper']
-    cmd = ' '.join([
-        f'{container_bin} run -td -p {port}:2181 --name {container_name} --rm',
-        IMAGES['ZOOKEEPER_IMAGE']
-    ])
+    container_name = SERVICES["zookeeper"]
+    cmd = " ".join(
+        [
+            f"{container_bin} run -td -p {port}:2181 --name {container_name} --rm",
+            IMAGES["ZOOKEEPER_IMAGE"],
+        ]
+    )
     run_sh(cmd)
     loginfo("done")
 
 
-def _service_store_(container_bin='docker',
-                    image=IMAGES['DB_IMAGE'],
-                    data_dir=DEFAULT_LOGDEVICE_DIR, retries=120, **kw):
-    if is_service_started(container_bin, 'store'):
+def _service_store_(
+    container_bin="docker",
+    image=IMAGES["DB_IMAGE"],
+    data_dir=DEFAULT_LOGDEVICE_DIR,
+    retries=120,
+    **kw,
+):
+    if is_service_started(container_bin, "store"):
         return logerr("Already started!")
 
-    container_name = SERVICES['store']
-    cmd = ' '.join([
-        f'{container_bin} run -td --name {container_name} --rm',
-        '--network host',
-        '-u ' + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else '',
-        f'-v {data_dir}:/data/store {image}',
-        '/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp'
-    ])
+    container_name = SERVICES["store"]
+    cmd = " ".join(
+        [
+            f"{container_bin} run -td --name {container_name} --rm",
+            "--network host",
+            "-u " + str(CUID) + ":" + str(CGID)
+            if container_bin.strip() in ["docker"]
+            else "",
+            f"-v {data_dir}:/data/store {image}",
+            "/usr/local/bin/ld-dev-cluster --root /data/store --use-tcp",
+        ]
+    )
     run_sh(cmd)
 
     while True:
@@ -272,7 +306,12 @@ def _service_store_(container_bin='docker',
 
     loginfo("Cluster admin info: ")
     admin_addr(container_bin)
-    run_hadmin(image=image, container_bin='docker', command='hadmin', cmd_args=["status"])
+    run_hadmin(
+        image=image,
+        container_bin="docker",
+        command="hadmin",
+        cmd_args=["status"],
+    )
 
     port = get_ldadmin_server_port(container_bin)
     write_env(STORE_ADMIN_PORT_ENV, port)
@@ -282,12 +321,12 @@ def _service_store_(container_bin='docker',
 
 def service_start(services=None, container_bin=None, **kws):
     services = services or SERVICES.keys()
-    kws['container_bin'] = container_bin
+    kws["container_bin"] = container_bin
     for s in services:
         port = find_free_port()
-        kws['port'] = port
+        kws["port"] = port
         loginfo(f"Start {s}...")
-        globals()[f'_service_{s}_'](**kws)
+        globals()[f"_service_{s}_"](**kws)
         time.sleep(1)
 
     port = find_free_port()
@@ -330,8 +369,10 @@ def update_images(images=None):
 
 def get_info(container_bin, service=None, port_only=False):
     if not service or service == "store":
-        if not is_service_started(container_bin, 'store'):
-            logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+        if not is_service_started(container_bin, "store"):
+            logerr(
+                "Please start the dev-cluster first. Run: dev-tools cluster-start"
+            )
             sys.exit(1)
         else:
             host = get_ldadmin_server_host(container_bin)
@@ -348,265 +389,357 @@ def get_info(container_bin, service=None, port_only=False):
     envs = read_env()
 
     if not service or service == "mysql":
-        if not is_service_started(container_bin, 'mysql'):
-            logerr("Please start the mysql service first. Run: dev-tools mysql-start")
+        if not is_service_started(container_bin, "mysql"):
+            logerr(
+                "Please start the mysql service first. Run: dev-tools mysql-start"
+            )
             sys.exit(1)
         else:
             loginfo(f"mysql port: {envs.get(MYSQL_PORT_ENV)}")
 
     if not service or service == "clickhouse":
-        if not is_service_started(container_bin, 'clickhouse'):
-            logerr("Please start the clickhouse service first. Run: dev-tools clickhouse-start")
+        if not is_service_started(container_bin, "clickhouse"):
+            logerr(
+                "Please start the clickhouse service first. Run: dev-tools clickhouse-start"
+            )
             sys.exit(1)
         else:
             loginfo(f"clickhouse port: {envs.get(CLICKHOUSE_PORT_ENV)}")
 
     if not service or service == "zookeeper":
-        if not is_service_started(container_bin, 'zookeeper'):
-            logerr("Please start the zookeeper service first. Run: dev-tools zookeeper-start")
+        if not is_service_started(container_bin, "zookeeper"):
+            logerr(
+                "Please start the zookeeper service first. Run: dev-tools zookeeper-start"
+            )
             sys.exit(1)
         else:
             loginfo(f"zookeeper port: {envs.get(ZOOKEEPER_PORT_ENV)}")
 
 
 def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
-    SWAGGER_CONTAINER_NAME = f'hstream-swagger-{CUID}'
+    SWAGGER_CONTAINER_NAME = f"hstream-swagger-{CUID}"
 
     if gen_from_image:
-        db_image = IMAGES['DB_IMAGE']
-        run_sh(f'{container_bin} run -t --rm {db_image} -- /usr/local/bin/hstream-swagger-json /tmp')
+        db_image = IMAGES["DB_IMAGE"]
+        run_sh(
+            f"{container_bin} run -t --rm {db_image} -- /usr/local/bin/hstream-swagger-json /tmp"
+        )
         swagger_path = "/tmp/swagger.json"
 
     if not os.path.exists(swagger_path):
         return logerr(f"No such swagger_path: {swagger_path}")
 
-    cmd = ' '.join([
-        f'{container_bin} run -t --rm -p {port}:8080 --name {SWAGGER_CONTAINER_NAME}',
-        f'-v {swagger_path}:/app/swagger.json',
-        '-e SWAGGER_JSON=/app/swagger.json',
-        '-e SWAGGER_JSON_URL=/swagger.json',
-        '-e BASE_URL="/"',
-        IMAGES['SWAGGER_IMAGE']
-    ])
+    cmd = " ".join(
+        [
+            f"{container_bin} run -t --rm -p {port}:8080 --name {SWAGGER_CONTAINER_NAME}",
+            f"-v {swagger_path}:/app/swagger.json",
+            "-e SWAGGER_JSON=/app/swagger.json",
+            "-e SWAGGER_JSON_URL=/swagger.json",
+            '-e BASE_URL="/"',
+            IMAGES["SWAGGER_IMAGE"],
+        ]
+    )
     print(cmd)
     run_sh(cmd)
 
 
 def run_ldshell(image, container_bin, command, cmd_args):
     if not is_service_started(container_bin, "store"):
-        return logerr("Please start the dev-cluster first. Run: dev-tools cluster-start")
+        return logerr(
+            "Please start the dev-cluster first. Run: dev-tools cluster-start"
+        )
 
-    host = '127.0.0.1'
+    host = "127.0.0.1"
     port = get_ldadmin_server_port(container_bin)
     container_opts = "-it"
     if command == "ldshell":
-        user_command = f'{command} --admin-server-host={host} --admin-server-port={port}'
+        user_command = (
+            f"{command} --admin-server-host={host} --admin-server-port={port}"
+        )
         if cmd_args:
             user_command = user_command + " " + " ".join(cmd_args)
             container_opts = ""
     else:
         user_command = command
 
-    name = f'{CUSERNAME}_{CUID}_ldshell_{gen_randoms(10)}'
-    cmd = f'{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}'
+    name = f"{CUSERNAME}_{CUID}_ldshell_{gen_randoms(10)}"
+    cmd = f"{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}"
     run_sh(cmd, check=False)
 
 
-def haskell_env(container_bin, image, command, cmd_args, data_dir,
-                tty, interactive, rm, no_services_required, detach, check,
-                network="host", extra_container_options="", container_name=None):
-
-    if not no_services_required and not all(is_service_started(container_bin, k) for k in SERVICES.keys()):
-        sys.exit("Please start all required services first. Run: dev-tools start-services")
+def dev_env(
+    container_bin,
+    image,
+    command,
+    cmd_args,
+    data_dir,
+    tty,
+    interactive,
+    rm,
+    no_services_required,
+    detach,
+    check,
+    network="host",
+    extra_container_options="",
+    container_name=None,
+):
+    if not no_services_required and not all(
+        is_service_started(container_bin, k) for k in SERVICES.keys()
+    ):
+        sys.exit(
+            "Please start all required services first. Run: dev-tools start-services"
+        )
 
     Path(f"{HOME}/.local/bin").mkdir(parents=True, exist_ok=True)
     Path(f"{HOME}/.ghc").mkdir(parents=True, exist_ok=True)
     Path(f"{CABAL_HOME}").mkdir(parents=True, exist_ok=True)
     Path(f"{STACK_HOME}").mkdir(parents=True, exist_ok=True)
     Path(f"{HOOGLE_HOME}").mkdir(parents=True, exist_ok=True)
+    Path(f"{GOPATH}").mkdir(parents=True, exist_ok=True)
+    Path(f"{GOCACHE}").mkdir(parents=True, exist_ok=True)
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
     user_path = f"/opt/ghc/bin:/opt/cabal/bin:/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
-    container_name = container_name or f'{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}'
-    container_opts = " ".join([
-        "-t" if tty else "",
-        "-i" if interactive else "",
-        "-d" if detach else "",
-        "--rm" if rm else "",
-        "-u " + str(CUID) + ":" + str(CGID) if container_bin.strip() in ["docker"] else ""
-    ])
-    cmd = f'''{container_bin} run {container_opts} \
+    container_name = (
+        container_name or f"{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}"
+    )
+    container_opts = " ".join(
+        [
+            "-t" if tty else "",
+            "-i" if interactive else "",
+            "-d" if detach else "",
+            "--rm" if rm else "",
+            "-u " + str(CUID) + ":" + str(CGID)
+            if container_bin.strip() in ["docker"]
+            else "",
+        ]
+    )
+    cmd = f"""{container_bin} run {container_opts} \
                 --name {container_name} \
                 -e HOME={HOME} \
                 -e LC_ALL=C.UTF-8 \
                 -e PATH={user_path} \
                 -e USER={CUSERNAME} \
+                -e GOPATH={GOPATH} \
+                -e GOCACHE={GOCACHE} \
                 --env-file {DEFAULT_ENV_FILE} \
                 -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
                 -v {HOME}/.ghc:{HOME}/.ghc:rw \
                 -v {STACK_HOME}:{HOME}/.stack:rw \
                 -v {CABAL_HOME}:{HOME}/.cabal:rw \
                 -v {HOOGLE_HOME}:{HOME}/.hoogle:rw \
+                -v {GOPATH}:{GOPATH} \
+                -v {GOCACHE}:{GOCACHE} \
                 -v "{PROJECT_ROOT}:{PROJECT_ROOT}" \
                 -v "{data_dir}:/data/store" \
                 -v "/tmp:/tmp" \
                 -w "{PROJECT_ROOT}" \
                 --network {network} \
                 {extra_container_options} \
-                {image} {user_cmd}'''
+                {image} {user_cmd}"""
     loginfo(f"Run <{user_cmd}> from <{image}> image...")
     run_sh(cmd, check=check)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='HStream dev tools.')
-    subparsers = parser.add_subparsers(title='subcommands', dest='sub_command')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="HStream dev tools.")
+    subparsers = parser.add_subparsers(title="subcommands", dest="sub_command")
 
     # update-image
     parser_update_images = subparsers.add_parser(
-        'update-images', help='Update all required docker images')
+        "update-images", help="Update all required docker images"
+    )
 
     # start services
     parser_start_services = subparsers.add_parser(
-        'start-services', help="Start all services with default argument")
-    parser_start_services.add_argument('--container-bin', default='docker')
+        "start-services", help="Start all services with default argument"
+    )
+    parser_start_services.add_argument("--container-bin", default="docker")
     parser_start_services.add_argument(
-        '--services', default=None, choices=SERVICES.keys(), nargs='*',
-        help="Start services, none means all valid services"
+        "--services",
+        default=None,
+        choices=SERVICES.keys(),
+        nargs="*",
+        help="Start services, none means all valid services",
     )
 
     # stop all services
     parser_stop_services = subparsers.add_parser(
-        'stop-services', help="Stop all services"
+        "stop-services", help="Stop all services"
     )
-    parser_stop_services.add_argument('--container-bin', default='docker')
+    parser_stop_services.add_argument("--container-bin", default="docker")
     parser_stop_services.add_argument(
-        '--services', default=None, choices=SERVICES.keys(), nargs='*',
-        help="Stop services, none means all valid services"
+        "--services",
+        default=None,
+        choices=SERVICES.keys(),
+        nargs="*",
+        help="Stop services, none means all valid services",
     )
 
-    parser_start_hserver = subparsers.add_parser("start-hserver", help="Start hstream-server.")
-    parser_start_hserver.add_argument('--container-bin', default='docker')
-    parser_start_hserver.add_argument('--force-restart', '-f', action='store_true')
-    parser_start_hserver.add_argument('--image', '-i', default=IMAGES['HS_IMAGE'])
+    parser_start_hserver = subparsers.add_parser(
+        "start-hserver", help="Start hstream-server."
+    )
+    parser_start_hserver.add_argument("--container-bin", default="docker")
+    parser_start_hserver.add_argument(
+        "--force-restart", "-f", action="store_true"
+    )
+    parser_start_hserver.add_argument(
+        "--image", "-i", default=IMAGES["HS_IMAGE"]
+    )
     parser_start_hserver.add_argument("--num-server", "-n", type=int, default=4)
-    parser_start_hserver.add_argument('--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
+    parser_start_hserver.add_argument(
+        "--data-dir", "-d", type=Path, default=DEFAULT_LOGDEVICE_DIR
+    )
 
     # shell
     parser_haskell = subparsers.add_parser(
-        'shell', help='Enter in a shell with all haskell dev dependencies')
+        "shell", help="Enter in a shell with all haskell dev dependencies"
+    )
     parser_haskell.add_argument(
-        '--image', '-i', help='haskell docker images', default=IMAGES['HS_IMAGE'])
-    parser_haskell.add_argument('--container-bin', default='docker')
-    parser_haskell.add_argument('--container-name', default=None)
-    parser_haskell.add_argument('--command', default=None)
-    parser_haskell.add_argument('--no-interactive', action='store_true')
-    parser_haskell.add_argument('--no-tty', action='store_true')
-    parser_haskell.add_argument('--no-services-required', action='store_true')
-    parser_haskell.add_argument('--detach', action='store_true')
-    parser_haskell.add_argument('--check', action='store_true')
-    parser_haskell.add_argument('--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
-    parser_haskell.add_argument('--network', default='host')
-    parser_haskell.add_argument('--extra-container-options', default='')
-    parser_haskell.add_argument('cmd_args', nargs='*')
+        "--image",
+        "-i",
+        help="haskell docker images",
+        default=IMAGES["HS_IMAGE"],
+    )
+    parser_haskell.add_argument("--container-bin", default="docker")
+    parser_haskell.add_argument("--container-name", default=None)
+    parser_haskell.add_argument("--command", default=None)
+    parser_haskell.add_argument("--no-interactive", action="store_true")
+    parser_haskell.add_argument("--no-tty", action="store_true")
+    parser_haskell.add_argument("--no-services-required", action="store_true")
+    parser_haskell.add_argument("--detach", action="store_true")
+    parser_haskell.add_argument("--check", action="store_true")
+    parser_haskell.add_argument(
+        "--data-dir", "-d", type=Path, default=DEFAULT_LOGDEVICE_DIR
+    )
+    parser_haskell.add_argument("--network", default="host")
+    parser_haskell.add_argument("--extra-container-options", default="")
+    parser_haskell.add_argument("cmd_args", nargs="*")
 
     # cabal
-    parser_haskell_cabal = subparsers.add_parser('cabal', help='Run cabal command directly')
-    parser_haskell_cabal.add_argument('--container-bin', default='docker')
-    parser_haskell_cabal.add_argument('--container-name', default=None)
+    parser_haskell_cabal = subparsers.add_parser(
+        "cabal", help="Run cabal command directly"
+    )
+    parser_haskell_cabal.add_argument("--container-bin", default="docker")
+    parser_haskell_cabal.add_argument("--container-name", default=None)
     parser_haskell_cabal.add_argument(
-        '--image', '-i', help='haskell docker images', default=IMAGES['HS_IMAGE'])
+        "--image",
+        "-i",
+        help="haskell docker images",
+        default=IMAGES["HS_IMAGE"],
+    )
     # TODO: since python3.9 there is BooleanOptionalAction available in argparse
-    parser_haskell_cabal.add_argument('--no-interactive', action='store_true')
-    parser_haskell_cabal.add_argument('--no-tty', action='store_true')
-    parser_haskell_cabal.add_argument('--no-services-required', action='store_true')
-    parser_haskell_cabal.add_argument('--detach', action='store_true')
-    parser_haskell_cabal.add_argument('--check', action='store_true')
+    parser_haskell_cabal.add_argument("--no-interactive", action="store_true")
+    parser_haskell_cabal.add_argument("--no-tty", action="store_true")
     parser_haskell_cabal.add_argument(
-        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
-    parser_haskell_cabal.add_argument('--network', default='host')
-    parser_haskell_cabal.add_argument('--extra-container-options', default='')
-    parser_haskell_cabal.add_argument('cmd_args', nargs='*')
+        "--no-services-required", action="store_true"
+    )
+    parser_haskell_cabal.add_argument("--detach", action="store_true")
+    parser_haskell_cabal.add_argument("--check", action="store_true")
+    parser_haskell_cabal.add_argument(
+        "--data-dir", "-d", type=Path, default=DEFAULT_LOGDEVICE_DIR
+    )
+    parser_haskell_cabal.add_argument("--network", default="host")
+    parser_haskell_cabal.add_argument("--extra-container-options", default="")
+    parser_haskell_cabal.add_argument("cmd_args", nargs="*")
 
     # get-info
-    parser_get_info = subparsers.add_parser('info', help='Get info about services.')
-    parser_get_info.add_argument('--container-bin', default='docker')
-    parser_get_info.add_argument('--service', default=None)
-    parser_get_info.add_argument('--port-only', default=False, action='store_true')
+    parser_get_info = subparsers.add_parser(
+        "info", help="Get info about services."
+    )
+    parser_get_info.add_argument("--container-bin", default="docker")
+    parser_get_info.add_argument("--service", default=None)
+    parser_get_info.add_argument(
+        "--port-only", default=False, action="store_true"
+    )
 
     # cluster-start
     parser_cluster_start = subparsers.add_parser(
-        'cluster-start', help='Start logdevice dev cluster')
+        "cluster-start", help="Start logdevice dev cluster"
+    )
     parser_cluster_start.add_argument(
-        '--image', '-i', help='logdevice docker images',
-        default=IMAGES['DB_IMAGE'])
+        "--image",
+        "-i",
+        help="logdevice docker images",
+        default=IMAGES["DB_IMAGE"],
+    )
     parser_cluster_start.add_argument(
-        '--data-dir', '-d', type=Path, default=DEFAULT_LOGDEVICE_DIR)
-    parser_cluster_start.add_argument('--container-bin', default='docker')
+        "--data-dir", "-d", type=Path, default=DEFAULT_LOGDEVICE_DIR
+    )
+    parser_cluster_start.add_argument("--container-bin", default="docker")
 
     # mysql-start
     parser_mysql_start = subparsers.add_parser(
-        'mysql-start', help='Start mysql service for testing')
-    parser_mysql_start.add_argument('--container-bin', default='docker')
-    parser_mysql_start.add_argument('--port', default=3306)
+        "mysql-start", help="Start mysql service for testing"
+    )
+    parser_mysql_start.add_argument("--container-bin", default="docker")
+    parser_mysql_start.add_argument("--port", default=3306)
 
     # clickhouse-start
     parser_clickhouse_start = subparsers.add_parser(
-        'clickhouse-start', help='Start clickhouse service for testing')
-    parser_clickhouse_start.add_argument('--container-bin', default='docker')
-    parser_clickhouse_start.add_argument('--port', default=9000)
+        "clickhouse-start", help="Start clickhouse service for testing"
+    )
+    parser_clickhouse_start.add_argument("--container-bin", default="docker")
+    parser_clickhouse_start.add_argument("--port", default=9000)
 
     # zookeeper-start
     parser_zookeeper_start = subparsers.add_parser(
-        'zookeeper-start', help='Start zookeeper service for testing')
-    parser_zookeeper_start.add_argument('--container-bin', default='docker')
-    parser_zookeeper_start.add_argument('--port', default=2181)
+        "zookeeper-start", help="Start zookeeper service for testing"
+    )
+    parser_zookeeper_start.add_argument("--container-bin", default="docker")
+    parser_zookeeper_start.add_argument("--port", default=2181)
 
     # swagger-start
     parser_swagger_start = subparsers.add_parser(
-        'swagger-start', help='Start swagger ui')
-    parser_swagger_start.add_argument('--container-bin', default='docker')
-    parser_swagger_start.add_argument('--port', default='8080')
-    parser_swagger_start.add_argument('--swagger-path', default=f'{CWD}/swagger.json')
-    parser_swagger_start.add_argument('--gen-from-image', action='store_true')
+        "swagger-start", help="Start swagger ui"
+    )
+    parser_swagger_start.add_argument("--container-bin", default="docker")
+    parser_swagger_start.add_argument("--port", default="8080")
+    parser_swagger_start.add_argument(
+        "--swagger-path", default=f"{CWD}/swagger.json"
+    )
+    parser_swagger_start.add_argument("--gen-from-image", action="store_true")
 
     # ldshell
-    parser_cluster_ldshell = subparsers.add_parser(
-        'ldshell', help='')
+    parser_cluster_ldshell = subparsers.add_parser("ldshell", help="")
     parser_cluster_ldshell.add_argument(
-        '--image', '-i', help='ldshell docker images',
-        default=f'{IMAGES["LD_IMAGE"]}:v3.0.0')
-    parser_cluster_ldshell.add_argument('--container-bin', default='docker')
-    parser_cluster_ldshell.add_argument('--command', '-c', default='ldshell')
-    parser_cluster_ldshell.add_argument('cmd_args', nargs='*')
+        "--image",
+        "-i",
+        help="ldshell docker images",
+        default=f'{IMAGES["LD_IMAGE"]}:v3.0.0',
+    )
+    parser_cluster_ldshell.add_argument("--container-bin", default="docker")
+    parser_cluster_ldshell.add_argument("--command", "-c", default="ldshell")
+    parser_cluster_ldshell.add_argument("cmd_args", nargs="*")
 
     argcomplete.autocomplete(parser)
 
     args = vars(parser.parse_args())
-    sub_command = args.pop('sub_command')
+    sub_command = args.pop("sub_command")
     # ---
-    if sub_command == 'update-images':
+    if sub_command == "update-images":
         update_images()
     # ---
-    elif sub_command == 'start-services':
+    elif sub_command == "start-services":
         service_start(**args)
-    elif sub_command == 'stop-services':
+    elif sub_command == "stop-services":
         service_stop(**args)
     # --- parser_start_hserver ---
-    elif sub_command == 'start-hserver':
+    elif sub_command == "start-hserver":
         envs = read_env()
-        num_server = args.pop('num_server')
-        data_dir = args.pop('data_dir')
+        num_server = args.pop("num_server")
+        data_dir = args.pop("data_dir")
         force_restart = args.pop("force_restart")
 
         def gen_free_port():
             yield envs.get(HSTREAM_SERVER_PORT_ENV)
             for _ in range(num_server):
                 yield find_free_port()
+
         free_ports = gen_free_port()
 
         for i in range(num_server):
-            container_name = f'{CUSERNAME}_{CUID}_hstream_server_{i}'
+            container_name = f"{CUSERNAME}_{CUID}_hstream_server_{i}"
             if force_restart:
                 run_sh(f"docker rm -f {container_name}")
             command = "cabal run -- hstream-server"
@@ -618,46 +751,54 @@ if __name__ == '__main__':
                 f"--zkuri 127.0.0.1:{envs.get(ZOOKEEPER_PORT_ENV)}",
                 "--store-config /data/store/logdevice.conf",
             ]
-            haskell_env(
-                command=command, cmd_args=cmd_args, container_name=container_name,
-                tty=True, interactive=False, detach=True, rm=True,
-                no_services_required=False, check=True, data_dir=data_dir,
-                **args)
+            dev_env(
+                command=command,
+                cmd_args=cmd_args,
+                container_name=container_name,
+                tty=True,
+                interactive=False,
+                detach=True,
+                rm=True,
+                no_services_required=False,
+                check=True,
+                data_dir=data_dir,
+                **args,
+            )
     # ---
-    elif sub_command == 'shell':
-        args['interactive'] = not args.pop('no_interactive')
-        args['tty'] = not args.pop('no_tty')
-        if args['command'] is None:
-            if args['interactive']:
-                args['command'] = 'bash'
-                args['cmd_args'] = ''
-                haskell_env(rm=True, **args)
+    elif sub_command == "shell":
+        args["interactive"] = not args.pop("no_interactive")
+        args["tty"] = not args.pop("no_tty")
+        if args["command"] is None:
+            if args["interactive"]:
+                args["command"] = "bash"
+                args["cmd_args"] = ""
+                dev_env(rm=True, **args)
             else:
-                args['command'] = 'bash -c'
-                haskell_env(rm=True, **args)
+                args["command"] = "bash -c"
+                dev_env(rm=True, **args)
         else:
-            haskell_env(rm=True, **args)
+            dev_env(rm=True, **args)
     # ---
-    elif sub_command == 'cabal':
-        args['interactive'] = not args.pop('no_interactive')
-        args['tty'] = not args.pop('no_tty')
-        haskell_env(command='/opt/ghc/bin/cabal', rm=True, **args)
+    elif sub_command == "cabal":
+        args["interactive"] = not args.pop("no_interactive")
+        args["tty"] = not args.pop("no_tty")
+        dev_env(command="/opt/ghc/bin/cabal", rm=True, **args)
     # ---
-    elif sub_command == 'info':
+    elif sub_command == "info":
         get_info(**args)
     # ---
-    elif sub_command == 'cluster-start':
+    elif sub_command == "cluster-start":
         service_start(services=["store"], **args)
-    elif sub_command == 'mysql-start':
+    elif sub_command == "mysql-start":
         service_start(services=["mysql"], **args)
-    elif sub_command == 'clickhouse-start':
+    elif sub_command == "clickhouse-start":
         service_start(services=["clickhouse"], **args)
-    elif sub_command == 'zookeeper-start':
+    elif sub_command == "zookeeper-start":
         service_start(services=["zookeeper"], **args)
     # ---
-    elif sub_command == 'swagger-start':
+    elif sub_command == "swagger-start":
         swagger_ui_start(**args)
-    elif sub_command == 'ldshell':
+    elif sub_command == "ldshell":
         run_ldshell(**args)
     else:
         parser.print_help()

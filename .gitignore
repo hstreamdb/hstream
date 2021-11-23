@@ -32,6 +32,7 @@ gen-hs/
 gen-hs2/
 gen-sql/
 gen-cpp/
+gen-go/
 generated-src/
 gen-src/
 .DS_Store
