@@ -6,6 +6,7 @@
 import           Control.Concurrent
 import           Control.Concurrent.Async (forConcurrently_)
 import           Control.Monad
+import qualified Data.ByteString          as BS
 import           Data.Int                 (Int64)
 import           Data.List                (sort)
 import           Data.Map.Strict          (Map)
@@ -17,8 +18,8 @@ import           System.Random
 import           Text.Printf
 import           Z.Data.ASCII             (c2w)
 import           Z.Data.CBytes            (CBytes)
-import qualified Z.Data.Parser            as P
 import qualified Z.Data.Vector            as ZV
+import qualified Z.Foreign                as ZF
 import           Z.IO.Time                (SystemTime (..), getSystemTime')
 
 import qualified HStream.Store            as HS
@@ -120,16 +121,17 @@ perfBenchWrite (BatchOpts CommonConfig{..} BatchConfig{..})  = do
   ldClient <- HS.newLDClient configPath
   oldStats <- initWriteStats reportInterval numRecords
   putStrLn "-----PERF START----"
-  payloads <- replicateM batchSize $ ZV.replicateMVec recordSize (c2w <$> randomRIO ('a', 'z'))
+  payloads <- replicateM batchSize $ ZF.toByteString <$> ZV.replicateMVec recordSize (c2w <$> randomRIO ('a', 'z'))
+  putStrLn $ "compression: " <> show compression
   loop ldClient targetLogID oldStats payloads numRecords
   where
     compression = if compressionOn then HS.CompressionLZ4 else HS.CompressionNone
-    loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> [ZV.Bytes] -> Int64 -> IO ()
+    loop :: HS.LDClient -> HS.C_LogID -> WriteStats -> [BS.ByteString] -> Int64 -> IO ()
     loop client logId stats payloads n
       | n <= 0 = putStrLn ("\nWrite to " ++ show logId ++ " total: ") >> printTotal stats
       | otherwise = do
          startStamp <- getCurrentTimestamp
-         void $ HS.appendBatch client logId payloads compression Nothing
+         void $ HS.appendBatchBS client logId payloads compression Nothing
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
          newStats <- record stats logId (fromIntegral latency) (fromIntegral (recordSize * batchSize))
@@ -141,27 +143,30 @@ parallelBench :: HasCallStack => ParallelOpts -> IO ()
 parallelBench ParallelOpts{..} = do
   ldClient <- HS.newLDClient pConfigPath
   oldStats <- initWriteStats pReportInterval pNumRecords
-  payloads <- replicateM pbatchSize $ ZV.replicateMVec pRecordSize (c2w <$> randomRIO ('a', 'z'))
-  ls <- forM logs $ \(logId, _) -> do
+  payloads <- replicateM pbatchSize $ ZF.toByteString <$> ZV.replicateMVec pRecordSize (c2w <$> randomRIO ('a', 'z'))
+  ls <- forM targets $ \logId -> do
     s <- newMVar oldStats
     return (logId, s)
   let mp = Map.fromList ls
+  putStrLn $ "compression: " <> show compression
+
   putStrLn "-----PERF START----"
   forConcurrently_ targets $ \logId -> do
+    putStrLn $ "write to logId " <> show logId
     process ldClient mp payloads pNumRecords logId
   printSingleLogStats mp
   printTotalLogStats mp
   where
-    targets = concatMap (\(logId, n) -> replicate n logId) logs
+    targets = [from .. to]
     BatchConfig pbatchSize pcompression = pBatchConfig
     compression = if pcompression then HS.CompressionLZ4 else HS.CompressionNone
 
-    process :: HS.LDClient -> StatsMap -> [ZV.Bytes] -> Int64 -> HS.C_LogID -> IO ()
+    process :: HS.LDClient -> StatsMap -> [BS.ByteString] -> Int64 -> HS.C_LogID -> IO ()
     process client mp payloads n logId
       | n <= 0 = return ()
       | otherwise = do
          startStamp <- getCurrentTimestamp
-         void $ HS.appendBatch client logId payloads compression Nothing
+         void $ HS.appendBatchBS client logId payloads compression Nothing
          endStamp <- getCurrentTimestamp
          let latency = endStamp - startStamp
          updateStats mp logId latency
@@ -183,8 +188,7 @@ parallelBench ParallelOpts{..} = do
     printTotalLogStats :: StatsMap -> IO ()
     printTotalLogStats mp = do
       basicStats <- initWriteStats pReportInterval pNumRecords
-      sStats <- forM (Map.elems mp) $ \s -> do stats <- readMVar s
-                                               return stats
+      sStats <- forM (Map.elems mp) $ \s -> readMVar s
       let res = foldr mergeStats basicStats sStats
       let totalStats = res { writeElapse = writeElapse res `div` fromIntegral (length sStats) }
       putStrLn "\n============================\nWrite complete: " >>
@@ -313,36 +317,15 @@ batchOptsParser = BatchOpts
   <$> commonConfigParser
   <*> batchConfigParser
 
-type WriteUnit = (HS.C_LogID, Int)
-
 data ParallelOpts = ParallelOpts
   { pConfigPath     :: CBytes
-  , logs            :: [WriteUnit]
+  , from            :: HS.C_LogID
+  , to              :: HS.C_LogID
   , pNumRecords     :: Int64
   , pRecordSize     :: Int
   , pReportInterval :: Int64
   , pBatchConfig    :: BatchConfig
   } deriving (Show)
-
-parseWriteUnit :: ReadM (HS.C_LogID, Int)
-parseWriteUnit = eitherReader $ parse . ZV.packASCII
-  where
-    parse :: ZV.Bytes -> Either String (HS.C_LogID, Int)
-    parse bs =
-      case P.parse' parser bs of
-        Left er -> Left $ "cannot parse value: " <> show er
-        Right i -> Right i
-    parser = do
-      P.skipSpaces
-      logId <- P.int
-      res <- P.peekMaybe
-      case res of
-        Nothing -> return (logId, 1)
-        Just _ -> do
-          P.char8 ':'
-          num <- P.int
-          P.skipSpaces
-          return (logId, num)
 
 parallelOptsParser :: Parser ParallelOpts
 parallelOptsParser = ParallelOpts
@@ -352,11 +335,14 @@ parallelOptsParser = ParallelOpts
                <> value "/data/store/logdevice.conf"
                <> help "Specify the path of LogDevice configuration file."
                 )
-  <*> many (option parseWriteUnit ( long "logs"
-                                 <> metavar "LOGID:INT"
-                                 <> help ( "Write messages to the specified stream, followed by a number to specify the "
-                                        <> "number of threads using to write concurrently.")
-                                  ))
+  <*> option auto ( long "from"
+                 <> metavar "INT"
+                 <> help "Start logId."
+                  )
+  <*> option auto ( long "to"
+                 <> metavar "INT"
+                 <> help "End logId"
+                  )
   <*> option auto ( long "num-records"
                  <> metavar "INT"
                  <> help "Number of messages write to each log."
