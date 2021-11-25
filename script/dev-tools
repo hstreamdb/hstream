@@ -416,6 +416,25 @@ def get_info(container_bin, service=None, port_only=False):
             loginfo(f"zookeeper port: {envs.get(ZOOKEEPER_PORT_ENV)}")
 
 
+def gen_swagger_json(container_bin):
+    cur_dir = os.getcwd()
+    hs_image = IMAGES["HS_IMAGE"]
+    cmd = "".join(
+        [
+            f"cd {cur_dir} && "
+            "cd common/proto/HStream/Server && "
+            "protoc -I . "
+            "--openapiv2_out ../../../../ "
+            "--openapiv2_opt grpc_api_configuration=HStreamApi.yaml "
+            "HStreamApi.proto && "
+            "cd ../../../../ && "
+            "mv HStreamApi.swagger.json swagger.json"
+        ]
+    )
+    run_sh(
+        f"{container_bin} run -t --rm -v \"{PROJECT_ROOT}:{PROJECT_ROOT}\" {hs_image} bash -c '{cmd}'",
+    )
+
 def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
     SWAGGER_CONTAINER_NAME = f"hstream-swagger-{CUID}"
 
@@ -689,6 +708,11 @@ if __name__ == "__main__":
     parser_zookeeper_start.add_argument("--container-bin", default="docker")
     parser_zookeeper_start.add_argument("--port", default=2181)
 
+    parser_swagger_json_gen = subparsers.add_parser(
+        "gen-swagger-json", help="Generate Swagger JSON file"
+    )
+    parser_swagger_json_gen.add_argument("--container-bin", default="docker")
+
     # swagger-start
     parser_swagger_start = subparsers.add_parser(
         "swagger-start", help="Start swagger ui"
@@ -796,6 +820,8 @@ if __name__ == "__main__":
     elif sub_command == "zookeeper-start":
         service_start(services=["zookeeper"], **args)
     # ---
+    elif sub_command == "gen-swagger-json":
+        gen_swagger_json(**args)
     elif sub_command == "swagger-start":
         swagger_ui_start(**args)
     elif sub_command == "ldshell":
