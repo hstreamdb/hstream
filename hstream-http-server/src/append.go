@@ -38,7 +38,11 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 	}
 	out, err := base64.StdEncoding.DecodeString(in.Payload)
 	if err != nil {
-		log.Fatalln(err) // #TODO: 400
+		w.WriteHeader(http.StatusBadRequest)
+		if _, err := w.Write([]byte("Decoding Error: Invalid base64-encoded payload.")); err != nil {
+			log.Fatalln(err)
+		}
+		return
 	}
 	records := bytes.Split(out, []byte("\n"))
 

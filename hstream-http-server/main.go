@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"google.golang.org/grpc"
 	"log"
 	"net/http"
-	"google.golang.org/grpc"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
 	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
 	hstreamHttpServer "github.com/hstreamdb/hstream/hstream-http-server/src"
