@@ -11,9 +11,9 @@ type HostPortCtx struct {
 	HttpServerPort *string
 }
 
-func buildRecord(payload []byte) *hstreamApi.HStreamRecord {
+func buildRecord(flag hstreamApi.HStreamRecordHeader_Flag, payload []byte) *hstreamApi.HStreamRecord {
 	header := hstreamApi.HStreamRecordHeader{
-		Flag:        hstreamApi.HStreamRecordHeader_JSON,
+		Flag:        flag,
 		Attributes:  map[string]string{},
 		PublishTime: timestamppb.Now(),
 		Key:         "",
@@ -22,11 +22,4 @@ func buildRecord(payload []byte) *hstreamApi.HStreamRecord {
 		Header:  &header,
 		Payload: payload,
 	}
-}
-
-func buildRecords(payloads [][]byte) (ret []*hstreamApi.HStreamRecord) {
-	for _, payload := range payloads {
-		ret = append(ret, buildRecord(payload))
-	}
-	return
 }

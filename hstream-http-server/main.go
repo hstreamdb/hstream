@@ -53,10 +53,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// Custom route for appending base64-encoded payloads
+	// Custom route for appending payloads
 	err = handleAppend(gwMux)
 	if err != nil {
-		log.Fatalln(err)
+		log.Printf("Error: %v\n", err)
 	}
 
 	gwServer := &http.Server{Addr: ":" + *httpServerPort, Handler: gwMux}

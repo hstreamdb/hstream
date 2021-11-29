@@ -1,10 +1,9 @@
 package hstream_http_server
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
+	"fmt"
 
 	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
 
@@ -18,6 +17,7 @@ import (
 )
 
 type B64Payload struct {
+	Flag    hstreamApi.HStreamRecordHeader_Flag
 	Payload string `json:"payload"`
 }
 
@@ -34,26 +34,27 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 	_, outboundMarshaler := runtime.MarshalerForRequest(mux, r)
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		log.Fatalln(err)
-	}
-	out, err := base64.StdEncoding.DecodeString(in.Payload)
-	if err != nil {
+		log.Printf("Error: %v\n", err)
 		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("Decoding Error: Invalid base64-encoded payload.")); err != nil {
-			log.Fatalln(err)
-		}
+		w.Write([]byte("Bad Request Error: Invalid append payload.\n" + fmt.Sprint(err)))
 		return
 	}
-	records := bytes.Split(out, []byte("\n"))
 
 	conn, err := grpc.Dial(*hpCtx.GRPCServerHost+":"+*hpCtx.GRPCServerPort,
 		grpc.WithInsecure())
 	if err != nil {
-		log.Fatalln(err)
+		log.Printf("Error: %v\n", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprint(err)))
+		return
 	}
 	defer func(conn *grpc.ClientConn) {
 		if err := conn.Close(); err != nil {
-			log.Fatalln(err)
+
+			log.Printf("Error: %v\n", err)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprint(err)))
+			return
 		}
 	}(conn)
 	c := hstreamApi.NewHStreamApiClient(conn)
@@ -61,10 +62,13 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 	defer cancel()
 	resp, err := c.Append(ctx, &hstreamApi.AppendRequest{
 		StreamName: pathParams["streamName"],
-		Records:    buildRecords(records),
+		Records:    []*hstreamApi.HStreamRecord{buildRecord(in.Flag, []byte(in.Payload))},
 	})
 	if err != nil {
-		panic(err)
+		log.Printf("Error: %v\n", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprint(err)))
+		return
 	}
 	runtime.ForwardResponseMessage(ctx, mux, outboundMarshaler, w, r, resp, mux.GetForwardResponseOptions()...)
 }
