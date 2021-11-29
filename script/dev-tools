@@ -45,9 +45,15 @@ CUID, CGID = os.getuid(), os.getgid()
 CUSERNAME = getpass.getuser()
 CWD = os.getcwd()
 
-DEFAULT_LOGDEVICE_DIR = os.path.join(PROJECT_ROOT, "local-data/logdevice")
+DEFAULT_LOCAL_DATA = os.path.join(PROJECT_ROOT, "local-data")
+Path(DEFAULT_LOCAL_DATA).mkdir(parents=True, exist_ok=True)
+
+DEFAULT_LOGDEVICE_DIR = os.path.join(DEFAULT_LOCAL_DATA, "logdevice")
 Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
-DEFAULT_ENV_FILE = os.path.join(PROJECT_ROOT, "local-data/dev_tools.env")
+DEFAULT_ENV_FILE = os.path.join(DEFAULT_LOCAL_DATA, "dev_tools.env")
+DEFAULT_SWAGGER_FILE = os.path.join(
+    DEFAULT_LOCAL_DATA, "HStreamApi.swagger.json"
+)
 
 IMAGES = {
     "HS_IMAGE": "docker.io/hstreamdb/haskell",
@@ -416,15 +422,31 @@ def get_info(container_bin, service=None, port_only=False):
             loginfo(f"zookeeper port: {envs.get(ZOOKEEPER_PORT_ENV)}")
 
 
-def swagger_ui_start(container_bin, port, swagger_path, gen_from_image=False):
-    SWAGGER_CONTAINER_NAME = f"hstream-swagger-{CUID}"
+def gen_swagger_json(container_bin):
+    hs_image = IMAGES["HS_IMAGE"]
+    proto_path = os.path.join(PROJECT_ROOT, "common/proto/HStream/Server")
+    proto_file = os.path.join(proto_path, "HStreamApi.proto")
+    conf_file = os.path.join(proto_path, "HStreamApi.yaml")
 
-    if gen_from_image:
-        db_image = IMAGES["DB_IMAGE"]
-        run_sh(
-            f"{container_bin} run -t --rm {db_image} -- /usr/local/bin/hstream-swagger-json /tmp"
-        )
-        swagger_path = "/tmp/swagger.json"
+    cmd = (
+        f"/usr/local/bin/protoc -I {proto_path} "
+        f"--openapiv2_out {DEFAULT_LOCAL_DATA} "
+        f"--openapiv2_opt grpc_api_configuration={conf_file} "
+        f"{proto_file}"
+    )
+    run_sh(
+        f"{container_bin} run -t --rm -u {CUID}:{CGID} "
+        f"-v {PROJECT_ROOT}:{PROJECT_ROOT} {hs_image} {cmd}"
+    )
+
+
+def swagger_ui_start(container_bin, port, swagger_path=None, no_regen=False):
+    SWAGGER_CONTAINER_NAME = f"hstream-swagger-{CUID}"
+    swagger_path = swagger_path or DEFAULT_SWAGGER_FILE
+
+    if not no_regen:
+        gen_swagger_json(container_bin)
+        swagger_path = DEFAULT_SWAGGER_FILE
 
     if not os.path.exists(swagger_path):
         return logerr(f"No such swagger_path: {swagger_path}")
@@ -689,7 +711,7 @@ if __name__ == "__main__":
     parser_zookeeper_start.add_argument("--container-bin", default="docker")
     parser_zookeeper_start.add_argument("--port", default=2181)
 
-    # swagger-start
+    # swagger_ui_start
     parser_swagger_start = subparsers.add_parser(
         "swagger-start", help="Start swagger ui"
     )
@@ -698,7 +720,7 @@ if __name__ == "__main__":
     parser_swagger_start.add_argument(
         "--swagger-path", default=f"{CWD}/swagger.json"
     )
-    parser_swagger_start.add_argument("--gen-from-image", action="store_true")
+    parser_swagger_start.add_argument("--no-regen", action="store_true")
 
     # ldshell
     parser_cluster_ldshell = subparsers.add_parser("ldshell", help="")
