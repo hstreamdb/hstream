@@ -320,7 +320,7 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
        * upgrade isn't the same as the type of upgrade lock initially acquired \
        */                                                                      \
       folly::LockedPtr<decltype(stats_ulock)::Synchronized,                    \
-                       folly::LockPolicyFromExclusiveToUpgrade>                \
+                       folly::detail::SynchronizedLockPolicyUpgrade>           \
           stats_downgraded_ulock;                                              \
       auto stats_it = stats_ulock->find((stream_name));                        \
       if (UNLIKELY(stats_it == stats_ulock->end())) {                          \
