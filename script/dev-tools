@@ -804,7 +804,7 @@ if __name__ == "__main__":
     elif sub_command == "cabal":
         args["interactive"] = not args.pop("no_interactive")
         args["tty"] = not args.pop("no_tty")
-        dev_env(command="/opt/ghc/bin/cabal", rm=True, **args)
+        dev_env(command="cabal", rm=True, **args)
     # ---
     elif sub_command == "info":
         get_info(**args)
