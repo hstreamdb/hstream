@@ -1,24 +1,247 @@
 cradle:
   cabal:
-    - path: "hstream/src/"
-      component: "lib:hstream"
-    - path: "hstream/gen-src"
-      component: "lib:hstream"
-    - path: "hstream/app/client.hs"
-      component: "hstream:exe:hstream-client"
-    - path: "hstream/app/server.hs"
-      component: "hstream:exe:hstream-server"
-    - path: "hstream/test"
-      component: "hstream:test:hstream-test"
+    - path: "common/."
+      component: "lib:hstream-common"
 
     - path: "common/gen-hs"
       component: "lib:hstream-common"
-    - path: "common/HStream"
-      component: "lib:hstream-common"
+
     - path: "common/test"
       component: "hstream-common:test:hstream-common-test"
-    - path: "common/bench"
+
+    - path: "common/bench/stats.hs"
       component: "hstream-common:bench:common-bench-stats"
+
+    - path: "external/gRPC-haskell/core/src"
+      component: "lib:grpc-haskell-core"
+
+    - path: "external/gRPC-haskell/core/tests"
+      component: "grpc-haskell-core:test:tests"
+
+    - path: "external/gRPC-haskell/src"
+      component: "lib:grpc-haskell"
+
+    - path: "external/gRPC-haskell/examples/hellos/hellos-server/Main.hs"
+      component: "grpc-haskell:exe:hellos-server"
+
+    - path: "external/gRPC-haskell/examples/hellos/hellos-client/Main.hs"
+      component: "grpc-haskell:exe:hellos-client"
+
+    - path: "external/gRPC-haskell/examples/echo/echo-hs/EchoServer.hs"
+      component: "grpc-haskell:exe:echo-server"
+
+    - path: "external/gRPC-haskell/examples/echo/echo-hs/Echo.hs"
+      component: "grpc-haskell:exe:echo-server"
+
+    - path: "external/gRPC-haskell/examples/tutorial/ArithmeticServer.hs"
+      component: "grpc-haskell:exe:arithmetic-server"
+
+    - path: "external/gRPC-haskell/examples/tutorial/Arithmetic.hs"
+      component: "grpc-haskell:exe:arithmetic-server"
+
+    - path: "external/gRPC-haskell/examples/tutorial/ArithmeticClient.hs"
+      component: "grpc-haskell:exe:arithmetic-client"
+
+    - path: "external/gRPC-haskell/examples/tutorial/Arithmetic.hs"
+      component: "grpc-haskell:exe:arithmetic-client"
+
+    - path: "external/gRPC-haskell/examples/echo/echo-hs/EchoClient.hs"
+      component: "grpc-haskell:exe:echo-client"
+
+    - path: "external/gRPC-haskell/examples/echo/echo-hs/Echo.hs"
+      component: "grpc-haskell:exe:echo-client"
+
+    - path: "external/gRPC-haskell/tests"
+      component: "grpc-haskell:test:tests"
+
+    - path: "external/gRPC-haskell/bench/Bench.hs"
+      component: "grpc-haskell:bench:bench"
+
+    - path: "external/hsthrift/common/github/./"
+      component: "lib:fb-stubs"
+
+    - path: "external/hsthrift/common/mangle/./"
+      component: "lib:mangle"
+
+    - path: "external/hsthrift/common/mangle/./Main.hs"
+      component: "mangle:exe:mangle"
+
+    - path: "external/hsthrift/common/mangle/./Mangle.hs"
+      component: "mangle:exe:mangle"
+
+    - path: "external/hsthrift/common/mangle/tests"
+      component: "mangle:test:mangle-test"
+
+    - path: "external/hsthrift/common/mangle/tests/github"
+      component: "mangle:test:mangle-test"
+
+    - path: "external/hsthrift/common/util/."
+      component: "lib:fb-util"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:stream"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:movavgrl"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:rlmap"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:iobuf"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:alloc-limit"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:unit-tests"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:rwvar"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:th"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:filepath"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:optparse"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:lens"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:toexp"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:aeson"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:buffer"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:exception"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:control-exception"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:json-pretty"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:io"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:time-sec"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:list"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:concurrent"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:md5"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:control-monad"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:string-quasi"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:dynamic"
+
+    - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:hs-struct"
+
+    - path: "external/hsthrift/cpp-channel/."
+      component: "lib:thrift-cpp-channel"
+
+    - path: "external/hsthrift/cpp-channel/test"
+      component: "thrift-cpp-channel:test:header-channel"
+
+    - path: "external/hsthrift/cpp-channel/test/if/gen-hs2"
+      component: "thrift-cpp-channel:test:header-channel"
+
+    - path: "external/hsthrift/lib/."
+      component: "lib:thrift-lib"
+
+    - path: "external/hsthrift/lib/gen-hs2"
+      component: "lib:thrift-lib"
+
+    - path: "external/hsthrift/lib/test/helpers"
+      component: "thrift-lib:lib:test-helpers"
+
+    - path: "external/hsthrift/lib/test/lib"
+      component: "thrift-lib:lib:test-lib"
+
+    - path: "external/hsthrift/lib/test/gen-hs2"
+      component: "thrift-lib:lib:test-lib"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:channel"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:socket-channel"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:client"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:binary-parser"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:json-parsing"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:json-num"
+
+    - path: "external/hsthrift/lib/./"
+      component: "thrift-lib:test:json-null"
+
+    - path: "external/proto3-suite/src/swagger-wrapper-format"
+      component: "lib:proto3-suite"
+
+    - path: "external/proto3-suite/src/no-swagger-wrapper-format"
+      component: "lib:proto3-suite"
+
+    - path: "external/proto3-suite/src"
+      component: "lib:proto3-suite"
+
+    - path: "external/proto3-suite/tests"
+      component: "proto3-suite:test:tests"
+
+    - path: "external/proto3-suite/gen"
+      component: "proto3-suite:test:tests"
+
+    - path: "external/proto3-suite/tools/compile-proto-file/Main.hs"
+      component: "proto3-suite:exe:compile-proto-file"
+
+    - path: "external/proto3-suite/tools/canonicalize-proto-file/Main.hs"
+      component: "proto3-suite:exe:canonicalize-proto-file"
+
+    - path: "external/proto3-wire/src"
+      component: "lib:proto3-wire"
+
+    - path: "external/proto3-wire/test"
+      component: "proto3-wire:test:tests"
+
+    - path: "hstream/src"
+      component: "lib:hstream"
+
+    - path: "hstream/./app/server.hs"
+      component: "hstream:exe:hstream-server"
+
+    - path: "hstream/./app/client.hs"
+      component: "hstream:exe:hstream-client"
+
+    - path: "hstream/test"
+      component: "hstream:test:hstream-test"
+
+    - path: "hstream-connector/./"
+      component: "lib:hstream-connector"
 
     - path: "hstream-processing/src"
       component: "lib:hstream-processing"
@@ -47,36 +270,38 @@ cradle:
     - path: "hstream-processing/example/StreamExample5.hs"
       component: "hstream-processing:exe:stream-example5"
 
-    - path: "hstream-processing/example/LogDeviceExample0.hs"
-      component: "hstream-processing:exe:logdevice-example0"
-
     - path: "hstream-sql/src"
+      component: "lib:hstream-sql"
+
+    - path: "hstream-sql/gen-sql"
       component: "lib:hstream-sql"
 
     - path: "hstream-sql/sql-example-mock/Example.hs"
       component: "hstream-sql:exe:sql-example-mock"
 
-    - path: "hstream-sql/sql-example-logdevice/Example.hs"
-      component: "hstream-sql:exe:sql-example-logdevice"
+    - path: "hstream-sql/test"
+      component: "hstream-sql:test:hstream-sql-test"
 
-    - path: "hstream-store/app/hstore.hs"
-      component: "hstream-store:exe:hstore"
-
-    - path: "hstream-store"
-      component: "lib:hstream-store"
-    - path: "hstream-store/test"
-      component: "hstream-store:test:hstream-store-test"
-    - path: "hstream-store/app"
-      component: "hstream-store:exe:hstore-bench-writter"
-    - path: "hstream-store/bench"
-      component: "hstream-store:bench:hstore-bench-append"
-    - path: "hstream-store/bench"
-      component: "hstream-store:bench:hstore-bench-append-batch"
-
-    - path: "hstream-store/admin"
+    - path: "hstream-store/admin/."
       component: "lib:hstore-admin"
+
+    - path: "hstream-store/admin/gen-hs2"
+      component: "lib:hstore-admin"
+
     - path: "hstream-store/admin/app/cli.hs"
       component: "hstore-admin:exe:hadmin"
 
-    - path: "hstream-connector"
-      component: "lib:hstream-connector"
+    - path: "hstream-store/./"
+      component: "lib:hstream-store"
+
+    - path: "hstream-store/test"
+      component: "hstream-store:test:hstream-store-test"
+
+    - path: "hstream-store/bench/AppendBench.hs"
+      component: "hstream-store:bench:hstore-bench-append"
+
+    - path: "hstream-store/bench/AppendBatchBench.hs"
+      component: "hstream-store:bench:hstore-bench-append-batch"
+
+    - path: "hstream-store/app/writeBench.hs"
+      component: "hstream-store:exe:hstore-bench-writter"
