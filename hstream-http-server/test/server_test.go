@@ -1,21 +1,15 @@
 package hstream_http_server_test
 
 import (
-	"bytes"
 	"fmt"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
-
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/emptypb"
-
-	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var (
@@ -40,7 +34,7 @@ func TestMain(m *testing.M) {
 	if env := os.Getenv("CLICKHOUSE_LOCAL_PORT"); env != "" {
 		mysqlPort = env
 	} else {
-		mysqlPort = "9000"
+		mysqlPort = "34049"
 	}
 	if env := os.Getenv("HTTP_LOCAL_PORT"); env != "" {
 		httpPort = env
@@ -81,227 +75,4 @@ func execResp(t *testing.T, resp *http.Response, err error, unmarshalVar proto.M
 		panic(err)
 	}
 	return body
-}
-
-func TestStream(t *testing.T) {
-	var listResp hstreamApi.ListStreamsResponse
-	resp, err := http.Get(serverPrefix + "/streams")
-	body0 := execResp(t, resp, err, &listResp)
-
-	stream := hstreamApi.Stream{
-		StreamName:        "test_stream",
-		ReplicationFactor: 3,
-	}
-	streamByte, err := protojson.Marshal(&stream)
-	if err != nil {
-		panic(err)
-	}
-	streamReader := bytes.NewReader(streamByte)
-	var createResp hstreamApi.Stream
-	resp, err = http.Post(serverPrefix+"/streams", "application/json", streamReader)
-	execResp(t, resp, err, &createResp)
-
-	resp, err = http.Get(serverPrefix + "/streams")
-	body1 := execResp(t, resp, err, &listResp)
-	assert.NotEqual(t, body0, body1)
-
-	const record = `{
-	"x": 8,
-	"y": 7,
-	"Hello": "World"
-}`
-	recordReader := strings.NewReader(record)
-	var appendResp hstreamApi.AppendResponse
-	resp, err = http.Post(serverPrefix+"/streams/test_stream:publish", "application/json", recordReader)
-	execResp(t, resp, err, &appendResp)
-
-	var deleteResp emptypb.Empty
-	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
-	if err != nil {
-		panic(err)
-	}
-	resp, err = http.DefaultClient.Do(req)
-	execResp(t, resp, err, &deleteResp)
-
-	resp, err = http.Get(serverPrefix + "/streams")
-	body1 = execResp(t, resp, err, &listResp)
-	assert.Equal(t, body0, body1)
-}
-
-func TestView(t *testing.T) {
-	resp, err := http.Get(serverPrefix + "/views")
-	if err != nil {
-		panic(err)
-	}
-	defer closeBody(resp.Body)
-	assertOk(t, resp.StatusCode)
-	body0, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-	assert.NotEmpty(t, body0)
-	var listResp hstreamApi.ListViewsResponse
-	if err := protojson.Unmarshal(body0, &listResp); err != nil {
-		panic(err)
-	}
-
-	stream := hstreamApi.Stream{
-		StreamName:        "test_stream",
-		ReplicationFactor: 3,
-	}
-	streamByte, err := protojson.Marshal(&stream)
-	if err != nil {
-		panic(err)
-	}
-	streamReader := bytes.NewReader(streamByte)
-	resp, err = http.Post(serverPrefix+"/streams", "application/json", streamReader)
-	if err != nil {
-		panic(err)
-	}
-	defer closeBody(resp.Body)
-	assertOk(t, resp.StatusCode)
-	body1, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-	assert.NotEmpty(t, body1)
-	var createResp_ hstreamApi.Stream
-	if err := protojson.Unmarshal(body1, &createResp_); err != nil {
-		panic(err)
-	}
-	var sql = `{
-	"sql": "CREATE VIEW test_view AS SELECT x, SUM(x) FROM test_stream GROUP BY y EMIT CHANGES;"
-}`
-	resp, err = http.Post(serverPrefix+"/views",
-		"application/json",
-		strings.NewReader(sql))
-	if err != nil {
-		panic(err)
-	}
-	defer closeBody(resp.Body)
-	assertOk(t, resp.StatusCode)
-	body1, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-	assert.NotEmpty(t, body1)
-	var createResp hstreamApi.View
-	if err := protojson.Unmarshal(body1, &createResp); err != nil {
-		panic(err)
-	}
-	assert.NotEqual(t, string(body0), string(body1))
-
-	var deleteResp emptypb.Empty
-	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/views/test_view", nil)
-	if err != nil {
-		panic(err)
-	}
-	resp, err = http.DefaultClient.Do(req)
-	execResp(t, resp, err, &deleteResp)
-
-	resp, err = http.Get(serverPrefix + "/views")
-	body1 = execResp(t, resp, err, &listResp)
-	assert.Equal(t, string(body0), string(body1))
-
-	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
-	if err != nil {
-		panic(err)
-	}
-	resp, err = http.DefaultClient.Do(req)
-	execResp(t, resp, err, &deleteResp)
-}
-
-func TestQuery(t *testing.T) {
-	var listResp hstreamApi.ListQueriesResponse
-	resp, err := http.Get(serverPrefix + "/queries")
-	execResp(t, resp, err, &listResp)
-
-	//body0 := execResp(t, resp, err, &listResp)
-	//
-	//var createResp hstreamApi.Query
-	//createReq := hstreamApi.CreateQueryRequest{
-	//	Id:        "test_query",
-	//	QueryText: "SELECT * FROM test_stream EMIT CHANGES;",
-	//}
-	//createReq_, err := protojson.Marshal(&createReq)
-	//fmt.Println(string(createReq_))
-	//if err != nil {
-	//	panic(err)
-	//}
-	//resp, err = http.Post(*erverPrefix+"/v0/queries/pull", "application/json", bytes.NewReader(createReq_))
-	//execResp(t, resp, err, &createResp)
-	//
-	//resp, err = http.Get(*erverPrefix + "/v0/queries")
-	//body1 := execResp(t, resp, err, &listResp)
-	//assert.NotEqual(t, body0, body1)
-	//
-	//terminateReq := hstreamApi.TerminateQueriesRequest{
-	//	QueryId: []string{"test_query"},
-	//	All:     false,
-	//}
-	//terminateReq_, err := protojson.Marshal(&terminateReq)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//var terminateResp hstreamApi.TerminateQueriesResponse
-	//resp, err = http.Post(*erverPrefix+"/v0/queries/terminate", "application/json", bytes.NewReader(terminateReq_))
-	//execResp(t, resp, err, &terminateResp)
-	//
-	//var deleteResp emptypb.Empty
-	//req, err := http.NewRequest(http.MethodDelete, *erverPrefix+"/v0/queries/test_query", nil)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//resp, err = http.DefaultClient.Do(req)
-	//execResp(t, resp, err, &deleteResp)
-	//
-	//resp, err = http.Get(*erverPrefix + "/v0/queries")
-	//body1 = execResp(t, resp, err, &listResp)
-	//assert.Equal(t, body0, body1)
-}
-
-func TestConnector(t *testing.T) {
-	stream := hstreamApi.Stream{
-		StreamName:        "test_stream",
-		ReplicationFactor: 3,
-	}
-	streamByte, err := protojson.Marshal(&stream)
-	if err != nil {
-		panic(err)
-	}
-	streamReader := bytes.NewReader(streamByte)
-	resp, err := http.Post(serverPrefix+"/streams", "application/json", streamReader)
-	var createResp_ hstreamApi.Stream
-	execResp(t, resp, err, &createResp_)
-
-	createReq := hstreamApi.CreateSinkConnectorRequest{
-		Sql: "CREATE SINK CONNECTOR test_connector WITH (type=mysql, host=\"127.0.0.1\", port=" + mysqlPort + ", username=\"root\", password=\"\", database=\"mysql\", stream=test_stream);",
-	}
-	connectorByte, err := protojson.Marshal(&createReq)
-	if err != nil {
-		panic(err)
-	}
-	connectorReader := bytes.NewReader(connectorByte)
-	resp, err = http.Post(serverPrefix+"/connectors", "application/json", connectorReader)
-	var createResp hstreamApi.Connector
-	execResp(t, resp, err, &createResp)
-
-	var terminateResp emptypb.Empty
-	resp, err = http.Post(serverPrefix+"/connectors/test_connector:terminate", "application/json", bytes.NewReader([]byte{}))
-	execResp(t, resp, err, &terminateResp)
-
-	var deleteResp hstreamApi.DeleteConnectorResponse
-	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/connectors/test_connector", nil)
-	if err != nil {
-		panic(err)
-	}
-	resp, err = http.DefaultClient.Do(req)
-	execResp(t, resp, err, &deleteResp)
-
-	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
-	if err != nil {
-		panic(err)
-	}
-	resp, err = http.DefaultClient.Do(req)
-	execResp(t, resp, err, &deleteResp)
 }
