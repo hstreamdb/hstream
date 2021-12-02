@@ -54,6 +54,9 @@ DEFAULT_ENV_FILE = os.path.join(DEFAULT_LOCAL_DATA, "dev_tools.env")
 DEFAULT_SWAGGER_FILE = os.path.join(
     DEFAULT_LOCAL_DATA, "HStreamApi.swagger.json"
 )
+BASH_HISTORY_FILE = os.path.join(DEFAULT_LOCAL_DATA, "bash_history")
+with open(BASH_HISTORY_FILE, "a"):
+    pass
 
 IMAGES = {
     "HS_IMAGE": "docker.io/hstreamdb/haskell",
@@ -540,11 +543,14 @@ def dev_env(
                 --name {container_name} \
                 -e HOME={HOME} \
                 -e LC_ALL=C.UTF-8 \
+                -e HISTSIZE=10000 -e HISTFILESIZE=10000 \
+                -e HISTCONTROL=ignoreboth \
                 -e PATH={user_path} \
                 -e USER={CUSERNAME} \
                 -e GOPATH={GOPATH} \
                 -e GOCACHE={GOCACHE} \
                 --env-file {DEFAULT_ENV_FILE} \
+                -v "{BASH_HISTORY_FILE}:{HOME}/.bash_history:rw" \
                 -v {HOME}/.local/bin:{HOME}/.local/bin:rw \
                 -v {HOME}/.ghc:{HOME}/.ghc:rw \
                 -v {STACK_HOME}:{HOME}/.stack:rw \
