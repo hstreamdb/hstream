@@ -90,10 +90,12 @@ instance TaskPersistence ZHandle where
   removeQuery' qid zk = ifThrow FailedToRemove $ zooDeleteAll zk (mkQueryPath qid)
 
   removeConnector cid zk  = ifThrow FailedToRemove $
-    getConnectorStatus cid zk >>= \case
-      Terminated -> zooDeleteAll zk (mkConnectorPath cid)
-      _          -> throwIO ConnectorStillRunning
-  removeConnector' cid zk = ifThrow FailedToRemove $ zooDeleteAll zk (mkConnectorPath cid)
+    getConnectorStatus cid zk >>= \st->
+      if st `elem` [Terminated, CreationAbort, ConnectionAbort]
+        then zooDeleteAll zk (mkConnectorPath cid)
+        else throwIO ConnectorStillRunning
+  removeConnector' cid zk = ifThrow FailedToRemove $
+    zooDeleteAll zk (mkConnectorPath cid)
 
 --------------------------------------------------------------------------------
 

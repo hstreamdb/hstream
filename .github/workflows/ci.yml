@@ -115,8 +115,9 @@ jobs:
       - name: test
         run: |
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
+
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
-            "'cd hstream-http-server && go test -v -o test/server_test.go -run Stream'"
+            "'cd hstream-http-server && go test -v'"
 
       - name: check
         run: |
