@@ -47,7 +47,7 @@ import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper
 import           ZooKeeper.Exception
-import           ZooKeeper.Recipe.Election        (election)
+import           ZooKeeper.Recipe                 (election)
 import           ZooKeeper.Types
 
 selectLeader :: ServerContext -> LoadManager -> IO ()
