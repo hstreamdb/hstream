@@ -14,14 +14,17 @@ import           Control.Monad                     (forM, void)
 import           Data.Bifunctor                    (second)
 import qualified Data.Map                          as Map
 import           Data.Maybe                        (fromJust, isJust)
+import           Data.Unique                       (hashUnique, newUnique)
 import           HStream.Server.HStreamApi         (Subscription)
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Utils
 import           HStream.Server.Types              (ProducerContext,
                                                     SubscriptionContext)
 import           HStream.Utils                     (cBytesToText)
+import qualified Z.Data.CBytes                     as CB
 import           ZooKeeper                         (zooExists, zooGetChildren,
                                                     zooSet)
+import           ZooKeeper.Recipe                  as Recipe
 import           ZooKeeper.Types                   (StringVector (unStrVec),
                                                     StringsCompletion (strsCompletionValues),
                                                     ZHandle)
@@ -30,7 +33,11 @@ import           ZooKeeper.Types                   (StringVector (unStrVec),
 
 instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepType) Subscription where
   storeObject objId val zk = do
-    createInsert zk subPath (encodeValueToBytes val)
+    uniq <- newUnique
+    Recipe.withLock zk subscriptionsLockPath (CB.pack . show . hashUnique $ uniq) $ do
+      zooExists zk subPath >>= \case
+        Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
+        Nothing -> createInsert zk subPath (encodeValueToBytes val)
     where subPath = mkSubscriptionPath objId
 
   getObject objId zk = decodeZNodeValue zk subPath
@@ -50,9 +57,11 @@ instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepT
 
 instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubCtxRep :: ObjRepType) SubscriptionContext where
   storeObject objId val zk = do
-    zooExists zk subPath >>= \case
-      Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
-      Nothing -> createInsert zk subPath (encodeValueToBytes val)
+    uniq <- newUnique
+    Recipe.withLock zk subscriptionCtxsLockPath (CB.pack . show . hashUnique $ uniq) $ do
+      zooExists zk subPath >>= \case
+        Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
+        Nothing -> createInsert zk subPath (encodeValueToBytes val)
     where subPath = mkSubscriptionCtxPath objId
 
   getObject objId zk = decodeZNodeValue zk subPath
@@ -72,9 +81,11 @@ instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubCtxRep :: ObjR
 
 instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('PrdCtxRep :: ObjRepType) ProducerContext where
   storeObject objId val zk = do
-    zooExists zk subPath >>= \case
-      Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
-      Nothing -> createInsert zk subPath (encodeValueToBytes val)
+    uniq <- newUnique
+    Recipe.withLock zk producerCtxsLockPath (CB.pack . show . hashUnique $ uniq) $ do
+      zooExists zk subPath >>= \case
+        Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
+        Nothing -> createInsert zk subPath (encodeValueToBytes val)
     where subPath = mkProducerCtxPath objId
 
   getObject objId zk = decodeZNodeValue zk subPath
