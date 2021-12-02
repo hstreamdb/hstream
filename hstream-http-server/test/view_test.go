@@ -49,7 +49,7 @@ func TestView(t *testing.T) {
 
 	resp, err = http.Get(serverPrefix + "/views")
 	body1 = execResp(t, resp, err, &listResp)
-	assert.Equal(t, string(body0), string(body1))
+	assert.NotContains(t, string(body1), test_view)
 
 	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/"+test_stream, nil)
 	if err != nil {

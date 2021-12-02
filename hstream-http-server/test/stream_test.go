@@ -33,6 +33,8 @@ func TestStream(t *testing.T) {
 	resp, err = http.Get(serverPrefix + "/streams")
 	body1 := execResp(t, resp, err, &listResp)
 	assert.NotEqual(t, body0, body1)
+	assert.NotContains(t, string(body0), test_stream)
+	assert.Contains(t, string(body1), test_stream)
 
 	const record = `{
 	"x": 8,
@@ -54,5 +56,5 @@ func TestStream(t *testing.T) {
 
 	resp, err = http.Get(serverPrefix + "/streams")
 	body1 = execResp(t, resp, err, &listResp)
-	assert.Equal(t, body0, body1)
+	assert.NotContains(t, string(body1), test_stream)
 }

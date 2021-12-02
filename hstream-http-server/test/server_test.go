@@ -34,9 +34,9 @@ func TestMain(m *testing.M) {
 		mysqlPort = "3306"
 	}
 	if env := os.Getenv("CLICKHOUSE_LOCAL_PORT"); env != "" {
-		mysqlPort = env
+		clickhousePort = env
 	} else {
-		mysqlPort = "34049"
+		clickhousePort = "9000"
 	}
 	if env := os.Getenv("HTTP_LOCAL_PORT"); env != "" {
 		httpPort = env

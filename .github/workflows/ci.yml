@@ -120,12 +120,8 @@ jobs:
           export SERVER_LOCAL_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
           export CLICKHOUSE_LOCAL_PORT=$(cat local-data/dev_tools.env|grep CLICKHOUSE_LOCAL_PORT|cut -d '=' -f2)
           export MYSQL_LOCAL_PORT=$(cat local-data/dev_tools.env|grep MYSQL_LOCAL_PORT|cut -d '=' -f2)
-          cd hstream-http-server
-          go test -v test/server_test.go test/stream_test.go
-          go test -v test/server_test.go test/view_test.go
-          go test -v test/server_test.go test/query_test.go
-          go test -v test/server_test.go test/stats_test.go
-          go test -v test/server_test.go test/storeAdmin_test.go
+          cd hstream-http-server/test
+          'go test -v ./...'
 
       - name: check
         run: |
