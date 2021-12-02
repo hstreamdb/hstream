@@ -13,7 +13,7 @@ import qualified Text.Layout.Table         as Table
 
 import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
-import           HStream.Utils             (approxNaturaltime, simpleShowTable)
+import           HStream.Utils             (approxNaturalTime, simpleShowTable)
 
 data NodeState' = NodeState'
   { stateState      :: AA.NodeState
@@ -38,7 +38,7 @@ showVersion = Text.unpack . stateVersion
 
 showUptime :: POSIXTime -> NodeState' -> String
 showUptime time state =
-  approxNaturaltime (time - fromIntegral (stateAliveSince state)) ++ " ago"
+  approxNaturalTime (time - fromIntegral (stateAliveSince state)) ++ " ago"
 
 showSeqState :: NodeState' -> String
 showSeqState = cutLast' "_" . maybe " " (show . AA.sequencerState_state) . AA.nodeState_sequencer_state . stateState
