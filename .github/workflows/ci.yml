@@ -121,7 +121,7 @@ jobs:
           export CLICKHOUSE_LOCAL_PORT=$(cat local-data/dev_tools.env|grep CLICKHOUSE_LOCAL_PORT|cut -d '=' -f2)
           export MYSQL_LOCAL_PORT=$(cat local-data/dev_tools.env|grep MYSQL_LOCAL_PORT|cut -d '=' -f2)
           cd hstream-http-server/test
-          go test -v
+          python3 script/dev-tools go --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test -v
 
       - name: check
         run: |
