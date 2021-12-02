@@ -12,12 +12,13 @@ import (
 )
 
 func TestStream(t *testing.T) {
+	test_stream := randText(8)
 	var listResp hstreamApi.ListStreamsResponse
 	resp, err := http.Get(serverPrefix + "/streams")
 	body0 := execResp(t, resp, err, &listResp)
 
 	stream := hstreamApi.Stream{
-		StreamName:        "test_stream",
+		StreamName:        test_stream,
 		ReplicationFactor: 3,
 	}
 	streamByte, err := protojson.Marshal(&stream)
@@ -40,11 +41,11 @@ func TestStream(t *testing.T) {
 }`
 	recordReader := strings.NewReader(record)
 	var appendResp hstreamApi.AppendResponse
-	resp, err = http.Post(serverPrefix+"/streams/test_stream:publish", "application/json", recordReader)
+	resp, err = http.Post(serverPrefix+"/streams/"+test_stream+":publish", "application/json", recordReader)
 	execResp(t, resp, err, &appendResp)
 
 	var deleteResp emptypb.Empty
-	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
+	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/streams/"+test_stream, nil)
 	if err != nil {
 		panic(err)
 	}

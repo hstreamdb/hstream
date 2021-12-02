@@ -7,9 +7,11 @@ import (
 	"google.golang.org/protobuf/proto"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
 	"testing"
+	"time"
 )
 
 var (
@@ -43,6 +45,7 @@ func TestMain(m *testing.M) {
 	}
 	serverPrefix = "http://0.0.0.0:" + httpPort
 
+	rand.Seed(time.Now().UnixNano())
 	code := m.Run()
 	os.Exit(code)
 }
@@ -75,4 +78,15 @@ func execResp(t *testing.T, resp *http.Response, err error, unmarshalVar proto.M
 		panic(err)
 	}
 	return body
+}
+
+func randText(n int) string {
+	rand.Seed(time.Now().UnixNano())
+	var xs = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	ret := make([]rune, n)
+	for i := range ret {
+		ret[i] = xs[rand.Intn(len(xs))]
+	}
+	return string(ret)
 }

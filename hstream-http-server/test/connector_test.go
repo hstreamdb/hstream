@@ -10,8 +10,11 @@ import (
 )
 
 func TestConnector(t *testing.T) {
+	test_stream := randText(8)
+	test_connector := randText(8)
+
 	stream := hstreamApi.Stream{
-		StreamName:        "test_stream",
+		StreamName:        test_stream,
 		ReplicationFactor: 3,
 	}
 	streamByte, err := protojson.Marshal(&stream)
@@ -24,7 +27,7 @@ func TestConnector(t *testing.T) {
 	execResp(t, resp, err, &createResp_)
 
 	createReq := hstreamApi.CreateSinkConnectorRequest{
-		Sql: "CREATE SINK CONNECTOR test_connector WITH (type=mysql, host=\"127.0.0.1\", port=" + mysqlPort + ", username=\"root\", password=\"\", database=\"mysql\", stream=test_stream);",
+		Sql: "CREATE SINK CONNECTOR " + test_connector + " WITH (type=mysql, host=\"127.0.0.1\", port=" + mysqlPort + ", username=\"root\", password=\"\", database=\"mysql\", stream=" + test_stream + ");",
 	}
 	connectorByte, err := protojson.Marshal(&createReq)
 	if err != nil {
@@ -36,18 +39,18 @@ func TestConnector(t *testing.T) {
 	execResp(t, resp, err, &createResp)
 
 	var terminateResp emptypb.Empty
-	resp, err = http.Post(serverPrefix+"/connectors/test_connector:terminate", "application/json", bytes.NewReader([]byte{}))
+	resp, err = http.Post(serverPrefix+"/connectors/"+test_connector+":terminate", "application/json", bytes.NewReader([]byte{}))
 	execResp(t, resp, err, &terminateResp)
 
 	var deleteResp hstreamApi.DeleteConnectorResponse
-	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/connectors/test_connector", nil)
+	req, err := http.NewRequest(http.MethodDelete, serverPrefix+"/connectors/"+test_connector, nil)
 	if err != nil {
 		panic(err)
 	}
 	resp, err = http.DefaultClient.Do(req)
 	execResp(t, resp, err, &deleteResp)
 
-	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/test_stream", nil)
+	req, err = http.NewRequest(http.MethodDelete, serverPrefix+"/streams/"+test_stream, nil)
 	if err != nil {
 		panic(err)
 	}
