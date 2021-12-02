@@ -353,12 +353,12 @@ runCreateWithSelectSql api sql = do
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
   ShowPlan SStreams <- streamCodegen sql
-  formatResult 0 <$> listStreams api
+  formatResult <$> listStreams api
 
 runShowViewsSql :: HStreamClientApi -> T.Text -> IO String
 runShowViewsSql api sql = do
   ShowPlan SViews <- streamCodegen sql
-  formatResult 0 <$> listViews api
+  formatResult <$> listViews api
 
 runDropSql :: HStreamClientApi -> T.Text -> Expectation
 runDropSql api sql = do
