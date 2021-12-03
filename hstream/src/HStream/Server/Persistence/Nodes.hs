@@ -17,11 +17,10 @@ module HStream.Server.Persistence.Nodes (
   , setNodeStatus
   , getServerInternalAddr
 
-  , getReadyServers
+  , getServerIds
+  , getServerNodes
   ) where
 
-import           Control.Exception                 (SomeException, try)
-import           Control.Monad                     (forM)
 import           Data.Aeson                        (FromJSON, ToJSON)
 import           Data.Functor                      (void, (<&>))
 import qualified Data.Text                         as T
@@ -96,12 +95,11 @@ getServerNode zk sID = do
            , serverNodePort = port
            }
 
-getReadyServers :: ZHandle -> IO Int
-getReadyServers zk = do
-  (StringsCompletion (StringVector servers)) <- zooGetChildren zk serverRootPath
-  (sum <$>) . forM (read . CB.unpack <$> servers) $ \sID -> do
-    (e' :: Either SomeException NodeStatus) <- try $ getNodeStatus zk sID
-    case e' of
-      Right Ready   -> return (1 :: Int)
-      Right Working -> return (1 :: Int)
-      _             -> return (0 :: Int)
+getServerIds :: ZHandle -> IO [ServerID]
+getServerIds zk = do
+  (StringsCompletion (StringVector servers))
+    <- zooGetChildren zk serverRootPath
+  return (read . CB.unpack <$> servers)
+
+getServerNodes :: ZHandle -> IO [ServerNode]
+getServerNodes zk = getServerIds zk >>= mapM (getServerNode zk)

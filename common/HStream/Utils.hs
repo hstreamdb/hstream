@@ -10,6 +10,7 @@ module HStream.Utils
   , flattenJSON
   , genUnique
   , setupSigsegvHandler
+  , ifM
   ) where
 
 import           Control.Exception          (Exception (..))
@@ -76,3 +77,7 @@ genUnique = do
 
 foreign import ccall unsafe "hs_common.h setup_sigsegv_handler"
   setupSigsegvHandler :: IO ()
+
+ifM :: Bool -> m a -> m a -> m a
+ifM True x _  = x
+ifM False _ y = y

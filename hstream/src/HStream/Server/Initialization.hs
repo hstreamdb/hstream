@@ -82,7 +82,11 @@ initializeServer ServerOpts{..} zk = do
 
   lastSysResUsage <- initLastSysResUsage
   currentLoadReport <- initLoadReport lastSysResUsage
-  currentLoadReports <- newMVar HM.empty
+  currentLoadReportZK <- newMVar LoadReport {
+      systemResourceUsage = SystemResourcePercentageUsage 0 0 0 0
+    , isUnderloaded       = True
+    , isOverloaded        = False
+    }
 
   currentLeader <- newEmptyMVar
 
@@ -117,7 +121,7 @@ initializeServer ServerOpts{..} zk = do
       sID             = _serverID
     , loadReport      = currentLoadReport
     , lastSysResUsage = lastSysResUsage
-    , loadReports     = currentLoadReports
+    , loadReportZK    = currentLoadReportZK
     })
 
 --------------------------------------------------------------------------------

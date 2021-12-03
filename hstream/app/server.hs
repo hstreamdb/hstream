@@ -24,7 +24,8 @@ import           HStream.Server.Leader          (selectLeader)
 import           HStream.Server.LoadBalance     (startWritingLoadReport)
 import           HStream.Server.Persistence     (defaultHandle,
                                                  initializeAncestors)
-import           HStream.Server.Types           (LoadManager,
+import           HStream.Server.Types           (LoadBalanceMode (..),
+                                                 LoadManager,
                                                  ServerContext (..),
                                                  ServerOpts (..))
 import           HStream.Store                  (Compression (..))
@@ -117,6 +118,10 @@ parseConfig =
                    <> showDefault <> value (Log.LDLogLevel Log.C_DBG_INFO)
                    <> help "hstore log level"
                     )
+    <*> option auto ( long "load-balance-mode" <> metavar "[round-robin|hardware-usage]"
+                   <> showDefault <> value RoundRobin
+                   <> help "hserver cluster load balance mode"
+                    )
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
@@ -131,7 +136,7 @@ serve :: ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO 
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
   startWritingLoadReport zkHandle lm
 
-  selectLeader sc lm
+  selectLeader sc
 
   -- GRPC service
   Log.i "************************"

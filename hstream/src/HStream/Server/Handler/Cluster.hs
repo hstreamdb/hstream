@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,7 +23,7 @@ import           ZooKeeper.Types
 
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.LoadBalance       (getNodesRanking)
+import           HStream.Server.LoadBalance       (getAllocatedNode)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Server.Types             as Types
@@ -36,10 +35,10 @@ import           HStream.Utils
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
                        -> IO (ServerResponse 'Normal DescribeClusterResponse)
-describeClusterHandler ctx (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
+describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
   let protocolVer = Types.protocolVersion
       serverVer   = Types.serverVersion
-  nodes <- getNodesRanking ctx <&> V.fromList
+  nodes <- P.getServerNodes zkHandle <&> V.fromList
   return $ ServerNormalResponse (Just $ DescribeClusterResponse protocolVer serverVer nodes) mempty StatusOk ""
 
 lookupStreamHandler :: ServerContext
@@ -49,17 +48,14 @@ lookupStreamHandler ctx@ServerContext{..} (ServerNormalRequest _meta (LookupStre
   prdCtxs <- P.listObjects @ZHandle @'P.PrdCtxRep zkHandle
   case Map.lookup stream prdCtxs of
     Nothing -> do
-      allNodes <- getNodesRanking ctx
-      case allNodes of
-        []       -> returnErrResp StatusInternal "No available server node"
-        newNode:_ -> do
-          let prdCtx = ProducerContext stream newNode
-          P.storeObject stream prdCtx zkHandle
-          let resp = LookupStreamResponse
-                     { lookupStreamResponseStreamName = stream
-                     , lookupStreamResponseServerNode = Just newNode
-                     }
-          returnResp resp
+      node <- getAllocatedNode ctx
+      let prdCtx = ProducerContext stream node
+      P.storeObject stream prdCtx zkHandle
+      let resp = LookupStreamResponse
+                 { lookupStreamResponseStreamName = stream
+                 , lookupStreamResponseServerNode = Just node
+                 }
+      returnResp resp
     Just ProducerContext{..} -> do
       let resp = LookupStreamResponse
                  { lookupStreamResponseStreamName = _prdctxStream
@@ -77,17 +73,15 @@ lookupSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _meta (Look
       P.checkIfExist @ZHandle @'P.SubRep subId zkHandle >>= \case
         False -> returnErrResp StatusInternal "No subscription found"
         True  -> do
-          getNodesRanking ctx >>= \case
-            []     -> returnErrResp StatusInternal "No available node for the subscription"
-            node:_ -> do
-              let subCtx = SubscriptionContext { _subctxNode = serverNodeId node }
-              modifyMVar_ subscriptionCtx
-                (\ctxs -> do
-                    newCtxMVar <- newMVar subCtx
-                    return $ Map.insert (T.unpack subId) newCtxMVar ctxs
-                )
-              P.storeObject subId subCtx zkHandle -- sync subctx to zk
-              doResp subId node
+          node <- getAllocatedNode ctx
+          let subCtx = SubscriptionContext { _subctxNode = serverNodeId node }
+          modifyMVar_ subscriptionCtx
+            (\ctxs -> do
+                newCtxMVar <- newMVar subCtx
+                return $ Map.insert (T.unpack subId) newCtxMVar ctxs
+            )
+          P.storeObject subId subCtx zkHandle -- sync subctx to zk
+          doResp subId node
     Just SubscriptionContext{..} -> do
       serverNode <- P.getServerNode zkHandle _subctxNode
       doResp subId serverNode

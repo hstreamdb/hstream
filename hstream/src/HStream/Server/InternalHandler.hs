@@ -10,13 +10,13 @@ module HStream.Server.InternalHandler where
 import           Control.Concurrent
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.HStreamApi        (ServerNode)
 import           HStream.Server.HStreamInternal
-import           HStream.Server.LoadBalance       (getRanking)
+import           HStream.Server.LoadBalance       (getCandidateLeader)
 import           HStream.Server.Persistence       (getServerNode)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ProducerContext (ProducerContext),
@@ -35,20 +35,19 @@ internalHandlers ctx = pure HStreamInternal {
   , hstreamInternalRestartConnector    = unimplemented
   , hstreamInternalTerminateConnector  = unimplemented
 
-  , hstreamInternalGetNodesRanking     = getNodesRankingHandler ctx
+  , hstreamInternalGetAllocatedNode    = getAllocatedNodeHandler ctx
   , hstreamInternalTakeSubscription    = takeSubscription ctx
   , hstreamInternalTakeStream          = takeStream ctx
   }
   where
     unimplemented = const (returnErrResp StatusInternal "unimplemented method called")
 
-getNodesRankingHandler :: ServerContext
-                       -> ServerRequest 'Normal Empty GetNodesRankingResponse
-                       -> IO (ServerResponse 'Normal GetNodesRankingResponse)
-getNodesRankingHandler ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
-  nodes <- getRanking >>= mapM (P.getServerNode zkHandle)
-  let resp = GetNodesRankingResponse $ V.fromList nodes
-  returnResp resp
+getAllocatedNodeHandler :: ServerContext
+  -> ServerRequest 'Normal Empty ServerNode
+  -> IO (ServerResponse 'Normal ServerNode)
+getAllocatedNodeHandler ServerContext{..} ServerNormalRequest {} =
+  defaultExceptionHandle $
+    getCandidateLeader zkHandle >>= returnResp
 
 takeSubscription :: ServerContext
                  -> ServerRequest 'Normal TakeSubscriptionRequest Empty

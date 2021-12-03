@@ -18,6 +18,7 @@ import qualified Data.Vector               as V
 import           Data.Word                 (Word32, Word64)
 import           GHC.Generics              (Generic)
 import           Network.GRPC.HighLevel    (StreamSend)
+import qualified Text.Read                 as Read
 import           Z.Data.CBytes             (CBytes)
 import qualified Z.Data.CBytes             as CB
 import           Z.IO.Network              (PortNumber)
@@ -59,7 +60,17 @@ data ServerOpts = ServerOpts
   , _serverLogLevel     :: Log.Level
   , _serverLogWithColor :: Bool
   , _ldLogLevel         :: Log.LDLogLevel
+  , _loadBalanceMode    :: LoadBalanceMode
   } deriving (Show)
+
+data LoadBalanceMode
+  = RoundRobin
+  | HardwareUsage
+  deriving (Show, Eq, Generic, FromJSON, ToJSON)
+
+newtype ClusterConfig = ClusterConfig
+  { loadBalanceMode :: LoadBalanceMode
+  } deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 type Timestamp = Int64
 
@@ -124,7 +135,12 @@ data LoadManager = LoadManager {
     sID             :: ServerID
   , lastSysResUsage :: MVar SystemResourceUsage
   , loadReport      :: MVar LoadReport
-  , loadReports     :: MVar ServerLoadReports
+  , loadReportZK    :: MVar LoadReport
+}
+
+data LoadBalancer = LoadBalancer {
+    mode        :: LoadBalanceMode
+  , loadReports :: MVar ServerLoadReports
 }
 
 data LoadReport = LoadReport {
@@ -161,3 +177,10 @@ data ProducerContext = ProducerContext
   { _prdctxStream :: T.Text
   , _prdctxNode   :: ServerNode
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
+
+instance Read LoadBalanceMode where
+  readPrec = do
+    Read.lexP >>= \case
+      Read.Ident "round-robin"     -> return RoundRobin
+      Read.Ident "hardware-usage"  -> return HardwareUsage
+      x -> errorWithoutStackTrace $ "cannot parse value: " <> show x

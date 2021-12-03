@@ -4,108 +4,120 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.LoadBalance
-  ( getNodesRanking
+  ( getAllocatedNode
 
   , startLoadBalancer
   , startWritingLoadReport
-  , getRanking
+  , getCandidateLeader
 
   , updateLoadReport
   , updateLoadReports
   ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Suspend       (mDelay, sDelay)
-import           Control.Concurrent.Timer         (newTimer, repeatedStart)
+import           Control.Concurrent.Suspend               (mDelay, sDelay)
+import           Control.Concurrent.Timer                 (newTimer,
+                                                           repeatedStart)
 import           Control.Monad
-import           Data.Aeson                       (decode, encode)
-import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (IORef, atomicWriteIORef,
-                                                   newIORef, readIORef)
-import           Data.List                        (sortOn, (\\))
-import           Data.Time.Clock.System           (SystemTime (..),
-                                                   getSystemTime)
-import qualified Data.Vector                      as V
-import           GHC.IO                           (unsafePerformIO)
+import           Data.Aeson                               (decode, encode)
+import qualified Data.HashMap.Strict                      as HM
+import           Data.IORef                               (IORef,
+                                                           atomicWriteIORef,
+                                                           newIORef, readIORef)
+import           Data.List                                (sortOn, (\\))
+import qualified Data.List                                as L
+import           Data.Time.Clock.System                   (SystemTime (..),
+                                                           getSystemTime)
+import           GHC.IO                                   (unsafePerformIO)
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Network.GRPC.HighLevel.Generated         (withGRPCClient)
 import           System.Statgrab
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper                        (zooGetChildren, zooSet,
-                                                   zooWatchGet)
+import qualified Z.Data.CBytes                            as CB
+import           ZooKeeper                                (zooGetChildren,
+                                                           zooSet, zooWatchGet)
 import           ZooKeeper.Types
 
-import           HStream.Client.Utils             (mkClientNormalRequest,
-                                                   mkGRPCClientConf)
-import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (ServerNode)
+import           HStream.Client.Utils                     (mkClientNormalRequest,
+                                                           mkGRPCClientConf)
+import qualified HStream.Logger                           as Log
+import           HStream.Server.HStreamApi                (ServerNode (..))
 import           HStream.Server.HStreamInternal
-import           HStream.Server.Persistence       (getServerInternalAddr,
-                                                   getServerNode,
-                                                   serverLoadPath,
-                                                   serverRootPath)
+import           HStream.Server.Persistence               (getServerIds,
+                                                           getServerInternalAddr,
+                                                           getServerNode,
+                                                           serverLoadPath,
+                                                           serverRootPath)
+import           HStream.Server.Persistence.ClusterConfig
 import           HStream.Server.Types
-import           HStream.ThirdParty.Protobuf      (Empty (Empty))
-import           HStream.Utils                    (bytesToLazyByteString,
-                                                   lazyByteStringToBytes)
+import           HStream.ThirdParty.Protobuf              (Empty (Empty))
+import           HStream.Utils                            (bytesToLazyByteString,
+                                                           ifM,
+                                                           lazyByteStringToBytes)
 
---------------------------------------------------------------------------------
-
-getNodesRanking :: ServerContext -> IO [ServerNode]
-getNodesRanking ctx@ServerContext{..} = do
+getAllocatedNode :: ServerContext -> IO ServerNode
+getAllocatedNode ServerContext{..} = do
   leader <- readMVar leaderID
-  case serverID == leader of
-    True -> do
-      getRanking >>= mapM (getServerNode zkHandle)
-    False -> do
-      addr <- getServerInternalAddr zkHandle leader
-      withGRPCClient (mkGRPCClientConf addr) $ \client -> do
-        HStreamInternal{..} <- hstreamInternalClient client
-        hstreamInternalGetNodesRanking (mkClientNormalRequest Empty) >>= \case
-          ClientNormalResponse (GetNodesRankingResponse nodes) _meta1 _meta2 _code _details -> do
-            return $ V.toList nodes
-          ClientErrorResponse err -> do
-            Log.warning . Log.buildString $
-              "Failed to get nodes ranking from leader " <> show leader <> ": " <> show err
-            getNodesRanking ctx
+  ifM (serverID == leader) (getCandidateLeader zkHandle) $ do
+    addr <- getServerInternalAddr zkHandle leader
+    withGRPCClient (mkGRPCClientConf addr) $ \client -> do
+      HStreamInternal{..} <- hstreamInternalClient client
+      hstreamInternalGetAllocatedNode (mkClientNormalRequest Empty) >>= \case
+        ClientNormalResponse node _meta1 _meta2 _code _details -> return node
+        ClientErrorResponse err -> do
+          Log.warning . Log.buildString $
+            "Failed to get available node from leader " <> show leader <> ": " <> show err
+          getServerNode zkHandle serverID
 
---------------------------------------------------------------------------------
+getCandidateLeader :: ZHandle -> IO ServerNode
+getCandidateLeader zkHandle = do
+  mode <- getLoadBalanceMode zkHandle
+  case mode of
+    RoundRobin    -> getNextNodeRoundRobin zkHandle
+    HardwareUsage -> getNextNodeByRank zkHandle
 
-getRanking :: IO ServerRanking
-getRanking = readIORef serverRanking
-
-startLoadBalancer :: ZHandle -> LoadManager -> IO ()
-startLoadBalancer zk lm@LoadManager{..} = do
-  -- Write load balancing data
-  updateLoadReports zk loadReports
-
-  -- Load balancing service
-  zkReportUpdateTimer zk lm
+startLoadBalancer :: ZHandle -> IO LoadBalancer
+startLoadBalancer zk = do
+  mode <- getLoadBalanceMode zk
+  loadReports <- newMVar HM.empty
+  when (mode == HardwareUsage) $
+    updateLoadReports zk loadReports
+  return LoadBalancer {..}
 
 startWritingLoadReport :: ZHandle -> LoadManager -> IO ()
 startWritingLoadReport zk lm@LoadManager{..} = do
   lr <- readMVar loadReport
   writeLoadReportToZooKeeper zk sID lr
   localReportUpdateTimer lm
+  zkReportUpdateTimer zk lm
+
+--------------------------------------------------------------------------------
+
+getNextNodeRoundRobin :: ZHandle -> IO ServerNode
+getNextNodeRoundRobin zkHandle = do
+  allocated <- takeMVar currentRound
+  ids@(x:_) <- getServerIds zkHandle
+  case ids L.\\ allocated of
+    [] -> do
+      putMVar currentRound [x]
+      getServerNode zkHandle x
+    next:_ -> do
+      putMVar currentRound (next:allocated)
+      getServerNode zkHandle next
+
+getNextNodeByRank :: ZHandle -> IO ServerNode
+getNextNodeByRank zk = do
+  x:_ <- readIORef serverRanking
+  getServerNode zk x
+
 --------------------------------------------------------------------------------
 
 serverRanking :: IORef [ServerID]
 serverRanking = unsafePerformIO $ newIORef []
 {-# NOINLINE serverRanking #-}
 
-writeLoadReportToZooKeeper :: ZHandle -> ServerID -> LoadReport -> IO ()
-writeLoadReportToZooKeeper zk sID lr = void $
-  zooSet zk (serverLoadPath <> "/" <> CB.pack (show sID)) (Just ((lazyByteStringToBytes . encode) lr)) Nothing
-
--- Update data on the server according to the data in zk and set watch for any new updates
-updateLoadReports
-  :: ZHandle -> MVar ServerLoadReports
-  -> IO ()
-updateLoadReports zk hmapM  = do
-  Log.debug "Updating local load reports map and set watch on every server"
-  names <- unStrVec . strsCompletionValues <$> zooGetChildren zk serverRootPath
-  _IDs <- HM.keys <$> readMVar hmapM
-  mapM_ (getAndWatchReport zk hmapM) ((read . CB.unpack <$> names) \\ _IDs)
+currentRound :: MVar [ServerID]
+currentRound = unsafePerformIO $ newMVar []
+{-# NOINLINE currentRound #-}
 
 --------------------------------------------------------------------------------
 -- Timer
@@ -115,12 +127,11 @@ localReportUpdateTimer LoadManager{..} = do
   timer <- newTimer
   void $ repeatedStart timer
     (do
-      hmap <- readMVar loadReports
+      lrzk <- readMVar loadReportZK
       updateLoadReport lastSysResUsage loadReport
       lr' <- readMVar loadReport
-      Log.debug . Log.buildString $ "Scheduled local report update" <> show lr'
-      when (abs (getPercentageUsage lr' -
-            maybe 0 getPercentageUsage (HM.lookup sID hmap)) > 5)
+      when
+        (abs (getPercentageUsage lr' - getPercentageUsage lrzk) > 5)
         (putMVar ifUpdateZK ()))
     (sDelay 5)
 
@@ -149,7 +160,22 @@ updateLoadReport mSysResUsg mLoadReport = do
   void $ swapMVar mLoadReport loadReport
   void $ swapMVar mSysResUsg lastUsage'
 
+writeLoadReportToZooKeeper :: ZHandle -> ServerID -> LoadReport -> IO ()
+writeLoadReportToZooKeeper zk sID lr = void $ zooSet zk path value Nothing
+  where
+    path = serverLoadPath <> "/" <> CB.pack (show sID)
+    value = Just ((lazyByteStringToBytes . encode) lr)
+
 --------------------------------------------------------------------------------
+-- Update data on the server according to the data in zk and set watch for any new updates
+updateLoadReports
+  :: ZHandle -> MVar ServerLoadReports
+  -> IO ()
+updateLoadReports zk hmapM  = do
+  Log.debug "Updating local load reports map and set watch on every server"
+  names <- unStrVec . strsCompletionValues <$> zooGetChildren zk serverRootPath
+  _IDs <- HM.keys <$> readMVar hmapM
+  mapM_ (getAndWatchReport zk hmapM) ((read . CB.unpack <$> names) \\ _IDs)
 
 getAndWatchReport
   :: ZHandle

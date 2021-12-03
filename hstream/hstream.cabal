@@ -54,6 +54,7 @@ library
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
     HStream.Server.Persistence.Common
+    HStream.Server.Persistence.ClusterConfig
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Nodes
     HStream.Server.Persistence.Object
