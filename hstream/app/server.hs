@@ -5,32 +5,32 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent             (forkIO)
-import           Control.Monad                  (void)
-import           Network.GRPC.HighLevel         (ServiceOptions (..))
-import           Network.GRPC.HighLevel.Client  (Port (unPort))
+import           Control.Concurrent               (forkIO)
+import           Control.Monad                    (void)
+import qualified Data.Text                        as T
+import           Network.GRPC.HighLevel           (ServiceOptions (..))
+import           Network.GRPC.HighLevel.Client    (Port (unPort))
 import           Options.Applicative
-import           Text.RawString.QQ              (r)
-import           ZooKeeper                      (withResource)
+import           Text.RawString.QQ                (r)
+import           ZooKeeper                        (withResource)
 
-import qualified HStream.Logger                 as Log
-import           HStream.Server.Bootstrap       (startServer)
-import           HStream.Server.HStreamApi      (hstreamApiServer)
-import           HStream.Server.HStreamInternal (hstreamInternalServer)
-import           HStream.Server.Handler         (handlers)
-import           HStream.Server.Initialization  (initializeServer)
-import           HStream.Server.InternalHandler (internalHandlers)
-import           HStream.Server.Leader          (selectLeader)
-import           HStream.Server.LoadBalance     (startWritingLoadReport)
-import           HStream.Server.Persistence     (defaultHandle,
-                                                 initializeAncestors)
-import           HStream.Server.Types           (LoadManager,
-                                                 ServerContext (..),
-                                                 ServerOpts (..))
-import           HStream.Store                  (Compression (..))
-import qualified HStream.Store.Admin.API        as AA
-import qualified HStream.Store.Logger           as Log
-import           HStream.Utils                  (setupSigsegvHandler)
+import qualified HStream.Logger                   as Log
+import           HStream.Server.ConsistentHashing (updateHashRing)
+import           HStream.Server.HStreamApi        (hstreamApiServer)
+import           HStream.Server.HStreamInternal   (hstreamInternalServer)
+import           HStream.Server.Handler           (handlers)
+import           HStream.Server.Initialization    (initNodePath,
+                                                   initializeServer)
+import           HStream.Server.InternalHandler   (internalHandlers)
+import           HStream.Server.Leader            (selectLeader)
+import           HStream.Server.Persistence       (defaultHandle,
+                                                   initializeAncestors)
+import           HStream.Server.Types             (ServerContext (..),
+                                                   ServerOpts (..))
+import           HStream.Store                    (Compression (..))
+import qualified HStream.Store.Admin.API          as AA
+import qualified HStream.Store.Logger             as Log
+import           HStream.Utils                    (setupSigsegvHandler)
 
 -- TODO
 -- 1. config file for the Server
@@ -123,15 +123,15 @@ app config@ServerOpts{..} = do
   setupSigsegvHandler
   Log.setLogDeviceDbgLevel' _ldLogLevel
   withResource (defaultHandle _zkUri) $ \zk -> do
-    (options, options', serverContext, lm) <- initializeServer config zk
     initializeAncestors zk
-    startServer zk config (serve options options' serverContext lm)
+    (options, options', serverContext@ServerContext{..}) <- initializeServer config zk
+    initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+    void . forkIO $ updateHashRing zk loadBalanceHashRing
+    serve options options' serverContext
 
-serve :: ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO ()
-serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
-  startWritingLoadReport zkHandle lm
-
-  selectLeader sc lm
+serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
+serve options@ServiceOptions{..} optionsInternal sc = do
+  selectLeader sc
 
   -- GRPC service
   Log.i "************************"
@@ -142,7 +142,7 @@ serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
-  Log.i $ "Server started on port " <> Log.buildInt (unPort serverPort)
+  Log.i $ "Server is starting on port " <> Log.buildInt (unPort serverPort)
   Log.i "*************************"
   api <- handlers sc
   internalApi <- internalHandlers sc

@@ -14,13 +14,8 @@ service HStreamInternal {
   rpc RestartConnector(CreateSinkConnectorRequest) returns (Connector) {}
   rpc TerminateConnector(TerminateConnectorRequest) returns (google.protobuf.Empty) {}
 
-  rpc GetNodesRanking(google.protobuf.Empty) returns (GetNodesRankingResponse) {}
   rpc TakeSubscription(TakeSubscriptionRequest) returns (google.protobuf.Empty) {}
   rpc TakeStream(TakeStreamRequest) returns (google.protobuf.Empty) {}
-}
-
-message GetNodesRankingResponse {
-  repeated ServerNode nodes = 1;
 }
 
 message TakeSubscriptionRequest {

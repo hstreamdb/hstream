@@ -25,11 +25,9 @@ import           GHC.IO                           (unsafePerformIO)
 import           HStream.Client.Utils             (mkClientNormalRequest,
                                                    mkGRPCClientConf)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.ConsistentHashing (getAllocatedNode)
 import           HStream.Server.HStreamApi        (ServerNode (serverNodeId))
 import           HStream.Server.HStreamInternal
-import           HStream.Server.LoadBalance       (getNodesRanking,
-                                                   startLoadBalancer,
-                                                   updateLoadReports)
 import           HStream.Server.Persistence       (decodeZNodeValue,
                                                    decodeZNodeValue',
                                                    encodeValueToBytes,
@@ -37,10 +35,7 @@ import           HStream.Server.Persistence       (decodeZNodeValue,
                                                    setZkData)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Persistence.Nodes (getServerInternalAddr)
-import           HStream.Server.Types             (LoadManager (..),
-                                                   ProducerContext (ProducerContext, _prdctxNode, _prdctxStream),
-                                                   ServerContext (..), ServerID,
-                                                   SubscriptionContext (..))
+import           HStream.Server.Types
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Z.Data.CBytes                    (CBytes)
@@ -50,9 +45,9 @@ import           ZooKeeper.Exception
 import           ZooKeeper.Recipe                 (election)
 import           ZooKeeper.Types
 
-selectLeader :: ServerContext -> LoadManager -> IO ()
-selectLeader ctx@ServerContext{..} lm = do
-  void $ forkIO $ do
+selectLeader :: ServerContext -> IO ()
+selectLeader ctx@ServerContext{..} = do
+  void $ forkIO $
     zooWatchGet zkHandle leaderPath (const watcherApp) (\_ -> return ())
   uuid <- nextRandom
   void . forkIO $ election zkHandle "/election" (CB.pack . UUID.toString $ uuid)
@@ -62,11 +57,11 @@ selectLeader ctx@ServerContext{..} lm = do
 
       -- Leader: watch for nodes changes & do load balancing
       Log.i $ "Current leader: " <> Log.buildString (show serverID)
-      startLoadBalancer zkHandle lm
       putMVar watchLock ()
-      actionTriggedByNodesChange ctx zkHandle lm
+      actionTriggedByNodesChange ctx zkHandle
+
       -- Set watcher for nodes changes
-      watchNodes ctx lm
+      watchNodes ctx
     )
     (const stepApp)
   where
@@ -78,32 +73,32 @@ selectLeader ctx@ServerContext{..} lm = do
       case v of
         Just x  -> updateLeader (read . CB.unpack . CB.fromBytes $ x)
         Nothing -> pure ()
-    updateLeader new = do
+    updateLeader new =
       isEmptyMVar leaderID >>= \case
-        True  -> putMVar leaderID new
-        False -> void $ swapMVar leaderID new
+      True  -> putMVar leaderID new
+      False -> void $ swapMVar leaderID new
 
-watchNodes :: ServerContext -> LoadManager -> IO ()
-watchNodes sc@ServerContext{..} lm = do
+watchNodes :: ServerContext -> IO ()
+watchNodes sc@ServerContext{..} =
   zooWatchGetChildren zkHandle serverIdPath callback result
   where
     callback HsWatcherCtx{..} = do
-      _ <- forkIO $ watchNodes sc lm
-      actionTriggedByNodesChange sc watcherCtxZHandle lm
+      _ <- forkIO $ watchNodes sc
+      actionTriggedByNodesChange sc watcherCtxZHandle
     result _ = pure ()
 
-actionTriggedByNodesChange :: ServerContext -> ZHandle -> LoadManager -> IO ()
-actionTriggedByNodesChange ctx zkHandle LoadManager{..} = do
+actionTriggedByNodesChange :: ServerContext -> ZHandle -> IO ()
+actionTriggedByNodesChange ctx@ServerContext{..} zk = do
   void $ takeMVar watchLock
   StringsCompletion (StringVector children) <-
-    zooGetChildren zkHandle serverIdPath
-  serverMap <- getCurrentServers zkHandle children
-  oldNodes <- getPrevServers zkHandle
+    zooGetChildren zk serverIdPath
+  serverMap <- getCurrentServers zk children
+  oldNodes <- getPrevServers zk
   let newNodes = children \\ M.keys oldNodes
   let failedNodes = M.keys oldNodes \\ children
   unless (null newNodes) $ do
     Log.debug "Some node started. "
-    updateLoadReports zkHandle loadReports
+    --insert
   unless (null failedNodes) $ do
     let failedNodesNames = mapMaybe (`M.lookup` oldNodes) failedNodes
     Log.debug $ fromString (show failedNodesNames)
@@ -137,23 +132,16 @@ getFailedSubcsriptions ServerContext{..} deadServers = do
 
 restartSubscription :: ServerContext -> String -> IO Bool
 restartSubscription ctx@ServerContext{..} subID = do
-  getNodesRanking ctx >>= go
-  where
-    go [] = do
-      Log.warning . Log.buildString $
-        "No available node to restart subscription " <> subID
-      return False
-    go (node:nodes) = do
-      addr <- getServerInternalAddr zkHandle (serverNodeId node)
-      withGRPCClient (mkGRPCClientConf addr) $ \client -> do
-        HStreamInternal{..} <- hstreamInternalClient client
-        let req = TakeSubscriptionRequest (T.pack subID)
-        hstreamInternalTakeSubscription (mkClientNormalRequest req) >>= \case
-          (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
-            return True
-          (ClientErrorResponse err) -> do
-            Log.warning . Log.buildString $ show err
-            go nodes
+  node <- getAllocatedNode ctx (T.pack subID)
+  addr <- getServerInternalAddr zkHandle (serverNodeId node)
+  withGRPCClient (mkGRPCClientConf addr) $ \client -> do
+    HStreamInternal{..} <- hstreamInternalClient client
+    let req = TakeSubscriptionRequest (T.pack subID)
+    hstreamInternalTakeSubscription (mkClientNormalRequest req) >>= \case
+      ClientNormalResponse {} -> return True
+      ClientErrorResponse err -> do
+        Log.warning . Log.buildString $ show err
+        return False
 
 getFailedProducers :: ServerContext -> [ServerID] -> IO [ProducerContext]
 getFailedProducers ServerContext{..} deadServers = do
@@ -169,24 +157,17 @@ getFailedProducers ServerContext{..} deadServers = do
 
 restartProducer :: ServerContext -> ProducerContext -> IO Bool
 restartProducer ctx@ServerContext{..} ProducerContext{..} = do
-  getNodesRanking ctx >>= go
-  where
-    go [] = do
-      Log.warning . Log.buildString $
-        "No available node to transfer stream " <> T.unpack _prdctxStream
-      return False
-    go (node:nodes) = do
-      addr <- getServerInternalAddr zkHandle (serverNodeId node)
-      withGRPCClient (mkGRPCClientConf addr) $ \client -> do
-        Log.debug . Log.buildString $ "Sending producer to " <> show node
-        HStreamInternal{..} <- hstreamInternalClient client
-        let req = TakeStreamRequest _prdctxStream
-        hstreamInternalTakeStream (mkClientNormalRequest req) >>= \case
-          (ClientNormalResponse _ _meta1 _meta2 _code _details) -> do
-            return True
-          (ClientErrorResponse err) -> do
-            Log.warning . Log.buildString $ show err
-            go nodes
+  node <- getAllocatedNode ctx _prdctxStream
+  addr <- getServerInternalAddr zkHandle (serverNodeId node)
+  withGRPCClient (mkGRPCClientConf addr) $ \client -> do
+    Log.debug . Log.buildString $ "Sending producer to " <> show node
+    HStreamInternal{..} <- hstreamInternalClient client
+    let req = TakeStreamRequest _prdctxStream
+    hstreamInternalTakeStream (mkClientNormalRequest req) >>= \case
+      (ClientNormalResponse _ _meta1 _meta2 _code _details) -> return True
+      (ClientErrorResponse err) -> do
+        Log.warning . Log.buildString $ show err
+        return False
 
 --------------------------------------------------------------------------------
 
@@ -195,9 +176,9 @@ watchLock = unsafePerformIO newEmptyMVar
 {-# NOINLINE watchLock #-}
 
 getPrevServers :: ZHandle -> IO (M.Map CBytes Word32)
-getPrevServers zk = do
+getPrevServers zk =
   decodeZNodeValue zk serverIdPath >>= \case
-    Just x -> return x; Nothing -> return M.empty
+  Just x -> return x; Nothing -> return M.empty
 
 getCurrentServers :: ZHandle -> [CBytes] -> IO (M.Map CBytes Word32)
 getCurrentServers zk = foldrM f M.empty

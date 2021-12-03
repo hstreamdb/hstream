@@ -79,6 +79,7 @@ data ServerContext = ServerContext {
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
+  , loadBalanceHashRing      :: MVar HashRing
 }
 
 type SubscriptionId = T.Text
@@ -118,41 +119,6 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriSignals           :: V.Vector (MVar ())
 }
 
-type ServerLoadReports = HM.HashMap ServerID LoadReport
-
-data LoadManager = LoadManager {
-    sID             :: ServerID
-  , lastSysResUsage :: MVar SystemResourceUsage
-  , loadReport      :: MVar LoadReport
-  , loadReports     :: MVar ServerLoadReports
-}
-
-data LoadReport = LoadReport {
-    systemResourceUsage :: SystemResourcePercentageUsage
-  , isUnderloaded       :: Bool
-  , isOverloaded        :: Bool
-  } deriving (Eq, Generic, Show)
-instance FromJSON LoadReport
-instance ToJSON LoadReport
-
-data SystemResourceUsage
-  = SystemResourceUsage {
-    cpuUsage      :: (Integer, Integer)
-  , txTotal       :: Integer
-  , rxTotal       :: Integer
-  , collectedTime :: Integer
-  } deriving (Eq, Generic, Show)
-
-data SystemResourcePercentageUsage =
-  SystemResourcePercentageUsage {
-    cpuPctUsage       :: Double
-  , memoryPctUsage    :: Double
-  , bandwidthInUsage  :: Double
-  , bandwidthOutUsage :: Double
-  } deriving (Eq, Generic, Show)
-instance FromJSON SystemResourcePercentageUsage
-instance ToJSON SystemResourcePercentageUsage
-
 data SubscriptionContext = SubscriptionContext
   { _subctxNode      :: Word32
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
@@ -161,3 +127,10 @@ data ProducerContext = ProducerContext
   { _prdctxStream :: T.Text
   , _prdctxNode   :: ServerNode
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
+
+data HashRing = HashRing
+  { nodeMap  :: Map Word32 ServerNode
+  , vnodes   :: HM.HashMap Word32 [Word32]
+  , replicas :: Int
+  }
+  deriving (Eq, Show)

@@ -13,6 +13,7 @@ module HStream.Server.Persistence.Utils
   , queriesPath
   , connectorsPath
   , serverLoadPath
+  , serverIdPath
   , subscriptionsPath
   , subscriptionCtxsPath
   , producerCtxsPath
@@ -45,8 +46,7 @@ module HStream.Server.Persistence.Utils
   , encodeValueToBytes
 
   , ifThrow
-  , configPath
-  , serverIdPath) where
+  ) where
 
 --------------------------------------------------------------------------------
 -- Path
@@ -120,16 +120,11 @@ producerCtxsPath = rootPath <> "/producerCtxs"
 producerCtxsLockPath :: CBytes
 producerCtxsLockPath = lockPath <> "/producerCtxs"
 
-configPath :: CBytes
-configPath = rootPath <> "/config"
-
-
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
         , serverRootPath
         , serverIdPath
-        , configPath
         , leaderPath
         , lockPath
         , serverLoadPath
@@ -233,7 +228,7 @@ decodeZNodeValue zk nodePath = do
     Right a                  -> return $ decodeDataCompletion a
 
 decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
-decodeZNodeValue' zk nodePath = do
+decodeZNodeValue' zk nodePath =
   zooGet zk nodePath <&> decodeDataCompletion'
 
 encodeValueToBytes :: ToJSON a => a -> Bytes

@@ -31,14 +31,13 @@ library
     HStream.Client.Internal
     HStream.Client.Type
     HStream.Client.Utils
-    HStream.Server.Bootstrap
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
     HStream.Server.Initialization
     HStream.Server.InternalHandler
     HStream.Server.Leader
-    HStream.Server.LoadBalance
+    HStream.Server.ConsistentHashing
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
     HStream.Server.Types
@@ -70,6 +69,7 @@ library
     , clickhouse-haskell
     , containers
     , deepseq
+    , digest
     , grpc-haskell
     , grpc-haskell-core
     , haxl

@@ -47,7 +47,6 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
-import           HStream.Server.LoadBalance       (getNodesRanking)
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
@@ -202,20 +201,17 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                       | otherwise -> return $
                           ServerBiDiResponse [] StatusInternal "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
                     Nothing -> do
+                      -- TODO: Assign the subscription to the node allocated
+                      -- nodeID <- serverNodeId <$> getAllocatedNode ctx subscriptionId
                       Log.debug $ Log.buildText streamingFetchRequestSubscriptionId <> " need to assign to a server node."
-                      nodeIDs <- getNodesRanking ctx <&> fmap serverNodeId
-                      if serverID `L.elem` nodeIDs
-                        then do
-                          let subCtx = SubscriptionContext { _subctxNode = serverID }
-                          modifyMVar_ subscriptionCtx
-                            (\ctxs -> do
-                                newCtxMVar <- newMVar subCtx
-                                return $ Map.insert (T.unpack streamingFetchRequestSubscriptionId) newCtxMVar ctxs
-                            )
-                          P.storeObject streamingFetchRequestSubscriptionId subCtx zkHandle -- sync subctx to zk
-                          doFirstFetchCheck streamingFetchReq
-                        else do
-                          return $ ServerBiDiResponse [] StatusInternal "There is no available node for allocating the subscription"
+                      let subCtx = SubscriptionContext { _subctxNode = serverID }
+                      modifyMVar_ subscriptionCtx
+                        (\ctxs -> do
+                            newCtxMVar <- newMVar subCtx
+                            return $ Map.insert (T.unpack streamingFetchRequestSubscriptionId) newCtxMVar ctxs
+                        )
+                      P.storeObject streamingFetchRequestSubscriptionId subCtx zkHandle -- sync subctx to zk
+                      doFirstFetchCheck streamingFetchReq
                 False ->
                   return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
           | otherwise -> do
