@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   hserver:
-    image: hstreamdb/hstream
+    image: hstreamdb/hstream:v0.6.1
     depends_on:
       - zookeeper
       - hstore
@@ -30,8 +30,28 @@ services:
         --store-admin-host hstore --store-admin-port 6440 \
         --replicate-factor 3 \
 
+  hstream-http-server:
+    image: hstreamdb/hstream:v0.6.1
+    depends_on:
+      - hserver
+    ports:
+      - "127.0.0.1:6580:6580"
+    expose:
+      - 6580
+    networks:
+      - hstream-quickstart
+    command:
+      - bash
+      - "-c"
+      - |
+        set -e
+        /usr/local/bin/hstream-http-server \
+          -gRPCServerHost hserver \
+          -httpServerPort 6580 \
+          -gRPCServerPort 6570
+
   hstore:
-    image: hstreamdb/hstream
+    image: hstreamdb/hstream:v0.6.1
     networks:
       - hstream-quickstart
     volumes:
