@@ -18,10 +18,20 @@ jobs:
 
       - name: Push image to dockerhub
         run: |
-          echo "Login dockerhub..."
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" -a -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "Login dockerhub..."
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-          TAG=${GITHUB_REF#refs/*/}
-          echo "Build & Push ${IMAGE_NAME}:${TAG}..."
-          docker build . -t ${IMAGE_NAME}:${TAG}
-          docker push ${IMAGE_NAME}:${TAG}
+            TAG=${GITHUB_REF#refs/*/}
+            echo "Build & Push ${IMAGE_NAME}:${TAG}..."
+            docker build . -t ${IMAGE_NAME}:${TAG}
+            docker push ${IMAGE_NAME}:${TAG}
+
+            curl \
+              -X POST \
+              -H 'Accept: application/vnd.github.v3+json' \
+              ${{ secrets.DISPATCH_URL }} \
+              --data "{\"event_type\": \"image_updated\", \"client_payload\": { \"tag\": \"$TAG\" }}"
+          else
+            echo "Empty dockerhub user info..."
+          fi
