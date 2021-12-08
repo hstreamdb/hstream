@@ -15,6 +15,7 @@ import (
 var (
 	gRPCServerHost = flag.String("gRPCServerHost", "127.0.0.1", "gRPCServerHost")
 	gRPCServerPort = flag.String("gRPCServerPort", "6570", "gRPCServerPort")
+	httpServerHost = flag.String("httpServerHost", "127.0.0.1", "httpServerHost")
 	httpServerPort = flag.String("httpServerPort", "6580", "httpServerPort")
 	hpCtx          hstreamHttpServer.HostPortCtx
 )
@@ -59,7 +60,7 @@ func main() {
 		log.Printf("Error: %v\n", err)
 	}
 
-	gwServer := &http.Server{Addr: ":" + *httpServerPort, Handler: gwMux}
+	gwServer := &http.Server{Addr: *httpServerHost + ":" + *httpServerPort, Handler: gwMux}
 	log.Printf("Server started on port %v\n", *httpServerPort)
 	log.Fatalln(gwServer.ListenAndServe())
 
