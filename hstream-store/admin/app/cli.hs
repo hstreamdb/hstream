@@ -2,7 +2,6 @@
 
 module Main where
 
-import           Control.Applicative         (liftA2)
 import qualified Data.Text.IO                as TIO
 import           Numeric                     (showFFloat)
 import           Options.Applicative         ((<**>))
@@ -20,9 +19,6 @@ main = runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
     opts = O.info
       (cliParser <**> O.helper)
       (O.fullDesc <> O.header "======= HStore Admin CLI =======")
-
-cli :: O.Parser (AA.HeaderConfig AA.AdminAPI, Command)
-cli = liftA2 (,) headerConfigParser commandParser
 
 runCli :: Cli -> IO ()
 runCli Cli{..} = Log.setLogLevel logLevel True >> runCli' headerConfig command
