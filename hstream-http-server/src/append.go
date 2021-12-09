@@ -31,7 +31,7 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 	var (
 		in B64Payload
 	)
-	_, outboundMarshaler := runtime.MarshalerForRequest(mux, r)
+	_, outboundMarshaller := runtime.MarshalerForRequest(mux, r)
 
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		log.Printf("Error: %v\n", err)
@@ -44,7 +44,7 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 		grpc.WithInsecure())
 	if err != nil {
 		log.Printf("Error: %v\n", err)
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprint(err)))
 		return
 	}
@@ -52,7 +52,7 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 		if err := conn.Close(); err != nil {
 
 			log.Printf("Error: %v\n", err)
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(fmt.Sprint(err)))
 			return
 		}
@@ -66,9 +66,9 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 	})
 	if err != nil {
 		log.Printf("Error: %v\n", err)
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprint(err)))
 		return
 	}
-	runtime.ForwardResponseMessage(ctx, mux, outboundMarshaler, w, r, resp, mux.GetForwardResponseOptions()...)
+	runtime.ForwardResponseMessage(ctx, mux, outboundMarshaller, w, r, resp, mux.GetForwardResponseOptions()...)
 }

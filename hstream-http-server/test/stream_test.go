@@ -36,11 +36,7 @@ func TestStream(t *testing.T) {
 	assert.NotContains(t, string(body0), test_stream)
 	assert.Contains(t, string(body1), test_stream)
 
-	const record = `{
-	"x": 8,
-	"y": 7,
-	"Hello": "World"
-}`
+	const record = `{"flag": 0, "payload": "{\"x\": 8, \"y\": 7, \"Hello\": \"World\"}"}`
 	recordReader := strings.NewReader(record)
 	var appendResp hstreamApi.AppendResponse
 	resp, err = http.Post(serverPrefix+"/streams/"+test_stream+":publish", "application/json", recordReader)
