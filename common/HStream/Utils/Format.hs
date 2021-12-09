@@ -37,7 +37,7 @@ class Format a where
   formatResult ::a -> String
 
 instance Format Protobuf.Empty where
-  formatResult = const "Done. No results.\n"
+  formatResult = const "Done.\n"
 
 instance Format API.Stream where
   formatResult = (<> "\n") . T.unpack . API.streamStreamName
@@ -73,13 +73,13 @@ instance Format API.ListConnectorsResponse where
   formatResult = formatResult . V.toList . API.listConnectorsResponseConnectors
 
 instance Format API.AppendResponse where
-  formatResult = const "Done. No results.\n"
+  formatResult = const "Done.\n"
 
 instance Format API.CreateQueryStreamResponse where
-  formatResult = const "Done. No results.\n"
+  formatResult = const "Done.\n"
 
 instance Format API.TerminateQueriesResponse where
-  formatResult = const "Done. No results.\n"
+  formatResult = const "Done.\n"
 
 instance Format P.Struct where
   formatResult (P.Struct kv) =
@@ -91,7 +91,7 @@ instance Format P.Struct where
 
 --------------------------------------------------------------------------------
 emptyNotice :: String -> String
-emptyNotice xs = if null (words xs) then "Succeeded. No Results\n" else xs
+emptyNotice xs = if null (words xs) then "Succeeded. No results.\n" else xs
 
 formatCommandQueryResponse :: API.CommandQueryResponse -> String
 formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
