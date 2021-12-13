@@ -595,7 +595,7 @@ dispatchRecords records streamSends
             initVec
             records
 
-    newSenders <- zipWithM doDispatch (HM.toList streamSends) (V.toList recordGroups)
+    newSenders <- zipWithM doDispatch (cycle . HM.toList $ streamSends) (V.toList recordGroups)
     return . HM.fromList . catMaybes $ newSenders
   where
     doDispatch (name, sender) record = do
