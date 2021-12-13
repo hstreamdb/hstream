@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -414,29 +415,41 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                       (batch, lastBatch) = splitAt (len - 1) groups
                       -- When the number of records in an LSN exceeds the maximum number of records we
                       -- can fetch in a single read call, `batch' will be an empty list.
-                      maxReadSize = if null batch
+                  when (null lastBatch) $ do
+                      Log.fatal $ "lastBatch empty: " <> "groups = " <> Log.buildString (show groups)
+                               <> ", length of groups = " <> Log.buildInt len
+                  Log.debug $ "length batch=" <> Log.buildInt (length batch)
+                           <> ", length lastBatch=" <> Log.buildInt (length lastBatch)
+                  let maxReadSize = if null batch
                                       then length . last $ lastBatch
                                       else length . last $ batch
                       lastLSN = S.recordLSN . head . head $ lastBatch
-                  Log.debug $ "length batch=" <> Log.buildInt (length batch)
-                           <> ", length lastBatch=" <> Log.buildInt (length lastBatch)
-                           <> ", lastLSN=" <> Log.buildInt lastLSN
+                  Log.debug $ "maxReadSize = "<> Log.buildInt maxReadSize <> ", lastLSN=" <> Log.buildInt lastLSN
 
                   lastBatchRecords <- fetchLastLSN sriLogId lastLSN sriLdCkpReader maxReadSize
+                  (newGroups, isEmpty) <- if | null batch && null lastBatchRecords -> do
+                                                 Log.debug $ "doRead: both batch and lastBatchRecords are empty, lastLSN = " <> Log.buildInt lastLSN
+                                                 return ([[]], True)
+                                             | null batch -> return ([lastBatchRecords], False)
+                                             | null lastBatchRecords -> do
+                                                 Log.debug $ "doRead: read lastBatchRecords return empty, lastLSN = " <> Log.buildInt lastLSN
+                                                 return (batch, False)
+                                             | otherwise -> return (batch ++ [lastBatchRecords], False)
 
-                  let newGroups = batch ++ [lastBatchRecords]
-                      groupNums = map (\gp -> (S.recordLSN $ head gp, (fromIntegral $ length gp) :: Word32)) newGroups
-                      maxRecordId = RecordId lastLSN (fromIntegral $ length lastBatchRecords - 1)
-                      -- update window upper bound and batchNumMap
-                      newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
-                      receivedRecords = fetchResult newGroups
-                      newInfo = info { sriBatchNumMap = newBatchNumMap
-                                     , sriWindowUpperBound = maxRecordId
-                                     }
-
-                  void $ S.ckpReaderSetTimeout sriLdCkpReader 0
-                  S.ckpReaderStartReading sriLdCkpReader sriLogId (lastLSN + 1) S.LSN_MAX
-                  return (newInfo, Just receivedRecords)
+                  if isEmpty
+                    then return (info, Nothing)
+                    else do
+                      let groupNums = map (\gp -> (S.recordLSN $ head gp, (fromIntegral $ length gp) :: Word32)) newGroups
+                          maxRecordId = RecordId lastLSN (fromIntegral $ length lastBatchRecords - 1)
+                          -- update window upper bound and batchNumMap
+                          newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
+                          receivedRecords = fetchResult newGroups
+                          newInfo = info { sriBatchNumMap = newBatchNumMap
+                                         , sriWindowUpperBound = maxRecordId
+                                         }
+                      void $ S.ckpReaderSetTimeout sriLdCkpReader 0
+                      S.ckpReaderStartReading sriLdCkpReader sriLogId (lastLSN + 1) S.LSN_MAX
+                      return (newInfo, Just receivedRecords)
 
         doDispatch receivedRecords info@SubscribeRuntimeInfo {..} = do
           newStreamSends <- dispatchRecords receivedRecords sriStreamSends
