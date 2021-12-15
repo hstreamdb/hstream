@@ -41,6 +41,7 @@ import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
+import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
@@ -48,7 +49,6 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
-import           HStream.Server.LoadBalance       (getNodesRanking)
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
@@ -167,7 +167,7 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
+streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "Receive streamingFetch request"
 
   consumerNameRef   <- newIORef T.empty
@@ -191,32 +191,17 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
         Right (Just streamingFetchReq@StreamingFetchRequest {..})
           | isFirst -> do
             -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-              Log.debug $ "stream recive requst from " <> Log.buildText streamingFetchRequestConsumerName <> ", do check in isFirst branch"
+              Log.debug $ "stream received request from " <> Log.buildText streamingFetchRequestConsumerName <> ", do check in isFirst branch"
               -- the subscription has to exist and be bound to a server node
               P.checkIfExist @ZHandle @'SubRep
                 streamingFetchRequestSubscriptionId zkHandle >>= \case
                 True -> do
-                  P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
-                    Just SubscriptionContext{..}
-                      | _subctxNode == serverID -> do
-                          doFirstFetchCheck streamingFetchReq
-                      | otherwise -> return $
-                          ServerBiDiResponse [] StatusInternal "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
-                    Nothing -> do
-                      Log.debug $ Log.buildText streamingFetchRequestSubscriptionId <> " need to assign to a server node."
-                      nodeIDs <- getNodesRanking ctx <&> fmap serverNodeId
-                      if serverID `L.elem` nodeIDs
-                        then do
-                          let subCtx = SubscriptionContext { _subctxNode = serverID }
-                          modifyMVar_ subscriptionCtx
-                            (\ctxs -> do
-                                newCtxMVar <- newMVar subCtx
-                                return $ Map.insert (T.unpack streamingFetchRequestSubscriptionId) newCtxMVar ctxs
-                            )
-                          P.storeObject streamingFetchRequestSubscriptionId subCtx zkHandle -- sync subctx to zk
-                          doFirstFetchCheck streamingFetchReq
-                        else do
-                          return $ ServerBiDiResponse [] StatusInternal "There is no available node for allocating the subscription"
+                  hashRing <- readMVar loadBalanceHashRing
+                  let ServerNode{..} = getAllocatedNode hashRing streamingFetchRequestSubscriptionId
+                  if serverNodeId == serverID
+                    then doFirstFetchCheck streamingFetchReq
+                    else return $ ServerBiDiResponse [] StatusInternal
+                      "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
                 False ->
                   return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
           | otherwise -> do

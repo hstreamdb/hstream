@@ -6,31 +6,32 @@
 
 module HStream.Server.Types where
 
-import           Control.Concurrent        (MVar, ThreadId)
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.ByteString           (ByteString)
-import qualified Data.HashMap.Strict       as HM
-import           Data.Int                  (Int32, Int64)
-import           Data.Map                  (Map)
-import qualified Data.Map                  as Map
-import qualified Data.Text                 as T
-import qualified Data.Vector               as V
-import           Data.Word                 (Word32, Word64)
-import           GHC.Generics              (Generic)
-import           Network.GRPC.HighLevel    (StreamSend)
-import           Z.Data.CBytes             (CBytes)
-import qualified Z.Data.CBytes             as CB
-import           Z.IO.Network              (PortNumber)
-import           ZooKeeper.Types           (ZHandle)
+import           Control.Concurrent               (MVar, ThreadId)
+import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.ByteString                  (ByteString)
+import qualified Data.HashMap.Strict              as HM
+import           Data.Int                         (Int32, Int64)
+import           Data.Map                         (Map)
+import qualified Data.Map                         as Map
+import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
+import           Data.Word                        (Word32, Word64)
+import           GHC.Generics                     (Generic)
+import           Network.GRPC.HighLevel           (StreamSend)
+import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Network                     (PortNumber)
+import           ZooKeeper.Types                  (ZHandle)
 
-import qualified HStream.Logger            as Log
-import           HStream.Server.HStreamApi (RecordId (..), ServerNode,
-                                            StreamingFetchResponse (..))
-import qualified HStream.Stats             as Stats
-import           HStream.Store             (Compression)
-import qualified HStream.Store             as HS
-import qualified HStream.Store.Admin.API   as AA
-import qualified HStream.Store.Logger      as Log
+import           HStream.Common.ConsistentHashing (HashRing)
+import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi        (RecordId (..), ServerNode,
+                                                   StreamingFetchResponse (..))
+import qualified HStream.Stats                    as Stats
+import           HStream.Store                    (Compression)
+import qualified HStream.Store                    as HS
+import qualified HStream.Store.Admin.API          as AA
+import qualified HStream.Store.Logger             as Log
 
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"
@@ -69,7 +70,6 @@ data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverID                 :: Word32
   , scDefaultStreamRepFactor :: Int
-  , leaderID                 :: MVar Word32
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
@@ -78,6 +78,7 @@ data ServerContext = ServerContext {
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
+  , loadBalanceHashRing      :: MVar HashRing
 }
 
 type SubscriptionId = T.Text
@@ -117,19 +118,11 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
   , sriSignals           :: V.Vector (MVar ())
 }
 
-type ServerLoadReports = HM.HashMap ServerID LoadReport
-
-data LoadManager = LoadManager {
-    sID             :: ServerID
-  , lastSysResUsage :: MVar SystemResourceUsage
-  , loadReport      :: MVar LoadReport
-  , loadReports     :: MVar ServerLoadReports
-}
-
 data LoadReport = LoadReport {
-    systemResourceUsage :: SystemResourcePercentageUsage
-  , isUnderloaded       :: Bool
-  , isOverloaded        :: Bool
+    sysResUsage    :: SystemResourceUsage
+  , sysResPctUsage :: SystemResourcePercentageUsage
+  , isUnderloaded  :: Bool
+  , isOverloaded   :: Bool
   } deriving (Eq, Generic, Show)
 instance FromJSON LoadReport
 instance ToJSON LoadReport
@@ -140,7 +133,7 @@ data SystemResourceUsage
   , txTotal       :: Integer
   , rxTotal       :: Integer
   , collectedTime :: Integer
-  } deriving (Eq, Generic, Show)
+  } deriving (Eq, Generic, Show, FromJSON, ToJSON)
 
 data SystemResourcePercentageUsage =
   SystemResourcePercentageUsage {

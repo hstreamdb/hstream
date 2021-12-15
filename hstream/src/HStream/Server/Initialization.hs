@@ -7,36 +7,33 @@ module HStream.Server.Initialization
   , initNodePath
   ) where
 
-import           Control.Concurrent               (MVar, newEmptyMVar, newMVar)
+import           Control.Concurrent               (MVar, newMVar)
 import           Control.Exception                (SomeException, try)
 import qualified Data.HashMap.Strict              as HM
+import           Data.List                        (sort)
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
-import           Data.Time.Clock.System           (SystemTime (..),
-                                                   getSystemTime)
+import           Data.Word                        (Word32)
 import           Network.GRPC.HighLevel.Generated
 import           System.Exit                      (exitFailure)
-import           System.Statgrab                  (CPU (..), NetworkIO (..),
-                                                   NetworkInterface (..), Stats,
-                                                   runStats, snapshot,
-                                                   snapshots)
 import qualified Z.Data.CBytes                    as CB
 import           Z.Foreign                        (toByteString)
-import           ZooKeeper                        (zooCreateOpInit, zooMulti)
+import           ZooKeeper                        (zooCreateOpInit,
+                                                   zooGetChildren, zooMulti)
 import           ZooKeeper.Types
 
-import           Data.Word                        (Word32)
+import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.LoadBalance       (updateLoadReport)
 import           HStream.Server.Persistence       (NodeInfo (..),
                                                    NodeStatus (..),
                                                    encodeValueToBytes,
-                                                   serverIdPath, serverLoadPath,
+                                                   getServerNode',
+                                                   serverLoadPath,
                                                    serverRootPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
-import           HStream.Store                    (HsLogAttrs (HsLogAttrs),
-                                                   LogAttrs (LogAttrs),
+import           HStream.Store                    (HsLogAttrs (..),
+                                                   LogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
 import qualified HStream.Store.Admin.API          as AA
@@ -50,8 +47,6 @@ initNodePath zk serverID host port port' = do
                           }
   let ops = [ createEphemeral (serverRootPath, Just $ encodeValueToBytes nodeInfo)
             , createEphemeral (serverLoadPath, Nothing)
-            , zooCreateOpInit (serverIdPath <> "/")
-                      (Just (encodeValueToBytes serverID)) 0 zooOpenAclUnsafe ZooEphemeralSequential
             ]
   e' <- try $ zooMulti zk ops
   case e' of
@@ -66,7 +61,7 @@ initNodePath zk serverID host port port' = do
 
 initializeServer
   :: ServerOpts -> ZHandle
-  -> IO (ServiceOptions, ServiceOptions, ServerContext, LoadManager)
+  -> IO (ServiceOptions, ServiceOptions, ServerContext)
 initializeServer ServerOpts{..} zk = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   ldclient <- newLDClient _ldConfigPath
@@ -78,13 +73,9 @@ initializeServer ServerOpts{..} zk = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
   subscribeRuntimeInfo <- newMVar HM.empty
-  subscriptionCtx <- newMVar Map.empty
+  subscriptionCtx      <- newMVar Map.empty
 
-  lastSysResUsage <- initLastSysResUsage
-  currentLoadReport <- initLoadReport lastSysResUsage
-  currentLoadReports <- newMVar HM.empty
-
-  currentLeader <- newEmptyMVar
+  hashRing <- initializeHashRing zk
 
   return (
     defaultServiceOptions {
@@ -111,37 +102,14 @@ initializeServer ServerOpts{..} zk = do
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
-    , leaderID                 = currentLeader
-    },
-    LoadManager {
-      sID             = _serverID
-    , loadReport      = currentLoadReport
-    , lastSysResUsage = lastSysResUsage
-    , loadReports     = currentLoadReports
+    , loadBalanceHashRing      = hashRing
     })
 
 --------------------------------------------------------------------------------
 
-initLastSysResUsage :: IO (MVar SystemResourceUsage)
-initLastSysResUsage = do
-  CPU{..} <- runStats (snapshot :: Stats CPU)
-  _nis <- runStats (snapshots :: Stats [NetworkInterface])
-  _nios <- runStats (snapshots :: Stats [NetworkIO])
-  MkSystemTime seconds _ <- getSystemTime
-  let _temp = filter ((== 1) . ifaceUp . fst) . zip _nis $ _nios
-      nios  = snd <$> _temp
-  newMVar SystemResourceUsage {
-    cpuUsage = (cpuIdle, cpuTotal)
-  , txTotal = sum $ ifaceTX <$> nios
-  , rxTotal = sum $ ifaceRX <$> nios
-  , collectedTime = toInteger seconds}
-
-initLoadReport :: MVar SystemResourceUsage -> IO (MVar LoadReport)
-initLoadReport mSysResUsage = do
-  lrMVar <- newMVar LoadReport {
-      systemResourceUsage = SystemResourcePercentageUsage 0 0 0 0
-    , isUnderloaded = True
-    , isOverloaded = False
-    }
-  updateLoadReport mSysResUsage lrMVar
-  return lrMVar
+initializeHashRing :: ZHandle -> IO (MVar HashRing)
+initializeHashRing zk = do
+  StringsCompletion (StringVector children) <-
+    zooGetChildren zk serverRootPath
+  serverNodes <- mapM (getServerNode' zk) children
+  newMVar . constructHashRing . sort $ serverNodes

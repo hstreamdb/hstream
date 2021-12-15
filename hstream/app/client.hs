@@ -41,7 +41,6 @@ import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.Server.HStreamApi
-import           HStream.Store.Logger
 import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
@@ -75,12 +74,10 @@ main = do
   let _addr = ipv4 (CB.pack _serverHost) (fromIntegral _serverPort)
   available <- newMVar []
   current <- newMVar _addr
-  producers_ <- newMVar mempty
   let ctx = ClientContext { cctxServerHost = _serverHost
                           , cctxServerPort = _serverPort
                           , availableServers = available
                           , currentServer    = current
-                          , producers        = producers_
                           , clientId         = _clientId
                           , availableServersUpdateInterval = _availableServersUpdateInterval
                           }

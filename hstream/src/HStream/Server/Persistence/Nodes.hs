@@ -14,10 +14,12 @@ module HStream.Server.Persistence.Nodes (
   , getServerInternalPort
   , getServerUri
   , getServerNode
+  , getServerNode'
   , setNodeStatus
   , getServerInternalAddr
 
   , getReadyServers
+  , getServerNodes
   ) where
 
 import           Control.Exception                 (SomeException, try)
@@ -96,6 +98,15 @@ getServerNode zk sID = do
            , serverNodePort = port
            }
 
+getServerNode' :: ZHandle -> CB.CBytes -> IO ServerNode
+getServerNode' zk sID = do
+  NodeInfo {..} <- decodeZNodeValue' zk (serverRootPath <> "/" <> sID)
+  return $ ServerNode
+    { serverNodeId   = read . CB.unpack $ sID
+    , serverNodeHost = serverHost
+    , serverNodePort = serverPort
+    }
+
 getReadyServers :: ZHandle -> IO Int
 getReadyServers zk = do
   (StringsCompletion (StringVector servers)) <- zooGetChildren zk serverRootPath
@@ -105,3 +116,12 @@ getReadyServers zk = do
       Right Ready   -> return (1 :: Int)
       Right Working -> return (1 :: Int)
       _             -> return (0 :: Int)
+
+getServerIds :: ZHandle -> IO [ServerID]
+getServerIds zk = do
+  (StringsCompletion (StringVector servers))
+    <- zooGetChildren zk serverRootPath
+  return (read . CB.unpack <$> servers)
+
+getServerNodes :: ZHandle -> IO [ServerNode]
+getServerNodes zk = getServerIds zk >>= mapM (getServerNode zk)

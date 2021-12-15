@@ -5,46 +5,49 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent             (forkIO)
-import           Control.Monad                  (void)
-import           Network.GRPC.HighLevel         (ServiceOptions (..))
-import           Network.GRPC.HighLevel.Client  (Port (unPort))
-import           Text.RawString.QQ              (r)
-import           ZooKeeper                      (withResource)
+import           Control.Concurrent               (MVar, forkIO, putMVar,
+                                                   takeMVar)
+import           Control.Monad                    (void)
+import           Data.List                        (sort)
+import qualified Data.Text                        as T
+import           Network.GRPC.HighLevel           (ServiceOptions (..))
+import           Network.GRPC.HighLevel.Client    (Port (unPort))
+import           Text.RawString.QQ                (r)
+import           ZooKeeper                        (withResource,
+                                                   zooWatchGetChildren)
+import           ZooKeeper.Types
 
-import qualified HStream.Logger                 as Log
-import           HStream.Server.Bootstrap       (startServer)
-import           HStream.Server.Config          (getConfig)
-import           HStream.Server.HStreamApi      (hstreamApiServer)
-import           HStream.Server.HStreamInternal (hstreamInternalServer)
-import           HStream.Server.Handler         (handlers)
-import           HStream.Server.Initialization  (initializeServer)
-import           HStream.Server.InternalHandler (internalHandlers)
-import           HStream.Server.Leader          (selectLeader)
-import           HStream.Server.LoadBalance     (startWritingLoadReport)
-import           HStream.Server.Persistence     (defaultHandle,
-                                                 initializeAncestors)
-import           HStream.Server.Types           (LoadManager,
-                                                 ServerContext (..),
-                                                 ServerOpts (..))
-import qualified HStream.Store.Logger           as Log
-import           HStream.Utils                  (setupSigsegvHandler)
+import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
+import qualified HStream.Logger                   as Log
+import           HStream.Server.Config            (getConfig)
+import           HStream.Server.HStreamApi        (hstreamApiServer)
+import           HStream.Server.HStreamInternal
+import           HStream.Server.Handler           (handlers)
+import           HStream.Server.Initialization    (initNodePath,
+                                                   initializeServer)
+import           HStream.Server.InternalHandler
+import           HStream.Server.Persistence       (defaultHandle,
+                                                   getServerNode',
+                                                   initializeAncestors,
+                                                   serverRootPath)
+import           HStream.Server.Types             (ServerContext (..),
+                                                   ServerOpts (..))
+import qualified HStream.Store.Logger             as Log
+import           HStream.Utils                    (setupSigsegvHandler)
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
   setupSigsegvHandler
   Log.setLogDeviceDbgLevel' _ldLogLevel
   withResource (defaultHandle _zkUri) $ \zk -> do
-    (options, options', serverContext, lm) <- initializeServer config zk
     initializeAncestors zk
-    startServer zk config (serve options options' serverContext lm)
+    (options, options', serverContext) <- initializeServer config zk
+    initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+    serve options options' serverContext
 
-serve :: ServiceOptions -> ServiceOptions -> ServerContext -> LoadManager -> IO ()
-serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} lm = do
-  startWritingLoadReport zkHandle lm
-
-  selectLeader sc lm
-
+serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
+serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
+  void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
   -- GRPC service
   Log.i "************************"
   putStrLn [r|
@@ -65,3 +68,22 @@ main :: IO ()
 main = do
   config <- getConfig
   app config
+
+--------------------------------------------------------------------------------
+
+-- However, reconstruct hashRing every time can be expensive
+-- when we have a large number of nodes in the cluster.
+-- TODO: Instead of reconstruction, we should use the operation insert/delete.
+updateHashRing :: ZHandle -> MVar HashRing -> IO ()
+updateHashRing zk mhr = do
+  zooWatchGetChildren zk serverRootPath
+    callback action
+  where
+    callback HsWatcherCtx {..} =
+      updateHashRing watcherCtxZHandle mhr
+    action (StringsCompletion (StringVector children)) = do
+      _ <- takeMVar mhr
+      serverNodes <- mapM (getServerNode' zk) children
+      let hr' = constructHashRing . sort $ serverNodes
+      putMVar mhr hr'
+      Log.debug . Log.buildString $ show hr'
