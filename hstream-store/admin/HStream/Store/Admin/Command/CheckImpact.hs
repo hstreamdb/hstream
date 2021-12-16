@@ -283,23 +283,26 @@ consTable cell =
 isRowFill :: Columns P.Doc -> Bool
 isRowFill = (>= maxTableWidth) . length . head . consTable
 
-splitTable :: [Columns P.Doc] -> [Column P.Doc] -> [Columns P.Doc]
-splitTable [] [] = []
-splitTable acc [] = reverse $ map reverse acc
-splitTable [] (x:rs)
-  | isRowFill [x] = splitTable [[x]] rs
-  | otherwise = splitTable [[x]] rs
-splitTable acc (x:xs)
-  | isRowFill [x] = splitTable ([x] : acc) xs
+splitTable' :: [Columns P.Doc] -> [Column P.Doc] -> [Columns P.Doc]
+splitTable' [] [] = []
+splitTable' acc [] = reverse $ map reverse acc
+splitTable' [] (x:rs)
+  | isRowFill [x] = splitTable' [[x]] rs
+  | otherwise = splitTable' [[x]] rs
+splitTable' acc (x:xs)
+  | isRowFill [x] = splitTable' ([x] : acc) xs
   | otherwise = if null acc
-                   then splitTable [[x]] xs
-                   else if isRowFill (x : head acc) then splitTable ([x] : acc) xs
-                                                    else splitTable ((x : head acc) : tail acc) xs
+                   then splitTable' [[x]] xs
+                   else if isRowFill (x : head acc) then splitTable' ([x] : acc) xs
+                                                    else splitTable' ((x : head acc) : tail acc) xs
+
+splitTable :: [Column P.Doc] -> [Columns P.Doc]
+splitTable = splitTable' []
 
 showLocationMap :: LocationMapping -> String
 showLocationMap locationMap =
   let tableCell = Map.toAscList locationMap
-   in Table.concatLines (map (Table.concatLines . consTable) (splitTable [] tableCell))
+   in Table.concatLines (map (Table.concatLines . consTable) (splitTable tableCell))
 
 analyzeWriteAvailability :: Int -> Int -> AA.ReplicationProperty -> P.Doc
 analyzeWriteAvailability nWriteable nWriteableLoss replication =
