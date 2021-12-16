@@ -1,0 +1,592 @@
+#!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
+#
+# If you want to enable tab completion of this script, you must install
+# argcomplete, for details, see:
+#
+# https://kislyuk.github.io/argcomplete/#installation
+import argparse
+import os
+import getpass
+import time
+import subprocess
+
+logerr = lambda s: print(f"\033[91m{s}\033[0m")
+logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
+loginfo = lambda s: print(f"\033[96m{s}\033[0m")
+logwarn = lambda s: print(f"\033[33m{s}\033[0m")
+
+try:
+    import argcomplete
+except Exception:
+    from unittest.mock import MagicMock
+
+    argcomplete = MagicMock()
+    argcomplete.autocomplete = lambda x: logwarn(
+        "There is no tab completion supported since no argcomplete found!"
+    )
+
+HOME = os.getenv("HOME")
+CUID, CGID = os.getuid(), os.getgid()
+CUSERNAME = getpass.getuser()
+CWD = os.getcwd()
+
+
+def run_sh(
+    sh, stderr=subprocess.STDOUT, stdout=None, check=True, print_cmd=False
+):
+    if sh:
+        if print_cmd:
+            loginfo(f"Run command: <{sh}>")
+        if isinstance(sh, str):
+            args = ["bash", "-c", sh]
+            return subprocess.run(
+                args, stderr=stderr, stdout=stdout, check=check
+            )
+        elif isinstance(sh, list):
+            return subprocess.run(
+                sh, shell=True, stderr=stderr, stdout=stdout, check=check
+            )
+        else:
+            raise ValueError(f"Invalid sh: {sh}")
+
+
+def wait_tcp_server(host, port, timeout=60):
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    while timeout >= 0:
+        try:
+            loginfo(f"Wating {host}:{port}...")
+            s.connect((host, int(port)))
+            s.shutdown(2)
+            return True
+        except Exception:
+            time.sleep(1)
+            timeout -= 1
+
+    raise RuntimeError(f"Waiting {host}:{port} timeout!")
+
+
+def wait_local_tcp_sh(port, host="127.0.0.1", timeout=60):
+    return (
+        f'set -e && export timeout="{timeout}" && '
+        f"until (echo -n > /dev/tcp/{host}/{port}); do"
+        f'  >&2 echo "Waiting for {host}:{port} ...";'
+        "   sleep 1;"
+        "   timeout=$((timeout - 1));"
+        '   [ $timeout -le 0 ] && echo "Timeout!" && exit 1;'
+        "done"
+    )
+
+
+def is_container_running(remote, container_name, container_bin="docker"):
+    if not container_bin:
+        return logerr("No such container_bin")
+    result = run_sh(
+        f"ssh {remote} '{container_bin} " "ps --format {{.Names}}'",
+        stdout=subprocess.PIPE,
+    )
+    if result and result.stdout:
+        rs = result.stdout.decode().strip().split("\n")
+        if container_name.strip() in rs:
+            return True
+    return False
+
+
+# -----------------------------------------------------------------------------
+
+
+class Service:
+    def __init__(self, parser):
+        self._parser = parser
+        self._parser.add_argument("--container-bin", default="docker")
+        self._parser.add_argument(
+            "--remote",
+            required=True,
+            type=str,
+            help="comma separated remote (host,local_address) pairs, e.g. server1:10.100.0.1,server2:10.100.0.2",
+        )
+        self._cmdparsers = parser.add_subparsers(
+            title="Commands",
+            dest="sub_command",
+        )
+        self._commands = {}
+        self._args = {}
+
+    def register(self, SubService):
+        s = SubService(self._cmdparsers)
+        s.init_parser()
+        for key in SubService.KEYS:
+            if self._commands.get(key):
+                raise RuntimeError(f"Register a registered service: {key}!")
+            self._commands[key] = s
+
+    def run(self):
+        argcomplete.autocomplete(parser)
+        cmds = self.parse_args()(**self._args)
+        if isinstance(cmds, list):
+            for cmd in cmds:
+                run_sh(cmd, print_cmd=True)
+        else:
+            run_sh(cmds, print_cmd=True)
+
+    def parse_args(self):
+        self._args = vars(self._parser.parse_args())
+        sub_command = self._args.pop("sub_command")
+        if s := self._commands.get(sub_command):
+            if action := self._args.pop("action_command", None):
+                remotes = self.parse_remotes(self._args.pop("remote", None))
+                self._args["remotes"] = remotes
+                if action == "start":
+                    return s.start_cmd
+                if action == "post-start":
+                    return s.post_start_cmd
+                elif action == "stop":
+                    return s.stop_cmd
+            logerr(f"No such command({sub_command}) action: {action}")
+            s.print_help()
+        else:
+            logerr(f"No such command: {sub_command}!")
+            self._parser.print_help()
+
+        return None
+
+    def parse_remotes(self, remote: str):
+        if remote:
+            remotes = remote.split(",")
+
+            def gen(remote):
+                xs = remote.split(":")
+                host = xs[0]
+                if len(xs) >= 2:
+                    addr = xs[1]
+                else:
+                    result = run_sh(
+                        f"ssh -G {host} | " + "awk '/^hostname / { print $2 }'",
+                        stdout=subprocess.PIPE,
+                    )
+                    if result and result.stdout:
+                        addr = result.stdout.decode().strip()
+                    else:
+                        raise ValueError(f"Unknown host: {remote}")
+                return (host, addr)
+
+            return [gen(r) for r in remotes]
+
+    @staticmethod
+    def stop_cmd(
+        container_bin,
+        container_name,
+        force=False,
+        remotes=None,
+        **kargs,
+    ):
+        if remotes:
+            return [
+                f"ssh {host} '{container_bin} rm -f {container_name}'"
+                if force
+                else f"ssh {host} '{container_bin} kill {container_name}'"
+                for (host, _) in remotes
+            ]
+
+    @staticmethod
+    def post_start_cmd(
+        container_bin,
+        container_name,
+        port=None,
+        command="",
+        remotes=None,
+        **kargs,
+    ):
+        if remotes and command:
+            cmds = (
+                f"ssh {host} '{container_bin} exec -t {container_name} {command}' "
+                for (host, _) in remotes
+            )
+            return [
+                f"{wait_local_tcp_sh(port)} && {cmd}" if port else cmd
+                for cmd in cmds
+            ]
+
+
+class ZookeeperService(Service):
+    KEYS = ["zookeeper", "zk"]
+    DEFAULT_CONTAINER_NAME = "deploy_zookeeper"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0], aliases=self.KEYS[1:], help="Manage zookeeper service"
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument("--image", default="docker.io/zookeeper:3.6")
+        start_parser.add_argument("--rm", action="store_true")
+        start_parser.add_argument("--container-cmd", default="")
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        post_start_parser = argparse.ArgumentParser(add_help=False)
+        post_start_parser.add_argument("--command", required=True, type=str)
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "post-start",
+            help="run command inside the container",
+            parents=[post_start_parser],
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        remotes,
+        container_name,
+        image,
+        extra_container_options="",
+        container_cmd="",
+        rm=False,
+        **kargs,
+    ):
+
+        opts = "--rm" if rm else ""
+        zoo_servers = " ".join(
+            f"server.{i}={hostname}:2888:3888;2181"
+            for (i, (host, hostname)) in enumerate(remotes)
+        )
+
+        cmds = []
+        for (i, (host, _)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '{container_bin} run -td {opts} --name {container_name} "
+                    f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
+                    f"--network host {extra_container_options} "
+                    f"{image} {container_cmd}' "
+                )
+
+        return cmds
+
+    @staticmethod
+    def post_start_cmd(
+        container_bin,
+        container_name,
+        port=None,
+        command="",
+        remotes=None,
+        **kargs,
+    ):
+        if remotes and command:
+            cmds = (
+                f"ssh {host} {container_bin} exec -t {container_name} {command} "
+                for (host, _) in remotes
+            )
+            return [
+                f"{wait_local_tcp_sh(port)} && {cmd}" if port else cmd
+                for cmd in cmds
+            ]
+
+
+class HStoreAdminService(Service):
+    KEYS = ["hstore-admin"]
+    DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage logdevice admin service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default="docker.io/hstreamdb/hstream"
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        start_parser.add_argument(
+            "--config-path",
+            required=True,
+            help="Zookeeper key to the config file",
+        )
+        post_start_parser = argparse.ArgumentParser(add_help=False)
+        post_start_parser.add_argument(
+            "--command",
+            "-c",
+            help="command to run inside the container",
+        )
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "post-start",
+            help="run command inside the container",
+            parents=[post_start_parser],
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    # start hstore-admin
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        config_path,
+        extra_container_options="",
+        rm=False,
+        **kargs,
+    ):
+        opts = "--rm" if rm else ""
+        cmds = []
+        for (i, (host, _)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"--network host {image} /usr/local/bin/ld-admin-server "
+                    f"--config-path {config_path} "
+                    "--enable-maintenance-manager "
+                    "--maintenance-log-snapshotting "
+                    "--enable-safety-check-periodic-metadata-update "
+                    f"'"
+                )
+
+        return cmds
+
+
+class HStoreService(Service):
+    KEYS = ["hstore"]
+    DEFAULT_CONTAINER_NAME = "deploy_hstore"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage logdevice service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default="docker.io/hstreamdb/hstream"
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        start_parser.add_argument("--data-dir", default="/data/store")
+        start_parser.add_argument(
+            "--config-path",
+            required=True,
+            help="Zookeeper key to the config file",
+        )
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        image,
+        data_dir,
+        config_path,
+        remotes,
+        rm=False,
+        **kargs,
+    ):
+        opts = "--rm" if rm else ""
+        cmds = []
+        for (i, (host, addr)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run {opts} -d --name {container_name} "
+                    "--network host "
+                    f"-v {data_dir}:/data/store "
+                    f"{image} /usr/local/bin/logdeviced "
+                    f"--config-path {config_path} "
+                    f"--name ld_{i} --address {addr} "
+                    f"--local-log-store-path /data/store "
+                    f"'"
+                )
+        return cmds
+
+
+class HServerService(Service):
+    KEYS = ["hserver"]
+    DEFAULT_CONTAINER_NAME = "deploy_hserver"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage hserver service",
+        )
+        self._server_id = 1
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default="docker.io/hstreamdb/hstream"
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        start_parser.add_argument(
+            "--store-config",
+            required=True,
+            help="Zookeeper key to the store config file",
+        )
+        start_parser.add_argument(
+            "--store-admin-host",
+            required=True,
+        )
+        start_parser.add_argument("--zkuri", required=True)
+        start_parser.add_argument("--replicate-factor", default=3)
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        image,
+        zkuri,
+        store_config,
+        store_admin_host,
+        replicate_factor,
+        remotes,
+        extra_container_options="",
+        rm=False,
+        **kargs,
+    ):
+        opts = "--rm" if rm else ""
+        cmds = []
+        for (i, (host, addr)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run {opts} -d --name {container_name} "
+                    "--network host "
+                    f"{image} /usr/local/bin/hstream-server "
+                    f"--host {addr} "
+                    f"--address {addr} "
+                    f"--zkuri {zkuri} "
+                    f"--store-config {store_config} "
+                    f"--store-admin-host {store_admin_host} "
+                    f"--replicate-factor {replicate_factor} "
+                    f"--server-id {i}"
+                    f"'"
+                )
+        return cmds
+
+
+# -----------------------------------------------------------------------------
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="HStream dev tools.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    s = Service(parser)
+    s.register(ZookeeperService)
+    s.register(HStoreAdminService)
+    s.register(HStoreService)
+    s.register(HServerService)
+    s.run()
