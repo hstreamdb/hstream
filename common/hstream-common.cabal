@@ -54,6 +54,7 @@ library
     HStream.Utils.Converter
     HStream.Utils.Format
     HStream.Utils.RPC
+    HStream.Utils.Table
     HStream.Utils.TimeInterval
 
   hs-source-dirs:     . gen-hs
