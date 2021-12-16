@@ -72,5 +72,7 @@ RUN mkdir -p /etc/bash_completion.d && \
     grep -wq '^source /etc/profile.d/bash_completion.sh' /etc/bash.bashrc || echo 'source /etc/profile.d/bash_completion.sh' >> /etc/bash.bashrc && \
     /usr/local/bin/hadmin --bash-completion-script /usr/local/bin/hadmin > /etc/bash_completion.d/hadmin
 
+COPY ./docker/hstream.yaml /etc/hstream/config.yaml
+
 EXPOSE 6560 6570
 CMD ["/usr/local/bin/hstream-server", "-p", "6570"]
