@@ -16,4 +16,4 @@ ZOOKEEPER_PORT=$(cat local-data/dev_tools.env|grep ZOOKEEPER_LOCAL_PORT|cut -d '
 
 python3 script/dev-tools shell $EXTRA_OPTS --command "$COMMAND" \
     --container-name $CONTAINER_NAME -i $IMAGE -- \
-    $EXE --config-path "docker/hstream.yaml" --port $SERVER_PORT --log-with-color --store-admin-port $LD_ADMIN_PORT --zkuri "127.0.0.1:$ZOOKEEPER_PORT" --server-id $SERVER_ID
+    $EXE --config-path "config/hstream.yaml" --port $SERVER_PORT --log-with-color --store-admin-port $LD_ADMIN_PORT --zkuri "127.0.0.1:$ZOOKEEPER_PORT" --server-id $SERVER_ID
