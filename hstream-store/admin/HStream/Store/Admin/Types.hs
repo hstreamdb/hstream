@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module HStream.Store.Admin.Types where
@@ -10,6 +12,7 @@ import           Data.List                (intercalate, stripPrefix)
 import qualified Data.Map.Strict          as Map
 import           Data.Maybe               (fromMaybe)
 import           Data.Text                (Text)
+import qualified Data.Text                as Text
 import           Options.Applicative
 import qualified Options.Applicative.Help as Opt
 import qualified Text.Read                as Read
@@ -916,6 +919,15 @@ impacts2string xs = intercalate ", " $ map (withoutPrefix "OperationImpact_" . s
 
 withoutPrefix :: Eq a => [a] -> [a] -> [a]
 withoutPrefix prefix ele = fromMaybe ele $ stripPrefix prefix ele
+
+#define TAKE_BY_SPLITOR(NAME, FUN) \
+  take##NAME :: Text.Text -> Text.Text -> Text.Text; \
+  take##NAME splitor = FUN . Text.splitOn splitor; \
+  take##NAME##' :: Text.Text -> String -> String; \
+  take##NAME##' splitor = Text.unpack . take##NAME splitor . Text.pack;
+
+TAKE_BY_SPLITOR(Last, last)
+TAKE_BY_SPLITOR(Tail, Text.intercalate splitor . tail)
 
 handleStoreError :: IO () -> IO ()
 handleStoreError act =
