@@ -1,7 +1,6 @@
-{-# LANGUAGE BangPatterns         #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE MagicHash            #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MagicHash         #-}
 
 module HStream.Store.Internal.LogDevice.Reader where
 

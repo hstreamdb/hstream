@@ -7,7 +7,6 @@ module HStream.Utils.Format
   ( Format (..)
   , formatCommandQueryResponse
   , approxNaturalTime
-  , simpleShowTable
   ) where
 
 import qualified Data.Aeson.Text                  as A
@@ -169,15 +168,3 @@ formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATING)) = "CREATING"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATED)) = "CREATED"
 formatStatus (PB.Enumerated (Right API.TaskStatusPBTASK_CREATION_ABORT)) = "CREATION_ABORT"
 formatStatus _ = "Unknown Status"
-
---------------------------------------------------------------------------------
-
-simpleShowTable :: [(String, Int, Table.Position Table.H)] -> [[String]] -> String
-simpleShowTable _ [] = ""
-simpleShowTable colconfs rols =
-  let titles = map (\(t, _, _) -> t) colconfs
-      colout = map (\(_, maxlen, pos) -> Table.column (Table.expandUntil maxlen) pos def def) colconfs
-   in Table.tableString colout
-                        Table.asciiS
-                        (Table.titlesH titles)
-                        [ Table.rowsG rols ]

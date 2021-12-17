@@ -5,6 +5,7 @@ module HStream.Utils
   , module HStream.Utils.RPC
   , module HStream.Utils.Concurrent
   , module HStream.Utils.TimeInterval
+  , module HStream.Utils.Table
 
   , getKeyWordFromException
   , flattenJSON
@@ -31,6 +32,7 @@ import           HStream.Utils.Concurrent
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
 import           HStream.Utils.RPC
+import           HStream.Utils.Table
 import           HStream.Utils.TimeInterval
 
 getKeyWordFromException :: Exception a => a -> TL.Text
