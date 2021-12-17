@@ -79,6 +79,7 @@ library
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
     , aeson
+    , ansi-terminal
     , attoparsec
     , base                  >=4.11 && <5
     , bytestring
