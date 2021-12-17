@@ -76,7 +76,7 @@ serverID = option auto
 logLevel :: O.Parser Log.Level
 logLevel = option auto
   $ long "log-level"
-  <> metavar "[critical|fatal|warning|info|debug]" <> value (Log.Level Log.INFO)
+  <> metavar "[critical|fatal|warning|info|debug]"
   <> help "Server log level"
 
 logWithColor :: O.Parser Bool
