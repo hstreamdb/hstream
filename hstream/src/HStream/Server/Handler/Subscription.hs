@@ -426,6 +426,8 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                       lastLSN = S.recordLSN . head . head $ lastBatch
                   Log.debug $ "maxReadSize = "<> Log.buildInt maxReadSize <> ", lastLSN=" <> Log.buildInt lastLSN
 
+                  -- `ckpReaderReadAllowGap` will return a specific number of records, which may cause the last LSN's
+                  -- records to be truncated, so we need to do another point read to get all the records of the last LSN.
                   lastBatchRecords <- fetchLastLSN sriLogId lastLSN sriLdCkpReader maxReadSize
                   (newGroups, isEmpty) <- if | null batch && null lastBatchRecords -> do
                                                  Log.debug $ "doRead: both batch and lastBatchRecords are empty, lastLSN = " <> Log.buildInt lastLSN
@@ -440,15 +442,22 @@ streamingFetchHandler ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv str
                     then return (info, Nothing)
                     else do
                       let groupNums = map (\gp -> (S.recordLSN $ head gp, (fromIntegral $ length gp) :: Word32)) newGroups
-                          maxRecordId = RecordId lastLSN (fromIntegral $ length lastBatchRecords - 1)
-                          -- update window upper bound and batchNumMap
-                          newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
+                      let (finalLastLSN, maxRecordId) = case lastBatchRecords of
+                           -- In this case, newGroups = batch and finalLastLSN should be the lsn of the last record in batch.
+                           [] -> let (lastGroupLSN, cnt) = last groupNums
+                                     lastRId = RecordId lastGroupLSN (cnt - 1)
+                                  in (lastGroupLSN, lastRId)
+                           -- In this case, newGroups = [lastBatchRecords] or batch ++ [lastBatchRecords],
+                           -- in both cases finalLastLSN should be lastLSN
+                           xs -> (lastLSN, RecordId lastLSN (fromIntegral $ length xs - 1))
+
+                      let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
                           receivedRecords = fetchResult newGroups
                           newInfo = info { sriBatchNumMap = newBatchNumMap
                                          , sriWindowUpperBound = maxRecordId
                                          }
                       void $ S.ckpReaderSetTimeout sriLdCkpReader 0
-                      S.ckpReaderStartReading sriLdCkpReader sriLogId (lastLSN + 1) S.LSN_MAX
+                      S.ckpReaderStartReading sriLdCkpReader sriLogId (finalLastLSN + 1) S.LSN_MAX
                       return (newInfo, Just receivedRecords)
 
         doDispatch receivedRecords info@SubscribeRuntimeInfo {..} = do
