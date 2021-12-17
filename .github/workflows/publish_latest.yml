@@ -26,6 +26,13 @@ jobs:
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             docker push ${IMAGE_NAME}:latest
+
+            curl \
+              -X POST \
+              -H 'Accept: application/vnd.github.v3+json' \
+              -u ${{ secrets.PERSONAL_ACCESS_TOKEN }} \
+              ${{ secrets.DISPATCH_URL }} \
+              --data '{"event_type": "image_updated", "client_payload": { "tag": "latest" }}'
           else
             echo "Empty dockerhub user info..."
           fi
