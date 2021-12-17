@@ -101,7 +101,7 @@ zkUri = strOption
 --TODO: This option will be removed once we can get config from admin server.
 storeConfigPath :: O.Parser CBytes
 storeConfigPath = strOption
-  $  long "config-path"
+  $  long "store-config"
   <> metavar "PATH" <> value "/data/store/logdevice.conf"
   <> help "Storage config path"
 
