@@ -1,7 +1,6 @@
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE MagicHash            #-}
-{-# LANGUAGE TupleSections        #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MagicHash         #-}
+{-# LANGUAGE TupleSections     #-}
 
 module HStream.Common.Query
   ( QueryBaseRep (..)

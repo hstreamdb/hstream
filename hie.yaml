@@ -139,6 +139,9 @@ cradle:
       component: "fb-util:test:list"
 
     - path: "external/hsthrift/common/util/./"
+      component: "fb-util:test:graph"
+
+    - path: "external/hsthrift/common/util/./"
       component: "fb-util:test:concurrent"
 
     - path: "external/hsthrift/common/util/./"
@@ -239,6 +242,12 @@ cradle:
 
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
+
+    - path: "hstream-admin/."
+      component: "lib:hstream-admin"
+
+    - path: "hstream-admin/app/admin.hs"
+      component: "hstream-admin:exe:hadmin-server"
 
     - path: "hstream-connector/./"
       component: "lib:hstream-connector"
