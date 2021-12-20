@@ -4,16 +4,17 @@ module HStream.Store.Admin.Command.Status
 
 import           Control.Monad
 import           Data.Int                  (Int64)
-import           Data.List                 (elemIndex, sortBy)
-import           Data.Maybe                (fromJust)
+import           Data.List                 (elemIndex, group, intercalate, sort,
+                                            sortBy, sortOn)
+import           Data.Maybe                (fromJust, fromMaybe)
 import qualified Data.Text                 as Text
 import qualified Data.Text.Encoding        as Text
 import           Data.Time.Clock.POSIX     (POSIXTime, getPOSIXTime)
-import qualified Text.Layout.Table         as Table
 
 import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
-import           HStream.Utils             (approxNaturalTime, simpleShowTable)
+import           HStream.Utils             (approxNaturalTime,
+                                            simpleShowTableIO')
 
 data NodeState' = NodeState'
   { stateState      :: AA.NodeState
@@ -27,11 +28,33 @@ showID = show . AA.nodeConfig_node_index . AA.nodeState_config . stateState
 showName :: NodeState' -> String
 showName = Text.unpack . AA.nodeConfig_name . AA.nodeState_config . stateState
 
+showLocation :: NodeState' -> String
+showLocation = Text.unpack
+             . fromMaybe "?"
+             . AA.nodeConfig_location
+             . AA.nodeState_config
+             . stateState
+
 showDaemonState :: NodeState' -> String
-showDaemonState = cutLast' "_" . show . AA.nodeState_daemon_state . stateState
+showDaemonState = takeTail' "_" . show . AA.nodeState_daemon_state . stateState
+
+showDataHealth :: NodeState' -> String
+showDataHealth = maybe " " f . AA.nodeState_shard_states . stateState
+  where
+    f = interpretByFrequency . map (takeTail' "_" . show . AA.shardState_data_health)
+
+showStorageState :: NodeState' -> String
+showStorageState = maybe " " f . AA.nodeState_shard_states . stateState
+  where
+    f = interpretByFrequency . map (takeTail' "_" . show . AA.shardState_storage_state)
+
+showShardOp :: NodeState' -> String
+showShardOp = maybe " " f . AA.nodeState_shard_states . stateState
+  where
+    f = interpretByFrequency . map (takeTail' "_" . show . AA.shardState_current_operational_state)
 
 showHealthState :: NodeState' -> String
-showHealthState = cutLast' "_" . show . AA.nodeState_daemon_health_status . stateState
+showHealthState = takeTail' "_" . show . AA.nodeState_daemon_health_status . stateState
 
 showVersion :: NodeState' -> String
 showVersion = Text.unpack . stateVersion
@@ -41,7 +64,7 @@ showUptime time state =
   approxNaturalTime (time - fromIntegral (stateAliveSince state)) ++ " ago"
 
 showSeqState :: NodeState' -> String
-showSeqState = cutLast' "_" . maybe " " (show . AA.sequencerState_state) . AA.nodeState_sequencer_state . stateState
+showSeqState = takeTail' "_" . maybe " " (show . AA.sequencerState_state) . AA.nodeState_sequencer_state . stateState
 
 -- | Gets the state object for all nodes that matches the supplied NodesFilter.
 --
@@ -82,7 +105,11 @@ runStatus conf StatusOpts{..} = do
              , ("PACKAGE", showVersion)
              , ("STATE", showDaemonState)
              , ("UPTIME", showUptime currentTime)
+             , ("LOCATION", showLocation)
              , ("SEQ.", showSeqState)
+             , ("DATA HEALTH", showDataHealth)
+             , ("STORAGE STATE", showStorageState)
+             , ("SHARD OP.", showShardOp)
              , ("HEALTH STATUS", showHealthState)
              ]
   let titles = map fst cons
@@ -93,14 +120,15 @@ runStatus conf StatusOpts{..} = do
     Just sortIdx -> do
       let stats = sortBy (\xs ys -> compare (xs!!sortIdx) (ys!!sortIdx)) collectedState
       case statusFormat of
-        TabularFormat -> return $ simpleShowTable (map (, 20, Table.left) titles) stats
+        TabularFormat -> simpleShowTableIO' titles stats
         JSONFormat    -> errorWithoutStackTrace "NotImplemented"
     Nothing -> errorWithoutStackTrace $ "No such sort key: " <> Text.unpack statusSortField
 
 -------------------------------------------------------------------------------
 
-cutLast :: Text.Text -> Text.Text -> Text.Text
-cutLast splitor = last . Text.splitOn splitor
-
-cutLast' :: Text.Text -> String -> String
-cutLast' splitor = Text.unpack . cutLast splitor . Text.pack
+interpretByFrequency :: [String] -> String
+interpretByFrequency = intercalate ","
+                     . map (\(x, l) -> x ++ "(" ++ show l ++ ")")
+                     . sortOn snd
+                     . map (\xs -> (head xs, length xs))
+                     . group . sort
