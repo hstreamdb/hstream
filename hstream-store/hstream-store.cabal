@@ -135,19 +135,6 @@ test-suite hstream-store-test
     , Z-Data
     , Z-IO
 
-  default-extensions:
-    DeriveGeneric
-    DerivingStrategies
-    EmptyDataDeriving
-    GADTSyntax
-    GeneralizedNewtypeDeriving
-    LambdaCase
-    OverloadedStrings
-    RecordWildCards
-    ScopedTypeVariables
-    TypeApplications
-    UnliftedFFITypes
-
   default-language:   Haskell2010
   default-extensions:
     DeriveGeneric
@@ -240,6 +227,7 @@ executable hstore-bench-writter
   build-depends:
     , async
     , base
+    , bytestring
     , containers
     , data-default
     , hstream-store
@@ -247,7 +235,6 @@ executable hstore-bench-writter
     , random
     , Z-Data
     , Z-IO
-    , bytestring
 
   default-language: Haskell2010
   ghc-options:
