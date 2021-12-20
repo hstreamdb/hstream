@@ -93,7 +93,13 @@ insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
       | canMergeToRight =
         let m1 = Map.delete (startRecordId rightRange) ackedRanges
          in Map.insert recordId (rightRange {startRecordId = recordId}) m1
-      | otherwise = Map.insert recordId (RecordIdRange recordId recordId) ackedRanges
+      | otherwise = if checkDuplicat leftRange rightRange
+                      then ackedRanges
+                      else Map.insert recordId (RecordIdRange recordId recordId) ackedRanges
+
+    checkDuplicat leftRange rightRange =
+         recordId >= startRecordId leftRange && recordId <= endRecordId leftRange
+      || recordId >= startRecordId rightRange && recordId <= endRecordId rightRange
 
 lookupLTWithDefault :: RecordId -> Map.Map RecordId RecordIdRange -> RecordIdRange
 lookupLTWithDefault recordId ranges = maybe (RecordIdRange minBound minBound) snd $ Map.lookupLT recordId ranges

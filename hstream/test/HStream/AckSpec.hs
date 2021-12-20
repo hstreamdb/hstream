@@ -235,5 +235,20 @@ insertAckSpec =
       let oldRanges = Map.fromList [(gapLL, RecordIdRange gapLL gapLR), (gapRL, RecordIdRange gapRL gapRR)]
       let newRanges = Map.fromList [(gapLL, RecordIdRange gapLL gapRR)]
       insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+    it "filter duplicate ack record" $ do
+      let recordInsert1 = RecordId 5 0
+      let recordInsert2 = RecordId 7 3
+      let lowerBound = RecordId minBound minBound
+
+      let rangeLL = RecordId 2 0
+      let rangeLR = RecordId 5 8
+      let rangeRL = RecordId 6 0
+      let rangeRR = RecordId 12 5
+
+      let batchNumMap = Map.fromList [(2, 5), (5, 10), (6, 7), (12, 9)]
+      let oldRanges = Map.fromList [(rangeLL, RecordIdRange rangeLL rangeLR), (rangeRL, RecordIdRange rangeRL rangeRR)]
+      insertAckedRecordId recordInsert1 lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+      insertAckedRecordId recordInsert2 lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+
 
 
