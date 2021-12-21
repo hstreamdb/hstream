@@ -154,7 +154,7 @@ withSubscriptions = provideRunTest setup clean
 
 subscribeSpec :: Spec
 subscribeSpec = aroundAll provideHstreamApi $
-  describe "SubscribeSpec" $ parallel $ do
+  xdescribe "SubscribeSpec" $ parallel $ do
 
   let offset = SubscriptionOffset . Just . SubscriptionOffsetOffsetSpecialOffset
                . Enumerated . Right $ SubscriptionOffset_SpecialOffsetLATEST
@@ -259,7 +259,7 @@ withConsumerSpecEnv = provideRunTest setup clean
       cleanStreamReq api streamName `shouldReturn` PB.Empty
 
 consumerSpec :: Spec
-consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
+consumerSpec = aroundAll provideHstreamApi $ xdescribe "ConsumerSpec" $ do
 
   aroundWith withConsumerSpecEnv $ do
 
@@ -350,7 +350,7 @@ consumerSpec = aroundAll provideHstreamApi $ describe "ConsumerSpec" $ do
 -- 2. if a consumer join multi consumer groups, what should happen?
 
 consumerGroupSpec :: Spec
-consumerGroupSpec = aroundAll provideHstreamApi $ describe "ConsumerGroupSpec" $ do
+consumerGroupSpec = aroundAll provideHstreamApi $ xdescribe "ConsumerGroupSpec" $ do
 
   aroundWith withConsumerSpecEnv $ do
 
