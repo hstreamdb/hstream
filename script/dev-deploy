@@ -11,6 +11,8 @@ import getpass
 import time
 import subprocess
 
+from typing import List, Optional, Tuple
+
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
 loginfo = lambda s: print(f"\033[96m{s}\033[0m")
@@ -32,17 +34,13 @@ CUSERNAME = getpass.getuser()
 CWD = os.getcwd()
 
 
-def run_sh(
-    sh, stderr=subprocess.STDOUT, stdout=None, check=True, print_cmd=False
-):
+def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True, print_cmd=False):
     if sh:
         if print_cmd:
             loginfo(f"Run command: <{sh}>")
         if isinstance(sh, str):
             args = ["bash", "-c", sh]
-            return subprocess.run(
-                args, stderr=stderr, stdout=stdout, check=check
-            )
+            return subprocess.run(args, stderr=stderr, stdout=stdout, check=check)
         elif isinstance(sh, list):
             return subprocess.run(
                 sh, shell=True, stderr=stderr, stdout=stdout, check=check
@@ -147,7 +145,7 @@ class Service:
 
         return None
 
-    def parse_remotes(self, remote: str):
+    def parse_remotes(self, remote: str) -> List[Tuple[str, str]]:
         if remote:
             remotes = remote.split(",")
 
@@ -213,9 +211,7 @@ class ZookeeperService(Service):
         )
 
     def init_parser(self):
-        self.cmd.add_argument(
-            "--container-name", default=self.DEFAULT_CONTAINER_NAME
-        )
+        self.cmd.add_argument("--container-name", default=self.DEFAULT_CONTAINER_NAME)
         self.cmd.add_argument(
             "--extra-container-options",
             required=False,
@@ -226,12 +222,23 @@ class ZookeeperService(Service):
         start_parser.add_argument("--image", default="docker.io/zookeeper:3.6")
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument("--container-cmd", default="")
+
         stop_parser = argparse.ArgumentParser(add_help=False)
-        stop_parser.add_argument(
-            "--force", "-f", default=False, action="store_true"
-        )
+        stop_parser.add_argument("--force", "-f", default=False, action="store_true")
+
         post_start_parser = argparse.ArgumentParser(add_help=False)
         post_start_parser.add_argument("--command", required=True, type=str)
+
+        store_parser = argparse.ArgumentParser(add_help=False)
+        store_parser.add_argument(
+            "--key", "-k", required=True, type=str, help="node name need to create"
+        )
+        store_values_group = store_parser.add_mutually_exclusive_group(required=True)
+        store_values_group.add_argument(
+            "--file", type=str, help="the path of file need to store"
+        )
+        store_values_group.add_argument("--value", help="the value need to store")
+
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
@@ -243,8 +250,11 @@ class ZookeeperService(Service):
             help="run command inside the container",
             parents=[post_start_parser],
         )
+        action_subparser.add_parser("stop", help="stop services", parents=[stop_parser])
         action_subparser.add_parser(
-            "stop", help="stop services", parents=[stop_parser]
+            "store",
+            help="create a zk node with specific name and value. ignore the operation if node exist.",
+            parents=[store_parser],
         )
 
     def print_help(self):
@@ -282,6 +292,30 @@ class ZookeeperService(Service):
 
         return cmds
 
+    @staticmethod
+    def store_cmd(
+        container_bin: str,
+        container_name: str,
+        key: str,
+        value: Optional[str],
+        file: Optional[str],
+        remotes: List[Tuple[str, str]] = None,
+        **kargs,
+    ) -> List[str]:
+        if not key.startswith("/"):
+            key = "/" + key
+
+        if remotes:
+            node_value = value if value else f'"$(cat {file})"'
+            store_command = lambda host: (
+                f"printf -v __ %q "
+                f"{node_value} "
+                f"&& ssh {host} "
+                f'"{container_bin} exec -t {container_name} zkCli.sh create {key} $__ ||'
+                f'{container_bin} exec -t {container_name} zkCli.sh set {key} $__"'
+            )
+            return [store_command(host) for (host, _) in remotes]
+
 
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
@@ -296,9 +330,7 @@ class HStoreAdminService(Service):
         )
 
     def init_parser(self):
-        self.cmd.add_argument(
-            "--container-name", default=self.DEFAULT_CONTAINER_NAME
-        )
+        self.cmd.add_argument("--container-name", default=self.DEFAULT_CONTAINER_NAME)
         self.cmd.add_argument(
             "--extra-container-options",
             required=False,
@@ -306,9 +338,7 @@ class HStoreAdminService(Service):
             type=str,
         )
         start_parser = argparse.ArgumentParser(add_help=False)
-        start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
-        )
+        start_parser.add_argument("--image", default="docker.io/hstreamdb/hstream")
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
             "--config-path",
@@ -322,9 +352,7 @@ class HStoreAdminService(Service):
             help="command to run inside the container",
         )
         stop_parser = argparse.ArgumentParser(add_help=False)
-        stop_parser.add_argument(
-            "--force", "-f", default=False, action="store_true"
-        )
+        stop_parser.add_argument("--force", "-f", default=False, action="store_true")
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
@@ -336,9 +364,7 @@ class HStoreAdminService(Service):
             help="run command inside the container",
             parents=[post_start_parser],
         )
-        action_subparser.add_parser(
-            "stop", help="stop services", parents=[stop_parser]
-        )
+        action_subparser.add_parser("stop", help="stop services", parents=[stop_parser])
 
     def print_help(self):
         return self.cmd.print_help()
@@ -388,9 +414,7 @@ class HStoreService(Service):
         )
 
     def init_parser(self):
-        self.cmd.add_argument(
-            "--container-name", default=self.DEFAULT_CONTAINER_NAME
-        )
+        self.cmd.add_argument("--container-name", default=self.DEFAULT_CONTAINER_NAME)
         self.cmd.add_argument(
             "--extra-container-options",
             required=False,
@@ -398,9 +422,7 @@ class HStoreService(Service):
             type=str,
         )
         start_parser = argparse.ArgumentParser(add_help=False)
-        start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
-        )
+        start_parser.add_argument("--image", default="docker.io/hstreamdb/hstream")
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument("--data-dir", default="/data/store")
         start_parser.add_argument(
@@ -409,18 +431,14 @@ class HStoreService(Service):
             help="Zookeeper key to the config file",
         )
         stop_parser = argparse.ArgumentParser(add_help=False)
-        stop_parser.add_argument(
-            "--force", "-f", default=False, action="store_true"
-        )
+        stop_parser.add_argument("--force", "-f", default=False, action="store_true")
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
         action_subparser.add_parser(
             "start", help="start sevices", parents=[start_parser]
         )
-        action_subparser.add_parser(
-            "stop", help="stop services", parents=[stop_parser]
-        )
+        action_subparser.add_parser("stop", help="stop services", parents=[stop_parser])
 
     def print_help(self):
         return self.cmd.print_help()
@@ -470,9 +488,7 @@ class HServerService(Service):
         self._server_id = 1
 
     def init_parser(self):
-        self.cmd.add_argument(
-            "--container-name", default=self.DEFAULT_CONTAINER_NAME
-        )
+        self.cmd.add_argument("--container-name", default=self.DEFAULT_CONTAINER_NAME)
         self.cmd.add_argument(
             "--extra-container-options",
             required=False,
@@ -480,9 +496,7 @@ class HServerService(Service):
             type=str,
         )
         start_parser = argparse.ArgumentParser(add_help=False)
-        start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
-        )
+        start_parser.add_argument("--image", default="docker.io/hstreamdb/hstream")
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
             "--store-config",
@@ -496,18 +510,14 @@ class HServerService(Service):
         start_parser.add_argument("--zkuri", required=True)
         start_parser.add_argument("--replicate-factor", default=3)
         stop_parser = argparse.ArgumentParser(add_help=False)
-        stop_parser.add_argument(
-            "--force", "-f", default=False, action="store_true"
-        )
+        stop_parser.add_argument("--force", "-f", default=False, action="store_true")
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
         action_subparser.add_parser(
             "start", help="start sevices", parents=[start_parser]
         )
-        action_subparser.add_parser(
-            "stop", help="stop services", parents=[stop_parser]
-        )
+        action_subparser.add_parser("stop", help="stop services", parents=[stop_parser])
 
     def print_help(self):
         return self.cmd.print_help()
