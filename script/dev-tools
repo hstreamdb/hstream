@@ -48,6 +48,7 @@ CWD = os.getcwd()
 DEFAULT_LOCAL_DATA = os.path.join(PROJECT_ROOT, "local-data")
 Path(DEFAULT_LOCAL_DATA).mkdir(parents=True, exist_ok=True)
 
+DEFAULT_HSTREAM_CONF = os.path.join(PROJECT_ROOT, "conf/hstream.yaml")
 DEFAULT_LOGDEVICE_DIR = os.path.join(DEFAULT_LOCAL_DATA, "logdevice")
 Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
 DEFAULT_ENV_FILE = os.path.join(DEFAULT_LOCAL_DATA, "dev_tools.env")
@@ -775,6 +776,7 @@ if __name__ == "__main__":
             cmd_args = [
                 "--host 127.0.0.1 --address 127.0.0.1",
                 f"--port {port} --internal-port {find_free_port()}",
+                f"--config-path {DEFAULT_HSTREAM_CONF}",
                 f"--server-id {i}",
                 f"--zkuri 127.0.0.1:{envs.get(ZOOKEEPER_PORT_ENV)}",
                 "--store-config /data/store/logdevice.conf",
