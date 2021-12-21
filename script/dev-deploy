@@ -138,12 +138,7 @@ class Service:
             if action := self._args.pop("action_command", None):
                 remotes = self.parse_remotes(self._args.pop("remote", None))
                 self._args["remotes"] = remotes
-                if action == "start":
-                    return s.start_cmd
-                if action == "post-start":
-                    return s.post_start_cmd
-                elif action == "stop":
-                    return s.stop_cmd
+                return getattr(s, f"{action.replace('-', '_')}_cmd")
             logerr(f"No such command({sub_command}) action: {action}")
             s.print_help()
         else:
@@ -200,13 +195,10 @@ class Service:
         **kargs,
     ):
         if remotes and command:
-            cmds = (
-                f"ssh {host} '{container_bin} exec -t {container_name} {command}' "
-                for (host, _) in remotes
-            )
+            wait = f"{wait_local_tcp_sh(port)} && " if port else ""
             return [
-                f"{wait_local_tcp_sh(port)} && {cmd}" if port else cmd
-                for cmd in cmds
+                f"ssh -t {host} '{wait} {container_bin} exec -it {container_name} {command}' "
+                for (host, _) in remotes
             ]
 
 
@@ -289,25 +281,6 @@ class ZookeeperService(Service):
                 )
 
         return cmds
-
-    @staticmethod
-    def post_start_cmd(
-        container_bin,
-        container_name,
-        port=None,
-        command="",
-        remotes=None,
-        **kargs,
-    ):
-        if remotes and command:
-            cmds = (
-                f"ssh {host} {container_bin} exec -t {container_name} {command} "
-                for (host, _) in remotes
-            )
-            return [
-                f"{wait_local_tcp_sh(port)} && {cmd}" if port else cmd
-                for cmd in cmds
-            ]
 
 
 class HStoreAdminService(Service):
