@@ -83,7 +83,7 @@ service HStreamApi {
   // overvew related apis
   // rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse) {}
 
-  // node related apis
+  // FIXME: (store)node related apis
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse) {}
   rpc GetNode(GetNodeRequest) returns (Node) {}
 
