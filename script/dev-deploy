@@ -10,6 +10,7 @@ import os
 import getpass
 import time
 import subprocess
+from pathlib import Path
 
 from typing import List, Optional, Tuple
 
@@ -203,6 +204,60 @@ class Service:
                 f"ssh -t {host} '{wait} {container_bin} exec -it {container_name} {command}' "
                 for (host, _) in remotes
             ]
+
+
+class StoreEnvService(Service):
+    STORE_PATH = "/data/store"
+    NSHARDS_PATH = Path(STORE_PATH).joinpath("NSHARDS")
+    KEYS = ["store-env"]
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0], aliases=self.KEYS[1:], help="Store node env manage service"
+        )
+
+    def init_parser(self):
+        init_parser = argparse.ArgumentParser(add_help=False)
+        init_parser.add_argument("--path", "-p", default=self.STORE_PATH)
+        init_parser.add_argument("--shards", default="1")
+
+        destroy_parser = argparse.ArgumentParser(add_help=False)
+        destroy_parser.add_argument("--path", "-p", default=self.STORE_PATH)
+        # destroy_parser.add_argument("--all", "-a", default=False, action="store_true", help="remove local data when destroy.")
+
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "init", help="init store environment", parents=[init_parser]
+        )
+        action_subparser.add_parser(
+            "destroy", help="destroy store environment", parents=[destroy_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def init_cmd(
+        self, remotes: List[Tuple[str, str]], path: str, shards: str, **kwargs
+    ) -> List[str]:
+        if path:
+            self.STORE_PATH = path
+            self.NSHARDS_PATH = Path(self.STORE_PATH).joinpath("NSHARDS")
+        return [
+            f"ssh {host} "
+            f'"mkdir -p {self.STORE_PATH} && echo {shards} | tee {self.NSHARDS_PATH}"'
+            for (host, _) in remotes
+        ]
+
+    def destroy_cmd(
+        self, remotes: List[Tuple[str, str]], path: str, **kwargs
+    ) -> List[str]:
+        return [
+            f"ssh {host} \"find {path} -type d -name 'shard*' | xargs rm -rf \""
+            for (host, _) in remotes
+        ]
 
 
 class ZookeeperService(Service):
@@ -618,6 +673,7 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     s = Service(parser)
+    s.register(StoreEnvService)
     s.register(ZookeeperService)
     s.register(HStoreAdminService)
     s.register(HStoreService)
