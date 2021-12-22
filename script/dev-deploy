@@ -139,7 +139,7 @@ class Service:
         sub_command = self._args.pop("sub_command")
         if s := self._commands.get(sub_command):
             if action := self._args.pop("action_command", None):
-                remotes = self.parse_ips(self._args.pop("remote", None))
+                remotes = self.parse_remotes(self._args.pop("remote", None))
                 self._args["remotes"] = remotes
                 return getattr(s, f"{action.replace('-', '_')}_cmd")
             logerr(f"No such command({sub_command}) action: {action}")
@@ -151,7 +151,7 @@ class Service:
         return None
 
     @staticmethod
-    def parse_ips(remote: str) -> List[Tuple[str, str]]:
+    def parse_remotes(remote: str) -> List[Tuple[str, str]]:
         if remote:
             remotes = remote.split(",")
 
@@ -205,63 +205,6 @@ class Service:
                 f"ssh -t {host} '{wait} {container_bin} exec -it {container_name} {command}' "
                 for (host, _) in remotes
             ]
-
-
-class StoreEnvService(Service):
-    STORE_PATH = "/data/store"
-    NSHARDS_PATH = Path(STORE_PATH).joinpath("NSHARDS")
-    KEYS = ["store-env"]
-
-    def __init__(self, cmdparsers):
-        self._cmdparsers = cmdparsers
-        self.cmd = self._cmdparsers.add_parser(
-            self.KEYS[0],
-            aliases=self.KEYS[1:],
-            help="Store node env manage service",
-        )
-
-    def init_parser(self):
-        init_parser = argparse.ArgumentParser(add_help=False)
-        init_parser.add_argument("--path", "-p", default=self.STORE_PATH)
-        init_parser.add_argument("--shards", default="1")
-
-        destroy_parser = argparse.ArgumentParser(add_help=False)
-        destroy_parser.add_argument("--path", "-p", default=self.STORE_PATH)
-
-        action_subparser = self.cmd.add_subparsers(
-            title="action", dest="action_command"
-        )
-        action_subparser.add_parser(
-            "init", help="init store environment", parents=[init_parser]
-        )
-        action_subparser.add_parser(
-            "destroy",
-            help="destroy store environment",
-            parents=[destroy_parser],
-        )
-
-    def print_help(self):
-        return self.cmd.print_help()
-
-    def init_cmd(
-        self, remotes: List[Tuple[str, str]], path: str, shards: str, **kwargs
-    ) -> List[str]:
-        if path:
-            self.STORE_PATH = path
-            self.NSHARDS_PATH = Path(self.STORE_PATH).joinpath("NSHARDS")
-        return [
-            f"ssh {host} "
-            f'"mkdir -p {self.STORE_PATH} && echo {shards} | tee {self.NSHARDS_PATH}"'
-            for (host, _) in remotes
-        ]
-
-    def destroy_cmd(
-        self, remotes: List[Tuple[str, str]], path: str, **kwargs
-    ) -> List[str]:
-        return [
-            f"ssh {host} \"find {path} -type d -name 'shard*' | xargs rm -rf \""
-            for (host, _) in remotes
-        ]
 
 
 class ZookeeperService(Service):
@@ -476,6 +419,12 @@ class HStoreAdminService(Service):
             type=str,
             help="comma separated hstore server (host,local_address) pairs, e.g. server1:10.100.0.1,server2:10.100.0.2",
         )
+        bootstrap_parser.add_argument(
+            "--wait",
+            type=int,
+            default=4,
+            help="wait time in seconds for internal information synchronization before bootstrap.",
+        )
 
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
@@ -533,16 +482,17 @@ class HStoreAdminService(Service):
 
     def bootstrap_cmd(
         self,
-        container_bin,
-        container_name,
-        remotes,
-        server_list,
-        replicates,
+        container_bin: str,
+        container_name: str,
+        remotes: List[Tuple[str, str]],
+        server_list: str,
+        replicates: int,
+        wait: int,
         **kargs,
-    ):
-        servers = self.parse_ips(server_list)
+    ) -> List[str]:
+        servers = self.parse_remotes(server_list)
         if servers and remotes:
-            wait = "".join(
+            wait_port = "".join(
                 f"{wait_local_tcp_sh(self.DEFAULT_ADMIN_API_PORT, store_host)} && "
                 f"{wait_local_tcp_sh(self.DEFAULT_SERVER_LISTEN_PORT, store_host)} && "
                 for (store_host, _) in servers
@@ -550,7 +500,8 @@ class HStoreAdminService(Service):
 
             return [
                 f"ssh -t {host} "
-                f"'{wait} sleep 4 && {container_bin} exec -it {container_name} {self.BOOT_STRAP_CMD} node:{replicates}'"
+                f"'{wait_port} sleep {wait} && "
+                f"{container_bin} exec -it {container_name} {self.BOOT_STRAP_CMD} node:{replicates}'"
                 for (host, _) in remotes
             ]
 
@@ -558,6 +509,7 @@ class HStoreAdminService(Service):
 class HStoreService(Service):
     KEYS = ["hstore"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore"
+    STORE_PATH = "/data/store"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -577,21 +529,28 @@ class HStoreService(Service):
             default="",
             type=str,
         )
+
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
             "--image", default="docker.io/hstreamdb/hstream"
         )
         start_parser.add_argument("--rm", action="store_true")
-        start_parser.add_argument("--data-dir", default="/data/store")
+        start_parser.add_argument("--data-dir", default=self.STORE_PATH)
+        start_parser.add_argument("--shards", default=1, type=int)
         start_parser.add_argument(
             "--config-path",
             required=True,
             help="Zookeeper key to the config file",
         )
+
         stop_parser = argparse.ArgumentParser(add_help=False)
         stop_parser.add_argument(
             "--force", "-f", default=False, action="store_true"
         )
+
+        destroy_parser = argparse.ArgumentParser(add_help=False)
+        destroy_parser.add_argument("--path", "-p", default=self.STORE_PATH)
+
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
@@ -601,29 +560,38 @@ class HStoreService(Service):
         action_subparser.add_parser(
             "stop", help="stop services", parents=[stop_parser]
         )
+        action_subparser.add_parser(
+            "destroy",
+            help="destroy store environment",
+            parents=[destroy_parser],
+        )
 
     def print_help(self):
         return self.cmd.print_help()
 
     def start_cmd(
         self,
-        container_bin,
-        container_name,
-        image,
-        data_dir,
-        config_path,
-        remotes,
-        rm=False,
+        container_bin: str,
+        container_name: str,
+        image: str,
+        data_dir: str,
+        shards: int,
+        config_path: str,
+        remotes: List[Tuple[str, str]],
+        rm: bool = False,
         **kargs,
-    ):
+    ) -> List[str]:
         opts = "--rm" if rm else ""
         cmds = []
+        self.STORE_PATH = data_dir
+        shards_path = Path(data_dir).joinpath("NSHARDS")
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
                 cmds.append(
                     f"ssh {host} '"
+                    f"mkdir -p {self.STORE_PATH} && echo {shards} | tee {shards_path} && "
                     f"{container_bin} run {opts} -d --name {container_name} "
                     "--network host "
                     f"-v {data_dir}:/data/store "
@@ -631,9 +599,18 @@ class HStoreService(Service):
                     f"--config-path {config_path} "
                     f"--name ld_{i} --address {addr} "
                     f"--local-log-store-path /data/store "
+                    f"--num-shards {shards}"
                     f"'"
                 )
         return cmds
+
+    def destroy_cmd(
+        self, remotes: List[Tuple[str, str]], path: str, **kwargs
+    ) -> List[str]:
+        return [
+            f"ssh {host} 'echo \"delete {path}\" && rm -rf {path}'"
+            for (host, _) in remotes
+        ]
 
 
 class HServerService(Service):
@@ -738,7 +715,6 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     s = Service(parser)
-    s.register(StoreEnvService)
     s.register(ZookeeperService)
     s.register(HStoreAdminService)
     s.register(HStoreService)
