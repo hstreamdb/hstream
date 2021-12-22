@@ -348,7 +348,7 @@ class ZookeeperService(Service):
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
-    BOOT_STRAP_CMD = (
+    BOOTSTRAP_CMD = (
         "hadmin nodes-config bootstrap --metadata-replicate-across "
     )
     # TCP port on which the server listens to for admin commands, supports commands over SSL
@@ -501,7 +501,7 @@ class HStoreAdminService(Service):
             return [
                 f"ssh -t {host} "
                 f"'{wait_port} sleep {wait} && "
-                f"{container_bin} exec -it {container_name} {self.BOOT_STRAP_CMD} node:{replicates}'"
+                f"{container_bin} exec -it {container_name} {self.BOOTSTRAP_CMD} node:{replicates}'"
                 for (host, _) in remotes
             ]
 
@@ -700,7 +700,7 @@ class HServerService(Service):
                     f"--store-config {store_config} "
                     f"--store-admin-host {store_admin_host} "
                     f"--replicate-factor {replicate_factor} "
-                    f"--server-id {i}"
+                    f"--server-id {i} "
                     f"'"
                 )
         return cmds
