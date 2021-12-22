@@ -77,7 +77,7 @@ def wait_local_tcp_sh(port, host="127.0.0.1", timeout=20):
         f'  >&2 echo "Waiting for {host}:{port} ...";'
         "   sleep 1;"
         "   timeout=$((timeout - 1));"
-        '   [ $timeout -le 0 ] && echo "Timeout!" && exit 1;'
+        '   if [ $timeout -le 0 ]; then echo "Timeout!" && exit 1; fi;'
         "done"
     )
 
