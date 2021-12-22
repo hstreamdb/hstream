@@ -599,7 +599,7 @@ class HStoreService(Service):
                     f"--config-path {config_path} "
                     f"--name ld_{i} --address {addr} "
                     f"--local-log-store-path /data/store "
-                    f"--num-shards {shards}"
+                    f"--num-shards {shards} "
                     f"'"
                 )
         return cmds
