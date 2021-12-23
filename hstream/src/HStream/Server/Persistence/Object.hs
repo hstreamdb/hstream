@@ -18,8 +18,6 @@ import           Data.Unique                       (hashUnique, newUnique)
 import           HStream.Server.HStreamApi         (Subscription)
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Utils
-import           HStream.Server.Types              (ProducerContext,
-                                                    SubscriptionContext)
 import           HStream.Utils                     (cBytesToText)
 import qualified Z.Data.CBytes                     as CB
 import           ZooKeeper                         (zooExists, zooGetChildren,
@@ -54,51 +52,3 @@ instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepT
   removeObject objId zk = tryDeletePath zk $ mkSubscriptionPath objId
 
   removeAllObjects zk = tryDeleteAllPath zk subscriptionsPath
-
-instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubCtxRep :: ObjRepType) SubscriptionContext where
-  storeObject objId val zk = do
-    uniq <- newUnique
-    Recipe.withLock zk subscriptionCtxsLockPath (CB.pack . show . hashUnique $ uniq) $ do
-      zooExists zk subPath >>= \case
-        Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
-        Nothing -> createInsert zk subPath (encodeValueToBytes val)
-    where subPath = mkSubscriptionCtxPath objId
-
-  getObject objId zk = decodeZNodeValue zk subPath
-    where subPath = mkSubscriptionCtxPath objId
-
-  checkIfExist objId zk = isJust <$> zooExists zk (mkSubscriptionCtxPath objId)
-
-  listObjects zk = do
-    sIds <- fmap cBytesToText . unStrVec . strsCompletionValues <$>
-            zooGetChildren zk subscriptionCtxsPath
-    ms <- forM sIds (`getObject` zk)
-    return $ Map.fromList $ second fromJust <$> filter (\(_,x) -> isJust x) (sIds `zip` ms)
-
-  removeObject objId zk = tryDeletePath zk $ mkSubscriptionCtxPath objId
-
-  removeAllObjects zk = tryDeleteAllPath zk subscriptionCtxsPath
-
-instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('PrdCtxRep :: ObjRepType) ProducerContext where
-  storeObject objId val zk = do
-    uniq <- newUnique
-    Recipe.withLock zk producerCtxsLockPath (CB.pack . show . hashUnique $ uniq) $ do
-      zooExists zk subPath >>= \case
-        Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
-        Nothing -> createInsert zk subPath (encodeValueToBytes val)
-    where subPath = mkProducerCtxPath objId
-
-  getObject objId zk = decodeZNodeValue zk subPath
-    where subPath = mkProducerCtxPath objId
-
-  checkIfExist objId zk = isJust <$> zooExists zk (mkProducerCtxPath objId)
-
-  listObjects zk = do
-    sIds <- fmap cBytesToText . unStrVec . strsCompletionValues <$>
-            zooGetChildren zk producerCtxsPath
-    ms <- forM sIds (`getObject` zk)
-    return $ Map.fromList $ second fromJust <$> filter (\(_,x) -> isJust x) (sIds `zip` ms)
-
-  removeObject objId zk = tryDeletePath zk $ mkProducerCtxPath objId
-
-  removeAllObjects zk = tryDeleteAllPath zk producerCtxsPath

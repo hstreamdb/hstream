@@ -29,8 +29,7 @@ import           GHC.Stack                 (HasCallStack)
 import           Z.Data.CBytes             (CBytes)
 
 import           HStream.Server.HStreamApi (Subscription)
-import           HStream.Server.Types      (ProducerContext, ServerID,
-                                            SubscriptionContext)
+import           HStream.Server.Types      (ServerID)
 import           HStream.Utils             (TaskStatus (..), cBytesToText,
                                             textToCBytes)
 
@@ -108,13 +107,11 @@ class TaskPersistence handle where
 
 --------------------------------------------------------------------------------
 
-data ObjRepType = SubRep | SubCtxRep | PrdCtxRep
+data ObjRepType = SubRep
 
 -- | The real type of the stored object
 type family RealObjType (a :: ObjRepType) where
   RealObjType 'SubRep    = Subscription
-  RealObjType 'SubCtxRep = SubscriptionContext
-  RealObjType 'PrdCtxRep = ProducerContext
 
 class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b | b -> a where
   -- | persist an object to the store

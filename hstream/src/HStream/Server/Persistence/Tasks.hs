@@ -1,6 +1,4 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -23,6 +21,7 @@ import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
 import           HStream.Server.Types                 (ServerID)
 import           HStream.Utils                        (TaskStatus (..))
+
 --------------------------------------------------------------------------------
 
 instance TaskPersistence ZHandle where

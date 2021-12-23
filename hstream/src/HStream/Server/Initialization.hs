@@ -12,7 +12,6 @@ import           Control.Exception                (SomeException, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
-import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
@@ -33,7 +32,6 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    decodeZNodeValue,
                                                    encodeValueToBytes,
                                                    getServerNode',
-                                                   serverLoadPath,
                                                    serverRootLockPath,
                                                    serverRootPath)
 import           HStream.Server.Types
@@ -52,7 +50,6 @@ initNodePath zk serverID host port port' = do
                           , serverInternalPort = port'
                           }
   let ops = [ createEphemeral (serverRootPath, Just $ encodeValueToBytes nodeInfo)
-            , createEphemeral (serverLoadPath, Nothing)
             ]
   e' <- try $ zooMulti zk ops
   case e' of
@@ -95,7 +92,6 @@ initializeServer ServerOpts{..} zk = do
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
   subscribeRuntimeInfo <- newMVar HM.empty
-  subscriptionCtx      <- newMVar Map.empty
 
   hashRing <- initializeHashRing zk
 
@@ -120,7 +116,6 @@ initializeServer ServerOpts{..} zk = do
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
     , subscribeRuntimeInfo     = subscribeRuntimeInfo
-    , subscriptionCtx          = subscriptionCtx
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
