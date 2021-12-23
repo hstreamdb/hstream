@@ -189,6 +189,15 @@ class Service:
                 for (host, _) in remotes
             ]
 
+    def remove_cmd(
+        self, remotes, persistent_dir, container_bin, container_name, **kwargs
+    ):
+        loginfo("Stop & remove all service with persistent datas.")
+        return [
+            f"ssh {host} '{container_bin} rm -f {container_name} && rm -rf {persistent_dir}'"
+            for (host, _) in remotes
+        ]
+
     @staticmethod
     def post_start_cmd(
         container_bin,
@@ -210,6 +219,7 @@ class Service:
 class ZookeeperService(Service):
     KEYS = ["zookeeper", "zk"]
     DEFAULT_CONTAINER_NAME = "deploy_zookeeper"
+    DEFAULT_PERSISTENT_DIR = "/data/zookeeper"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -227,16 +237,46 @@ class ZookeeperService(Service):
             default="",
             type=str,
         )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+
+        # ------------------------------
+        # zookeeper start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument("--image", default="docker.io/zookeeper:3.6")
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument("--container-cmd", default="")
-
+        start_parser.add_argument(
+            "--persistent-dir",
+            default=self.DEFAULT_PERSISTENT_DIR,
+            help="where to store datas",
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        # ------------------------------
+        # zookeeper stop
         stop_parser = argparse.ArgumentParser(add_help=False)
         stop_parser.add_argument(
             "--force", "-f", default=False, action="store_true"
         )
-
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+        # ------------------------------
+        # zookeeper remove
+        remove_parser = argparse.ArgumentParser(add_help=False)
+        remove_parser.add_argument(
+            "--persistent-dir",
+            default=self.DEFAULT_PERSISTENT_DIR,
+            help="where to remove datas",
+        )
+        action_subparser.add_parser(
+            "remove", help="remove sevices", parents=[remove_parser]
+        )
+        # ------------------------------
+        # zookeeper post-start
         post_start_parser = argparse.ArgumentParser(add_help=False)
         post_start_parser.add_argument("--command", required=True, type=str)
         post_start_parser.add_argument(
@@ -246,7 +286,13 @@ class ZookeeperService(Service):
             default=None,
             help="comma separated ports",
         )
-
+        action_subparser.add_parser(
+            "post-start",
+            help="run command inside the container",
+            parents=[post_start_parser],
+        )
+        # ------------------------------
+        # zookeeper store
         store_parser = argparse.ArgumentParser(add_help=False)
         store_parser.add_argument(
             "--key",
@@ -264,21 +310,6 @@ class ZookeeperService(Service):
         store_values_group.add_argument(
             "--value", help="the value need to store"
         )
-
-        action_subparser = self.cmd.add_subparsers(
-            title="action", dest="action_command"
-        )
-        action_subparser.add_parser(
-            "start", help="start sevices", parents=[start_parser]
-        )
-        action_subparser.add_parser(
-            "post-start",
-            help="run command inside the container",
-            parents=[post_start_parser],
-        )
-        action_subparser.add_parser(
-            "stop", help="stop services", parents=[stop_parser]
-        )
         action_subparser.add_parser(
             "store",
             help="create a zk node with specific name and value. ignore the operation if node exist.",
@@ -294,17 +325,24 @@ class ZookeeperService(Service):
         remotes,
         container_name,
         image,
+        persistent_dir=None,
         extra_container_options="",
         container_cmd="",
         rm=False,
         **kargs,
     ):
 
-        opts = "--rm" if rm else ""
+        docker_opts = "--rm " if rm else ""
         zoo_servers = " ".join(
             f"server.{i}={hostname}:2888:3888;2181"
             for (i, (host, hostname)) in enumerate(remotes)
         )
+        pre_cmd = ""
+        if persistent_dir:
+            persistent_dir = persistent_dir.rstrip("/")
+            pre_cmd = f"mkdir -p {persistent_dir}" + "/{data,datalog} && "
+            docker_opts += f"-v {persistent_dir}/data:/data \
+                -v {persistent_dir}/datalog:/datalog"
 
         cmds = []
         for (i, (host, _)) in enumerate(remotes):
@@ -312,7 +350,9 @@ class ZookeeperService(Service):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
                 cmds.append(
-                    f"ssh {host} '{container_bin} run -td {opts} --name {container_name} "
+                    f"ssh {host} '{pre_cmd} "
+                    f"{container_bin} run -td {docker_opts} "
+                    f"--name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
                     f"{image} {container_cmd}' "
@@ -348,9 +388,7 @@ class ZookeeperService(Service):
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
-    BOOTSTRAP_CMD = (
-        "hadmin nodes-config bootstrap --metadata-replicate-across "
-    )
+    BOOTSTRAP_CMD = "hadmin nodes-config bootstrap --metadata-replicate-across "
     # TCP port on which the server listens to for admin commands, supports commands over SSL
     DEFAULT_ADMIN_API_PORT = 6440
     # TCP port on which the server listens for non-SSL clients
@@ -374,7 +412,12 @@ class HStoreAdminService(Service):
             default="",
             type=str,
         )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
 
+        # ------------------------------
+        # hstore-admin start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
             "--image", default="docker.io/hstreamdb/hstream"
@@ -385,7 +428,11 @@ class HStoreAdminService(Service):
             required=True,
             help="Zookeeper key to the config file",
         )
-
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        # ------------------------------
+        # hstore-admin post-start
         post_start_parser = argparse.ArgumentParser(add_help=False)
         post_start_parser.add_argument(
             "--command",
@@ -399,12 +446,22 @@ class HStoreAdminService(Service):
             default=None,
             help="comma separated ports",
         )
-
+        action_subparser.add_parser(
+            "post-start",
+            help="run command inside the container",
+            parents=[post_start_parser],
+        )
+        # ------------------------------
+        # hstore-admin stop
         stop_parser = argparse.ArgumentParser(add_help=False)
         stop_parser.add_argument(
             "--force", "-f", default=False, action="store_true"
         )
-
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+        # ------------------------------
+        # hstore-admin bootstrap
         bootstrap_parser = argparse.ArgumentParser(add_help=False)
         bootstrap_parser.add_argument(
             "--replicates",
@@ -424,21 +481,6 @@ class HStoreAdminService(Service):
             type=int,
             default=4,
             help="wait time in seconds for internal information synchronization before bootstrap.",
-        )
-
-        action_subparser = self.cmd.add_subparsers(
-            title="action", dest="action_command"
-        )
-        action_subparser.add_parser(
-            "start", help="start sevices", parents=[start_parser]
-        )
-        action_subparser.add_parser(
-            "post-start",
-            help="run command inside the container",
-            parents=[post_start_parser],
-        )
-        action_subparser.add_parser(
-            "stop", help="stop services", parents=[stop_parser]
         )
         action_subparser.add_parser(
             "bootstrap",
@@ -509,7 +551,7 @@ class HStoreAdminService(Service):
 class HStoreService(Service):
     KEYS = ["hstore"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore"
-    STORE_PATH = "/data/store"
+    DEFAULT_PERSISTENT_DIR = "/data/store"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -529,41 +571,50 @@ class HStoreService(Service):
             default="",
             type=str,
         )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
 
+        # ------------------------------
+        # hstore start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
             "--image", default="docker.io/hstreamdb/hstream"
         )
         start_parser.add_argument("--rm", action="store_true")
-        start_parser.add_argument("--data-dir", default=self.STORE_PATH)
+        start_parser.add_argument(
+            "--data-dir", default=self.DEFAULT_PERSISTENT_DIR
+        )
         start_parser.add_argument("--shards", default=1, type=int)
         start_parser.add_argument(
             "--config-path",
             required=True,
             help="Zookeeper key to the config file",
         )
-
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        # ------------------------------
+        # hstore stop
         stop_parser = argparse.ArgumentParser(add_help=False)
         stop_parser.add_argument(
             "--force", "-f", default=False, action="store_true"
         )
-
-        destroy_parser = argparse.ArgumentParser(add_help=False)
-        destroy_parser.add_argument("--path", "-p", default=self.STORE_PATH)
-
-        action_subparser = self.cmd.add_subparsers(
-            title="action", dest="action_command"
-        )
-        action_subparser.add_parser(
-            "start", help="start sevices", parents=[start_parser]
-        )
         action_subparser.add_parser(
             "stop", help="stop services", parents=[stop_parser]
         )
+        # ------------------------------
+        # hstore remove
+        remove_parser = argparse.ArgumentParser(add_help=False)
+        remove_parser.add_argument(
+            "--persistent-dir",
+            default=self.DEFAULT_PERSISTENT_DIR,
+            help="where to remove datas",
+        )
         action_subparser.add_parser(
-            "destroy",
-            help="destroy store environment",
-            parents=[destroy_parser],
+            "remove",
+            help="remove store service",
+            parents=[remove_parser],
         )
 
     def print_help(self):
@@ -583,7 +634,6 @@ class HStoreService(Service):
     ) -> List[str]:
         opts = "--rm" if rm else ""
         cmds = []
-        self.STORE_PATH = data_dir
         shards_path = Path(data_dir).joinpath("NSHARDS")
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
@@ -591,7 +641,7 @@ class HStoreService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"mkdir -p {self.STORE_PATH} && echo {shards} | tee {shards_path} && "
+                    f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
                     f"{container_bin} run {opts} -d --name {container_name} "
                     "--network host "
                     f"-v {data_dir}:/data/store "
@@ -603,14 +653,6 @@ class HStoreService(Service):
                     f"'"
                 )
         return cmds
-
-    def destroy_cmd(
-        self, remotes: List[Tuple[str, str]], path: str, **kwargs
-    ) -> List[str]:
-        return [
-            f"ssh {host} 'echo \"delete {path}\" && rm -rf {path}'"
-            for (host, _) in remotes
-        ]
 
 
 class HServerService(Service):
