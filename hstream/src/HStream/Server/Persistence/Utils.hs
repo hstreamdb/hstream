@@ -34,6 +34,7 @@ module HStream.Server.Persistence.Utils
   , tryCreate
   , createPathOp
   , setZkData
+  , setZkDataOp
   , deletePath
   , tryDeletePath
   , deleteAllPath
@@ -57,16 +58,19 @@ import           Control.Monad                        (void)
 import           Data.Aeson                           (FromJSON, ToJSON)
 import qualified Data.Aeson                           as Aeson
 import qualified Data.ByteString.Lazy                 as BL
+import           Data.ByteString.Lazy.Char8           (unpack)
 import           Data.Functor                         ((<&>))
 import qualified Data.Text                            as T
 import           GHC.Stack                            (HasCallStack)
 import           Z.Data.CBytes                        (CBytes)
+import qualified Z.Data.CBytes                        as CB
 import           Z.Data.Vector                        (Bytes)
 import qualified Z.Foreign                            as ZF
 import           ZooKeeper                            (Resource, zooCreate,
                                                        zooCreateOpInit,
                                                        zooDelete, zooDeleteAll,
                                                        zooGet, zooSet,
+                                                       zooSetOpInit,
                                                        zookeeperResInit)
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
@@ -167,14 +171,15 @@ createInsert zk path contents = do
   Log.debug . Log.buildString $ "create path " <> show path <> " with value"
   void $ zooCreate zk path (Just contents) zooOpenAclUnsafe ZooPersistent
 
-createInsertOp :: HasCallStack => CBytes -> Bytes -> IO ZooOp
-createInsertOp path contents = do
-  Log.debug . Log.buildString $ "create path " <> show path <> " with value"
-  return $ zooCreateOpInit path (Just contents) 64 zooOpenAclUnsafe ZooPersistent
+createInsertOp :: CBytes -> Bytes -> ZooOp
+createInsertOp path contents = zooCreateOpInit path (Just contents) 64 zooOpenAclUnsafe ZooPersistent
 
 setZkData :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 setZkData zk path contents =
   void $ zooSet zk path (Just contents) Nothing
+
+setZkDataOp :: CBytes -> Bytes -> ZooOp
+setZkDataOp path contents = zooSetOpInit path (Just contents) Nothing
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
@@ -185,10 +190,8 @@ createPath zk path = do
   Log.debug . Log.buildString $ "create path " <> show path
   void $ zooCreate zk path Nothing zooOpenAclUnsafe ZooPersistent
 
-createPathOp :: HasCallStack => CBytes -> IO ZooOp
-createPathOp path = do
-  Log.debug . Log.buildString $ "create path " <> show path
-  return $ zooCreateOpInit path Nothing 64 zooOpenAclUnsafe ZooPersistent
+createPathOp :: CBytes -> ZooOp
+createPathOp path = zooCreateOpInit path Nothing 64 zooOpenAclUnsafe ZooPersistent
 
 deletePath :: HasCallStack => ZHandle -> CBytes -> IO ()
 deletePath zk path = do
@@ -217,13 +220,14 @@ decodeDataCompletion (DataCompletion (Just x) _) =
     Left _  -> Nothing
 decodeDataCompletion (DataCompletion Nothing _) = Nothing
 
--- FIXME: let 'Nothing' lead to more detailed exception?
-decodeDataCompletion' :: FromJSON a => DataCompletion -> a
-decodeDataCompletion' (DataCompletion (Just x) _) =
-  case Aeson.eitherDecode' . BL.fromStrict . ZF.toByteString $ x of
+decodeDataCompletion' :: FromJSON a => CBytes -> DataCompletion -> a
+decodeDataCompletion' _ (DataCompletion (Just x) _) =
+  let content = BL.fromStrict . ZF.toByteString $ x in
+  case Aeson.eitherDecode' content of
     Right a -> a
-    Left _  -> throw FailedToDecode
-decodeDataCompletion' (DataCompletion Nothing _) = throw FailedToDecode
+    Left _  -> throw $ FailedToDecode (unpack content)
+decodeDataCompletion' path (DataCompletion Nothing _) =
+  throw $ FailedToDecode (CB.unpack path <> "is empty")
 
 decodeZNodeValue :: FromJSON a => ZHandle -> CBytes -> IO (Maybe a)
 decodeZNodeValue zk nodePath = do
@@ -234,7 +238,7 @@ decodeZNodeValue zk nodePath = do
 
 decodeZNodeValue' :: FromJSON a => ZHandle -> CBytes -> IO a
 decodeZNodeValue' zk nodePath = do
-  zooGet zk nodePath <&> decodeDataCompletion'
+  zooGet zk nodePath <&> decodeDataCompletion' nodePath
 
 encodeValueToBytes :: ToJSON a => a -> Bytes
 encodeValueToBytes = ZF.fromByteString . BL.toStrict . Aeson.encode
