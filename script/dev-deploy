@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import getpass
-import time
 import subprocess
 from pathlib import Path
 
@@ -35,6 +34,11 @@ CUID, CGID = os.getuid(), os.getgid()
 CUSERNAME = getpass.getuser()
 CWD = os.getcwd()
 
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+)
+DEFAULT_DEPLOY_CONF = os.path.join(PROJECT_ROOT, "script/dev_deploy_conf.json")
+
 
 def run_sh(
     sh, stderr=subprocess.STDOUT, stdout=None, check=True, print_cmd=False
@@ -55,24 +59,7 @@ def run_sh(
             raise ValueError(f"Invalid sh: {sh}")
 
 
-def wait_tcp_server(host, port, timeout=60):
-    import socket
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    while timeout >= 0:
-        try:
-            loginfo(f"Wating {host}:{port}...")
-            s.connect((host, int(port)))
-            s.shutdown(2)
-            return True
-        except Exception:
-            time.sleep(1)
-            timeout -= 1
-
-    raise RuntimeError(f"Waiting {host}:{port} timeout!")
-
-
-def wait_local_tcp_sh(port, host="127.0.0.1", timeout=20):
+def wait_tcp_sh(port, host="127.0.0.1", timeout=20):
     return (
         f'set -e && export timeout="{timeout}" && '
         f"until (echo -n > /dev/tcp/{host}/{port}); do"
@@ -96,11 +83,6 @@ def is_container_running(remote, container_name, container_bin="docker"):
         if container_name.strip() in rs:
             return True
     return False
-
-
-def parse_json(path: str):
-    with open(path, "r") as f:
-        return json.load(f)
 
 
 # -----------------------------------------------------------------------------
@@ -131,6 +113,13 @@ class Service:
             if self._commands.get(key):
                 raise RuntimeError(f"Register a registered service: {key}!")
             self._commands[key] = s
+
+    def get_service(self, SubService):
+        key = SubService.KEYS[0]
+        if svc := self._commands.get(key):
+            return svc
+        else:
+            raise RuntimeError(f"No such service: {key}!")
 
     def run(self):
         argcomplete.autocomplete(parser)
@@ -197,11 +186,21 @@ class Service:
             ]
 
     def remove_cmd(
-        self, remotes, persistent_dir, container_bin, container_name, **kwargs
+        self,
+        remotes,
+        persistent_dir,
+        container_bin,
+        container_name,
+        remove_container=True,
+        **kwargs,
     ):
-        loginfo("Stop & remove all service with persistent datas.")
+        cmd = (
+            f"{container_bin} rm -f {container_name} &&"
+            if remove_container
+            else ""
+        )
         return [
-            f"ssh {host} '{container_bin} rm -f {container_name} && rm -rf {persistent_dir}'"
+            f"ssh {host} '{cmd} rm -rf {persistent_dir}'"
             for (host, _) in remotes
         ]
 
@@ -216,7 +215,7 @@ class Service:
     ):
         if remotes and command:
             ports_ = port.split(",") if port else []
-            wait = "".join(f"{wait_local_tcp_sh(p)} && " for p in ports_ if p)
+            wait = "".join(f"{wait_tcp_sh(p)} && " for p in ports_ if p)
             return [
                 f"ssh -t {host} '{wait} {container_bin} exec -it {container_name} {command}' "
                 for (host, _) in remotes
@@ -382,12 +381,19 @@ class ZookeeperService(Service):
 
         if remotes:
             node_value = value if value else f'"$(cat {file})"'
+
+            waiting = "".join(
+                f"{wait_tcp_sh(2181, h)} && sleep 2"
+                for (_, h) in remotes
+            )
             store_command = lambda host: (
                 f"printf -v __ %q "
                 f"{node_value} "
-                f"&& ssh {host} "
-                f'"{container_bin} exec -t {container_name} zkCli.sh create {key} $__ || '
-                f'{container_bin} exec -t {container_name} zkCli.sh set {key} $__"'
+                f'&& ssh {host} "'
+                f'{waiting} && '
+                f'{container_bin} exec -t {container_name} zkCli.sh create {key} $__ || '
+                f'{container_bin} exec -t {container_name} zkCli.sh set {key} $__'
+                f'"'
             )
             return [store_command(host) for (host, _) in remotes]
 
@@ -542,9 +548,9 @@ class HStoreAdminService(Service):
         servers = self.parse_remotes(server_list)
         if servers and remotes:
             wait_port = "".join(
-                f"{wait_local_tcp_sh(self.DEFAULT_ADMIN_API_PORT, store_host)} && "
-                f"{wait_local_tcp_sh(self.DEFAULT_SERVER_LISTEN_PORT, store_host)} && "
-                for (store_host, _) in servers
+                f"{wait_tcp_sh(self.DEFAULT_ADMIN_API_PORT, store_host)} && "
+                f"{wait_tcp_sh(self.DEFAULT_SERVER_LISTEN_PORT, store_host)} && "
+                for (_, store_host) in servers
             )
 
             return [
@@ -767,11 +773,12 @@ class SimpleService(Service):
             aliases=self.KEYS[1:],
             help="Cluster deploy service",
         )
+        self.ZK_SVC = super().get_service(ZookeeperService)
+        self.HSTORE_ADMIN_SVC = super().get_service(HStoreAdminService)
+        self.HSTORE_SVC = super().get_service(HStoreService)
 
     def init_parser(self):
-        self.cmd.add_argument(
-            "--config", default=Path(CWD).joinpath("conf.json")
-        )
+        self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
 
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
@@ -780,183 +787,160 @@ class SimpleService(Service):
         action_subparser.add_parser("stop", help="stop services")
         action_subparser.add_parser("remove", help="remove persistent data")
 
+    def parse_config(self, config):
+        with open(config, "r") as f:
+            deploy_cfg = json.load(f)
+            self.zk_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in deploy_cfg["zookeeper-host"]
+            ]
+            zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
+            self.config_path_in_zk = (
+                "zk:" + zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
+            )
+            self.local_store_config_path = Path(
+                deploy_cfg["local_store_config_path"]
+            )
+            self.admin_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in deploy_cfg["hstore-admin-host"]
+            ]
+            self.hstore_hosts = [
+                (h, deploy_cfg["hosts"][h]) for h in deploy_cfg["hstore-host"]
+            ]
+
     def start_cmd(self, config: str, **kargs) -> List[str]:
-        deploy_cfg = parse_json(config)
+        self.parse_config(config)
         cmds = []
-        svc = self.get_svc_instance()
 
         # start zookeeper
-        zk = svc["zk"]
-        zk_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["zookeeper-host"]
-        ]
         zk_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
             "image": "docker.io/zookeeper:3.6",
         }
         zk_start_args = {
-            "remotes": zk_hosts,
+            "remotes": self.zk_hosts,
             "persistent-dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
             **zk_args,
         }
-        cmds.extend(zk.start_cmd(**zk_start_args))
+        cmds.extend(self.ZK_SVC.start_cmd(**zk_start_args))
 
-        zk_ip = ",".join(map(lambda x: x[1] + ":2181", zk_hosts))
-        config_path_in_zk = "zk:" + zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
         zk_store_args = {
-            "remotes": [zk_hosts[0]],
+            "remotes": [self.zk_hosts[0]],
             "key": self.DEFAULT_STORE_CONFIG_NODE_IN_ZK,
-            "file": Path(deploy_cfg["local_store_config_path"]),
+            "file": self.local_store_config_path,
             "value": None,
             **zk_args,
         }
-        cmds.extend(zk.store_cmd(**zk_store_args))
+        cmds.extend(self.ZK_SVC.store_cmd(**zk_store_args))
 
         zk_cmd_args = {
-            "remotes": [zk_hosts[0]],
+            "remotes": [self.zk_hosts[0]],
             "command": "zkCli.sh get " + zk_store_args["key"],
             **zk_args,
         }
-        cmds.extend(zk.post_start_cmd(**zk_cmd_args))
+        cmds.extend(self.ZK_SVC.post_start_cmd(**zk_cmd_args))
 
         # start hstore_admin
-        hadmin = svc["hstore-admin"]
-        admin_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["hadmin-host"]
-        ]
         admin_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
             "image": "docker.io/hstreamdb/hstream",
-            "config_path": config_path_in_zk,
-            "remotes": admin_hosts,
+            "config_path": self.config_path_in_zk,
+            "remotes": self.admin_hosts,
         }
-        cmds.extend(hadmin.start_cmd(**admin_args))
+        cmds.extend(self.HSTORE_ADMIN_SVC.start_cmd(**admin_args))
 
         # start hstore
-        store = svc["hstore"]
-        store_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["store-host"]
-        ]
         store_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "image": "docker.io/hstreamdb/hstream",
-            "config_path": config_path_in_zk,
+            "config_path": self.config_path_in_zk,
             "data_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
             "shards": 1,
-            "remotes": store_hosts,
+            "remotes": self.hstore_hosts,
         }
-        cmds.extend(store.start_cmd(**store_args))
+        cmds.extend(self.HSTORE_SVC.start_cmd(**store_args))
 
         # bootstrap
         bootstrap_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "remotes": admin_hosts,
+            "remotes": self.admin_hosts,
             "replicates": 3,
             "server_list": ",".join(
-                map(lambda x: deploy_cfg["hosts"][x], deploy_cfg["store-host"])
+                map(lambda pair: f"{pair[0]}:{pair[1]}", self.hstore_hosts)
             ),
             "wait": 4,
         }
-        cmds.extend(hadmin.bootstrap_cmd(**bootstrap_args))
+        cmds.extend(self.HSTORE_ADMIN_SVC.bootstrap_cmd(**bootstrap_args))
         return cmds
 
     def stop_cmd(self, config: str, **kargs) -> List[str]:
-        deploy_cfg = parse_json(config)
+        self.parse_config(config)
         cmds = []
-        svc = self.get_svc_instance()
 
         # stop hstore
-        store = svc["hstore"]
-        store_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["store-host"]
-        ]
         store_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "remotes": store_hosts,
+            "remotes": self.hstore_hosts,
             "force": True,
         }
-        cmds.extend(store.stop_cmd(**store_args))
+        cmds.extend(self.HSTORE_SVC.stop_cmd(**store_args))
 
-        # stop hadmin
-        hadmin = svc["hstore-admin"]
-        admin_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["hadmin-host"]
-        ]
+        # stop hstore-admin
         admin_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "remotes": admin_hosts,
+            "remotes": self.admin_hosts,
             "force": True,
         }
-        cmds.extend(hadmin.stop_cmd(**admin_args))
+        cmds.extend(self.HSTORE_ADMIN_SVC.stop_cmd(**admin_args))
 
         # stop zk
-        zk = svc["zk"]
-        zk_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["zookeeper-host"]
-        ]
         zk_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "remotes": zk_hosts,
+            "remotes": self.zk_hosts,
             "force": True,
         }
-        cmds.extend(zk.stop_cmd(**zk_args))
+        cmds.extend(self.ZK_SVC.stop_cmd(**zk_args))
         return cmds
 
     def remove_cmd(self, config: str, **kargs) -> List[str]:
-        deploy_cfg = parse_json(config)
-        cmds = []
+        self.parse_config(config)
 
+        # stop all containers
+        stop_cmds = self.stop_cmd(config, **kargs)
         # remove store persistent data
-        store = self.get_svc_instance()["hstore"]
-        store_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["store-host"]
-        ]
         store_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "remotes": store_hosts,
+            "remotes": self.hstore_hosts,
             "persistent_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
         }
-        cmds.extend(store.remove_cmd(**store_args))
-
+        remove_hstore_cmds = self.HSTORE_SVC.remove_cmd(
+            # since we already removed the container
+            **store_args,
+            remove_container=False,
+        )
         # remove zk persistent data
-        zk = self.get_svc_instance()["zk"]
-        zk_hosts = [
-            (host, deploy_cfg["hosts"][host])
-            for host in deploy_cfg["zookeeper-host"]
-        ]
         zk_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "remotes": zk_hosts,
+            "remotes": self.zk_hosts,
             "persistent_dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
         }
-        cmds.extend(zk.remove_cmd(**zk_args))
-        return cmds
+        remove_zk_cmds = self.ZK_SVC.remove_cmd(
+            **zk_args, remove_container=False
+        )
+        return [*stop_cmds, *remove_hstore_cmds, *remove_zk_cmds]
 
     def print_help(self):
         return self.cmd.print_help()
-
-    def get_svc_instance(self):
-        return {
-            "zk": self._commands[ZookeeperService.KEYS[0]],
-            "hstore-admin": self._commands[HStoreAdminService.KEYS[0]],
-            "hstore": self._commands[HStoreService.KEYS[0]],
-        }
 
 
 # -----------------------------------------------------------------------------
