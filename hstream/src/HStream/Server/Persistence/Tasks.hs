@@ -8,13 +8,14 @@
 module HStream.Server.Persistence.Tasks where
 
 import           Control.Exception                    (throwIO)
+import           Control.Monad                        (void)
 import           Data.Int                             (Int64)
 import qualified Data.Text                            as T
 import           Z.Data.CBytes                        (CBytes, pack)
 import           Z.IO.Time                            (SystemTime (MkSystemTime),
                                                        getSystemTime')
-import           ZooKeeper                            (zooDeleteAll, zooGet,
-                                                       zooGetChildren)
+import           ZooKeeper                            (zooDeleteAll,
+                                                       zooGetChildren, zooMulti)
 import           ZooKeeper.Types
 
 import           HStream.Server.Persistence.Common
@@ -27,61 +28,75 @@ import           HStream.Utils                        (TaskStatus (..))
 instance TaskPersistence ZHandle where
   insertQuery qid qSql qTime qType qHServer zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    createPath   zk (mkQueryPath qid)
-    createInsert zk (mkQueryPath qid <> "/sql") (encodeValueToBytes qSql)
-    createInsert zk (mkQueryPath qid <> "/createdTime") (encodeValueToBytes qTime)
-    createInsert zk (mkQueryPath qid <> "/type") (encodeValueToBytes qType)
-    createInsert zk (mkQueryPath qid <> "/status")  (encodeValueToBytes Created)
-    createInsert zk (mkQueryPath qid <> "/timeCkp") (encodeValueToBytes timestamp)
-    createInsert zk (mkQueryPath qid <> "/hServer") (encodeValueToBytes qHServer)
+    void . zooMulti zk $ createPathOp (mkQueryPath qid) :
+      map createHelper
+        [ ("/sql", encodeValueToBytes qSql)
+        , ("/createdTime", encodeValueToBytes qTime)
+        , ("/type", encodeValueToBytes qType)
+        , ("/status", encodeValueToBytes Created)
+        , ("/timeCkp", encodeValueToBytes timestamp)
+        , ("/hServer", encodeValueToBytes qHServer)
+        ]
+    where
+      createHelper (field, contents) = createInsertOp (mkQueryPath qid <> field) contents
 
   setQueryStatus qid newStatus zk = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    setZkData zk (mkQueryPath qid <> "/status") (encodeValueToBytes newStatus)
-    setZkData zk (mkQueryPath qid <> "/timeCkp") (encodeValueToBytes timestamp)
+    void . zooMulti zk $
+      [ setZkDataOp (mkQueryPath qid <> "/status") (encodeValueToBytes newStatus)
+      , setZkDataOp (mkQueryPath qid <> "/timeCkp") (encodeValueToBytes timestamp)
+      ]
 
   setQueryHServer qid hServer zk = ifThrow FailedToSetHServer $ do
     setZkData zk (mkQueryPath qid <> "/hServer") (encodeValueToBytes hServer)
 
   getQueryIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>)  . flip zooGetChildren queriesPath
 
-  getQuery qid zk = ifThrow FailedToGet $ do
-    sql         <- getThenDecode "/sql" qid
-    createdTime <- getThenDecode "/createdTime" qid
-    typ         <- getThenDecode "/type" qid
-    status      <- getThenDecode "/status" qid
-    timeCkp     <- getThenDecode "/timeCkp" qid
-    hServer     <- getThenDecode "/hServer" qid
-    return $ PersistentQuery qid sql createdTime typ status timeCkp hServer
+  getQuery queryId zk = ifThrow FailedToGet $ do
+    queryBindedSql   <- getThenDecode "/sql"
+    queryCreatedTime <- getThenDecode "/createdTime"
+    queryType        <- getThenDecode "/type"
+    queryStatus      <- getThenDecode "/status"
+    queryTimeCkp     <- getThenDecode "/timeCkp"
+    queryHServer     <- getThenDecode "/hServer"
+    return $ PersistentQuery {..}
     where
-      getThenDecode field queryId = decodeZNodeValue' zk (mkQueryPath queryId <> field)
+      getThenDecode field = decodeZNodeValue' zk (mkQueryPath queryId <> field)
 
   insertConnector cid cSql cTime cHServer zk = ifThrow FailedToRecordInfo $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    createPath   zk (mkConnectorPath cid)
-    createInsert zk (mkConnectorPath cid <> "/sql") (encodeValueToBytes cSql)
-    createInsert zk (mkConnectorPath cid <> "/createdTime") (encodeValueToBytes cTime)
-    createInsert zk (mkConnectorPath cid <> "/status") (encodeValueToBytes Created)
-    createInsert zk (mkConnectorPath cid <> "/timeCkp") (encodeValueToBytes timestamp)
-    createInsert zk (mkConnectorPath cid <> "/hServer") (encodeValueToBytes cHServer)
+    void . zooMulti zk $ createPathOp (mkConnectorPath cid) :
+      map createHelper
+        [ ("/sql", encodeValueToBytes cSql)
+        , ("/createdTime", encodeValueToBytes cTime)
+        , ("/status",  encodeValueToBytes Created)
+        , ("/timeCkp", encodeValueToBytes timestamp)
+        , ("/hServer", encodeValueToBytes cHServer)
+        ]
+    where
+      createHelper (field, contents) = createInsertOp (mkConnectorPath cid <> field) contents
 
   setConnectorStatus cid newStatus zk = ifThrow FailedToSetStatus $ do
     MkSystemTime timestamp _ <- getSystemTime'
-    setZkData zk (mkConnectorPath cid <> "/status") (encodeValueToBytes newStatus)
-    setZkData zk (mkConnectorPath cid <> "/timeCkp") (encodeValueToBytes timestamp)
+    void . zooMulti zk $
+      [ setZkDataOp (mkConnectorPath cid <> "/status") (encodeValueToBytes newStatus)
+      , setZkDataOp (mkConnectorPath cid <> "/timeCkp") (encodeValueToBytes timestamp)
+      ]
 
   setConnectorHServer qid hServer zk = ifThrow FailedToSetHServer $ do
     setZkData zk (mkConnectorPath qid <> "/hServer") (encodeValueToBytes hServer)
 
   getConnectorIds = ifThrow FailedToGet . (unStrVec . strsCompletionValues <$>) . flip zooGetChildren connectorsPath
 
-  getConnector cid zk = ifThrow FailedToGet $ do
-    sql         <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/sql") . mkConnectorPath) cid
-    createdTime <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/createdTime") . mkConnectorPath) cid
-    status      <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/status") . mkConnectorPath) cid
-    timeCkp     <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/timeCkp") . mkConnectorPath) cid
-    hServer     <- ((decodeDataCompletion' <$>) . zooGet zk . (<> "/hServer") . mkConnectorPath) cid
-    return $ PersistentConnector cid sql createdTime status timeCkp hServer
+  getConnector connectorId zk = ifThrow FailedToGet $ do
+    connectorBindedSql   <- getThenDecode "/sql"
+    connectorCreatedTime <- getThenDecode "/createdTime"
+    connectorStatus      <- getThenDecode "/status"
+    connectorTimeCkp     <- getThenDecode "/timeCkp"
+    connectorHServer     <- getThenDecode "/hServer"
+    return $ PersistentConnector {..}
+    where
+      getThenDecode field = decodeZNodeValue' zk (mkConnectorPath connectorId <> field)
 
   removeQuery qid zk  = ifThrow FailedToRemove $
     getQueryStatus qid zk >>= \case

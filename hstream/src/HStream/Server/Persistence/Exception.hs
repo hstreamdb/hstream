@@ -53,7 +53,7 @@ instance Exception FailedToRemove where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
 
-data FailedToDecode = FailedToDecode
+newtype FailedToDecode = FailedToDecode String
   deriving Show
 
 instance Exception FailedToDecode where
