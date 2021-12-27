@@ -37,3 +37,4 @@ generated-src/
 gen-src/
 .DS_Store
 swagger.json
+/script/dev_deploy_conf.json

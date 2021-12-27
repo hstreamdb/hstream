@@ -31,3 +31,4 @@ docker/
 .git/
 .github/
 .DS_Store
+/script/dev_deploy_conf.json
