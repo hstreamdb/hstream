@@ -463,6 +463,17 @@ message ServerNode {
   uint32 port = 3;
 }
 
+enum NodeState {
+  Running = 0;
+  Terminated = 1;
+  Dead = 2;
+}
+
+message ServerNodeStatus {
+  ServerNode node = 1;
+  NodeState state = 2;
+}
+
 message LookupStreamRequest {
   string streamName = 1;
 }

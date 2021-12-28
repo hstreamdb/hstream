@@ -18,6 +18,7 @@ module HStream.Utils.RPC
   , getServerResp
   , getProtoTimestamp
   , isSuccessful
+  , mkEnumerated
   , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
   ) where
 
@@ -85,6 +86,9 @@ getProtoTimestamp = do
 isSuccessful :: ClientResult 'Normal a -> Bool
 isSuccessful (ClientNormalResponse _ _ _ StatusOk _) = True
 isSuccessful _                                       = False
+
+mkEnumerated :: a -> PB.Enumerated a
+mkEnumerated x = PB.Enumerated (Right x)
 
 -- A type synonym could also work but the pattern synonyms defined below cannot
 -- be bundled with a type synonym when other modules import these definitions
