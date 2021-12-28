@@ -10,7 +10,6 @@ module HStream.Client.Gadget where
 import           Control.Concurrent
 import           Control.Monad
 import qualified Data.List                     as L
-import qualified Data.Map                      as Map
 import qualified Data.Text                     as T
 import qualified Data.Vector                   as V
 import           Network.GRPC.HighLevel.Client
@@ -40,19 +39,13 @@ describeCluster ctx@ClientContext{..} addr = do
       return $ Just resp
 
 lookupStream :: ClientContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
-lookupStream ctx@ClientContext{..} addr stream = do
+lookupStream ctx addr stream = do
   getInfoWithAddr ctx addr getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} = do
       let req = API.LookupStreamRequest { lookupStreamRequestStreamName = stream }
       hstreamApiLookupStream (mkClientNormalRequest req)
-    handleRespApp :: ClientResult 'Normal API.LookupStreamResponse -> IO (Maybe API.ServerNode)
-    handleRespApp
-      (ClientNormalResponse (API.LookupStreamResponse _ Nothing) _meta1 _meta2 _code _details) = return Nothing
-    handleRespApp
-      (ClientNormalResponse (API.LookupStreamResponse _ (Just serverNode)) _meta1 _meta2 _code _details) = do
-      modifyMVar_ producers (return . Map.insert stream serverNode)
-      return $ Just serverNode
+    handleRespApp = getServerResp >=> return . API.lookupStreamResponseServerNode
 
 lookupSubscription :: ClientContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
 lookupSubscription ctx addr subId = do

@@ -1,6 +1,4 @@
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence.Utils
@@ -8,7 +6,6 @@ module HStream.Server.Persistence.Utils
 
   , rootPath
   , serverRootPath
-  , leaderPath
   , lockPath
   , queriesPath
   , connectorsPath
@@ -46,8 +43,7 @@ module HStream.Server.Persistence.Utils
   , encodeValueToBytes
 
   , ifThrow
-  , configPath
-  , serverIdPath) where
+  ) where
 
 --------------------------------------------------------------------------------
 -- Path
@@ -88,12 +84,6 @@ rootPath = "/hstreamdb/hstream"
 serverRootPath :: CBytes
 serverRootPath = rootPath <> "/servers"
 
-serverIdPath :: CBytes
-serverIdPath = rootPath <> "/serverIds"
-
-leaderPath :: CBytes
-leaderPath = rootPath <> "/leader"
-
 lockPath :: CBytes
 lockPath = rootPath <> "/lock"
 
@@ -124,17 +114,10 @@ producerCtxsPath = rootPath <> "/producerCtxs"
 producerCtxsLockPath :: CBytes
 producerCtxsLockPath = lockPath <> "/producerCtxs"
 
-configPath :: CBytes
-configPath = rootPath <> "/config"
-
-
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
         , serverRootPath
-        , serverIdPath
-        , configPath
-        , leaderPath
         , lockPath
         , serverLoadPath
         , queriesPath

@@ -12,7 +12,6 @@ module HStream.Client.Execute
 import           Control.Concurrent            (modifyMVar_, readMVar, swapMVar)
 import           Data.Functor                  (void)
 import qualified Data.List                     as L
-import qualified Data.Map                      as Map
 import qualified Data.Text                     as T
 import           Network.GRPC.HighLevel        (GRPCIOError (GRPCIOBadStatusCode))
 import           Network.GRPC.HighLevel.Client
@@ -36,8 +35,10 @@ executeShowPlan ctx showObject =
 
 executeInsert :: ClientContext -> T.Text -> Action AppendResponse -> IO ()
 executeInsert ctx@ClientContext{..} sName action = do
-  curProducers <- readMVar producers
-  maybe retry runWith (Map.lookup sName curProducers)
+  curAddr <- readMVar currentServer
+  lookupStream ctx curAddr sName >>= \case
+    Nothing       -> putStrLn "Failed to get any available server."
+    Just realNode -> runWith realNode
   where
     runWith realNode = do
       resp <- runActionWithAddr (serverNodeToSocketAddr realNode) action
@@ -45,14 +46,7 @@ executeInsert ctx@ClientContext{..} sName action = do
         ClientNormalResponse{} -> printResult resp
         ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal _))
           -> printResult resp
-        ClientErrorResponse _  -> retry
-    retry = do
-      curAddr <- readMVar currentServer
-      lookupStream ctx curAddr sName >>= \case
-        Nothing       -> putStrLn "Failed to get any available server."
-        Just realNode -> do
-          modifyMVar_ producers (return . Map.insert sName realNode)
-          runWith realNode
+        ClientErrorResponse _  -> executeInsert ctx sName action
 
 execute :: Format a => ClientContext
   -> Action a -> IO ()
