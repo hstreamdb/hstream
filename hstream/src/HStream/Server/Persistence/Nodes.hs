@@ -16,11 +16,15 @@ module HStream.Server.Persistence.Nodes (
   , getServerInternalAddr
 
   , getServerNodes
+  , getClusterStatus
   ) where
 
 import           Data.Aeson                        (FromJSON, ToJSON)
 import           Data.Functor                      ((<&>))
+import qualified Data.HashMap.Strict               as HM
+import           Data.List                         ((\\))
 import qualified Data.Text                         as T
+import           Data.Word                         (Word32)
 import           GHC.Generics                      (Generic)
 import           GHC.Stack                         (HasCallStack)
 import qualified Z.Data.CBytes                     as CB
@@ -30,13 +34,15 @@ import           ZooKeeper.Types                   (StringVector (StringVector),
                                                     StringsCompletion (StringsCompletion),
                                                     ZHandle)
 
-import           Data.Word                         (Word32)
-import           HStream.Server.HStreamApi         (ServerNode (..))
+import           HStream.Server.HStreamApi         (NodeState (..),
+                                                    ServerNode (..),
+                                                    ServerNodeStatus (..))
 import           HStream.Server.Persistence.Common ()
 import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
 import           HStream.Server.Types              (ServerID)
-import           HStream.Utils                     (textToCBytes)
+import           HStream.Utils                     (cBytesToIntegral,
+                                                    mkEnumerated, textToCBytes)
 
 data NodeInfo = NodeInfo
   { serverHost         :: T.Text
@@ -96,3 +102,11 @@ getServerIds zk = do
 
 getServerNodes :: ZHandle -> IO [ServerNode]
 getServerNodes zk = getServerIds zk >>= mapM (getServerNode zk)
+
+getClusterStatus :: ZHandle -> IO (HM.HashMap ServerID ServerNodeStatus)
+getClusterStatus zk = do
+  hmap <- decodeZNodeValue' zk serverRootPath
+  StringsCompletion (StringVector aliveNodes) <- zooGetChildren zk serverRootPath
+  return $ foldr (HM.update updateState) hmap (HM.keys hmap \\ map cBytesToIntegral aliveNodes)
+  where
+    updateState x = Just x {serverNodeStatusState = mkEnumerated NodeStateDead}

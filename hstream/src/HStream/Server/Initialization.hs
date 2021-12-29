@@ -74,7 +74,6 @@ initNodePath zk serverID host port port' = do
         let val = case serverStatusMap of
               Just hmap -> HM.insert serverID nodeStatus hmap
               Nothing   -> HM.singleton serverID nodeStatus
-        Log.fatal . Log.buildString $ show val
         zooSet zk serverRootPath (Just $ encodeValueToBytes val) Nothing
   where
     createEphemeral (path, content) =
