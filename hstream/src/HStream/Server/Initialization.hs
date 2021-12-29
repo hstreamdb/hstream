@@ -9,26 +9,32 @@ module HStream.Server.Initialization
 
 import           Control.Concurrent               (MVar, newMVar)
 import           Control.Exception                (SomeException, try)
+import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
+import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
 import           Network.GRPC.HighLevel.Generated
 import           System.Exit                      (exitFailure)
 import qualified Z.Data.CBytes                    as CB
 import           Z.Foreign                        (toByteString)
 import           ZooKeeper                        (zooCreateOpInit,
-                                                   zooGetChildren, zooMulti)
+                                                   zooGetChildren, zooMulti,
+                                                   zooSet)
+import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types
 
 import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (NodeInfo (..),
-                                                   NodeStatus (..),
+                                                   decodeZNodeValue,
                                                    encodeValueToBytes,
                                                    getServerNode',
                                                    serverLoadPath,
+                                                   serverRootLockPath,
                                                    serverRootPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
@@ -37,11 +43,11 @@ import           HStream.Store                    (HsLogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
 import qualified HStream.Store.Admin.API          as AA
+import           HStream.Utils
 
 initNodePath :: ZHandle -> ServerID -> T.Text -> Word32 -> Word32 -> IO ()
 initNodePath zk serverID host port port' = do
-  let nodeInfo = NodeInfo { nodeStatus = Ready
-                          , serverHost = host
+  let nodeInfo = NodeInfo { serverHost = host
                           , serverPort = port
                           , serverInternalPort = port'
                           }
@@ -53,7 +59,23 @@ initNodePath zk serverID host port port' = do
     Left (e :: SomeException) -> do
       Log.fatal . Log.buildString $ "Server failed to start: " <> show e
       exitFailure
-    Right _ -> return ()
+    Right _ -> do
+      uniq <- newUnique
+      void $ Recipe.withLock zk serverRootLockPath (CB.pack . show . hashUnique $ uniq) $ do
+        serverStatusMap <- decodeZNodeValue zk serverRootPath
+        let nodeStatus = ServerNodeStatus {
+                serverNodeStatusState = mkEnumerated NodeStateRunning
+              , serverNodeStatusNode  = Just ServerNode {
+                  serverNodeId = serverID
+                , serverNodeHost = host
+                , serverNodePort = port
+              }
+              }
+        let val = case serverStatusMap of
+              Just hmap -> HM.insert serverID nodeStatus hmap
+              Nothing   -> HM.singleton serverID nodeStatus
+        Log.fatal . Log.buildString $ show val
+        zooSet zk serverRootPath (Just $ encodeValueToBytes val) Nothing
   where
     createEphemeral (path, content) =
       zooCreateOpInit (path <> "/" <> CB.pack (show serverID))

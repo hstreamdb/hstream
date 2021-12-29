@@ -7,6 +7,7 @@ module HStream.Server.Persistence.Utils
   , rootPath
   , serverRootPath
   , lockPath
+  , serverRootLockPath
   , queriesPath
   , connectorsPath
   , serverLoadPath
@@ -86,6 +87,9 @@ serverRootPath = rootPath <> "/servers"
 
 lockPath :: CBytes
 lockPath = rootPath <> "/lock"
+
+serverRootLockPath :: CBytes
+serverRootLockPath = lockPath <> "/servers"
 
 queriesPath :: CBytes
 queriesPath = rootPath <> "/queries"

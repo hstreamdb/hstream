@@ -5,33 +5,27 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence.Nodes (
-    NodeStatus (..)
-  , NodeInfo (..)
+    NodeInfo (..)
 
-  , getNodeStatus
   , getServerHost
   , getServerPort
   , getServerInternalPort
   , getServerUri
   , getServerNode
   , getServerNode'
-  , setNodeStatus
   , getServerInternalAddr
 
-  , getReadyServers
   , getServerNodes
   ) where
 
-import           Control.Exception                 (SomeException, try)
-import           Control.Monad                     (forM)
 import           Data.Aeson                        (FromJSON, ToJSON)
-import           Data.Functor                      (void, (<&>))
+import           Data.Functor                      ((<&>))
 import qualified Data.Text                         as T
 import           GHC.Generics                      (Generic)
 import           GHC.Stack                         (HasCallStack)
 import qualified Z.Data.CBytes                     as CB
 import           Z.IO.Network                      (SocketAddr, ipv4)
-import           ZooKeeper                         (zooGetChildren, zooSet)
+import           ZooKeeper                         (zooGetChildren)
 import           ZooKeeper.Types                   (StringVector (StringVector),
                                                     StringsCompletion (StringsCompletion),
                                                     ZHandle)
@@ -42,20 +36,13 @@ import           HStream.Server.Persistence.Common ()
 import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
 import           HStream.Server.Types              (ServerID)
-import           HStream.Utils                     (textToCBytes, valueToBytes)
-
-data NodeStatus = Starting | Ready | Working
-  deriving (Show, Eq, Generic, FromJSON, ToJSON)
+import           HStream.Utils                     (textToCBytes)
 
 data NodeInfo = NodeInfo
-  { nodeStatus         :: NodeStatus
-  , serverHost         :: T.Text
+  { serverHost         :: T.Text
   , serverPort         :: Word32
   , serverInternalPort :: Word32
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
-
-getNodeStatus :: ZHandle -> ServerID -> IO NodeStatus
-getNodeStatus zk sID = getNodeInfo zk sID <&> nodeStatus
 
 getServerHost :: ZHandle -> ServerID -> IO T.Text
 getServerHost zk sID = getNodeInfo zk sID <&> serverHost
@@ -77,12 +64,6 @@ getServerInternalAddr :: HasCallStack => ZHandle -> ServerID -> IO SocketAddr
 getServerInternalAddr zk sID = do
   NodeInfo {..} <- getNodeInfo zk sID
   return (ipv4 (textToCBytes serverHost) (fromIntegral serverInternalPort))
-
-setNodeStatus :: HasCallStack => ZHandle -> ServerID -> NodeStatus -> IO ()
-setNodeStatus zk sID status = do
-  nodeInfo <- getNodeInfo zk sID
-  let nodeInfo' = nodeInfo { nodeStatus = status }
-  void $ zooSet zk (serverRootPath <> "/" <> CB.pack (show sID)) (Just $ valueToBytes nodeInfo') Nothing
 
 getNodeInfo :: ZHandle -> ServerID -> IO NodeInfo
 getNodeInfo zk sID = do
@@ -106,16 +87,6 @@ getServerNode' zk sID = do
     , serverNodeHost = serverHost
     , serverNodePort = serverPort
     }
-
-getReadyServers :: ZHandle -> IO Int
-getReadyServers zk = do
-  (StringsCompletion (StringVector servers)) <- zooGetChildren zk serverRootPath
-  (sum <$>) . forM (read . CB.unpack <$> servers) $ \sID -> do
-    (e' :: Either SomeException NodeStatus) <- try $ getNodeStatus zk sID
-    case e' of
-      Right Ready   -> return (1 :: Int)
-      Right Working -> return (1 :: Int)
-      _             -> return (0 :: Int)
 
 getServerIds :: ZHandle -> IO [ServerID]
 getServerIds zk = do
