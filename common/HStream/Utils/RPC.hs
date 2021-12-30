@@ -1,10 +1,10 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE DeriveAnyClass       #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE PatternSynonyms   #-}
 
 module HStream.Utils.RPC
   ( HStreamClientApi

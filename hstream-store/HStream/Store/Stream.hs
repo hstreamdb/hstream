@@ -6,7 +6,7 @@ module HStream.Store.Stream
     StreamSettings (..)
   , updateGloStreamSettings
   , StreamType (..)
-  , StreamId
+  , StreamId (streamType, streamName)
   , showStreamName
   , mkStreamId
   , mkStreamIdFromLogPath
