@@ -19,6 +19,7 @@ module HStream.Utils.RPC
   , getProtoTimestamp
   , isSuccessful
   , mkEnumerated
+  , showNodeStatus
   , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
   ) where
 
@@ -32,6 +33,7 @@ import qualified Proto3.Suite                  as PB
 import           Z.Data.JSON                   (JSON)
 import           Z.IO.Time                     (SystemTime (..), getSystemTime')
 
+import qualified Data.Text                     as T
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf   (Struct, Timestamp (..))
 
@@ -89,6 +91,13 @@ isSuccessful _                                       = False
 
 mkEnumerated :: a -> PB.Enumerated a
 mkEnumerated x = PB.Enumerated (Right x)
+
+showNodeStatus :: PB.Enumerated NodeState -> T.Text
+showNodeStatus = \case
+  PB.Enumerated (Right NodeStateRunning)    -> "Running"
+  PB.Enumerated (Right NodeStateDead)       -> "Dead"
+  PB.Enumerated (Right NodeStateTerminated) -> "Terminated"
+  _                                         -> "Unknown"
 
 -- A type synonym could also work but the pattern synonyms defined below cannot
 -- be bundled with a type synonym when other modules import these definitions

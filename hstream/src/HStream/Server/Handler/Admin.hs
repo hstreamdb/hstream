@@ -5,6 +5,7 @@ module HStream.Server.Handler.Admin (adminCommandHandler) where
 
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
+import qualified Data.HashMap.Strict              as HM
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -20,11 +21,13 @@ import qualified Z.Data.CBytes                    as CB
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
+import           HStream.Server.Persistence       (getClusterStatus)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (Interval, interval2ms,
-                                                   parserInterval, returnResp)
+                                                   parserInterval, returnResp,
+                                                   showNodeStatus)
 
 ------------------------------------------------------------------------------
 
@@ -40,6 +43,7 @@ adminCommandHandler sc (ServerNormalRequest _ (AdminCommandRequest cmd)) = defau
   result <- case adminCommand of
               AdminStatsCommand c  -> runStats sc c
               AdminStreamCommand c -> runStream sc c
+              AdminStatusCommand   -> runStatus sc
   returnResp $ AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
@@ -59,6 +63,7 @@ handleParseResult (O.CompletionInvoked compl) = do
 data AdminCommand
   = AdminStatsCommand StatsCommand
   | AdminStreamCommand StreamCommand
+  | AdminStatusCommand
 
 adminCommandInfo :: O.ParserInfo AdminCommand
 adminCommandInfo = O.info adminCommandParser (O.progDesc "The parser to use for admin commands")
@@ -67,8 +72,8 @@ adminCommandParser :: O.Parser AdminCommand
 adminCommandParser = O.subparser
   ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser) (O.progDesc "Get the stats of an operation on a stream"))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser) (O.progDesc "Stream command"))
+ <> O.command "status" (O.info (pure AdminStatusCommand) (O.progDesc "Get the status of the HServer cluster"))
   )
-
 
 ------------------------------------------------------------------------------
 -- Admin Stats Command
@@ -113,3 +118,21 @@ runStream ServerContext{..} StreamCmdList = do
     return [T.pack . S.showStreamName $ stream, "node:" <> T.pack (show refactor)]
   return . TL.toStrict . TL.decodeUtf8 . Aeson.encode $
     Aeson.object ["headers" .= headers, "rows" .= rows]
+
+--------------------------------------------------------------------------------
+-- Admin Status Command
+
+runStatus :: ServerContext -> IO T.Text
+runStatus ServerContext{..} = do
+  let headers = ["node_id" :: T.Text, "state", "address"]
+  values <- HM.elems <$> getClusterStatus zkHandle
+  let rows = V.fromList $ map (\ServerNodeStatus { serverNodeStatusNode = Just ServerNode{..}, ..} ->
+        [ showT serverNodeId
+        , showNodeStatus serverNodeStatusState
+        , serverNodeHost
+        <> showT serverNodePort])
+        values
+  return . TL.toStrict . TL.decodeUtf8 . Aeson.encode $
+    Aeson.object ["headers" .= headers, "rows" .= rows]
+  where
+    showT = T.pack . show
