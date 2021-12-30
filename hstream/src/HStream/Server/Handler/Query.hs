@@ -115,7 +115,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           commandQueryStmtText
           (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
           S.StreamTypeView
-        >> atomicModifyIORef' groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
+        >> atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
         >> returnCommandQueryEmptyResp
     CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
       createConnector sc commandQueryStmtText >> returnCommandQueryEmptyResp
@@ -129,7 +129,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
         then returnErrResp StatusAborted $ StatusDetails . TE.encodeUtf8 . T.pack $
           "VIEW is grouped by " ++ show (fromJust condNameM) ++ ", not " ++ show (fst rSelectViewWhere)
         else do
-          hm <- readIORef groupbyStores
+          hm <- readIORef P.groupbyStores
           case HM.lookup rSelectViewFrom hm of
             Nothing -> returnErrResp StatusInternal "VIEW not found"
             Just materialized -> do

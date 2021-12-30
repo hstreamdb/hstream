@@ -16,16 +16,15 @@ import           Control.Exception                (Handler (Handler),
                                                    onException, throwIO, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
-import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (IORef, atomicModifyIORef',
-                                                   newIORef)
+import           Data.IORef                       (atomicModifyIORef')
 import           Data.Int                         (Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
+import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
@@ -35,7 +34,6 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import           System.IO.Unsafe                 (unsafePerformIO)
 import qualified Z.Data.CBytes                    as CB
 
 import           HStream.Connector.ClickHouse
@@ -45,7 +43,6 @@ import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
-import           HStream.Processing.Stream        (Materialized)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
@@ -59,10 +56,6 @@ import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (TaskStatus (..),
                                                    returnErrResp, returnResp,
                                                    textToCBytes)
-
-groupbyStores :: IORef (HM.HashMap T.Text (Materialized Aeson.Object Aeson.Object SerMat))
-groupbyStores = unsafePerformIO $ newIORef HM.empty
-{-# NOINLINE groupbyStores #-}
 
 --------------------------------------------------------------------------------
 
@@ -218,7 +211,7 @@ getStartRecordId Api.Subscription{..} =
 handleCreateSinkConnector
   :: ServerContext
   -> CB.CBytes -- ^ Connector Name
-  -> T.Text -- ^ Source Stream Name
+  -> Text -- ^ Source Stream Name
   -> ConnectorConfig -> IO P.PersistentConnector
 handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
   onException action cleanup
@@ -253,7 +246,7 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
                      -> TaskBuilder
-                     -> T.Text
+                     -> Text
                      -> P.QueryType
                      -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
@@ -296,24 +289,6 @@ handleTerminateConnector ServerContext{..} cid = do
       void $ killThread tid
       Log.debug . Log.buildString $ "TERMINATE: terminated connector: " <> show cid
     _        -> throwIO ConnectorNotExist
-
-dropHelper :: ServerContext -> T.Text -> Bool -> Bool
-  -> IO (ServerResponse 'Normal Empty)
-dropHelper sc@ServerContext{..} name checkIfExist isView = do
-  when isView $ atomicModifyIORef' groupbyStores (\hm -> (HM.delete name hm, ()))
-  let sName = if isView then HCS.transToViewStreamName name else HCS.transToStreamName name
-  streamExists <- HS.doesStreamExist scLDClient sName
-  if streamExists
-    then terminateQueryAndRemove sc (textToCBytes name)
-      >> terminateRelatedQueries sc (textToCBytes name)
-      >> HS.removeStream scLDClient sName
-      >> returnResp Empty
-    else if checkIfExist
-           then returnResp Empty
-           else do
-           Log.warning $ "Drop: tried to remove a nonexistent object: "
-             <> Log.buildString (T.unpack name)
-           returnErrResp StatusInternal "Object does not exist"
 
 --------------------------------------------------------------------------------
 -- Query
@@ -375,3 +350,51 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
+
+--------------------------------------------------------------------------------
+
+deleteStoreStream
+  :: ServerContext
+  -> HS.StreamId
+  -> Bool
+  -> IO (Either String Empty)
+deleteStoreStream sc@ServerContext{..} s checkIfExist = do
+  streamExists <- HS.doesStreamExist scLDClient s
+  if streamExists then clean >> return (Right Empty) else check checkIfExist
+  where
+    clean = do
+      terminateQueryAndRemove sc (HS.streamName s)
+      terminateRelatedQueries sc (HS.streamName s)
+      HS.removeStream scLDClient s
+    check True = return $ Right Empty
+    check False = do
+      Log.warning $ "Drop: tried to remove a nonexistent object: "
+                 <> Log.buildCBytes (HS.streamName s)
+      return $ Left "Object does not exist"
+
+deleteStream :: ServerContext -> Text -> Bool -> IO (Either String Empty)
+deleteStream sc name = deleteStoreStream sc (HCS.transToStreamName name)
+
+deleteView :: ServerContext -> Text -> Bool -> IO (Either String Empty)
+deleteView sc name checkIfExist = do
+  atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
+  deleteStoreStream sc (HCS.transToViewStreamName name) checkIfExist
+
+{-# DEPRECATED dropHelper "Use deleteStream or deleteView instead" #-}
+dropHelper :: ServerContext -> Text -> Bool -> Bool
+  -> IO (ServerResponse 'Normal Empty)
+dropHelper sc@ServerContext{..} name checkIfExist isView = do
+  when isView $ atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
+  let sName = if isView then HCS.transToViewStreamName name else HCS.transToStreamName name
+  streamExists <- HS.doesStreamExist scLDClient sName
+  if streamExists
+    then terminateQueryAndRemove sc (textToCBytes name)
+      >> terminateRelatedQueries sc (textToCBytes name)
+      >> HS.removeStream scLDClient sName
+      >> returnResp Empty
+    else if checkIfExist
+           then returnResp Empty
+           else do
+           Log.warning $ "Drop: tried to remove a nonexistent object: "
+             <> Log.buildString (T.unpack name)
+           returnErrResp StatusInternal "Object does not exist"

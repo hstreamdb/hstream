@@ -4,15 +4,19 @@
 
 module HStream.Server.Persistence.MemoryStore where
 
+import qualified Data.Aeson                           as Aeson
 import qualified Data.HashMap.Strict                  as HM
 import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
 import qualified Data.List                            as L
+import           Data.Text                            (Text)
 import           Data.Time.Clock.System
 import           GHC.IO                               (throwIO, unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes)
 import           Z.IO.Time                            (getSystemTime')
 
+import           HStream.Processing.Stream            (Materialized)
+import           HStream.SQL.Codegen                  (SerMat)
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
@@ -29,6 +33,10 @@ queryCollection = unsafePerformIO $ newIORef HM.empty
 connectorsCollection :: ConnectorsM
 connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
+
+groupbyStores :: IORef (HM.HashMap Text (Materialized Aeson.Object Aeson.Object SerMat))
+groupbyStores = unsafePerformIO $ newIORef HM.empty
+{-# NOINLINE groupbyStores #-}
 
 instance TaskPersistence PStoreMem where
   insertQuery qid qSql qTime qType qHServer (refQ, _) = ifThrow FailedToRecordInfo $ do
