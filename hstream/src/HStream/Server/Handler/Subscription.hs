@@ -41,7 +41,6 @@ import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (defaultExceptionHandle)
@@ -118,6 +117,14 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
       Nothing -> do
         P.removeObject @ZHandle @'SubRep
           deleteSubscriptionRequestSubscriptionId zkHandle
+
+        -- Note: The subscription may never be fetched so there is no 'SubscriptionContext' in zk
+        P.checkIfExist @ZHandle @'SubCtxRep
+          deleteSubscriptionRequestSubscriptionId zkHandle >>= \case
+          True  -> P.removeObject @ZHandle @'SubCtxRep
+                    deleteSubscriptionRequestSubscriptionId zkHandle
+          False -> return ()
+
         return store
   returnResp Empty
   where
@@ -178,17 +185,18 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
         Right (Just streamingFetchReq@StreamingFetchRequest {..})
           | isFirst -> do
             -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-              Log.debug $ "stream received request from " <> Log.buildText streamingFetchRequestConsumerName <> ", do check in isFirst branch"
+              Log.debug $ "Stream received request from " <> Log.buildText streamingFetchRequestConsumerName <> ", do check in isFirst branch"
               -- the subscription has to exist and be bound to a server node
               P.checkIfExist @ZHandle @'SubRep
                 streamingFetchRequestSubscriptionId zkHandle >>= \case
                 True -> do
-                  hashRing <- readMVar loadBalanceHashRing
-                  let ServerNode{..} = getAllocatedNode hashRing streamingFetchRequestSubscriptionId
-                  if serverNodeId == serverID
-                    then doFirstFetchCheck streamingFetchReq
-                    else return $ ServerBiDiResponse [] StatusInternal
-                      "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
+                  P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
+                    Just P.SubscriptionContext{..}
+                      | subHServer == serverID -> doFirstFetchCheck streamingFetchReq
+                      | otherwise -> return $
+                          ServerBiDiResponse [] StatusAborted "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
+                    Nothing -> return $ ServerBiDiResponse [] StatusAborted
+                      "The subscription has not been allocated, please call `lookupSubscription` to get the right one "
                 False ->
                   return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
           | otherwise -> do

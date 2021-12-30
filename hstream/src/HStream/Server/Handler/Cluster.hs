@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Cluster
   ( describeClusterHandler
@@ -12,18 +13,24 @@ module HStream.Server.Handler.Cluster
   ) where
 
 import           Control.Concurrent               (readMVar)
+import           Control.Exception                (throwIO)
+import           Control.Monad                    (unless)
 import           Data.Functor                     ((<&>))
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
+import           Proto3.Suite                     (def)
+import           ZooKeeper                        (zooExists)
+import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
-import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.Exception         (SubscriptionIdNotFound (SubscriptionIdNotFound),
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (returnResp)
+import           HStream.Utils                    (integralToCBytes, returnResp)
 
 --------------------------------------------------------------------------------
 
@@ -57,10 +64,21 @@ lookupSubscriptionHandler :: ServerContext
                           -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
                           -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
 lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
-  hashRing <- readMVar loadBalanceHashRing
-  let theNode = getAllocatedNode hashRing subId
-  let resp = LookupSubscriptionResponse {
-      lookupSubscriptionResponseSubscriptionId = subId
-    , lookupSubscriptionResponseServerNode = Just theNode
-    }
-  returnResp resp
+  exists <- P.checkIfExist @ZHandle @'P.SubRep subId zkHandle
+  unless exists $ throwIO SubscriptionIdNotFound
+  P.getObject subId zkHandle >>= \case
+    Just P.SubscriptionContext{..} -> do
+      let path = integralToCBytes subHServer
+      zooExists zkHandle (P.serverRootPath <> path) >>= \case
+        Just _ -> do
+          theNode <- P.getServerNode' zkHandle path
+          returnResp resp {lookupSubscriptionResponseServerNode = Just theNode}
+        Nothing -> returnNewNode
+    Nothing -> returnNewNode
+  where
+    resp = def { lookupSubscriptionResponseSubscriptionId = subId }
+    returnNewNode = do
+      hashRing <- readMVar loadBalanceHashRing
+      let theNode = getAllocatedNode hashRing subId
+      P.storeObject subId P.SubscriptionContext { subHServer = serverNodeId theNode} zkHandle
+      returnResp resp {lookupSubscriptionResponseServerNode = Just theNode}

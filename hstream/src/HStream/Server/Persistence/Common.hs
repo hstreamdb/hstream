@@ -17,6 +17,7 @@ module HStream.Server.Persistence.Common
   , TaskPersistence (..)
   , BasicObjectPersistence (..)
   , ObjRepType (..)
+  , SubscriptionContext (..)
   ) where
 
 import           Data.Aeson                (FromJSON (..), FromJSONKey,
@@ -72,6 +73,10 @@ data QueryType
   | ViewQuery   RelatedStreams CBytes ViewSchema -- ^ related streams and the view it creates
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
+newtype SubscriptionContext = SubscriptionContext
+  { subHServer :: ServerID
+  } deriving (Show, Eq, Generic, FromJSON, ToJSON)
+
 --------------------------------------------------------------------------------
 
 class TaskPersistence handle where
@@ -107,11 +112,12 @@ class TaskPersistence handle where
 
 --------------------------------------------------------------------------------
 
-data ObjRepType = SubRep
+data ObjRepType = SubRep | SubCtxRep
 
 -- | The real type of the stored object
 type family RealObjType (a :: ObjRepType) where
   RealObjType 'SubRep    = Subscription
+  RealObjType 'SubCtxRep = SubscriptionContext
 
 class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b | b -> a where
   -- | persist an object to the store

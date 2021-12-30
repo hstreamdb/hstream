@@ -12,12 +12,15 @@ module HStream.Server.Persistence.Utils
   , connectorsPath
   , subscriptionsPath
   , subscriptionsLockPath
+  , subscriptionCtxsPath
+  , subscriptionCtxsLockPath
   , paths
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
+  , mkSubscriptionCtxPath
 
   , createInsert
   , createInsertOp
@@ -96,6 +99,12 @@ subscriptionsPath = rootPath <> "/subscriptions"
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
+subscriptionCtxsPath :: CBytes
+subscriptionCtxsPath = rootPath <> "/subscriptionCtxs"
+
+subscriptionCtxsLockPath :: CBytes
+subscriptionCtxsLockPath = lockPath <> "/subscriptionCtxs"
+
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
@@ -105,6 +114,8 @@ paths = [ "/hstreamdb"
         , connectorsPath
         , subscriptionsPath
         , subscriptionsLockPath
+        , subscriptionCtxsPath
+        , subscriptionCtxsLockPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
@@ -119,6 +130,9 @@ mkConnectorPath x = connectorsPath <> "/" <> x
 
 mkSubscriptionPath :: T.Text -> CBytes
 mkSubscriptionPath x = subscriptionsPath <> "/" <> textToCBytes x
+
+mkSubscriptionCtxPath :: T.Text -> CBytes
+mkSubscriptionCtxPath x = subscriptionCtxsPath <> "/" <> textToCBytes x
 
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents = do

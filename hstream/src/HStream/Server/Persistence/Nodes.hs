@@ -42,6 +42,7 @@ import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
 import           HStream.Server.Types              (ServerID)
 import           HStream.Utils                     (cBytesToIntegral,
+                                                    integralToCBytes,
                                                     mkEnumerated, textToCBytes)
 
 data NodeInfo = NodeInfo
@@ -73,7 +74,7 @@ getServerInternalAddr zk sID = do
 
 getNodeInfo :: ZHandle -> ServerID -> IO NodeInfo
 getNodeInfo zk sID = do
-  decodeZNodeValue' zk (serverRootPath <> "/" <> CB.pack (show sID))
+  decodeZNodeValue' zk (serverRootPath <> "/" <> integralToCBytes sID)
 
 getServerNode :: ZHandle -> ServerID -> IO ServerNode
 getServerNode zk sID = do
@@ -89,7 +90,7 @@ getServerNode' :: ZHandle -> CB.CBytes -> IO ServerNode
 getServerNode' zk sID = do
   NodeInfo {..} <- decodeZNodeValue' zk (serverRootPath <> "/" <> sID)
   return $ ServerNode
-    { serverNodeId   = read . CB.unpack $ sID
+    { serverNodeId   = cBytesToIntegral sID
     , serverNodeHost = serverHost
     , serverNodePort = serverPort
     }
@@ -98,7 +99,7 @@ getServerIds :: ZHandle -> IO [ServerID]
 getServerIds zk = do
   (StringsCompletion (StringVector servers))
     <- zooGetChildren zk serverRootPath
-  return (read . CB.unpack <$> servers)
+  return (cBytesToIntegral <$> servers)
 
 getServerNodes :: ZHandle -> IO [ServerNode]
 getServerNodes zk = getServerIds zk >>= mapM (getServerNode zk)
