@@ -11,7 +11,6 @@ import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
-import           Data.Map                         (Map)
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -25,7 +24,7 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (RecordId (..), ServerNode,
+import           HStream.Server.HStreamApi        (RecordId (..),
                                                    StreamingFetchResponse (..))
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
@@ -74,7 +73,6 @@ data ServerContext = ServerContext {
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
-  , subscriptionCtx          :: MVar (Map String (MVar SubscriptionContext))
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
@@ -144,12 +142,3 @@ data SystemResourcePercentageUsage =
   } deriving (Eq, Generic, Show)
 instance FromJSON SystemResourcePercentageUsage
 instance ToJSON SystemResourcePercentageUsage
-
-data SubscriptionContext = SubscriptionContext
-  { _subctxNode      :: Word32
-  } deriving (Show, Eq, Generic, FromJSON, ToJSON)
-
-data ProducerContext = ProducerContext
-  { _prdctxStream :: T.Text
-  , _prdctxNode   :: ServerNode
-  } deriving (Show, Eq, Generic, FromJSON, ToJSON)

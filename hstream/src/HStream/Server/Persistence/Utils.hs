@@ -10,21 +10,14 @@ module HStream.Server.Persistence.Utils
   , serverRootLockPath
   , queriesPath
   , connectorsPath
-  , serverLoadPath
   , subscriptionsPath
-  , subscriptionCtxsPath
-  , producerCtxsPath
   , subscriptionsLockPath
-  , subscriptionCtxsLockPath
-  , producerCtxsLockPath
   , paths
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
-  , mkSubscriptionCtxPath
-  , mkProducerCtxPath
 
   , createInsert
   , createInsertOp
@@ -80,7 +73,7 @@ defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
 defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 rootPath :: CBytes
-rootPath = "/hstreamdb/hstream"
+rootPath = "/hstream"
 
 serverRootPath :: CBytes
 serverRootPath = rootPath <> "/servers"
@@ -97,41 +90,21 @@ queriesPath = rootPath <> "/queries"
 connectorsPath :: CBytes
 connectorsPath = rootPath <> "/connectors"
 
-serverLoadPath :: CBytes
-serverLoadPath = rootPath <> "/loadReports"
-
 subscriptionsPath :: CBytes
 subscriptionsPath = rootPath <> "/subscriptions"
 
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
-subscriptionCtxsPath :: CBytes
-subscriptionCtxsPath = rootPath <> "/subscriptionCtxs"
-
-subscriptionCtxsLockPath :: CBytes
-subscriptionCtxsLockPath = lockPath <> "/subscriptionCtxs"
-
-producerCtxsPath :: CBytes
-producerCtxsPath = rootPath <> "/producerCtxs"
-
-producerCtxsLockPath :: CBytes
-producerCtxsLockPath = lockPath <> "/producerCtxs"
-
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
         , serverRootPath
         , lockPath
-        , serverLoadPath
         , queriesPath
         , connectorsPath
         , subscriptionsPath
-        , subscriptionCtxsPath
-        , producerCtxsPath
         , subscriptionsLockPath
-        , subscriptionCtxsLockPath
-        , producerCtxsLockPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
@@ -146,12 +119,6 @@ mkConnectorPath x = connectorsPath <> "/" <> x
 
 mkSubscriptionPath :: T.Text -> CBytes
 mkSubscriptionPath x = subscriptionsPath <> "/" <> textToCBytes x
-
-mkSubscriptionCtxPath :: T.Text -> CBytes
-mkSubscriptionCtxPath x = subscriptionCtxsPath <> "/" <> textToCBytes x
-
-mkProducerCtxPath :: T.Text -> CBytes
-mkProducerCtxPath x = producerCtxsPath <> "/" <> textToCBytes x
 
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents = do

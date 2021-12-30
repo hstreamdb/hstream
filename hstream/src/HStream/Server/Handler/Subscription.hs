@@ -112,22 +112,12 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
   modifyMVar_ subscribeRuntimeInfo $ \store -> do
     case HM.lookup deleteSubscriptionRequestSubscriptionId store of
       Just infoMVar -> do
-        modifyMVar infoMVar removeSubscriptionFromZK >>= \case
-          True -> do
-            modifyMVar_ subscriptionCtx (return . Map.delete (T.unpack deleteSubscriptionRequestSubscriptionId))
-            return $ HM.delete deleteSubscriptionRequestSubscriptionId store
-          False -> return store
+        modifyMVar infoMVar removeSubscriptionFromZK >>=
+          \case True -> return $ HM.delete deleteSubscriptionRequestSubscriptionId store;
+                _    -> return store;
       Nothing -> do
         P.removeObject @ZHandle @'SubRep
           deleteSubscriptionRequestSubscriptionId zkHandle
-
-        -- Note: The subscription may never be fetched so there is no 'SubscriptionContext' in zk
-        P.checkIfExist @ZHandle @'SubCtxRep
-          deleteSubscriptionRequestSubscriptionId zkHandle >>= \case
-          True  -> P.removeObject @ZHandle @'SubCtxRep
-                    deleteSubscriptionRequestSubscriptionId zkHandle
-          False -> return ()
-
         return store
   returnResp Empty
   where
@@ -135,9 +125,6 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
       | HM.null sriStreamSends = do
           -- remove sub from zk
           P.removeObject @ZHandle @'SubRep
-            deleteSubscriptionRequestSubscriptionId zkHandle
-          -- remove subctx from zk
-          P.removeObject @ZHandle @'SubCtxRep
             deleteSubscriptionRequestSubscriptionId zkHandle
           let newInfo = info {sriValid = False, sriStreamSends = HM.empty}
           return (newInfo, True)
