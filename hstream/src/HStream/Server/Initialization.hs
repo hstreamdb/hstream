@@ -21,7 +21,7 @@ import qualified Z.Data.CBytes                    as CB
 import           Z.Foreign                        (toByteString)
 import           ZooKeeper                        (zooCreateOpInit,
                                                    zooGetChildren, zooMulti,
-                                                   zooSet)
+                                                   zooSet, zooSetOpInit)
 import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types
 
@@ -43,35 +43,43 @@ import           HStream.Store                    (HsLogAttrs (..),
 import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils
 
+{-
+  Starting hservers will no longer be happening in parallel.
+  The status Running does not fully reflect running, however,
+  if we want status to be more precise,
+  two things are needed:
+-}
+-- TODO: a callback when grpc server is successfully started
+-- TODO: a consistent algorithm to oversee the whole cluster
 initNodePath :: ZHandle -> ServerID -> T.Text -> Word32 -> Word32 -> IO ()
 initNodePath zk serverID host port port' = do
   let nodeInfo = NodeInfo { serverHost = host
                           , serverPort = port
                           , serverInternalPort = port'
                           }
-  let ops = [ createEphemeral (serverRootPath, Just $ encodeValueToBytes nodeInfo)
-            ]
-  e' <- try $ zooMulti zk ops
-  case e' of
-    Left (e :: SomeException) -> do
-      Log.fatal . Log.buildString $ "Server failed to start: " <> show e
-      exitFailure
-    Right _ -> do
-      uniq <- newUnique
-      void $ Recipe.withLock zk serverRootLockPath (CB.pack . show . hashUnique $ uniq) $ do
-        serverStatusMap <- decodeZNodeValue zk serverRootPath
-        let nodeStatus = ServerNodeStatus {
-                serverNodeStatusState = mkEnumerated NodeStateRunning
-              , serverNodeStatusNode  = Just ServerNode {
-                  serverNodeId = serverID
-                , serverNodeHost = host
-                , serverNodePort = port
-              }
-              }
-        let val = case serverStatusMap of
-              Just hmap -> HM.insert serverID nodeStatus hmap
-              Nothing   -> HM.singleton serverID nodeStatus
-        zooSet zk serverRootPath (Just $ encodeValueToBytes val) Nothing
+  uniq <- newUnique
+  void $ Recipe.withLock zk serverRootLockPath (CB.pack . show . hashUnique $ uniq) $ do
+    serverStatusMap <- decodeZNodeValue zk serverRootPath
+    let nodeStatus = ServerNodeStatus {
+            serverNodeStatusState = mkEnumerated NodeStateRunning
+          , serverNodeStatusNode  = Just ServerNode {
+              serverNodeId = serverID
+            , serverNodeHost = host
+            , serverNodePort = port
+          }
+          }
+    let val = case serverStatusMap of
+          Just hmap -> HM.insert serverID nodeStatus hmap
+          Nothing   -> HM.singleton serverID nodeStatus
+    let ops = [ createEphemeral (serverRootPath, Just $ encodeValueToBytes nodeInfo)
+              , zooSetOpInit serverRootPath (Just $ encodeValueToBytes val) Nothing
+              ]
+    e' <- try $ zooMulti zk ops
+    case e' of
+      Left (e :: SomeException) -> do
+        Log.fatal . Log.buildString $ "Server failed to start: " <> show e
+        exitFailure
+      Right _ -> return ()
   where
     createEphemeral (path, content) =
       zooCreateOpInit (path <> "/" <> CB.pack (show serverID))
