@@ -11,6 +11,7 @@ module HStream.Utils
   , flattenJSON
   , genUnique
   , setupSigsegvHandler
+  , withoutPrefix
   ) where
 
 import           Control.Exception          (Exception (..))
@@ -20,6 +21,8 @@ import           Data.Bifunctor             (first)
 import           Data.Bits                  (shiftL, shiftR, (.&.), (.|.))
 import qualified Data.HashMap.Strict        as HM
 import           Data.Int                   (Int64)
+import           Data.List                  (stripPrefix)
+import           Data.Maybe                 (fromMaybe)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
 import qualified Data.Text.Lazy             as TL
@@ -78,3 +81,6 @@ genUnique = do
 
 foreign import ccall unsafe "hs_common.h setup_sigsegv_handler"
   setupSigsegvHandler :: IO ()
+
+withoutPrefix :: Eq a => [a] -> [a] -> [a]
+withoutPrefix prefix ele = fromMaybe ele $ stripPrefix prefix ele
