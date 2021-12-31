@@ -22,8 +22,8 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                    as CB
 
-import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
+import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (dropHelper)
@@ -34,15 +34,15 @@ import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
 --------------------------------------------------------------------------------
+-- TODO: use 'HStream.Server.Core.Stream'
 
-createStreamHandler ::
-  ServerContext ->
-  ServerRequest 'Normal Stream Stream ->
-  IO (ServerResponse 'Normal Stream)
-createStreamHandler ServerContext {..} (ServerNormalRequest _metadata stream@Stream {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Create Stream Request: New Stream Name: " <> Log.buildText streamStreamName
-  S.createStream scLDClient (transToStreamName streamStreamName) $
-    S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+createStreamHandler
+  :: ServerContext
+  -> ServerRequest 'Normal Stream Stream
+  -> IO (ServerResponse 'Normal Stream)
+createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
+  C.createStream sc stream
   returnResp stream
 
 deleteStreamHandler ::

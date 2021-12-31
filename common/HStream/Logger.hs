@@ -20,6 +20,7 @@ module HStream.Logger
   -- * Builder
   , buildInt
   , buildString
+  , buildString'
   , buildText
   , buildLazyText
   , buildByteString
@@ -70,6 +71,10 @@ buildInt = B.int
 buildString :: String -> Builder ()
 buildString = B.stringUTF8
 {-# INLINE buildString #-}
+
+buildString' :: Show a => a -> Builder ()
+buildString' = B.stringUTF8 . show
+{-# INLINE buildString' #-}
 
 buildText :: Text.Text -> Builder ()
 buildText = U.textToZBuilder
