@@ -82,12 +82,13 @@ library
     , aeson
     , ansi-terminal
     , attoparsec
-    , base                  >=4.11 && <5
+    , base                  >=4.11  && <5
     , bytestring
+    , casing                >=0.1.4
     , containers
     , data-default
     , deepseq
-    , ghc-prim              >=0.5  && <1.0
+    , ghc-prim              >=0.5   && <1.0
     , grpc-haskell
     , grpc-haskell-core
     , hashable

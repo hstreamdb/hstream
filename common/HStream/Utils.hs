@@ -12,6 +12,8 @@ module HStream.Utils
   , genUnique
   , setupSigsegvHandler
   , withoutPrefix
+  , toQuietSnakeAesonOpt
+  , toQuietSnakeAesonOpt'
   ) where
 
 import           Control.Exception          (Exception (..))
@@ -28,6 +30,7 @@ import qualified Data.Text                  as Text
 import qualified Data.Text.Lazy             as TL
 import           Data.Word                  (Word16, Word32, Word64)
 import           System.Random              (randomRIO)
+import           Text.Casing                (fromHumps, toQuietSnake)
 import           Z.IO.Time                  (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
@@ -84,3 +87,13 @@ foreign import ccall unsafe "hs_common.h setup_sigsegv_handler"
 
 withoutPrefix :: Eq a => [a] -> [a] -> [a]
 withoutPrefix prefix ele = fromMaybe ele $ stripPrefix prefix ele
+
+toQuietSnakeAesonOpt :: String -> Aeson.Options
+toQuietSnakeAesonOpt p = Aeson.defaultOptions
+  { Aeson.fieldLabelModifier = toQuietSnake . fromHumps . withoutPrefix p }
+
+toQuietSnakeAesonOpt' :: String -> Aeson.Options
+toQuietSnakeAesonOpt' p = Aeson.defaultOptions
+  { Aeson.fieldLabelModifier     = toQuietSnake . fromHumps . withoutPrefix p
+  , Aeson.constructorTagModifier = toQuietSnake . fromHumps . withoutPrefix p
+  }
