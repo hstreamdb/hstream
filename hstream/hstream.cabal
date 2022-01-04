@@ -32,6 +32,7 @@ library
     HStream.Client.Type
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.Core.Stream
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -75,6 +76,7 @@ library
     , hashable
     , haxl
     , hstore-admin
+    , hstream-admin
     , hstream-common
     , hstream-connector
     , hstream-processing
