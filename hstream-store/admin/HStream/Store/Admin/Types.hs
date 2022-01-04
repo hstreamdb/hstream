@@ -8,9 +8,8 @@ import qualified Control.Exception        as E
 import           Control.Monad
 import           Data.Char                (toLower)
 import           Data.Int
-import           Data.List                (intercalate, stripPrefix)
+import           Data.List                (intercalate)
 import qualified Data.Map.Strict          as Map
-import           Data.Maybe               (fromMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as Text
 import           Options.Applicative
@@ -26,6 +25,7 @@ import qualified Z.Data.Vector            as V
 import qualified HStream.Logger           as Log
 import qualified HStream.Store            as S
 import qualified HStream.Store.Admin.API  as AA
+import           HStream.Utils            (withoutPrefix)
 
 -------------------------------------------------------------------------------
 
@@ -916,9 +916,6 @@ impacts2string :: [AA.OperationImpact] -> String
 impacts2string xs = intercalate ", " $ map (withoutPrefix "OperationImpact_" . show) xs
 
 -------------------------------------------------------------------------------
-
-withoutPrefix :: Eq a => [a] -> [a] -> [a]
-withoutPrefix prefix ele = fromMaybe ele $ stripPrefix prefix ele
 
 #define TAKE_BY_SPLITOR(NAME, FUN) \
   take##NAME :: Text.Text -> Text.Text -> Text.Text; \
