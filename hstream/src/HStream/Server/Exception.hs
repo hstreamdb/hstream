@@ -35,6 +35,8 @@ mkExceptionHandle retFun cleanFun = flip catches [
     retFun StatusInternal $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
   Handler (\(_ :: Store.EXISTS) ->
     retFun StatusInternal "Stream already exists"),
+  Handler (\(_ :: ObjectNotExist) ->
+    retFun StatusInternal "Object not found"),
   Handler (\(err :: Store.SomeHStoreException) -> do
     cleanFun
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
@@ -84,6 +86,10 @@ instance Exception SubscriptionIdNotFound
 data SubscriptionIdOccupied = SubscriptionIdOccupied
   deriving (Show)
 instance Exception SubscriptionIdOccupied
+
+data ObjectNotExist = ObjectNotExist
+  deriving (Show)
+instance Exception ObjectNotExist
 
 data StreamNotExist = StreamNotExist
   deriving (Show)

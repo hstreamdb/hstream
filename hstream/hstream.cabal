@@ -32,7 +32,6 @@ library
     HStream.Client.Type
     HStream.Client.Utils
     HStream.Server.Config
-    HStream.Server.Core.Stream
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -44,6 +43,8 @@ library
     HStream.Server.Types
 
   other-modules:
+    HStream.Server.Core.Common
+    HStream.Server.Core.Stream
     HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
