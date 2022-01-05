@@ -7,21 +7,21 @@ module HStream.Server.Core.Stream
   , appendStream
   ) where
 
-import qualified Data.ByteString               as BS
-import qualified Data.Map.Strict               as Map
-import qualified Data.Text                     as Text
-import qualified Data.Vector                   as V
-import           GHC.Stack                     (HasCallStack)
-import qualified Z.Data.CBytes                 as CB
+import qualified Data.ByteString             as BS
+import qualified Data.Map.Strict             as Map
+import qualified Data.Text                   as Text
+import qualified Data.Vector                 as V
+import           GHC.Stack                   (HasCallStack)
+import qualified Z.Data.CBytes               as CB
 
-import           HStream.Connector.HStore      (transToStreamName)
-import qualified HStream.Logger                as Log
-import qualified HStream.Server.HStreamApi     as API
-import           HStream.Server.Handler.Common (deleteStoreStream)
-import           HStream.Server.Types          (ServerContext (..))
-import qualified HStream.Stats                 as Stats
-import qualified HStream.Store                 as S
-import           HStream.ThirdParty.Protobuf   as PB
+import           HStream.Connector.HStore    (transToStreamName)
+import qualified HStream.Logger              as Log
+import           HStream.Server.Core.Common  (deleteStoreStream)
+import qualified HStream.Server.HStreamApi   as API
+import           HStream.Server.Types        (ServerContext (..))
+import qualified HStream.Stats               as Stats
+import qualified HStream.Store               as S
+import           HStream.ThirdParty.Protobuf as PB
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -33,9 +33,9 @@ createStream ServerContext{..} API.Stream{..} =
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
-             -> IO (Either String PB.Empty)
+             -> IO PB.Empty
 deleteStream sc API.DeleteStreamRequest{..} = do
-  let streamID = S.mkStreamId S.StreamTypeStream . textToCBytes $ deleteStreamRequestStreamName
+  let streamID = transToStreamName deleteStreamRequestStreamName
   deleteStoreStream sc streamID deleteStreamRequestIgnoreNonExist
 
 listStreams

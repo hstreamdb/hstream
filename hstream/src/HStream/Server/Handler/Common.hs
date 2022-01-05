@@ -353,33 +353,6 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
 
 --------------------------------------------------------------------------------
 
-deleteStoreStream
-  :: ServerContext
-  -> HS.StreamId
-  -> Bool
-  -> IO (Either String Empty)
-deleteStoreStream sc@ServerContext{..} s checkIfExist = do
-  streamExists <- HS.doesStreamExist scLDClient s
-  if streamExists then clean >> return (Right Empty) else check checkIfExist
-  where
-    clean = do
-      terminateQueryAndRemove sc (HS.streamName s)
-      terminateRelatedQueries sc (HS.streamName s)
-      HS.removeStream scLDClient s
-    check True = return $ Right Empty
-    check False = do
-      Log.warning $ "Drop: tried to remove a nonexistent object: "
-                 <> Log.buildCBytes (HS.streamName s)
-      return $ Left "Object does not exist"
-
-deleteStream :: ServerContext -> Text -> Bool -> IO (Either String Empty)
-deleteStream sc name = deleteStoreStream sc (HCS.transToStreamName name)
-
-deleteView :: ServerContext -> Text -> Bool -> IO (Either String Empty)
-deleteView sc name checkIfExist = do
-  atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-  deleteStoreStream sc (HCS.transToViewStreamName name) checkIfExist
-
 {-# DEPRECATED dropHelper "Use deleteStream or deleteView instead" #-}
 dropHelper :: ServerContext -> Text -> Bool -> Bool
   -> IO (ServerResponse 'Normal Empty)
