@@ -2,8 +2,9 @@
 
 module HStream.Utils.Table
   ( splitTable
-  , simpleShowTableIO
-  , simpleShowTableIO'
+  , defaultShowTable
+  , defaultShowTableIO
+  , defaultShowTableIO'
   , simpleShowTable
   ) where
 
@@ -33,25 +34,26 @@ splitTable isRowFill = f []
                                then f ([x] : acc) xs
                                else f ((x : head acc) : tail acc) xs
 
-simpleShowTableIO :: (Table.Cell a, Monoid a) => Columns a -> IO String
-simpleShowTableIO cell = do
-  maxWidth <- termialWidth
-  return . Table.concatLines
-         . map (Table.concatLines . consTable)
-         $ splitTable (isRowFill maxWidth) cell
+defaultShowTable :: (Table.Cell a, Monoid a) => Int -> Columns a -> String
+defaultShowTable maxWidth cell =
+  Table.concatLines . map (Table.concatLines . consTable)
+                    $ splitTable isRowFill cell
   where
-    isRowFill maxWidth = (>= maxWidth) . length . head . consTable
+    isRowFill = (>= maxWidth) . length . head . consTable
 
     consTable a_cell =
       let (titles, cols) = unzip a_cell
           rowGroup = Table.colsAllG Table.top cols
        in Table.tableLines (def <$ cols) Table.asciiS (Table.titlesH titles) [rowGroup]
 
-simpleShowTableIO' :: (Table.Cell a, Monoid a)
-                   => [String] -> [Table.Row a] -> IO String
-simpleShowTableIO' titles rows =
+defaultShowTableIO :: (Table.Cell a, Monoid a) => Columns a -> IO String
+defaultShowTableIO cell = termialWidth >>= \w -> pure $ defaultShowTable w cell
+
+defaultShowTableIO' :: (Table.Cell a, Monoid a)
+                    => [String] -> [Table.Row a] -> IO String
+defaultShowTableIO' titles rows =
   -- Note: here 'Table.colsAsRowsAll' is actually a 'rowAsColsAll'
-  simpleShowTableIO $ zip titles (Table.colsAsRowsAll def rows)
+  defaultShowTableIO $ zip titles (Table.colsAsRowsAll def rows)
 
 termialWidth :: IO Int
 termialWidth = maybe 80 snd <$> getTerminalSize
