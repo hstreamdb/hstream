@@ -210,7 +210,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
           writeIORef consumerNameRef streamingFetchRequestConsumerName
           writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
 
-          modifyMVar_ subscribeRuntimeInfo
+          newInfoM <- modifyMVar subscribeRuntimeInfo
             ( \store -> do
                 case HM.lookup streamingFetchRequestSubscriptionId store of
                   Just infoMVar -> do
@@ -228,7 +228,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                               V.forM_ sriSignals $ flip putMVar ()
                               return $ info {sriStreamSends = newSends, sriSignals = V.empty}
                       )
-                    return store
+                    return (store, Nothing)
                   Nothing -> do
                     P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
                       Nothing -> do
@@ -246,8 +246,9 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                           streamSend
                           subscriptionAckTimeoutSeconds
                         Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
-                        return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
+                        return (HM.insert streamingFetchRequestSubscriptionId newInfoMVar store, Just newInfoMVar)
             )
+          maybe (pure ()) (void . forkIO . readAndDispatchRecords) newInfoM
 
           handleAcks streamingFetchRequestSubscriptionId streamingFetchRequestAckIds consumerNameRef subscriptionIdRef
 
@@ -324,10 +325,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                 sriSignals = V.empty
               }
 
-      infoMVar <- newMVar info
-      -- create a task for reading and dispatching records periodicly
-      _ <- forkIO $ readAndDispatchRecords infoMVar
-      return infoMVar
+      newMVar info
 
     -- read records from logdevice and dispatch them to consumers
     readAndDispatchRecords runtimeInfoMVar = do
