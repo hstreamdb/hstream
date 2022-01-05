@@ -41,7 +41,8 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
       resp <- adminCommandStatsReq api
       let Just (Just resultObj) =
             A.decode @(Maybe A.Object) . TL.encodeUtf8 . TL.fromStrict . adminCommandResponseResult $ resp
-      let Just (A.Array rows) = HM.lookup "rows" resultObj
+          Just (A.Object content) = HM.lookup "content" resultObj
+      let Just (A.Array rows) = HM.lookup "rows" content
 
       forM_ rows $ \(A.Array row) -> do
         let (A.String name) = row V.! 0

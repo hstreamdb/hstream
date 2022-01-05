@@ -31,12 +31,15 @@ library
 
   other-modules:      HStream.Admin.Command.ServerSql
   build-depends:
+    , aeson
     , base                  >=4.11.1   && <4.15
     , bytestring            ^>=0.10.8.2
     , colourista            ^>=0.1.0.1
     , containers
     , data-default
     , deepseq
+    , grpc-haskell
+    , grpc-haskell-core
     , hashable              >=1.2.7.0  && <1.4
     , haskeline             ^>=0.8.1
     , hstream-common
