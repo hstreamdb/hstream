@@ -62,7 +62,7 @@ executeWithAddr_
 executeWithAddr_ ctx@ClientContext{..} addr action handleOKResp = do
   resp <- runActionWithAddr addr action
   case resp of
-    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)) ->
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) ->
       print . unStatusDetails $ details
     ClientErrorResponse _ -> do
       modifyMVar_ availableServers (return . L.delete addr)

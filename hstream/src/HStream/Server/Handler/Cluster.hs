@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Cluster
   ( describeClusterHandler
@@ -12,12 +13,16 @@ module HStream.Server.Handler.Cluster
   ) where
 
 import           Control.Concurrent               (readMVar)
+import           Control.Exception                (throwIO)
+import           Control.Monad                    (unless)
 import           Data.Functor                     ((<&>))
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
+import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
-import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.Exception         (SubscriptionIdNotFound (..),
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
@@ -45,6 +50,7 @@ lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
 lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream)) = defaultExceptionHandle $ do
+  -- add echo or wait until the watcher can be received from zk to make sure that the hashRing is up to date.
   hashRing <- readMVar loadBalanceHashRing
   let theNode = getAllocatedNode hashRing stream
   let resp = LookupStreamResponse {
@@ -57,6 +63,9 @@ lookupSubscriptionHandler :: ServerContext
                           -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
                           -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
 lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
+  -- add echo or wait until the watcher can be received from zk to make sure that the hashRing is up to date.
+  exists <- P.checkIfExist @ZHandle @'P.SubRep subId zkHandle
+  unless exists $ throwIO (SubscriptionIdNotFound subId)
   hashRing <- readMVar loadBalanceHashRing
   let theNode = getAllocatedNode hashRing subId
   let resp = LookupSubscriptionResponse {

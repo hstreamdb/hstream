@@ -22,7 +22,7 @@ where
 
 import           Control.Concurrent
 import           Control.Exception                (displayException, throwIO)
-import           Control.Monad                    (when, zipWithM)
+import           Control.Monad                    (unless, when, zipWithM)
 import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on)
 import           Data.Functor
@@ -34,6 +34,7 @@ import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, fromJust)
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
+import           Data.Unique
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64, Word8)
 import           Network.GRPC.HighLevel.Generated
@@ -42,7 +43,9 @@ import           Z.Data.Vector                    (Bytes)
 import qualified Z.Data.Vector                    as ZV
 import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
+import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types                  (ZHandle)
+
 
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
@@ -56,13 +59,15 @@ import           HStream.Server.Handler.Common    (getCommitRecordId,
                                                    getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
-import           HStream.Server.Persistence       (ObjRepType (..))
+import           HStream.Server.Persistence       (ObjRepType (..),
+                                                   subscriptionsLockPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (returnErrResp, returnResp,
+import           HStream.Utils                    (integralToCBytes,
+                                                   returnErrResp, returnResp,
                                                    textToCBytes)
 
 --------------------------------------------------------------------------------
@@ -189,17 +194,8 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
               -- the subscription has to exist and be bound to a server node
               P.checkIfExist @ZHandle @'SubRep
                 streamingFetchRequestSubscriptionId zkHandle >>= \case
-                True -> do
-                  hashRing <- readMVar loadBalanceHashRing
-                  let ServerNode{..} = getAllocatedNode hashRing streamingFetchRequestSubscriptionId
-                  if serverNodeId == serverID
-                    then doFirstFetchCheck streamingFetchReq
-                    else return $ ServerBiDiResponse [] StatusAborted
-                      "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
-                False -> do
-                  Log.info $ "Subscription: " <> Log.buildText streamingFetchRequestSubscriptionId <> " does not exist, can not do fetch."
-                  return $ ServerBiDiResponse [] StatusFailedPrecondition . StatusDetails $
-                    "Subscription " <> encodeUtf8 streamingFetchRequestSubscriptionId <> " does not exist"
+                True -> doFirstFetchCheck streamingFetchReq
+                False -> return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
           | otherwise -> do
               handleAcks
                 streamingFetchRequestSubscriptionId
@@ -249,7 +245,14 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                         Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
                         return (HM.insert streamingFetchRequestSubscriptionId newInfoMVar store, Just newInfoMVar)
             )
-          maybe (pure ()) (void . forkIO . readAndDispatchRecords) newInfoM
+          maybe (pure ())
+            (\mv -> void . forkIO $ do
+              uniq <- newUnique
+              lockPath <- Recipe.lock zkHandle (subscriptionsLockPath <> textToCBytes streamingFetchRequestSubscriptionId)
+                (integralToCBytes . hashUnique $ uniq)
+              readAndDispatchRecords mv lockPath
+            )
+            newInfoM
 
           handleAcks streamingFetchRequestSubscriptionId streamingFetchRequestAckIds consumerNameRef subscriptionIdRef
 
@@ -259,11 +262,12 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
         else do
           withMVar subscribeRuntimeInfo ( return . HM.lookup subId ) >>= \case
             Just infoMVar -> do
+
               doAck scLDClient infoMVar acks
               handleRequest False consumerNameRef subscriptionIdRef
-            Nothing ->
+            Nothing -> do
               return $ ServerBiDiResponse [] StatusFailedPrecondition . StatusDetails $
-                "Subscription " <> encodeUtf8 subId <> "has been removed"
+                "Subscription " <> encodeUtf8 subId <> "has been removed/or bound to another node"
 
     -- We should cleanup according streamSend before returning ServerBiDiResponse.
     cleanupStreamSend True _ _ = return Nothing
@@ -329,14 +333,21 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       newMVar info
 
     -- read records from logdevice and dispatch them to consumers
-    readAndDispatchRecords runtimeInfoMVar = do
-      Log.debug "enter readAndDispatchRecords"
+    readAndDispatchRecords runtimeInfoMVar lockPath = do
+      SubscribeRuntimeInfo {..} <- readMVar runtimeInfoMVar
 
-      modifyMVar runtimeInfoMVar doReadAndDispatch >>= \case
-        Nothing -> return ()
-        Just signal -> do
-          void $ takeMVar signal
-          readAndDispatchRecords runtimeInfoMVar
+      Log.debug "enter readAndDispatchRecords"
+      hashRing <- readMVar loadBalanceHashRing
+      let n@ServerNode{..} = getAllocatedNode hashRing sriStreamName
+      if serverNodeId == serverID then do
+        modifyMVar runtimeInfoMVar doReadAndDispatch >>= \case
+          Nothing -> return ()
+          Just signal -> do
+            void $ takeMVar signal
+            readAndDispatchRecords runtimeInfoMVar lockPath
+        else do
+          modifyMVar_ subscribeRuntimeInfo (return . HM.delete sriStreamName)
+          void $ Recipe.unlock zkHandle lockPath
       where
         doReadAndDispatch info@SubscribeRuntimeInfo {..}
           | not sriValid = do
@@ -345,7 +356,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
               signal <- newEmptyMVar
               return (info {sriSignals = V.cons signal sriSignals}, Just signal)
           | otherwise = do
-              void $ registerLowResTimer 10 $ void . forkIO $ readAndDispatchRecords runtimeInfoMVar
+              void $ registerLowResTimer 10 $ void . forkIO $ readAndDispatchRecords runtimeInfoMVar lockPath
               doRead info >>= \case
                 (newInfo, Nothing)      -> return (newInfo, Nothing)
                 (newInfo, Just records) -> doDispatch records newInfo
@@ -578,6 +589,7 @@ dispatchRecords records streamSends
             records
 
     newSenders <- zipWithM doDispatch (cycle . HM.toList $ streamSends) (V.toList recordGroups)
+
     return . HM.fromList . catMaybes $ newSenders
   where
     doDispatch (name, sender) record = do
