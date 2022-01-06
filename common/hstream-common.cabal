@@ -51,9 +51,11 @@ library
     Google.Protobuf.Struct
     HStream.Stats.Internal
     HStream.Utils.BuildRecord
+    HStream.Utils.Common
     HStream.Utils.Concurrent
     HStream.Utils.Converter
     HStream.Utils.Format
+    HStream.Utils.JSON
     HStream.Utils.RPC
     HStream.Utils.Table
     HStream.Utils.TimeInterval

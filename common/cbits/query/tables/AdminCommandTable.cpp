@@ -405,6 +405,15 @@ PartialTableData AdminCommandTable::jsonToTableData(std::string json) const {
 
   switch (value.getTag()) {
   case JsonTag::JSON_OBJECT:
+    // extract "content"
+    for (const auto& i : value) {
+      if (i->key == std::string("type")) {
+        hs_check(i->value.getTag() == JsonTag::JSON_STRING);
+        hs_check(i->value.toString() == std::string("table"));
+      } else if (i->key == std::string("content")) {
+        value = i->value;
+      }
+    }
     for (const auto& i : value) {
       if (i->key == std::string("headers")) {
         headers = i;

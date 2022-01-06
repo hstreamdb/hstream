@@ -1,13 +1,14 @@
 module Main (main) where
 
+import qualified Data.Text             as T
 import           Options.Applicative   ((<**>))
 import qualified Options.Applicative   as O
+import           System.Environment    (getArgs)
 
 import           HStream.Admin.Command
 import           HStream.Admin.Types
 import qualified HStream.Logger        as Log
 import qualified HStream.Store.Logger  as CLog
-
 
 main :: IO ()
 main = runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
@@ -23,26 +24,7 @@ runCli Cli{..} = do
   runCli' cliOpts command
 
 runCli' :: CliOpts -> Command -> IO ()
-runCli' s (ServerSqlCmd opts) = serverSqlRepl s opts
-
-data Cli = Cli
-  { cliOpts  :: CliOpts
-  , logLevel :: Log.Level
-  , command  :: Command
-  }
-
-cliParser :: O.Parser Cli
-cliParser = Cli
-  <$> cliOptsParser
-  <*> logLevelParser
-  <*> commandParser
-
-newtype Command
-  = ServerSqlCmd ServerSqlCmdOpts
-  deriving (Show)
-
-commandParser :: O.Parser Command
-commandParser = O.hsubparser
-  ( O.command "hserver-sql" (O.info (ServerSqlCmd <$> serverSqlCmdOptsParser)
-                                    (O.progDesc "Start an interactive SQL shell"))
-  )
+runCli' s (ServerSqlCmd opts)  = serverSqlRepl s opts
+runCli' s (ServerAdminCmd _) = do
+  cmd <- T.unwords . map T.pack <$> getArgs
+  putStrLn =<< formatCommandResponse =<< withAdminClient s (sendAdminCommand cmd)

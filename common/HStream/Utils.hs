@@ -6,59 +6,28 @@ module HStream.Utils
   , module HStream.Utils.Concurrent
   , module HStream.Utils.TimeInterval
   , module HStream.Utils.Table
+  , module HStream.Utils.Common
+  , module HStream.Utils.JSON
 
-  , getKeyWordFromException
-  , flattenJSON
   , genUnique
-  , setupSigsegvHandler
-  , withoutPrefix
-  , toQuietSnakeAesonOpt
-  , toQuietSnakeAesonOpt'
   ) where
 
-import           Control.Exception          (Exception (..))
-import           Control.Monad              (join, unless)
-import           Data.Aeson                 as Aeson
-import           Data.Bifunctor             (first)
+import           Control.Monad              (unless)
 import           Data.Bits                  (shiftL, shiftR, (.&.), (.|.))
-import qualified Data.HashMap.Strict        as HM
 import           Data.Int                   (Int64)
-import           Data.List                  (stripPrefix)
-import           Data.Maybe                 (fromMaybe)
-import           Data.Text                  (Text)
-import qualified Data.Text                  as Text
-import qualified Data.Text.Lazy             as TL
 import           Data.Word                  (Word16, Word32, Word64)
 import           System.Random              (randomRIO)
-import           Text.Casing                (fromHumps, toQuietSnake)
 import           Z.IO.Time                  (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
+import           HStream.Utils.Common
 import           HStream.Utils.Concurrent
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
+import           HStream.Utils.JSON
 import           HStream.Utils.RPC
 import           HStream.Utils.Table
 import           HStream.Utils.TimeInterval
-
-getKeyWordFromException :: Exception a => a -> TL.Text
-getKeyWordFromException =  TL.pack . takeWhile (/='{') . show
-
--- | Flatten all JSON structures.
---
--- >>> flatten (HM.fromList [("a", Aeson.Object $ HM.fromList [("b", Aeson.Number 1)])])
--- fromList [("a.b",Number 1.0)]
-flattenJSON :: HM.HashMap Text Aeson.Value -> HM.HashMap Text Aeson.Value
-flattenJSON jsonMap =
-  let flattened = join $ map (flattenJSON' "." Text.empty) (HM.toList jsonMap)
-   in HM.fromList $ map (first Text.tail) flattened
-
-flattenJSON' :: Text -> Text -> (Text, Aeson.Value) -> [(Text, Aeson.Value)]
-flattenJSON' splitor prefix (k, v) = do
-  -- TODO: we will not support array?
-  case v of
-    Aeson.Object o -> join $ map (flattenJSON' splitor (prefix <> splitor <> k)) (HM.toList o)
-    _              -> [(prefix <> splitor <> k, v)]
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --
@@ -81,19 +50,3 @@ genUnique = do
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
 {-# INLINE genUnique #-}
-
-foreign import ccall unsafe "hs_common.h setup_sigsegv_handler"
-  setupSigsegvHandler :: IO ()
-
-withoutPrefix :: Eq a => [a] -> [a] -> [a]
-withoutPrefix prefix ele = fromMaybe ele $ stripPrefix prefix ele
-
-toQuietSnakeAesonOpt :: String -> Aeson.Options
-toQuietSnakeAesonOpt p = Aeson.defaultOptions
-  { Aeson.fieldLabelModifier = toQuietSnake . fromHumps . withoutPrefix p }
-
-toQuietSnakeAesonOpt' :: String -> Aeson.Options
-toQuietSnakeAesonOpt' p = Aeson.defaultOptions
-  { Aeson.fieldLabelModifier     = toQuietSnake . fromHumps . withoutPrefix p
-  , Aeson.constructorTagModifier = toQuietSnake . fromHumps . withoutPrefix p
-  }

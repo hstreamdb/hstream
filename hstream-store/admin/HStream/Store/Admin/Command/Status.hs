@@ -14,7 +14,7 @@ import           Data.Time.Clock.POSIX     (POSIXTime, getPOSIXTime)
 import qualified HStream.Store.Admin.API   as AA
 import           HStream.Store.Admin.Types
 import           HStream.Utils             (approxNaturalTime,
-                                            simpleShowTableIO')
+                                            defaultShowTableIO')
 
 data NodeState' = NodeState'
   { stateState      :: AA.NodeState
@@ -120,7 +120,7 @@ runStatus conf StatusOpts{..} = do
     Just sortIdx -> do
       let stats = sortBy (\xs ys -> compare (xs!!sortIdx) (ys!!sortIdx)) collectedState
       case statusFormat of
-        TabularFormat -> simpleShowTableIO' titles stats
+        TabularFormat -> defaultShowTableIO' titles stats
         JSONFormat    -> errorWithoutStackTrace "NotImplemented"
     Nothing -> errorWithoutStackTrace $ "No such sort key: " <> Text.unpack statusSortField
 
