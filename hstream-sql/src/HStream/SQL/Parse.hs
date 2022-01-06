@@ -23,8 +23,8 @@ parse input = do
     Left err  -> throwSQLException ParseException Nothing err
     Right sql ->
       case validate sql of
-        Left err   -> throw err
-        Right vsql -> return vsql
+        Left exception -> throw exception
+        Right vsql     -> return vsql
 
 parseAndRefine :: HasCallStack => Text -> IO RSQL
 parseAndRefine input = parse input <&> refine

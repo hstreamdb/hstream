@@ -9,8 +9,11 @@ module HStream.Server.Exception where
 
 import           Control.Exception                    (Exception (..),
                                                        Handler (Handler),
-                                                       IOException, catches)
+                                                       IOException,
+                                                       SomeException, catches,
+                                                       displayException)
 import qualified Data.ByteString.Char8                as BS
+import qualified Data.Text                            as T
 import           Database.MySQL.Base                  (ERRException)
 
 import qualified HStream.Logger                       as Log
@@ -32,22 +35,24 @@ mkExceptionHandle :: (StatusCode -> StatusDetails -> IO (ServerResponse t a))
                   -> IO (ServerResponse t a)
 mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(err :: SomeSQLException) ->
-    retFun StatusInternal $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
+    retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
   Handler (\(_ :: Store.EXISTS) ->
-    retFun StatusInternal "Stream already exists"),
+    retFun StatusAlreadyExists "Stream already exists"),
   Handler (\(_ :: ObjectNotExist) ->
-    retFun StatusInternal "Object not found"),
+    retFun StatusNotFound "Object not found"),
   Handler (\(err :: Store.SomeHStoreException) -> do
     cleanFun
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(err :: PersistenceException) ->
-    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
+    retFun StatusAborted $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(_ :: QueryTerminatedOrNotExist) ->
-    retFun StatusInternal "Query is already terminated or does not exist"),
+    retFun StatusInvalidArgument "Query is already terminated or does not exist"),
+  Handler (\(err :: StreamNotExist) ->
+    retFun StatusNotFound $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(_ :: SubscriptionIdOccupied) ->
-    retFun StatusInternal "Subscription ID has been occupied"),
+    retFun StatusInvalidArgument "Subscription ID has been occupied"),
   Handler (\(_ :: SubscriptionIdNotFound) ->
-    retFun StatusInternal "Subscription ID can not be found"),
+    retFun StatusNotFound "Subscription ID can not be found"),
   Handler (\(err :: IOException) -> do
     Log.fatal $ Log.buildString (displayException err)
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
@@ -55,14 +60,20 @@ mkExceptionHandle retFun cleanFun = flip catches [
     retFun StatusInternal $ StatusDetails ("Mysql error " <> BS.pack (show err))),
   Handler (\(err :: ConnectorAlreadyExists) -> do
     let ConnectorAlreadyExists st = err
-    retFun StatusInternal $ StatusDetails ("Connector exists with status  " <> BS.pack (show st))),
+    retFun StatusAlreadyExists $ StatusDetails ("Connector exists with status  " <> BS.pack (show st))),
   Handler (\(err :: ConnectorRestartErr) -> do
     let ConnectorRestartErr st = err
     retFun StatusInternal $ StatusDetails ("Cannot restart a connector with status  " <> BS.pack (show st))),
   Handler (\(_ :: ConnectorNotExist) -> do
-    retFun StatusInternal "Connector not found"),
+    retFun StatusNotFound "Connector not found"),
+  Handler (\(err :: ZNODEEXISTS) -> do
+    retFun StatusAlreadyExists $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err))),
+  Handler (\(err :: ZNONODE) -> do
+    retFun StatusNotFound $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err))),
   Handler (\(err :: ZooException) -> do
-    retFun StatusInternal $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err)))
+    retFun StatusInternal $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err))),
+  Handler (\(err :: SomeException) -> do
+    retFun StatusUnknown $ StatusDetails ("UnKnown exception: " <> BS.pack (show err)))
   ]
 
 defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)

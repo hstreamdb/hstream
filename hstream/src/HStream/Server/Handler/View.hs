@@ -56,7 +56,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
                         , viewSql = createViewRequestSql
                         , viewSchema = V.fromList $ T.pack <$> schema
                         }
-    _ -> returnErrResp StatusInternal (StatusDetails $ BSC.pack "inconsistent method called")
+    _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
   where
     mkLogAttrs = HS.LogAttrs . HS.HsLogAttrs scDefaultStreamRepFactor
     create sName = HS.createStream scLDClient (HCH.transToViewStreamName sName) (mkLogAttrs Map.empty)
@@ -87,7 +87,7 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
     Just q -> returnResp $ hstreamQueryToView q
     _      -> do
       Log.warning $ "Cannot Find View with ID: " <> Log.buildString (T.unpack getViewRequestViewId)
-      returnErrResp StatusInternal "View does not exist"
+      returnErrResp StatusNotFound "View does not exist"
 
 deleteViewHandler
   :: ServerContext

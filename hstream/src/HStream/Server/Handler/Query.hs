@@ -104,7 +104,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan' <- streamCodegen commandQueryStmtText
   case plan' of
-    SelectPlan {} -> returnErrResp StatusInternal "inconsistent method called"
+    SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     -- execute plans that can be executed with this method
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized ->
       do
@@ -131,7 +131,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
         else do
           hm <- readIORef P.groupbyStores
           case HM.lookup rSelectViewFrom hm of
-            Nothing -> returnErrResp StatusInternal "VIEW not found"
+            Nothing -> returnErrResp StatusNotFound "VIEW not found"
             Just materialized -> do
               let (keyName, keyExpr) = rSelectViewWhere
                   (_, keyValue) = genRExprValue keyExpr (HM.fromList [])
@@ -292,8 +292,8 @@ sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
     do
       P.getQueryStatus qid zkHandle
       >>= \case
-        Terminated -> return (ServerWriterResponse [] StatusUnknown "")
-        Created -> return (ServerWriterResponse [] StatusUnknown "")
+        Terminated -> return (ServerWriterResponse [] StatusAborted "")
+        Created -> return (ServerWriterResponse [] StatusAlreadyExists "")
         Running -> do
           sourceRecords <- readRecords
           let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
@@ -306,7 +306,7 @@ sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
         streamSend (structToStruct "SELECT" x) >>= \case
           Left err -> do
             Log.warning $ "Send Stream Error: " <> Log.buildString (show err)
-            return (ServerWriterResponse [] StatusUnknown (fromString (show err)))
+            return (ServerWriterResponse [] StatusInternal (fromString (show err)))
           Right _ -> streamSendMany xs'
 
 --------------------------------------------------------------------------------
@@ -403,7 +403,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
           }
     _ -> do
       Log.fatal "Push Query: Inconsistent Method Called"
-      returnErrResp StatusInternal "inconsistent method called"
+      returnErrResp StatusInvalidArgument "inconsistent method called"
 
 listQueriesHandler
   :: ServerContext
@@ -428,7 +428,7 @@ getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest
     return $ find (\P.PersistentQuery{..} -> cBytesToText queryId == getQueryRequestId) queries
   case query of
     Just q -> returnResp $ hstreamQueryToQuery q
-    _      -> returnErrResp StatusInternal "Query does not exist"
+    _      -> returnErrResp StatusNotFound "Query does not exist"
 
 terminateQueriesHandler
   :: ServerContext
@@ -467,7 +467,7 @@ restartQueryHandler
   -> IO (ServerResponse 'Normal Empty)
 restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
   Log.fatal "Restart Query Not Supported"
-  returnErrResp StatusInternal "restart query not suppported yet"
+  returnErrResp StatusUnimplemented "restart query not suppported yet"
     -- queries <- P.withMaybeZHandle zkHandle P.getQueries
     -- case find (\P.PersistentQuery{..} -> cBytesToLazyText queryId == restartQueryRequestId) queries of
     --   Just query -> do

@@ -101,4 +101,4 @@ getStoreNodeHandler ServerContext{..} (ServerNormalRequest _metadata GetNodeRequ
     <> "Node ID: " <> Log.buildInt getNodeRequestId
   nodes <- getNodes headerConfig statusOpts
   let node = V.find (\(Node id' _ _ _) -> id' == getNodeRequestId) <$> nodes
-  responseWithErrorMsgIfNothing (fromMaybe Nothing node) StatusInternal "Node not exists"
+  responseWithErrorMsgIfNothing (fromMaybe Nothing node) StatusNotFound "Node not exists"

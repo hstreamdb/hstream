@@ -21,7 +21,9 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
+import           Control.Exception                (displayException)
 import           Control.Monad                    (when, zipWithM)
+import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -31,6 +33,7 @@ import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (catMaybes, fromJust)
 import qualified Data.Text                        as T
+import           Data.Text.Encoding               (encodeUtf8)
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64, Word8)
 import           Network.GRPC.HighLevel.Generated
@@ -71,18 +74,19 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
   streamExists <- S.doesStreamExist scLDClient streamName
   if not streamExists
     then do
-      Log.warning $
-        "Try to create a subscription to a nonexistent stream"
-          <> "Stream Name: "
-          <> Log.buildString (show streamName)
-      returnErrResp StatusInternal $ StatusDetails "stream not exist"
+      Log.debug $ "Try to create a subscription to a nonexistent stream"
+               <> "Stream Name: "
+               <> Log.buildString (show streamName)
+      returnErrResp StatusFailedPrecondition . StatusDetails $ "stream " <> encodeUtf8 subscriptionStreamName <> " not exist"
     else do
       logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName)
       offset <- convertOffsetToRecordId logId
 
       P.checkIfExist @ZHandle @'SubRep
         subscriptionSubscriptionId zkHandle >>= \case
-        True  -> returnErrResp StatusUnknown "Subsctiption already exists"
+        True  -> returnErrResp StatusAlreadyExists . StatusDetails $ "Subsctiption "
+                                                                  <> encodeUtf8 subscriptionSubscriptionId
+                                                                  <> " already exists"
         False -> do
           let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
           P.storeObject subscriptionSubscriptionId newSub zkHandle
@@ -121,6 +125,8 @@ deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@
         return store
   returnResp Empty
   where
+    -- FIXME: For now, if there are still some consumers consuming current subscription,
+    -- we ignore the delete command. Should confirm the delete semantics of delete command
     removeSubscriptionFromZK info@SubscribeRuntimeInfo {..}
       | HM.null sriStreamSends = do
           -- remove sub from zk
@@ -165,16 +171,13 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
           Log.fatal . Log.buildString $ "streamRecv error: " <> show err
-          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
-            Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
-            Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
+          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>
+              return (ServerBiDiResponse [] StatusInternal $ StatusDetails . BS.pack . displayException $ err)
         Right Nothing -> do
           -- This means that the consumer finished sending acks actively.
           name <- readIORef consumerNameRef
           Log.info $ "consumer closed:" <> Log.buildText name
-          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >>= \case
-            Nothing -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails "")
-            Just errorMsg -> return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
+          cleanupStreamSend isFirst consumerNameRef subscriptionIdRef >> return (ServerBiDiResponse [] StatusOk "")
         Right (Just streamingFetchReq@StreamingFetchRequest {..})
           | isFirst -> do
             -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
@@ -187,10 +190,12 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                   let ServerNode{..} = getAllocatedNode hashRing streamingFetchRequestSubscriptionId
                   if serverNodeId == serverID
                     then doFirstFetchCheck streamingFetchReq
-                    else return $ ServerBiDiResponse [] StatusInternal
+                    else return $ ServerBiDiResponse [] StatusAborted
                       "The subscription is bound to another node. Call `lookupSubscription` to get the right one"
-                False ->
-                  return $ ServerBiDiResponse [] StatusInternal "Subscription does not exist"
+                False -> do
+                  Log.info $ "Subscription: " <> Log.buildText streamingFetchRequestSubscriptionId <> " does not exist, can not do fetch."
+                  return $ ServerBiDiResponse [] StatusFailedPrecondition . StatusDetails $
+                    "Subscription " <> encodeUtf8 streamingFetchRequestSubscriptionId <> " does not exist"
           | otherwise -> do
               handleAcks
                 streamingFetchRequestSubscriptionId
@@ -220,7 +225,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                     return (store, Nothing)
                   Nothing -> do
                     P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
-                      Nothing -> return (store, Just "Subscription has been removed")
+                      Nothing -> return (store, Just $ "Subscription " <> encodeUtf8 streamingFetchRequestSubscriptionId <> " has been removed")
                       Just sub@Subscription {..} -> do
                         let startRecordId = getStartRecordId sub
                         newInfoMVar <-
@@ -237,10 +242,11 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                         return (newStore, Nothing)
             )
           case mRes of
+            -- FIXME: the only possible errorMsg here is "Subscription has been removed", maybe use a boolean to avoid missunderstand
             Just errorMsg -> do
               consumerName <- readIORef consumerNameRef
               Log.fatal $ "consumer " <> Log.buildText consumerName <> " error: " <> Log.buildString (show errorMsg)
-              return $ ServerBiDiResponse [] StatusInternal (StatusDetails errorMsg)
+              return $ ServerBiDiResponse [] StatusFailedPrecondition (StatusDetails errorMsg)
             Nothing ->
               handleAcks
               streamingFetchRequestSubscriptionId
@@ -257,7 +263,8 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
               doAck scLDClient infoMVar acks
               handleRequest False consumerNameRef subscriptionIdRef
             Nothing ->
-              return $ ServerBiDiResponse [] StatusInternal (StatusDetails "Subscription has been removed")
+              return $ ServerBiDiResponse [] StatusFailedPrecondition . StatusDetails $
+                "Subscription " <> encodeUtf8 subId <> "has been removed"
 
     -- We should cleanup according streamSend before returning ServerBiDiResponse.
     cleanupStreamSend True _ _ = return Nothing
@@ -387,16 +394,13 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                       (batch, lastBatch) = splitAt (len - 1) groups
                       -- When the number of records in an LSN exceeds the maximum number of records we
                       -- can fetch in a single read call, `batch' will be an empty list.
-                  when (null lastBatch) $ do
-                      Log.fatal $ "lastBatch empty: " <> "groups = " <> Log.buildString (show groups)
-                               <> ", length of groups = " <> Log.buildInt len
-                  Log.debug $ "length batch=" <> Log.buildInt (length batch)
-                           <> ", length lastBatch=" <> Log.buildInt (length lastBatch)
+                  Log.debug $ "length batch = " <> Log.buildInt (length batch)
+                           <> ", length lastBatch = " <> Log.buildInt (length lastBatch)
                   let maxReadSize = if null batch
                                       then length . last $ lastBatch
                                       else length . last $ batch
                       lastLSN = S.recordLSN . head . head $ lastBatch
-                  Log.debug $ "maxReadSize = "<> Log.buildInt maxReadSize <> ", lastLSN=" <> Log.buildInt lastLSN
+                  Log.debug $ "maxReadSize = "<> Log.buildInt maxReadSize <> ", lastLSN = " <> Log.buildInt lastLSN
 
                   -- `ckpReaderReadAllowGap` will return a specific number of records, which may cause the last LSN's
                   -- records to be truncated, so we need to do another point read to get all the records of the last LSN.
@@ -422,6 +426,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                            -- In this case, newGroups = [lastBatchRecords] or batch ++ [lastBatchRecords],
                            -- in both cases finalLastLSN should be lastLSN
                            xs -> (lastLSN, RecordId lastLSN (fromIntegral $ length xs - 1))
+                      Log.debug $ "finalLastLSN = " <> Log.buildInt finalLastLSN <> ", maxRecordId = " <> Log.buildString (show maxRecordId)
 
                       let newBatchNumMap = Map.union sriBatchNumMap (Map.fromList groupNums)
                           receivedRecords = fetchResult newGroups
@@ -599,7 +604,6 @@ doAck client infoMVar ackRecordIds =
     ( \info@SubscribeRuntimeInfo {..} -> do
         if sriValid
           then do
-            Log.debug $ "before handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size sriAckedRanges)
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
             Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
                      <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)

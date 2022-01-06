@@ -20,4 +20,4 @@ internalHandlers _ = pure HStreamInternal {
 
   }
   where
-    unimplemented = const (returnErrResp StatusInternal "unimplemented method called")
+    unimplemented = const (returnErrResp StatusUnimplemented "unimplemented method called")
