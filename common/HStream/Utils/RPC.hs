@@ -12,7 +12,8 @@ module HStream.Utils.RPC
   , mkServerErrResp
   , returnErrResp
   , returnResp
-  , returnStreamingResp
+  , returnServerStreamingResp
+  , returnBiDiStreamingResp
   , returnCommandQueryResp
   , returnCommandQueryEmptyResp
   , getServerResp
@@ -53,9 +54,13 @@ returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
 {-# INLINE returnResp #-}
 
-returnStreamingResp :: Monad m => StatusCode -> StatusDetails -> m (ServerResponse 'ServerStreaming a)
-returnStreamingResp code = return . ServerWriterResponse mempty code
-{-# INLINE returnStreamingResp #-}
+returnServerStreamingResp :: Monad m => StatusCode -> StatusDetails -> m (ServerResponse 'ServerStreaming a)
+returnServerStreamingResp code = return . ServerWriterResponse mempty code
+{-# INLINE returnServerStreamingResp #-}
+
+returnBiDiStreamingResp :: Monad m => StatusCode -> StatusDetails -> m (ServerResponse 'BiDiStreaming a)
+returnBiDiStreamingResp code = return . ServerBiDiResponse mempty code
+{-# INLINE returnBiDiStreamingResp #-}
 
 returnCommandQueryResp :: Monad m
                        => V.Vector Struct
