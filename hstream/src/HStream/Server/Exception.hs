@@ -117,3 +117,7 @@ instance Exception ConnectorRestartErr
 data ConnectorNotExist = ConnectorNotExist
   deriving (Show)
 instance Exception ConnectorNotExist
+
+data ConsumerExist = ConsumerExist
+  deriving (Show)
+instance Exception ConsumerExist

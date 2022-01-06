@@ -21,7 +21,9 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Exception                (displayException)
+import           Control.Exception                (Handler (..),
+                                                   SomeException (..),
+                                                   fromException, toException, displayException)
 import           Control.Monad                    (when, zipWithM)
 import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on)
@@ -47,7 +49,9 @@ import           ZooKeeper.Types                  (ZHandle)
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.Exception         (ConsumerExist (..),
+                                                   SubscriptionIdOccupied (..),
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    getSuccessor,
@@ -211,21 +215,17 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
             ( \store -> do
                 case HM.lookup streamingFetchRequestSubscriptionId store of
                   Just infoMVar -> do
-                    modifyMVar_ infoMVar
-                      ( \info@SubscribeRuntimeInfo {..} -> do
-                          -- bind a new sender to current client
-                          let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
-                          if V.null sriSignals
-                            then return $ info {sriStreamSends = newSends}
-                            else do
-                              -- wake up all threads waiting for a new consumer to join
-                              V.forM_ sriSignals $ flip putMVar ()
-                              return $ info {sriStreamSends = newSends, sriSignals = V.empty}
+                    addConsumerRes <- modifyMVar infoMVar
+                      (\info@SubscribeRuntimeInfo{..} -> do
+                          let exist = HM.member streamingFetchRequestConsumerName sriStreamSends
+                          addConsumer streamingFetchRequestConsumerName exist info
                       )
-                    return (store, Nothing)
+                    case addConsumerRes of
+                      Nothing   -> return (store, Nothing)
+                      exception -> return (store, exception)
                   Nothing -> do
                     P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
-                      Nothing -> return (store, Just $ "Subscription " <> encodeUtf8 streamingFetchRequestSubscriptionId <> " has been removed")
+                      Nothing -> return (store, Just $ toException SubscriptionIdOccupied)
                       Just sub@Subscription {..} -> do
                         let startRecordId = getStartRecordId sub
                         newInfoMVar <-
@@ -242,17 +242,40 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                         return (newStore, Nothing)
             )
           case mRes of
-            -- FIXME: the only possible errorMsg here is "Subscription has been removed", maybe use a boolean to avoid missunderstand
-            Just errorMsg -> do
-              consumerName <- readIORef consumerNameRef
-              Log.fatal $ "consumer " <> Log.buildText consumerName <> " error: " <> Log.buildString (show errorMsg)
-              return $ ServerBiDiResponse [] StatusFailedPrecondition (StatusDetails errorMsg)
+            Just exception -> do
+              returnWhenErr exception
+                [
+                  Handler(\(e :: SubscriptionIdOccupied) -> do
+                    Log.debug $ "consumer " <> Log.buildText streamingFetchRequestConsumerName <> " fetch error: " <> Log.buildString (show e)
+                    return $ ServerBiDiResponse [] StatusFailedPrecondition (StatusDetails . BC.pack . show $ e)),
+                  Handler(\(e :: ConsumerExist) -> do
+                    Log.debug $ "consumer " <> Log.buildText streamingFetchRequestConsumerName <> " fetch error: " <> Log.buildString (show e)
+                    return $ ServerBiDiResponse [] StatusInvalidArgument (StatusDetails . BC.pack . show $ e))
+                ]
             Nothing ->
               handleAcks
               streamingFetchRequestSubscriptionId
               streamingFetchRequestAckIds
               consumerNameRef
               subscriptionIdRef
+
+        addConsumer :: ConsumerName -> Bool -> SubscribeRuntimeInfo -> IO (SubscribeRuntimeInfo, Maybe SomeException)
+        addConsumer _ True info = return (info, Just $ toException ConsumerExist)
+        addConsumer consumerName False info@SubscribeRuntimeInfo {..} = do
+          let newSends = HM.insert consumerName streamSend sriStreamSends
+          if V.null sriSignals
+            then return (info {sriStreamSends = newSends}, Nothing)
+            else do
+              -- wake up all threads waiting for a new consumer to join
+              V.forM_ sriSignals $ flip putMVar ()
+              return (info {sriStreamSends = newSends, sriSignals = V.empty}, Nothing)
+
+        returnWhenErr :: SomeException -> [Handler (ServerResponse 'BiDiStreaming response)] -> IO (ServerResponse 'BiDiStreaming response)
+        returnWhenErr _ [] = return $ ServerBiDiResponse [] StatusInternal "should not get here."
+        returnWhenErr e (Handler h : hs) = case fromException e of
+          Just e' -> h e'
+          Nothing -> returnWhenErr e hs
+
 
     handleAcks subId acks consumerNameRef subscriptionIdRef =
       if V.null acks
