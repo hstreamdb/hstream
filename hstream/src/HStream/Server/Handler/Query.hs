@@ -223,7 +223,7 @@ executePushQueryHandler ::
   IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler
   ServerContext {..}
-  (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultStreamExceptionHandle $ do
+  (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan' <- streamCodegen commandPushQueryQueryText
     case plan' of
@@ -274,7 +274,7 @@ executePushQueryHandler
             sendToClient zkHandle qid sc streamSend
       _ -> do
         Log.fatal "Push Query: Inconsistent Method Called"
-        returnStreamingResp StatusInternal "inconsistent method called"
+        returnServerStreamingResp StatusInternal "inconsistent method called"
 
 --------------------------------------------------------------------------------
 

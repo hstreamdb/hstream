@@ -21,7 +21,7 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Exception                (displayException)
+import           Control.Exception                (displayException, throwIO)
 import           Control.Monad                    (when, zipWithM)
 import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on)
@@ -47,7 +47,10 @@ import           ZooKeeper.Types                  (ZHandle)
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.Exception         (ConsumerExist (..),
+                                                   SubscriptionIdNotFound (..),
+                                                   defaultBiDiStreamExceptionHandle,
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getStartRecordId,
                                                    getSuccessor,
@@ -203,17 +206,20 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                 consumerNameRef
                 subscriptionIdRef
       where
-        doFirstFetchCheck StreamingFetchRequest{..} = do
+        doFirstFetchCheck StreamingFetchRequest{..} = defaultBiDiStreamExceptionHandle $ do
           writeIORef consumerNameRef streamingFetchRequestConsumerName
           writeIORef subscriptionIdRef streamingFetchRequestSubscriptionId
 
-          mRes <- modifyMVar subscribeRuntimeInfo
+          modifyMVar_ subscribeRuntimeInfo
             ( \store -> do
                 case HM.lookup streamingFetchRequestSubscriptionId store of
                   Just infoMVar -> do
                     modifyMVar_ infoMVar
-                      ( \info@SubscribeRuntimeInfo {..} -> do
-                          -- bind a new sender to current client
+                      (\info@SubscribeRuntimeInfo{..} -> do
+                          when (HM.member streamingFetchRequestConsumerName sriStreamSends) $ do
+                              Log.debug $ "consumer " <> Log.buildText streamingFetchRequestConsumerName <> " exist, return error"
+                              throwIO $ ConsumerExist streamingFetchRequestConsumerName
+
                           let newSends = HM.insert streamingFetchRequestConsumerName streamSend sriStreamSends
                           if V.null sriSignals
                             then return $ info {sriStreamSends = newSends}
@@ -222,10 +228,12 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                               V.forM_ sriSignals $ flip putMVar ()
                               return $ info {sriStreamSends = newSends, sriSignals = V.empty}
                       )
-                    return (store, Nothing)
+                    return store
                   Nothing -> do
                     P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
-                      Nothing -> return (store, Just $ "Subscription " <> encodeUtf8 streamingFetchRequestSubscriptionId <> " has been removed")
+                      Nothing -> do
+                        Log.debug $ "streamingFetch error because subscription " <> Log.buildText streamingFetchRequestSubscriptionId <> " not exist."
+                        throwIO $ SubscriptionIdNotFound streamingFetchRequestSubscriptionId
                       Just sub@Subscription {..} -> do
                         let startRecordId = getStartRecordId sub
                         newInfoMVar <-
@@ -238,21 +246,10 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                           streamSend
                           subscriptionAckTimeoutSeconds
                         Log.info $ "Subscription " <> Log.buildString (show subscriptionSubscriptionId) <> " inits done."
-                        let newStore = HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
-                        return (newStore, Nothing)
+                        return $ HM.insert streamingFetchRequestSubscriptionId newInfoMVar store
             )
-          case mRes of
-            -- FIXME: the only possible errorMsg here is "Subscription has been removed", maybe use a boolean to avoid missunderstand
-            Just errorMsg -> do
-              consumerName <- readIORef consumerNameRef
-              Log.fatal $ "consumer " <> Log.buildText consumerName <> " error: " <> Log.buildString (show errorMsg)
-              return $ ServerBiDiResponse [] StatusFailedPrecondition (StatusDetails errorMsg)
-            Nothing ->
-              handleAcks
-              streamingFetchRequestSubscriptionId
-              streamingFetchRequestAckIds
-              consumerNameRef
-              subscriptionIdRef
+
+          handleAcks streamingFetchRequestSubscriptionId streamingFetchRequestAckIds consumerNameRef subscriptionIdRef
 
     handleAcks subId acks consumerNameRef subscriptionIdRef =
       if V.null acks

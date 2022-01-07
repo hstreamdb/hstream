@@ -13,7 +13,8 @@ import           Control.Exception                    (Exception (..),
                                                        SomeException, catches,
                                                        displayException)
 import qualified Data.ByteString.Char8                as BS
-import qualified Data.Text                            as T
+import           Data.Text                            (Text)
+import           Data.Text.Encoding                   (encodeUtf8)
 import           Database.MySQL.Base                  (ERRException)
 
 import qualified HStream.Logger                       as Log
@@ -22,8 +23,9 @@ import           HStream.SQL.Exception                (SomeSQLException,
 import           HStream.Server.Persistence.Exception (PersistenceException)
 import qualified HStream.Store                        as Store
 import           HStream.Utils                        (TaskStatus,
+                                                       returnBiDiStreamingResp,
                                                        returnErrResp,
-                                                       returnStreamingResp)
+                                                       returnServerStreamingResp)
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
 import           ZooKeeper.Exception
@@ -43,16 +45,16 @@ mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(err :: Store.SomeHStoreException) -> do
     cleanFun
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
+  Handler(\(ConsumerExist name :: ConsumerExist) -> do
+    retFun StatusInvalidArgument $ StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")),
   Handler (\(err :: PersistenceException) ->
     retFun StatusAborted $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(_ :: QueryTerminatedOrNotExist) ->
     retFun StatusInvalidArgument "Query is already terminated or does not exist"),
   Handler (\(err :: StreamNotExist) ->
     retFun StatusNotFound $ StatusDetails (BS.pack . displayException $ err)),
-  Handler (\(_ :: SubscriptionIdOccupied) ->
-    retFun StatusInvalidArgument "Subscription ID has been occupied"),
-  Handler (\(_ :: SubscriptionIdNotFound) ->
-    retFun StatusNotFound "Subscription ID can not be found"),
+  Handler (\(SubscriptionIdNotFound subId :: SubscriptionIdNotFound) ->
+    retFun StatusNotFound $ StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found")),
   Handler (\(err :: IOException) -> do
     Log.fatal $ Log.buildString (displayException err)
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
@@ -61,8 +63,7 @@ mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(err :: ConnectorAlreadyExists) -> do
     let ConnectorAlreadyExists st = err
     retFun StatusAlreadyExists $ StatusDetails ("Connector exists with status  " <> BS.pack (show st))),
-  Handler (\(err :: ConnectorRestartErr) -> do
-    let ConnectorRestartErr st = err
+  Handler (\(ConnectorRestartErr st :: ConnectorRestartErr) -> do
     retFun StatusInternal $ StatusDetails ("Cannot restart a connector with status  " <> BS.pack (show st))),
   Handler (\(_ :: ConnectorNotExist) -> do
     retFun StatusNotFound "Connector not found"),
@@ -82,19 +83,23 @@ defaultExceptionHandle = mkExceptionHandle returnErrResp $ return ()
 defaultExceptionHandle' :: IO () -> IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
 defaultExceptionHandle' = mkExceptionHandle returnErrResp
 
-defaultStreamExceptionHandle :: IO (ServerResponse 'ServerStreaming a)
-                             -> IO (ServerResponse 'ServerStreaming a)
-defaultStreamExceptionHandle = mkExceptionHandle returnStreamingResp $ return ()
+defaultServerStreamExceptionHandle :: IO (ServerResponse 'ServerStreaming a)
+                                   -> IO (ServerResponse 'ServerStreaming a)
+defaultServerStreamExceptionHandle = mkExceptionHandle returnServerStreamingResp $ return ()
+
+defaultBiDiStreamExceptionHandle :: IO (ServerResponse 'BiDiStreaming a)
+                                 -> IO (ServerResponse 'BiDiStreaming a)
+defaultBiDiStreamExceptionHandle = mkExceptionHandle returnBiDiStreamingResp $ return ()
 
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)
 instance Exception QueryTerminatedOrNotExist
 
-data SubscriptionIdNotFound = SubscriptionIdNotFound
+newtype SubscriptionIdNotFound = SubscriptionIdNotFound Text
   deriving (Show)
 instance Exception SubscriptionIdNotFound
 
-data SubscriptionIdOccupied = SubscriptionIdOccupied
+newtype SubscriptionIdOccupied = SubscriptionIdOccupied Text
   deriving (Show)
 instance Exception SubscriptionIdOccupied
 
@@ -117,3 +122,7 @@ instance Exception ConnectorRestartErr
 data ConnectorNotExist = ConnectorNotExist
   deriving (Show)
 instance Exception ConnectorNotExist
+
+newtype ConsumerExist = ConsumerExist Text
+  deriving (Show)
+instance Exception ConsumerExist
