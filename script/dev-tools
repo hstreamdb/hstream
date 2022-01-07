@@ -891,29 +891,39 @@ class QuickBuildDevImageCommand:
     COMMAND = "quick-build-dev-image"
 
     def parser(self, subparsers):
-        p = subparsers.add_parser(self.COMMAND)
-        p.add_argument("--builder-image", default=IMAGES["HS_IMAGE"])
+        p = subparsers.add_parser(
+            self.COMMAND,
+            help="Quick build a new hstream image based on current project source",
+        )
+        p.add_argument(
+            "--builder-image",
+            default=IMAGES["HS_IMAGE"],
+            help="Your hasell development image",
+        )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
-        p.add_argument("--force-rebuild", "-f", default=False)
-        p.add_argument("--clean-installdir", default=True)
+        # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
+        p.add_argument("--no-clean-installdir", action="store_true")
 
     def run(
         self,
         tag,
         builder_image,
         container_bin="docker",
-        force_rebuild=False,
-        clean_installdir=True,
         **kargs,
     ):
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)
         base_image = IMAGES["DB_IMAGE"]
         tmpdir = tempfile.TemporaryDirectory()
         installdir = tmpdir.name
+        clean_installdir = not kargs.pop("no_clean_installdir", False)
+        loginfo(
+            f"Temp install dir: {installdir}, autoclean: {clean_installdir}"
+        )
         try:
             bins = [
                 ("hstream", "hstream-server", "/usr/local/bin/hstream-server"),
                 ("hstream", "hstream-client", "/usr/local/bin/hstream-client"),
+                ("hstore-admin", "hadmin", "/usr/local/bin/hadmin"),
             ]
             targets = set(x for x, _, _ in bins)
 
@@ -942,6 +952,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HStream dev tools.")
     c = Command(parser)
     c.register(UpdateImageCommand)
+    c.register(QuickBuildDevImageCommand)
     c.register(StartServicesCommand)
     c.register(StopServicesCommand)
     c.register(StartHServerCommand)
@@ -950,5 +961,4 @@ if __name__ == "__main__":
     c.register(InfoCommand)
     c.register(SwaggerStartCommand)
     c.register(LDShellCommand)
-    c.register(QuickBuildDevImageCommand)
     c.run()
