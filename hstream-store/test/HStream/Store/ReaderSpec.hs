@@ -2,22 +2,23 @@
 
 module HStream.Store.ReaderSpec (spec) where
 
-import           Control.Monad           (void)
-import           Data.Bits               (shiftL)
-import           Data.ByteString         (ByteString)
-import qualified Data.Map.Strict         as Map
-import qualified HStream.Store           as S
-import           System.Timeout          (timeout)
+import           Control.Monad                    (void)
+import           Data.Bits                        (shiftL)
+import           Data.ByteString                  (ByteString)
+import qualified Data.Map.Strict                  as Map
+import qualified HStream.Store                    as S
+import           System.Timeout                   (timeout)
 import           Test.Hspec
-import           Z.Data.Vector.Base      (Bytes)
+import           Z.Data.Vector.Base               (Bytes)
 
+import qualified HStream.Store.Internal.LogDevice as S
 import           HStream.Store.SpecUtils
 
 spec :: Spec
 spec = describe "Stream Reader" $ do
-  fileBased
+  -- fileBased
   preRsmBased >> rsmBased
-  misc
+  -- misc
 
 fileBased :: Spec
 fileBased = context "FileBasedCheckpointedReader" $ do
@@ -89,6 +90,21 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
     S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
     checkpointStore <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
+
+  it "test startReadingFromCheckpointOrStartLSN" $ do
+    start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing
+    checkpointStore <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
+    S.startReadingFromCheckpointOrStartLSN ckpReader checkpointStore readerName logid start_lsn S.LSN_MAX
+    [record_1] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload record_1 `shouldBe` ("1" :: Bytes)
+    S.recordLSN record_1 `shouldBe` start_lsn
+    S.writeLastCheckpoints ckpReader [logid]
+
+    lsn <- S.appendCompLSN <$> S.append client logid "2" Nothing
+    S.startReadingFromCheckpointOrStartLSN ckpReader checkpointStore readerName logid start_lsn S.LSN_MAX
+    [record_2] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload record_2 `shouldBe` ("2" :: Bytes)
+    S.recordLSN record_2 `shouldBe` lsn
 
   it "read with checkpoint" $ do
     start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing

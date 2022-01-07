@@ -4,29 +4,32 @@
 
 module HStream.Store.Internal.LogDevice.Reader where
 
-import           Control.Monad                  (forM, void)
-import qualified Data.ByteString                as BS
-import           Data.Int                       (Int32, Int64)
-import           Data.Map.Strict                (Map)
-import qualified Data.Map.Strict                as Map
-import           Data.Maybe                     (fromMaybe)
+import           Control.Monad                               (forM, void)
+import qualified Data.ByteString                             as BS
+import           Data.Int                                    (Int32, Int64)
+import           Data.Map.Strict                             (Map)
+import qualified Data.Map.Strict                             as Map
+import           Data.Maybe                                  (fromMaybe)
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
-import           Foreign.Marshal                (allocaBytes)
+import           Foreign.Marshal                             (allocaBytes)
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Stack
-import           Z.Data.CBytes                  (CBytes)
-import qualified Z.Data.CBytes                  as ZC
-import           Z.Data.Vector.Base             (Bytes)
-import           Z.Foreign                      (BA#, MBA#)
-import qualified Z.Foreign                      as Z
+import           Z.Data.CBytes                               (CBytes)
+import qualified Z.Data.CBytes                               as ZC
+import           Z.Data.Vector.Base                          (Bytes)
+import           Z.Foreign                                   (BA#, MBA#)
+import qualified Z.Foreign                                   as Z
 
-import qualified HStream.Store.Exception        as E
-import           HStream.Store.Internal.Foreign (cbool2bool, retryWhileAgain,
-                                                 withAsyncPrimUnsafe)
+import qualified HStream.Store.Exception                     as E
+import           HStream.Store.Internal.Foreign              (cbool2bool,
+                                                              retryWhileAgain,
+                                                              withAsyncPrimUnsafe,
+                                                              withAsyncPrimUnsafe2)
+import           HStream.Store.Internal.LogDevice.Checkpoint (c_checkpoint_store_get_lsn)
 import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
@@ -87,6 +90,25 @@ startReadingFromCheckpoint
 startReadingFromCheckpoint reader logid untilSeq =
   withForeignPtr reader $ \ptr -> void $
     E.throwStreamErrorIfNotOK $ c_ld_checkpointed_reader_start_reading_from_ckp ptr logid untilSeq
+
+startReadingFromCheckpointOrStartLSN
+  :: LDSyncCkpReader
+  -> LDCheckpointStore
+  -> CBytes
+  -> C_LogID
+  -> LSN
+  -> LSN
+  -> IO ()
+startReadingFromCheckpointOrStartLSN reader store name logid startSeq untilSeq =
+  ZC.withCBytesUnsafe name $ \name' ->
+  withForeignPtr reader $ \reader' ->
+  withForeignPtr store $ \store' -> void $ do
+    (errno, _, _) <- withAsyncPrimUnsafe2 (0 :: ErrorCode) LSN_INVALID $
+      c_checkpoint_store_get_lsn store' name' logid
+    case errno of
+      C_NOTFOUND -> E.throwStreamErrorIfNotOK $ c_ld_checkpointed_reader_start_reading reader' logid startSeq untilSeq
+      C_OK       -> E.throwStreamErrorIfNotOK $ c_ld_checkpointed_reader_start_reading_from_ckp reader' logid untilSeq
+      _          -> E.throwStreamErrorIfNotOK' errno
 
 readerStopReading :: LDReader -> C_LogID -> IO ()
 readerStopReading reader logid =

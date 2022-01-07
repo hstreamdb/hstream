@@ -91,6 +91,7 @@ module HStream.Store.Stream
   , LD.ckpReaderSetIncludeByteOffset
   , LD.ckpReaderSetWaitOnlyWhenNoData
   , LD.ckpReaderStopReading
+  , LD.startReadingFromCheckpointOrStartLSN
 
     -- * Checkpoint Store
   , initCheckpointStoreLogID

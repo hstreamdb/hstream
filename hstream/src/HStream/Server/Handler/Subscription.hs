@@ -21,7 +21,8 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Exception                (displayException, throwIO)
+import           Control.Exception                (displayException, throwIO,
+                                                   try)
 import           Control.Monad                    (when, zipWithM)
 import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on)
@@ -286,10 +287,11 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
+      let readerName = textToCBytes subscriptionId
       ldCkpReader <-
         S.newLDRsmCkpReader
           ldclient
-          (textToCBytes subscriptionId)
+          readerName
           S.checkpointStoreLogID
           5000
           1
@@ -298,10 +300,10 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       -- seek ldCkpReader to start offset
       logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
       let startLSN = recordIdBatchId startRecordId
-      S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
+      checkPointStore <- S.newRSMBasedCheckpointStore ldclient S.checkpointStoreLogID 5000
+      S.startReadingFromCheckpointOrStartLSN ldCkpReader checkPointStore readerName logId startLSN S.LSN_MAX
       -- set ldCkpReader timeout to 0
       _ <- S.ckpReaderSetTimeout ldCkpReader 0
-      Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
 
       -- create a ldReader for rereading unacked records
       ldReader <- S.newLDReader ldclient 1 Nothing
