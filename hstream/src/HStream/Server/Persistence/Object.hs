@@ -10,33 +10,31 @@
 
 module HStream.Server.Persistence.Object where
 
-import           Control.Monad                     (forM, void)
+import           Control.Exception                 (handle)
+import           Control.Monad                     (forM)
 import           Data.Bifunctor                    (second)
 import qualified Data.Map                          as Map
 import           Data.Maybe                        (fromJust, isJust)
-import           Data.Unique                       (hashUnique, newUnique)
+import           ZooKeeper                         (zooExists, zooGetChildren)
+import           ZooKeeper.Exception
+import           ZooKeeper.Types                   (StringVector (..),
+                                                    StringsCompletion (..),
+                                                    ZHandle)
+
+import           HStream.Server.Exception
 import           HStream.Server.HStreamApi         (Subscription)
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Utils
 import           HStream.Utils                     (cBytesToText)
-import qualified Z.Data.CBytes                     as CB
-import           ZooKeeper                         (zooExists, zooGetChildren,
-                                                    zooSet)
-import           ZooKeeper.Recipe                  as Recipe
-import           ZooKeeper.Types                   (StringVector (unStrVec),
-                                                    StringsCompletion (strsCompletionValues),
-                                                    ZHandle)
 
 -------------------------------------------------------------------------------
 
 instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepType) Subscription where
-  storeObject objId val zk = do
-    uniq <- newUnique
-    Recipe.withLock zk subscriptionsLockPath (CB.pack . show . hashUnique $ uniq) $ do
-      zooExists zk subPath >>= \case
-        Just _  -> void $ zooSet zk subPath (Just $ encodeValueToBytes val) Nothing
-        Nothing -> createInsert zk subPath (encodeValueToBytes val)
-    where subPath = mkSubscriptionPath objId
+  storeObject objId val zk =
+    handleExist $ createInsert zk subPath (encodeValueToBytes val)
+    where
+      subPath = mkSubscriptionPath objId
+      handleExist = handle (\(_ :: ZNODEEXISTS) -> throwIO $ SubscriptionIdOccupied objId)
 
   getObject objId zk = decodeZNodeValue zk subPath
     where subPath = mkSubscriptionPath objId
