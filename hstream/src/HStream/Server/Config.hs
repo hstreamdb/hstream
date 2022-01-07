@@ -7,6 +7,7 @@ module HStream.Server.Config
 import           Control.Exception          (throwIO)
 import qualified Data.ByteString.Char8      as BSC
 import           Data.Maybe                 (fromMaybe)
+import qualified Data.Text                  as Text
 import           Data.Word                  (Word32)
 import           Data.Yaml                  as Y
 import           Options.Applicative        as O
@@ -16,10 +17,12 @@ import           System.Exit                (exitSuccess)
 import           Z.Data.CBytes              (CBytes)
 import           Z.IO.Network               (PortNumber (PortNumber))
 
+
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
 import           HStream.Server.Types       (ServerOpts (..))
 import           HStream.Store              (Compression (CompressionLZ4))
+import qualified HStream.Store.Admin.API    as AA
 
 data CliOptions = CliOptions
   { _configPath          :: String
@@ -33,6 +36,7 @@ data CliOptions = CliOptions
   , _ldAdminPort_        :: Maybe Int
   , _zkUri_              :: Maybe CBytes
   , _storeConfigPath     :: CBytes
+  , _ldLogLevel_      :: Maybe LDLog.LDLogLevel
   }
   deriving Show
 
@@ -142,12 +146,12 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
   let _serverAddress = fromMaybe nodeAddress _serverAddress_
 
-  storeCfgObj  <- obj .:? "store" .!= mempty
+  storeCfgObj  <- obj .:? "hstore" .!= mempty
   _ldLogLevel  <- read <$> storeCfgObj .:? "log-level" .!= "info"
   sAdminCfgObj <- storeCfgObj .:? "store-admin" .!= mempty
   _ldAdminHost        <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
-  _ldAdminProtocolId  <- fromInteger <$> sAdminCfgObj .:? "protocol-id" .!= 0
+  _ldAdminProtocolId  <- readProtocol <$> sAdminCfgObj .:? "protocol-id" .!= "binary"
   _ldAdminConnTimeout <- sAdminCfgObj .:? "conn-timeout" .!= 5000
   _ldAdminSendTimeout <- sAdminCfgObj .:? "send-timeout" .!= 5000
   _ldAdminRecvTimeout <- sAdminCfgObj .:? "recv-timeout" .!= 5000
@@ -186,3 +190,9 @@ getConfig = do
       exitSuccess
     parseConfig p = execParserPure defaultPrefs
       $ info (p <**> helper) (fullDesc <> progDesc "HStream-Server")
+
+readProtocol :: Text.Text -> AA.ProtocolId
+readProtocol x = case (Text.strip . Text.toUpper) x of
+  "binary"  -> AA.binaryProtocolId
+  "compact" -> AA.compactProtocolId
+  _         -> AA.binaryProtocolId
