@@ -898,7 +898,7 @@ class QuickBuildDevImageCommand:
         p.add_argument(
             "--builder-image",
             default=IMAGES["HS_IMAGE"],
-            help="Your hasell development image",
+            help="Your haskell development image",
         )
         p.add_argument("--tag", "-t", required=True, help="target image tag")
         # p.add_argument("--force-rebuild", "-f", action="store_true")  # TODO
