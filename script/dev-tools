@@ -50,8 +50,12 @@ DEFAULT_LOCAL_DATA = os.path.join(PROJECT_ROOT, "local-data")
 Path(DEFAULT_LOCAL_DATA).mkdir(parents=True, exist_ok=True)
 
 DEFAULT_HSTREAM_CONF = os.path.join(PROJECT_ROOT, "conf/hstream.yaml")
+
 DEFAULT_LOGDEVICE_DIR = os.path.join(DEFAULT_LOCAL_DATA, "logdevice")
 Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
+DEFAULT_ZK_PERSISTENT_DIR = os.path.join(DEFAULT_LOCAL_DATA, "zookeeper")
+Path(DEFAULT_ZK_PERSISTENT_DIR).mkdir(parents=True, exist_ok=True)
+
 DEFAULT_ENV_FILE = os.path.join(DEFAULT_LOCAL_DATA, "dev_tools.env")
 with open(DEFAULT_ENV_FILE, "a"):
     pass
@@ -271,6 +275,8 @@ def _service_zookeeper_(container_bin="docker", port=None, **kw):
     cmd = " ".join(
         [
             f"{container_bin} run -td -p {port}:2181 --name {container_name} --rm",
+            f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
+            f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
             IMAGES["ZOOKEEPER_IMAGE"],
         ]
     )
