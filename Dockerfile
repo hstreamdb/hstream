@@ -5,7 +5,7 @@ COPY . /hstream
 RUN cabal update && \
     cd /hstream && make && \
     cabal build all && \
-    cabal install hstream hstore-admin hstream-store && \
+    cabal install hstream hstream-admin hstream-store && \
     cd hstream-http-server && go build -v -o /root/.local/bin/hstream-http-server main.go && \
     rm -rf /hstream
 
