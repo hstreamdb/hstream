@@ -15,7 +15,6 @@ import           GHC.Stack                   (HasCallStack)
 import qualified Z.Data.CBytes               as CB
 
 import           HStream.Connector.HStore    (transToStreamName)
-import qualified HStream.Logger              as Log
 import           HStream.Server.Core.Common  (deleteStoreStream)
 import qualified HStream.Server.HStreamApi   as API
 import           HStream.Server.Types        (ServerContext (..))
@@ -51,7 +50,6 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
 
 appendStream :: ServerContext -> API.AppendRequest -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest{..} = do
-  Log.debug $ "Append data to the stream: " <> Log.buildText appendRequestStreamName
   timestamp <- getProtoTimestamp
   let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords

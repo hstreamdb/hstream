@@ -14,6 +14,7 @@ module HStream.Server.Handler.Stream
   )
 where
 
+import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
@@ -56,6 +57,6 @@ appendHandler ::
   ServerContext ->
   ServerRequest 'Normal AppendRequest AppendResponse ->
   IO (ServerResponse 'Normal AppendResponse)
-appendHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Stream Request: " <> Log.buildString' request
+appendHandler sc (ServerNormalRequest _metadata request@AppendRequest{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
   C.appendStream sc request >>= returnResp
