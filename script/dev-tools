@@ -572,7 +572,7 @@ class UpdateImageCommand:
             self.COMMAND, help="Update all required docker images"
         )
 
-    def run(self):
+    def run(self, **args):
         update_images()
 
 
@@ -908,7 +908,6 @@ class QuickBuildDevImageCommand:
         self,
         tag,
         builder_image,
-        container_bin="docker",
         **kargs,
     ):
         tmp_name = "tmp_build_dev_image_" + gen_randoms(20)

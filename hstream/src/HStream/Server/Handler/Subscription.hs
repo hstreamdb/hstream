@@ -164,8 +164,6 @@ streamingFetchHandler
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
-  Log.debug "Receive streamingFetch request"
-
   consumerNameRef   <- newIORef T.empty
   subscriptionIdRef <- newIORef T.empty
   handleRequest True consumerNameRef subscriptionIdRef
@@ -184,7 +182,9 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
         Right (Just streamingFetchReq@StreamingFetchRequest {..})
           | isFirst -> do
             -- if it is the first fetch request from current client, need to do some extra check and add a new streamSender
-              Log.debug $ "stream received request from " <> Log.buildText streamingFetchRequestConsumerName <> ", do check in isFirst branch"
+              Log.debug $ "subscription " <> Log.buildText streamingFetchRequestSubscriptionId
+                       <> " received request from " <> Log.buildText streamingFetchRequestConsumerName
+                       <> ", do check in isFirst branch"
               -- the subscription has to exist and be bound to a server node
               P.checkIfExist @ZHandle @'SubRep
                 streamingFetchRequestSubscriptionId zkHandle >>= \case
