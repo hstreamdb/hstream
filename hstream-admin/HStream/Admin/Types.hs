@@ -105,7 +105,7 @@ data StreamCommand
 streamCmdParser :: O.Parser StreamCommand
 streamCmdParser = O.subparser
   ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams"))
- <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Get all streams"))
+ <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Create a stream"))
   )
 
 streamParser :: O.Parser API.Stream
