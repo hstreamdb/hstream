@@ -13,7 +13,7 @@ services:
     networks:
       - hstream-quickstart
     volumes:
-      - ${DATA_DIR:-/data/store}:/data/store
+      - data_store:/data/store
     command:
       - bash
       - "-c"
@@ -42,7 +42,7 @@ services:
     networks:
       - hstream-quickstart
     volumes:
-      - ${DATA_DIR:-/data/store}:/data/store
+      - data_store:/data/store
     command:
       - bash
       - "-c"
@@ -58,6 +58,7 @@ services:
         --store-config /data/store/logdevice.conf \
         --store-admin-host hstore --store-admin-port 6440 \
         --replicate-factor 3 \
+
 
   hstream-http-server:
     image: hstreamdb/hstream:v0.6.1
@@ -85,7 +86,7 @@ services:
     networks:
       - hstream-quickstart
     volumes:
-      - ${DATA_DIR:-/data/store}:/data/store
+      - data_store:/data/store
     command:
       - bash
       - "-c"
@@ -106,3 +107,8 @@ services:
 networks:
   hstream-quickstart:
     name: hstream-quickstart
+
+
+volumes:
+  data_store:
+    name: quickstart_data_store
