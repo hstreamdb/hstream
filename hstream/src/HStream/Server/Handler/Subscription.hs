@@ -52,7 +52,8 @@ import           HStream.Server.Exception         (ConsumerExist (..),
                                                    defaultBiDiStreamExceptionHandle,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (getStartRecordId,
+import           HStream.Server.Handler.Common    (getCommitRecordId,
+                                                   getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.Persistence       (ObjRepType (..))
@@ -600,35 +601,50 @@ doAck client infoMVar ackRecordIds =
         if sriValid
           then do
             let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b sriWindowLowerBound a sriBatchNumMap) sriAckedRanges ackRecordIds
-            Log.debug $ "after handle acks, length of ackedRanges is: " <> Log.buildInt (Map.size newAckedRanges)
-                     <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)
+            let commitLSN = getCommitRecordId newAckedRanges sriBatchNumMap
 
-            case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap of
-              Just (ranges, newLowerBound, checkpointRecordId) -> do
-                Log.debug . Log.buildString $ "newWindowLowerBound = " <> show newLowerBound <> ", checkpointRecordId = " <> show checkpointRecordId
-                commitCheckPoint client sriLdCkpReader sriStreamName checkpointRecordId
-                -- after a checkpoint is committed, informations of records before checkpoint are no need to be retained, so just clear them
-                let newBatchNumMap = updateBatchNumMap newLowerBound sriBatchNumMap
+            case tryUpdateWindowLowerBound newAckedRanges sriWindowLowerBound sriBatchNumMap commitLSN of
+              Just (ranges, newLowerBound) -> do
                 Log.info $ "update window lower bound, from {"
                         <> Log.buildString (show sriWindowLowerBound)
                         <> "} to {"
                         <> Log.buildString (show newLowerBound)
                         <> "}"
+
+                commitCheckPoint client sriLdCkpReader sriStreamName (fromJust commitLSN)
+                Log.info $ "commit checkpoint = " <> Log.buildString (show . fromJust $ commitLSN)
+                Log.debug $ "after commitCheckPoint, length of ackedRanges is: " <> Log.buildInt (Map.size ranges)
+                         <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)
+
+                -- after a checkpoint is committed, informations of records less then and equal to checkpoint are no need to be retained, so just clear them
+                let newBatchNumMap = updateBatchNumMap (fromJust commitLSN) sriBatchNumMap
+                Log.debug $ "update batchNumMap to: " <> Log.buildString (show newBatchNumMap)
                 return $ info {sriAckedRanges = ranges, sriWindowLowerBound = newLowerBound, sriBatchNumMap = newBatchNumMap}
               Nothing ->
                 return $ info {sriAckedRanges = newAckedRanges}
           else return info
     )
   where
-    updateBatchNumMap RecordId{..} mp = Map.dropWhileAntitone (< recordIdBatchId) mp
+    updateBatchNumMap RecordId{..} mp = Map.dropWhileAntitone (<= recordIdBatchId) mp
 
 tryUpdateWindowLowerBound
   :: Map.Map RecordId RecordIdRange -- ^ ackedRanges
   -> RecordId                       -- ^ lower bound record of current window
   -> Map.Map Word64 Word32          -- ^ batchNumMap
-  -> Maybe (Map.Map RecordId RecordIdRange, RecordId, RecordId)
-tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap =
+  -> Maybe RecordId                 -- ^ commitPoint
+  -> Maybe (Map.Map RecordId RecordIdRange, RecordId)
+tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commitPoint) =
   Map.lookupMin ackedRanges >>= \(_, RecordIdRange minStartRecordId minEndRecordId) ->
-    if minStartRecordId == lowerBoundRecordId
-      then Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap, minEndRecordId)
-      else Nothing
+    if | minStartRecordId == lowerBoundRecordId && (recordIdBatchId minEndRecordId) == (recordIdBatchId commitPoint) ->
+            -- The current ackedRange [minStartRecordId, minEndRecordId] contains the complete batch record and can be committed directly,
+            -- so remove the hole range [minStartRecordId, minEndRecordId], update windowLowerBound to successor of minEndRecordId
+           Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap)
+       | minStartRecordId == lowerBoundRecordId ->
+           -- The ackedRange [minStartRecordId, commitPoint] contains the complete batch record and will be committed,
+           -- update ackedRange to [successor of commitPoint, minEndRecordId]
+           let newAckedRanges = Map.delete minStartRecordId ackedRanges
+               startRecordId = getSuccessor commitPoint batchNumMap
+               newAckedRanges' = Map.insert startRecordId (RecordIdRange startRecordId minEndRecordId) newAckedRanges
+            in Just(newAckedRanges', startRecordId)
+       | otherwise -> Nothing
+tryUpdateWindowLowerBound _ _ _ Nothing = Nothing

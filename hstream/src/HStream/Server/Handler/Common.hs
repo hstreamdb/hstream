@@ -60,13 +60,13 @@ import           HStream.Utils                    (TaskStatus (..),
 --------------------------------------------------------------------------------
 
 insertAckedRecordId
-  :: RecordId -- ^ recordId need to insert
-  -> RecordId -- ^ lowerBound of current window
-  -> Map.Map RecordId RecordIdRange -- ^ ackedRanges
-  -> Map.Map Word64 Word32 -- ^ batchNumMap
+  :: RecordId                        -- ^ recordId need to insert
+  -> RecordId                        -- ^ lowerBound of current window
+  -> Map.Map RecordId RecordIdRange  -- ^ ackedRanges
+  -> Map.Map Word64 Word32           -- ^ batchNumMap
   -> Map.Map RecordId RecordIdRange
 insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
-  -- [..., {leftStartRid, leftEndRid}, recordId, {rightStartRid, rightEndRig}, ... ]
+  -- [..., {leftStartRid, leftEndRid}, recordId, {rightStartRid, rightEndRid}, ... ]
   --       | ---- leftRange ----    |            |  ---- rightRange ----    |
   --
   | not $ isValidRecordId recordId batchNumMap = ackedRanges
@@ -93,6 +93,22 @@ insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
     checkDuplicat leftRange rightRange =
          recordId >= startRecordId leftRange && recordId <= endRecordId leftRange
       || recordId >= startRecordId rightRange && recordId <= endRecordId rightRange
+
+getCommitRecordId
+  :: Map.Map RecordId RecordIdRange -- ^ ackedRanges
+  -> Map.Map Word64 Word32          -- ^ batchNumMap
+  -> Maybe RecordId
+getCommitRecordId ackedRanges batchNumMap = do
+  (_, RecordIdRange _ maxRid@RecordId{..}) <- Map.lookupMin ackedRanges
+  cnt <- Map.lookup recordIdBatchId batchNumMap
+  if recordIdBatchIndex == cnt - 1
+     -- if maxRid is a complete batch, commit maxRid
+    then Just maxRid
+     -- else we check the precursor of maxRid and return it as commit point
+    else do
+      let lsn = recordIdBatchId - 1
+      cnt' <- Map.lookup lsn batchNumMap
+      Just $ RecordId lsn (cnt' - 1)
 
 lookupLTWithDefault :: RecordId -> Map.Map RecordId RecordIdRange -> RecordIdRange
 lookupLTWithDefault recordId ranges = maybe (RecordIdRange minBound minBound) snd $ Map.lookupLT recordId ranges

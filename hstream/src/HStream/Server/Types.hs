@@ -92,7 +92,7 @@ data RecordIdRange = RecordIdRange
 
 instance Show RecordIdRange where
   show RecordIdRange{..} = "{(" <> show (recordIdBatchId startRecordId) <> ","
-                                <> show (recordIdBatchIndex startRecordId) <> "), "
+                                <> show (recordIdBatchIndex startRecordId) <> "), ("
                                 <> show (recordIdBatchId endRecordId) <> ","
                                 <> show (recordIdBatchIndex endRecordId) <> ")}"
 
