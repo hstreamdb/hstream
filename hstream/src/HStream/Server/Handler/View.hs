@@ -17,6 +17,7 @@ import           Network.GRPC.HighLevel.Generated
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
 import qualified HStream.SQL.Codegen              as HSC
+import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (dropHelper,
@@ -28,16 +29,6 @@ import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),
                                                    cBytesToText, returnErrResp,
                                                    returnResp, textToCBytes)
-
-hstreamQueryToView :: P.PersistentQuery -> View
-hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _ _) =
-  View { viewViewId = cBytesToText queryId
-       , viewStatus = getPBStatus status
-       , viewCreatedTime = createdTime
-       , viewSql = sqlStatement
-       , viewSchema = V.fromList $ T.pack <$> schema
-       }
-hstreamQueryToView _ = error "Impossible happened..."
 
 createViewHandler
   :: ServerContext
@@ -65,12 +56,9 @@ listViewsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListViewsRequest ListViewsResponse
   -> IO (ServerResponse 'Normal ListViewsResponse)
-listViewsHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
+listViewsHandler serverContext (ServerNormalRequest _metadata _) = do
   Log.debug "Receive List View Request"
-  queries <- P.getQueries zkHandle
-  let records = map hstreamQueryToView $ filter P.isViewQuery queries
-  let resp = ListViewsResponse . V.fromList $ records
-  returnResp resp
+  CoreView.listViews serverContext >>= returnResp . ListViewsResponse . V.fromList
 
 getViewHandler
   :: ServerContext
@@ -84,7 +72,7 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
     return $
       find (\P.PersistentQuery {..} -> cBytesToText queryId == getViewRequestViewId) viewQueries
   case query of
-    Just q -> returnResp $ hstreamQueryToView q
+    Just q -> returnResp $ CoreView.hstreamQueryToView q
     _      -> do
       Log.warning $ "Cannot Find View with ID: " <> Log.buildString (T.unpack getViewRequestViewId)
       returnErrResp StatusNotFound "View does not exist"

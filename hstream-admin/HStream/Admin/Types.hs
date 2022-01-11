@@ -87,6 +87,7 @@ logLevelParser =
 data AdminCommand
   = AdminStatsCommand StatsCommand
   | AdminStreamCommand StreamCommand
+  | AdminViewCommand ViewCommand
   | AdminStatusCommand
   deriving (Show)
 
@@ -94,6 +95,7 @@ adminCommandParser :: O.Parser AdminCommand
 adminCommandParser = O.hsubparser
   ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser) (O.progDesc "Get the stats of an operation on a stream"))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser) (O.progDesc "Stream command"))
+ <> O.command "view" (O.info (AdminViewCommand <$> viewCmdParser) (O.progDesc "View command"))
  <> O.command "status" (O.info (pure AdminStatusCommand) (O.progDesc "Get the status of the HServer cluster"))
   )
 
@@ -121,6 +123,15 @@ streamParser = API.Stream
                      <> O.value 3
                      <> O.help "replication-factor"
                       )
+
+data ViewCommand
+  = ViewCmdList
+  deriving (Show)
+
+viewCmdParser :: O.Parser ViewCommand
+viewCmdParser = O.subparser
+  ( O.command "list" (O.info (pure ViewCmdList) (O.progDesc "Get all views"))
+  )
 
 data StatsCommand = StatsCommand
   { statsType      :: CBytes

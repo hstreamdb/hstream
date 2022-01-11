@@ -7,6 +7,7 @@ module HStream.Utils.Format
   ( Format (..)
   , formatCommandQueryResponse
   , approxNaturalTime
+  , formatStatus
   ) where
 
 import qualified Data.Aeson.Text                  as A
