@@ -77,7 +77,6 @@ library
     , grpc-haskell-core
     , hashable
     , haxl
-    , hstore-admin
     , hstream-admin
     , hstream-common
     , hstream-connector
@@ -135,8 +134,8 @@ executable hstream-server
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
-    , hstore-admin
     , hstream
+    , hstream-admin
     , hstream-common
     , hstream-store
     , optparse-applicative

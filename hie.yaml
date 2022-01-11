@@ -246,6 +246,12 @@ cradle:
     - path: "hstream-admin/."
       component: "lib:hstream-admin"
 
+    - path: "hstream-admin/gen-hs2"
+      component: "lib:hstream-admin"
+
+    - path: "hstream-admin/app/cli.hs"
+      component: "hstream-admin:exe:hadmin"
+
     - path: "hstream-admin/app/admin.hs"
       component: "hstream-admin:exe:hadmin-server"
 
@@ -290,15 +296,6 @@ cradle:
 
     - path: "hstream-sql/test"
       component: "hstream-sql:test:hstream-sql-test"
-
-    - path: "hstream-store/admin/."
-      component: "lib:hstore-admin"
-
-    - path: "hstream-store/admin/gen-hs2"
-      component: "lib:hstore-admin"
-
-    - path: "hstream-store/admin/app/cli.hs"
-      component: "hstore-admin:exe:hadmin"
 
     - path: "hstream-store/./"
       component: "lib:hstream-store"

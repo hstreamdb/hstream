@@ -928,7 +928,7 @@ class QuickBuildDevImageCommand:
             bins = [
                 ("hstream", "hstream-server", "/usr/local/bin/hstream-server"),
                 ("hstream", "hstream-client", "/usr/local/bin/hstream-client"),
-                ("hstore-admin", "hadmin", "/usr/local/bin/hadmin"),
+                ("hstream-admin", "hadmin", "/usr/local/bin/hadmin"),
             ]
             targets = set(x for x, _, _ in bins)
 
