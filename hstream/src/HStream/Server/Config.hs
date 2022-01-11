@@ -5,6 +5,7 @@ module HStream.Server.Config
   ) where
 
 import           Control.Exception          (throwIO)
+import           Data.ByteString            (ByteString)
 import qualified Data.ByteString.Char8      as BSC
 import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text                  as Text
@@ -23,6 +24,7 @@ import           HStream.Server.Persistence ()
 import           HStream.Server.Types       (ServerOpts (..))
 import           HStream.Store              (Compression (CompressionLZ4))
 import qualified HStream.Store.Admin.API    as AA
+import qualified HStream.Store.Logger       as Log
 
 data CliOptions = CliOptions
   { _configPath          :: String
@@ -33,10 +35,11 @@ data CliOptions = CliOptions
   , _serverID_           :: Maybe Word32
   , _serverLogLevel_     :: Maybe Log.Level
   , _serverLogWithColor_ :: Bool
+  , _ldAdminHost_        :: Maybe ByteString
   , _ldAdminPort_        :: Maybe Int
+  , _ldLogLevel_         :: Maybe Log.LDLogLevel
   , _zkUri_              :: Maybe CBytes
   , _storeConfigPath     :: CBytes
-  , _ldLogLevel_      :: Maybe LDLog.LDLogLevel
   }
   deriving Show
 
@@ -92,7 +95,18 @@ ldAdminPort :: O.Parser Int
 ldAdminPort = option auto
   $  long "store-admin-port"
   <> metavar "INT"
-  <> help "store admin port value"
+  <> help "Store admin port value"
+
+ldAdminHost :: O.Parser ByteString
+ldAdminHost = strOption
+  $  long "store-admin-host" <> metavar "HOST"
+  <> help "Store admin host"
+
+ldLogLevel :: O.Parser Log.LDLogLevel
+ldLogLevel = option auto
+  $  long "store-log-level"
+  <> metavar "[critical|error|warning|notify|info|debug|spew]"
+  <> help "Store log level"
 
 zkUri :: O.Parser CBytes
 zkUri = strOption
@@ -118,6 +132,8 @@ parseWithFile = do
   _serverInternalPort_ <- optional serverInternalPort
   _serverID_           <- optional serverID
   _ldAdminPort_        <- optional ldAdminPort
+  _ldAdminHost_        <- optional ldAdminHost
+  _ldLogLevel_         <- optional ldLogLevel
   _zkUri_              <- optional zkUri
   _serverLogLevel_     <- optional logLevel
   _serverLogWithColor_ <- logWithColor
@@ -144,19 +160,21 @@ parseJSONToOptions CliOptions {..} obj = do
   let _zkUri              = fromMaybe zkuri _zkUri_
   let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
   let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
-  let _serverAddress = fromMaybe nodeAddress _serverAddress_
+  let _serverAddress      = fromMaybe nodeAddress _serverAddress_
 
   storeCfgObj  <- obj .:? "hstore" .!= mempty
-  _ldLogLevel  <- read <$> storeCfgObj .:? "log-level" .!= "info"
+  storeLogLevel <- read <$> storeCfgObj .:? "log-level" .!= "info"
   sAdminCfgObj <- storeCfgObj .:? "store-admin" .!= mempty
-  _ldAdminHost        <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
+  storeAdminHost      <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
   _ldAdminProtocolId  <- readProtocol <$> sAdminCfgObj .:? "protocol-id" .!= "binary"
   _ldAdminConnTimeout <- sAdminCfgObj .:? "conn-timeout" .!= 5000
   _ldAdminSendTimeout <- sAdminCfgObj .:? "send-timeout" .!= 5000
   _ldAdminRecvTimeout <- sAdminCfgObj .:? "recv-timeout" .!= 5000
 
+  let _ldAdminHost    = fromMaybe storeAdminHost _ldAdminHost_
   let _ldAdminPort    = fromMaybe storeAdminPort _ldAdminPort_
+  let _ldLogLevel     = fromMaybe storeLogLevel  _ldLogLevel_
   let _topicRepFactor = 3
   let _compression    = CompressionLZ4
   let _ckpRepFactor   = 1
