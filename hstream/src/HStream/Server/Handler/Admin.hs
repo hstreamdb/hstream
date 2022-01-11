@@ -18,16 +18,18 @@ import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
 import qualified Z.Data.CBytes                    as CB
 
+import           Control.Monad                    (forM)
 import qualified HStream.Admin.Types              as AT
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
+import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (getClusterStatus)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (interval2ms, returnResp,
-                                                   showNodeStatus)
+import           HStream.Utils                    (formatStatus, interval2ms,
+                                                   returnResp, showNodeStatus)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -54,6 +56,7 @@ adminCommandHandler sc req = defaultExceptionHandle $ do
   result <- case adminCommand of
               AT.AdminStatsCommand c  -> runStats sc c
               AT.AdminStreamCommand c -> runStream sc c
+              AT.AdminViewCommand c   -> runView sc c
               AT.AdminStatusCommand   -> runStatus sc
   returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
@@ -93,6 +96,21 @@ runStream ctx AT.StreamCmdList = do
 runStream ctx (AT.StreamCmdCreate stream) = do
   HC.createStream ctx stream
   return $ plainResponse "OK"
+
+-------------------------------------------------------------------------------
+-- Admin Stream Command
+
+runView :: ServerContext -> AT.ViewCommand -> IO Text
+runView serverContext AT.ViewCmdList = do
+  let headers = ["id" :: Text, "status", "createdTime"]
+  views <- CoreView.listViews serverContext
+  rows <- forM views $ \view -> do
+    return [ API.viewViewId view
+           , T.pack . formatStatus . API.viewStatus $ view
+           , T.pack . show . API.viewCreatedTime $ view
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin Status Command

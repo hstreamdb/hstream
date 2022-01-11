@@ -45,6 +45,7 @@ library
   other-modules:
     HStream.Server.Core.Common
     HStream.Server.Core.Stream
+    HStream.Server.Core.View
     HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
