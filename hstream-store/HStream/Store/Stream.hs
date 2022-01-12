@@ -89,6 +89,7 @@ module HStream.Store.Stream
   , LD.writeLastCheckpoints
   , LD.ckpReaderStartReading
   , LD.startReadingFromCheckpoint
+  , LD.startReadingFromCheckpointOrStart
   , LD.ckpReaderRead
   , LD.ckpReaderReadAllowGap
   , LD.ckpReaderSetTimeout

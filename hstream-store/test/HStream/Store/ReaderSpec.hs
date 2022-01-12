@@ -9,6 +9,7 @@ import qualified Data.Map.Strict         as Map
 import qualified HStream.Store           as S
 import           System.Timeout          (timeout)
 import           Test.Hspec
+import           Z.Data.CBytes           (CBytes)
 import           Z.Data.Vector.Base      (Bytes)
 
 import           HStream.Store.SpecUtils
@@ -19,16 +20,15 @@ spec = describe "Stream Reader" $ do
   preRsmBased >> rsmBased
   misc
 
-fileBased :: Spec
-fileBased = context "FileBasedCheckpointedReader" $ do
-  let readerName = "reader_name_ckp_1"
-  let ckpPath = "/tmp/ckp"
-  let logid = 1
-
-  ckpReader <- runIO $ S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10
+readerSpec
+  :: CBytes
+  -> S.C_LogID
+  -> IO S.LDSyncCkpReader -> IO S.LDCheckpointStore -> Spec
+readerSpec readerName logid new_reader new_ckp_store = do
+  ckpReader <- runIO new_reader
+  checkpointStore <- runIO new_ckp_store
 
   it "the checkpoint of writing/reading should be equal" $ do
-    checkpointStore <- S.newFileBasedCheckpointStore ckpPath
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
     S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
@@ -57,6 +57,41 @@ fileBased = context "FileBasedCheckpointedReader" $ do
     S.startReadingFromCheckpoint ckpReader logid end_lsn
     [recordbs'] <- S.ckpReaderRead ckpReader 1
     S.recordPayload recordbs' `shouldBe` ("2" :: ByteString)
+
+  it "checkpointed reader start reading with an optional start lsn" $ do
+    S.trim client logid =<< S.getTailLSN client logid
+    S.ckpStoreRemoveAllCheckpoints checkpointStore readerName
+
+    lsn1 <- S.appendCompLSN <$> S.append client logid "1" Nothing
+    lsn2 <- S.appendCompLSN <$> S.append client logid "2" Nothing
+    lsn3 <- S.appendCompLSN <$> S.append client logid "3" Nothing
+
+    S.startReadingFromCheckpointOrStart ckpReader logid (Just lsn2) S.LSN_MAX
+    [record_2] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload record_2 `shouldBe` ("2" :: Bytes)
+    S.recordLSN record_2 `shouldBe` lsn2
+
+    S.startReadingFromCheckpointOrStart ckpReader logid Nothing S.LSN_MAX
+    [record_1] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload record_1 `shouldBe` ("1" :: Bytes)
+    S.recordLSN record_1 `shouldBe` lsn1
+
+    S.writeCheckpoints ckpReader $ Map.singleton logid lsn2
+    S.startReadingFromCheckpointOrStart ckpReader logid (Just lsn1) S.LSN_MAX
+    [record_3] <- S.ckpReaderRead ckpReader 1
+    S.recordPayload record_3 `shouldBe` ("3" :: Bytes)
+    S.recordLSN record_3 `shouldBe` lsn3
+
+fileBased :: Spec
+fileBased = context "FileBasedCheckpointedReader" $ do
+  let readerName = "reader_name_ckp_1"
+  let ckpPath = "/tmp/ckp"
+  let logid = 1
+
+  readerSpec readerName
+             logid
+             (S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10)
+             (S.newFileBasedCheckpointStore ckpPath)
 
   it "read from checkpoint without writing checkpoint should read from LSN_OLDEST" $ do
     S.trim client logid =<< S.getTailLSN client logid
@@ -81,38 +116,11 @@ rsmBased :: Spec
 rsmBased = context "RSMBasedCheckpointedReader" $ do
   let readerName = "reader_name_ckp_2"
   let logid = 1
-  ckpReader <- runIO $ S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing 10
 
-  it "the checkpoint of writing/reading should be equal" $ do
-    _ <- S.append client logid "hello" Nothing
-    until_lsn <- S.getTailLSN client logid
-    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
-    checkpointStore <- S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000
-    S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
-
-  it "read with checkpoint" $ do
-    start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing
-    _ <- S.append client logid "2" Nothing
-    end_lsn <- S.appendCompLSN <$> S.append client logid "3" Nothing
-
-    S.ckpReaderStartReading ckpReader logid start_lsn end_lsn
-    [record_1] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record_1 `shouldBe` ("1" :: Bytes)
-    S.recordLSN record_1 `shouldBe` start_lsn
-
-    -- last read checkpoint: start_lsn
-    S.writeLastCheckpoints ckpReader [logid]
-
-    [recordbs_2] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload recordbs_2 `shouldBe` ("2" :: ByteString)
-
-    S.startReadingFromCheckpoint ckpReader logid end_lsn
-    [record'] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload record' `shouldBe` ("2" :: Bytes)
-
-    S.startReadingFromCheckpoint ckpReader logid end_lsn
-    [recordbs'] <- S.ckpReaderRead ckpReader 1
-    S.recordPayload recordbs' `shouldBe` ("2" :: ByteString)
+  readerSpec readerName
+             logid
+             (S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing 10)
+             (S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000)
 
 misc :: Spec
 misc = do
