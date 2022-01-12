@@ -62,6 +62,7 @@ library
     , primitive       ^>=0.7
     , random          ^>=1.2
     , time            >=1.9   && <2.0
+    , vector          ^>=0.12
     , Z-Data
     , Z-IO
     , zoovisitor      >=0.1.2 && <1
@@ -116,6 +117,7 @@ test-suite hstream-store-test
   main-is:            Spec.hs
   other-modules:
     HStream.Store.AppenderSpec
+    HStream.Store.CheckpointStoreSpec
     HStream.Store.LogDeviceSpec
     HStream.Store.ReaderSpec
     HStream.Store.SettingsSpec
@@ -132,6 +134,7 @@ test-suite hstream-store-test
     , hstream-common
     , hstream-store
     , random          ^>=1.2
+    , vector          ^>=0.12
     , Z-Data
     , Z-IO
 
