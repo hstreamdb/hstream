@@ -1,11 +1,7 @@
 module HStream.StoreSpec where
 
 import           Test.Hspec
-import qualified Z.Data.Builder          as B
-import qualified Z.Data.CBytes           as CBytes
-import           Z.Data.Vector           (packASCII)
 
-import qualified HStream.Logger          as Log
 import qualified HStream.Store           as S
 import           HStream.Store.SpecUtils
 
@@ -51,7 +47,7 @@ base = describe "Base" $ do
 
 except :: Spec
 except = describe "Except" $ do
-  it "get tailLSN of an unknown logid should throw NOTFOUND" $ do
-    -- Note: this do not fail immediately.
+  -- FIXME: this does not fail immediately, and very slow
+  xit "get tailLSN of an unknown logid should throw NOTFOUND" $ do
     let logid' = 10000 -- an unknown logid
     S.getTailLSN client logid' `shouldThrow` S.isNOTFOUND

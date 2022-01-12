@@ -79,6 +79,21 @@ ckpReaderStartReading reader logid startSeq untilSeq =
   withForeignPtr reader $ \ptr -> void $
     E.throwStreamErrorIfNotOK $ c_ld_checkpointed_reader_start_reading ptr logid startSeq untilSeq
 
+startReadingFromCheckpointOrStart
+  :: LDSyncCkpReader
+  -> C_LogID
+  -> Maybe LSN
+  -> LSN
+  -> IO ()
+startReadingFromCheckpointOrStart reader logid m_start end =
+  withForeignPtr reader $ \ptr -> void $ do
+    let start = fromMaybe LSN_INVALID m_start
+    E.throwStreamErrorIfNotOK $ ld_start_reading_from_ckp_or_start ptr logid start end
+
+-- | Start reading from checkpoint
+--
+-- Typically, the same as
+-- > startReadingFromCheckpointOrStart reader logid Nothing until
 startReadingFromCheckpoint
   :: LDSyncCkpReader
   -> C_LogID
@@ -351,6 +366,8 @@ foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_start_reading
   c_ld_checkpointed_reader_start_reading :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> LSN -> LSN -> IO ErrorCode
 foreign import ccall unsafe "hs_logdevice.h ld_checkpointed_reader_start_reading_from_ckp"
   c_ld_checkpointed_reader_start_reading_from_ckp :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> LSN -> IO ErrorCode
+foreign import ccall unsafe "hs_logdevice.h ld_start_reading_from_ckp_or_start"
+  ld_start_reading_from_ckp_or_start :: Ptr LogDeviceSyncCheckpointedReader -> C_LogID -> LSN -> LSN -> IO ErrorCode
 
 foreign import ccall unsafe "hs_logdevice.h ld_reader_stop_reading"
   c_ld_reader_stop_reading :: Ptr LogDeviceReader -> C_LogID -> IO ErrorCode

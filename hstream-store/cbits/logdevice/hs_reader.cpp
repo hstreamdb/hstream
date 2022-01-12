@@ -195,7 +195,19 @@ READ(logdevice_checkpointed_reader_read, logdevice_sync_checkpointed_reader_t)
 facebook::logdevice::Status ld_checkpointed_reader_start_reading_from_ckp(
     logdevice_sync_checkpointed_reader_t* reader, c_logid_t logid,
     c_lsn_t until) {
-  int ret = reader->rep->startReadingFromCheckpoint(logid_t(logid), until);
+  int ret =
+      reader->rep->startReadingFromCheckpoint(logid_t(logid), until, nullptr);
+  if (ret == 0)
+    return facebook::logdevice::E::OK;
+  return facebook::logdevice::err;
+}
+
+facebook::logdevice::Status
+ld_start_reading_from_ckp_or_start(logdevice_sync_checkpointed_reader_t* reader,
+                                   c_logid_t logid, c_lsn_t start,
+                                   c_lsn_t until) {
+  int ret = reader->rep->startReadingFromCheckpoint(logid_t(logid), start,
+                                                    until, nullptr);
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
