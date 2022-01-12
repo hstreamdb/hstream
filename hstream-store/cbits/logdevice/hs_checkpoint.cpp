@@ -43,16 +43,6 @@ new_zookeeper_based_checkpoint_store(logdevice_client_t* client) {
 
 void free_checkpoint_store(logdevice_checkpoint_store_t* p) { delete p; }
 
-facebook::logdevice::Status
-checkpoint_store_get_lsn_sync(logdevice_checkpoint_store_t* store,
-                              const char* customer_id, c_logid_t logid,
-                              c_lsn_t* value_out) {
-  std::string customer_id_ = std::string(customer_id);
-  facebook::logdevice::Status ret =
-      store->rep->getLSNSync(customer_id_, logid_t(logid), value_out);
-  return ret;
-}
-
 void checkpoint_store_get_lsn(logdevice_checkpoint_store_t* store,
                               const char* customer_id, c_logid_t logid,
                               HsStablePtr mvar, HsInt cap,
@@ -82,6 +72,51 @@ void checkpoint_store_update_lsn(logdevice_checkpoint_store_t* store,
     hs_try_putmvar(cap, mvar);
   };
   store->rep->updateLSN(customer_id_, logid_t(logid), lsn, cb);
+}
+
+void checkpoint_store_remove_checkpoints(
+    logdevice_checkpoint_store_t* store, const char* customer_id,
+    c_logid_t* logids, HsInt logid_offset, HsInt logid_len, HsStablePtr mvar,
+    HsInt cap, facebook::logdevice::Status* st_out) {
+  std::string customer_id_ = std::string(customer_id);
+  logids += logid_offset;
+  std::vector<logid_t> checkpoints;
+  checkpoints.reserve(logid_len);
+  for (int i = 0; i < logid_len; i++) {
+    checkpoints.push_back(logid_t(*logids));
+  }
+  auto cb = [st_out, cap, mvar](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = st;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+  store->rep->removeCheckpoints(customer_id_, checkpoints, cb);
+}
+
+void checkpoint_store_remove_all_checkpoints(
+    logdevice_checkpoint_store_t* store, const char* customer_id,
+    HsStablePtr mvar, HsInt cap, facebook::logdevice::Status* st_out) {
+  std::string customer_id_ = std::string(customer_id);
+  auto cb = [st_out, cap, mvar](facebook::logdevice::Status st) {
+    if (st_out) {
+      *st_out = st;
+    }
+    hs_try_putmvar(cap, mvar);
+  };
+  store->rep->removeAllCheckpoints(customer_id_, cb);
+}
+
+// ----------------------------------------------------------------------------
+
+facebook::logdevice::Status
+checkpoint_store_get_lsn_sync(logdevice_checkpoint_store_t* store,
+                              const char* customer_id, c_logid_t logid,
+                              c_lsn_t* value_out) {
+  std::string customer_id_ = std::string(customer_id);
+  facebook::logdevice::Status ret =
+      store->rep->getLSNSync(customer_id_, logid_t(logid), value_out);
+  return ret;
 }
 
 facebook::logdevice::Status
