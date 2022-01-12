@@ -34,7 +34,7 @@ hstore:
   store-admin: # optional
     host: "127.0.0.1" # optional
     port: 6440 # optional
-    protocol-id: binaryProtocolId # optional
+    protocol-id: binary # optional
     conn-timeout: 5000 # optional
     send-timeout: 5000 # optional
     recv-timeout: 5000 # optional
