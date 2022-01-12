@@ -275,6 +275,9 @@ def _service_zookeeper_(container_bin="docker", port=None, **kw):
     cmd = " ".join(
         [
             f"{container_bin} run -td -p {port}:2181 --name {container_name} --rm",
+            "-u " + str(CUID) + ":" + str(CGID)
+            if container_bin.strip() in ["docker"]
+            else "",
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
             IMAGES["ZOOKEEPER_IMAGE"],
