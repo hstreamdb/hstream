@@ -49,10 +49,14 @@ module HStream.Store.Stream
   , FFI.Compression (..)
 
     -- * Checkpoint Store
+  , FFI.LDCheckpointStore
   , LD.newFileBasedCheckpointStore
   , LD.newRSMBasedCheckpointStore
   , LD.newZookeeperBasedCheckpointStore
   , LD.ckpStoreGetLSN
+  , LD.ckpStoreUpdateLSN
+  , LD.ckpStoreRemoveCheckpoints
+  , LD.ckpStoreRemoveAllCheckpoints
 
     -- * Reader
   , FFI.RecordByteOffset (..)
@@ -66,6 +70,7 @@ module HStream.Store.Stream
   , FFI.recordBatchOffset
   , FFI.recordByteOffset
 
+  , FFI.LDReader
   , LD.newLDReader
   , LD.readerStartReading
   , LD.readerRead
@@ -76,6 +81,7 @@ module HStream.Store.Stream
   , LD.readerSetWaitOnlyWhenNoData
   , LD.readerStopReading
     -- ** Checkpointed Reader
+  , FFI.LDSyncCkpReader
   , newLDFileCkpReader
   , newLDRsmCkpReader
   , newLDZkCkpReader
@@ -83,6 +89,7 @@ module HStream.Store.Stream
   , LD.writeLastCheckpoints
   , LD.ckpReaderStartReading
   , LD.startReadingFromCheckpoint
+  , LD.startReadingFromCheckpointOrStart
   , LD.ckpReaderRead
   , LD.ckpReaderReadAllowGap
   , LD.ckpReaderSetTimeout

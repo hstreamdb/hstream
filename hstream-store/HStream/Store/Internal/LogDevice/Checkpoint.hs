@@ -6,11 +6,13 @@ import           Control.Monad                  (void)
 import           Data.Int                       (Int64)
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
+import qualified Data.Vector.Primitive          as VP
 import           Data.Word
 import           Foreign.ForeignPtr             (newForeignPtr, withForeignPtr)
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
+import           GHC.Stack                      (HasCallStack)
 import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as ZC
 import           Z.Foreign                      (BA#, MBA#)
@@ -72,11 +74,31 @@ ckpStoreGetLSNSync store customid logid =
     return ret_lsn
 
 ckpStoreUpdateLSN :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
-ckpStoreUpdateLSN store customid logid sn =
+ckpStoreUpdateLSN = ckpStoreUpdateLSN' (-1)
+
+ckpStoreUpdateLSN' :: Int -> LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
+ckpStoreUpdateLSN' retries store customid logid sn =
+  ZC.withCBytesUnsafe customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    let f = FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $ c_checkpoint_store_update_lsn store' customid' logid sn
+    void $ FFI.retryWhileAgain f retries
+
+ckpStoreRemoveCheckpoints
+  :: HasCallStack
+  => LDCheckpointStore -> CBytes -> VP.Vector C_LogID -> IO ()
+ckpStoreRemoveCheckpoints store customid (VP.Vector offset len (Z.ByteArray ba#)) =
   ZC.withCBytesUnsafe customid $ \customid' ->
   withForeignPtr store $ \store' -> do
     (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
-      c_checkpoint_store_update_lsn store' customid' logid sn
+      checkpoint_store_remove_checkpoints store' customid' ba# offset len
+    void $ E.throwStreamErrorIfNotOK' errno
+
+ckpStoreRemoveAllCheckpoints :: HasCallStack => LDCheckpointStore -> CBytes -> IO ()
+ckpStoreRemoveAllCheckpoints store customid =
+  ZC.withCBytesUnsafe customid $ \customid' ->
+  withForeignPtr store $ \store' -> do
+    (errno, _) <- FFI.withAsyncPrimUnsafe (0 :: ErrorCode) $
+      checkpoint_store_remove_all_checkpoints store' customid'
     void $ E.throwStreamErrorIfNotOK' errno
 
 ckpStoreUpdateLSNSync :: LDCheckpointStore -> CBytes -> C_LogID -> LSN -> IO ()
@@ -155,6 +177,23 @@ foreign import ccall unsafe "hs_logdevice.h checkpoint_store_update_lsn"
     -> LSN
     -> StablePtr PrimMVar -> Int
     -> MBA# Word8
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h checkpoint_store_remove_checkpoints"
+  checkpoint_store_remove_checkpoints
+    :: Ptr LogDeviceCheckpointStore
+    -> BA# Word8    -- ^ customer_id
+    -> BA# C_LogID -> Int -> Int  -- ^ (bytearray, offset, length)
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h checkpoint_store_remove_all_checkpoints"
+  checkpoint_store_remove_all_checkpoints
+    :: Ptr LogDeviceCheckpointStore
+    -> BA# Word8    -- ^ customer_id
+    -> StablePtr PrimMVar -> Int
+    -> MBA# ErrorCode
     -> IO ()
 
 foreign import ccall safe "hs_logdevice.h checkpoint_store_update_multi_lsn_sync"
