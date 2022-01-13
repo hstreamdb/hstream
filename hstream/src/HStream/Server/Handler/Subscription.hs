@@ -288,19 +288,13 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
+      let readerName = textToCBytes subscriptionId
       ldCkpReader <-
-        S.newLDRsmCkpReader
-          ldclient
-          (textToCBytes subscriptionId)
-          S.checkpointStoreLogID
-          5000
-          1
-          Nothing
-          10
+        S.newLDRsmCkpReader ldclient readerName S.checkpointStoreLogID 5000 1 Nothing 10
       -- seek ldCkpReader to start offset
       logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
       let startLSN = recordIdBatchId startRecordId
-      S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
+      S.startReadingFromCheckpointOrStart ldCkpReader logId (Just startLSN) S.LSN_MAX
       -- set ldCkpReader timeout to 0
       _ <- S.ckpReaderSetTimeout ldCkpReader 0
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
