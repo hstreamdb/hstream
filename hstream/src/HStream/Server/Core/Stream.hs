@@ -62,6 +62,6 @@ appendStream ServerContext{..} API.AppendRequest{..} = do
   where
     batchAppend :: S.LDClient -> CB.CBytes -> V.Vector BS.ByteString -> S.Compression -> IO S.AppendCompletion
     batchAppend client streamName payloads strategy = do
-      logId <- S.getUnderlyingLogId client $ S.mkStreamId S.StreamTypeStream streamName
+      logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream streamName) Nothing
       -- TODO: support vector of ByteString
       S.appendBatchBS client logId (V.toList payloads) strategy Nothing

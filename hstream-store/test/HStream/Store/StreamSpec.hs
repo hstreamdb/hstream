@@ -17,9 +17,11 @@ spec = describe "StreamSpec" $ do
 base :: Spec
 base = describe "BaseSpec" $ do
   streamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
-  logPath <- runIO $ S.getUnderlyingLogPath streamId
-  newStreamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
-  newLogPath <- runIO $ S.getUnderlyingLogPath newStreamId
+  logPath <- runIO $ S.getUnderlyingLogPath streamId Nothing
+  let newStreamId = streamId
+      newLogPath = logPath
+  -- newStreamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
+  -- newLogPath <- runIO $ S.getUnderlyingLogPath newStreamId
 
   it "create stream" $ do
     print $ "Create a new stream: " <> S.showStreamName streamId
@@ -42,15 +44,15 @@ base = describe "BaseSpec" $ do
 
   it "get full path of loggroup by name or id shoule be equal" $ do
     logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
-    logid <- S.getUnderlyingLogId client streamId
+    logid <- S.getUnderlyingLogId client streamId Nothing
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
     logpath `shouldBe` logpath'
 
-  it "rename stream" $ do
-    print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
-    S.renameStream client streamId newStreamId
-    S.doesStreamExist client streamId `shouldReturn` False
-    S.doesStreamExist client newStreamId `shouldReturn` True
+  -- it "rename stream" $ do
+  --   print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
+  --   S.renameStream client streamId newStreamId
+  --   S.doesStreamExist client streamId `shouldReturn` False
+  --   S.doesStreamExist client newStreamId `shouldReturn` True
 
   it "stream replication factor" $ do
     S.getStreamReplicaFactor client newStreamId `shouldReturn` 1
@@ -58,7 +60,7 @@ base = describe "BaseSpec" $ do
   it "stream head record timestamp" $ do
     -- since there is no records in this stream
     S.getStreamHeadTimestamp client newStreamId `shouldReturn` Nothing
-    logid <- S.getUnderlyingLogId client newStreamId
+    logid <- S.getUnderlyingLogId client newStreamId Nothing
     _ <- S.append client logid "hello" Nothing
     let cond mv = case mv of
                     Just v  -> v > 0 && v < (maxBound :: Int64)
