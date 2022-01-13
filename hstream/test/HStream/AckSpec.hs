@@ -2,7 +2,8 @@ module HStream.AckSpec (spec) where
 
 import           Data.Map.Strict               as Map
 import           HStream.Server.HStreamApi     (RecordId (..))
-import           HStream.Server.Handler.Common (insertAckedRecordId,
+import           HStream.Server.Handler.Common (getCommitRecordId,
+                                                insertAckedRecordId,
                                                 isSuccessor)
 import           HStream.Server.Types
 import           Test.Hspec
@@ -249,6 +250,24 @@ insertAckSpec =
       let oldRanges = Map.fromList [(rangeLL, RecordIdRange rangeLL rangeLR), (rangeRL, RecordIdRange rangeRL rangeRR)]
       insertAckedRecordId recordInsert1 lowerBound oldRanges batchNumMap `shouldBe` oldRanges
       insertAckedRecordId recordInsert2 lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+    it "test getCommitRecordId" $ do
+        let ranges = Map.empty
+        let batchNumMap = Map.empty
+        getCommitRecordId ranges batchNumMap `shouldBe` Nothing
+
+        let recordId1 = RecordId 3 0
+        let recordId2 = RecordId 5 7
+        let ranges2 = Map.fromList [(recordId1, RecordIdRange recordId1 recordId2)]
+        let batchNumMap2 = Map.fromList [(2, 4), (3, 5), (4, 2), (5, 8)]
+        getCommitRecordId ranges2 batchNumMap2 `shouldBe` Just recordId2
+
+        let recordId3 = RecordId 6 2
+        let ranges3 = Map.insert recordId3 (RecordIdRange recordId3 recordId3) ranges2
+        let batchNumMap3 = Map.insert 6 8 batchNumMap2
+        getCommitRecordId ranges3 batchNumMap3 `shouldBe` Just recordId2
+        getCommitRecordId ranges3 Map.empty `shouldBe` Nothing
+
+
 
 
 
