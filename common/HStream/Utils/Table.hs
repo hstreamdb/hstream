@@ -8,6 +8,7 @@ module HStream.Utils.Table
   , simpleShowTable
   ) where
 
+import           Control.Exception      (IOException, try)
 import           Data.Default           (def)
 import           System.Console.ANSI    (getTerminalSize)
 import qualified Text.Layout.Table      as Table
@@ -56,7 +57,11 @@ defaultShowTableIO' titles rows =
   defaultShowTableIO $ zip titles (Table.colsAsRowsAll def rows)
 
 termialWidth :: IO Int
-termialWidth = maybe 80 snd <$> getTerminalSize
+termialWidth =
+  do e <- try getTerminalSize
+     case e of
+       Left (_ :: IOException) -> return 80
+       Right x                 -> return $ maybe 80 snd x
 
 simpleShowTable :: [(String, Int, Table.Position Table.H)] -> [[String]] -> String
 simpleShowTable _ [] = ""

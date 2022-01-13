@@ -217,7 +217,7 @@ def run_hadmin(image, container_bin, command, cmd_args):
         user_command = f"{command} --host={host} --port={port}"
         if cmd_args:
             user_command = user_command + " " + " ".join(cmd_args)
-            container_opts = ""
+            container_opts = "-t"
     else:
         user_command = command
 
@@ -442,7 +442,7 @@ def run_ldshell(image, container_bin, command, cmd_args):
         )
         if cmd_args:
             user_command = user_command + " " + " ".join(cmd_args)
-            container_opts = ""
+            container_opts = "-t"
     else:
         user_command = command
 
