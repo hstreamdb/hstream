@@ -67,7 +67,7 @@ with open(BASH_HISTORY_FILE, "a"):
     pass
 
 IMAGES = {
-    "HS_IMAGE": "docker.io/hstreamdb/haskell",
+    "HS_IMAGE": os.getenv("DEV_IMAGE", "docker.io/hstreamdb/haskell"),
     "LD_IMAGE": "docker.io/hstreamdb/logdevice",
     "DB_IMAGE": "docker.io/hstreamdb/hstream",
     "SWAGGER_IMAGE": "swaggerapi/swagger-ui",
