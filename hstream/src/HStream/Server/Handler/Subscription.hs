@@ -288,19 +288,13 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
 
     initSubscribe ldclient subscriptionId streamName consumerName startRecordId sSend ackTimeout = do
       -- create a ldCkpReader for reading new records
+      let readerName = textToCBytes subscriptionId
       ldCkpReader <-
-        S.newLDRsmCkpReader
-          ldclient
-          (textToCBytes subscriptionId)
-          S.checkpointStoreLogID
-          5000
-          1
-          Nothing
-          10
+        S.newLDRsmCkpReader ldclient readerName S.checkpointStoreLogID 5000 1 Nothing 10
       -- seek ldCkpReader to start offset
       logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
       let startLSN = recordIdBatchId startRecordId
-      S.ckpReaderStartReading ldCkpReader logId startLSN S.LSN_MAX
+      S.startReadingFromCheckpointOrStart ldCkpReader logId (Just startLSN) S.LSN_MAX
       -- set ldCkpReader timeout to 0
       _ <- S.ckpReaderSetTimeout ldCkpReader 0
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
@@ -314,7 +308,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
             SubscribeRuntimeInfo
               { sriStreamName = streamName,
                 sriLogId = logId,
-                sriAckTimeoutSeconds = ackTimeout,
+                sriAckTimeoutSeconds = ackTimeout * 10,
                 sriLdCkpReader = ldCkpReader,
                 sriLdReader = Just ldReader,
                 sriWindowLowerBound = startRecordId,
@@ -390,8 +384,6 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                       (batch, lastBatch) = splitAt (len - 1) groups
                       -- When the number of records in an LSN exceeds the maximum number of records we
                       -- can fetch in a single read call, `batch' will be an empty list.
-                  Log.debug $ "length batch = " <> Log.buildInt (length batch)
-                           <> ", length lastBatch = " <> Log.buildInt (length lastBatch)
                   let maxReadSize = if null batch
                                       then length . last $ lastBatch
                                       else length . last $ batch
@@ -439,7 +431,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
               newInfo = info { sriStreamSends = newStreamSends }
           -- register task for resending timeout records
           void $ registerLowResTimer
-               (fromIntegral sriAckTimeoutSeconds * 10)
+               (fromIntegral sriAckTimeoutSeconds)
                (void $ forkIO $ tryResendTimeoutRecords receivedRecordIds sriLogId runtimeInfoMVar)
           return (newInfo, Nothing)
 
@@ -519,7 +511,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
                           writeIORef streamSendValidRef newStreamSendValid
                         Right _ -> return ()
 
-              void $ registerResend unackedRecordIds (fromIntegral sriAckTimeoutSeconds * 10)
+              void $ registerResend unackedRecordIds (fromIntegral sriAckTimeoutSeconds)
 
               valids <- readIORef streamSendValidRef
               let newStreamSends = map snd $ L.filter (\(i, _) -> valids V.! i) $ zip [0 ..] senders
@@ -563,7 +555,6 @@ dispatchRecords records streamSends
   | HM.null streamSends = return HM.empty
   | otherwise = do
     let slen = HM.size streamSends
-    Log.debug $ Log.buildString "ready to dispatchRecords to " <> Log.buildInt slen <> " consumers"
     let initVec = V.replicate slen V.empty
     -- recordGroups aggregates the data to be sent by each sender
     let recordGroups =
@@ -614,7 +605,7 @@ doAck client infoMVar ackRecordIds =
                 commitCheckPoint client sriLdCkpReader sriStreamName (fromJust commitLSN)
                 Log.info $ "commit checkpoint = " <> Log.buildString (show . fromJust $ commitLSN)
                 Log.debug $ "after commitCheckPoint, length of ackedRanges is: " <> Log.buildInt (Map.size ranges)
-                         <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 newAckedRanges)
+                         <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 ranges)
 
                 -- after a checkpoint is committed, informations of records less then and equal to checkpoint are no need to be retained, so just clear them
                 let newBatchNumMap = updateBatchNumMap (fromJust commitLSN) sriBatchNumMap
