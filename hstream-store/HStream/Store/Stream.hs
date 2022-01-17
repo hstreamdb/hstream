@@ -158,6 +158,7 @@ type Key = CBytes
 
 defaultKey :: CBytes
 defaultKey = "default-key-when-key-not-given"
+
 --------------------------------------------------------------------------------
 
 -- TODO: validation
