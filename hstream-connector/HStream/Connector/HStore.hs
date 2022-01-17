@@ -74,7 +74,7 @@ transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
 
 subscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Offset -> IO ()
 subscribeToHStoreStream ldclient reader streamId startOffset = do
-  logId <- S.getUnderlyingLogId ldclient streamId
+  logId <- S.getUnderlyingLogId ldclient streamId Nothing
   startLSN <- case startOffset of
     Earlist    -> return S.LSN_MIN
     Latest     -> fmap (+1) (S.getTailLSN ldclient logId)
@@ -83,7 +83,7 @@ subscribeToHStoreStream ldclient reader streamId startOffset = do
 
 subscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> Offset -> IO ()
 subscribeToHStoreStream' ldclient reader stream startOffset = do
-  logId <- S.getUnderlyingLogId ldclient (transToStreamName stream)
+  logId <- S.getUnderlyingLogId ldclient (transToStreamName stream) Nothing
   startLSN <-
         case startOffset of
           Earlist    -> return S.LSN_MIN
@@ -93,20 +93,21 @@ subscribeToHStoreStream' ldclient reader stream startOffset = do
 
 unSubscribeToHStoreStream :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> IO ()
 unSubscribeToHStoreStream ldclient reader streamId = do
-  logId <- S.getUnderlyingLogId ldclient streamId
+  logId <- S.getUnderlyingLogId ldclient streamId Nothing
   S.ckpReaderStopReading reader logId
 
 unSubscribeToHStoreStream' :: S.LDClient -> S.LDReader -> HPT.StreamName -> IO ()
 unSubscribeToHStoreStream' ldclient reader streamName = do
-  logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
+  logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName) Nothing
   S.readerStopReading reader logId
 
 dataRecordToSourceRecord :: S.LDClient -> Payload -> IO SourceRecord
 dataRecordToSourceRecord ldclient Payload {..} = do
   logGroup <- S.getLogGroupByID ldclient pLogID
-  groupName <- S.logGroupGetName logGroup
+  path <- S.logGroupGetFullName logGroup
+  streamId <- S.mkStreamIdFromLogPath S.StreamTypeStream path
   return SourceRecord
-    { srcStream = cBytesToText groupName
+    { srcStream = cBytesToText (S.streamName streamId)
     , srcKey = Just "{}"
     -- A dummy key typed Aeson.Object, for avoiding errors while processing queries with JOIN clause only.
     -- It is not used and will be removed in the future.
@@ -143,7 +144,7 @@ getJsonFormatRecord dataRecord
 
 commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Offset -> IO ()
 commitCheckpointToHStore ldclient reader streamId offset = do
-  logId <- S.getUnderlyingLogId ldclient streamId
+  logId <- S.getUnderlyingLogId ldclient streamId Nothing
   case offset of
     Earlist    -> error "expect normal offset, but get Earlist"
     Latest     -> error "expect normal offset, but get Latest"
@@ -153,7 +154,7 @@ writeRecordToHStore :: S.LDClient -> S.StreamType -> SinkRecord -> IO ()
 writeRecordToHStore ldclient streamType SinkRecord{..} = do
   let streamId = S.mkStreamId streamType (textToCBytes snkStream)
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
-  logId <- S.getUnderlyingLogId ldclient streamId
+  logId <- S.getUnderlyingLogId ldclient streamId Nothing
   timestamp <- getProtoTimestamp
   let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
   let payload = encodeRecord $ buildRecord header (BL.toStrict snkValue)
