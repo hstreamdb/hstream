@@ -35,7 +35,7 @@ buildRecordHeader flag mp timestamp key =
 {-# INLINE buildRecordHeader #-}
 
 buildRecord :: HStreamRecordHeader -> ByteString -> HStreamRecord
-buildRecord header payload = HStreamRecord (Just header) payload
+buildRecord header = HStreamRecord (Just header)
 
 encodeRecord :: HStreamRecord -> ByteString
 encodeRecord = BL.toStrict . PT.toLazyByteString
@@ -61,6 +61,12 @@ getTimeStamp HStreamRecord{..} =
   let Timestamp{..} = fromJust . hstreamRecordHeaderPublishTime . fromJust $ hstreamRecordHeader
       !ts = floor @Double $ (fromIntegral timestampSeconds * 1e3) + (fromIntegral timestampNanos / 1e6)
   in ts
+
+getRecordKey :: HStreamRecord -> Maybe Text
+getRecordKey record =
+  case fmap hstreamRecordHeaderKey . hstreamRecordHeader $ record of
+    Just "" -> Nothing
+    key'    -> key'
 
 updateRecordTimestamp :: Timestamp -> HStreamRecord -> HStreamRecord
 updateRecordTimestamp timestamp HStreamRecord{..} =

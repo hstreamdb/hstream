@@ -13,11 +13,13 @@ module HStream.Server.Persistence.Utils
   , subscriptionsPath
   , subscriptionsLockPath
   , paths
+  , streamRootPath
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
+  , mkPartitionKeysPath
 
   , createInsert
   , createInsertOp
@@ -30,6 +32,7 @@ module HStream.Server.Persistence.Utils
   , tryDeletePath
   , deleteAllPath
   , tryDeleteAllPath
+  , tryCreateMulti
   , decodeDataCompletion
   , decodeDataCompletion'
   , decodeZNodeValue
@@ -59,7 +62,7 @@ import qualified Z.Foreign                            as ZF
 import           ZooKeeper                            (Resource, zooCreate,
                                                        zooCreateOpInit,
                                                        zooDelete, zooDeleteAll,
-                                                       zooGet, zooSet,
+                                                       zooGet, zooMulti, zooSet,
                                                        zooSetOpInit,
                                                        zookeeperResInit)
 import           ZooKeeper.Exception
@@ -96,6 +99,12 @@ subscriptionsPath = rootPath <> "/subscriptions"
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
+streamRootPath :: CBytes
+streamRootPath = rootPath <> "/streams"
+
+mkPartitionKeysPath :: CBytes -> CBytes
+mkPartitionKeysPath streamName = streamRootPath <> "/" <> streamName <> "/keys"
+
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
@@ -105,6 +114,7 @@ paths = [ "/hstreamdb"
         , connectorsPath
         , subscriptionsPath
         , subscriptionsLockPath
+        , streamRootPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
@@ -137,6 +147,10 @@ setZkDataOp path contents = zooSetOpInit path (Just contents) Nothing
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
+  \(_ :: ZNODEEXISTS) -> pure ()
+
+tryCreateMulti :: HasCallStack => ZHandle -> [ZooOp] -> IO()
+tryCreateMulti zk ops = catch (void $ zooMulti zk ops) $
   \(_ :: ZNODEEXISTS) -> pure ()
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()

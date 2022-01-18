@@ -7,9 +7,9 @@
 
 module HStream.Server.Handler.Common where
 
-import           Control.Concurrent               (ThreadId, forkIO, killThread,
-                                                   putMVar, readMVar, swapMVar,
-                                                   takeMVar)
+import           Control.Concurrent               (MVar, ThreadId, forkIO,
+                                                   killThread, putMVar,
+                                                   readMVar, swapMVar, takeMVar)
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    displayException,
@@ -30,6 +30,7 @@ import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
+import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
@@ -387,3 +388,7 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
            Log.warning $ "Drop: tried to remove a nonexistent object: "
              <> Log.buildString (T.unpack name)
            returnErrResp StatusNotFound "Object does not exist"
+
+shouldBeServedByThisServer :: HashRing -> Word32 -> Text -> Bool
+shouldBeServedByThisServer hashRing serverID name =
+  (== serverID) . Api.serverNodeId $ getAllocatedNode hashRing name
