@@ -137,8 +137,15 @@ gloStreamSettings = unsafePerformIO . newIORef $
                  }
 {-# NOINLINE gloStreamSettings #-}
 
+-- | Global loggroup path to logid cache
+gloLogPathCache :: Cache.Cache CBytes FFI.C_LogID
+gloLogPathCache = unsafePerformIO $ Cache.newCache Nothing
+{-# NOINLINE gloLogPathCache #-}
+
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
 updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
+
+-------------------------------------------------------------------------------
 
 data StreamType = StreamTypeStream | StreamTypeView | StreamTypeTemp
   deriving (Show, Eq)
@@ -188,10 +195,7 @@ getStreamReplicaFactor client stream = do
   loggroup <- LD.getLogGroupByID client logid
   LD.getAttrsReplicationFactorFromPtr =<< LD.logGroupGetAttrs loggroup
 
--- | Global loggroup path to logid cache
-logPathCache :: Cache.Cache CBytes FFI.C_LogID
-logPathCache = unsafePerformIO $ Cache.newCache Nothing
-{-# NOINLINE logPathCache #-}
+-------------------------------------------------------------------------------
 
 -- | Create stream
 --
@@ -213,15 +217,15 @@ renameStream client from to = do
   from' <- getUnderlyingLogPath from
   to'   <- getUnderlyingLogPath to
   finally (LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to')
-          (Cache.delete logPathCache from')
-  m_v <- Cache.lookup' logPathCache from'
-  forM_ m_v $ Cache.insert logPathCache to'
+          (Cache.delete gloLogPathCache from')
+  m_v <- Cache.lookup' gloLogPathCache from'
+  forM_ m_v $ Cache.insert gloLogPathCache to'
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
 removeStream client stream = do
   path <- getUnderlyingLogPath stream
   finally (LD.syncLogsConfigVersion client =<< LD.removeLogGroup client path)
-          (Cache.delete logPathCache path)
+          (Cache.delete gloLogPathCache path)
 
 findStreams
   :: HasCallStack
@@ -249,7 +253,7 @@ getStreamHeadTimestamp client stream = do
 doesStreamExist :: HasCallStack => FFI.LDClient -> StreamId -> IO Bool
 doesStreamExist client stream = do
   path <- getUnderlyingLogPath stream
-  m_v <- Cache.lookup logPathCache path
+  m_v <- Cache.lookup gloLogPathCache path
   case m_v of
     Just _  -> return True
     Nothing -> do
@@ -258,7 +262,7 @@ doesStreamExist client stream = do
         Left (_ :: E.NOTFOUND) -> return False
         Right group -> do
           logid <- fst <$> LD.logGroupGetRange group
-          Cache.insert logPathCache path logid
+          Cache.insert gloLogPathCache path logid
           return True
 
 -------------------------------------------------------------------------------
@@ -349,12 +353,12 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
 
 getCLogIDByLogGroup :: HasCallStack => FFI.LDClient -> CBytes -> IO FFI.C_LogID
 getCLogIDByLogGroup client path = do
-  m_v <- Cache.lookup logPathCache path
+  m_v <- Cache.lookup gloLogPathCache path
   case m_v of
     Just v -> return v
     Nothing -> do
       logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client path)
-      Cache.insert logPathCache path logid
+      Cache.insert gloLogPathCache path logid
       return logid
 
 createRandomLogGroup
@@ -375,7 +379,7 @@ createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
            case result of
              Right group -> do
                LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
-               Cache.insert logPathCache logPath logid
+               Cache.insert gloLogPathCache logPath logid
              Left (_ :: E.ID_CLASH) -> do
                Log.warning "LogDevice ID_CLASH!"
                go $! maxTries - 1
