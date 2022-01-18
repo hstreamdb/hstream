@@ -269,6 +269,7 @@ makeLogDirectory client path attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
                 LogAttrsPtr p -> return p
+                LogAttrsDef   -> newForeignPtr_ nullPtr
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -444,6 +445,7 @@ makeLogGroupSync client path start end attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
                 LogAttrsPtr p -> return p
+                LogAttrsDef   -> newForeignPtr_ nullPtr
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -464,6 +466,7 @@ makeLogGroup client path start end attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
                 LogAttrsPtr p -> return p
+                LogAttrsDef   -> newForeignPtr_ nullPtr
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do

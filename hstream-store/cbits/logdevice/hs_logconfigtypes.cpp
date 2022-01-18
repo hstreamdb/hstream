@@ -219,7 +219,9 @@ facebook::logdevice::Status ld_client_make_loggroup(
     }
     hs_try_putmvar(cap, mvar);
   };
-  int ret = client->rep->makeLogGroup(path_, std::make_pair(start, end), *attrs,
+
+  int ret = client->rep->makeLogGroup(path_, std::make_pair(start, end),
+                                      attrs ? *attrs : LogAttributes(),
                                       mk_intermediate_dirs, cb);
   if (ret == 0)
     return facebook::logdevice::E::OK;
@@ -340,8 +342,8 @@ facebook::logdevice::Status ld_loggroup_update_extra_attrs(
     }
   }
   auto newLogAttrs = logAttrs.with_extras(new_extras);
-  return ld_client_set_attributes(client, path.c_str(), &newLogAttrs, mvar,
-                                  cap, data);
+  return ld_client_set_attributes(client, path.c_str(), &newLogAttrs, mvar, cap,
+                                  data);
 }
 
 void free_logdevice_loggroup(logdevice_loggroup_t* group) { delete group; }
@@ -370,7 +372,8 @@ ld_client_make_directory(logdevice_client_t* client, const char* path,
     }
     hs_try_putmvar(cap, mvar);
   };
-  int ret = client->rep->makeDirectory(path_, mk_intermediate_dirs, *attrs, cb);
+  int ret = client->rep->makeDirectory(path_, mk_intermediate_dirs,
+                                       attrs ? *attrs : LogAttributes(), cb);
   if (ret == 0)
     return facebook::logdevice::E::OK;
   return facebook::logdevice::err;
@@ -636,8 +639,9 @@ ld_client_set_log_group_range(logdevice_client_t* client, const char* path,
   auto end = facebook::logdevice::logid_t(end_logid);
   std::string reason;
 
-  loggroup = client->rep->makeLogGroupSync(
-      path, std::make_pair(start, end), *attrs, mk_intermediate_dirs, &reason);
+  loggroup = client->rep->makeLogGroupSync(path, std::make_pair(start, end),
+                                           attrs ? *attrs : LogAttributes(),
+                                           mk_intermediate_dirs, &reason);
   if (loggroup) {
     logdevice_loggroup_t* result = new logdevice_loggroup_t;
     result->rep = std::move(loggroup);
@@ -679,8 +683,8 @@ ld_client_make_directory_sync(logdevice_client_t* client, const char* path,
                               logdevice_logdirectory_t** logdir_ret) {
   std::unique_ptr<LogDirectory> directory = nullptr;
   std::string reason;
-  directory = client->rep->makeDirectorySync(path, mk_intermediate_dirs, *attrs,
-                                             &reason);
+  directory = client->rep->makeDirectorySync(
+      path, mk_intermediate_dirs, attrs ? *attrs : LogAttributes(), &reason);
   if (directory) {
     logdevice_logdirectory_t* result = new logdevice_logdirectory_t;
     result->rep = std::move(directory);

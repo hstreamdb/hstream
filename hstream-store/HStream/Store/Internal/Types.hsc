@@ -115,7 +115,7 @@ data HsLogAttrs = HsLogAttrs
   , logExtraAttrs        :: Map CBytes CBytes
   } deriving (Show)
 
-data LogAttrs = LogAttrs HsLogAttrs | LogAttrsPtr LDLogAttrs
+data LogAttrs = LogAttrs HsLogAttrs | LogAttrsPtr LDLogAttrs | LogAttrsDef
 
 data VcsValueCallbackData = VcsValueCallbackData
   { vcsValCallbackSt  :: !ErrorCode

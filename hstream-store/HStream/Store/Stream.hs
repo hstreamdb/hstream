@@ -9,12 +9,6 @@ module HStream.Store.Stream
   , showStreamName
   , mkStreamId
   , mkStreamIdFromLogPath
-    -- ** helpers
-  , getUnderlyingLogPath
-  , getUnderlyingLogId
-    -- ** Log
-  , FFI.LogAttrs (LogAttrs)
-  , FFI.HsLogAttrs (..)
     -- ** Operations
   , createStream
   , renameStream
@@ -23,6 +17,9 @@ module HStream.Store.Stream
   , getStreamReplicaFactor
   , getStreamHeadTimestamp
   , doesStreamExist
+    -- ** helpers
+  , getUnderlyingLogPath
+  , getUnderlyingLogId
 
     -- * Internal Log
   , FFI.LogID (..)
@@ -35,6 +32,9 @@ module HStream.Store.Stream
   , LD.logGroupGetFullName
   , LD.logGroupGetExtraAttr
   , LD.logGroupUpdateExtraAttrs
+    -- ** Log
+  , FFI.LogAttrs (LogAttrs, LogAttrsDef)
+  , FFI.HsLogAttrs (..)
 
     -- * Writer
   , LD.append
@@ -50,6 +50,8 @@ module HStream.Store.Stream
 
     -- * Checkpoint Store
   , FFI.LDCheckpointStore
+  , initCheckpointStoreLogID
+  , checkpointStoreLogID
   , LD.newFileBasedCheckpointStore
   , LD.newRSMBasedCheckpointStore
   , LD.newZookeeperBasedCheckpointStore
@@ -69,7 +71,6 @@ module HStream.Store.Stream
   , FFI.recordTimestamp
   , FFI.recordBatchOffset
   , FFI.recordByteOffset
-
   , FFI.LDReader
   , LD.newLDReader
   , LD.readerStartReading
@@ -97,10 +98,6 @@ module HStream.Store.Stream
   , LD.ckpReaderSetIncludeByteOffset
   , LD.ckpReaderSetWaitOnlyWhenNoData
   , LD.ckpReaderStopReading
-
-    -- * Checkpoint Store
-  , initCheckpointStoreLogID
-  , checkpointStoreLogID
   ) where
 
 import           Control.Exception                (finally, try)
@@ -264,24 +261,8 @@ doesStreamExist client stream = do
           Cache.insert logPathCache path logid
           return True
 
-createRandomLogGroup :: HasCallStack => FFI.LDClient -> CBytes -> FFI.LogAttrs -> IO ()
-createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
-  where
-    go :: Int -> IO ()
-    go maxTries =
-      if maxTries <= 0
-         then E.throwStoreError "Ran out all retries, but still failed :(" callStack
-         else do
-           logid <- genUnique
-           result <- try $ LD.makeLogGroup client logPath logid logid attrs True
-           case result of
-             Right group -> do
-               LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
-               Cache.insert logPathCache logPath logid
-             Left (_ :: E.ID_CLASH) -> do
-               Log.warning "LogDevice ID_CLASH!"
-               go $! maxTries - 1
-{-# INLINABLE createRandomLogGroup #-}
+-------------------------------------------------------------------------------
+--  Checkpoint Store
 
 -- | Try to set logid for checkpoint store.
 --
@@ -301,6 +282,7 @@ checkpointStoreLogID :: FFI.C_LogID
 checkpointStoreLogID = bit 56
 
 -------------------------------------------------------------------------------
+-- Reader
 
 newLDFileCkpReader
   :: FFI.LDClient
@@ -363,6 +345,7 @@ newLDZkCkpReader client name max_logs m_buffer_size retries = do
   LD.newLDSyncCkpReader name reader store retries
 
 -------------------------------------------------------------------------------
+-- internal helpers
 
 getCLogIDByLogGroup :: HasCallStack => FFI.LDClient -> CBytes -> IO FFI.C_LogID
 getCLogIDByLogGroup client path = do
@@ -373,3 +356,27 @@ getCLogIDByLogGroup client path = do
       logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client path)
       Cache.insert logPathCache path logid
       return logid
+
+createRandomLogGroup
+  :: HasCallStack
+  => FFI.LDClient
+  -> CBytes
+  -> FFI.LogAttrs
+  -> IO ()
+createRandomLogGroup client logPath attrs = Log.withDefaultLogger $ go 10
+  where
+    go :: Int -> IO ()
+    go maxTries =
+      if maxTries <= 0
+         then E.throwStoreError "Ran out all retries, but still failed :(" callStack
+         else do
+           logid <- genUnique
+           result <- try $ LD.makeLogGroup client logPath logid logid attrs True
+           case result of
+             Right group -> do
+               LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group
+               Cache.insert logPathCache logPath logid
+             Left (_ :: E.ID_CLASH) -> do
+               Log.warning "LogDevice ID_CLASH!"
+               go $! maxTries - 1
+{-# INLINABLE createRandomLogGroup #-}
