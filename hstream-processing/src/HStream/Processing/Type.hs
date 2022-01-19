@@ -26,22 +26,22 @@ data Offset
   | Offset Word64
 
 data SourceRecord = SourceRecord
-  { srcStream :: StreamName,
-    srcOffset :: Word64,
+  { srcStream    :: StreamName,
+    srcOffset    :: Word64,
     srcTimestamp :: Timestamp,
-    srcKey :: Maybe BL.ByteString,
-    srcValue :: BL.ByteString
-  }
+    srcKey       :: Maybe BL.ByteString,
+    srcValue     :: BL.ByteString
+  } deriving Show
 
 data SinkRecord = SinkRecord
-  { snkStream :: StreamName,
-    snkKey :: Maybe BL.ByteString,
-    snkValue :: BL.ByteString,
+  { snkStream    :: StreamName,
+    snkKey       :: Maybe BL.ByteString,
+    snkValue     :: BL.ByteString,
     snkTimestamp :: Timestamp
   }
 
 data TimestampedKey k = TimestampedKey
-  { tkKey :: k,
+  { tkKey       :: k,
     tkTimestamp :: Timestamp
   }
 

@@ -22,6 +22,8 @@ spec = aroundAll provideHstreamApi $
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   it "#391_JOIN" $ \api -> do
+    runDropSql api "DROP STREAM s1 IF EXISTS;"
+    runDropSql api "DROP STREAM s2 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s1;"
     runCreateStreamSql api "CREATE STREAM s2;"
     _ <- forkIO $ do
@@ -40,6 +42,7 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP STREAM s2 IF EXISTS;"
 
   it "#394_SESSION" $ \api -> do
+    runDropSql api "DROP STREAM s3 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s3;"
     _ <- forkIO $ do
       threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
@@ -56,6 +59,8 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP STREAM s3 IF EXISTS;"
 
   it "#403_RAW" $ \api -> do
+    runDropSql api "DROP STREAM s4 IF EXISTS;"
+    runDropSql api "DROP STREAM s5 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s4;"
     runCreateWithSelectSql api "CREATE STREAM s5 AS SELECT SUM(a), a + 1, COUNT(*) AS result, b FROM s4 GROUP BY b EMIT CHANGES;"
     _ <- forkIO $ do
@@ -74,6 +79,8 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP STREAM s5 IF EXISTS;"
 
   it "HS352_INT" $ \api -> do
+    runDropSql api "DROP STREAM s6 IF EXISTS;"
+    runDropSql api "DROP VIEW v6 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s6;"
     runQuerySimple_ api "CREATE VIEW v6 as SELECT key1, key2, key3, SUM(key1) FROM s6 GROUP BY key1 EMIT CHANGES;"
     _ <- forkIO $ do

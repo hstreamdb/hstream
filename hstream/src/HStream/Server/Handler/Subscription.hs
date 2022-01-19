@@ -83,7 +83,7 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
                <> Log.buildString (show streamName)
       returnErrResp StatusFailedPrecondition . StatusDetails $ "stream " <> encodeUtf8 subscriptionStreamName <> " not exist"
     else do
-      logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName)
+      logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName) Nothing
       offset <- convertOffsetToRecordId logId
 
       P.checkIfExist @ZHandle @'SubRep
@@ -292,7 +292,7 @@ streamingFetchHandler ServerContext {..} (ServerBiDiRequest _ streamRecv streamS
       ldCkpReader <-
         S.newLDRsmCkpReader ldclient readerName S.checkpointStoreLogID 5000 1 Nothing 10
       -- seek ldCkpReader to start offset
-      logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName)
+      logId <- S.getUnderlyingLogId ldclient (transToStreamName streamName) Nothing
       let startLSN = recordIdBatchId startRecordId
       S.startReadingFromCheckpointOrStart ldCkpReader logId (Just startLSN) S.LSN_MAX
       -- set ldCkpReader timeout to 0
@@ -543,7 +543,7 @@ mkReceivedRecord index record =
 
 commitCheckPoint :: S.LDClient -> S.LDSyncCkpReader -> T.Text -> RecordId -> IO ()
 commitCheckPoint client reader streamName RecordId {..} = do
-  logId <- S.getUnderlyingLogId client $ transToStreamName streamName
+  logId <- S.getUnderlyingLogId client (transToStreamName streamName) Nothing
   S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
 
 dispatchRecords

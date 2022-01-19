@@ -43,7 +43,7 @@ listStreams
   -> API.ListStreamsRequest
   -> IO (V.Vector API.Stream)
 listStreams ServerContext{..} API.ListStreamsRequest = do
-  streams <- S.findStreams scLDClient S.StreamTypeStream True
+  streams <- S.findStreams scLDClient S.StreamTypeStream
   V.forM (V.fromList streams) $ \stream -> do
     r <- S.getStreamReplicaFactor scLDClient stream
     return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r)
@@ -62,6 +62,6 @@ appendStream ServerContext{..} API.AppendRequest{..} = do
   where
     batchAppend :: S.LDClient -> CB.CBytes -> V.Vector BS.ByteString -> S.Compression -> IO S.AppendCompletion
     batchAppend client streamName payloads strategy = do
-      logId <- S.getUnderlyingLogId client $ S.mkStreamId S.StreamTypeStream streamName
+      logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream streamName) Nothing
       -- TODO: support vector of ByteString
       S.appendBatchBS client logId (V.toList payloads) strategy Nothing

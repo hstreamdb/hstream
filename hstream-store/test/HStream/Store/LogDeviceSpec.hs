@@ -4,12 +4,13 @@ import           Control.Exception                (bracket)
 import           Control.Monad                    (void)
 import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as Map
-import qualified HStream.Store                    as S
-import qualified HStream.Store.Internal.LogDevice as I
-import           HStream.Store.SpecUtils
 import           Test.Hspec
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.IO.FileSystem                  as FS
+
+import qualified HStream.Store                    as S
+import qualified HStream.Store.Internal.LogDevice as I
+import           HStream.Store.SpecUtils
 
 spec :: Spec
 spec = do
@@ -106,4 +107,4 @@ loggroupSpec = describe "LogGroup" $ loggroupAround $ parallel $ do
     range' `shouldBe` (logid', logid')
 
   it "get a nonexist loggroup should throw NOTFOUND" $ \(_, _) -> do
-    S.getLogGroup client "this_is_a_non_exist_logroup" `shouldThrow` S.isNOTFOUND
+    I.getLogGroup client "this_is_a_non_exist_logroup" `shouldThrow` S.isNOTFOUND

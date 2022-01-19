@@ -15,7 +15,7 @@ spec = describe "CheckpointStore" $ do
 
 fileBased :: Spec
 fileBased = context "FileBasedCheckpointStore" $ do
-  let ckpPath = "/tmp/ckp"
+  let ckpPath = "/tmp/some_ckp"
   storeSpec $ S.newFileBasedCheckpointStore ckpPath
 
 rsmBased :: Spec
