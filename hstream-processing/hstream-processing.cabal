@@ -46,11 +46,12 @@ library
 
   hs-source-dirs:   src
   build-depends:
-      aeson
-    , base              >=4.11 && <5
+    , aeson
+    , base                  >=4.11 && <5
     , binary
     , bytestring
     , data-default
+    , hstream-common
     , rio
     , scientific
     , template-haskell

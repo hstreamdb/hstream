@@ -29,13 +29,7 @@ where
 import           Control.Exception                     (throw)
 import           Data.Maybe
 import           Data.Typeable
-import           HStream.Processing.Connector
-import           HStream.Processing.Encoding
-import           HStream.Processing.Error              (HStreamError (..))
-import           HStream.Processing.Processor.Internal
-import           HStream.Processing.Store
-import           HStream.Processing.Type
-import           HStream.Processing.Util
+import qualified Prelude                               as Prelude
 import           RIO
 import qualified RIO.ByteString.Lazy                   as BL
 import qualified RIO.HashMap                           as HM
@@ -43,6 +37,15 @@ import           RIO.HashMap.Partial                   as HM'
 import qualified RIO.HashSet                           as HS
 import qualified RIO.List                              as L
 import qualified RIO.Text                              as T
+
+import qualified HStream.Logger                        as Log
+import           HStream.Processing.Connector
+import           HStream.Processing.Encoding
+import           HStream.Processing.Error              (HStreamError (..))
+import           HStream.Processing.Processor.Internal
+import           HStream.Processing.Store
+import           HStream.Processing.Type
+import           HStream.Processing.Util
 
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =
@@ -103,18 +106,11 @@ runTask ::
   IO ()
 runTask SourceConnector {..} sinkConnector taskBuilder@TaskTopologyConfig {..} = do
   -- build and add internalSinkProcessor
-  let sinkProcessors =
-        HM.map
-          (buildInternalSinkProcessor sinkConnector)
-          sinkCfgs
-
+  let sinkProcessors = HM.map (buildInternalSinkProcessor sinkConnector) sinkCfgs
   let newTaskBuilder =
-        HM.foldlWithKey'
-          ( \a k v ->
-              a <> addProcessor k v [T.append k serializerNameSuffix]
-          )
-          taskBuilder
-          sinkProcessors
+        HM.foldlWithKey' (\a k v -> a <> addProcessor k v [T.append k serializerNameSuffix])
+                         taskBuilder
+                         sinkProcessors
 
   -- build forward topology
   let task@Task {..} = build newTaskBuilder
@@ -125,23 +121,16 @@ runTask SourceConnector {..} sinkConnector taskBuilder@TaskTopologyConfig {..} =
   withLogFunc logOptions $ \lf -> do
     ctx <- buildTaskContext task lf
     forM_ sourceStreamNames (`subscribeToStream` Latest)
-    forever $
-      runRIO ctx $
-        do
-          logDebug "start iteration..."
-          sourceRecords <- liftIO readRecords
-          logDebug $ "polled " <> display (length sourceRecords) <> " records"
-          forM_
-            sourceRecords
-            ( \SourceRecord {..} -> do
-                let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
-                let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
-                liftIO $ updateTimestampInTaskContext ctx srcTimestamp
-                e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
-                case e' of
-                  Left (e :: SomeException) -> logWarn $ display e
-                  Right _                   -> return ()
-            )
+    forever $ runRIO ctx $ do
+      sourceRecords <- liftIO readRecords
+      forM_ sourceRecords $ \SourceRecord {..} -> do
+        let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
+        let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
+        liftIO $ updateTimestampInTaskContext ctx srcTimestamp
+        e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+        case e' of
+          Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
+          Right _                   -> return ()
 
 validateTopology :: TaskTopologyConfig -> ()
 validateTopology TaskTopologyConfig {..} =
@@ -153,16 +142,16 @@ validateTopology TaskTopologyConfig {..} =
         else ()
 
 data SourceConfig k v s = SourceConfig
-  { sourceName :: T.Text,
-    sourceStreamName :: T.Text,
-    keyDeserializer :: Maybe (Deserializer k s),
+  { sourceName        :: T.Text,
+    sourceStreamName  :: T.Text,
+    keyDeserializer   :: Maybe (Deserializer k s),
     valueDeserializer :: Deserializer v s
   }
 
 data SinkConfig k v s = SinkConfig
-  { sinkName :: T.Text,
-    sinkStreamName :: T.Text,
-    keySerializer :: Maybe (Serializer k s),
+  { sinkName        :: T.Text,
+    sinkStreamName  :: T.Text,
+    keySerializer   :: Maybe (Serializer k s),
     valueSerializer :: Serializer v s
   }
 
