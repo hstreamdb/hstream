@@ -246,13 +246,14 @@ createStreamPartition
   => FFI.LDClient
   -> StreamId
   -> Maybe CBytes
-  -> IO ()
+  -> IO FFI.C_LogID
 createStreamPartition client streamid m_key = do
   stream_exist <- doesStreamExist client streamid
   if stream_exist
      then do log_path <- getStreamLogPath streamid m_key
              logid <- createRandomLogGroup client log_path FFI.LogAttrsDef
              updateGloLogPathCache streamid log_path logid
+             pure logid
      else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
                             callStack
 
