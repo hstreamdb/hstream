@@ -3,7 +3,7 @@ name: Publish
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 env:
   IMAGE_NAME: "hstreamdb/hstream"
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Docker build
         run: docker build . -t ${IMAGE_NAME}:${GITHUB_REF#refs/*/}
@@ -34,4 +34,4 @@ jobs:
               -H 'Accept: application/vnd.github.v3+json' \
               -u ${{ secrets.PERSONAL_ACCESS_TOKEN }} \
               https://api.github.com/repos/hstreamdb/integration-tests/dispatches \
-              --data "{\"event_type\": \"image_updated\", \"client_payload\": { \"tag\": \"$TAG\" }}"
+              --data "{\"event_type\": \"image_updated\", \"client_payload\": { \"tag\": \"$TAG\", \"commit_sha\": \"${{ env.GITHUB_SHA }}\" }}"
