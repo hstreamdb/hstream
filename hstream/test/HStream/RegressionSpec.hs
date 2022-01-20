@@ -80,8 +80,7 @@ spec = aroundAll provideHstreamApi $
 
   it "HS352_INT" $ \api -> do
     runDropSql api "DROP STREAM s6 IF EXISTS;"
-    -- TODO: we didn't support "if exists" for "drop view"
-    -- runDropSql api "DROP VIEW v6 IF EXISTS;"
+    runDropSql api "DROP VIEW v6 IF EXISTS;"
     runCreateStreamSql api "CREATE STREAM s6;"
     runQuerySimple_ api "CREATE VIEW v6 as SELECT key1, key2, key3, SUM(key1) FROM s6 GROUP BY key1 EMIT CHANGES;"
     _ <- forkIO $ do

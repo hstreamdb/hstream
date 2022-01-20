@@ -70,16 +70,16 @@ terminateQueries (ManyQueries qids) API.HStreamApi{..} =
       def {API.terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids})
 
 dropAction :: Bool -> DropObject -> Action Empty
-dropAction checkIfExist dropObject API.HStreamApi{..}  = do
+dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
   case dropObject of
     DStream    txt -> hstreamApiDeleteStream (mkClientNormalRequest def
                       { API.deleteStreamRequestStreamName     = txt
-                      , API.deleteStreamRequestIgnoreNonExist = checkIfExist
+                      , API.deleteStreamRequestIgnoreNonExist = ignoreNonExist
                       })
 
     DView      txt -> hstreamApiDeleteView (mkClientNormalRequest def
                       { API.deleteViewRequestViewId = txt
-                      -- , API.deleteViewRequestIgnoreNonExist = checkIfExist
+                      , API.deleteViewRequestIgnoreNonExist = ignoreNonExist
                       })
 
     DConnector txt -> hstreamApiDeleteConnector (mkClientNormalRequest def
