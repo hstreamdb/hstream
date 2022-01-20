@@ -36,6 +36,11 @@ base = describe "BaseSpec" $ do
     S.createStream client streamId attrs
     S.doesStreamExist client streamId `shouldReturn` True
 
+    S.doesStreamPartitionExist client streamId Nothing `shouldReturn` True
+    S.doesStreamPartitionExist client streamId (Just "some_non_exist_key") `shouldReturn` False
+    non_exist_stream <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
+    S.doesStreamPartitionExist client non_exist_stream Nothing `shouldReturn` False
+
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldContain` [streamId]
 
