@@ -53,6 +53,14 @@ base = describe "BaseSpec" $ do
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
     logpath `shouldBe` logpath'
 
+  it "archive stream" $ do
+    S.archiveStream client streamId
+    ss <- S.findStreams client S.StreamTypeStream
+    ss `shouldNotContain` [streamId]
+    S.unArchiveStream client streamId
+    ss' <- S.findStreams client S.StreamTypeStream
+    ss' `shouldContain` [streamId]
+
   it "rename stream" $ do
     print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
     S.renameStream' client streamId (S.streamName newStreamId)
