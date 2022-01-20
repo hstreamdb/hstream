@@ -13,6 +13,8 @@ import           Control.Concurrent            (modifyMVar_, readMVar, swapMVar)
 import           Data.Functor                  (void)
 import qualified Data.List                     as L
 import qualified Data.Text                     as T
+import qualified Data.Text.Encoding            as BS
+import qualified Data.Text.IO                  as T
 import           Network.GRPC.HighLevel        (GRPCIOError (GRPCIOBadStatusCode))
 import           Network.GRPC.HighLevel.Client
 import           Z.IO.Network                  (SocketAddr)
@@ -62,8 +64,8 @@ executeWithAddr_
 executeWithAddr_ ctx@ClientContext{..} addr action handleOKResp = do
   resp <- runActionWithAddr addr action
   case resp of
-    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)) ->
-      print . unStatusDetails $ details
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) ->
+      T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)
     ClientErrorResponse _ -> do
       modifyMVar_ availableServers (return . L.delete addr)
       curServers <- readMVar availableServers
