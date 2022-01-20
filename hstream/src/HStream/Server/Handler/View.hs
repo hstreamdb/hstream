@@ -20,8 +20,7 @@ import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (dropHelper,
-                                                   handleCreateAsSelect)
+import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Store                    as HS
@@ -84,4 +83,4 @@ deleteViewHandler
 deleteViewHandler sc (ServerNormalRequest _metadata DeleteViewRequest{..}) = defaultExceptionHandle $ do
     Log.debug $ "Receive Delete View Request. "
              <> "View ID:" <> Log.buildString (T.unpack deleteViewRequestViewId)
-    dropHelper sc deleteViewRequestViewId False True
+    returnResp =<< CoreView.deleteView sc deleteViewRequestViewId deleteViewRequestIgnoreNonExist
