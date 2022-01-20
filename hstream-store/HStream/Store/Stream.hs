@@ -20,6 +20,7 @@ module HStream.Store.Stream
   , removeStream
   , findStreams
   , doesStreamExist
+  , doesStreamPartitionExist
     -- ** helpers
   , getUnderlyingLogId
   , getStreamIdFromLogId
@@ -152,6 +153,7 @@ gloStreamSettings = unsafePerformIO . newIORef $
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
 updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
 
+-- StreamId : { full_logpath: logid }
 type StreamCache = Cache.Cache StreamId (Map CBytes FFI.C_LogID)
 
 -- | Global logdir path to logid cache
@@ -320,6 +322,23 @@ doesStreamExist client streamid = do
     Nothing -> do
       path <- getStreamDirPath streamid
       r <- try $ LD.getLogDirectory client path
+      case r of
+        Left (_ :: E.NOTFOUND) -> return False
+        Right _                -> return True
+
+doesStreamPartitionExist
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> Maybe CBytes
+  -> IO Bool
+doesStreamPartitionExist client streamid m_key = do
+  logpath <- getStreamLogPath streamid m_key
+  m_v <- getGloLogPathCache streamid logpath
+  case m_v of
+    Just _  -> return True
+    Nothing -> do
+      r <- try $ LD.getLogGroup client logpath
       case r of
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
