@@ -4,6 +4,7 @@
 module HStream.Store.StreamSpec (spec) where
 
 import           Control.Concurrent               (threadDelay)
+import           Control.Monad                    (void)
 import           Data.Int
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
@@ -86,6 +87,15 @@ base = describe "BaseSpec" $ do
     S.getStreamPartitionHeadTimestamp client newStreamId Nothing >>= (`shouldSatisfy` cond)
 
   it "get/set extra-attrs" $ do
+    Map.lookup "greet" <$> S.getStreamExtraAttrs client newStreamId
+      `shouldReturn` Just "hi"
+    Map.lookup "greet" <$> S.updateStreamExtraAttrs client newStreamId (Map.singleton "greet" "hiiii")
+      `shouldReturn` Just "hi"
+    Map.lookup "greet" <$> S.getStreamExtraAttrs client newStreamId
+      `shouldReturn` Just "hiiii"
+    void $ S.updateStreamExtraAttrs client newStreamId (Map.singleton "greet" "hi")
+
+    -- internal functions
     logGroup <- S.getLogGroup client newLogPath
     S.logGroupGetExtraAttr logGroup "greet" `shouldReturn` Just "hi"
     S.logGroupGetExtraAttr logGroup "A" `shouldReturn` Just "B"

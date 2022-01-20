@@ -52,13 +52,15 @@ LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
 LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
                                        StgArrBytes** keys, StgArrBytes** vals) {
 #endif
-  LogAttributes::ExtrasMap new_extras = attrs->extras().value();
+  LogAttributes::ExtrasMap extras;
+  extras = attrs->extras().hasValue() ? attrs->extras().value()
+                                      : LogAttributes::ExtrasMap();
   if (extras_len > 0) {
     for (int i = 0; i < extras_len; ++i) {
-      new_extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
+      extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
     }
   }
-  LogAttributes* attrs_ = new LogAttributes(attrs->with_extras(new_extras));
+  LogAttributes* attrs_ = new LogAttributes(attrs->with_extras(extras));
   return attrs_;
 }
 
@@ -335,13 +337,15 @@ facebook::logdevice::Status ld_loggroup_update_extra_attrs(
   const std::string& path = group->rep->getFullyQualifiedName();
   const LogAttributes& logAttrs = group->rep->attrs();
 
-  LogAttributes::ExtrasMap new_extras = logAttrs.extras().value();
+  LogAttributes::ExtrasMap extras;
+  extras = logAttrs.extras().hasValue() ? logAttrs.extras().value()
+                                        : LogAttributes::ExtrasMap();
   if (extras_len > 0) {
     for (int i = 0; i < extras_len; ++i) {
-      new_extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
+      extras[(char*)(keys[i]->payload)] = (char*)(vals[i]->payload);
     }
   }
-  auto newLogAttrs = logAttrs.with_extras(new_extras);
+  auto newLogAttrs = logAttrs.with_extras(extras);
   return ld_client_set_attributes(client, path.c_str(), &newLogAttrs, mvar, cap,
                                   data);
 }

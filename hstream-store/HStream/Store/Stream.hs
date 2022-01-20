@@ -23,6 +23,8 @@ module HStream.Store.Stream
   , findStreams
   , doesStreamExist
   , doesStreamPartitionExist
+  , getStreamExtraAttrs
+  , updateStreamExtraAttrs
     -- ** helpers
   , getUnderlyingLogId
   , getStreamIdFromLogId
@@ -107,7 +109,8 @@ module HStream.Store.Stream
 import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
                                                    readMVar)
 import           Control.Exception                (finally, try)
-import           Control.Monad                    (filterM, forM, forM_, void)
+import           Control.Monad                    (filterM, forM, forM_, void,
+                                                   (<=<))
 import           Data.Bits                        (bit)
 import qualified Data.Cache                       as Cache
 import           Data.Hashable                    (Hashable)
@@ -119,6 +122,7 @@ import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
 import           Data.Word                        (Word32)
 import           Foreign.C                        (CSize)
+import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
@@ -229,28 +233,6 @@ mkStreamIdFromFullLogDir streamType path = do
 
 showStreamName :: StreamId -> String
 showStreamName = CBytes.unpack . streamName
-
-getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
-getStreamReplicaFactor client streamid = do
-  dir_path <- getStreamDirPath streamid
-  dir <- LD.getLogDirectory client dir_path
-  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectorypGetAttrs dir
-
--- | Approximate milliseconds timestamp of the next record after trim point.
---
--- Set to Nothing if there is no records bigger than trim point.
-getStreamPartitionHeadTimestamp
-  :: HasCallStack
-  => FFI.LDClient
-  -> StreamId
-  -> Maybe CBytes
-  -> IO (Maybe Int64)
-getStreamPartitionHeadTimestamp client stream m_key = do
-  headAttrs <- LD.getLogHeadAttrs client =<< getUnderlyingLogId client stream m_key
-  ts <- LD.getLogHeadAttrsTrimPointTimestamp headAttrs
-  case ts of
-    FFI.C_MAX_MILLISECONDS -> return Nothing
-    _                      -> return $ Just ts
 
 -------------------------------------------------------------------------------
 
@@ -379,6 +361,55 @@ doesStreamPartitionExist client streamid m_key = do
       case r of
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
+
+-------------------------------------------------------------------------------
+-- StreamAttrs
+
+getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
+getStreamReplicaFactor client streamid = do
+  dir_path <- getStreamDirPath streamid
+  dir <- LD.getLogDirectory client dir_path
+  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectorypGetAttrs dir
+
+getStreamExtraAttrs :: FFI.LDClient -> StreamId -> IO (Map CBytes CBytes)
+getStreamExtraAttrs client streamid = do
+  dir_path <- getStreamDirPath streamid
+  dir <- LD.getLogDirectory client dir_path
+  FFI.logExtraAttrs <$> LD.logDirectoryGetHsLogAttrs dir
+
+-- | Update a bunch of extra attrs in the stream, return the old attrs.
+--
+-- If the key does exist, the function will insert the new one.
+updateStreamExtraAttrs
+  :: FFI.LDClient
+  -> StreamId
+  -> Map CBytes CBytes
+  -> IO (Map CBytes CBytes)
+updateStreamExtraAttrs client streamid new_attrs = do
+  dir_path <- getStreamDirPath streamid
+  attrs <- LD.logDirectorypGetAttrs =<< LD.getLogDirectory client dir_path
+  attrs' <- LD.updateLogAttrsExtrasPtr attrs new_attrs
+  withForeignPtr attrs' $
+    LD.syncLogsConfigVersion client <=< LD.ldWriteAttributes client dir_path
+  LD.getAttrsExtrasFromPtr attrs
+
+-- | Approximate milliseconds timestamp of the next record after trim point.
+--
+-- Set to Nothing if there is no records bigger than trim point.
+getStreamPartitionHeadTimestamp
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> Maybe CBytes
+  -> IO (Maybe Int64)
+getStreamPartitionHeadTimestamp client stream m_key = do
+  headAttrs <- LD.getLogHeadAttrs client =<< getUnderlyingLogId client stream m_key
+  ts <- LD.getLogHeadAttrsTrimPointTimestamp headAttrs
+  case ts of
+    FFI.C_MAX_MILLISECONDS -> return Nothing
+    _                      -> return $ Just ts
+
+-------------------------------------------------------------------------------
 
 getUnderlyingLogId
   :: HasCallStack
