@@ -9,13 +9,12 @@ env:
   DEPS_IMAGE_NAME: "hstreamdb/hstream-builder"
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Docker build
         run: docker build . --build-arg BUILDER_IMAGE=${DEPS_IMAGE_NAME} -t ${IMAGE_NAME}:latest
@@ -35,4 +34,4 @@ jobs:
               -H 'Accept: application/vnd.github.v3+json' \
               -u ${{ secrets.PERSONAL_ACCESS_TOKEN }} \
               https://api.github.com/repos/hstreamdb/integration-tests/dispatches \
-              --data '{"event_type": "image_updated", "client_payload": { "tag": "latest" }}'
+              --data "{\"event_type\": \"image_updated\", \"client_payload\": { \"tag\": \"latest\", \"commit_sha\": \"${{ env.GITHUB_SHA }}\" }}"
