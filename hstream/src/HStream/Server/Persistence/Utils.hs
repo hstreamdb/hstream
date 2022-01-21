@@ -13,11 +13,13 @@ module HStream.Server.Persistence.Utils
   , subscriptionsPath
   , subscriptionsLockPath
   , paths
+  , streamRootPath
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
+  , mkPartitionKeysPath
 
   , createInsert
   , createInsertOp
@@ -30,6 +32,8 @@ module HStream.Server.Persistence.Utils
   , tryDeletePath
   , deleteAllPath
   , tryDeleteAllPath
+  , tryCreateMulti
+  , tryGetChildren
   , decodeDataCompletion
   , decodeDataCompletion'
   , decodeZNodeValue
@@ -59,7 +63,8 @@ import qualified Z.Foreign                            as ZF
 import           ZooKeeper                            (Resource, zooCreate,
                                                        zooCreateOpInit,
                                                        zooDelete, zooDeleteAll,
-                                                       zooGet, zooSet,
+                                                       zooGet, zooGetChildren,
+                                                       zooMulti, zooSet,
                                                        zooSetOpInit,
                                                        zookeeperResInit)
 import           ZooKeeper.Exception
@@ -96,6 +101,12 @@ subscriptionsPath = rootPath <> "/subscriptions"
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
+streamRootPath :: CBytes
+streamRootPath = rootPath <> "/streams"
+
+mkPartitionKeysPath :: CBytes -> CBytes
+mkPartitionKeysPath streamName = streamRootPath <> "/" <> streamName <> "/keys"
+
 paths :: [CBytes]
 paths = [ "/hstreamdb"
         , rootPath
@@ -105,6 +116,7 @@ paths = [ "/hstreamdb"
         , connectorsPath
         , subscriptionsPath
         , subscriptionsLockPath
+        , streamRootPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
@@ -139,6 +151,10 @@ tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
   \(_ :: ZNODEEXISTS) -> pure ()
 
+tryCreateMulti :: HasCallStack => ZHandle -> [ZooOp] -> IO()
+tryCreateMulti zk ops = catch (void $ zooMulti zk ops) $
+  \(_ :: ZNODEEXISTS) -> pure ()
+
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 createPath zk path = do
   Log.debug . Log.buildString $ "create path " <> show path
@@ -166,6 +182,12 @@ tryDeleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
   \(_ :: ZNONODE) -> do
     pure ()
+
+tryGetChildren :: HasCallStack => ZHandle -> CBytes -> IO [CBytes]
+tryGetChildren zk path = catch getChildren $
+  \(_ :: ZNONODE) -> pure []
+  where
+    getChildren = unStrVec . strsCompletionValues <$> zooGetChildren zk path
 
 decodeDataCompletion :: FromJSON a => DataCompletion -> Maybe a
 decodeDataCompletion (DataCompletion (Just x) _) =

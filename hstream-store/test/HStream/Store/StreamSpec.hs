@@ -4,11 +4,13 @@
 module HStream.Store.StreamSpec (spec) where
 
 import           Control.Concurrent               (threadDelay)
+import           Control.Monad                    (void)
 import           Data.Int
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
 import           Z.Data.Vector.Base               (Bytes)
 
+import           Control.Monad                    (replicateM)
 import qualified HStream.Store                    as S
 import qualified HStream.Store.Internal.LogDevice as S
 import           HStream.Store.SpecUtils
@@ -36,6 +38,11 @@ base = describe "BaseSpec" $ do
     S.createStream client streamId attrs
     S.doesStreamExist client streamId `shouldReturn` True
 
+    S.doesStreamPartitionExist client streamId Nothing `shouldReturn` True
+    S.doesStreamPartitionExist client streamId (Just "some_non_exist_key") `shouldReturn` False
+    non_exist_stream <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
+    S.doesStreamPartitionExist client non_exist_stream Nothing `shouldReturn` False
+
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldContain` [streamId]
 
@@ -52,6 +59,14 @@ base = describe "BaseSpec" $ do
     logid <- S.getUnderlyingLogId client streamId Nothing
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
     logpath `shouldBe` logpath'
+
+  it "archive stream" $ do
+    S.archiveStream client streamId
+    ss <- S.findStreams client S.StreamTypeStream
+    ss `shouldNotContain` [streamId]
+    S.unArchiveStream client streamId
+    ss' <- S.findStreams client S.StreamTypeStream
+    ss' `shouldContain` [streamId]
 
   it "rename stream" $ do
     print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
@@ -73,6 +88,15 @@ base = describe "BaseSpec" $ do
     S.getStreamPartitionHeadTimestamp client newStreamId Nothing >>= (`shouldSatisfy` cond)
 
   it "get/set extra-attrs" $ do
+    Map.lookup "greet" <$> S.getStreamExtraAttrs client newStreamId
+      `shouldReturn` Just "hi"
+    Map.lookup "greet" <$> S.updateStreamExtraAttrs client newStreamId (Map.singleton "greet" "hiiii")
+      `shouldReturn` Just "hi"
+    Map.lookup "greet" <$> S.getStreamExtraAttrs client newStreamId
+      `shouldReturn` Just "hiiii"
+    void $ S.updateStreamExtraAttrs client newStreamId (Map.singleton "greet" "hi")
+
+    -- internal functions
     logGroup <- S.getLogGroup client newLogPath
     S.logGroupGetExtraAttr logGroup "greet" `shouldReturn` Just "hi"
     S.logGroupGetExtraAttr logGroup "A" `shouldReturn` Just "B"
@@ -107,3 +131,24 @@ writeReadSpec = describe "WriteReadSpec" $ do
     S.readerStartReading reader logid sn sn
     [record] <- S.readerRead reader 10
     S.recordPayload record `shouldBe` ("hello" :: Bytes)
+
+  it "archive a stream should not effect exist reading" $ do
+    streamid <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.empty
+                                        }
+    S.createStream client streamid attrs
+    S.doesStreamExist client streamid `shouldReturn` True
+    logid <- S.getUnderlyingLogId client streamid Nothing
+    -- NOTE: wait logid avariable
+    threadDelay 1000000
+    res <- replicateM 3 (S.appendCompLSN <$> S.append client logid "hello" Nothing)
+    length res `shouldBe` 3
+    reader <- S.newLDReader client 1 Nothing
+    S.readerStartReading reader logid (head res) (last res)
+    [record] <- S.readerRead reader 1
+    S.recordPayload record `shouldBe` ("hello" :: Bytes)
+
+    S.archiveStream client streamid
+    res' <- S.readerRead reader 2
+    map S.recordPayload res' `shouldBe` ["hello" :: Bytes, "hello"]

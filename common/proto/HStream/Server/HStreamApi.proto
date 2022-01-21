@@ -201,6 +201,7 @@ message StreamOffset {
 message DeleteStreamRequest {
   string streamName = 1;
   bool ignoreNonExist = 2;
+  bool force = 3;
 }
 
 message ListStreamsResponse {
@@ -376,6 +377,7 @@ message GetViewRequest {
 
 message DeleteViewRequest {
   string viewId = 1;
+  bool ignoreNonExist = 2;
 }
 
 message ListViewsRequest {}

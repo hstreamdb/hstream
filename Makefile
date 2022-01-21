@@ -50,7 +50,8 @@ sql:: sql-deps
 
 sql-deps::
 	(cd ~ && command -v bnfc || cabal install BNFC --constraint 'BNFC >= 2.9')
-	(cd ~ && command -v alex || cabal install alex)
+	# alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197
+	(cd ~ && command -v alex || cabal install alex --constraint 'alex == 3.2.6')
 	(cd ~ && command -v happy || cabal install happy)
 
 clean:
