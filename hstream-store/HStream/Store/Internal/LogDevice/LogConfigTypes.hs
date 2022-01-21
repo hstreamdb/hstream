@@ -58,14 +58,15 @@ getLogAttrsExtra attrs key = withForeignPtr attrs $ \attrs' ->
 updateLogAttrsExtrasPtr
   :: Ptr LogDeviceLogAttributes
   -> Map.Map CBytes CBytes
-  -> IO (Ptr LogDeviceLogAttributes)
+  -> IO LDLogAttrs
 updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
   let extras = Map.toList logExtraAttrs
   let ks = map (CBytes.rawPrimArray . fst) extras
       vs = map (CBytes.rawPrimArray . snd) extras
   Z.withPrimArrayListUnsafe ks $ \ks' l ->
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
-      c_update_log_attrs_extras attrs' l ks' vs'
+      i <- c_update_log_attrs_extras attrs' l ks' vs'
+      newForeignPtr c_free_log_attributes_fun i
 
 hsLogAttrsFromPtr :: Ptr LogDeviceLogAttributes -> IO HsLogAttrs
 hsLogAttrsFromPtr attrs =
