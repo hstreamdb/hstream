@@ -12,6 +12,7 @@ import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
+import qualified Data.Set                         as Set 
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
@@ -25,7 +26,8 @@ import           ZooKeeper.Types                  (ZHandle)
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (RecordId (..),
-                                                   StreamingFetchResponse (..))
+                                                   StreamingFetchResponse (..),
+                                                   WatchSubscriptionResponse (..))
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
@@ -72,7 +74,8 @@ data ServerContext = ServerContext {
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
+  --, subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
+  , scSubscribeRuntimeInfo   :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
@@ -80,6 +83,7 @@ data ServerContext = ServerContext {
 }
 
 type SubscriptionId = T.Text
+type OrderingKey = T.Text
 
 instance Bounded RecordId where
   minBound = RecordId minBound minBound
@@ -101,19 +105,65 @@ printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
 
+-- data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
+--     sriStreamName        :: T.Text
+--   , sriLogId             :: HS.C_LogID
+--   , sriAckTimeoutSeconds :: Int32
+--   , sriLdCkpReader       :: HS.LDSyncCkpReader
+--   , sriLdReader          :: Maybe HS.LDReader
+--   , sriWindowLowerBound  :: RecordId
+--   , sriWindowUpperBound  :: RecordId
+--   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
+--   , sriBatchNumMap       :: Map.Map Word64 Word32
+--   , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
+--   , sriValid             :: Bool
+--   , sriSignals           :: V.Vector (MVar ())
+-- }
+
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriStreamName        :: T.Text
-  , sriLogId             :: HS.C_LogID
-  , sriAckTimeoutSeconds :: Int32
-  , sriLdCkpReader       :: HS.LDSyncCkpReader
-  , sriLdReader          :: Maybe HS.LDReader
-  , sriWindowLowerBound  :: RecordId
-  , sriWindowUpperBound  :: RecordId
-  , sriAckedRanges       :: Map.Map RecordId RecordIdRange
-  , sriBatchNumMap       :: Map.Map Word64 Word32
-  , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
-  , sriValid             :: Bool
-  , sriSignals           :: V.Vector (MVar ())
+    sriSubscriptionId :: SubscriptionId 
+  , sriWaitingConsumers    :: [ConsumerWatch]
+  , sriWorkingConsumers    :: Set.Set ConsumerWorkload 
+  , sriAssignments ::  HM.HashMap OrderingKey ConsumerWatch  
+  , sriShardRuntimeInfo :: HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo)
+}
+
+data ConsumerWatch = ConsumerWatch {
+  cwConsumerName :: ConsumerName,
+  cwWatchStream :: StreamSend WatchSubscriptionResponse 
+}
+
+data ConsumerWorkload = ConsumerWorkload {
+    cwConsumerWatch :: ConsumerWatch 
+  , cwShardCount :: Int
+}
+
+instance Eq ConsumerWorkload where   
+  (==) w1 w2 = cwShardCount w1 == cwShardCount w2 
+instance Ord ConsumerWorkload where  
+  (<=) w1 w2 = cwShardCount w1 <= cwShardCount w2 
+
+data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
+    ssriStreamName        :: T.Text
+  , ssriLogId             :: HS.C_LogID
+  , ssriAckTimeoutSeconds :: Int32
+  , ssriLdCkpReader       :: HS.LDSyncCkpReader
+  , ssriLdReader          :: HS.LDReader
+  , ssriWindowLowerBound  :: RecordId
+  , ssriWindowUpperBound  :: RecordId
+  , ssriAckedRanges       :: Map.Map RecordId RecordIdRange
+  , ssriBatchNumMap       :: Map.Map Word64 Word32
+  , ssriConsumerName      :: ConsumerName 
+  , ssriStreamSend        :: StreamSend StreamingFetchResponse 
+  , ssriValid             :: Bool
+}
+
+data ShardSubscriptionInfo = ShardSubscriptionInfo {
+    ssiStreamName        :: T.Text
+  , ssiLogId             :: HS.C_LogID
+  , ssiAckTimeoutSeconds :: Int32
+  , ssiLdCkpReader       :: HS.LDSyncCkpReader
+  , ssiLdReader          :: Maybe HS.LDReader
 }
 
 data LoadReport = LoadReport {
