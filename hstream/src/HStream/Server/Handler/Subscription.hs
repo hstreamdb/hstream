@@ -78,37 +78,18 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
   streamExists <- S.doesStreamExist scLDClient streamName
   if not streamExists
     then do
-      Log.debug $ "Try to create a subscription to a nonexistent stream"
-               <> "Stream Name: "
-               <> Log.buildString (show streamName)
+      Log.debug $ "Try to create a subscription to a nonexistent stream."
+               <> "Stream Name: " <> Log.buildString (show streamName)
       returnErrResp StatusFailedPrecondition . StatusDetails $ "stream " <> encodeUtf8 subscriptionStreamName <> " not exist"
     else do
-      logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName) Nothing
-      offset <- convertOffsetToRecordId logId
-
       P.checkIfExist @ZHandle @'SubRep
         subscriptionSubscriptionId zkHandle >>= \case
         True  -> returnErrResp StatusAlreadyExists . StatusDetails $ "Subsctiption "
                                                                   <> encodeUtf8 subscriptionSubscriptionId
                                                                   <> " already exists"
         False -> do
-          let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-          P.storeObject subscriptionSubscriptionId newSub zkHandle
+          P.storeObject subscriptionSubscriptionId subscription zkHandle
           returnResp subscription
-  where
-    convertOffsetToRecordId logId = do
-      let SubscriptionOffset {..} = fromJust subscriptionOffset
-          sOffset = fromJust subscriptionOffsetOffset
-      case sOffset of
-        SubscriptionOffsetOffsetSpecialOffset subOffset ->
-          case subOffset of
-            Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> do
-              return $ RecordId S.LSN_MIN 0
-            Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST) -> do
-              startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
-              return $ RecordId startLSN 0
-            Enumerated _ -> error "Wrong SpecialOffset!"
-        SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
 deleteSubscriptionHandler
   :: ServerContext
