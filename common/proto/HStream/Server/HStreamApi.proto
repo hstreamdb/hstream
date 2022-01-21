@@ -146,8 +146,7 @@ message AppendResponse {
 message Subscription {
   string subscriptionId = 1;
   string streamName = 2;
-  SubscriptionOffset offset = 3;
-  int32 ackTimeoutSeconds = 4;
+  int32 ackTimeoutSeconds = 3;
 }
 
 message SubscriptionOffset {
