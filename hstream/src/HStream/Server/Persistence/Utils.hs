@@ -33,6 +33,7 @@ module HStream.Server.Persistence.Utils
   , deleteAllPath
   , tryDeleteAllPath
   , tryCreateMulti
+  , tryGetChildren
   , decodeDataCompletion
   , decodeDataCompletion'
   , decodeZNodeValue
@@ -62,7 +63,8 @@ import qualified Z.Foreign                            as ZF
 import           ZooKeeper                            (Resource, zooCreate,
                                                        zooCreateOpInit,
                                                        zooDelete, zooDeleteAll,
-                                                       zooGet, zooMulti, zooSet,
+                                                       zooGet, zooGetChildren,
+                                                       zooMulti, zooSet,
                                                        zooSetOpInit,
                                                        zookeeperResInit)
 import           ZooKeeper.Exception
@@ -180,6 +182,12 @@ tryDeleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
   \(_ :: ZNONODE) -> do
     pure ()
+
+tryGetChildren :: HasCallStack => ZHandle -> CBytes -> IO [CBytes]
+tryGetChildren zk path = catch getChildren $
+  \(_ :: ZNONODE) -> pure []
+  where
+    getChildren = unStrVec . strsCompletionValues <$> zooGetChildren zk path
 
 decodeDataCompletion :: FromJSON a => DataCompletion -> Maybe a
 decodeDataCompletion (DataCompletion (Just x) _) =
