@@ -75,7 +75,7 @@ data ServerContext = ServerContext {
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
   --, subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
-  , scSubscribeRuntimeInfo   :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
+  , scSubscribeRuntimeInfo   :: MVar (HM.HashMap SubscriptionId SubscribeRuntimeInfo)
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
@@ -122,29 +122,34 @@ type ConsumerName = T.Text
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
     sriSubscriptionId :: SubscriptionId 
-  , sriWaitingConsumers    :: [ConsumerWatch]
-  , sriWorkingConsumers    :: Set.Set ConsumerWorkload 
-  , sriAssignments ::  HM.HashMap OrderingKey ConsumerWatch  
-  , sriShardRuntimeInfo :: HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo)
+  , sriStreamName :: T.Text
+  , sriWatchContext :: MVar WatchContext
+  , sriShardRuntimeInfo :: MVar (HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo))
+}
+
+data WatchContext = WatchContext {
+    wcWaitingConsumers    :: [ConsumerWatch]
+  , wcWorkingConsumers    :: Set.Set ConsumerWorkload 
+  , wcWatchStopSignals    :: HM.HashMap ConsumerName (MVar ())
 }
 
 data ConsumerWatch = ConsumerWatch {
-  cwConsumerName :: ConsumerName,
-  cwWatchStream :: StreamSend WatchSubscriptionResponse 
+    cwConsumerName :: ConsumerName
+  , cwWatchStream :: StreamSend WatchSubscriptionResponse 
 }
 
 data ConsumerWorkload = ConsumerWorkload {
     cwConsumerWatch :: ConsumerWatch 
-  , cwShardCount :: Int
+  , cwShards :: V.Vector OrderingKey 
 }
 
 instance Eq ConsumerWorkload where   
-  (==) w1 w2 = cwShardCount w1 == cwShardCount w2 
+  (==) w1 w2 = V.length (cwShards w1) == V.length (cwShards w2) 
 instance Ord ConsumerWorkload where  
-  (<=) w1 w2 = cwShardCount w1 <= cwShardCount w2 
+  (<=) w1 w2 = V.length (cwShards w1) <= V.length (cwShards w2) 
 
 data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
-    ssriStreamName        :: T.Text
+    ssriStreamName        :: T.Text 
   , ssriLogId             :: HS.C_LogID
   , ssriAckTimeoutSeconds :: Int32
   , ssriLdCkpReader       :: HS.LDSyncCkpReader
@@ -155,16 +160,12 @@ data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
   , ssriBatchNumMap       :: Map.Map Word64 Word32
   , ssriConsumerName      :: ConsumerName 
   , ssriStreamSend        :: StreamSend StreamingFetchResponse 
-  , ssriValid             :: Bool
+  , ssriSendStatus        :: SendStatus 
 }
 
-data ShardSubscriptionInfo = ShardSubscriptionInfo {
-    ssiStreamName        :: T.Text
-  , ssiLogId             :: HS.C_LogID
-  , ssiAckTimeoutSeconds :: Int32
-  , ssiLdCkpReader       :: HS.LDSyncCkpReader
-  , ssiLdReader          :: Maybe HS.LDReader
-}
+data SendStatus = SendStopping 
+                | SendStopped 
+                | SendRunning 
 
 data LoadReport = LoadReport {
     sysResUsage    :: SystemResourceUsage
