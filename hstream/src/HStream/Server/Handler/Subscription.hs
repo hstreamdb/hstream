@@ -507,7 +507,9 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
                   ldCkpReader <-
                     S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
                   -- seek ldCkpReader to start offset
-                  logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName) Nothing
+                  let streamID = S.mkStreamId S.StreamTypeStream (textToCBytes subscriptionStreamName)
+                  logId <-
+                    S.getUnderlyingLogId scLDClient streamID (Just $ textToCBytes streamingFetchRequestOrderingKey)
                   S.startReadingFromCheckpointOrStart ldCkpReader logId (Just S.LSN_MIN) S.LSN_MAX
                   -- set ldCkpReader timeout to 0
                   _ <- S.ckpReaderSetTimeout ldCkpReader 0
