@@ -46,11 +46,12 @@ describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = default
 lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
-lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream)) = defaultExceptionHandle $ do
+lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream orderingKey)) = defaultExceptionHandle $ do
   hashRing <- readMVar loadBalanceHashRing
-  let theNode = getAllocatedNode hashRing stream
+  let theNode = getAllocatedNode hashRing (stream `T.append` orderingKey)
   let resp = LookupStreamResponse {
       lookupStreamResponseStreamName = stream
+    , lookupStreamResponseOrderingKey = orderingKey
     , lookupStreamResponseServerNode = Just theNode
     }
   returnResp resp

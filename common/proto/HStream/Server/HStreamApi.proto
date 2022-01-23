@@ -481,11 +481,13 @@ message ServerNodeStatus {
 
 message LookupStreamRequest {
   string streamName = 1;
+  string orderingKey = 2;
 }
 
 message LookupStreamResponse {
   string streamName = 1;
-  ServerNode serverNode = 2;
+  string orderingKey = 2;
+  ServerNode serverNode = 3;
 }
 
 message LookupSubscriptionRequest {
