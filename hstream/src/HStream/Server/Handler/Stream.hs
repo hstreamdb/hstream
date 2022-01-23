@@ -95,7 +95,7 @@ deleteStreamHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@
     cleanZkNode = deleteAllPath zkHandle streamPath
     checkZkPathExist = isJust <$> zooExists zkHandle streamPath
     checkStreamExist = S.doesStreamExist scLDClient streamName
-    checkIfActive = (== Active) <$> getSubscriptionStatus scLDClient streamName
+    checkIfActive = return False
 
     doDelete False = do
       isActive <- checkIfActive
