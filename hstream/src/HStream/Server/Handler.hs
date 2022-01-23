@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Server.Handler 
+module HStream.Server.Handler
   (
     handlers,
     routineForSubs
@@ -49,7 +49,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListSubscriptions = listSubscriptionsHandler serverContext,
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
 
-        hstreamApiWatchSubscription = watchSubscriptionHandler serverContext, 
+        hstreamApiWatchSubscription = watchSubscriptionHandler serverContext,
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,

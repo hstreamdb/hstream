@@ -14,7 +14,7 @@ module HStream.Server.Handler.Cluster
 
 import           Control.Concurrent               (readMVar)
 import           Data.Functor                     ((<&>))
-import qualified Data.Text as T
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
@@ -77,7 +77,7 @@ lookupSubscriptionWithOrderingKeyHandler ServerContext{..} (ServerNormalRequest 
   let theNode = getAllocatedNode hashRing (subId `T.append` orderingKey)
   let resp = LookupSubscriptionWithOrderingKeyResponse {
       lookupSubscriptionWithOrderingKeyResponseSubscriptionId = subId
-    , lookupSubscriptionWithOrderingKeyResponseOrderingKey = orderingKey 
+    , lookupSubscriptionWithOrderingKeyResponseOrderingKey = orderingKey
     , lookupSubscriptionWithOrderingKeyResponseServerNode = Just theNode
     }
   returnResp resp

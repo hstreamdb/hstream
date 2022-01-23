@@ -12,8 +12,8 @@ import           Control.Exception                (SomeException, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
+import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
-import qualified Data.Set as Set 
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
 import           Network.GRPC.HighLevel.Generated
@@ -34,7 +34,8 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    encodeValueToBytes,
                                                    getServerNode',
                                                    serverRootLockPath,
-                                                   serverRootPath, tryGetChildren)
+                                                   serverRootPath,
+                                                   tryGetChildren)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
 import           HStream.Store                    (HsLogAttrs (..),

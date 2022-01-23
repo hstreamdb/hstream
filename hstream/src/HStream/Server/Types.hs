@@ -12,7 +12,7 @@ import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
-import qualified Data.Set                         as Set 
+import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
@@ -121,35 +121,35 @@ type ConsumerName = T.Text
 -- }
 
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriSubscriptionId :: SubscriptionId 
+    sriSubscriptionId :: SubscriptionId
   , sriStreamName :: T.Text
   , sriWatchContext :: MVar WatchContext
   , sriShardRuntimeInfo :: MVar (HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo))
 }
 
 data WatchContext = WatchContext {
-    wcWaitingConsumers    :: [ConsumerWatch]
-  , wcWorkingConsumers    :: Set.Set ConsumerWorkload 
-  , wcWatchStopSignals    :: HM.HashMap ConsumerName (MVar ())
+    wcWaitingConsumers :: [ConsumerWatch]
+  , wcWorkingConsumers :: Set.Set ConsumerWorkload
+  , wcWatchStopSignals :: HM.HashMap ConsumerName (MVar ())
 }
 
 data ConsumerWatch = ConsumerWatch {
     cwConsumerName :: ConsumerName
-  , cwWatchStream :: StreamSend WatchSubscriptionResponse 
+  , cwWatchStream  :: StreamSend WatchSubscriptionResponse
 }
 
 data ConsumerWorkload = ConsumerWorkload {
-    cwConsumerWatch :: ConsumerWatch 
-  , cwShards :: Set.Set OrderingKey 
+    cwConsumerWatch :: ConsumerWatch
+  , cwShards        :: Set.Set OrderingKey
 }
 
-instance Eq ConsumerWorkload where   
-  (==) w1 w2 = Set.size (cwShards w1) == Set.size (cwShards w2) 
-instance Ord ConsumerWorkload where  
-  (<=) w1 w2 = Set.size (cwShards w1) <= Set.size (cwShards w2) 
+instance Eq ConsumerWorkload where
+  (==) w1 w2 = Set.size (cwShards w1) == Set.size (cwShards w2)
+instance Ord ConsumerWorkload where
+  (<=) w1 w2 = Set.size (cwShards w1) <= Set.size (cwShards w2)
 
 data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
-    ssriStreamName        :: T.Text 
+    ssriStreamName        :: T.Text
   , ssriLogId             :: HS.C_LogID
   , ssriAckTimeoutSeconds :: Int32
   , ssriLdCkpReader       :: HS.LDSyncCkpReader
@@ -158,14 +158,14 @@ data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
   , ssriWindowUpperBound  :: RecordId
   , ssriAckedRanges       :: Map.Map RecordId RecordIdRange
   , ssriBatchNumMap       :: Map.Map Word64 Word32
-  , ssriConsumerName      :: ConsumerName 
-  , ssriStreamSend        :: StreamSend StreamingFetchResponse 
-  , ssriSendStatus        :: SendStatus 
+  , ssriConsumerName      :: ConsumerName
+  , ssriStreamSend        :: StreamSend StreamingFetchResponse
+  , ssriSendStatus        :: SendStatus
 }
 
-data SendStatus = SendStopping 
-                | SendStopped 
-                | SendRunning 
+data SendStatus = SendStopping
+                | SendStopped
+                | SendRunning
 
 data LoadReport = LoadReport {
     sysResUsage    :: SystemResourceUsage

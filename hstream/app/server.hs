@@ -7,7 +7,7 @@
 
 import           Control.Concurrent               (MVar, forkIO, putMVar,
                                                    takeMVar, threadDelay)
-import           Control.Monad                    (void, forever)
+import           Control.Monad                    (forever, void)
 import           Data.List                        (sort)
 import qualified Data.Text                        as T
 import           Network.GRPC.HighLevel           (ServiceOptions (..))
@@ -48,8 +48,8 @@ app config@ServerOpts{..} = do
 serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
-  void . forkIO $ forever $ do 
-    threadDelay 10000 
+  void . forkIO $ forever $ do
+    threadDelay 10000
     routineForSubs sc
   -- GRPC service
   Log.i "************************"
