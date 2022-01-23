@@ -160,6 +160,7 @@ watchSubscriptionHandler
   -> ServerRequest 'ServerStreaming WatchSubscriptionRequest WatchSubscriptionResponse
   -> IO (ServerResponse 'ServerStreaming WatchSubscriptionResponse)
 watchSubscriptionHandler ctx@ServerContext{..} (ServerWriterRequest _ req@WatchSubscriptionRequest {..} streamSend) = do
+  Log.debug $ "Receive WatchSubscription request"
   (subInfo@SubscribeRuntimeInfo{..}, isInited) <- modifyMVar scSubscribeRuntimeInfo
     ( \infoMap -> do
         case HM.lookup watchSubscriptionRequestSubscriptionId infoMap of
@@ -191,8 +192,10 @@ watchSubscriptionHandler ctx@ServerContext{..} (ServerWriterRequest _ req@WatchS
           )
     )
 
+  Log.debug $ "watchHandler: ready to block..."
   -- block util the watch stream broken or closed
   void $ takeMVar stopSignal
+  Log.debug $ "watchHanlder: will end"
   modifyMVar_ sriWatchContext
     (
       \watchCtx@WatchContext{..} -> do
@@ -212,7 +215,8 @@ watchStreamShardsForSubscription = undefined
 -- find a consumer for the orderingKey and push the notification to the consumer to
 -- ask it to do streamingFetch.
 assignShardForReading :: SubscribeRuntimeInfo -> OrderingKey -> IO ()
-assignShardForReading info@SubscribeRuntimeInfo{..} orderingKey =
+assignShardForReading info@SubscribeRuntimeInfo{..} orderingKey = do
+  Log.debug $  "try to assign key: " <> Log.buildText orderingKey
   modifyMVar_ sriWatchContext
     (
       \watchCtx@WatchContext{..} ->
@@ -224,6 +228,7 @@ assignShardForReading info@SubscribeRuntimeInfo{..} orderingKey =
             let (minConsumerWorkload@ConsumerWorkload{..}, leftSet) = Set.deleteFindMin wcWorkingConsumers
             -- push SubscriptionAdd to the choosed consumer
             let ConsumerWatch {..} = cwConsumerWatch
+            Log.debug $  "will push key: " <> Log.buildText orderingKey  <> " to consumer: " <> Log.buildText cwConsumerName
             let stopSignal =  wcWatchStopSignals HM.! cwConsumerName
             pushAdd cwWatchStream sriSubscriptionId orderingKey stopSignal
             let newSet = Set.insert
@@ -237,7 +242,7 @@ assignShardForReading info@SubscribeRuntimeInfo{..} orderingKey =
         else do
           -- 1. choose the first consumer in waiting list
           let consumer@ConsumerWatch{..} = head wcWaitingConsumers
-          let stopSignal = wcWatchStopSignals HM.! cwConsumerName
+          stopSignal <- newEmptyMVar
           -- 2. push SubscriptionAdd to the choosed consumer
           pushAdd cwWatchStream sriSubscriptionId orderingKey stopSignal
           -- 3. remove the consumer from the waiting list and add it to the workingList
@@ -273,7 +278,9 @@ pushRemove streamSend subId orderingKey stopSignal = do
 tryPush :: StreamSend WatchSubscriptionResponse -> WatchSubscriptionResponse -> MVar () ->  IO ()
 tryPush streamSend resp stopSignal = do
   streamSend resp >>= \case
-    Left _   -> void $ tryPutMVar stopSignal ()
+    Left _   -> do
+      Log.e "push watch resp error"
+      void $ tryPutMVar stopSignal ()
     Right () -> return ()
 --------------------------------------------------------------------------------
 -- first, for each subscription In serverContext,
@@ -305,8 +312,10 @@ routineForSubs ServerContext {..} = do
       --      - if yes, do nothing in this step.
       --
       --
+      Log.debug $  "scan for sub: " <> Log.buildText sriSubscriptionId
       let path = mkPartitionKeysPath (textToCBytes sriStreamName)
       shards <- P.tryGetChildren zkHandle path
+      Log.debug $  "get shards num: " <> Log.buildInt (length shards)
       shardInfoMap <- readMVar sriShardRuntimeInfo
       forM_ shards
         (

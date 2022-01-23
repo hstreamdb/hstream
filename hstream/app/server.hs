@@ -49,7 +49,7 @@ serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
   void . forkIO $ forever $ do
-    threadDelay 10000
+    threadDelay 2000000
     routineForSubs sc
   -- GRPC service
   Log.i "************************"
