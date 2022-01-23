@@ -63,7 +63,6 @@ import           HStream.Server.Exception         (ConsumerExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getCommitRecordId,
-                                                   getStartRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.Persistence       (ObjRepType (..),
@@ -94,32 +93,14 @@ createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subs
                <> Log.buildString (show streamName)
       returnErrResp StatusFailedPrecondition . StatusDetails $ "stream " <> encodeUtf8 subscriptionStreamName <> " not exist"
     else do
-      logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName) Nothing
-      offset <- convertOffsetToRecordId logId
-
       P.checkIfExist @ZHandle @'SubRep
         subscriptionSubscriptionId zkHandle >>= \case
         True  -> returnErrResp StatusAlreadyExists . StatusDetails $ "Subsctiption "
                                                                   <> encodeUtf8 subscriptionSubscriptionId
                                                                   <> " already exists"
         False -> do
-          let newSub = subscription {subscriptionOffset = Just . SubscriptionOffset . Just . SubscriptionOffsetOffsetRecordOffset $ offset}
-          P.storeObject subscriptionSubscriptionId newSub zkHandle
+          P.storeObject subscriptionSubscriptionId subscription zkHandle
           returnResp subscription
-  where
-    convertOffsetToRecordId logId = do
-      let SubscriptionOffset {..} = fromJust subscriptionOffset
-          sOffset = fromJust subscriptionOffsetOffset
-      case sOffset of
-        SubscriptionOffsetOffsetSpecialOffset subOffset ->
-          case subOffset of
-            Enumerated (Right SubscriptionOffset_SpecialOffsetEARLIST) -> do
-              return $ RecordId S.LSN_MIN 0
-            Enumerated (Right SubscriptionOffset_SpecialOffsetLATEST) -> do
-              startLSN <- (+ 1) <$> S.getTailLSN scLDClient logId
-              return $ RecordId startLSN 0
-            Enumerated _ -> error "Wrong SpecialOffset!"
-        SubscriptionOffsetOffsetRecordOffset recordId -> return recordId
 
 deleteSubscriptionHandler
   :: ServerContext
@@ -521,18 +502,16 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
                   Log.debug $ "streamingFetch error because subscription " <> Log.buildText streamingFetchRequestSubscriptionId <> " not exist."
                   throwIO $ SubscriptionIdNotFound streamingFetchRequestSubscriptionId
                 Just sub@Subscription {..} -> do
-                  let startRecordId = getStartRecordId sub
                   -- create a ldCkpReader for reading new records
                   let readerName = textToCBytes (streamingFetchRequestSubscriptionId `T.append` "-" `T.append` streamingFetchRequestOrderingKey)
                   ldCkpReader <-
                     S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
                   -- seek ldCkpReader to start offset
                   logId <- S.getUnderlyingLogId scLDClient (transToStreamName subscriptionStreamName) Nothing
-                  let startLSN = recordIdBatchId startRecordId
-                  S.startReadingFromCheckpointOrStart ldCkpReader logId (Just startLSN) S.LSN_MAX
+                  S.startReadingFromCheckpointOrStart ldCkpReader logId (Just S.LSN_MIN) S.LSN_MAX
                   -- set ldCkpReader timeout to 0
                   _ <- S.ckpReaderSetTimeout ldCkpReader 0
-                  Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText streamingFetchRequestSubscriptionId <> "} with startLSN {" <> Log.buildInt startLSN <> "}"
+                  Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText streamingFetchRequestSubscriptionId <> "}"
 
                   -- create a ldReader for rereading unacked records
                   ldReader <- S.newLDReader scLDClient 1 Nothing
@@ -546,7 +525,7 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
                           , ssriAckTimeoutSeconds = subscriptionAckTimeoutSeconds
                           , ssriLdCkpReader       = ldCkpReader
                           , ssriLdReader          = ldReader
-                          , ssriWindowLowerBound  = startRecordId
+                          , ssriWindowLowerBound  = RecordId S.LSN_MIN 0
                           , ssriWindowUpperBound  = maxBound
                           , ssriAckedRanges       = Map.empty
                           , ssriBatchNumMap       = Map.empty
@@ -610,7 +589,9 @@ genRecordStream ctx@ServerContext {..} shardInfoMVar = do
 
   mRecords <- doRead
   case mRecords of
-    Nothing -> genRecordStream ctx shardInfoMVar
+    Nothing -> do
+      threadDelay 1000000
+      genRecordStream ctx shardInfoMVar
     Just records -> do
       doSend records
       let recordIds = V.map (fromJust . receivedRecordRecordId) records

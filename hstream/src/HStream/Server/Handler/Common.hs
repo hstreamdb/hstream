@@ -214,13 +214,13 @@ responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (S
 responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing [] errCode msg
 
-getStartRecordId :: Api.Subscription -> RecordId
-getStartRecordId Api.Subscription{..} =
-  let Api.SubscriptionOffset{..} = fromJust subscriptionOffset
-      rid = case fromJust subscriptionOffsetOffset of
-               Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
-               Api.SubscriptionOffsetOffsetRecordOffset r  -> r
-    in rid
+-- getStartRecordId :: Api.Subscription -> RecordId
+-- getStartRecordId Api.Subscription{..} =
+--   let Api.SubscriptionOffset{..} = fromJust subscriptionOffset
+--       rid = case fromJust subscriptionOffsetOffset of
+--                Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+--                Api.SubscriptionOffsetOffsetRecordOffset r  -> r
+--     in rid
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper

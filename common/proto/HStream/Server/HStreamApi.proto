@@ -148,20 +148,7 @@ message AppendResponse {
 message Subscription {
   string subscriptionId = 1;
   string streamName = 2;
-  SubscriptionOffset offset = 3;
-  int32 ackTimeoutSeconds = 4;
-}
-
-message SubscriptionOffset {
-  enum SpecialOffset {
-    EARLIST = 0;
-    LATEST = 1;
-  }
-
-  oneof offset {
-    SpecialOffset specialOffset = 1;
-    RecordId recordOffset = 2;
-  }
+  int32 ackTimeoutSeconds = 3;
 }
 
 message DeleteSubscriptionRequest {
