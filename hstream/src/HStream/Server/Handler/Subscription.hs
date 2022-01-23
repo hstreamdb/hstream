@@ -106,32 +106,34 @@ deleteSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteSubscriptionHandler = undefined
--- deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest {..}) = defaultExceptionHandle $ do
---  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
---
---  modifyMVar_ subscribeRuntimeInfo $ \store -> do
---    case HM.lookup deleteSubscriptionRequestSubscriptionId store of
---      Just infoMVar -> do
---        modifyMVar infoMVar removeSubscriptionFromZK >>=
---          \case True -> return $ HM.delete deleteSubscriptionRequestSubscriptionId store;
---                _    -> return store;
---      Nothing -> do
---        P.removeObject @ZHandle @'SubRep
---          deleteSubscriptionRequestSubscriptionId zkHandle
---        return store
---  returnResp Empty
---  where
---    -- FIXME: For now, if there are still some consumers consuming current subscription,
---    -- we ignore the delete command. Should confirm the delete semantics of delete command
---    removeSubscriptionFromZK info@SubscribeRuntimeInfo {..}
---      | HM.null sriStreamSends = do
---          -- remove sub from zk
---          P.removeObject @ZHandle @'SubRep
---            deleteSubscriptionRequestSubscriptionId zkHandle
---          let newInfo = info {sriValid = False, ssriStreamSends = HM.empty}
---          return (newInfo, True)
---      | otherwise = return (info, False)
+deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest {..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
+
+
+  withMVar scSubscribeRuntimeInfo
+    (
+      \subMap -> return $ HM.lookup deleteSubscriptionRequestSubscriptionId subMap
+    ) >>= \case
+      Nothing -> removeSubscription >> returnResp Empty
+      Just sub@SubscribeRuntimeInfo {..} ->
+        withMVar sriWatchContext
+          (
+            \ctx@WatchContext {..} -> do
+              if HM.null wcWatchStopSignals && Set.null wcWorkingConsumers
+              then return Nothing
+              else return $ Just ()
+          ) >>= \case
+            Nothing -> removeSubscription >> returnResp Empty
+            Just _ -> returnErrResp StatusFailedPrecondition . StatusDetails $ "subscription is active"
+  where
+    removeSubscription = do
+      modifyMVar_ scSubscribeRuntimeInfo
+        (
+          \subMap -> return $ HM.delete deleteSubscriptionRequestSubscriptionId subMap
+        )
+      -- remove sub from zk
+      P.removeObject @ZHandle @'SubRep
+        deleteSubscriptionRequestSubscriptionId zkHandle
 
 checkSubscriptionExistHandler
   :: ServerContext
