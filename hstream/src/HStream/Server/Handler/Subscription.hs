@@ -16,14 +16,17 @@ module HStream.Server.Handler.Subscription
     deleteSubscriptionHandler,
     listSubscriptionsHandler,
     checkSubscriptionExistHandler,
-    streamingFetchHandler
+    watchSubscriptionHandler,
+    streamingFetchHandler,
+    routineForSubs,
+    stopSendingRecords
   )
 where
 
 
 import           Control.Concurrent
 import Control.Concurrent.Async (concurrently_)
-import           Control.Exception                (displayException, throwIO, try, SomeException, Exception)
+import           Control.Exception                (displayException, throwIO, try, SomeException, Exception, onException)
 import           Control.Monad                    (when, zipWithM, unless, forM_)
 import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on)
@@ -181,8 +184,8 @@ watchSubscriptionHandler ctx@ServerContext{..} (ServerWriterRequest _ req@WatchS
           Just subInfo -> return (infoMap, (subInfo, True)) 
     ) 
 
-  unless isInited 
-    (watchStreamShardsForSubscription ctx watchSubscriptionRequestSubscriptionId)
+  -- unless isInited 
+  --   (watchStreamShardsForSubscription ctx watchSubscriptionRequestSubscriptionId)
 
   stopSignal <- modifyMVar sriWatchContext  
     (
@@ -241,7 +244,7 @@ assignShardForReading info@SubscribeRuntimeInfo{..} orderingKey =
             let newSet = Set.insert 
                           (
                             minConsumerWorkload {
-                              cwShards = V.snoc cwShards orderingKey
+                              cwShards = Set.insert orderingKey cwShards 
                             }
                           ) 
                           leftSet
@@ -257,7 +260,7 @@ assignShardForReading info@SubscribeRuntimeInfo{..} orderingKey =
           let newWorkingSet = Set.insert 
                                 ( ConsumerWorkload {
                                     cwConsumerWatch = consumer
-                                  , cwShards = V.singleton orderingKey
+                                  , cwShards = Set.singleton orderingKey
                                   }
                                 ) 
                                 wcWorkingConsumers 
@@ -285,10 +288,9 @@ pushRemove streamSend subId orderingKey stopSignal = do
 tryPush :: StreamSend WatchSubscriptionResponse -> WatchSubscriptionResponse -> MVar () ->  IO ()
 tryPush streamSend resp stopSignal = do 
   streamSend resp >>= \case
-    Left _ -> putMVar stopSignal ()
+    Left _ -> void $ tryPutMVar stopSignal ()
     Right () -> return ()
 --------------------------------------------------------------------------------
-
 -- first, for each subscription In serverContext, 
 -- check if there are shards which is not assigned,
 -- then run assingShardForReading.
@@ -345,29 +347,32 @@ routineForSubs ServerContext {..} = do
               \watchCtx@WatchContext{..} -> do
                 if null wcWaitingConsumers
                 then return (watchCtx, Nothing)
-                else do
-                  let (maxConsumer@ConsumerWorkload{..}, leftSet) = Set.deleteFindMax wcWorkingConsumers
-                  if V.length cwShards > 1
-                  then do
-                    let (shard, leftShards) = fromJust $ V.uncons cwShards 
-                    let consumer@ConsumerWatch {cwWatchStream = newWatchStream , cwConsumerName = newConsumerName } = head wcWaitingConsumers
-                    pushRemove 
-                      (cwWatchStream cwConsumerWatch) 
-                      sriSubscriptionId
-                      shard
-                      (wcWatchStopSignals HM.! (cwConsumerName cwConsumerWatch))
-                    pushAdd 
-                      newWatchStream 
-                      sriSubscriptionId
-                      shard 
-                      (wcWatchStopSignals HM.! newConsumerName)
-                    let newMaxConsumer = maxConsumer {cwShards = leftShards}
-                    let newWorkingConsumer = ConsumerWorkload {cwConsumerWatch = consumer, cwShards = V.singleton shard}
-                    let newWorkingSet = Set.insert newWorkingConsumer (Set.insert newMaxConsumer leftSet)
-                    let newWaitingList = tail wcWaitingConsumers
-                    return (watchCtx {wcWaitingConsumers = newWaitingList, wcWorkingConsumers = newWorkingSet}, Just shard)
-                  else
-                    return (watchCtx {wcWorkingConsumers = Set.insert maxConsumer leftSet}, Nothing)
+                else 
+                  if Set.null wcWorkingConsumers 
+                  then return (watchCtx, Nothing)
+                  else do
+                    let (maxConsumer@ConsumerWorkload{..}, leftSet) = Set.deleteFindMax wcWorkingConsumers
+                    if Set.size cwShards > 1
+                    then do
+                      let (shard, leftShards) = Set.deleteFindMin cwShards 
+                      let consumer@ConsumerWatch {cwWatchStream = newWatchStream , cwConsumerName = newConsumerName } = head wcWaitingConsumers
+                      pushRemove 
+                        (cwWatchStream cwConsumerWatch) 
+                        sriSubscriptionId
+                        shard
+                        (wcWatchStopSignals HM.! (cwConsumerName cwConsumerWatch))
+                      pushAdd 
+                        newWatchStream 
+                        sriSubscriptionId
+                        shard 
+                        (wcWatchStopSignals HM.! newConsumerName)
+                      let newMaxConsumer = maxConsumer {cwShards = leftShards}
+                      let newWorkingConsumer = ConsumerWorkload {cwConsumerWatch = consumer, cwShards = Set.singleton shard}
+                      let newWorkingSet = Set.insert newWorkingConsumer (Set.insert newMaxConsumer leftSet)
+                      let newWaitingList = tail wcWaitingConsumers
+                      return (watchCtx {wcWaitingConsumers = newWaitingList, wcWorkingConsumers = newWorkingSet}, Just shard)
+                    else
+                      return (watchCtx {wcWorkingConsumers = Set.insert maxConsumer leftSet}, Nothing)
             ) >>= \case
               Nothing -> return ()
               Just shard -> do 
@@ -375,6 +380,7 @@ routineForSubs ServerContext {..} = do
                 loop
 
 --------------------------------------------------------------------------------
+
 
 stopSendingRecords :: SubscribeRuntimeInfo -> T.Text -> IO ()  
 stopSendingRecords SubscribeRuntimeInfo {..} shard = do 
@@ -450,19 +456,60 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
       shardInfoMVar <- initShardRuntimeInfo firstReq
 
       concurrently_ (handleAckStream shardInfoMVar scLDClient streamRecv) (genRecordStream ctx shardInfoMVar) 
+        `onException` cleanup firstReq
+          
   where
-    initShardRuntimeInfo :: StreamingFetchRequest -> IO (MVar ShardSubscribeRuntimeInfo) 
-    initShardRuntimeInfo StreamingFetchRequest{..} = do
+    cleanup :: StreamingFetchRequest -> IO ()
+    cleanup StreamingFetchRequest{..} = do
       SubscribeRuntimeInfo {..} <- withMVar scSubscribeRuntimeInfo
         (
           \ infoMap -> return (infoMap HM.! streamingFetchRequestSubscriptionId)
         )
 
-      modifyMVar sriShardRuntimeInfo 
+      modifyMVar_ sriWatchContext 
+        (
+          \ watchCtx@WatchContext {..} -> do 
+              let workingSet = Set.map
+                    (
+                      \consumer@ConsumerWorkload {..} ->  
+                        if cwConsumerName cwConsumerWatch == streamingFetchRequestConsumerName 
+                        then 
+                          let shards = Set.delete streamingFetchRequestOrderingKey cwShards 
+                          in  consumer {cwShards = shards}
+                        else consumer
+                    )
+                    wcWorkingConsumers
+              let newWorkingSet = Set.filter
+                    (
+                      \consumer@ConsumerWorkload {..} -> Set.size cwShards > 0  
+                    )
+                    workingSet
+              return watchCtx {wcWorkingConsumers = newWorkingSet}
+        )
+
+      shardInfoMVar <- withMVar sriShardRuntimeInfo 
+        (
+          \ infoMap -> return (infoMap HM.! streamingFetchRequestOrderingKey)
+        )
+      modifyMVar_ shardInfoMVar 
+        (
+          \ info@ShardSubscribeRuntimeInfo {..} -> return info {ssriSendStatus = SendStopped}
+        )
+
+
+    initShardRuntimeInfo :: StreamingFetchRequest -> IO (MVar ShardSubscribeRuntimeInfo) 
+    initShardRuntimeInfo req@StreamingFetchRequest{..} = do
+      SubscribeRuntimeInfo {..} <- withMVar scSubscribeRuntimeInfo
+        (
+          \ infoMap -> return (infoMap HM.! streamingFetchRequestSubscriptionId)
+        )
+
+      shardInfoMVar <- modifyMVar sriShardRuntimeInfo 
         (
           \shardInfoMap -> 
             if HM.member streamingFetchRequestOrderingKey shardInfoMap 
-            then return (shardInfoMap, (shardInfoMap HM.! streamingFetchRequestOrderingKey)) 
+            then 
+              return (shardInfoMap, (shardInfoMap HM.! streamingFetchRequestOrderingKey)) 
             else do
               -- get subscription info from zk
               P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
@@ -507,6 +554,21 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
                   let newShardMap = HM.insert streamingFetchRequestOrderingKey shardInfoMVar shardInfoMap 
                   return (newShardMap, shardInfoMVar)
         )
+      modifyMVar shardInfoMVar
+        (
+          \shardInfo@ShardSubscribeRuntimeInfo{..} ->
+            case ssriSendStatus of
+              SendRunning -> return (shardInfo, Just ())
+              SendStopped -> do 
+                let info = shardInfo {ssriStreamSend = streamSend, ssriSendStatus = SendRunning, ssriConsumerName = streamingFetchRequestConsumerName}
+                return (info, Just ())
+              SendStopping -> return (shardInfo, Nothing) 
+
+        ) >>= \case
+          Nothing -> do 
+            threadDelay 1000
+            initShardRuntimeInfo req
+          Just _ -> return shardInfoMVar 
 
 handleAckStream
   :: MVar ShardSubscribeRuntimeInfo

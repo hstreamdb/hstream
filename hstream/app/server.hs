@@ -6,8 +6,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Concurrent               (MVar, forkIO, putMVar,
-                                                   takeMVar)
-import           Control.Monad                    (void)
+                                                   takeMVar, threadDelay)
+import           Control.Monad                    (void, forever)
 import           Data.List                        (sort)
 import qualified Data.Text                        as T
 import           Network.GRPC.HighLevel           (ServiceOptions (..))
@@ -22,7 +22,7 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (getConfig)
 import           HStream.Server.HStreamApi        (hstreamApiServer)
 import           HStream.Server.HStreamInternal
-import           HStream.Server.Handler           (handlers)
+import           HStream.Server.Handler           (handlers, routineForSubs)
 import           HStream.Server.Initialization    (initNodePath,
                                                    initializeServer)
 import           HStream.Server.InternalHandler
@@ -48,6 +48,9 @@ app config@ServerOpts{..} = do
 serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
+  void . forkIO $ forever $ do 
+    threadDelay 10000 
+    routineForSubs sc
   -- GRPC service
   Log.i "************************"
   putStrLn [r|

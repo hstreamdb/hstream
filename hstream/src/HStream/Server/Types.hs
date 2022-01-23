@@ -140,13 +140,13 @@ data ConsumerWatch = ConsumerWatch {
 
 data ConsumerWorkload = ConsumerWorkload {
     cwConsumerWatch :: ConsumerWatch 
-  , cwShards :: V.Vector OrderingKey 
+  , cwShards :: Set.Set OrderingKey 
 }
 
 instance Eq ConsumerWorkload where   
-  (==) w1 w2 = V.length (cwShards w1) == V.length (cwShards w2) 
+  (==) w1 w2 = Set.size (cwShards w1) == Set.size (cwShards w2) 
 instance Ord ConsumerWorkload where  
-  (<=) w1 w2 = V.length (cwShards w1) <= V.length (cwShards w2) 
+  (<=) w1 w2 = Set.size (cwShards w1) <= Set.size (cwShards w2) 
 
 data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
     ssriStreamName        :: T.Text 
