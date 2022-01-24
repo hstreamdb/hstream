@@ -26,9 +26,7 @@ import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception         (StreamNotExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (SubscriptionStatus (..),
-                                                   getSubscriptionStatus,
-                                                   shouldBeServedByThisServer)
+import           HStream.Server.Handler.Common    (shouldBeServedByThisServer)
 import           HStream.Server.Persistence.Utils
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store                    as S
@@ -123,6 +121,10 @@ appendHandler
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
   hashRing <- readMVar loadBalanceHashRing
-  if shouldBeServedByThisServer hashRing serverID appendRequestStreamName
-    then C.appendStream sc request >>= returnResp
+  let partitionKey = getRecordKey . V.head $ appendRequestRecords
+  let identifier = case partitionKey of
+                     Just key -> appendRequestStreamName <> key
+                     Nothing  -> appendRequestStreamName <> "__default__"
+  if shouldBeServedByThisServer hashRing serverID identifier
+    then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusInvalidArgument "Send appendRequest to wrong Server."
