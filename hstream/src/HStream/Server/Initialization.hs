@@ -12,6 +12,7 @@ import           Control.Exception                (SomeException, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
+import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
@@ -33,7 +34,8 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    encodeValueToBytes,
                                                    getServerNode',
                                                    serverRootLockPath,
-                                                   serverRootPath)
+                                                   serverRootPath,
+                                                   tryGetChildren)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
 import           HStream.Store                    (HsLogAttrs (..),
@@ -122,7 +124,7 @@ initializeServer ServerOpts{..} zk = do
     , scDefaultStreamRepFactor = _topicRepFactor
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
-    , subscribeRuntimeInfo     = subscribeRuntimeInfo
+    , scSubscribeRuntimeInfo     = subscribeRuntimeInfo
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
@@ -137,3 +139,5 @@ initializeHashRing zk = do
     zooGetChildren zk serverRootPath
   serverNodes <- mapM (getServerNode' zk) children
   newMVar . constructHashRing . sort $ serverNodes
+
+--------------------------------------------------------------------------------

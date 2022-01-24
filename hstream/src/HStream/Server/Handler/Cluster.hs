@@ -9,10 +9,12 @@ module HStream.Server.Handler.Cluster
   ( describeClusterHandler
   , lookupStreamHandler
   , lookupSubscriptionHandler
+  , lookupSubscriptionWithOrderingKeyHandler
   ) where
 
 import           Control.Concurrent               (readMVar)
 import           Data.Functor                     ((<&>))
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
@@ -44,11 +46,12 @@ describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = default
 lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
-lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream)) = defaultExceptionHandle $ do
+lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta (LookupStreamRequest stream orderingKey)) = defaultExceptionHandle $ do
   hashRing <- readMVar loadBalanceHashRing
-  let theNode = getAllocatedNode hashRing stream
+  let theNode = getAllocatedNode hashRing (stream `T.append` orderingKey)
   let resp = LookupStreamResponse {
       lookupStreamResponseStreamName = stream
+    , lookupStreamResponseOrderingKey = orderingKey
     , lookupStreamResponseServerNode = Just theNode
     }
   returnResp resp
@@ -62,5 +65,20 @@ lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta (LookupSu
   let resp = LookupSubscriptionResponse {
       lookupSubscriptionResponseSubscriptionId = subId
     , lookupSubscriptionResponseServerNode = Just theNode
+    }
+  returnResp resp
+
+lookupSubscriptionWithOrderingKeyHandler :: ServerContext
+                          -> ServerRequest 'Normal LookupSubscriptionWithOrderingKeyRequest LookupSubscriptionWithOrderingKeyResponse
+                          -> IO (ServerResponse 'Normal LookupSubscriptionWithOrderingKeyResponse)
+lookupSubscriptionWithOrderingKeyHandler ServerContext{..} (ServerNormalRequest _meta (LookupSubscriptionWithOrderingKeyRequest {..})) = defaultExceptionHandle $ do
+  hashRing <- readMVar loadBalanceHashRing
+  let subId = lookupSubscriptionWithOrderingKeyRequestSubscriptionId
+  let orderingKey = lookupSubscriptionWithOrderingKeyRequestOrderingKey
+  let theNode = getAllocatedNode hashRing (subId `T.append` orderingKey)
+  let resp = LookupSubscriptionWithOrderingKeyResponse {
+      lookupSubscriptionWithOrderingKeyResponseSubscriptionId = subId
+    , lookupSubscriptionWithOrderingKeyResponseOrderingKey = orderingKey
+    , lookupSubscriptionWithOrderingKeyResponseServerNode = Just theNode
     }
   returnResp resp

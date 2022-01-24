@@ -67,6 +67,7 @@ library
     , aeson
     , aeson-pretty
     , ansi-terminal
+    , async
     , base
     , bytestring
     , clickhouse-haskell

@@ -6,7 +6,12 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module HStream.Server.Handler where
+module HStream.Server.Handler
+  (
+    handlers,
+    routineForSubs
+  )
+where
 
 import           Network.GRPC.HighLevel.Generated
 
@@ -43,6 +48,8 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteSubscription = deleteSubscriptionHandler serverContext,
         hstreamApiListSubscriptions = listSubscriptionsHandler serverContext,
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
+
+        hstreamApiWatchSubscription = watchSubscriptionHandler serverContext,
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
@@ -74,7 +81,8 @@ handlers serverContext@ServerContext{..} =
         -- Cluster
         hstreamApiDescribeCluster = describeClusterHandler serverContext,
         hstreamApiLookupStream = lookupStreamHandler serverContext,
-        hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext
+        hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
+        hstreamApiLookupSubscriptionWithOrderingKey = lookupSubscriptionWithOrderingKeyHandler serverContext
         -- Admin
       , hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }

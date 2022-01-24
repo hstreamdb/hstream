@@ -32,10 +32,6 @@ callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
       let subReq = API.Subscription
                    { API.subscriptionSubscriptionId = subId
                    , API.subscriptionStreamName = stream
-                   , API.subscriptionOffset = Just $ API.SubscriptionOffset
-                     (Just $ API.SubscriptionOffsetOffsetSpecialOffset
-                       (Enumerated (Right API.SubscriptionOffset_SpecialOffsetLATEST))
-                     )
                    , API.subscriptionAckTimeoutSeconds = 1
                    }
       hstreamApiCreateSubscription (mkClientNormalRequest subReq)

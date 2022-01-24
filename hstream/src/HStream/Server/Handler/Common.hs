@@ -30,6 +30,7 @@ import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
+import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
@@ -213,13 +214,13 @@ responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (S
 responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) [] StatusOk ""
 responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing [] errCode msg
 
-getStartRecordId :: Api.Subscription -> RecordId
-getStartRecordId Api.Subscription{..} =
-  let Api.SubscriptionOffset{..} = fromJust subscriptionOffset
-      rid = case fromJust subscriptionOffsetOffset of
-               Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
-               Api.SubscriptionOffsetOffsetRecordOffset r  -> r
-    in rid
+-- getStartRecordId :: Api.Subscription -> RecordId
+-- getStartRecordId Api.Subscription{..} =
+--   let Api.SubscriptionOffset{..} = fromJust subscriptionOffset
+--       rid = case fromJust subscriptionOffsetOffset of
+--                Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
+--                Api.SubscriptionOffsetOffsetRecordOffset r  -> r
+--     in rid
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
@@ -387,3 +388,26 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
            Log.warning $ "Drop: tried to remove a nonexistent object: "
              <> Log.buildString (T.unpack name)
            returnErrResp StatusNotFound "Object does not exist"
+
+shouldBeServedByThisServer :: HashRing -> Word32 -> Text -> Bool
+shouldBeServedByThisServer hashRing serverID name =
+  (== serverID) . Api.serverNodeId $ getAllocatedNode hashRing name
+
+data SubscriptionStatus = Active | StandBy deriving(Show, Eq)
+
+setSubStatusToActive :: HS.LDClient -> HS.StreamId -> IO ()
+setSubStatusToActive client streamId = void $ HS.updateStreamExtraAttrs client streamId (Map.singleton "subscriptionStatus" "1")
+
+setSubStatusToStandBy :: HS.LDClient -> HS.StreamId -> IO ()
+setSubStatusToStandBy client streamId = void $ HS.updateStreamExtraAttrs client streamId (Map.singleton "subscriptionStatus" "0")
+
+getSubscriptionStatus :: HS.LDClient -> HS.StreamId -> IO SubscriptionStatus
+getSubscriptionStatus client streamId = do
+  Map.lookup "SubscriptionStatus" <$> HS.getStreamExtraAttrs client streamId >>= \case
+    Nothing     -> error "No status for subscription."
+    Just status ->
+      case status of
+        "1" -> return Active
+        "0" -> return StandBy
+        _   -> error "Unknown status"
+

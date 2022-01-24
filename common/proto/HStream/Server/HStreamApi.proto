@@ -35,6 +35,9 @@ service HStreamApi {
   rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse) {}
   rpc CheckSubscriptionExist(CheckSubscriptionExistRequest) returns (CheckSubscriptionExistResponse) {}
   rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
+  rpc LookupSubscription(LookupSubscriptionRequest) returns (LookupSubscriptionResponse) {}
+  rpc LookupSubscriptionWithOrderingKey(LookupSubscriptionWithOrderingKeyRequest) returns (LookupSubscriptionWithOrderingKeyResponse) {}
+  rpc WatchSubscription(WatchSubscriptionRequest)  returns (stream WatchSubscriptionResponse) {}
   rpc StreamingFetch(stream StreamingFetchRequest) returns (stream StreamingFetchResponse) {}
 
   // ---------------------------------------------------------------------------
@@ -92,7 +95,6 @@ service HStreamApi {
   // ---------------------------------------------------------------------------
   rpc DescribeCluster(google.protobuf.Empty) returns (DescribeClusterResponse) {}
   rpc LookupStream(LookupStreamRequest) returns (LookupStreamResponse) {}
-  rpc LookupSubscription(LookupSubscriptionRequest) returns (LookupSubscriptionResponse) {}
 }
 
 message EchoRequest {
@@ -146,20 +148,7 @@ message AppendResponse {
 message Subscription {
   string subscriptionId = 1;
   string streamName = 2;
-  SubscriptionOffset offset = 3;
-  int32 ackTimeoutSeconds = 4;
-}
-
-message SubscriptionOffset {
-  enum SpecialOffset {
-    EARLIST = 0;
-    LATEST = 1;
-  }
-
-  oneof offset {
-    SpecialOffset specialOffset = 1;
-    RecordId recordOffset = 2;
-  }
+  int32 ackTimeoutSeconds = 3;
 }
 
 message DeleteSubscriptionRequest {
@@ -177,8 +166,9 @@ message CheckSubscriptionExistResponse {
 message StreamingFetchRequest {
   string subscriptionId = 1;
   string consumerName = 2;
+  string orderingKey = 3;
 
-  repeated RecordId ack_ids = 3;
+  repeated RecordId ackIds = 4;
 }
 
 message StreamingFetchResponse {
@@ -198,6 +188,7 @@ message StreamOffset {
 message DeleteStreamRequest {
   string streamName = 1;
   bool ignoreNonExist = 2;
+  bool force = 3;
 }
 
 message ListStreamsResponse {
@@ -477,11 +468,13 @@ message ServerNodeStatus {
 
 message LookupStreamRequest {
   string streamName = 1;
+  string orderingKey = 2;
 }
 
 message LookupStreamResponse {
   string streamName = 1;
-  ServerNode serverNode = 2;
+  string orderingKey = 2;
+  ServerNode serverNode = 3;
 }
 
 message LookupSubscriptionRequest {
@@ -492,3 +485,37 @@ message LookupSubscriptionResponse {
   string subscriptionId = 1;
   ServerNode serverNode = 2;
 }
+
+message LookupSubscriptionWithOrderingKeyRequest {
+  string subscriptionId = 1;
+  string orderingKey = 2;
+}
+
+message LookupSubscriptionWithOrderingKeyResponse {
+  string subscriptionId = 1;
+  string orderingKey = 2;
+  ServerNode serverNode = 3;
+}
+
+message WatchSubscriptionRequest {
+  string subscriptionId = 1;
+  string consumerName = 2;
+}
+
+message WatchSubscriptionResponse {
+  message SubscriptionAdd {
+    string orderingKey = 1;
+  }
+
+  message SubscriptionRemove {
+    string orderingKey = 1;
+  }
+
+  string subscriptionId = 1;
+  oneof change {
+    SubscriptionAdd changeAdd = 7;
+    SubscriptionRemove changeRemove = 8;
+  }
+}
+
+
