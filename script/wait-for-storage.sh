@@ -17,7 +17,7 @@ done
 
 until ( \
     echo -n > /dev/tcp/$store_admin_host/$store_admin_port && \
-    /usr/local/bin/hadmin --host "$store_admin_host" --port "$store_admin_port" status \
+    /usr/local/bin/hadmin store --host "$store_admin_host" --port "$store_admin_port" status \
     ) >/dev/null 2>&1;
 do
     >&2 echo "Waiting for storage $store_admin_host:$store_admin_port ..."

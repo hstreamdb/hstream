@@ -13,6 +13,7 @@ import qualified Data.Map.Strict          as Map
 import           Data.Text                (Text)
 import qualified Data.Text                as Text
 import           Options.Applicative
+import qualified Options.Applicative      as O
 import qualified Options.Applicative.Help as Opt
 import qualified Text.Read                as Read
 import           Z.Data.ASCII             (c2w)
@@ -26,6 +27,46 @@ import qualified HStream.Logger           as Log
 import qualified HStream.Store            as S
 import qualified HStream.Store.Admin.API  as AA
 import           HStream.Utils            (withoutPrefix)
+
+-------------------------------------------------------------------------------
+
+data Cli = Cli
+  { headerConfig :: AA.HeaderConfig AA.AdminAPI
+  , logLevel     :: Log.Level
+  , command      :: Command
+  }
+
+cliParser :: O.Parser Cli
+cliParser = Cli
+  <$> headerConfigParser
+  <*> logLevelParser
+  <*> commandParser
+
+data Command
+  = StatusCmd StatusOpts
+  | NodesConfigCmd NodesConfigOpts
+  | ConfigCmd ConfigCmdOpts
+  | LogsCmd LogsConfigCmd
+  | CheckImpactCmd CheckImpactOpts
+  | MaintenanceCmd MaintenanceOpts
+  | StartSQLReplCmd StartSQLReplOpts
+  deriving (Show)
+
+commandParser :: O.Parser Command
+commandParser = O.hsubparser
+  ( O.command "status" (O.info (StatusCmd <$> statusParser) (O.progDesc "Cluster status"))
+ <> O.command "nodes-config" (O.info (NodesConfigCmd <$> nodesConfigParser) (O.progDesc "Manipulates the cluster's NodesConfig"))
+ <> O.command "config" (O.info (ConfigCmd <$> configCmdParser) (O.progDesc "Commands about logdevice config"))
+ <> O.command "logs" (O.info (LogsCmd <$> logsConfigCmdParser) (O.progDesc "Control the logs config of logdevice dynamically"))
+ <> O.command "check-impact" (O.info (CheckImpactCmd <$> checkImpactOptsParser)
+                                     (O.progDesc $ "Return true if performing"
+                                                <> "operations to the given shards will cause loss of read/write availability or data loss.")
+                             )
+ <> O.command "maintenance" (O.info (MaintenanceCmd <$> maintenanceOptsParser)
+                            (O.progDesc "Allows to manipulate maintenances in Maintenance Manager"))
+ <> O.command "sql" (O.info (StartSQLReplCmd <$> startSQLReplOptsParser)
+                      (O.progDesc "Start an interactive SQL shell"))
+  )
 
 -------------------------------------------------------------------------------
 
@@ -137,18 +178,18 @@ nodesConfigBootstrapParser = NodesConfigBootstrap
 
 nodesConfigParser :: Parser NodesConfigOpts
 nodesConfigParser = hsubparser
-  ( command "show" (info (NodesConfigShow <$> nodesShowOptsParser)
-                     (progDesc "Print tier's NodesConfig to stdout"))
- <> command "bootstrap" (info nodesConfigBootstrapParser
-                          (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
- <> command "shrink" (info (NodesConfigRemove <$> simpleNodesFilterParser)
-                       (progDesc $ "Shrinks the cluster by removing nodes from"
-                                <> "the NodesConfig. This operation requires"
-                                <> "that the removed nodes are empty"))
- <> command "apply" (info (NodesConfigApply <$> nodesEditFileParser)
-                      (progDesc $ "Apply the node configuration, The passed node "
-                               <> "configs should describe the desired final state"
-                               <> "of the node (not the diff)"))
+  ( O.command "show" (info (NodesConfigShow <$> nodesShowOptsParser)
+                       (progDesc "Print tier's NodesConfig to stdout"))
+ <> O.command "bootstrap" (info nodesConfigBootstrapParser
+                            (progDesc "Finalize the bootstrapping and allow the cluster to be used"))
+ <> O.command "shrink" (info (NodesConfigRemove <$> simpleNodesFilterParser)
+                         (progDesc $ "Shrinks the cluster by removing nodes from"
+                                  <> "the NodesConfig. This operation requires"
+                                  <> "that the removed nodes are empty"))
+ <> O.command "apply" (info (NodesConfigApply <$> nodesEditFileParser)
+                        (progDesc $ "Apply the node configuration, The passed node "
+                                 <> "configs should describe the desired final state"
+                                 <> "of the node (not the diff)"))
   )
 
 -------------------------------------------------------------------------------
@@ -264,7 +305,7 @@ data ConfigCmdOpts = ConfigDump
 
 configCmdParser :: Parser ConfigCmdOpts
 configCmdParser = hsubparser
-  ( command "dump" (info (pure ConfigDump) (progDesc "Prints the server config in json format")))
+  ( O.command "dump" (info (pure ConfigDump) (progDesc "Prints the server config in json format")))
 
 -------------------------------------------------------------------------------
 
@@ -281,35 +322,35 @@ data LogsConfigCmd
 
 logsConfigCmdParser :: Parser LogsConfigCmd
 logsConfigCmdParser = hsubparser $
-    command "info" (info (InfoCmd <$> logIDParser)
-                         (progDesc "Get current attributes of the tail/head of the log"))
- <> command "show" (info (ShowCmd <$> showLogsOptsParser)
-                         (progDesc "Print the full logsconfig for this tier "))
- <> command "create" (info (CreateCmd <$> createLogsParser)
-                           (progDesc ("Creates a log group under a specific directory"
-                            <> " path in the LogsConfig tree. This only works"
-                            <> " if the tier has LogsConfigManager enabled.")))
- <> command "rename" (info (RenameCmd <$> strOption (long "old-name" <> metavar "PATH")
-                                      <*> strOption (long "new-name" <> metavar "PATH")
-                                      <*> flag True False (long "warning"))
-                           (progDesc "Renames a path in logs config to a new path"))
- <> command "remove" (info (RemoveCmd <$> removeLogsOptsParser)
-                           (progDesc ("Removes a directory or a log-group under"
-                            <> " a specific directory path in the LogsConfig tree."
-                            <> " This will NOT delete the directory if it is not"
-                            <> " empty by default, you need to use --recursive.")))
- <> command "trim" (info (LogsTrimCmd <$> option auto (long "id" <> metavar "INT" <> help "which log to trim")
-                                      <*> option auto (long "lsn" <> metavar "INT" <> help "LSN"))
-                         (progDesc "Trim the log up to and including the specified LSN"))
- <> command "set-range" (info (SetRangeCmd <$> setRangeOptsParser)
-                              (progDesc ("This updates the log id range for the"
-                               <> " LogGroup under a specific directory path in"
-                               <> " the LogsConfig tree.")))
- <> command "update" (info (UpdateCmd <$> updateLogsOptsParser)
-                           (progDesc (" This updates the LogAttributes for the"
-                            <> " node (can be either a directory or a log group)"
-                            <> " under a specific directory path in the "
-                            <> " LogsConfig tree. ")))
+    O.command "info" (info (InfoCmd <$> logIDParser)
+                           (progDesc "Get current attributes of the tail/head of the log"))
+ <> O.command "show" (info (ShowCmd <$> showLogsOptsParser)
+                           (progDesc "Print the full logsconfig for this tier "))
+ <> O.command "create" (info (CreateCmd <$> createLogsParser)
+                             (progDesc ("Creates a log group under a specific directory"
+                              <> " path in the LogsConfig tree. This only works"
+                              <> " if the tier has LogsConfigManager enabled.")))
+ <> O.command "rename" (info (RenameCmd <$> strOption (long "old-name" <> metavar "PATH")
+                                        <*> strOption (long "new-name" <> metavar "PATH")
+                                        <*> flag True False (long "warning"))
+                             (progDesc "Renames a path in logs config to a new path"))
+ <> O.command "remove" (info (RemoveCmd <$> removeLogsOptsParser)
+                             (progDesc ("Removes a directory or a log-group under"
+                              <> " a specific directory path in the LogsConfig tree."
+                              <> " This will NOT delete the directory if it is not"
+                              <> " empty by default, you need to use --recursive.")))
+ <> O.command "trim" (info (LogsTrimCmd <$> option auto (long "id" <> metavar "INT" <> help "which log to trim")
+                                        <*> option auto (long "lsn" <> metavar "INT" <> help "LSN"))
+                           (progDesc "Trim the log up to and including the specified LSN"))
+ <> O.command "set-range" (info (SetRangeCmd <$> setRangeOptsParser)
+                                (progDesc ("This updates the log id range for the"
+                                 <> " LogGroup under a specific directory path in"
+                                 <> " the LogsConfig tree.")))
+ <> O.command "update" (info (UpdateCmd <$> updateLogsOptsParser)
+                             (progDesc (" This updates the LogAttributes for the"
+                              <> " node (can be either a directory or a log group)"
+                              <> " under a specific directory path in the "
+                              <> " LogsConfig tree. ")))
 
 data SetRangeOpts = SetRangeOpts
   { setRangePath    :: CBytes
@@ -647,22 +688,23 @@ instance Read AA.MaintenancePriority where
 
 maintenanceOptsParser :: Parser MaintenanceOpts
 maintenanceOptsParser = hsubparser $
-    command "list" (info (MaintenanceListCmd <$> maintenanceListOptsParser)
-                    (progDesc "Prints compact list of maintenances applied to the cluster"))
- <> command "show" (info (MaintenanceShowCmd <$> maintenanceShowOptsParser)
-                    (progDesc "Shows maintenances in expanded format with more information"))
- <> command "apply" (info (MaintenanceApplyCmd <$> maintenanceApplyOptsParser)
-                     (progDesc "Applies new maintenance to Maintenance Manager"))
- <> command "remove" (info (MaintenanceRemoveCmd <$> maintenanceRemoveOptsParser)
-                      (progDesc "Removes maintenances specified by filters."))
- <> command "take-snapshot" (info (MaintenanceTakeSnapShot <$> versionParser)
-                             (progDesc $ "Asks the Admin Server to take an immediate snapshot of "
-                               <> "the maintenance internal log."))
- <> command "mark-data-unrecoverable" (info (MaintenanceMarkDataUnrecoverable
-                                             <$> maintenanceMarkDataUnrecoverableOptsParser)
-                                      (progDesc $ "[DANGER] Marks all the UNAVAILABLE shards (stuck on DATA_MIGRATION "
-                                        <> "storage state) as unrecoverable. This will advice the readers to not"
-                                        <> " wait for data on these shards and issue data loss gaps if necessary."))
+    O.command "list" (info (MaintenanceListCmd <$> maintenanceListOptsParser)
+                       (progDesc "Prints compact list of maintenances applied to the cluster"))
+ <> O.command "show" (info (MaintenanceShowCmd <$> maintenanceShowOptsParser)
+                       (progDesc "Shows maintenances in expanded format with more information"))
+ <> O.command "apply" (info (MaintenanceApplyCmd <$> maintenanceApplyOptsParser)
+                        (progDesc "Applies new maintenance to Maintenance Manager"))
+ <> O.command "remove" (info (MaintenanceRemoveCmd <$> maintenanceRemoveOptsParser)
+                         (progDesc "Removes maintenances specified by filters."))
+ <> O.command "take-snapshot" (info (MaintenanceTakeSnapShot <$> versionParser)
+                                (progDesc $ "Asks the Admin Server to take an immediate snapshot of "
+                                         <> "the maintenance internal log."))
+ <> O.command "mark-data-unrecoverable"
+        (info (MaintenanceMarkDataUnrecoverable <$> maintenanceMarkDataUnrecoverableOptsParser)
+              (progDesc $ "[DANGER] Marks all the UNAVAILABLE shards (stuck on DATA_MIGRATION "
+                       <> "storage state) as unrecoverable. This will advice the readers to not"
+                       <> " wait for data on these shards and issue data loss gaps if necessary.")
+        )
 
 maintenanceMarkDataUnrecoverableOptsParser :: Parser MaintenanceMarkDataUnrecoverableOpts
 maintenanceMarkDataUnrecoverableOptsParser = MaintenanceMarkDataUnrecoverableOpts

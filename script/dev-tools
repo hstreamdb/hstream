@@ -327,7 +327,7 @@ def _service_store_(
         image=image,
         container_bin="docker",
         command="hadmin",
-        cmd_args=["status"],
+        cmd_args=["store", "status"],
     )
 
     port = get_ldadmin_server_port(container_bin)
