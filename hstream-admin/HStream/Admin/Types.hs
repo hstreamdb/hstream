@@ -37,11 +37,11 @@ data CliOpts = CliOpts
 
 cliOptsParser :: O.Parser CliOpts
 cliOptsParser = CliOpts
-        <$> O.strOption ( O.long "server-admin-host" <> O.metavar "SERVER-HOST"
+        <$> O.strOption ( O.long "host" <> O.metavar "SERVER-HOST"
                        <> O.showDefault <> O.value "127.0.0.1"
                        <> O.help "server host admin value"
                         )
-        <*> O.option O.auto ( O.long "server-admin-port" <> O.metavar "INT"
+        <*> O.option O.auto ( O.long "port" <> O.metavar "INT"
                            <> O.showDefault <> O.value 6570
                            <> O.help "server admin port value"
                             )

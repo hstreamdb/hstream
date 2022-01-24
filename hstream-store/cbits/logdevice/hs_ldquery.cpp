@@ -102,7 +102,8 @@ void ldquery_query(LDQuery* ldq, const char* query, size_t* results_len,
   }
 }
 
-void delete_query_results(LDQuery::QueryResults* rs) { delete rs; }
+// TODO: use common/cbits/query.cpp instead
+void delete_query_results_(LDQuery::QueryResults* rs) { delete rs; }
 
 #define GET_VEC_INDEX_VAL(FUN_NAME, FROM_TYPE, ELE_SIZE_FUN, ELE_DATA_FUN,     \
                           ELE_TYPE)                                            \
@@ -113,9 +114,9 @@ void delete_query_results(LDQuery::QueryResults* rs) { delete rs; }
     *ret_val = data.ELE_DATA_FUN();                                            \
   }
 
-GET_VEC_INDEX_VAL(queryResults__headers, LDQuery::QueryResults, headers.size,
+GET_VEC_INDEX_VAL(queryResults__headers_, LDQuery::QueryResults, headers.size,
                   headers.data, std::string)
-GET_VEC_INDEX_VAL(queryResults__cols_max_size, LDQuery::QueryResults,
+GET_VEC_INDEX_VAL(queryResults__cols_max_size_, LDQuery::QueryResults,
                   cols_max_size.size, cols_max_size.data, size_t)
 
 size_t queryResults_rows_len(LDQuery::QueryResults* datas, HsInt index) {
@@ -129,17 +130,17 @@ void queryResults_rows_val(LDQuery::QueryResults* datas, HsInt index, HsInt row,
   *row_val = data.data();
 }
 
-uint64_t queryResults__metadata_contacted_nodes(LDQuery::QueryResults* datas,
-                                                HsInt index) {
+uint64_t queryResults__metadata_contacted_nodes_(LDQuery::QueryResults* datas,
+                                                 HsInt index) {
   return (*datas)[index].metadata.contacted_nodes;
 }
 
-uint64_t queryResults__metadata_latency(LDQuery::QueryResults* datas,
-                                        HsInt index) {
+uint64_t queryResults__metadata_latency_(LDQuery::QueryResults* datas,
+                                         HsInt index) {
   return (*datas)[index].metadata.latency;
 }
 
-void queryResults__metadata_failures(
+void queryResults__metadata_failures_(
     LDQuery::QueryResults* datas, HsInt index,
     //
     size_t* len,

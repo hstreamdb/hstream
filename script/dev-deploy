@@ -401,7 +401,7 @@ class ZookeeperService(Service):
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
-    BOOTSTRAP_CMD = "hadmin nodes-config bootstrap --metadata-replicate-across "
+    BOOTSTRAP_CMD = "hadmin store nodes-config bootstrap --metadata-replicate-across "
     # TCP port on which the server listens to for admin commands, supports commands over SSL
     DEFAULT_ADMIN_API_PORT = 6440
     # TCP port on which the server listens for non-SSL clients
