@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	"net"
+	"strconv"
 
 	"log"
 	"net/http"
@@ -41,7 +42,46 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 		return
 	}
 
-	conn, err := grpc.Dial(*hpCtx.GRPCServerHost+":"+*hpCtx.GRPCServerPort,
+	var lookupServerHostPort string
+	{
+		conn, err := grpc.Dial(net.JoinHostPort(*hpCtx.GRPCServerHost, *hpCtx.GRPCServerPort),
+			grpc.WithInsecure())
+		if err != nil {
+			log.Printf("Error: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(fmt.Sprint(err)))
+			return
+		}
+		defer func(conn *grpc.ClientConn) {
+			if err := conn.Close(); err != nil {
+
+				log.Printf("Error: %v\n", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(fmt.Sprint(err)))
+				return
+			}
+		}(conn)
+		c := hstreamApi.NewHStreamApiClient(conn)
+
+		var lookupStreamResp *hstreamApi.LookupStreamResponse
+		{
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			lookupStreamResp, err = c.LookupStream(ctx, &hstreamApi.LookupStreamRequest{
+				StreamName:  pathParams["streamName"],
+				OrderingKey: in.Key,
+			})
+		}
+		if err != nil {
+			log.Printf("Error: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(fmt.Sprint(err)))
+			return
+		}
+		lookupServerHostPort = net.JoinHostPort(lookupStreamResp.ServerNode.Host, strconv.Itoa(int(lookupStreamResp.ServerNode.Port)))
+	}
+
+	conn, err := grpc.Dial(lookupServerHostPort,
 		grpc.WithInsecure())
 	if err != nil {
 		log.Printf("Error: %v\n", err)
