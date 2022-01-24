@@ -23,6 +23,13 @@ http:
       get: "/subscriptions/{subscriptionId}:check"
     - selector: hstream.server.HStreamApi.DeleteSubscription
       delete: "/subscriptions/{subscriptionId}"
+    - selector: hstream.server.HStreamApi.LookupSubscription
+      get: "/clusters/subscriptions/{subscriptionId}"
+    - selector: hstream.server.HStreamApi.LookupSubscriptionWithOrderingKey
+      get: "/clusters/subscriptions/{subscriptionId}/{orderingKey}"
+    - selector: hstream.server.HStreamApi.WatchSubscription
+      get: "/clusters/subscriptions/{subscriptionId}/watch/{consumerName}"
+
     - selector: hstream.server.HStreamApi.StreamingFetch
       post: "/subscriptions/fetch"
       body: "*"
@@ -93,5 +100,3 @@ http:
       get: "/clusters"
     - selector: hstream.server.HStreamApi.LookupStream
       get: "/clusters/streams/{streamName}"
-    - selector: hstream.server.HStreamApi.LookupSubscription
-      get: "/clusters/streams/{subscriptionId}"
