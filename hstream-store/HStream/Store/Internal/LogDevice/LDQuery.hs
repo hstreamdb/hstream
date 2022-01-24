@@ -216,13 +216,13 @@ foreign import ccall safe "hs_logdevice.h ldquery_query"
     -> Ptr CString
     -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h delete_query_results"
+foreign import ccall unsafe "hs_logdevice.h delete_query_results_"
   delete_query_results :: Ptr C_QueryResults -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h &delete_query_results"
+foreign import ccall unsafe "hs_logdevice.h &delete_query_results_"
   delete_query_results_fun :: FunPtr (Ptr C_QueryResults -> IO ())
 
-foreign import ccall unsafe "hs_logdevice.h queryResults__headers"
+foreign import ccall unsafe "hs_logdevice.h queryResults__headers_"
   queryResults__headers
     :: Ptr C_QueryResults
     -> Int
@@ -230,7 +230,7 @@ foreign import ccall unsafe "hs_logdevice.h queryResults__headers"
     -> MBA# (Ptr Z.StdString)
     -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h queryResults__cols_max_size"
+foreign import ccall unsafe "hs_logdevice.h queryResults__cols_max_size_"
   queryResults__cols_max_size
     :: Ptr C_QueryResults
     -> Int
@@ -248,13 +248,13 @@ foreign import ccall unsafe "hs_logdevice.h queryResults_rows_val"
     -> MBA# (Ptr Z.StdString)
     -> IO ()
 
-foreign import ccall unsafe "hs_logdevice.h queryResults__metadata_contacted_nodes"
+foreign import ccall unsafe "hs_logdevice.h queryResults__metadata_contacted_nodes_"
   queryResults__metadata_contacted_nodes :: Ptr C_QueryResults -> Int -> IO Word64
 
-foreign import ccall unsafe "hs_logdevice.h queryResults__metadata_latency"
+foreign import ccall unsafe "hs_logdevice.h queryResults__metadata_latency_"
   queryResults__metadata_latency :: Ptr C_QueryResults -> Int -> IO Word64
 
-foreign import ccall unsafe "hs_logdevice.h queryResults__metadata_failures"
+foreign import ccall unsafe "hs_logdevice.h queryResults__metadata_failures_"
   queryResults__metadata_failures
     :: Ptr C_QueryResults -> Int
     -> MBA# CSize
