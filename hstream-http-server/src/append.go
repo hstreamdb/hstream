@@ -19,6 +19,7 @@ import (
 type B64Payload struct {
 	Flag    hstreamApi.HStreamRecordHeader_Flag
 	Payload string `json:"payload"`
+	Key     string `json:"key"`
 }
 
 func DecodeHandler(mux *runtime.ServeMux, hpCtx *HostPortCtx) func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
@@ -62,7 +63,7 @@ func decodeHandlerWith(mux *runtime.ServeMux, hpCtx *HostPortCtx, w http.Respons
 	defer cancel()
 	resp, err := c.Append(ctx, &hstreamApi.AppendRequest{
 		StreamName: pathParams["streamName"],
-		Records:    []*hstreamApi.HStreamRecord{buildRecord(in.Flag, []byte(in.Payload))},
+		Records:    []*hstreamApi.HStreamRecord{buildRecord(in.Flag, in.Key, []byte(in.Payload))},
 	})
 	if err != nil {
 		log.Printf("Error: %v\n", err)
