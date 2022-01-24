@@ -47,6 +47,6 @@ instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepT
     ms <- forM sIds (`getObject` zk)
     return $ Map.fromList $ second fromJust <$> filter (\(_,x) -> isJust x) (sIds `zip` ms)
 
-  removeObject objId zk = tryDeletePath zk $ mkSubscriptionPath objId
+  removeObject objId zk = deletePath zk $ mkSubscriptionPath objId
 
   removeAllObjects zk = tryDeleteAllPath zk subscriptionsPath

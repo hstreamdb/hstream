@@ -26,28 +26,23 @@ where
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (concurrently_)
-import           Control.Exception                (Exception, SomeException,
-                                                   displayException,
-                                                   onException, throwIO, try)
-import           Control.Monad                    (forM_, unless, when,
-                                                   zipWithM)
-import qualified Data.ByteString.Char8            as BS
+import           Control.Exception                (Exception, onException,
+                                                   throwIO, try)
+import           Control.Monad                    (forM_, unless)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (modifyIORef', newIORef,
-                                                   readIORef, writeIORef)
+                                                   readIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (catMaybes, fromJust)
+import           Data.Maybe                       (fromJust)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
-import           Data.Text.Encoding               (encodeUtf8)
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64, Word8)
 import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                     (Enumerated (..))
 import           Z.Data.Vector                    (Bytes)
 import qualified Z.Data.Vector                    as ZV
 import           Z.Foreign                        (toByteString)
@@ -57,23 +52,24 @@ import           ZooKeeper.Types                  (ZHandle)
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception         (ConsumerExist (..),
-                                                   SubscriptionIdNotFound (..),
-                                                   defaultBiDiStreamExceptionHandle,
+import qualified HStream.Server.Core.Subscription as Core
+import           HStream.Server.Exception         (SubscriptionIdNotFound (..),
+                                                   SubscriptionWatchOnDifferentNode (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.Persistence       (ObjRepType (..),
+                                                   checkIfExist,
                                                    mkPartitionKeysPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (cBytesToText, returnErrResp,
-                                                   returnResp, textToCBytes)
+import           HStream.Utils                    (cBytesToText, returnResp,
+                                                   textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -81,59 +77,25 @@ createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata subscription@Subscription {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive createSubscription request: " <> Log.buildString (show subscription)
-
-  let streamName = transToStreamName subscriptionStreamName
-  streamExists <- S.doesStreamExist scLDClient streamName
-  if not streamExists
-    then do
-      Log.debug $ "Try to create a subscription to a nonexistent stream"
-               <> "Stream Name: "
-               <> Log.buildString (show streamName)
-      returnErrResp StatusFailedPrecondition . StatusDetails $ "stream " <> encodeUtf8 subscriptionStreamName <> " not exist"
-    else do
-      P.checkIfExist @ZHandle @'SubRep
-        subscriptionSubscriptionId zkHandle >>= \case
-        True  -> returnErrResp StatusAlreadyExists . StatusDetails $ "Subsctiption "
-                                                                  <> encodeUtf8 subscriptionSubscriptionId
-                                                                  <> " already exists"
-        False -> do
-          P.storeObject subscriptionSubscriptionId subscription zkHandle
-          returnResp subscription
+createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExceptionHandle $ do
+  Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
+  Core.createSubscription ctx sub
+  returnResp sub
 
 deleteSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteSubscriptionHandler ServerContext {..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest {..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString (show req)
-
-
-  withMVar scSubscribeRuntimeInfo
-    (
-      \subMap -> return $ HM.lookup deleteSubscriptionRequestSubscriptionId subMap
-    ) >>= \case
-      Nothing -> removeSubscription >> returnResp Empty
-      Just sub@SubscribeRuntimeInfo {..} ->
-        withMVar sriWatchContext
-          (
-            \ctx@WatchContext {..} -> do
-              if HM.null wcWatchStopSignals && Set.null wcWorkingConsumers
-              then return Nothing
-              else return $ Just ()
-          ) >>= \case
-            Nothing -> removeSubscription >> returnResp Empty
-            Just _ -> returnErrResp StatusFailedPrecondition . StatusDetails $ "subscription is active"
-  where
-    removeSubscription = do
-      modifyMVar_ scSubscribeRuntimeInfo
-        (
-          \subMap -> return $ HM.delete deleteSubscriptionRequestSubscriptionId subMap
-        )
-      -- remove sub from zk
-      P.removeObject @ZHandle @'SubRep
-        deleteSubscriptionRequestSubscriptionId zkHandle
+deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
+  { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
+  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
+  exists <- checkIfExist @ZHandle @'SubRep subId zkHandle
+  unless exists $ throwIO (SubscriptionIdNotFound subId)
+  hr <- readMVar loadBalanceHashRing
+  unless (serverNodeId (getAllocatedNode hr subId) == serverID) $
+    throwIO SubscriptionWatchOnDifferentNode
+  Core.deleteSubscription ctx subId
+  returnResp Empty
 
 checkSubscriptionExistHandler
   :: ServerContext
@@ -875,16 +837,3 @@ data SubscribeInnerError = GRPCStreamRecvError
                              | ConsumerInValidError
   deriving (Show)
 instance Exception SubscribeInnerError
-
-
-
-
-
-
-
-
-
-
-
-
-
