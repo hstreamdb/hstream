@@ -42,6 +42,10 @@ mkExceptionHandle retFun cleanFun = flip catches [
     retFun StatusAlreadyExists "Stream already exists"),
   Handler (\(_ :: ObjectNotExist) ->
     retFun StatusNotFound "Object not found"),
+  Handler (\(_ :: SubscriptionWatchOnDifferentNode) ->
+    retFun StatusAborted "Subscription is bound to a different node"),
+  Handler (\(_ :: FoundActiveConsumers) ->
+    retFun StatusAborted "Subscription still has active consumers"),
   Handler (\(err :: Store.SomeHStoreException) -> do
     cleanFun
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
@@ -126,3 +130,18 @@ instance Exception ConnectorNotExist
 newtype ConsumerExist = ConsumerExist Text
   deriving (Show)
 instance Exception ConsumerExist
+
+data SubscribeInnerError = GRPCStreamRecvError
+                             | GRPCStreamRecvCloseError
+                             | GRPCStreamSendError
+                             | ConsumerInValidError
+  deriving (Show)
+instance Exception SubscribeInnerError
+
+data FoundActiveConsumers = FoundActiveConsumers
+  deriving (Show)
+instance Exception FoundActiveConsumers
+
+data SubscriptionWatchOnDifferentNode = SubscriptionWatchOnDifferentNode
+  deriving (Show)
+instance Exception SubscriptionWatchOnDifferentNode

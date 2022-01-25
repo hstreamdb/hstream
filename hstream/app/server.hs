@@ -48,6 +48,8 @@ app config@ServerOpts{..} = do
 serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
 serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
+  -- FIXME: now every server should be responsible for monitor zk partition path periodically,
+  -- even no subscription req will redirect to current server. This is probably not a good idea
   void . forkIO $ forever $ do
     threadDelay 2000000
     routineForSubs sc

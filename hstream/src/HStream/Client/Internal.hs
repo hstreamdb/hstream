@@ -16,7 +16,6 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                     (Enumerated (Enumerated))
 
 import           HStream.Client.Execute           (executeWithAddr_)
 import           HStream.Client.Gadget

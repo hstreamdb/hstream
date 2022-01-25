@@ -6,7 +6,7 @@
 
 module HStream.Server.Types where
 
-import           Control.Concurrent               (MVar, ThreadId)
+import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
@@ -14,7 +14,6 @@ import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
@@ -133,15 +132,36 @@ data WatchContext = WatchContext {
   , wcWatchStopSignals :: HM.HashMap ConsumerName (MVar ())
 }
 
+addNewConsumerToCtx :: WatchContext -> ConsumerName -> StreamSend WatchSubscriptionResponse -> IO(WatchContext, MVar ())
+addNewConsumerToCtx ctx@WatchContext{..} name streamSend = do
+  stopSignal <- newEmptyMVar
+  let signals = HM.insert name stopSignal wcWatchStopSignals
+  let consumerWatch = mkConsumerWatch name streamSend
+  let newCtx = ctx
+        { wcWaitingConsumers = wcWaitingConsumers ++ [consumerWatch]
+        , wcWatchStopSignals = signals
+        }
+  return (newCtx, stopSignal)
+
+removeConsumerFromCtx :: WatchContext -> ConsumerName -> IO WatchContext
+removeConsumerFromCtx ctx@WatchContext{..} name =
+  return ctx {wcWatchStopSignals = HM.delete name wcWatchStopSignals}
+
 data ConsumerWatch = ConsumerWatch {
     cwConsumerName :: ConsumerName
   , cwWatchStream  :: StreamSend WatchSubscriptionResponse
 }
 
+mkConsumerWatch :: ConsumerName -> StreamSend WatchSubscriptionResponse -> ConsumerWatch
+mkConsumerWatch = ConsumerWatch
+
 data ConsumerWorkload = ConsumerWorkload {
     cwConsumerWatch :: ConsumerWatch
   , cwShards        :: Set.Set OrderingKey
 }
+
+mkConsumerWorkload :: ConsumerWatch -> Set.Set OrderingKey -> ConsumerWorkload
+mkConsumerWorkload = ConsumerWorkload
 
 instance Eq ConsumerWorkload where
   (==) w1 w2 = Set.size (cwShards w1) == Set.size (cwShards w2)
