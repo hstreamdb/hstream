@@ -7,16 +7,17 @@ module HStream.Server.Core.Stream
   , appendStream
   ) where
 
+import           Control.Exception                (Handler (..), catches,
+                                                   throwIO)
 import qualified Data.ByteString                  as BS
 import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromMaybe)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
+import           ZooKeeper                        (zooExists)
 
-import           Control.Exception                (Handler (..), catches,
-                                                   throwIO)
-import           Data.Maybe                       (fromMaybe)
 import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Server.Core.Common       (deleteStoreStream)
 import           HStream.Server.Exception         (StreamNotExist (..))
@@ -28,7 +29,6 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
-import           ZooKeeper                        (zooExists)
 
 -------------------------------------------------------------------------------
 
