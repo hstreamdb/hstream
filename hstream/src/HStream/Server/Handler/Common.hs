@@ -23,7 +23,6 @@ import           Data.IORef                       (atomicModifyIORef')
 import           Data.Int                         (Int64)
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)

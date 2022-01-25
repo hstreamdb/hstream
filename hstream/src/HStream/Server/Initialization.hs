@@ -12,7 +12,6 @@ import           Control.Exception                (SomeException, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
-import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
@@ -22,7 +21,7 @@ import qualified Z.Data.CBytes                    as CB
 import           Z.Foreign                        (toByteString)
 import           ZooKeeper                        (zooCreateOpInit,
                                                    zooGetChildren, zooMulti,
-                                                   zooSet, zooSetOpInit)
+                                                   zooSetOpInit)
 import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types
 
@@ -34,8 +33,7 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    encodeValueToBytes,
                                                    getServerNode',
                                                    serverRootLockPath,
-                                                   serverRootPath,
-                                                   tryGetChildren)
+                                                   serverRootPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
 import           HStream.Store                    (HsLogAttrs (..),
@@ -62,13 +60,13 @@ initNodePath zk serverID host port port' = do
   uniq <- newUnique
   void $ Recipe.withLock zk serverRootLockPath (CB.pack . show . hashUnique $ uniq) $ do
     serverStatusMap <- decodeZNodeValue zk serverRootPath
-    let nodeStatus = ServerNodeStatus {
-            serverNodeStatusState = mkEnumerated NodeStateRunning
-          , serverNodeStatusNode  = Just ServerNode {
-              serverNodeId = serverID
-            , serverNodeHost = host
-            , serverNodePort = port
-          }
+    let nodeStatus = ServerNodeStatus
+          { serverNodeStatusState = mkEnumerated NodeStateRunning
+          , serverNodeStatusNode  = Just ServerNode
+              { serverNodeId = serverID
+              , serverNodeHost = host
+              , serverNodePort = port
+              }
           }
     let val = case serverStatusMap of
           Just hmap -> HM.insert serverID nodeStatus hmap
@@ -124,7 +122,7 @@ initializeServer ServerOpts{..} zk = do
     , scDefaultStreamRepFactor = _topicRepFactor
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
-    , scSubscribeRuntimeInfo     = subscribeRuntimeInfo
+    , scSubscribeRuntimeInfo   = subscribeRuntimeInfo
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder
@@ -139,5 +137,3 @@ initializeHashRing zk = do
     zooGetChildren zk serverRootPath
   serverNodes <- mapM (getServerNode' zk) children
   newMVar . constructHashRing . sort $ serverNodes
-
---------------------------------------------------------------------------------
