@@ -19,7 +19,7 @@ import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
 import qualified Z.Data.CBytes                    as CB
 
-import qualified HStream.Admin.Types              as AT
+import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC

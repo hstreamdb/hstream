@@ -22,6 +22,7 @@ import qualified Z.Data.CBytes                    as CB
 import           Z.IO.Network                     (PortNumber)
 import           ZooKeeper.Types                  (ZHandle)
 
+import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (RecordId (..),
@@ -30,7 +31,6 @@ import           HStream.Server.HStreamApi        (RecordId (..),
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
-import qualified HStream.Store.Admin.API          as AA
 import qualified HStream.Store.Logger             as Log
 
 protocolVersion :: T.Text
