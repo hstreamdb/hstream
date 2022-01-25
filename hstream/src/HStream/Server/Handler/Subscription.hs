@@ -28,7 +28,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (concurrently_)
 import           Control.Exception                (Exception, onException,
                                                    throwIO, try)
-import           Control.Monad                    (forM_, unless)
+import           Control.Monad                    (forM_)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -49,19 +49,16 @@ import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (SubscriptionIdNotFound (..),
-                                                   SubscriptionWatchOnDifferentNode (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.Persistence       (ObjRepType (..),
-                                                   checkIfExist,
                                                    mkPartitionKeysPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
@@ -89,11 +86,6 @@ deleteSubscriptionHandler
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
   { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
-  exists <- checkIfExist @ZHandle @'SubRep subId zkHandle
-  unless exists $ throwIO (SubscriptionIdNotFound subId)
-  hr <- readMVar loadBalanceHashRing
-  unless (serverNodeId (getAllocatedNode hr subId) == serverID) $
-    throwIO SubscriptionWatchOnDifferentNode
   Core.deleteSubscription ctx subId
   returnResp Empty
 
@@ -111,9 +103,9 @@ listSubscriptionsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
-listSubscriptionsHandler ServerContext {..} (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
+listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
-  res <- ListSubscriptionsResponse . V.fromList . Map.elems <$> P.listObjects zkHandle
+  res <- ListSubscriptionsResponse <$> Core.listSubscriptions sc
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
 

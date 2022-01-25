@@ -1,5 +1,6 @@
 module HStream.Admin.Command
   ( withAdminClient
+  , withAdminClient'
   , sendAdminCommand
   , sendAdminCommand'
   , formatCommandResponse
@@ -8,6 +9,7 @@ module HStream.Admin.Command
 
 import           Control.Monad                    ((<=<))
 import qualified Data.Aeson                       as Aeson
+import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HMap
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -16,6 +18,7 @@ import qualified Data.Text.Encoding               as Text
 import qualified Data.Vector                      as V
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Network.Socket                   (PortNumber)
 import qualified Z.Data.CBytes                    as CBytes
 import qualified Z.Foreign                        as Z
 
@@ -91,13 +94,21 @@ withAdminClient
   :: CliOpts
   -> (U.HStreamClientApi -> IO a)
   -> IO a
-withAdminClient CliOpts{..} f = withGRPCClient clientConfig (f <=< API.hstreamApiClient)
+withAdminClient CliOpts{..} = withAdminClient' host port
   where
     host = Z.toByteString . CBytes.toBytes $ optServerHost
     port = fromIntegral optServerPort
-    clientConfig =
+
+withAdminClient'
+  :: ByteString
+  -> PortNumber
+  -> (U.HStreamClientApi -> IO a)
+  -> IO a
+withAdminClient' host port f = withGRPCClient config (f <=< API.hstreamApiClient)
+  where
+    config =
       GRPC.ClientConfig { clientServerHost = GRPC.Host host
-                        , clientServerPort = GRPC.Port port
+                        , clientServerPort = GRPC.Port (fromIntegral port)
                         , clientArgs = []
                         , clientSSLConfig = Nothing
                         , clientAuthority = Nothing

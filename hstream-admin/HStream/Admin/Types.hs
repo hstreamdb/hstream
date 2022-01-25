@@ -2,6 +2,7 @@ module HStream.Admin.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                as Aeson
+import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
@@ -87,6 +88,7 @@ logLevelParser =
 data AdminCommand
   = AdminStatsCommand StatsCommand
   | AdminStreamCommand StreamCommand
+  | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminStatusCommand
   deriving (Show)
@@ -95,9 +97,12 @@ adminCommandParser :: O.Parser AdminCommand
 adminCommandParser = O.hsubparser
   ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser) (O.progDesc "Get the stats of an operation on a stream"))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser) (O.progDesc "Stream command"))
+ <> O.command "sub" (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser) (O.progDesc "Subscription command"))
  <> O.command "view" (O.info (AdminViewCommand <$> viewCmdParser) (O.progDesc "View command"))
  <> O.command "status" (O.info (pure AdminStatusCommand) (O.progDesc "Get the status of the HServer cluster"))
   )
+
+-------------------------------------------------------------------------------
 
 data StreamCommand
   = StreamCmdList
@@ -124,6 +129,29 @@ streamParser = API.Stream
                      <> O.help "replication-factor"
                       )
 
+-------------------------------------------------------------------------------
+
+-- TODO:
+-- SubscriptionWatchOnDifferentNode is not handled for delete command
+data SubscriptionCommand
+  = SubscriptionCmdList
+  | SubscriptionCmdDelete Text
+  deriving (Show)
+
+subscriptionCmdParser :: O.Parser SubscriptionCommand
+subscriptionCmdParser = O.subparser
+  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subDelReqParser)
+                               (O.progDesc "delte a stream (Warning: incomplete implementation)")
+                       )
+  )
+
+subDelReqParser :: O.Parser Text
+subDelReqParser = O.strOption
+  ( O.long "id" <> O.metavar "SubID" <> O.help "subscription id" )
+
+-------------------------------------------------------------------------------
+
 data ViewCommand
   = ViewCmdList
   deriving (Show)
@@ -132,6 +160,8 @@ viewCmdParser :: O.Parser ViewCommand
 viewCmdParser = O.subparser
   ( O.command "list" (O.info (pure ViewCmdList) (O.progDesc "Get all views"))
   )
+
+-------------------------------------------------------------------------------
 
 data StatsCommand = StatsCommand
   { statsType      :: CBytes

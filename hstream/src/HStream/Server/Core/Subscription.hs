@@ -2,21 +2,31 @@
 {-# LANGUAGE TypeApplications #-}
 module HStream.Server.Core.Subscription where
 
-import           Control.Concurrent         (modifyMVar_, withMVar)
-import           Control.Exception          (throwIO)
-import           Control.Monad              (unless)
-import qualified Data.HashMap.Strict        as HM
-import           Data.Text                  (Text)
-import           ZooKeeper.Types            (ZHandle)
+import           Control.Concurrent               (modifyMVar_, readMVar,
+                                                   withMVar)
+import           Control.Exception                (throwIO)
+import           Control.Monad                    (unless)
+import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map.Strict                  as Map
+import qualified Data.Set                         as Set
+import           Data.Text                        (Text)
+import qualified Data.Vector                      as V
+import           ZooKeeper.Types                  (ZHandle)
 
-import qualified Data.Set                   as Set
-import           HStream.Connector.HStore   (transToStreamName)
-import qualified HStream.Logger             as Log
+import           HStream.Common.ConsistentHashing (getAllocatedNode)
+import           HStream.Connector.HStore         (transToStreamName)
+import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence as P
+import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import qualified HStream.Store              as S
+import qualified HStream.Store                    as S
+
+--------------------------------------------------------------------------------
+
+listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
+listSubscriptions ServerContext{..} =
+  V.fromList . Map.elems <$> P.listObjects zkHandle
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
@@ -30,6 +40,9 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
 
 deleteSubscription :: ServerContext -> Text -> IO ()
 deleteSubscription ServerContext {..} subId = do
+  hr <- readMVar loadBalanceHashRing
+  unless (serverNodeId (getAllocatedNode hr subId) == serverID) $
+    throwIO SubscriptionWatchOnDifferentNode
   mInfo <- withMVar scSubscribeRuntimeInfo (return . HM.lookup subId)
   case mInfo of
     Just SubscribeRuntimeInfo {..} ->

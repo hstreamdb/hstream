@@ -77,7 +77,7 @@ library
     , haskeline             ^>=0.8.1
     , hstream-common
     , hstream-store
-    , network               ^>=3.1.0
+    , network               ^>=3.1.2
     , optparse-applicative  ^>=0.16
     , STMonadTrans
     , table-layout          ^>=0.9.1
@@ -121,22 +121,22 @@ executable hadmin
   main-is:            admin.hs
   hs-source-dirs:     app
   build-depends:
-    , base                  >=4.13 && <5
+    , base                  >=4.13  && <5
     , bytestring            ^>=0.10
     , containers            ^>=0.6
-    , ghc-prim              >=0.5  && <1.0
+    , ghc-prim              >=0.5   && <1.0
     , grpc-haskell
     , grpc-haskell-core
     , haskeline
     , hstream-admin
     , hstream-common
     , hstream-store
-    , network
+    , network               ^>=3.1.2
     , optparse-applicative
     , primitive             ^>=0.7
     , random                ^>=1.2
     , text
-    , time                  >=1.9  && <2.0
+    , time                  >=1.9   && <2.0
     , unix
     , vector
     , Z-Data

@@ -3,6 +3,7 @@
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
 
+import           Control.Monad                    (forM)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.HashMap.Strict              as HM
@@ -18,11 +19,11 @@ import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
 import qualified Z.Data.CBytes                    as CB
 
-import           Control.Monad                    (forM)
 import qualified HStream.Admin.Types              as AT
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
-import qualified HStream.Server.Core.View         as CoreView
+import qualified HStream.Server.Core.Subscription as HC
+import qualified HStream.Server.Core.View         as HC
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (getClusterStatus)
@@ -36,10 +37,13 @@ import           HStream.Utils                    (formatStatus, interval2ms,
 
 -- we only need the 'Command' in 'Cli'
 parseAdminCommand :: [String] -> IO AT.AdminCommand
-parseAdminCommand args = extractAdminCmd . AT.command =<< execParser
+parseAdminCommand [] = err' "" "Empty args"
+-- ["server", "--port", ...]
+-- TODO: assert _cmd == "server"
+parseAdminCommand (_cmd:args) = extractAdminCmd . AT.command =<< execParser
   where
     extractAdminCmd (AT.ServerAdminCmd cmd) = return cmd
-    extractAdminCmd _ = err "Only admin commands are accepted"
+    extractAdminCmd _ = throwParsingErr "Only admin commands are accepted"
     execParser = handleParseResult $ O.execParserPure O.defaultPrefs cliInfo args
     cliInfo = O.info AT.cliParser (O.progDesc "The parser to use for admin commands")
 
@@ -54,10 +58,11 @@ adminCommandHandler sc req = defaultExceptionHandle $ do
   let args = words (T.unpack cmd)
   adminCommand <- parseAdminCommand args
   result <- case adminCommand of
-              AT.AdminStatsCommand c  -> runStats sc c
-              AT.AdminStreamCommand c -> runStream sc c
-              AT.AdminViewCommand c   -> runView sc c
-              AT.AdminStatusCommand   -> runStatus sc
+              AT.AdminStatsCommand c        -> runStats sc c
+              AT.AdminStreamCommand c       -> runStream sc c
+              AT.AdminSubscriptionCommand c -> runSubscription sc c
+              AT.AdminViewCommand c         -> runView sc c
+              AT.AdminStatusCommand         -> runStatus sc
   returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
@@ -65,8 +70,8 @@ handleParseResult (O.Success a) = return a
 handleParseResult (O.Failure failure) = do
   let (h, _exit, _cols) = O.execFailure failure ""
       errmsg = (O.displayS . O.renderCompact . O.extractChunk $ O.helpError h) ""
-  err errmsg
-handleParseResult (O.CompletionInvoked compl) = err =<< O.execCompletion compl ""
+  throwParsingErr errmsg
+handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execCompletion compl ""
 
 -------------------------------------------------------------------------------
 -- Admin Stats Command
@@ -98,12 +103,30 @@ runStream ctx (AT.StreamCmdCreate stream) = do
   return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------
--- Admin Stream Command
+-- Subscription Command
+
+runSubscription :: ServerContext -> AT.SubscriptionCommand -> IO Text
+runSubscription ctx AT.SubscriptionCmdList = do
+  let headers = ["id" :: Text, "stream_name", "timeout"]
+  subs <- HC.listSubscriptions ctx
+  rows <- V.forM subs $ \sub -> do
+    return [ API.subscriptionSubscriptionId sub
+           , API.subscriptionStreamName sub
+           , T.pack . show $ API.subscriptionAckTimeoutSeconds sub
+           ]
+  let content = Aeson.object ["headers" .= headers, "rows" .= rows]
+  return $ tableResponse content
+runSubscription ctx (AT.SubscriptionCmdDelete subid) = do
+  HC.deleteSubscription ctx subid
+  return $ plainResponse "OK"
+
+-------------------------------------------------------------------------------
+-- Admin View Command
 
 runView :: ServerContext -> AT.ViewCommand -> IO Text
 runView serverContext AT.ViewCmdList = do
   let headers = ["id" :: Text, "status", "createdTime"]
-  views <- CoreView.listViews serverContext
+  views <- HC.listViews serverContext
   rows <- forM views $ \view -> do
     return [ API.viewViewId view
            , T.pack . formatStatus . API.viewStatus $ view
@@ -142,10 +165,11 @@ tableResponse = jsonEncode' . AT.AdminCommandResponse AT.CommandResponseTypeTabl
 plainResponse :: Text -> Text
 plainResponse = jsonEncode' . AT.AdminCommandResponse AT.CommandResponseTypePlain
 
-err :: String -> IO a
-err errmsg =
-  let errloc = "Parsing admin command error"
-   in E.ioError $ E.IOError Nothing E.InvalidArgument errloc errmsg Nothing Nothing
+throwParsingErr :: String -> IO a
+throwParsingErr = err' "Parsing admin command error"
+
+err' :: String -> String -> IO a
+err' errloc errmsg = E.ioError $ E.IOError Nothing E.InvalidArgument errloc errmsg Nothing Nothing
 
 jsonEncode :: Aeson.Value -> Text
 jsonEncode = TL.toStrict . TL.decodeUtf8 . Aeson.encode
