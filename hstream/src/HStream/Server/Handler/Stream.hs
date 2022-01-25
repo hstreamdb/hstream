@@ -36,7 +36,6 @@ import           Z.IO.Exception                   (throwIO)
 import           ZooKeeper                        (zooExists)
 
 --------------------------------------------------------------------------------
--- TODO: use 'HStream.Server.Core.Stream'
 
 createStreamHandler
   :: ServerContext
@@ -124,7 +123,7 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
                      Just key -> appendRequestStreamName <> key
-                     Nothing  -> appendRequestStreamName <> "__default__"
+                     Nothing  -> appendRequestStreamName
   if shouldBeServedByThisServer hashRing serverID identifier
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusInvalidArgument "Send appendRequest to wrong Server."
