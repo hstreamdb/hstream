@@ -123,7 +123,7 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
                      Just key -> appendRequestStreamName <> key
-                     Nothing  -> appendRequestStreamName
+                     Nothing  -> appendRequestStreamName <> "__default__"
   if shouldBeServedByThisServer hashRing serverID identifier
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusInvalidArgument "Send appendRequest to wrong Server."
