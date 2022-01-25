@@ -147,6 +147,7 @@ test-suite hstream-common-test
   main-is:            Spec.hs
   hs-source-dirs:     test
   other-modules:
+    HStream.ConsistentHashingSpec
     HStream.StatsSpec
     HStream.UtilsSpec
 
