@@ -1,8 +1,8 @@
-module HStream.Store.Admin.Command.Connect
+module HStream.Admin.Store.Command.Connect
   ( connect
   ) where
 
-import qualified HStream.Store.Admin.API as AA
+import qualified HStream.Admin.Store.API as AA
 
 -- TODO
 -- Start a local proxy server to cache connection to admin server

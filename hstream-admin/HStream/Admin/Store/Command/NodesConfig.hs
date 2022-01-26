@@ -1,4 +1,4 @@
-module HStream.Store.Admin.Command.NodesConfig
+module HStream.Admin.Store.Command.NodesConfig
   ( runNodesConfigCmd
   , showConfig
   , bootstrap
@@ -18,8 +18,8 @@ import           Z.Foreign                 (fromByteString, toByteString)
 import           Z.IO.FileSystem           as ZFS
 
 import           Common.Types              (NodeID (NodeID))
-import qualified HStream.Store.Admin.API   as AA
-import           HStream.Store.Admin.Types
+import qualified HStream.Admin.Store.API   as AA
+import           HStream.Admin.Store.Types
 import           Thrift.Protocol.JSON      (deserializeJSON)
 
 runNodesConfigCmd :: AA.HeaderConfig AA.AdminAPI -> NodesConfigOpts -> IO ()

@@ -1,4 +1,4 @@
-module HStream.Store.Admin.Command.Status
+module HStream.Admin.Store.Command.Status
   ( runStatus
   ) where
 
@@ -11,8 +11,8 @@ import qualified Data.Text                 as Text
 import qualified Data.Text.Encoding        as Text
 import           Data.Time.Clock.POSIX     (POSIXTime, getPOSIXTime)
 
-import qualified HStream.Store.Admin.API   as AA
-import           HStream.Store.Admin.Types
+import qualified HStream.Admin.Store.API   as AA
+import           HStream.Admin.Store.Types
 import           HStream.Utils             (approxNaturalTime,
                                             defaultShowTableIO')
 

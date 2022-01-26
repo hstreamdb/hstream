@@ -25,6 +25,7 @@ import           ZooKeeper                        (zooCreateOpInit,
 import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types
 
+import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
@@ -40,7 +41,6 @@ import           HStream.Store                    (HsLogAttrs (..),
                                                    LogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
-import qualified HStream.Store.Admin.API          as AA
 import           HStream.Utils
 
 {-

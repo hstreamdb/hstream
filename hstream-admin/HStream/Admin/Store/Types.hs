@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module HStream.Store.Admin.Types where
+module HStream.Admin.Store.Types where
 
 import qualified Control.Exception        as E
 import           Control.Monad
@@ -23,9 +23,9 @@ import qualified Z.Data.Text              as T
 import           Z.Data.Vector            (Bytes)
 import qualified Z.Data.Vector            as V
 
+import qualified HStream.Admin.Store.API  as AA
 import qualified HStream.Logger           as Log
 import qualified HStream.Store            as S
-import qualified HStream.Store.Admin.API  as AA
 import           HStream.Utils            (withoutPrefix)
 
 -------------------------------------------------------------------------------
