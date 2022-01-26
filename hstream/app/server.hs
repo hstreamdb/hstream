@@ -5,29 +5,25 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent               (MVar, forkIO, modifyMVar_)
+import           Control.Concurrent               (forkIO)
 import           Control.Monad                    (void)
-import           Data.List                        (sort)
 import qualified Data.Text                        as T
 import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Text.RawString.QQ                (r)
 import           ZooKeeper                        (withResource,
-                                                   zooWatchGetChildren,
                                                    zookeeperResInit)
-import           ZooKeeper.Types
 
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (hstreamApiServer)
 import           HStream.Server.Initialization    (initNodePath,
                                                    initializeServer)
-import           HStream.Server.Persistence       (getServerNode',
-                                                   initializeAncestors,
-                                                   serverRootPath)
+import           HStream.Server.LoadBalance       (actionTriggeredByServerNodeChange)
+import           HStream.Server.Persistence       (initializeAncestors)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerOpts (..))
 import qualified HStream.Store.Logger             as Log
@@ -57,8 +53,8 @@ app config@ServerOpts{..} = do
     serve grpcOpts serverContext
 
 serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
-serve options sc@ServerContext{..} = do
-  void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
+serve options sc = do
+  void . forkIO $ actionTriggeredByServerNodeChange sc
   -- GRPC service
   Log.i "************************"
   putStrLn [r|
@@ -71,18 +67,3 @@ serve options sc@ServerContext{..} = do
   Log.i "*************************"
   api <- handlers sc
   hstreamApiServer api options
-
---------------------------------------------------------------------------------
-
--- However, reconstruct hashRing every time can be expensive
--- when we have a large number of nodes in the cluster.
--- TODO: Instead of reconstruction, we should use the operation insert/delete.
-updateHashRing :: ZHandle -> MVar HashRing -> IO ()
-updateHashRing zk mhr = zooWatchGetChildren zk serverRootPath callback action
-  where
-    callback HsWatcherCtx{..} = updateHashRing watcherCtxZHandle mhr
-
-    action (StringsCompletion (StringVector children)) = do
-      modifyMVar_ mhr $ \_ -> do
-        serverNodes <- mapM (getServerNode' zk) children
-        pure $ constructServerMap . sort $ serverNodes

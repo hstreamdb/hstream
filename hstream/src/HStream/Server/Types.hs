@@ -102,7 +102,9 @@ data SubscribeContext = SubscribeContext
     subLdReader          :: MVar HS.LDReader,
     subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
-    subAssignment        :: Assignment
+    subAssignment        :: Assignment,
+    subLock              :: CBytes
+
   }
 
 data ConsumerContext = ConsumerContext

@@ -41,9 +41,12 @@ import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
 import           Z.Data.Vector                    (Bytes)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
+import qualified ZooKeeper.Recipe                 as ZK
 import           ZooKeeper.Types                  (ZHandle)
 
+import           Control.Monad.IO.Class           (MonadIO (liftIO))
 import           Data.Text.Encoding               (encodeUtf8)
+import           Data.Unique                      (hashUnique, newUnique)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
@@ -60,13 +63,16 @@ import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    insertAckedRecordId,
                                                    removeSubFromStreamPath)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (ObjRepType (..))
+import           HStream.Server.Persistence       (ObjRepType (..),
+                                                   mkSubLockPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (decodeBatch, mkServerErrResp,
-                                                   returnResp, textToCBytes)
+import           HStream.Utils                    (decodeBatch,
+                                                   integralToCBytes,
+                                                   mkServerErrResp, returnResp,
+                                                   textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -161,7 +167,9 @@ initSub serverCtx@ServerContext {..} subId = do
     subMap <- readTVar scSubscribeContexts
     case HM.lookup subId subMap of
       Nothing -> do
-        wrapper <- SubscribeContextNewWrapper <$> newTVar SubscribeStateNew <*> newEmptyTMVar
+        scnwState <- newTVar SubscribeStateNew
+        scnwContext <- newEmptyTMVar
+        let wrapper = SubscribeContextNewWrapper {..}
         let newSubMap = HM.insert subId wrapper subMap
         writeTVar scSubscribeContexts newSubMap
         return (True, wrapper)
@@ -193,11 +201,14 @@ doSubInit ctx@ServerContext{..} subId = do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
       throwIO $ SubscriptionIdNotFound subId
     Just Subscription {..} -> do
+      uniq <- liftIO newUnique
+      lockPath <- liftIO $ ZK.lock zkHandle (mkSubLockPath (textToCBytes subId)) (integralToCBytes . hashUnique $ uniq)
       let readerName = textToCBytes subId
       -- Notice: doc this. shard count can not larger than this.
       let maxReadLogs = 1000
       -- see: https://logdevice.io/api/classfacebook_1_1logdevice_1_1_client.html#a797d6ebcb95ace4b95a198a293215103
       let ldReaderBufferSize = 10
+
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize) 5
@@ -220,7 +231,8 @@ doSubInit ctx@ServerContext{..} subId = do
                 subLdReader = ldReader,
                 subConsumerContexts = consumerContexts,
                 subShardContexts = shardContexts,
-                subAssignment = assignment
+                subAssignment = assignment,
+                subLock = lockPath
               }
       shards <- getShards ctx subscriptionStreamName
       Log.debug $ "get shards: " <> Log.buildString (show shards)

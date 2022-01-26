@@ -21,6 +21,7 @@ module HStream.Server.Persistence.Utils
   , mkPartitionKeysPath
   , mkStreamSubsLockPath
   , mkStreamSubsPath
+  , mkSubLockPath
 
   , createInsert
   , createInsertOp
@@ -60,12 +61,11 @@ import qualified Z.Data.CBytes                        as CB
 import           Z.Data.CBytes                        (CBytes)
 import           Z.Data.Vector                        (Bytes)
 import qualified Z.Foreign                            as ZF
-import           ZooKeeper                            (Resource, zooCreate,
+import           ZooKeeper                            (zooCreate,
                                                        zooCreateOpInit,
                                                        zooDelete, zooDeleteAll,
                                                        zooGet, zooGetChildren,
-                                                       zooSet, zooSetOpInit,
-                                                       zookeeperResInit)
+                                                       zooSet, zooSetOpInit)
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
@@ -111,6 +111,9 @@ mkStreamSubsLockPath streamName = streamLockPath <> "/" <> streamName <> "/subsc
 
 mkStreamSubsPath :: CBytes -> CBytes
 mkStreamSubsPath streamName = streamRootPath <> "/" <> streamName <> "/subscriptions"
+
+mkSubLockPath :: CBytes -> CBytes
+mkSubLockPath subId =subscriptionsLockPath <> "/" <> subId
 
 paths :: [CBytes]
 paths = [ rootPath
