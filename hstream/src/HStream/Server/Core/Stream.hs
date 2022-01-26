@@ -19,8 +19,10 @@ import           GHC.Stack                        (HasCallStack)
 import           ZooKeeper                        (zooExists)
 
 import           HStream.Connector.HStore         (transToStreamName)
+import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (StreamNotExist (..))
+import           HStream.Server.Exception         (DataInconsistency (..),
+                                                   StreamNotExist (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence.Utils (mkPartitionKeysPath,
                                                    tryCreate)
@@ -60,23 +62,32 @@ appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.Appen
 appendStream ServerContext{..} API.AppendRequest{..} partitionKey = do
   timestamp <- getProtoTimestamp
   let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
+      key = textToCBytes <$> partitionKey
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
       streamName = textToCBytes appendRequestStreamName
+      prefixPath = mkPartitionKeysPath $ textToCBytes appendRequestStreamName
+      path = prefixPath <> "/" <> textToCBytes (fromMaybe "__default__" partitionKey)
+      streamID = S.mkStreamId S.StreamTypeStream streamName
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
 
-  let prefixPath = mkPartitionKeysPath $ textToCBytes appendRequestStreamName
-  let path = prefixPath <> "/" <> (textToCBytes . fromMaybe "__default__" $ partitionKey)
-  let streamID = S.mkStreamId S.StreamTypeStream streamName
-  logId <- zooExists zkHandle path >>= \case
-    Just _ -> S.getUnderlyingLogId scLDClient streamID (textToCBytes <$> partitionKey)
-    Nothing -> do
-      logId <- catches (S.createStreamPartition scLDClient streamID (textToCBytes <$> partitionKey))
-        [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream not exists
-          Handler (\(_ :: S.EXISTS) -> S.getUnderlyingLogId scLDClient streamID Nothing) -- both stream and partition are already exist
-        ]
-      tryCreate zkHandle path
-      return logId
+  keyExist <- S.doesStreamPartitionExist scLDClient streamID key
+  logId <- if keyExist
+           then S.getUnderlyingLogId scLDClient streamID key
+           else do
+             zooExists zkHandle path >>= \case
+               Just _ -> do
+                 Log.fatal $ "key " <> Log.buildString (show partitionKey)
+                          <> " of stream " <> Log.buildText appendRequestStreamName
+                          <> " doesn't appear in store, but find in zk"
+                 throwIO $ DataInconsistency appendRequestStreamName partitionKey
+               Nothing -> do
+                 logId <- catches (S.createStreamPartition scLDClient streamID key)
+                   [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream not exists
+                     Handler (\(_ :: S.EXISTS) -> S.getUnderlyingLogId scLDClient streamID key) -- both stream and partition are already exist
+                   ]
+                 tryCreate zkHandle path
+                 return logId
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
   let records = V.zipWith (\_ idx -> API.RecordId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records

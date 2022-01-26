@@ -146,6 +146,14 @@ data SubscriptionWatchOnDifferentNode = SubscriptionWatchOnDifferentNode
   deriving (Show)
 instance Exception SubscriptionWatchOnDifferentNode
 
+data DataInconsistency = DataInconsistency Text (Maybe Text)
+instance Show DataInconsistency where
+  show (DataInconsistency streamName key) = "partition " <> show key
+                                         <> " of stream " <> show streamName
+                                         <> " doesn't appear in store,"
+                                         <> " but exists in zk."
+instance Exception DataInconsistency
+
 newtype ZkNodeExists = ZkNodeExists Text
  deriving (Show)
 instance Exception ZkNodeExists
