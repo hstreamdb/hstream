@@ -1,10 +1,10 @@
-module HStream.Store.Admin.Command.Config
+module HStream.Admin.Store.Command.Config
   ( dumpConfig
   ) where
 
 import           Data.Text               (Text)
 
-import qualified HStream.Store.Admin.API as AA
+import qualified HStream.Admin.Store.API as AA
 
 dumpConfig :: AA.HeaderConfig AA.AdminAPI ->  IO Text
 dumpConfig conf = AA.sendAdminApiRequest conf AA.dumpServerConfigJson

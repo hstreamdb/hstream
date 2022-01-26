@@ -2,21 +2,22 @@
 
 module Main (main) where
 
-import qualified Data.Text                   as T
-import qualified Data.Text.IO                as TIO
-import           Numeric                     (showFFloat)
-import           Options.Applicative         ((<**>))
-import qualified Options.Applicative         as O
-import           System.Environment          (getArgs)
-import           Z.IO.Time                   (SystemTime (..), getSystemTime')
+import qualified Data.Text                    as T
+import qualified Data.Text.IO                 as TIO
+import           Numeric                      (showFFloat)
+import           Options.Applicative          ((<**>))
+import qualified Options.Applicative          as O
+import           System.Environment           (getArgs)
+import           Z.IO.Time                    (SystemTime (..), getSystemTime')
 
-import qualified HStream.Admin.Command       as Server
-import qualified HStream.Admin.Types         as Server
-import qualified HStream.Logger              as Log
-import qualified HStream.Store.Admin.API     as Store hiding (checkImpact)
-import qualified HStream.Store.Admin.Command as Store
-import qualified HStream.Store.Admin.Types   as Store
-import qualified HStream.Store.Logger        as CLog
+import qualified HStream.Admin.Server.Command as Server
+import qualified HStream.Admin.Server.Types   as Server
+import qualified HStream.Admin.Store.API      as Store hiding (checkImpact)
+import qualified HStream.Admin.Store.Command  as Store
+import qualified HStream.Admin.Store.Types    as Store
+import           HStream.Admin.Types
+import qualified HStream.Logger               as Log
+import qualified HStream.Store.Logger         as CLog
 
 main :: IO ()
 main = runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
@@ -24,15 +25,6 @@ main = runCli =<< O.customExecParser (O.prefs O.showHelpOnEmpty) opts
     opts = O.info
       (cliParser <**> O.helper)
       (O.fullDesc <> O.header "======= HStream Admin CLI =======")
-
-data Cli = ServerCli Server.Cli
-         | StoreCli Store.Cli
-
-cliParser :: O.Parser Cli
-cliParser = O.hsubparser
-  ( O.command "server" (O.info (ServerCli <$> Server.cliParser) (O.progDesc "Admin command"))
- <> O.command "store" (O.info (StoreCli <$> Store.cliParser) (O.progDesc "Internal store admin command"))
-  )
 
 runCli :: Cli -> IO ()
 runCli (ServerCli cli) = runServerCli cli

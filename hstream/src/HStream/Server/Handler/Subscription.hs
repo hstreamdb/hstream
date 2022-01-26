@@ -463,7 +463,7 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
                         ShardSubscribeRuntimeInfo {
                             ssriStreamName        = subscriptionStreamName
                           , ssriLogId             = logId
-                          , ssriAckTimeoutSeconds = subscriptionAckTimeoutSeconds
+                          , ssriAckTimeoutSeconds = subscriptionAckTimeoutSeconds * 10
                           , ssriLdCkpReader       = ldCkpReader
                           , ssriLdReader          = ldReader
                           , ssriWindowLowerBound  = RecordId S.LSN_MIN 0
