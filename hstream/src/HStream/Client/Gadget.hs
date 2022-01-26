@@ -13,6 +13,7 @@ import qualified Data.List                     as L
 import qualified Data.Text                     as T
 import qualified Data.Vector                   as V
 import           Network.GRPC.HighLevel.Client
+import           Proto3.Suite                  (def)
 import           Z.IO.Network.SocketAddr       (SocketAddr (..))
 
 import           HStream.Client.Action
@@ -43,7 +44,7 @@ lookupStream ctx addr stream = do
   getInfoWithAddr ctx addr getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} = do
-      let req = API.LookupStreamRequest { lookupStreamRequestStreamName = stream }
+      let req = def { API.lookupStreamRequestStreamName = stream }
       hstreamApiLookupStream (mkClientNormalRequest req)
     handleRespApp = getServerResp >=> return . API.lookupStreamResponseServerNode
 
