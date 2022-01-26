@@ -20,7 +20,7 @@ public:
     };
   }
   std::string getCommandToSend(ldquery::QueryContext& /*ctx*/) const override {
-    return std::string("stream list");
+    return std::string("server stream list");
   }
 };
 

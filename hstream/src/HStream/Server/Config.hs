@@ -19,11 +19,11 @@ import           Z.Data.CBytes              (CBytes)
 import           Z.IO.Network               (PortNumber (PortNumber))
 
 
+import qualified HStream.Admin.Store.API    as AA
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
 import           HStream.Server.Types       (ServerOpts (..))
 import           HStream.Store              (Compression (CompressionLZ4))
-import qualified HStream.Store.Admin.API    as AA
 import qualified HStream.Store.Logger       as Log
 
 data CliOptions = CliOptions

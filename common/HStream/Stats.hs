@@ -11,13 +11,14 @@
 
 module HStream.Stats where
 
+import           Control.Monad            (forM_)
+import           Control.Monad.ST         (RealWorld)
 import           Data.Int
 import qualified Data.Map.Strict          as Map
 import           Data.Primitive.ByteArray
 import           Data.Primitive.PrimArray
 import           Foreign.ForeignPtr
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
-import qualified Z.Foreign                as Z
 
 import           HStream.Foreign
 import           HStream.Stats.Internal
@@ -80,11 +81,13 @@ stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
   withCBytesUnsafe method_name $ \method_name' ->
   withCBytesUnsafe stream_name $ \stream_name' -> do
     let interval_len = length intervals
-    (pa, ret) <- Z.allocPrimArrayUnsafe interval_len $ \val' -> do
-      let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
-      c_stream_time_series_get
-        holder' (BA# method_name') (BA# stream_name')
-        interval_len (BA# intervals') (MBA# val')
+    (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
+    forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
+    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
+    !ret <- c_stream_time_series_get
+              holder' (BA# method_name') (BA# stream_name')
+              interval_len (BA# intervals') (MBA# mba#)
+    !pa <- unsafeFreezePrimArray mpa
     return $ if ret == 0 then Just (primArrayToList pa) else Nothing
 
 stream_time_series_getall_by_name

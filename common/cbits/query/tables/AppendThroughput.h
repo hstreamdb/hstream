@@ -26,7 +26,7 @@ public:
   }
   std::string getCommandToSend(ldquery::QueryContext& /*ctx*/) const override {
     return std::string(
-        "stats appends --intervals 1min --intervals 5min --intervals 10min");
+        "server stats appends --intervals 1min --intervals 5min --intervals 10min");
   }
 };
 

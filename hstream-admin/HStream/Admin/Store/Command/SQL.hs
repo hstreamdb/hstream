@@ -1,4 +1,4 @@
-module HStream.Store.Admin.Command.SQL
+module HStream.Admin.Store.Command.SQL
   ( startSQLRepl
   ) where
 
@@ -13,8 +13,8 @@ import           Text.Layout.Table                (asciiS, center, colsAllG,
                                                    left, tableString, titlesH)
 import           Z.Data.CBytes                    (pack, unpack)
 
-import           HStream.Store.Admin.API
-import           HStream.Store.Admin.Types
+import           HStream.Admin.Store.API
+import           HStream.Admin.Store.Types
 import qualified HStream.Store.Internal.LogDevice as S
 import           HStream.Utils                    (simpleShowTable)
 

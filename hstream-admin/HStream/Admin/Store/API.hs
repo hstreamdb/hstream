@@ -1,4 +1,4 @@
-module HStream.Store.Admin.API
+module HStream.Admin.Store.API
   ( sendAdminApiRequest
   , fetchNodesAdminAddr
   , getNodeAdminAddr

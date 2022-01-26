@@ -1,17 +1,17 @@
-module HStream.Admin.Command.ServerSql
+module HStream.Admin.Server.Command.ServerSql
   ( serverSqlRepl
   ) where
 
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.Char                (toLower, toUpper)
-import           Data.Function            (fix)
-import           Data.List                (isPrefixOf)
-import qualified System.Console.Haskeline as H
-import qualified Z.Data.Builder           as ZBuilder
-import qualified Z.Data.CBytes            as CB
+import           Control.Monad.IO.Class     (liftIO)
+import           Data.Char                  (toLower, toUpper)
+import           Data.Function              (fix)
+import           Data.List                  (isPrefixOf)
+import qualified System.Console.Haskeline   as H
+import qualified Z.Data.Builder             as ZBuilder
+import qualified Z.Data.CBytes              as CB
 
-import           HStream.Admin.Types
-import qualified HStream.Common.Query     as Query
+import           HStream.Admin.Server.Types
+import qualified HStream.Common.Query       as Query
 
 
 serverSqlRepl :: CliOpts -> ServerSqlCmdOpts -> IO ()

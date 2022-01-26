@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module HStream.Store.Admin.Command.CheckImpact
+module HStream.Admin.Store.Command.CheckImpact
   ( checkImpact
   ) where
 
@@ -22,9 +22,9 @@ import qualified Text.Layout.Table.Cell           as TableCell
 import qualified Text.Layout.Table.StringBuilder  as Table
 import qualified Z.Data.CBytes                    as CBytes
 
+import qualified HStream.Admin.Store.API          as AA
+import           HStream.Admin.Store.Types
 import qualified HStream.Logger                   as Log
-import qualified HStream.Store.Admin.API          as AA
-import           HStream.Store.Admin.Types
 import           HStream.Store.Internal.LogDevice (getInternalLogName,
                                                    isInternalLog)
 

@@ -27,11 +27,12 @@ source-repository head
 library
   hs-source-dirs:     . gen-hs2
   exposed-modules:
-    HStream.Admin.Command
+    HStream.Admin.Server.Command
+    HStream.Admin.Server.Types
+    HStream.Admin.Store.API
+    HStream.Admin.Store.Command
+    HStream.Admin.Store.Types
     HStream.Admin.Types
-    HStream.Store.Admin.API
-    HStream.Store.Admin.Command
-    HStream.Store.Admin.Types
 
   other-modules:
     Admin.AdminAPI.Client
@@ -44,15 +45,15 @@ library
     Fb303.FacebookService.Client
     Fb303.FacebookService.Service
     Fb303.Types
-    HStream.Admin.Command.ServerSql
-    HStream.Store.Admin.Command.CheckImpact
-    HStream.Store.Admin.Command.Config
-    HStream.Store.Admin.Command.Connect
-    HStream.Store.Admin.Command.Logs
-    HStream.Store.Admin.Command.Maintenance
-    HStream.Store.Admin.Command.NodesConfig
-    HStream.Store.Admin.Command.SQL
-    HStream.Store.Admin.Command.Status
+    HStream.Admin.Server.Command.ServerSql
+    HStream.Admin.Store.Command.CheckImpact
+    HStream.Admin.Store.Command.Config
+    HStream.Admin.Store.Command.Connect
+    HStream.Admin.Store.Command.Logs
+    HStream.Admin.Store.Command.Maintenance
+    HStream.Admin.Store.Command.NodesConfig
+    HStream.Admin.Store.Command.SQL
+    HStream.Admin.Store.Command.Status
     Logtree.Types
     Maintenance.Types
     Membership.Types
