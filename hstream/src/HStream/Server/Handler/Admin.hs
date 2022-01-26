@@ -20,6 +20,7 @@ import qualified Options.Applicative.Help         as O
 import qualified Z.Data.CBytes                    as CB
 
 import qualified HStream.Admin.Server.Types       as AT
+import qualified HStream.Admin.Types              as Admin
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -37,15 +38,12 @@ import           HStream.Utils                    (formatStatus, interval2ms,
 
 -- we only need the 'Command' in 'Cli'
 parseAdminCommand :: [String] -> IO AT.AdminCommand
-parseAdminCommand [] = err' "" "Empty args"
--- ["server", "--port", ...]
--- TODO: assert _cmd == "server"
-parseAdminCommand (_cmd:args) = extractAdminCmd . AT.command =<< execParser
+parseAdminCommand args = extractAdminCmd =<< execParser
   where
-    extractAdminCmd (AT.ServerAdminCmd cmd) = return cmd
+    extractAdminCmd (Admin.ServerCli AT.Cli{command = AT.ServerAdminCmd cmd}) = return cmd
     extractAdminCmd _ = throwParsingErr "Only admin commands are accepted"
     execParser = handleParseResult $ O.execParserPure O.defaultPrefs cliInfo args
-    cliInfo = O.info AT.cliParser (O.progDesc "The parser to use for admin commands")
+    cliInfo = O.info Admin.cliParser (O.progDesc "The parser to use for admin commands")
 
 adminCommandHandler
   :: ServerContext
