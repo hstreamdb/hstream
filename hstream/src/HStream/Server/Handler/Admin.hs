@@ -117,6 +117,9 @@ runSubscription ctx AT.SubscriptionCmdList = do
 runSubscription ctx (AT.SubscriptionCmdDelete subid) = do
   HC.deleteSubscription ctx subid
   return $ plainResponse "OK"
+runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
+  HC.createSubscription ctx sub
+  return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------
 -- Admin View Command

@@ -136,19 +136,30 @@ streamParser = API.Stream
 data SubscriptionCommand
   = SubscriptionCmdList
   | SubscriptionCmdDelete Text
+  | SubscriptionCmdCreate API.Subscription
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
 subscriptionCmdParser = O.subparser
   ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
+ <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
+                               (O.progDesc "delete a stream (Warning: incomplete implementation)"))
  <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subDelReqParser)
-                               (O.progDesc "delte a stream (Warning: incomplete implementation)")
-                       )
+                               (O.progDesc "delete a stream (Warning: incomplete implementation)"))
   )
 
 subDelReqParser :: O.Parser Text
 subDelReqParser = O.strOption
   ( O.long "id" <> O.metavar "SubID" <> O.help "subscription id" )
+
+subscriptionParser :: O.Parser API.Subscription
+subscriptionParser = API.Subscription
+  <$> O.strOption ( O.long "id" <> O.metavar "SubID"
+                  <> O.help "subscription id" )
+  <*> O.strOption ( O.long "stream" <> O.metavar "StreamName"
+                  <> O.help "the stream associated with the subscription" )
+  <*> O.option O.auto ( O.long "timeout" <> O.metavar "INT" <> O.value 60
+                     <> O.help "subscription timeout in seconds")
 
 -------------------------------------------------------------------------------
 
