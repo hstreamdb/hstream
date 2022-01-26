@@ -1,31 +1,31 @@
-module HStream.Admin.Command
+module HStream.Admin.Server.Command
   ( withAdminClient
   , withAdminClient'
   , sendAdminCommand
   , sendAdminCommand'
   , formatCommandResponse
-  , module HStream.Admin.Command.ServerSql
+  , module HStream.Admin.Server.Command.ServerSql
   ) where
 
-import           Control.Monad                    ((<=<))
-import qualified Data.Aeson                       as Aeson
-import           Data.ByteString                  (ByteString)
-import qualified Data.HashMap.Strict              as HMap
-import qualified Data.Map.Strict                  as Map
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import qualified Data.Text.Encoding               as Text
-import qualified Data.Vector                      as V
-import qualified Network.GRPC.HighLevel.Client    as GRPC
-import           Network.GRPC.HighLevel.Generated (withGRPCClient)
-import           Network.Socket                   (PortNumber)
-import qualified Z.Data.CBytes                    as CBytes
-import qualified Z.Foreign                        as Z
+import           Control.Monad                          ((<=<))
+import qualified Data.Aeson                             as Aeson
+import           Data.ByteString                        (ByteString)
+import qualified Data.HashMap.Strict                    as HMap
+import qualified Data.Map.Strict                        as Map
+import           Data.Text                              (Text)
+import qualified Data.Text                              as Text
+import qualified Data.Text.Encoding                     as Text
+import qualified Data.Vector                            as V
+import qualified Network.GRPC.HighLevel.Client          as GRPC
+import           Network.GRPC.HighLevel.Generated       (withGRPCClient)
+import           Network.Socket                         (PortNumber)
+import qualified Z.Data.CBytes                          as CBytes
+import qualified Z.Foreign                              as Z
 
-import           HStream.Admin.Command.ServerSql
-import           HStream.Admin.Types
-import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Utils                    as U
+import           HStream.Admin.Server.Command.ServerSql
+import           HStream.Admin.Server.Types
+import qualified HStream.Server.HStreamApi              as API
+import qualified HStream.Utils                          as U
 
 formatCommandResponse :: Text -> IO String
 formatCommandResponse resp =

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module HStream.Store.Admin.Command.Logs
+module HStream.Admin.Store.Command.Logs
   ( runLogsCmd
   ) where
 
@@ -21,9 +21,9 @@ import           Z.IO.Time                        (SystemTime (..),
                                                    formatSystemTime,
                                                    simpleDateFormat)
 
+import           HStream.Admin.Store.API
+import           HStream.Admin.Store.Types
 import qualified HStream.Store                    as S
-import           HStream.Store.Admin.API
-import           HStream.Store.Admin.Types
 import qualified HStream.Store.Internal.LogDevice as S
 
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()

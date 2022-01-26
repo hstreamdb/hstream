@@ -1,4 +1,4 @@
-module HStream.Store.Admin.Command.Maintenance
+module HStream.Admin.Store.Command.Maintenance
   ( runMaintenanceCmd
   ) where
 
@@ -20,9 +20,9 @@ import           Z.IO                      (getEnv)
 import           Z.IO.Time                 (SystemTime (MkSystemTime),
                                             formatSystemTime, simpleDateFormat)
 
-import           HStream.Store.Admin.API
-import qualified HStream.Store.Admin.API   as AA
-import           HStream.Store.Admin.Types
+import           HStream.Admin.Store.API
+import qualified HStream.Admin.Store.API   as AA
+import           HStream.Admin.Store.Types
 import           HStream.Utils             (simpleShowTable)
 
 
