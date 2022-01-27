@@ -12,7 +12,7 @@ import           Control.Concurrent
 import           Control.Exception                (finally, handle)
 import           Control.Monad
 import           Control.Monad.IO.Class           (liftIO)
-import           Data.Char                        (toLower, toUpper)
+import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -108,21 +108,7 @@ app ctx@ClientContext{..} = do
         Nothing -> pure ()
         Just str
           | take 1 (words str) == [":q"] -> pure ()
-          | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
-            take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
-              loopAdmin query
           | otherwise -> liftIO (commandExec ctx str) >> loop query
-
-    loopAdmin :: Query.HStreamQuery -> H.InputT IO ()
-    loopAdmin query = H.withInterrupt . H.handleInterrupt (loopAdmin query) $ do
-      H.getInputLine "ADMIN> " >>= \case
-        Nothing -> pure ()
-        Just str
-          | take 1 (words str) == [":q"] -> pure ()
-          | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
-            take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     ->
-              loop query
-          | otherwise -> liftIO (adminCommandExec query str) >> loopAdmin query
 
 commandExec :: ClientContext -> String -> IO ()
 commandExec ctx@ClientContext{..} xs = case words xs of
@@ -159,20 +145,6 @@ commandExec ctx@ClientContext{..} xs = case words xs of
           addr <- readMVar currentServer
           withGRPCClient (mkGRPCClientConf addr)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
-
-adminCommandExec :: Query.HStreamQuery -> String -> IO ()
-adminCommandExec q str =
-  case words (map toLower str) of
-    [] -> return ()
-    ["show", "tables"]      -> putStrLn =<< Query.showTables q
-    ["show", "tables", ";"] -> putStrLn =<< Query.showTables q
-    ["show", "tables;"]     -> putStrLn =<< Query.showTables q
-    ["describe", name_]     -> if last name_ == ';'
-                                  then putStrLn =<< Query.showTableColumns q (CB.pack $ init name_)
-                                  else putStrLn =<< Query.showTableColumns q (CB.pack name_)
-    ["describe", name, ";"] -> putStrLn =<< Query.showTableColumns q (CB.pack name)
-    "select" : _ -> either putStrLn (mapM_ putStrLn) =<< Query.runQuery q (CB.pack str)
-    _            -> putStrLn $ "Unknown statement: " <> str
 
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
