@@ -38,7 +38,6 @@ comment "/*" "*/" ;
 
 entrypoints SQL ;
 
-QSelectStats. SQL ::= SelectStats ";" ;
 QSelectView.  SQL ::= SelectView  ";" ;
 QSelect.      SQL ::= Select      ";" ;
 QCreate.      SQL ::= Create      ";" ;
@@ -313,19 +312,3 @@ CompOpLT.  CompOp ::= "<" ;
 CompOpGT.  CompOp ::= ">" ;
 CompOpLEQ. CompOp ::= "<=" ;
 CompOpGEQ. CompOp ::= ">=" ;
-
---------------------------------------------------------------------------------
-DSelectStats. SelectStats ::= "ADMIN::" SelectAdmin StatsWhere      ;
-DSelectAdmin. SelectAdmin ::= "SELECT" StatsItems "FROM" StatsTable ;
-
-StatsItemAll.  StatsItems ::= "*"          ;
-StatsItemList. StatsItems ::= [StatsIdent] ;
-
-DStatsIdent. StatsIdent ::= Ident ;
-separator StatsIdent ","          ;
-
-StatsTableAppendInBytes. StatsTable ::= "APPEND_THROUGHPUT" ;
-StatsTableRecordBytes.   StatsTable ::= "READ_THROUGHPUT"    ;
-
-StatsWhereNil.  StatsWhere ::= ""                                ;
-StatsWhereCons. StatsWhere ::= "WHERE" "STREAM" "=" [StatsIdent] ;

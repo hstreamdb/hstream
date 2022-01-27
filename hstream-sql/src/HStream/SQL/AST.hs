@@ -539,33 +539,6 @@ instance Refine Terminate where
   refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
----- Select Stats
-data RSelectStats
-  = RSelectStats [Text] RStatsTable [StreamName]
-  deriving (Eq, Show)
-
-data RStatsTable = AppendInBytes | RecordBytes deriving (Eq, Show)
-type instance RefinedType StatsTable = RStatsTable
-instance Refine StatsTable where
-  refine = \case
-    StatsTableAppendInBytes _ -> AppendInBytes
-    StatsTableRecordBytes   _ -> RecordBytes
-
-type instance RefinedType SelectStats = RSelectStats
-instance Refine SelectStats where
-  refine = \case
-    DSelectStats _ (DSelectAdmin _ statsItems statsTable) statsConds -> RSelectStats
-      (rStatsItems statsItems)
-      (refine      statsTable)
-      (rStatsConds statsConds)
-    where
-    rStatsItems = \case
-      StatsItemAll  _    -> []
-      StatsItemList _ xs -> xs <&> \(DStatsIdent _ (Ident x)) -> x
-    rStatsConds = \case
-      StatsWhereNil  _    -> []
-      StatsWhereCons _ xs -> xs <&> \(DStatsIdent _ (Ident x)) -> x
-
 ---- SQL
 data RSQL = RQSelect      RSelect
           | RQCreate      RCreate
@@ -574,7 +547,6 @@ data RSQL = RQSelect      RSelect
           | RQDrop        RDrop
           | RQTerminate   RTerminate
           | RQSelectView  RSelectView
-          | RQSelectStats RSelectStats
           | RQExplain     RExplain
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
@@ -586,7 +558,6 @@ instance Refine SQL where
   refine (QDrop        _    drop_) = RQDrop        (refine    drop_)
   refine (QTerminate   _     term) = RQTerminate   (refine     term)
   refine (QSelectView  _  selView) = RQSelectView  (refine  selView)
-  refine (QSelectStats _ selStats) = RQSelectStats (refine selStats)
   refine (QExplain     _  explain) = RQExplain     (refine  explain)
 
 --------------------------------------------------------------------------------

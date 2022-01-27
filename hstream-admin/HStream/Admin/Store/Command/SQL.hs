@@ -4,7 +4,6 @@ module HStream.Admin.Store.Command.SQL
 
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Char                        (toLower, toUpper)
-import           Data.Function                    (fix)
 import           Data.List                        (isPrefixOf)
 import qualified System.Console.Haskeline         as H
 import           Text.Layout.Table                (asciiS, center, colsAllG,
@@ -73,10 +72,11 @@ startSQLRepl conf StartSQLReplOpts{..} = do
     startRepl ldq = do
       complete <- getCompletionFun ldq
       let setting  = (H.defaultSettings :: H.Settings IO) {H.complete = complete}
-      H.runInputT setting $ fix $ \loop -> do
-        H.getInputLine "sql> " >>= \case
-          Nothing  -> return ()
-          Just str -> liftIO (runSQLCmd ldq str) >> loop
+      H.runInputT setting loop where
+        loop = H.withInterrupt . H.handleInterrupt loop $ do
+          H.getInputLine "sql> " >>= \case
+            Nothing  -> pure ()
+            Just str -> liftIO (runSQLCmd ldq str) >> loop
 
 getCompletionFun :: S.LDQuery -> IO (H.CompletionFunc IO)
 getCompletionFun ldq = do

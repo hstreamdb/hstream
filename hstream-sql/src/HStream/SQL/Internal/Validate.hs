@@ -735,15 +735,10 @@ instance Validate Drop where
 instance Validate Terminate where
   validate = return
 
-------------------------------------- Select Stats -----------------------------
-instance Validate SelectStats where
-  validate = return
-
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where
   validate sql@(QSelect      _   select) = validate select   >> return sql
   validate sql@(QSelectView  _  selView) = validate selView  >> return sql
-  validate sql@(QSelectStats _ selStats) = validate selStats >> return sql
   validate sql@(QCreate      _   create) = validate create   >> return sql
   validate sql@(QInsert      _   insert) = validate insert   >> return sql
   validate sql@(QShow        _    show_) = validate show_    >> return sql
