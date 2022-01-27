@@ -7,27 +7,20 @@ module HStream.Server.Core.Stream
   , appendStream
   ) where
 
-import           Control.Exception                (Handler (..), catches,
-                                                   throwIO)
-import qualified Data.ByteString                  as BS
-import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromMaybe)
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
-import           ZooKeeper                        (zooExists)
+import qualified Data.ByteString             as BS
+import qualified Data.Map.Strict             as Map
+import           Data.Text                   (Text)
+import qualified Data.Text                   as Text
+import qualified Data.Vector                 as V
+import           GHC.Stack                   (HasCallStack)
 
-import           HStream.Connector.HStore         (transToStreamName)
-import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (StreamNotExist (..))
-import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Persistence.Utils (mkPartitionKeysPath,
-                                                   tryCreate)
-import           HStream.Server.Types             (ServerContext (..))
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
-import           HStream.ThirdParty.Protobuf      as PB
+import           HStream.Connector.HStore    (transToStreamName)
+import           HStream.Server.Core.Common  (deleteStoreStream)
+import qualified HStream.Server.HStreamApi   as API
+import           HStream.Server.Types        (ServerContext (..))
+import qualified HStream.Stats               as Stats
+import qualified HStream.Store               as S
+import           HStream.ThirdParty.Protobuf as PB
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -62,21 +55,12 @@ appendStream ServerContext{..} API.AppendRequest{..} partitionKey = do
   let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
       streamName = textToCBytes appendRequestStreamName
+      streamID = S.mkStreamId S.StreamTypeStream streamName
+      key = textToCBytes <$> partitionKey
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
 
-  let prefixPath = mkPartitionKeysPath $ textToCBytes appendRequestStreamName
-  let path = prefixPath <> "/" <> (textToCBytes . fromMaybe "__default__" $ partitionKey)
-  let streamID = S.mkStreamId S.StreamTypeStream streamName
-  logId <- zooExists zkHandle path >>= \case
-    Just _ -> S.getUnderlyingLogId scLDClient streamID (textToCBytes <$> partitionKey)
-    Nothing -> do
-      logId <- catches (S.createStreamPartition scLDClient streamID (textToCBytes <$> partitionKey))
-        [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream not exists
-          Handler (\(_ :: S.EXISTS) -> S.getUnderlyingLogId scLDClient streamID Nothing) -- both stream and partition are already exist
-        ]
-      tryCreate zkHandle path
-      return logId
+  logId <- S.getUnderlyingLogId scLDClient streamID key
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
   let records = V.zipWith (\_ idx -> API.RecordId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records

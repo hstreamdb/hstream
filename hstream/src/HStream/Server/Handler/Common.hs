@@ -460,3 +460,15 @@ removeSubFromStreamPath zk streamName subName = do
   uniq <- newUnique
   withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
     P.tryDeletePath zk subscriptionPath
+
+orderingKeyToStoreKey :: Text -> Maybe CBytes
+orderingKeyToStoreKey orderingKey =
+ if T.null orderingKey || orderingKey == clientDefaultKey
+   then Nothing
+   else Just $ textToCBytes orderingKey
+
+clientDefaultKey :: Text
+clientDefaultKey = "__default__"
+
+clientDefaultKey' :: CBytes
+clientDefaultKey' = textToCBytes clientDefaultKey

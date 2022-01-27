@@ -65,8 +65,9 @@ getTimeStamp HStreamRecord{..} =
 getRecordKey :: HStreamRecord -> Maybe Text
 getRecordKey record =
   case fmap hstreamRecordHeaderKey . hstreamRecordHeader $ record of
-    Just "" -> Nothing
-    key'    -> key'
+    Just "__default__" -> Nothing
+    Just ""            -> Nothing
+    key'               -> key'
 
 updateRecordTimestamp :: Timestamp -> HStreamRecord -> HStreamRecord
 updateRecordTimestamp timestamp HStreamRecord{..} =
