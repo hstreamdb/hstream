@@ -62,6 +62,7 @@ import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId,
+                                                   orderingKeyToStoreKey,
                                                    removeSubFromStreamPath)
 import           HStream.Server.Persistence       (ObjRepType (..),
                                                    mkPartitionKeysPath)
@@ -457,9 +458,7 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
                     S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
                   -- seek ldCkpReader to start offset
                   let streamID = S.mkStreamId S.StreamTypeStream (textToCBytes subscriptionStreamName)
-                  let key = if T.null streamingFetchRequestOrderingKey || streamingFetchRequestOrderingKey == "__default__"
-                              then Nothing
-                              else Just $ textToCBytes streamingFetchRequestOrderingKey
+                  let key = orderingKeyToStoreKey streamingFetchRequestOrderingKey
                   logId <- S.getUnderlyingLogId scLDClient streamID key
                   S.startReadingFromCheckpointOrStart ldCkpReader logId (Just S.LSN_MIN) S.LSN_MAX
                   -- set ldCkpReader timeout to 0
