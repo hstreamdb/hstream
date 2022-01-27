@@ -4,7 +4,6 @@ module HStream.Admin.Server.Command.ServerSql
 
 import           Control.Monad.IO.Class     (liftIO)
 import           Data.Char                  (toLower, toUpper)
-import           Data.Function              (fix)
 import           Data.List                  (isPrefixOf)
 import qualified System.Console.Haskeline   as H
 import qualified Z.Data.Builder             as ZBuilder
@@ -26,10 +25,11 @@ serverSqlRepl CliOpts{..} ServerSqlCmdOpts{..} = do
     runRepl query = do
       complete <- getCompletionFun query
       let setting  = (H.defaultSettings :: H.Settings IO) {H.complete = complete}
-      H.runInputT setting $ fix $ \loop -> do
-        H.getInputLine "sql> " >>= \case
-          Nothing  -> return ()
-          Just str -> liftIO (runSql query str) >> loop
+      H.runInputT setting loop where
+        loop = H.withInterrupt . H.handleInterrupt loop $ do
+          H.getInputLine "sql> " >>= \case
+            Nothing  -> pure ()
+            Just str -> liftIO (runSql query str) >> loop
 
 runSql :: Query.HStreamQuery -> String -> IO ()
 runSql q str =

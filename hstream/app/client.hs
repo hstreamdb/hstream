@@ -101,22 +101,28 @@ app ctx@ClientContext{..} = do
         []     -> return ()
         node:_ -> void $ describeCluster ctx node
       threadDelay $ availableServersUpdateInterval * 1000 * 1000
+
     loop :: Query.HStreamQuery -> H.InputT IO ()
-    loop query = H.getInputLine "> " >>= \case
-      Nothing   -> return ()
-      Just str
-        | take 1 (words str) == [":q"] -> return ()
-        | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
-          take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
-            loopAdmin query
-        | otherwise -> liftIO (commandExec ctx str) >> loop query
-    loopAdmin query = H.getInputLine "ADMIN> " >>= \case
-      Nothing   -> return ()
-      Just str
-        | take 1 (words str) == [":q"] -> return ()
-        | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
-          take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     -> loop query
-        | otherwise -> liftIO (adminCommandExec query str) >> loopAdmin query
+    loop query = H.withInterrupt . H.handleInterrupt (loop query) $ do
+      H.getInputLine "> " >>= \case
+        Nothing -> pure ()
+        Just str
+          | take 1 (words str) == [":q"] -> pure ()
+          | take 3 (map toUpper <$> words str) == ["USE", "ADMIN", ";"] ||
+            take 2 (map toUpper <$> words str) == ["USE", "ADMIN;"]     ->
+              loopAdmin query
+          | otherwise -> liftIO (commandExec ctx str) >> loop query
+
+    loopAdmin :: Query.HStreamQuery -> H.InputT IO ()
+    loopAdmin query = H.withInterrupt . H.handleInterrupt (loopAdmin query) $ do
+      H.getInputLine "ADMIN> " >>= \case
+        Nothing -> pure ()
+        Just str
+          | take 1 (words str) == [":q"] -> pure ()
+          | take 3 (map toUpper <$> words str) == ["USE", "STREAM", ";"] ||
+            take 2 (map toUpper <$> words str) == ["USE", "STREAM;"]     ->
+              loop query
+          | otherwise -> liftIO (adminCommandExec query str) >> loopAdmin query
 
 commandExec :: ClientContext -> String -> IO ()
 commandExec ctx@ClientContext{..} xs = case words xs of
