@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   hserver0:
-    image: hstreamdb/hstream:v0.6.1
+    image: hstreamdb/hstream:v0.6.5
     depends_on:
       - zookeeper
       - hstore
@@ -27,11 +27,10 @@ services:
         --address $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
-        --store-admin-host hstore --store-admin-port 6440 \
-        --replicate-factor 3 \
+        --store-admin-host hstore --store-admin-port 6440
 
   hserver1:
-    image: hstreamdb/hstream:v0.6.1
+    image: hstreamdb/hstream:v0.6.5
     depends_on:
       - zookeeper
       - hstore
@@ -56,12 +55,10 @@ services:
         --address $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
-        --store-admin-host hstore --store-admin-port 6440 \
-        --replicate-factor 3 \
-
+        --store-admin-host hstore --store-admin-port 6440
 
   hstream-http-server:
-    image: hstreamdb/hstream:v0.6.1
+    image: hstreamdb/hstream:v0.6.5
     depends_on:
       - hserver0
       - hserver1
@@ -82,7 +79,7 @@ services:
           -gRPCServerPort 6570
 
   hstore:
-    image: hstreamdb/hstream:v0.6.1
+    image: hstreamdb/hstream:v0.6.5
     networks:
       - hstream-quickstart
     volumes:
@@ -103,12 +100,18 @@ services:
       - 2181
     networks:
       - hstream-quickstart
+    volumes:
+      - data_zk_data:/data
+      - data_zk_datalog:/datalog
 
 networks:
   hstream-quickstart:
     name: hstream-quickstart
 
-
 volumes:
   data_store:
     name: quickstart_data_store
+  data_zk_data:
+    name: quickstart_data_zk_data
+  data_zk_datalog:
+    name: quickstart_data_zk_datalog

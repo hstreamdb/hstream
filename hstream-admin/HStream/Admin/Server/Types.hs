@@ -94,11 +94,17 @@ data AdminCommand
 
 adminCommandParser :: O.Parser AdminCommand
 adminCommandParser = O.hsubparser
-  ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser) (O.progDesc "Get the stats of an operation on a stream"))
- <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser) (O.progDesc "Stream command"))
- <> O.command "sub" (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser) (O.progDesc "Subscription command"))
- <> O.command "view" (O.info (AdminViewCommand <$> viewCmdParser) (O.progDesc "View command"))
- <> O.command "status" (O.info (pure AdminStatusCommand) (O.progDesc "Get the status of the HServer cluster"))
+  ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser)
+                              (O.progDesc $ "Get the stats of an operation on a"
+                                         <> "stream for only one specific server"))
+ <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser)
+                               (O.progDesc "Stream command"))
+ <> O.command "sub" (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)
+                            (O.progDesc "Subscription command"))
+ <> O.command "view" (O.info (AdminViewCommand <$> viewCmdParser)
+                             (O.progDesc "View command"))
+ <> O.command "status" (O.info (pure AdminStatusCommand)
+                               (O.progDesc "Get the status of the HServer cluster"))
   )
 
 -------------------------------------------------------------------------------

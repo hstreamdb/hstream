@@ -213,7 +213,7 @@ def run_hadmin(image, container_bin, command, cmd_args):
     host = "127.0.0.1"
     port = get_ldadmin_server_port(container_bin)
     container_opts = "-it"
-    if command == "hadmin":
+    if command == "hadmin store":
         user_command = f"{command} --host={host} --port={port}"
         if cmd_args:
             user_command = user_command + " " + " ".join(cmd_args)
@@ -326,8 +326,8 @@ def _service_store_(
     run_hadmin(
         image=image,
         container_bin="docker",
-        command="hadmin",
-        cmd_args=["store", "status"],
+        command="hadmin store",
+        cmd_args=["status"],
     )
 
     port = get_ldadmin_server_port(container_bin)
