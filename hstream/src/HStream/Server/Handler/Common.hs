@@ -25,6 +25,7 @@ import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
@@ -34,7 +35,10 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
+import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
+import           ZooKeeper.Recipe                 (withLock)
+import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
@@ -410,3 +414,49 @@ getSubscriptionStatus client streamId = do
         "0" -> return StandBy
         _   -> error "Unknown status"
 
+createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
+createStreamRelatedPath zk streamName = do
+  let keyPath = P.mkPartitionKeysPath streamName
+  -- streamRootPath/streams/{streamName}
+      streamPathOp = P.createPathOp $ P.streamRootPath <> "/" <> streamName
+  -- streamRootPath/streams/{streamName}/keys
+      keyPathOp = P.createPathOp keyPath
+  -- streamRootPath/streams/{streamName}/subscriptions
+      subPathOp = P.createPathOp $ P.mkStreamSubsPath streamName
+  -- streamLockPath/lock/streams/{streamName}
+      lockPathOp = P.createPathOp $ P.streamLockPath <> "/" <> streamName
+  -- streamLockPath/lock/streams/{streamName}/subscriptions
+      streamSubLockPathOp = P.createPathOp $ P.mkStreamSubsLockPath streamName
+  P.tryCreateMulti zk [streamPathOp, keyPathOp, lockPathOp, streamSubLockPathOp, subPathOp]
+
+removeStreamRelatedPath :: ZHandle -> CBytes -> IO ()
+removeStreamRelatedPath zk streamName = do
+  let streamPath = P.streamRootPath <> "/" <> streamName
+      streamLockPath = P.mkStreamSubsLockPath streamName
+  P.tryDeleteAllPath zk streamPath >> P.tryDeleteAllPath zk streamLockPath
+
+checkIfSubsOfStreamActive :: ZHandle -> CBytes -> IO Bool
+checkIfSubsOfStreamActive zk streamName = do
+  -- xxx/lock/streams/{streamName}/subscriptions
+  let lockPath = P.mkStreamSubsLockPath streamName
+  -- xxx/streams/{streamName}/subscriptions
+  let subscriptionPath = P.mkStreamSubsPath streamName
+  uniq <- newUnique
+  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
+    not . null <$> P.tryGetChildren zk subscriptionPath
+
+bindSubToStreamPath :: ZHandle -> CBytes -> CBytes -> IO ()
+bindSubToStreamPath zk streamName subName = do
+  let lockPath = P.mkStreamSubsLockPath streamName
+  let subscriptionPath = P.mkStreamSubsPath streamName <> "/" <> subName
+  uniq <- newUnique
+  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
+    P.tryCreate zk subscriptionPath
+
+removeSubFromStreamPath :: ZHandle -> CBytes -> CBytes -> IO ()
+removeSubFromStreamPath zk streamName subName = do
+  let lockPath = P.mkStreamSubsLockPath streamName
+  let subscriptionPath = P.mkStreamSubsPath streamName <> "/" <> subName
+  uniq <- newUnique
+  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
+    P.tryDeletePath zk subscriptionPath

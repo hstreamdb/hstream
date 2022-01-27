@@ -145,3 +145,7 @@ instance Exception FoundActiveConsumers
 data SubscriptionWatchOnDifferentNode = SubscriptionWatchOnDifferentNode
   deriving (Show)
 instance Exception SubscriptionWatchOnDifferentNode
+
+newtype ZkNodeExists = ZkNodeExists Text
+ deriving (Show)
+instance Exception ZkNodeExists

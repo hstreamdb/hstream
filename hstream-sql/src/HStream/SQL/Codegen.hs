@@ -485,7 +485,7 @@ fuseAggregateComponents components =
 genGroupByNode :: RSelect
                -> Stream Object Object SerPipe
                -> IO (Either (Stream Object Object SerPipe) (Stream (TimeWindowKey Object) Object SerPipe), Materialized Object Object SerMat)
-genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) s =
+genGroupByNode (RSelect _ _ _ RGroupByEmpty _ ) _ =
   throwSQLException CodegenException Nothing "Impossible happened"
 genGroupByNode (RSelect sel _ _ grp@(RGroupBy stream' field win') _) s = do
   grped <- HS.groupBy

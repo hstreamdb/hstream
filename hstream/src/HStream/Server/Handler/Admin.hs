@@ -114,8 +114,8 @@ runSubscription ctx AT.SubscriptionCmdList = do
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
-runSubscription ctx (AT.SubscriptionCmdDelete subid) = do
-  HC.deleteSubscription ctx subid
+runSubscription ctx (AT.SubscriptionCmdDelete subscription) = do
+  HC.deleteSubscription ctx subscription
   return $ plainResponse "OK"
 runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
   HC.createSubscription ctx sub

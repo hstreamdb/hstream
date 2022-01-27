@@ -2,7 +2,6 @@ module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                as Aeson
-import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
@@ -135,29 +134,26 @@ streamParser = API.Stream
 -- SubscriptionWatchOnDifferentNode is not handled for delete command
 data SubscriptionCommand
   = SubscriptionCmdList
-  | SubscriptionCmdDelete Text
   | SubscriptionCmdCreate API.Subscription
+  | SubscriptionCmdDelete API.Subscription
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
 subscriptionCmdParser = O.subparser
-  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
+  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "get all subscriptions"))
  <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
-                               (O.progDesc "delete a stream (Warning: incomplete implementation)"))
- <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subDelReqParser)
-                               (O.progDesc "delete a stream (Warning: incomplete implementation)"))
+                               (O.progDesc "create a subscription"))
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser)
+                               (O.progDesc "delte a subscription (Warning: incomplete implementation)")
+                       )
   )
-
-subDelReqParser :: O.Parser Text
-subDelReqParser = O.strOption
-  ( O.long "id" <> O.metavar "SubID" <> O.help "subscription id" )
 
 subscriptionParser :: O.Parser API.Subscription
 subscriptionParser = API.Subscription
   <$> O.strOption ( O.long "id" <> O.metavar "SubID"
-                  <> O.help "subscription id" )
+                 <> O.help "subscription id" )
   <*> O.strOption ( O.long "stream" <> O.metavar "StreamName"
-                  <> O.help "the stream associated with the subscription" )
+                 <> O.help "the stream associated with the subscription" )
   <*> O.option O.auto ( O.long "timeout" <> O.metavar "INT" <> O.value 60
                      <> O.help "subscription timeout in seconds")
 
