@@ -11,12 +11,12 @@ type HostPortCtx struct {
 	HttpServerPort *string
 }
 
-func buildRecord(flag hstreamApi.HStreamRecordHeader_Flag, payload []byte) *hstreamApi.HStreamRecord {
+func buildRecord(flag hstreamApi.HStreamRecordHeader_Flag, key string, payload []byte) *hstreamApi.HStreamRecord {
 	header := hstreamApi.HStreamRecordHeader{
 		Flag:        flag,
 		Attributes:  map[string]string{},
 		PublishTime: timestamppb.Now(),
-		Key:         "",
+		Key:         key,
 	}
 	return &hstreamApi.HStreamRecord{
 		Header:  &header,
