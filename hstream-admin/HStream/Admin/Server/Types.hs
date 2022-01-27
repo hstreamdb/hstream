@@ -144,7 +144,7 @@ subscriptionCmdParser = O.subparser
  <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
                                (O.progDesc "create a subscription"))
  <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser)
-                               (O.progDesc "delte a subscription (Warning: incomplete implementation)")
+                               (O.progDesc "delete a subscription (Warning: incomplete implementation)")
                        )
   )
 
