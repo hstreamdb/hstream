@@ -26,7 +26,10 @@ import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception         (StreamNotExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (shouldBeServedByThisServer)
+import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
+                                                   createStreamRelatedPath,
+                                                   removeStreamRelatedPath,
+                                                   shouldBeServedByThisServer)
 import           HStream.Server.Persistence.Utils
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store                    as S
@@ -43,14 +46,11 @@ createStreamHandler
   -> IO (ServerResponse 'Normal Stream)
 createStreamHandler sc@ServerContext{..} (ServerNormalRequest _metadata stream@Stream{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
-  let streamPath = streamRootPath <> "/" <> textToCBytes streamStreamName
-  let keyPath = mkPartitionKeysPath (textToCBytes streamStreamName)
-  keys <- tryGetChildren zkHandle keyPath
+  let name = textToCBytes streamStreamName
+  keys <- tryGetChildren zkHandle $ mkPartitionKeysPath name
   if null keys
     then do
-      let streamOp = createPathOp streamPath
-      let keyOp = createPathOp keyPath
-      tryCreateMulti zkHandle [streamOp, keyOp]
+      createStreamRelatedPath zkHandle name
       C.createStream sc stream
       returnResp stream
     else
@@ -87,12 +87,12 @@ deleteStreamHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@
     -- response and retry
     (False, False) -> if deleteStreamRequestIgnoreNonExist then returnResp Empty else throwIO StreamNotExist
   where
-    streamPath = streamRootPath <> "/" <> textToCBytes deleteStreamRequestStreamName
+    name = textToCBytes deleteStreamRequestStreamName
     streamName = transToStreamName deleteStreamRequestStreamName
-    cleanZkNode = deleteAllPath zkHandle streamPath
-    checkZkPathExist = isJust <$> zooExists zkHandle streamPath
+    cleanZkNode = removeStreamRelatedPath zkHandle name
+    checkZkPathExist = isJust <$> zooExists zkHandle (streamRootPath <> "/" <> name)
     checkStreamExist = S.doesStreamExist scLDClient streamName
-    checkIfActive = return False
+    checkIfActive = checkIfSubsOfStreamActive zkHandle name
 
     doDelete False = do
       isActive <- checkIfActive

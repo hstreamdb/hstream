@@ -25,7 +25,8 @@ where
 
 import           Control.Concurrent
 import           Control.Concurrent.Async         (concurrently_)
-import           Control.Exception                (onException, throwIO, try)
+import           Control.Exception                (catch, onException, throwIO,
+                                                   try)
 import           Control.Monad                    (forM_, unless)
 import           Data.Function                    (on)
 import           Data.Functor
@@ -34,7 +35,7 @@ import           Data.IORef                       (modifyIORef', newIORef,
                                                    readIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust)
+import           Data.Maybe                       (fromJust, isNothing)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -51,16 +52,18 @@ import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (SubscribeInnerError (..),
+import           HStream.Server.Exception         (StreamNotExist (..),
+                                                   SubscribeInnerError (..),
                                                    SubscriptionIdNotFound (..),
                                                    SubscriptionWatchOnDifferentNode (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (getCommitRecordId,
+import           HStream.Server.Handler.Common    (bindSubToStreamPath,
+                                                   getCommitRecordId,
                                                    getSuccessor,
-                                                   insertAckedRecordId)
+                                                   insertAckedRecordId,
+                                                   removeSubFromStreamPath)
 import           HStream.Server.Persistence       (ObjRepType (..),
-                                                   checkIfExist,
                                                    mkPartitionKeysPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
@@ -76,10 +79,15 @@ createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = defaultExceptionHandle $ do
+createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata sub@Subscription{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
-  Core.createSubscription ctx sub
+  bindSubToStreamPath zkHandle streamName subName
+  catch (Core.createSubscription ctx sub) $
+    \(e :: StreamNotExist) -> removeSubFromStreamPath zkHandle streamName subName >> throwIO e
   returnResp sub
+  where
+    streamName = textToCBytes subscriptionStreamName
+    subName = textToCBytes subscriptionSubscriptionId
 
 -- FIXME: depend on memory info to deal with delete operation may be wrong, even if all the create/delete requests
 -- are redirected to same server. What if this server crash, or the consistante hash choose another server to deal
@@ -90,13 +98,14 @@ deleteSubscriptionHandler
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
   { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
-  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
-  exists <- checkIfExist @ZHandle @'SubRep subId zkHandle
-  unless exists $ throwIO (SubscriptionIdNotFound subId)
   hr <- readMVar loadBalanceHashRing
   unless (serverNodeId (getAllocatedNode hr subId) == serverID) $
     throwIO SubscriptionWatchOnDifferentNode
-  Core.deleteSubscription ctx subId
+
+  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
+  subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
+  unless (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
+  Core.deleteSubscription ctx (fromJust subscription)
   returnResp Empty
 
 checkSubscriptionExistHandler
@@ -353,6 +362,7 @@ newSubscriptionRuntimeInfo zkHandle subId = do
 --------------------------------------------------------------------------------
 --
 
+-- FIXME: if any error happend, should server remove the corresponding consumer?
 streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse

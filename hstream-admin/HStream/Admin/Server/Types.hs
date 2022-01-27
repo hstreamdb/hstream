@@ -2,7 +2,6 @@ module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                as Aeson
-import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
@@ -135,20 +134,22 @@ streamParser = API.Stream
 -- SubscriptionWatchOnDifferentNode is not handled for delete command
 data SubscriptionCommand
   = SubscriptionCmdList
-  | SubscriptionCmdDelete Text
+  | SubscriptionCmdDelete API.Subscription
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
 subscriptionCmdParser = O.subparser
   ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
- <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subDelReqParser)
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser)
                                (O.progDesc "delte a stream (Warning: incomplete implementation)")
                        )
   )
 
-subDelReqParser :: O.Parser Text
-subDelReqParser = O.strOption
-  ( O.long "id" <> O.metavar "SubID" <> O.help "subscription id" )
+subscriptionParser :: O.Parser API.Subscription
+subscriptionParser = API.Subscription
+  <$> O.option O.auto ( O.long "id" <> O.metavar "SubID" <> O.help "subscription id" )
+  <*> O.option O.auto ( O.long "stream" <> O.metavar "StreamName" <> O.help "the stream associated with the subscription" )
+  <*> pure 60
 
 -------------------------------------------------------------------------------
 
