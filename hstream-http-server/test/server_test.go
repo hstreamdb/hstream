@@ -74,8 +74,10 @@ func execResp(t *testing.T, resp *http.Response, err error, unmarshalVar proto.M
 		fmt.Println(string(body))
 	}
 	assertOk(t, resp.StatusCode)
-	if err := protojson.Unmarshal(body, unmarshalVar); err != nil {
-		panic(err)
+	if unmarshalVar != nil {
+		if err := protojson.Unmarshal(body, unmarshalVar); err != nil {
+			panic(err)
+		}
 	}
 	return body
 }
