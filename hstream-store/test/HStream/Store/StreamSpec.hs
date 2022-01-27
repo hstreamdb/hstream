@@ -4,13 +4,12 @@
 module HStream.Store.StreamSpec (spec) where
 
 import           Control.Concurrent               (threadDelay)
-import           Control.Monad                    (void)
+import           Control.Monad                    (replicateM, void)
 import           Data.Int
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
 import           Z.Data.Vector.Base               (Bytes)
 
-import           Control.Monad                    (replicateM)
 import qualified HStream.Store                    as S
 import qualified HStream.Store.Internal.LogDevice as S
 import           HStream.Store.SpecUtils
@@ -23,9 +22,9 @@ spec = describe "StreamSpec" $ do
 base :: Spec
 base = describe "BaseSpec" $ do
   streamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
-  logPath <- runIO $ S.getStreamLogPath streamId Nothing
+  (logPath, _key) <- runIO $ S.getStreamLogPath streamId Nothing
   newStreamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
-  newLogPath <- runIO $ S.getStreamLogPath newStreamId Nothing
+  (newLogPath, _new_key) <- runIO $ S.getStreamLogPath newStreamId Nothing
 
   it "create stream" $ do
     print $ "Create a new stream: " <> S.showStreamName streamId
@@ -45,6 +44,28 @@ base = describe "BaseSpec" $ do
 
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldContain` [streamId]
+
+  it "stream partition" $ do
+    let key = Just "some_key"
+    streamName1 <- newRandomName 5
+    streamName2 <- newRandomName 5
+    let stream1 = S.mkStreamId S.StreamTypeStream streamName1
+        stream2 = S.mkStreamId S.StreamTypeStream streamName2
+    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
+                                        , S.logExtraAttrs = Map.empty
+                                        }
+    S.createStream client stream1 attrs
+    S.doesStreamExist client stream1 `shouldReturn` True
+    S.doesStreamPartitionExist client stream1 key `shouldReturn` False
+
+    log_id <- S.createStreamPartition client stream1 key
+    S.doesStreamPartitionExist client stream1 key `shouldReturn` True
+
+    S.renameStream' client stream1 streamName2
+    S.doesStreamPartitionExist client stream1 key `shouldReturn` False
+    S.doesStreamPartitionExist client stream2 key `shouldReturn` True
+
+    S.getUnderlyingLogId client stream2 key `shouldReturn` log_id
 
   it "create the same stream should throw EXISTS" $ do
     let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
