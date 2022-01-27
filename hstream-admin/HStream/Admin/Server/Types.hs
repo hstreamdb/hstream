@@ -134,22 +134,28 @@ streamParser = API.Stream
 -- SubscriptionWatchOnDifferentNode is not handled for delete command
 data SubscriptionCommand
   = SubscriptionCmdList
+  | SubscriptionCmdCreate API.Subscription
   | SubscriptionCmdDelete API.Subscription
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
 subscriptionCmdParser = O.subparser
-  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "Get all subscriptions"))
+  ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "get all subscriptions"))
+ <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
+                               (O.progDesc "create a subscription"))
  <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser)
-                               (O.progDesc "delte a stream (Warning: incomplete implementation)")
+                               (O.progDesc "delete a subscription (Warning: incomplete implementation)")
                        )
   )
 
 subscriptionParser :: O.Parser API.Subscription
 subscriptionParser = API.Subscription
-  <$> O.option O.auto ( O.long "id" <> O.metavar "SubID" <> O.help "subscription id" )
-  <*> O.option O.auto ( O.long "stream" <> O.metavar "StreamName" <> O.help "the stream associated with the subscription" )
-  <*> pure 60
+  <$> O.strOption ( O.long "id" <> O.metavar "SubID"
+                 <> O.help "subscription id" )
+  <*> O.strOption ( O.long "stream" <> O.metavar "StreamName"
+                 <> O.help "the stream associated with the subscription" )
+  <*> O.option O.auto ( O.long "timeout" <> O.metavar "INT" <> O.value 60
+                     <> O.help "subscription timeout in seconds")
 
 -------------------------------------------------------------------------------
 
