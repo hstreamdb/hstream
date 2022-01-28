@@ -5,7 +5,9 @@
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 
-module HStream.Server.Exception where
+module HStream.Server.Exception
+  (module HStream.Server.Exception, throwIO)
+where
 
 import           Control.Exception                    (Exception (..),
                                                        Handler (Handler),
@@ -49,8 +51,10 @@ mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(err :: Store.SomeHStoreException) -> do
     cleanFun
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
-  Handler(\(ConsumerExist name :: ConsumerExist) -> do
-    retFun StatusInvalidArgument $ StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")),
+  Handler(\(ConsumerExist (subscriptionId, consumerName) :: ConsumerExist) -> do
+    retFun StatusInvalidArgument . StatusDetails $
+      "Consumer named "   <> encodeUtf8 consumerName   <>
+      " on subscription " <> encodeUtf8 subscriptionId <> " already exists"),
   Handler (\(err :: PersistenceException) ->
     retFun StatusAborted $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(_ :: QueryTerminatedOrNotExist) ->
@@ -127,7 +131,7 @@ data ConnectorNotExist = ConnectorNotExist
   deriving (Show)
 instance Exception ConnectorNotExist
 
-newtype ConsumerExist = ConsumerExist Text
+newtype ConsumerExist = ConsumerExist (Text, Text) -- SubscriptionId ConsumerName
   deriving (Show)
 instance Exception ConsumerExist
 

@@ -97,7 +97,7 @@ runStream ctx AT.StreamCmdList = do
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
 runStream ctx (AT.StreamCmdCreate stream) = do
-  HC.createStream ctx stream
+  _ <- HC.createStream ctx stream
   return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------

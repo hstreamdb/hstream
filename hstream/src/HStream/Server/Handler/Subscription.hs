@@ -150,12 +150,13 @@ watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubsc
   --   (watchStreamShardsForSubscription ctx watchSubscriptionRequestSubscriptionId)
 
   stopSignal <- modifyMVar sriWatchContext $
-    \ctx -> addNewConsumerToCtx ctx watchSubscriptionRequestConsumerName streamSend
+    \ctx -> addNewConsumerToCtx ctx watchSubscriptionRequestSubscriptionId watchSubscriptionRequestConsumerName streamSend
   Log.debug "watchHandler: ready to block..."
   -- block util the watch stream broken or closed
   void $ takeMVar stopSignal
   Log.debug "watchHanlder: will end"
-  modifyMVar_ sriWatchContext (`removeConsumerFromCtx` watchSubscriptionRequestConsumerName)
+  modifyMVar_ sriWatchContext $ \watchCtx -> removeConsumerFromCtx watchCtx
+    watchSubscriptionRequestSubscriptionId watchSubscriptionRequestConsumerName
   return $ ServerWriterResponse [] StatusCancelled . StatusDetails $ "connection broken"
 
 --------------------------------------------------------------------------------
@@ -196,7 +197,7 @@ assignShardForReading SubscribeRuntimeInfo{..} orderingKey = do
               Log.debug $ "[assignShardForReading]: get consumer " <> Log.buildText cwConsumerName <> " from working set"
               -- push SubscriptionAdd to the choosed consumer
               -- FIXME: will error when no stopSignal for consumerName
-              let stopSignal = wcWatchStopSignals HM.! cwConsumerName
+              let stopSignal = wcWatchStopSignals HM.! (cwSubscriptionId, cwConsumerName)
               -- FIXME: if pushAdd error, currently the server will try to send a stopSignal to watch handler, but that's not enough.
               -- 1. current key will be add to the minConsumerWorkload, but actually client won't receive any notification of key adding, so the
               --   key won't be consume
@@ -299,16 +300,21 @@ routineForSubs ServerContext {..} = do
                   then return (watchCtx, Nothing)
                   else do
                     let (maxConsumer@ConsumerWorkload{cwConsumerWatch = oldWatch, ..}, leftSet) = Set.deleteFindMax wcWorkingConsumers
-                    let oldWatchStream = cwWatchStream oldWatch
-                    let oldConsumerName = cwConsumerName oldWatch
+                    let oldWatchStream    = cwWatchStream    oldWatch
+                    let oldSubscriptionId = cwSubscriptionId oldWatch
+                    let oldConsumerName   = cwConsumerName   oldWatch
                     if Set.size cwShards > 1
                       then do
                         let (shard, leftShards) = Set.deleteFindMin cwShards
-                        let consumer@ConsumerWatch { cwWatchStream = newWatchStream , cwConsumerName = newConsumerName } = head wcWaitingConsumers
+                        let consumer@ConsumerWatch
+                              { cwWatchStream    = newWatchStream
+                              , cwSubscriptionId = newSubscriptionId
+                              , cwConsumerName   = newConsumerName
+                              } = head wcWaitingConsumers
                         pushRemove oldWatchStream oldConsumerName sriSubscriptionId
-                          shard (wcWatchStopSignals HM.! oldConsumerName)
+                          shard (wcWatchStopSignals HM.! (oldSubscriptionId, oldConsumerName))
                         pushAdd newWatchStream newConsumerName sriSubscriptionId
-                          shard (wcWatchStopSignals HM.! newConsumerName)
+                          shard (wcWatchStopSignals HM.! (newSubscriptionId, newConsumerName))
 
                         let newMaxConsumer = maxConsumer {cwShards = leftShards}
                         let newWorkingConsumer = mkConsumerWorkload consumer (Set.singleton shard)
