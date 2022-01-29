@@ -25,7 +25,6 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (RecordId (..),
                                                    StreamingFetchResponse (..),
                                                    WatchSubscriptionResponse (..))
@@ -105,21 +104,6 @@ printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
 
--- data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
---     sriStreamName        :: T.Text
---   , sriLogId             :: HS.C_LogID
---   , sriAckTimeoutSeconds :: Int32
---   , sriLdCkpReader       :: HS.LDSyncCkpReader
---   , sriLdReader          :: Maybe HS.LDReader
---   , sriWindowLowerBound  :: RecordId
---   , sriWindowUpperBound  :: RecordId
---   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
---   , sriBatchNumMap       :: Map.Map Word64 Word32
---   , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
---   , sriValid             :: Bool
---   , sriSignals           :: V.Vector (MVar ())
--- }
-
 data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
     sriSubscriptionId   :: SubscriptionId
   , sriStreamName       :: T.Text
@@ -130,41 +114,31 @@ data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
 data WatchContext = WatchContext {
     wcWaitingConsumers :: [ConsumerWatch]
   , wcWorkingConsumers :: Set.Set ConsumerWorkload
-  , wcWatchStopSignals :: HM.HashMap (SubscriptionId , ConsumerName) (MVar ())
+  , wcWatchStopSignals :: HM.HashMap ConsumerName (MVar ())
 }
 
-addNewConsumerToCtx :: WatchContext
-  -> SubscriptionId -> ConsumerName
-  -> StreamSend WatchSubscriptionResponse -> IO(WatchContext, MVar ())
-addNewConsumerToCtx ctx@WatchContext{..} subscriptionId consumerName streamSend = do
-  let names = (subscriptionId, consumerName)
-  if names `HM.member` wcWatchStopSignals
-    then throwIO $ ConsumerExist names
-    else do
-      stopSignal <- newEmptyMVar
-      let signals = HM.insert names stopSignal wcWatchStopSignals
-      let consumerWatch = mkConsumerWatch names streamSend
-      let newCtx = ctx
-            { wcWaitingConsumers = wcWaitingConsumers ++ [consumerWatch]
-            , wcWatchStopSignals = signals
-            }
-      return (newCtx, stopSignal)
+addNewConsumerToCtx :: WatchContext -> ConsumerName -> StreamSend WatchSubscriptionResponse -> IO(WatchContext, MVar ())
+addNewConsumerToCtx ctx@WatchContext{..} name streamSend = do
+  stopSignal <- newEmptyMVar
+  let signals = HM.insert name stopSignal wcWatchStopSignals
+  let consumerWatch = mkConsumerWatch name streamSend
+  let newCtx = ctx
+        { wcWaitingConsumers = wcWaitingConsumers ++ [consumerWatch]
+        , wcWatchStopSignals = signals
+        }
+  return (newCtx, stopSignal)
 
-removeConsumerFromCtx :: WatchContext
-  -> SubscriptionId -> ConsumerName
-  -> IO WatchContext
-removeConsumerFromCtx ctx@WatchContext{..} subscriptionId consumerName =
-  let names = (subscriptionId, consumerName) in
-    return ctx {wcWatchStopSignals = HM.delete names wcWatchStopSignals}
+removeConsumerFromCtx :: WatchContext -> ConsumerName -> IO WatchContext
+removeConsumerFromCtx ctx@WatchContext{..} name =
+  return ctx {wcWatchStopSignals = HM.delete name wcWatchStopSignals}
 
 data ConsumerWatch = ConsumerWatch {
-    cwSubscriptionId :: SubscriptionId
-  , cwConsumerName   :: ConsumerName
-  , cwWatchStream    :: StreamSend WatchSubscriptionResponse
+    cwConsumerName :: ConsumerName
+  , cwWatchStream  :: StreamSend WatchSubscriptionResponse
 }
 
-mkConsumerWatch :: (SubscriptionId, ConsumerName) -> StreamSend WatchSubscriptionResponse -> ConsumerWatch
-mkConsumerWatch (x, y) = ConsumerWatch x y
+mkConsumerWatch :: ConsumerName -> StreamSend WatchSubscriptionResponse -> ConsumerWatch
+mkConsumerWatch = ConsumerWatch
 
 data ConsumerWorkload = ConsumerWorkload {
     cwConsumerWatch :: ConsumerWatch
@@ -205,7 +179,7 @@ data LoadReport = LoadReport {
   , isOverloaded   :: Bool
   } deriving (Eq, Generic, Show)
 instance FromJSON LoadReport
-instance ToJSON LoadReport
+instance ToJSON   LoadReport
 
 data SystemResourceUsage
   = SystemResourceUsage {
@@ -223,4 +197,4 @@ data SystemResourcePercentageUsage =
   , bandwidthOutUsage :: Double
   } deriving (Eq, Generic, Show)
 instance FromJSON SystemResourcePercentageUsage
-instance ToJSON SystemResourcePercentageUsage
+instance ToJSON   SystemResourcePercentageUsage
