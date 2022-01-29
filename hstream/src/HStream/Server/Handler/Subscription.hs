@@ -27,7 +27,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (concurrently_)
 import           Control.Exception                (catch, onException, throwIO,
                                                    try)
-import           Control.Monad                    (forM_, unless)
+import           Control.Monad                    (filterM, forM_, unless)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -161,10 +161,24 @@ watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubsc
   void $ takeMVar stopSignal
   Log.debug "watchHanlder: will end"
   modifyMVar_ sriWatchContext (`removeConsumerFromCtx` watchSubscriptionRequestConsumerName)
+  modifyMVar_ scSubscribeRuntimeInfo $ \infoMap -> do
+    let subInfo = fromJust $ HM.lookup watchSubscriptionRequestSubscriptionId infoMap
+    retSubInfo <- delConsumerSRI subInfo
+    pure $ HM.insert watchSubscriptionRequestSubscriptionId retSubInfo infoMap
   return $ ServerWriterResponse [] StatusCancelled . StatusDetails $ "connection broken"
   where
     getAllConsumerNames :: HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo) -> IO [T.Text]
     getAllConsumerNames xs = sequence $ (fmap ssriConsumerName) . readMVar <$> HM.elems xs
+    delConsumerSRI :: SubscribeRuntimeInfo -> IO SubscribeRuntimeInfo
+    delConsumerSRI SubscribeRuntimeInfo{..} = do
+      modifyMVar_ sriShardRuntimeInfo $ \sri -> do
+        xs <- (flip filterM) (HM.toList sri) $ \xs -> do
+          x <- readMVar (snd xs)
+          pure $ if watchSubscriptionRequestConsumerName == ssriConsumerName x
+            then False
+            else True
+        pure $ HM.fromList xs
+      pure $ SubscribeRuntimeInfo sriSubscriptionId sriStreamName sriWatchContext sriShardRuntimeInfo
 
 --------------------------------------------------------------------------------
 -- find the stream according to the subscriptionId,
