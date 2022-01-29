@@ -52,7 +52,8 @@ import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (StreamNotExist (..),
+import           HStream.Server.Exception         (ConsumerExist (..),
+                                                   StreamNotExist (..),
                                                    SubscribeInnerError (..),
                                                    SubscriptionIdNotFound (..),
                                                    SubscriptionWatchOnDifferentNode (..),
@@ -137,14 +138,18 @@ watchSubscriptionHandler
   -> IO (ServerResponse 'ServerStreaming WatchSubscriptionResponse)
 watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubscriptionRequest {..} streamSend) = do
   Log.debug $ "Receive WatchSubscription request " <> Log.buildString (show req)
-  (SubscribeRuntimeInfo{..}, isInited) <- modifyMVar scSubscribeRuntimeInfo
-    ( \infoMap -> do
-        case HM.lookup watchSubscriptionRequestSubscriptionId infoMap of
-          Nothing -> do
-            subInfo <- newSubscriptionRuntimeInfo zkHandle watchSubscriptionRequestSubscriptionId
-            return (HM.insert watchSubscriptionRequestSubscriptionId subInfo infoMap, (subInfo, False))
-          Just subInfo -> return (infoMap, (subInfo, True))
-    )
+  (SubscribeRuntimeInfo{..}, isInited) <- modifyMVar scSubscribeRuntimeInfo $ \infoMap -> do
+    case HM.lookup watchSubscriptionRequestSubscriptionId infoMap of
+      Nothing -> do
+        subInfo <- newSubscriptionRuntimeInfo zkHandle watchSubscriptionRequestSubscriptionId
+        pure (HM.insert watchSubscriptionRequestSubscriptionId subInfo infoMap, (subInfo, False))
+      Just subInfo@SubscribeRuntimeInfo{..} -> do
+        -- check consumers with same name can not on the same subscription at the same time
+        -- XXX: Should we check it when streaming fetching? (malicious request)
+        allConsumerNames <- readMVar sriShardRuntimeInfo >>= getAllConsumerNames
+        if watchSubscriptionRequestConsumerName `elem` allConsumerNames
+          then throwIO $ ConsumerExist (watchSubscriptionRequestSubscriptionId, watchSubscriptionRequestConsumerName)
+          else pure (infoMap, (subInfo, True))
 
   -- unless isInited
   --   (watchStreamShardsForSubscription ctx watchSubscriptionRequestSubscriptionId)
@@ -157,13 +162,16 @@ watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubsc
   Log.debug "watchHanlder: will end"
   modifyMVar_ sriWatchContext (`removeConsumerFromCtx` watchSubscriptionRequestConsumerName)
   return $ ServerWriterResponse [] StatusCancelled . StatusDetails $ "connection broken"
+  where
+    getAllConsumerNames :: HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo) -> IO [T.Text]
+    getAllConsumerNames xs = sequence $ (fmap ssriConsumerName) . readMVar <$> HM.elems xs
 
 --------------------------------------------------------------------------------
 -- find the stream according to the subscriptionId,
 -- and watch stream shards in zk.
 -- when there is a new shard, assign it for Reading.
-watchStreamShardsForSubscription :: ServerContext -> T.Text -> IO ()
-watchStreamShardsForSubscription = undefined
+_watchStreamShardsForSubscription :: ServerContext -> T.Text -> IO ()
+_watchStreamShardsForSubscription = undefined
 --------------------------------------------------------------------------------
 
 -- find a consumer for the orderingKey and push the notification to the consumer to
