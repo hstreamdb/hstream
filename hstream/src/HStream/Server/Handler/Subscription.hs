@@ -174,9 +174,7 @@ watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubsc
       modifyMVar_ sriShardRuntimeInfo $ \sri -> do
         xs <- (flip filterM) (HM.toList sri) $ \xs -> do
           x <- readMVar (snd xs)
-          pure $ if watchSubscriptionRequestConsumerName == ssriConsumerName x
-            then False
-            else True
+          pure $ watchSubscriptionRequestConsumerName /= ssriConsumerName x
         pure $ HM.fromList xs
       pure $ SubscribeRuntimeInfo sriSubscriptionId sriStreamName sriWatchContext sriShardRuntimeInfo
 
