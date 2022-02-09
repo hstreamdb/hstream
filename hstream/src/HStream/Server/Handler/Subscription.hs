@@ -7,7 +7,6 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Subscription
@@ -24,15 +23,15 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async         (concurrently_)
-import           Control.Exception                (catch, onException, throwIO,
-                                                   try)
-import           Control.Monad                    (forM_, unless, when)
+import           Control.Concurrent.Async         (async, cancel, race_)
+import           Control.Exception                (catch, throwIO, try)
+import           Control.Monad                    (forM_, forever, unless, when)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (modifyIORef', newIORef,
-                                                   readIORef)
+import           Data.IORef                       (IORef, modifyIORef',
+                                                   newIORef, readIORef,
+                                                   writeIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isNothing)
@@ -45,17 +44,19 @@ import           Network.GRPC.HighLevel.Generated
 import           Z.Data.Vector                    (Bytes)
 import qualified Z.Data.Vector                    as ZV
 import           Z.Foreign                        (toByteString)
-import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
+import           Control.Concurrent.STM           (atomically, check, readTVar,
+                                                   registerDelay)
+import           Data.Int                         (Int32, Int64)
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
-import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (StreamNotExist (..),
                                                    SubscribeInnerError (..),
                                                    SubscriptionIdNotFound (..),
                                                    SubscriptionWatchOnDifferentNode (..),
+                                                   defaultBiDiStreamExceptionHandle,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
@@ -71,8 +72,9 @@ import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (cBytesToText, returnResp,
-                                                   textToCBytes)
+import           HStream.Utils                    (cBytesToText,
+                                                   currentTimestampMS,
+                                                   returnResp, textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -363,58 +365,75 @@ newSubscriptionRuntimeInfo zkHandle subId = do
 --------------------------------------------------------------------------------
 --
 
--- FIXME: if any error happend, should server remove the corresponding consumer?
 streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx bidiRequest =
-  try (streamingFetchInternal ctx bidiRequest) >>= \case
-    Right _ -> return $
-      ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
-    Left (err :: SubscribeInnerError) -> handleException err
-    Left _  -> return $
-      ServerBiDiResponse [] StatusUnknown . StatusDetails $ ""
-  where
-    handleException :: SubscribeInnerError -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-    handleException GRPCStreamRecvError = return $
-      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer recv error"
-    handleException GRPCStreamRecvCloseError = return $
-      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer is closed"
-    handleException _ = return $
-      ServerBiDiResponse [] StatusUnknown . StatusDetails $ ""
-
-streamingFetchInternal
-  :: ServerContext
-  -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
-  -> IO ()
-streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) =
-  streamRecv >>= \case
+streamingFetchHandler ctx@ServerContext{..} (ServerBiDiRequest _ streamRecv streamSend) = defaultBiDiStreamExceptionHandle $ do
+  fetcher@Fetcher{..} <- initFetcher
+  firstReq <- streamRecv
+  subCtx <- case firstReq of
     Left _                -> throwIO GRPCStreamRecvError
     Right Nothing         -> throwIO GRPCStreamRecvCloseError
-    Right (Just firstReq) -> do
-      -- check firstReq
-      shardInfoMVar <- initShardRuntimeInfo firstReq
+    Right (Just req@StreamingFetchRequest{..}) -> do
+      context@SubscriptionCtx{..} <- initCtx ctx req
+      Log.debug $ "init subscriptionCtx done for sub: " <> Log.buildText subscriptionId <> ", key: " <> Log.buildText subKey
+      writeChan eventCh $ ACKEVENT streamingFetchRequestAckIds
+      return context
+  let ackTimeoutSeconds = subAckTimeoutSeconds subCtx
 
-      concurrently_ (handleAckStream shardInfoMVar scLDClient streamRecv) (genRecordStream ctx shardInfoMVar)
-        `onException` cleanup firstReq
+  -- background thread to run a timer
+  -- FIXME: one server instance can share a common timer thread, no need to start a timer for each fetch handler
+  th1 <- async $ timer eventCh
+  -- background thread to receive acks from client
+  th2 <- async $ waitAcks subCtx streamRecv eventCh
+  -- background thread to send records to client
+  th3 <- async $ sendRes subCtx streamSend eventCh responseCh
+  -- background thread to fetching data from store
+  th4 <- async $ try (readRecords scStatsHolder subCtx eventCh) >>= \case
+    Left (e :: S.SomeHStoreException) -> do
+      Log.fatal $ logSubscriptionCtx subCtx <> "read records exception: " <> Log.buildString (show e)
+      writeChan eventCh . STOPEVENT . Left $ StoreError e
+    Right _ -> return ()
+  let cancelation = cancel th1 >> cancel th2 >> cancel th3 >> cancel th4
 
+  let sliceWindow = SliceWindow
+        { ackedRanges       = Map.empty
+        , batchNumMap       = Map.empty
+        , windowLowerBound  = RecordId S.LSN_MIN 0
+        }
+  windowRef <- newIORef sliceWindow
+
+  inflightRecordsRef <- newIORef Map.empty
+  -- mainLoop to handle event
+  handleEvent subCtx fetcher windowRef inflightRecordsRef ackTimeoutSeconds >>= \case
+    Right _ -> return $
+      ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
+    Left (err :: SubscribeInnerError) -> cleanup subCtx cancelation >> onError err
   where
-    cleanup :: StreamingFetchRequest -> IO ()
-    cleanup StreamingFetchRequest{..} = do
+    onError :: SubscribeInnerError -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
+    onError GRPCStreamRecvError = return $
+      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer recv error"
+    onError GRPCStreamRecvCloseError =
+        return $ ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer is closed"
+    onError _ = return $
+      ServerBiDiResponse [] StatusUnknown . StatusDetails $ ""
+
+    cleanup :: SubscriptionCtx -> IO () -> IO ()
+    cleanup SubscriptionCtx{..} cancelation = do
       -- FIXME: check if it's safe to use fromJust
       SubscribeRuntimeInfo {..} <- withMVar scSubscribeRuntimeInfo
-        (return . fromJust . HM.lookup streamingFetchRequestSubscriptionId)
+        (return . fromJust . HM.lookup subscriptionId)
 
       modifyMVar_ sriWatchContext
         (
           \watchCtx@WatchContext {..} -> do
              let workingSet = Set.map
                    (
-                     \consumer@ConsumerWorkload { cwConsumerWatch = ConsumerWatch {..}, ..} ->
-                       if cwConsumerName == streamingFetchRequestConsumerName
+                     \consumer@ConsumerWorkload{cwConsumerWatch = ConsumerWatch {..}, ..} ->
+                       if cwConsumerName == subConsumerName
                        then
-                         let shards = Set.delete streamingFetchRequestOrderingKey cwShards
+                         let shards = Set.delete subKey cwShards
                           in consumer {cwShards = shards}
                        else consumer
                    )
@@ -426,358 +445,300 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
              let newWorkingSet = Set.filter (\ConsumerWorkload {..} -> not . Set.null $ cwShards) workingSet
              return watchCtx {wcWorkingConsumers = newWorkingSet}
         )
+      cancelation
 
-      shardInfoMVar <- withMVar sriShardRuntimeInfo
-        (\infoMap -> return (infoMap HM.! streamingFetchRequestOrderingKey))
-
-      modifyMVar_ shardInfoMVar (\info -> return info {ssriSendStatus = SendStopped})
-
-    initShardRuntimeInfo :: StreamingFetchRequest -> IO (MVar ShardSubscribeRuntimeInfo)
-    initShardRuntimeInfo req@StreamingFetchRequest{..} = do
-      -- FIXME: check if it's safe to use fromJust
-      SubscribeRuntimeInfo {..} <- withMVar scSubscribeRuntimeInfo
-        (return . fromJust . HM.lookup streamingFetchRequestSubscriptionId)
-
-      -- FIXME: reduce the granularity of locks
-      shardInfoMVar <- modifyMVar sriShardRuntimeInfo
-        (
-          \shardInfoMap ->
-            if HM.member streamingFetchRequestOrderingKey shardInfoMap
-            then
-              return (shardInfoMap, shardInfoMap HM.! streamingFetchRequestOrderingKey)
-            else do
-              -- get subscription info from zk
-              P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
-                Nothing -> do
-                  Log.debug $ "streamingFetch error because subscription " <> Log.buildText streamingFetchRequestSubscriptionId <> " not exist."
-                  throwIO $ SubscriptionIdNotFound streamingFetchRequestSubscriptionId
-                Just Subscription {..} -> do
-                  -- create a ldCkpReader for reading new records
-                  let readerName = textToCBytes (streamingFetchRequestSubscriptionId <> "-" <> streamingFetchRequestOrderingKey)
-                  ldCkpReader <-
-                    S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
-                  -- seek ldCkpReader to start offset
-                  let streamID = S.mkStreamId S.StreamTypeStream (textToCBytes subscriptionStreamName)
-                  let key = orderingKeyToStoreKey streamingFetchRequestOrderingKey
-                  logId <- S.getUnderlyingLogId scLDClient streamID key
-                  S.startReadingFromCheckpointOrStart ldCkpReader logId (Just S.LSN_MIN) S.LSN_MAX
-                  -- set ldCkpReader timeout to 0
-                  _ <- S.ckpReaderSetTimeout ldCkpReader 0
-                  Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText streamingFetchRequestSubscriptionId <> "}"
-
-                  -- create a ldReader for rereading unacked records
-                  ldReader <- S.newLDReader scLDClient 1 Nothing
-                  Log.debug $ "created a ldReader for subscription {" <> Log.buildText streamingFetchRequestSubscriptionId <> "}"
-
-                  -- init SubscribeRuntimeInfo
-                  let shardInfo =
-                        ShardSubscribeRuntimeInfo {
-                            ssriStreamName        = subscriptionStreamName
-                          , ssriLogId             = logId
-                          , ssriAckTimeoutSeconds = subscriptionAckTimeoutSeconds * 10
-                          , ssriLdCkpReader       = ldCkpReader
-                          , ssriLdReader          = ldReader
-                          , ssriWindowLowerBound  = RecordId S.LSN_MIN 0
-                          , ssriWindowUpperBound  = maxBound
-                          , ssriAckedRanges       = Map.empty
-                          , ssriBatchNumMap       = Map.empty
-                          , ssriConsumerName      = streamingFetchRequestConsumerName
-                          , ssriStreamSend        = streamSend
-                          , ssriSendStatus        = SendRunning
-                        }
-                  shardInfoMVar <- newMVar shardInfo
-                  let newShardMap = HM.insert streamingFetchRequestOrderingKey shardInfoMVar shardInfoMap
-                  return (newShardMap, shardInfoMVar)
-        )
-      modifyMVar shardInfoMVar
-        (
-          \shardInfo@ShardSubscribeRuntimeInfo{..} ->
-            case ssriSendStatus of
-              SendRunning -> return (shardInfo, Just ())
-              SendStopped -> do
-                let info = shardInfo {ssriStreamSend = streamSend, ssriSendStatus = SendRunning, ssriConsumerName = streamingFetchRequestConsumerName}
-                return (info, Just ())
-              SendStopping -> return (shardInfo, Nothing)
-        ) >>= \case
-          Nothing -> do
-            threadDelay 1000
-            initShardRuntimeInfo req
-          Just _ -> return shardInfoMVar
-
-handleAckStream
-  :: MVar ShardSubscribeRuntimeInfo
-  -> S.LDClient
-  -> StreamRecv StreamingFetchRequest
-  -> IO ()
-handleAckStream shardInfoMVar ldclient streamRecv = do
-  streamRecv >>= \case
-    Left (err :: grpcIOError) -> do
-      Log.fatal . Log.buildString $ "streamRecv error: " <> show err
-      throwIO GRPCStreamRecvError
-    Right Nothing -> do
-      -- This means that the consumer finished sending acks actively.
-      consumerName <-
-        withMVar shardInfoMVar (\ShardSubscribeRuntimeInfo{..} -> return ssriConsumerName)
-      Log.info $ "consumer closed: " <> Log.buildText consumerName
-      throwIO GRPCStreamRecvCloseError
-    Right (Just StreamingFetchRequest {..}) ->
-      if V.null streamingFetchRequestAckIds
-        then handleAckStream shardInfoMVar ldclient streamRecv
-        else do
-          doAck ldclient shardInfoMVar streamingFetchRequestAckIds
-          handleAckStream shardInfoMVar ldclient streamRecv
-
-genRecordStream
-  :: ServerContext
-  -> MVar ShardSubscribeRuntimeInfo
-  -> IO ()
-genRecordStream ctx@ServerContext {..} shardInfoMVar = do
-  check
-
-  mRecords <- doRead
-  case mRecords of
-    Nothing -> do
-      -- FIXME: No need sleep here? reader read will block if there are no data to read.
-      threadDelay 1000000
-      genRecordStream ctx shardInfoMVar
-    Just records -> do
-      doSend records
-      let recordIds = V.map (fromJust . receivedRecordRecordId) records
-      registerResend recordIds
-      genRecordStream ctx shardInfoMVar
+handleEvent
+  :: SubscriptionCtx
+  -> Fetcher
+  -> IORef SliceWindow
+  -> IORef (Map.Map Int64 (V.Vector RecordId))
+  -> Int32
+  -> IO (Either SubscribeInnerError ())
+handleEvent subCtx fetcher@Fetcher{..} windowRef inflightRecordsRef ackTimeoutSeconds = do
+  startFetcher fetcher >>= loop
   where
-    check =
-      modifyMVar shardInfoMVar
-        (
-          \ info@ShardSubscribeRuntimeInfo {..} ->
-            case ssriSendStatus of
-              SendStopping -> return (info {ssriSendStatus = SendStopped}, Just ConsumerInValidError)
-              SendStopped ->  return (info, Just ConsumerInValidError)
-              SendRunning -> return (info, Nothing)
-        ) >>= \case
-          Nothing  -> return ()
-          Just err -> throwIO err
+    loop mailBox = readChan mailBox >>= \case
+      ACKEVENT acks -> do
+        unless (V.null acks) $
+          doAck subCtx windowRef acks
+        loop mailBox
+      DATAREADYEVENT datas -> do
+        Log.debug $ logSubscriptionCtx subCtx <> "receive DATAREADYEVENT"
+        window <- readIORef windowRef
+        let newWindow = insertDataToWindow window datas
+        writeIORef windowRef newWindow
+        case datas of
+          GapData _ -> return ()
+          NormalData records -> do
+            let responsRecords = fetchResult records
+            writeChan responseCh responsRecords
+            inflightRecords <- readIORef inflightRecordsRef
+            let rids = V.map (fromJust . receivedRecordRecordId) responsRecords
+            timeout <- currentTimestampMS <&> (+ fromIntegral ackTimeoutSeconds)
+            writeIORef inflightRecordsRef $ Map.insert timeout rids inflightRecords
+        loop mailBox
+      ACKTIMEOUTEVENT -> do
+        inflightRecords <- readIORef inflightRecordsRef
+        current <- currentTimestampMS
+        let (timeoutRecords, remainRecords) = Map.spanAntitone (<= current) inflightRecords
+        unless (Map.null timeoutRecords) $ do
+          let timeoutRecordIds = V.concat $ Map.elems timeoutRecords
+          SliceWindow{..} <- readIORef windowRef
+          let unackedRecordIds = filterUnackedRecordIds timeoutRecordIds ackedRanges windowLowerBound
+          Log.debug $ logSubscriptionCtx subCtx <> "unackedRecordIds={" <> Log.buildString (show unackedRecordIds) <> "}"
+          if V.null unackedRecordIds
+            then writeIORef inflightRecordsRef remainRecords
+            else do
+              void . forkIO $ readRetransRecords subCtx unackedRecordIds responseCh batchNumMap
+              let newInflightRecords = Map.insert (current + fromIntegral ackTimeoutSeconds) unackedRecordIds remainRecords
+              writeIORef inflightRecordsRef newInflightRecords
+        loop mailBox
+      STOPEVENT res -> return res
 
-    doRead =
-      modifyMVar shardInfoMVar
-        (
-          \info@ShardSubscribeRuntimeInfo{..} ->
-            S.ckpReaderReadAllowGap ssriLdCkpReader 1000 >>= \case
-              Left gap@S.GapRecord {..} -> do
-                -- insert gap range to ackedRanges
-                let gapLoRecordId = RecordId gapLoLSN minBound
-                    gapHiRecordId = RecordId gapHiLSN maxBound
-                    newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) ssriAckedRanges
-                    -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
-                    -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
-                    groupNums = map (, 0) [gapLoLSN, gapHiLSN]
-                    newBatchNumMap = Map.union ssriBatchNumMap (Map.fromList groupNums)
-                    newInfo = info { ssriAckedRanges = newRanges
-                                   , ssriBatchNumMap = newBatchNumMap
-                                   }
-                Log.debug . Log.buildString $ "reader meet a gapRecord for stream " <> show ssriStreamName <> ", the gap is " <> show gap
-                Log.debug . Log.buildString $ "update ackedRanges to " <> show newRanges
-                Log.debug . Log.buildString $ "update batchNumMap to " <> show newBatchNumMap
-                return (newInfo, Nothing)
-              Right dataRecords
-                | null dataRecords -> do
-                    Log.debug . Log.buildString $ "reader read empty dataRecords from stream " <> show ssriStreamName
-                    return (info, Nothing)
-                | otherwise -> do
-                    -- Log.debug . Log.buildString $ "reader read " <> show (length dataRecords) <> " records: " <> show (formatDataRecords dataRecords)
+-- spawn two background threads, one thread will forward new event to streamingFetch main loop,
+-- another thread will waiting a stop signal, and if the signal received, it will write a stop
+-- event to main loop, and stop the both spawned threads.
+startFetcher :: Fetcher -> IO (Chan FetchEvent)
+startFetcher Fetcher{..} = do
+  mailBox <- newChan
+  void . forkIO $ receiveEvent mailBox stopCh
+  return mailBox
+  where
+    receiveEvent mailBox stopChannel = race_ (waitEvent mailBox) (stop stopChannel mailBox)
+    stop ch mailBox = readChan ch >>= writeChan mailBox . STOPEVENT
+    waitEvent mailBox = forever $ readChan eventCh >>= writeChan mailBox
 
-                    -- XXX: Should we add a server option to toggle Stats?
-                    --
-                    -- WARNING: we assume there is one stream name in all dataRecords.
-                    --
-                    -- Make sure you have read only ONE stream(log), otherwise you should
-                    -- group dataRecords by stream name.
-                    let len_bs = sum $ map (ZV.length . S.recordPayload) dataRecords
-                    Stats.stream_time_series_add_record_bytes scStatsHolder (textToCBytes ssriStreamName) (fromIntegral len_bs)
+waitAcks :: SubscriptionCtx -> StreamRecv StreamingFetchRequest -> Chan FetchEvent -> IO ()
+waitAcks ctx streamRecv ch =
+  waitLoop
+  where
+    waitLoop = do
+      streamRecv >>= \case
+        Left (err :: grpcIOError) -> do
+          Log.fatal $ logSubscriptionCtx ctx <> "streamRecv error: " <> Log.buildString (show err)
+          writeChan ch . STOPEVENT $ Left GRPCStreamRecvError
+        Right Nothing -> do
+          -- -- This means that the consumer finished sending acks actively.
+          Log.info $ logSubscriptionCtx ctx <> "consumer closed."
+          writeChan ch . STOPEVENT $ Left GRPCStreamRecvCloseError
+        Right (Just StreamingFetchRequest {..}) -> do
+          writeChan ch $ ACKEVENT streamingFetchRequestAckIds
+          waitLoop
 
-                    -- TODO: List operations are very inefficient, use a more efficient data structure(vector or sth.) to replace
-                    let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
-                        len = length groups
-                        (batch, lastBatch) = splitAt (len - 1) groups
-                        -- When the number of records in an LSN exceeds the maximum number of records we
-                        -- can fetch in a single read call, `batch' will be an empty list.
-                    let maxReadSize = if null batch
-                                        then length . last $ lastBatch
-                                        else length . last $ batch
-                        lastLSN = S.recordLSN . head . head $ lastBatch
-                    Log.debug $ "maxReadSize = "<> Log.buildInt maxReadSize <> ", lastLSN = " <> Log.buildInt lastLSN
+sendRes
+  :: SubscriptionCtx
+  -> StreamSend StreamingFetchResponse
+  -> Chan FetchEvent
+  -> Chan (V.Vector ReceivedRecord)
+  -> IO ()
+sendRes ctx@SubscriptionCtx{..} streamSend eventCh dataCh = do
+  sendLoop
+  where
+    sendLoop = do
+      records <- readChan dataCh
+      Log.info $ logSubscriptionCtx ctx <> "send " <> Log.buildInt (V.length records)
+               <> " records to consumer " <> Log.buildText subConsumerName
+      let response = StreamingFetchResponse{streamingFetchResponseReceivedRecords = records}
+      streamSend response >>= \case
+        Left err -> do
+          -- if send record error, throw exception
+          Log.fatal $ logSubscriptionCtx ctx <> "send error, will remove a consumer: " <> Log.buildString (show err)
+          writeChan eventCh . STOPEVENT $ Left GRPCStreamSendError
+        Right _ -> sendLoop
 
-                    -- `ckpReaderReadAllowGap` will return a specific number of records, which may cause the last LSN's
-                    -- records to be truncated, so we need to do another point read to get all the records of the last LSN.
-                    lastBatchRecords <- fetchLastLSN ssriLogId lastLSN ssriLdCkpReader maxReadSize
-                    (newGroups, isEmpty) <- if | null batch && null lastBatchRecords -> do
-                                                   Log.debug $ "doRead: both batch and lastBatchRecords are empty, lastLSN = " <> Log.buildInt lastLSN
-                                                   return ([[]], True)
-                                               | null batch -> return ([lastBatchRecords], False)
-                                               | null lastBatchRecords -> do
-                                                   Log.debug $ "doRead: read lastBatchRecords return empty, lastLSN = " <> Log.buildInt lastLSN
-                                                   return (batch, False)
-                                               | otherwise -> return (batch ++ [lastBatchRecords], False)
+readRecords :: Stats.StatsHolder -> SubscriptionCtx -> Chan FetchEvent -> IO ()
+readRecords statsHolder ctx@SubscriptionCtx{..} ch = forever $ do
+  S.ckpReaderReadAllowGap subLdCkpReader 1000 >>= \case
+    Left gap -> do
+     Log.debug $ logSubscriptionCtx ctx <> "reader meet a gapRecord: " <> Log.buildString (show gap)
+     writeChan ch . DATAREADYEVENT . GapData $ gap
+    Right dataRecords
+      | null dataRecords -> do
+          Log.debug $ logSubscriptionCtx ctx <> "reader read empty dataRecords"
+          -- FIXME: avoid hard code, find another way all make it a config
+          threadDelay 1000000
+      | otherwise -> do
+          -- XXX: Should we add a server option to toggle Stats?
+          -- WARNING: we assume there is one stream name in all dataRecords.
+          --
+          -- Make sure you have read only ONE stream(log), otherwise you should
+          -- group dataRecords by stream name.
+          let len_bs = sum $ map (ZV.length . S.recordPayload) dataRecords
+          Stats.stream_time_series_add_record_bytes statsHolder (textToCBytes subStreamName) (fromIntegral len_bs)
 
-                    if isEmpty
-                      then return (info, Nothing)
-                      else do
-                        let groupNums = map (\gp -> (S.recordLSN $ head gp, (fromIntegral $ length gp) :: Word32)) newGroups
-                        let (finalLastLSN, maxRecordId) = case lastBatchRecords of
-                             -- In this case, newGroups = batch and finalLastLSN should be the lsn of the last record in batch.
-                             [] -> let (lastGroupLSN, cnt) = last groupNums
-                                       lastRId = RecordId lastGroupLSN (cnt - 1)
-                                    in (lastGroupLSN, lastRId)
-                             -- In this case, newGroups = [lastBatchRecords] or batch ++ [lastBatchRecords],
-                             -- in both cases finalLastLSN should be lastLSN
-                             xs -> (lastLSN, RecordId lastLSN (fromIntegral $ length xs - 1))
-                        Log.debug $ "finalLastLSN = " <> Log.buildInt finalLastLSN <> ", maxRecordId = " <> Log.buildString (show maxRecordId)
+          -- TODO: List operations are very inefficient, use a more efficient data structure(vector or sth.) to replace
+          let groups = L.groupBy ((==) `on` S.recordLSN) dataRecords
+              len = length groups
+              (batch, lastBatch) = splitAt (len - 1) groups
+              -- When the number of records in an LSN exceeds the maximum number of records we
+              -- can fetch in a single read call, `batch' will be an empty list.
+          let maxReadSize = if null batch
+                              then length . last $ lastBatch
+                              else length . last $ batch
+              lastLSN = S.recordLSN . head . head $ lastBatch
 
-                        let newBatchNumMap = Map.union ssriBatchNumMap (Map.fromList groupNums)
-                            receivedRecords = fetchResult newGroups
-                            newInfo = info { ssriBatchNumMap = newBatchNumMap
-                                           , ssriWindowUpperBound = maxRecordId
-                                           }
-                        void $ S.ckpReaderSetTimeout ssriLdCkpReader 0
-                        S.ckpReaderStartReading ssriLdCkpReader ssriLogId (finalLastLSN + 1) S.LSN_MAX
-                        return (newInfo, Just receivedRecords)
-        )
+          -- `ckpReaderReadAllowGap` will return a specific number of records, which may cause the last LSN's
+          -- records to be truncated, so we need to do another point read to get all the records of the last LSN.
+          lastBatchRecords <- fetchLastLSN subLogId lastLSN subLdCkpReader maxReadSize
+          newGroups <- if | null batch && null lastBatchRecords -> do
+                             Log.debug $ logSubscriptionCtx ctx
+                                      <> "doRead: both batch and lastBatchRecords are empty, lastLSN = " <> Log.buildInt lastLSN
+                             return [[]]
+                          | null batch -> return [lastBatchRecords]
+                          | null lastBatchRecords -> do
+                              Log.debug $ logSubscriptionCtx ctx
+                                       <> "doRead: read lastBatchRecords return empty, lastLSN = " <> Log.buildInt lastLSN
+                              return batch
+                          | otherwise -> return (batch ++ [lastBatchRecords])
+          let finalLastLSN = case lastBatchRecords of
+               -- In this case, newGroups = batch and finalLastLSN should be the lsn of the last record in batch.
+               [] -> S.recordLSN . head . last $ batch
+               -- In this case, newGroups = [lastBatchRecords] or batch ++ [lastBatchRecords],
+               -- in both cases finalLastLSN should be lastLSN
+               _  -> lastLSN
+          void $ S.ckpReaderSetTimeout subLdCkpReader 0
+          S.ckpReaderStartReading subLdCkpReader subLogId (finalLastLSN + 1) S.LSN_MAX
+          writeChan ch . DATAREADYEVENT $ NormalData newGroups
 
-    fetchLastLSN :: S.C_LogID -> S.LSN -> S.LDSyncCkpReader -> Int -> IO [S.DataRecord (ZV.PrimVector Word8)]
-    fetchLastLSN logId lsn reader size = do
-      void $ S.ckpReaderSetTimeout reader 10
-      S.ckpReaderStartReading reader logId lsn lsn
-      run []
-      where
-        run res = do
-          records <- S.ckpReaderRead reader size
-          if null records
-            then return res
-            else run (res ++ records)
+initCtx :: ServerContext -> StreamingFetchRequest -> IO SubscriptionCtx
+initCtx ServerContext{..} StreamingFetchRequest{..} = do
+  P.getObject streamingFetchRequestSubscriptionId zkHandle >>= \case
+    Nothing -> do
+      Log.debug $ "streamingFetch error because subscription " <> Log.buildText streamingFetchRequestSubscriptionId <> " not exist."
+      throwIO $ SubscriptionIdNotFound streamingFetchRequestSubscriptionId
+    Just Subscription {..} -> do
+      -- create a ldCkpReader for reading new records
+      let readerName = textToCBytes (streamingFetchRequestSubscriptionId <> "-" <> streamingFetchRequestOrderingKey)
+      ldCkpReader <-
+        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
+      -- seek ldCkpReader to start offset
+      let streamID = S.mkStreamId S.StreamTypeStream (textToCBytes subscriptionStreamName)
+      let key = orderingKeyToStoreKey streamingFetchRequestOrderingKey
+      logId <- S.getUnderlyingLogId scLDClient streamID key
+      S.startReadingFromCheckpointOrStart ldCkpReader logId (Just S.LSN_MIN) S.LSN_MAX
+      -- set ldCkpReader timeout to 0
+      _ <- S.ckpReaderSetTimeout ldCkpReader 0
+      -- create a ldReader for rereading unacked records
+      ldReader <- S.newLDReader scLDClient 1 Nothing
+      Log.debug $ "created ldCkpReader and ldReader for subscription {" <> Log.buildText streamingFetchRequestSubscriptionId <> "}"
+               <> ", partition {" <> Log.buildText streamingFetchRequestOrderingKey <> "}"
+      return SubscriptionCtx
+        { subscriptionId       = streamingFetchRequestSubscriptionId
+        , subConsumerName      = streamingFetchRequestConsumerName
+        , subKey               = streamingFetchRequestOrderingKey
+        , subStreamName        = subscriptionStreamName
+        , subLogId             = logId
+        , subAckTimeoutSeconds = subscriptionAckTimeoutSeconds * 10
+        , subLdCkpReader       = ldCkpReader
+        , subLdReader          = ldReader
+        }
 
-    formatDataRecords records =
-      L.foldl' (\acc s -> acc ++ ["(" <> show (S.recordLSN s) <> "," <> show (S.recordBatchOffset s) <> ")"]) [] records
+readRetransRecords
+  :: SubscriptionCtx
+  -> V.Vector RecordId
+  -> Chan (V.Vector ReceivedRecord) -- ^ responseCh
+  -> Map.Map Word64 Word32          -- ^ batchNumMap
+  -> IO ()
+readRetransRecords ctx@SubscriptionCtx{..} unackedRecordIds responseCh batchNumMap = do
+  Log.info $ logSubscriptionCtx ctx <> Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
+  cache <- newIORef Map.empty
+  lastResendLSN <- newIORef 0
+  V.forM_ unackedRecordIds $ \RecordId {..} -> do
+    dataRecords <- getDataRecords subLdReader subLogId cache lastResendLSN recordIdBatchId
+    if null dataRecords
+      then do
+        -- TODO: retry or error
+        Log.fatal $ logSubscriptionCtx ctx <> "can't read log " <> Log.buildString (show subLogId)
+                 <> " at " <> Log.buildString (show recordIdBatchId)
+      else do
+        let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
+        writeChan responseCh $ V.singleton rr
+  where
+    getDataRecords ldreader logId cache lastResendLSN recordIdBatchId = do
+      lastLSN <- readIORef lastResendLSN
+      if lastLSN == recordIdBatchId
+         then do
+           readIORef cache <&> fromJust . Map.lookup recordIdBatchId
+         else do
+           S.readerStartReading ldreader logId recordIdBatchId recordIdBatchId
+           let batchSize = fromJust $ Map.lookup recordIdBatchId batchNumMap
+           res <- S.readerRead ldreader (fromIntegral batchSize)
+           modifyIORef' cache (pure $ Map.singleton recordIdBatchId res)
+           modifyIORef' lastResendLSN (pure recordIdBatchId)
+           return res
 
-    doSend records =
-      void $ withMVar shardInfoMVar
-        (
-          \ShardSubscribeRuntimeInfo{..} -> do
-            Log.debug $
-              Log.buildString "send " <> Log.buildInt (V.length records)
-                <> " records to " <> "consumer " <> Log.buildText ssriConsumerName
-            ssriStreamSend (StreamingFetchResponse records) >>= \case
-              Left err -> do
-                -- if send record error, throw exception
-                Log.fatal . Log.buildString $ "send error, will remove a consumer: " <> show err
-                throwIO GRPCStreamSendError
-              Right _ -> do
-                return ()
-        )
-
-    registerResend recordIds =
-      withMVar shardInfoMVar
-        (
-          \ShardSubscribeRuntimeInfo{..} ->
-            void $ registerLowResTimer
-                 (fromIntegral ssriAckTimeoutSeconds)
-                 (void $ forkIO $ resendTimeoutRecords recordIds)
-        )
-
-    resendTimeoutRecords recordIds =
-      withMVar shardInfoMVar
-        (
-          \ShardSubscribeRuntimeInfo{..} -> do
-            let unackedRecordIds = filterUnackedRecordIds ssriAckedRanges ssriWindowLowerBound
-            if V.null unackedRecordIds
-              then return ()
-              else do
-                Log.info $ Log.buildInt (V.length unackedRecordIds) <> " records need to be resend"
-
-                cache <- newIORef Map.empty
-                lastResendLSN <- newIORef 0
-                V.forM_ unackedRecordIds $ \RecordId {..} -> do
-                  dataRecords <- getDataRecords ssriLdReader ssriLogId ssriBatchNumMap cache lastResendLSN recordIdBatchId
-                  if null dataRecords
-                    then do
-                      -- TODO: retry or error
-                      Log.fatal $ "can not read log " <> Log.buildString (show ssriLogId) <> " at " <> Log.buildString (show recordIdBatchId)
-                    else do
-                      let rr = mkReceivedRecord (fromIntegral recordIdBatchIndex) (dataRecords !! fromIntegral recordIdBatchIndex)
-                      ssriStreamSend (StreamingFetchResponse $ V.singleton rr) >>= \case
-                        Left grpcIOError -> do
-                          -- TODO: handle error
-                          Log.fatal $ "streamSend error:" <> Log.buildString (show grpcIOError)
-                        Right _ -> return ()
-
-                void $ registerResend unackedRecordIds
-        )
-      where
-        filterUnackedRecordIds ackedRanges windowLowerBound =
-          flip V.filter recordIds $ \recordId ->
-            (recordId >= windowLowerBound)
-              && case Map.lookupLE recordId ackedRanges of
-                Nothing                               -> True
-                Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
-
-        getDataRecords ldreader logId batchNumMap cache lastResendLSN recordIdBatchId = do
-          lastLSN <- readIORef lastResendLSN
-          if lastLSN == recordIdBatchId
-             then do
-               readIORef cache <&> fromJust . Map.lookup recordIdBatchId
-             else do
-               S.readerStartReading ldreader logId recordIdBatchId recordIdBatchId
-               let batchSize = fromJust $ Map.lookup recordIdBatchId batchNumMap
-               res <- S.readerRead ldreader (fromIntegral batchSize)
-               modifyIORef' cache (pure $ Map.singleton recordIdBatchId res)
-               modifyIORef' lastResendLSN (pure recordIdBatchId)
-               return res
+timer :: Chan FetchEvent -> IO ()
+timer ch = forever $ do
+  tv <- registerDelay 1000000
+  atomically $ readTVar tv >>= check
+  writeChan ch ACKTIMEOUTEVENT
 
 --------------------------------------------------------------------------------
 
 fetchResult :: [[S.DataRecord Bytes]] -> V.Vector ReceivedRecord
 fetchResult groups = V.fromList $ concatMap (zipWith mkReceivedRecord [0 ..]) groups
 
+commitCheckPoint :: S.C_LogID -> S.LDSyncCkpReader -> RecordId -> IO ()
+commitCheckPoint logId reader RecordId {..} = do
+  S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
+
 mkReceivedRecord :: Int -> S.DataRecord Bytes -> ReceivedRecord
 mkReceivedRecord index record =
   let recordId = RecordId (S.recordLSN record) (fromIntegral index)
    in ReceivedRecord (Just recordId) (toByteString . S.recordPayload $ record)
 
-commitCheckPoint :: S.LDClient -> S.LDSyncCkpReader -> T.Text -> RecordId -> IO ()
-commitCheckPoint client reader streamName RecordId {..} = do
-  logId <- S.getUnderlyingLogId client (transToStreamName streamName) Nothing
-  S.writeCheckpoints reader (Map.singleton logId recordIdBatchId)
+fetchLastLSN :: S.C_LogID -> S.LSN -> S.LDSyncCkpReader -> Int -> IO [S.DataRecord (ZV.PrimVector Word8)]
+fetchLastLSN logId lsn reader size = do
+  void $ S.ckpReaderSetTimeout reader 10
+  S.ckpReaderStartReading reader logId lsn lsn
+  run []
+  where
+    run res = do
+      records <- S.ckpReaderRead reader size
+      if null records
+        then return res
+        else run (res ++ records)
+
+filterUnackedRecordIds :: V.Vector RecordId -> Map.Map RecordId RecordIdRange -> RecordId -> V.Vector RecordId
+filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
+  flip V.filter recordIds $ \recordId ->
+    (recordId >= windowLowerBound)
+      && case Map.lookupLE recordId ackedRanges of
+        Nothing                               -> True
+        Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
 
 doAck
-  :: S.LDClient
-  -> MVar ShardSubscribeRuntimeInfo
+  :: SubscriptionCtx
+  -> IORef SliceWindow
   -> V.Vector RecordId
   -> IO ()
-doAck client infoMVar ackRecordIds =
-  modifyMVar_ infoMVar
-    ( \info@ShardSubscribeRuntimeInfo {..} -> do
-        let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b ssriWindowLowerBound a ssriBatchNumMap) ssriAckedRanges ackRecordIds
-        let commitLSN = getCommitRecordId newAckedRanges ssriBatchNumMap
+doAck ctx@SubscriptionCtx{..} windowRef ackRecordIds = do
+  window@SliceWindow{..} <- readIORef windowRef
+  let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b windowLowerBound a batchNumMap) ackedRanges ackRecordIds
+  let commitLSN = getCommitRecordId newAckedRanges batchNumMap
 
-        case tryUpdateWindowLowerBound newAckedRanges ssriWindowLowerBound ssriBatchNumMap commitLSN of
-          Just (ranges, newLowerBound) -> do
-            Log.info $ "update window lower bound, from {"
-                    <> Log.buildString (show ssriWindowLowerBound)
-                    <> "} to {"
-                    <> Log.buildString (show newLowerBound)
-                    <> "}"
+  case tryUpdateWindowLowerBound newAckedRanges windowLowerBound batchNumMap commitLSN of
+    Just (ranges, newLowerBound) -> do
+      Log.info $ logSubscriptionCtx ctx
+              <> "update window lower bound, from {"
+              <> Log.buildString (show windowLowerBound)
+              <> "} to {"
+              <> Log.buildString (show newLowerBound)
+              <> "}"
 
-            commitCheckPoint client ssriLdCkpReader ssriStreamName (fromJust commitLSN)
-            Log.info $ "commit checkpoint = " <> Log.buildString (show . fromJust $ commitLSN)
-            Log.debug $ "after commitCheckPoint, length of ackedRanges is: " <> Log.buildInt (Map.size ranges)
-                     <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 ranges)
+      commitCheckPoint subLogId subLdCkpReader (fromJust commitLSN)
+      Log.info $ logSubscriptionCtx ctx <> "commit checkpoint = " <> Log.buildString (show . fromJust $ commitLSN)
+      Log.debug $ logSubscriptionCtx ctx
+               <> "after commitCheckPoint, length of ackedRanges is: " <> Log.buildInt (Map.size ranges)
+               <> ", 10 smallest ackedRanges: " <> Log.buildString (printAckedRanges $ Map.take 10 ranges)
 
-            -- after a checkpoint is committed, informations of records less then and equal to checkpoint are no need to be retained, so just clear them
-            let newBatchNumMap = updateBatchNumMap (fromJust commitLSN) ssriBatchNumMap
-            Log.debug $ "update batchNumMap, 10 smallest batchNumMap: " <> Log.buildString (show $ Map.take 10 newBatchNumMap)
-            return $ info {ssriAckedRanges = ranges, ssriWindowLowerBound = newLowerBound, ssriBatchNumMap = newBatchNumMap}
-          Nothing ->
-            return $ info {ssriAckedRanges = newAckedRanges}
-    )
+      -- after a checkpoint is committed, informations of records less then and equal to checkpoint are no need to be retained, so just clear them
+      let newBatchNumMap = updateBatchNumMap (fromJust commitLSN) batchNumMap
+      Log.debug $ logSubscriptionCtx ctx
+               <> "update batchNumMap, 10 smallest batchNumMap: " <> Log.buildString (show $ Map.take 10 newBatchNumMap)
+      writeIORef windowRef $ window {ackedRanges = ranges, windowLowerBound = newLowerBound, batchNumMap = newBatchNumMap}
+    Nothing ->
+      writeIORef windowRef $ window {ackedRanges = newAckedRanges}
   where
     updateBatchNumMap RecordId{..} mp = Map.dropWhileAntitone (<= recordIdBatchId) mp
 

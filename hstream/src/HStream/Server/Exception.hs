@@ -8,7 +8,7 @@
 module HStream.Server.Exception where
 
 import           Control.Exception                    (Exception (..),
-                                                       Handler (Handler),
+                                                       Handler (..),
                                                        IOException,
                                                        SomeException, catches,
                                                        displayException)
@@ -132,9 +132,10 @@ newtype ConsumerExist = ConsumerExist Text
 instance Exception ConsumerExist
 
 data SubscribeInnerError = GRPCStreamRecvError
-                             | GRPCStreamRecvCloseError
-                             | GRPCStreamSendError
-                             | ConsumerInValidError
+                         | GRPCStreamRecvCloseError
+                         | GRPCStreamSendError
+                         | ConsumerInValidError
+                         | StoreError Store.SomeHStoreException
   deriving (Show)
 instance Exception SubscribeInnerError
 

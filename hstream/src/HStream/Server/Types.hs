@@ -3,10 +3,12 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
 
 module HStream.Server.Types where
 
-import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
+import           Control.Concurrent               (Chan, MVar, ThreadId,
+                                                   newChan, newEmptyMVar)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
@@ -14,6 +16,7 @@ import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
@@ -25,13 +28,17 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (RecordId (..),
+import           HStream.Server.Exception         (SubscribeInnerError)
+import           HStream.Server.HStreamApi        (ReceivedRecord,
+                                                   RecordId (..),
                                                    StreamingFetchResponse (..),
                                                    WatchSubscriptionResponse (..))
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Logger             as Log
+import           Z.Data.Builder                   (Builder)
+import           Z.Data.Vector.Base               (Bytes)
 
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"
@@ -213,3 +220,76 @@ data SystemResourcePercentageUsage =
   } deriving (Eq, Generic, Show)
 instance FromJSON SystemResourcePercentageUsage
 instance ToJSON SystemResourcePercentageUsage
+
+data StreamData = GapData HS.GapRecord
+                | NormalData [[HS.DataRecord Bytes]]
+  deriving (Show)
+
+data FetchStatus = FetchRunning | FetchTerminate
+
+data FetchEvent = ACKEVENT (V.Vector RecordId)
+                | ACKTIMEOUTEVENT
+                | DATAREADYEVENT StreamData
+                | STOPEVENT (Either SubscribeInnerError ())
+  deriving (Show)
+
+data Fetcher = Fetcher
+  { status     :: FetchStatus
+  , stopCh     :: Chan (Either SubscribeInnerError ())
+  , eventCh    :: Chan FetchEvent
+  , responseCh :: Chan (V.Vector ReceivedRecord)
+  }
+
+initFetcher :: IO Fetcher
+initFetcher = do
+  stopCh <- newChan
+  eventCh <- newChan
+  respCh <- newChan
+  return Fetcher { status = FetchRunning
+                 , stopCh = stopCh
+                 , eventCh = eventCh
+                 , responseCh = respCh
+                 }
+
+data SliceWindow = SliceWindow
+  { ackedRanges      :: Map.Map RecordId RecordIdRange
+  , batchNumMap      :: Map.Map Word64 Word32
+  , windowLowerBound :: RecordId
+  } deriving (Show)
+
+insertDataToWindow :: SliceWindow -> StreamData -> SliceWindow
+insertDataToWindow origin@SliceWindow {..} (GapData HS.GapRecord{..}) =
+  -- insert gap range to ackedRanges
+  let gapLoRecordId = RecordId gapLoLSN minBound
+      gapHiRecordId = RecordId gapHiLSN maxBound
+      newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) ackedRanges
+      -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
+      -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
+      groupNums = map (, 0) [gapLoLSN, gapHiLSN]
+      newBatchNumMap = Map.union batchNumMap (Map.fromList groupNums)
+      window = origin { ackedRanges = newRanges
+                      , batchNumMap = newBatchNumMap
+                      }
+   in window
+insertDataToWindow origin@SliceWindow {..} (NormalData datas) =
+  let groupNums = map (\gp -> (HS.recordLSN $ head gp, (fromIntegral $ length gp) :: Word32)) datas
+      newBatchNumMap = Map.union batchNumMap (Map.fromList groupNums)
+      window = origin { batchNumMap = newBatchNumMap }
+   in window
+
+data SubscriptionCtx = SubscriptionCtx
+  { subscriptionId       :: T.Text
+  , subConsumerName      :: ConsumerName
+  , subKey               :: T.Text
+  , subStreamName        :: T.Text
+  , subLogId             :: HS.C_LogID
+  , subAckTimeoutSeconds :: Int32
+  , subLdCkpReader       :: HS.LDSyncCkpReader
+  , subLdReader          :: HS.LDReader
+  } deriving (Show)
+
+infoSubscriptionCtx :: SubscriptionCtx -> T.Text
+infoSubscriptionCtx SubscriptionCtx {..} = "{name:" <> subStreamName <> ", key:" <> subKey <> "}"
+
+logSubscriptionCtx :: SubscriptionCtx -> Builder()
+logSubscriptionCtx info = Log.buildText $ "[" <> infoSubscriptionCtx info <> "]: "

@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module HStream.Utils
   ( module HStream.Utils.Converter
   , module HStream.Utils.Format
@@ -10,6 +12,7 @@ module HStream.Utils
   , module HStream.Utils.JSON
 
   , genUnique
+  , currentTimestampMS
   ) where
 
 import           Control.Monad              (unless)
@@ -50,3 +53,9 @@ genUnique = do
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
 {-# INLINE genUnique #-}
+
+currentTimestampMS :: IO Int64
+currentTimestampMS = do
+  MkSystemTime sec nano <- getSystemTime'
+  let !ts = floor @Double $ (fromIntegral sec * 1e3) + (fromIntegral nano / 1e6)
+  return ts

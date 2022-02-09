@@ -67,12 +67,14 @@ appendHandler
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
                      Just key -> appendRequestStreamName <> key
                      Nothing  -> appendRequestStreamName <> clientDefaultKey
+  Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName
+           <> "}, key {" <> Log.buildString' (show partitionKey)
+           <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
   if shouldBeServedByThisServer hashRing serverID identifier
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusInvalidArgument "Send appendRequest to wrong Server."
