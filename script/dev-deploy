@@ -383,8 +383,7 @@ class ZookeeperService(Service):
             node_value = value if value else f'"$(cat {file})"'
 
             waiting = "".join(
-                f"{wait_tcp_sh(2181, h)} && sleep 2"
-                for (_, h) in remotes
+                f"{wait_tcp_sh(2181, h)} && sleep 2" for (_, h) in remotes
             )
             store_command = lambda host: (
                 f"printf -v __ %q "
@@ -401,7 +400,9 @@ class ZookeeperService(Service):
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
-    BOOTSTRAP_CMD = "hadmin store nodes-config bootstrap --metadata-replicate-across "
+    BOOTSTRAP_CMD = (
+        "hadmin store nodes-config bootstrap --metadata-replicate-across "
+    )
     # TCP port on which the server listens to for admin commands, supports commands over SSL
     DEFAULT_ADMIN_API_PORT = 6440
     # TCP port on which the server listens for non-SSL clients
@@ -706,7 +707,6 @@ class HServerService(Service):
             required=True,
         )
         start_parser.add_argument("--zkuri", required=True)
-        start_parser.add_argument("--replicate-factor", default=3)
         stop_parser = argparse.ArgumentParser(add_help=False)
         stop_parser.add_argument(
             "--force", "-f", default=False, action="store_true"
@@ -732,7 +732,6 @@ class HServerService(Service):
         zkuri,
         store_config,
         store_admin_host,
-        replicate_factor,
         remotes,
         extra_container_options="",
         rm=False,
@@ -754,7 +753,6 @@ class HServerService(Service):
                     f"--zkuri {zkuri} "
                     f"--store-config {store_config} "
                     f"--store-admin-host {store_admin_host} "
-                    f"--replicate-factor {replicate_factor} "
                     f"--server-id {i} "
                     f"'"
                 )
@@ -776,6 +774,7 @@ class SimpleService(Service):
         self.ZK_SVC = super().get_service(ZookeeperService)
         self.HSTORE_ADMIN_SVC = super().get_service(HStoreAdminService)
         self.HSTORE_SVC = super().get_service(HStoreService)
+        self.HSERVER_SVC = super().get_service(HServerService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -794,9 +793,9 @@ class SimpleService(Service):
                 (host, deploy_cfg["hosts"][host])
                 for host in deploy_cfg["zookeeper-host"]
             ]
-            zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
+            self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
             self.config_path_in_zk = (
-                "zk:" + zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
+                "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
             )
             self.local_store_config_path = Path(
                 deploy_cfg["local_store_config_path"]
@@ -806,7 +805,12 @@ class SimpleService(Service):
                 for host in deploy_cfg["hstore-admin-host"]
             ]
             self.hstore_hosts = [
-                (h, deploy_cfg["hosts"][h]) for h in deploy_cfg["hstore-host"]
+                (host, deploy_cfg["hosts"][host])
+                for host in deploy_cfg["hstore-host"]
+            ]
+            self.hserver_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in deploy_cfg["hserver-host"]
             ]
 
     def start_cmd(self, config: str, **kargs) -> List[str]:
@@ -876,11 +880,32 @@ class SimpleService(Service):
             "wait": 4,
         }
         cmds.extend(self.HSTORE_ADMIN_SVC.bootstrap_cmd(**bootstrap_args))
+
+        # start hserver
+        server_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": HServerService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.hserver_hosts,
+            "image": "docker.io/hstreamdb/hstream",
+            "zkuri": self.zk_ip,
+            "store_config": self.config_path_in_zk,
+            "store_admin_host": self.admin_hosts[0][1],
+        }
+        cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
         return cmds
 
     def stop_cmd(self, config: str, **kargs) -> List[str]:
         self.parse_config(config)
         cmds = []
+
+        # stop hserver
+        server_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": HServerService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.hserver_hosts,
+            "force": True,
+        }
+        cmds.extend(self.HSERVER_SVC.stop_cmd(**server_args))
 
         # stop hstore
         store_args = {

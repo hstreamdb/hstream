@@ -1,16 +1,27 @@
 {
-  "hosts": {
-    "remote_ssh_host1": "192.168.10.1",
-    "remote_ssh_host2": "192.168.10.2",
-    "remote_ssh_host3": "192.168.10.3",
-    "remote_ssh_host4": "192.168.10.4"
-  },
-  "local_store_config_path": "$PWD/logdevice.conf",
-  "zookeeper-host": [
-    "remote_ssh_host2",
-    "remote_ssh_host3",
-    "remote_ssh_host4"
-  ],
-  "hstore-host": ["remote_ssh_host2", "remote_ssh_host3", "remote_ssh_host4"],
-  "hstore-admin-host": ["remote_ssh_host1"]
+    "hosts": {
+        "remote_ssh_host1": "192.168.10.1",
+        "remote_ssh_host2": "192.168.10.2",
+        "remote_ssh_host3": "192.168.10.3",
+        "remote_ssh_host4": "192.168.10.4"
+    },
+    "local_store_config_path": "$PWD/logdevice.conf",
+    "zookeeper-host": [
+        "remote_ssh_host2",
+        "remote_ssh_host3",
+        "remote_ssh_host4"
+    ],
+    "hstore-host": [
+        "remote_ssh_host2",
+        "remote_ssh_host3",
+        "remote_ssh_host4"
+    ],
+    "hstore-admin-host": [
+        "remote_ssh_host1"
+    ],
+    "hserver-host": [
+        "remote_ssh_host2",
+        "remote_ssh_host3",
+        "remote_ssh_host4"
+    ]
 }
