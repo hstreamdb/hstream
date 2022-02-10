@@ -27,7 +27,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (concurrently_)
 import           Control.Exception                (catch, onException, throwIO,
                                                    try)
-import           Control.Monad                    (forM_, unless)
+import           Control.Monad                    (forM_, unless, when)
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -105,7 +105,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
-  unless (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
+  when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
   Core.deleteSubscription ctx (fromJust subscription)
   returnResp Empty
 
