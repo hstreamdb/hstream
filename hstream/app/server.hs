@@ -5,18 +5,20 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent               (MVar, forkIO, putMVar,
-                                                   takeMVar, threadDelay)
-import           Control.Monad                    (forever, void)
+import           Control.Concurrent               (MVar, forkIO, modifyMVar_,
+                                                   threadDelay, withMVar)
+import           Control.Monad                    (forever, unless, void)
 import           Data.List                        (sort)
 import qualified Data.Text                        as T
 import           Network.GRPC.HighLevel           (ServiceOptions (..))
 import           Network.GRPC.HighLevel.Client    (Port (unPort))
 import           Text.RawString.QQ                (r)
-import           ZooKeeper                        (withResource,
+import           ZooKeeper                        (withResource, zooState,
                                                    zooWatchGetChildren)
+import           ZooKeeper.Exception
 import           ZooKeeper.Types
 
+import           Control.Exception                (handle)
 import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (getConfig)
@@ -80,15 +82,26 @@ main = do
 -- when we have a large number of nodes in the cluster.
 -- TODO: Instead of reconstruction, we should use the operation insert/delete.
 updateHashRing :: ZHandle -> MVar HashRing -> IO ()
-updateHashRing zk mhr = do
+updateHashRing zk mhr = handle connLossHandler $
   zooWatchGetChildren zk serverRootPath
     callback action
   where
     callback HsWatcherCtx {..} =
       updateHashRing watcherCtxZHandle mhr
     action (StringsCompletion (StringVector children)) = do
-      _ <- takeMVar mhr
-      serverNodes <- mapM (getServerNode' zk) children
-      let hr' = constructHashRing . sort $ serverNodes
-      putMVar mhr hr'
-      Log.debug . Log.buildString $ show hr'
+      modifyMVar_ mhr $ \_ -> do
+        serverNodes <- mapM (getServerNode' zk) children
+        let hr = constructHashRing . sort $ serverNodes
+        Log.debug . Log.buildString $ show hr
+        return hr
+    connLossHandler = \(_ :: ZCONNECTIONLOSS) -> do
+      Log.warning "Connection with zookeeper lost"
+      void $ withMVar mhr $ \_ -> waitForConnection zk
+      Log.warning "Connection with zookeeper re-established"
+      updateHashRing zk mhr
+
+waitForConnection :: ZHandle -> IO ()
+waitForConnection zk = do
+  state <- zooState zk
+  unless (state == ZooConnectedState)
+    $ waitForConnection zk
