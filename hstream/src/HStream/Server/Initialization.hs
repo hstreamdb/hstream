@@ -8,7 +8,7 @@ module HStream.Server.Initialization
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
-import           Control.Exception                (SomeException, try)
+import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (sort)
@@ -37,7 +37,7 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    serverRootPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
-import           HStream.Store                    (HsLogAttrs (..),
+import           HStream.Store                    (EXISTS (..), HsLogAttrs (..),
                                                    LogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
@@ -91,7 +91,8 @@ initializeServer
 initializeServer ServerOpts{..} zk = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   ldclient <- newLDClient _ldConfigPath
-  _ <- initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor mempty)
+  _ <- catch (void $ initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor mempty))
+        (\(_ :: EXISTS) -> return ())
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
 
   statsHolder <- newStatsHolder
