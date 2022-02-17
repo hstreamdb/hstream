@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -214,8 +213,8 @@ eitherToResponse (Right _) resp =
   returnResp resp
 
 responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (ServerResponse 'Normal a)
-responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) [] StatusOk ""
-responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing [] errCode msg
+responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) mempty StatusOk ""
+responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing mempty errCode msg
 
 -- getStartRecordId :: Api.Subscription -> RecordId
 -- getStartRecordId Api.Subscription{..} =
@@ -416,18 +415,17 @@ getSubscriptionStatus client streamId = do
 
 createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
 createStreamRelatedPath zk streamName = do
-  let keyPath = P.mkPartitionKeysPath streamName
   -- streamRootPath/streams/{streamName}
-      streamPathOp = P.createPathOp $ P.streamRootPath <> "/" <> streamName
+  let streamPath =  P.streamRootPath <> "/" <> streamName
   -- streamRootPath/streams/{streamName}/keys
-      keyPathOp = P.createPathOp keyPath
+      keyPath = P.mkPartitionKeysPath streamName
   -- streamRootPath/streams/{streamName}/subscriptions
-      subPathOp = P.createPathOp $ P.mkStreamSubsPath streamName
+      subPath= P.mkStreamSubsPath streamName
   -- streamLockPath/lock/streams/{streamName}
-      lockPathOp = P.createPathOp $ P.streamLockPath <> "/" <> streamName
+      lockPath = P.streamLockPath <> "/" <> streamName
   -- streamLockPath/lock/streams/{streamName}/subscriptions
-      streamSubLockPathOp = P.createPathOp $ P.mkStreamSubsLockPath streamName
-  P.tryCreateMulti zk [streamPathOp, keyPathOp, lockPathOp, streamSubLockPathOp, subPathOp]
+      streamSubLockPath = P.mkStreamSubsLockPath streamName
+  mapM_ (P.tryCreate zk) [streamPath, keyPath, subPath, lockPath, streamSubLockPath]
 
 removeStreamRelatedPath :: ZHandle -> CBytes -> IO ()
 removeStreamRelatedPath zk streamName = do
