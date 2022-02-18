@@ -4,8 +4,8 @@ import qualified Data.HashMap.Strict         as HM
 import           Data.IORef                  (atomicModifyIORef')
 import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
-
 import           GHC.Stack                   (HasCallStack)
+
 import qualified HStream.Connector.HStore    as HCS
 import           HStream.Server.Core.Common  (deleteStoreStream)
 import qualified HStream.Server.HStreamApi   as API
