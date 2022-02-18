@@ -38,15 +38,16 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   P.storeObject subscriptionSubscriptionId sub zkHandle
 
 deleteSubscription :: ServerContext -> Subscription -> IO ()
-deleteSubscription ServerContext {..} Subscription{subscriptionSubscriptionId = subId, subscriptionStreamName = streamName} = do
+deleteSubscription ServerContext {..} Subscription{subscriptionSubscriptionId = subId
+  , subscriptionStreamName = streamName} = do
   mInfo <- withMVar scSubscribeRuntimeInfo (return . HM.lookup subId)
   case mInfo of
     Just SubscribeRuntimeInfo {..} ->
       withMVar sriWatchContext checkNotActive
-    Nothing   -> pure ()
-  -- FIXME: There are still inconsistencies here. If any failed occur after removeSubFromStreamPath
-  -- and client doesn't retry, then we will find that the subscription still bind to the stream but we
-  -- cann't get the related subscription's infomation
+    Nothing -> pure ()
+  -- FIXME: There are still inconsistencies here. If any failure occurs after removeSubFromStreamPath
+  -- and if the client doesn't retry, then we will find that the subscription still binds to the stream but we
+  -- can't get the related subscription's information
   removeSubFromStreamPath zkHandle (textToCBytes streamName) (textToCBytes subId)
   P.removeObject @ZHandle @'P.SubRep subId zkHandle
   modifyMVar_ scSubscribeRuntimeInfo $ \subMap -> do
