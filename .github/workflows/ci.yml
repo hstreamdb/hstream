@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  NEW_HSTREAM_IMAGE: new_hstream_image
+
 jobs:
   pre-build:
     runs-on: ubuntu-latest
@@ -134,9 +137,34 @@ jobs:
             python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
           done
 
-      #- name: remove all Z related builds
-      #  run: find ~/.cabal/store/ -maxdepth 2 -type d -name "Z*" -o -name "zoo*" | xargs rm -rf
-
       # TODO
       #- name: haddock
       #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- haddock haddock --enable-documentation --haddock-for-hackage all
+
+      # -------------------------------------------------------------------------------
+
+      - name: stop all started services
+        run: python3 script/dev-tools stop-services
+
+      - name: quick build new hstream image
+        run: |
+          python3 script/dev-tools quick-build-dev-image \
+            --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            -t $NEW_HSTREAM_IMAGE
+
+      - name: fetch integration tests source code
+        uses: actions/checkout@v2
+        with:
+          repository: 'hstreamdb/integration-tests'
+          path: integration-tests
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "adopt"
+          java-version: 11
+          cache: 'gradle'
+
+      - uses: gradle/wrapper-validation-action@v1
+
+      - name: run integration tests
+        run: "cd integration-tests && export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE && ./gradlew test"
