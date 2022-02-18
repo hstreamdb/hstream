@@ -45,7 +45,9 @@ mkExceptionHandle retFun cleanFun = flip catches [
   Handler (\(_ :: SubscriptionWatchOnDifferentNode) ->
     retFun StatusAborted "Subscription is bound to a different node"),
   Handler (\(_ :: FoundActiveConsumers) ->
-    retFun StatusAborted "Subscription still has active consumers"),
+    retFun StatusFailedPrecondition "Subscription still has active consumers"),
+  Handler (\(_ :: FoundActiveSubscription) ->
+    retFun StatusFailedPrecondition "Stream still has active consumers"),
   Handler (\(err :: Store.SomeHStoreException) -> do
     cleanFun
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
@@ -141,6 +143,10 @@ instance Exception SubscribeInnerError
 data FoundActiveConsumers = FoundActiveConsumers
   deriving (Show)
 instance Exception FoundActiveConsumers
+
+data FoundActiveSubscription = FoundActiveSubscription
+  deriving (Show)
+instance Exception FoundActiveSubscription
 
 data SubscriptionWatchOnDifferentNode = SubscriptionWatchOnDifferentNode
   deriving (Show)

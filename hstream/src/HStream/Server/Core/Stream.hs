@@ -8,20 +8,23 @@ module HStream.Server.Core.Stream
   , appendStream
   ) where
 
+import           Control.Exception                (throwIO)
+import           Control.Monad                    (unless, void)
 import qualified Data.ByteString                  as BS
 import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (isJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
 import           Network.GRPC.HighLevel.Generated
+import           ZooKeeper                        (zooExists)
 
-import           Control.Exception                (throwIO)
-import           Control.Monad                    (void)
-import           Data.Maybe                       (isJust)
 import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (StreamNotExist (StreamNotExist))
+import           HStream.Server.Exception         (FoundActiveSubscription (FoundActiveSubscription),
+                                                   StreamNotExist (StreamNotExist),
+                                                   ZkNodeExists (ZkNodeExists))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
                                                    createStreamRelatedPath,
@@ -34,7 +37,6 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
-import           ZooKeeper                        (zooExists)
 
 -------------------------------------------------------------------------------
 
@@ -43,16 +45,13 @@ createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerRespons
 createStream ServerContext{..} stream@API.Stream{..} = do
   let name = textToCBytes streamStreamName
   keys <- tryGetChildren zkHandle $ mkPartitionKeysPath name
-  if null keys
-    then do
-      createStreamRelatedPath zkHandle name
-      S.createStream scLDClient (transToStreamName streamStreamName) $
-        S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
-      returnResp stream
-    else
-      -- get here may because there is a previouse stream with same name failed to perform a deleted operation and
-      -- did not retry, or a client try to create a stream already existed.
-      returnErrResp StatusFailedPrecondition "Create failed because zk key path exists."
+  -- If there is a previous stream with same name failed to perform a deleted operation and
+  -- did not retry, or a client try to create a stream already existed.
+  unless (null keys) $ throwIO (ZkNodeExists streamStreamName)
+  createStreamRelatedPath zkHandle name
+  S.createStream scLDClient (transToStreamName streamStreamName) $
+    S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+  returnResp stream
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
@@ -61,38 +60,37 @@ deleteStream sc@ServerContext{..} API.DeleteStreamRequest{..} = do
   zNodeExists <- checkZkPathExist
   storeExists <- checkStreamExist
   case (zNodeExists, storeExists) of
-    -- normal path
-    (True, True) -> delete deleteStreamRequestForce
-    -- if we delete stream but failed to clear zk path, we will get here when client retry the delete request
-    (True, False) -> cleanZkNode >> returnResp Empty
-    -- actually, it should not be here because we always delete stream before clear zk path, get here may
-    -- means some unexpected error. since it is a delete request and we just want to destroy the resouce, so
-    -- it could be fine to just delete the stream instead of throw an exception
-    (False, True) -> doDelete>> returnResp Empty
-    -- get here may because we meet a concurrency problem, or we finished delete request but client lose the
+    -- Normal path
+    (True, True) -> normalDelete
+    -- Deletion of a stream was incomplete, failed to clear zk path,
+    -- we will get here when client retry the delete request
+    (True, False) -> cleanZkNode
+    -- Abnormal Path: Since we always delete stream before clear zk path, get here may
+    -- means some unexpected error. Since it is a delete request and we just want to destroy the resource,
+    -- so it should be fine to just delete the stream instead of throw an exception
+    (False, True) -> storeDelete
+    -- Concurrency problem, or we finished delete request but client lose the
     -- response and retry
-    (False, False) -> if deleteStreamRequestIgnoreNonExist then returnResp Empty else throwIO StreamNotExist
+    (False, False) -> unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
+  returnResp Empty
   where
-    streamID = transToStreamName deleteStreamRequestStreamName
-    name = textToCBytes deleteStreamRequestStreamName
-    streamName = transToStreamName deleteStreamRequestStreamName
-    cleanZkNode = removeStreamRelatedPath zkHandle name
-    checkZkPathExist = isJust <$> zooExists zkHandle (streamRootPath <> "/" <> name)
-    checkStreamExist = S.doesStreamExist scLDClient streamName
-    checkIfActive = checkIfSubsOfStreamActive zkHandle name
-    doDelete = deleteStoreStream sc streamID deleteStreamRequestIgnoreNonExist
-
-    delete False = do
+    normalDelete = do
       isActive <- checkIfActive
       if isActive
-        then returnErrResp StatusFailedPrecondition "Can not delete stream with active subscription."
-        else doDelete >> cleanZkNode >> returnResp Empty
-    delete True = do
-      isActive <- checkIfActive
-      if isActive then S.archiveStream scLDClient streamName
-                  else void doDelete
-      cleanZkNode >> returnResp Empty
+        then do
+          unless deleteStreamRequestForce $ throwIO FoundActiveSubscription
+          S.archiveStream scLDClient streamName
+        else storeDelete
+      cleanZkNode
 
+    storeDelete  = void $ deleteStoreStream sc streamName deleteStreamRequestIgnoreNonExist
+
+    streamName       = transToStreamName deleteStreamRequestStreamName
+    nameCB           = textToCBytes deleteStreamRequestStreamName
+    checkZkPathExist = isJust <$> zooExists zkHandle (streamRootPath <> "/" <> nameCB)
+    checkStreamExist = S.doesStreamExist scLDClient streamName
+    checkIfActive    = checkIfSubsOfStreamActive zkHandle nameCB
+    cleanZkNode      = removeStreamRelatedPath zkHandle nameCB
 
 listStreams
   :: HasCallStack
