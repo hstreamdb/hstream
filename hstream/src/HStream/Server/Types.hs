@@ -119,12 +119,13 @@ type ConsumerName = T.Text
 --   , sriSignals           :: V.Vector (MVar ())
 -- }
 
-data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriSubscriptionId :: SubscriptionId
+data SubscribeRuntimeInfo = SubscribeRuntimeInfo
+  { sriSubscriptionId :: SubscriptionId
   , sriStreamName :: T.Text
   , sriWatchContext :: MVar WatchContext
+  , sriConsumers :: Set.Set ConsumerName
   , sriShardRuntimeInfo :: MVar (HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo))
-}
+  }
 
 data WatchContext = WatchContext {
     wcWaitingConsumers :: [ConsumerWatch]

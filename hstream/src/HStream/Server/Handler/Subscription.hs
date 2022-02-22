@@ -52,11 +52,13 @@ import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (StreamNotExist (..),
+import           HStream.Server.Exception         (ConsumerExist (..),
+                                                   StreamNotExist (..),
                                                    SubscribeInnerError (..),
                                                    SubscriptionIdNotFound (..),
                                                    SubscriptionWatchOnDifferentNode (..),
-                                                   defaultExceptionHandle)
+                                                   defaultExceptionHandle,
+                                                   defaultServerStreamExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
@@ -131,19 +133,26 @@ listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequ
 
 --------------------------------------------------------------------------------
 
+-- FIXME: need to clean memory status when watch handler exit
 watchSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'ServerStreaming WatchSubscriptionRequest WatchSubscriptionResponse
   -> IO (ServerResponse 'ServerStreaming WatchSubscriptionResponse)
-watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubscriptionRequest {..} streamSend) = do
+watchSubscriptionHandler ServerContext{..} (ServerWriterRequest _ req@WatchSubscriptionRequest {..} streamSend) = defaultServerStreamExceptionHandle do
   Log.debug $ "Receive WatchSubscription request " <> Log.buildString (show req)
   (SubscribeRuntimeInfo{..}, isInited) <- modifyMVar scSubscribeRuntimeInfo
     ( \infoMap -> do
         case HM.lookup watchSubscriptionRequestSubscriptionId infoMap of
           Nothing -> do
-            subInfo <- newSubscriptionRuntimeInfo zkHandle watchSubscriptionRequestSubscriptionId
-            return (HM.insert watchSubscriptionRequestSubscriptionId subInfo infoMap, (subInfo, False))
-          Just subInfo -> return (infoMap, (subInfo, True))
+            newSubscriptionRuntimeInfo zkHandle watchSubscriptionRequestSubscriptionId watchSubscriptionRequestConsumerName >>= \case
+              Nothing -> throwIO $ SubscriptionIdNotFound watchSubscriptionRequestSubscriptionId
+              Just subInfo -> return (HM.insert watchSubscriptionRequestSubscriptionId subInfo infoMap, (subInfo, False))
+          Just subInfo@SubscribeRuntimeInfo{sriConsumers = names@sriConsumers} -> do
+            if Set.member watchSubscriptionRequestConsumerName sriConsumers
+              then throwIO $ ConsumerExist watchSubscriptionRequestConsumerName
+              else do
+                let newInfo = subInfo{sriConsumers = Set.insert watchSubscriptionRequestConsumerName names}
+                return (HM.insert watchSubscriptionRequestSubscriptionId newInfo infoMap, (newInfo, True))
     )
 
   -- unless isInited
@@ -180,7 +189,8 @@ assignShardForReading SubscribeRuntimeInfo{..} orderingKey = do
               -- 1. choose the first consumer in waiting list
               let consumer@ConsumerWatch{..} = head wcWaitingConsumers
               Log.debug $ "[assignShardForReading]: get consumer " <> Log.buildText cwConsumerName <> " from waitingList"
-              stopSignal <- newEmptyMVar
+              -- FIXME: will error when no stopSignal for consumerName
+              let stopSignal = wcWatchStopSignals HM.! cwConsumerName
               -- 2. push SubscriptionAdd to the choosed consumer
               pushAdd cwWatchStream cwConsumerName sriSubscriptionId orderingKey stopSignal
               -- 3. remove the consumer from the waiting list and add it to the workingList
@@ -341,24 +351,27 @@ stopSendingRecords SubscribeRuntimeInfo {..} shard = do
 
 --------------------------------------------------------------------------------
 
-newSubscriptionRuntimeInfo :: ZHandle -> T.Text -> IO SubscribeRuntimeInfo
-newSubscriptionRuntimeInfo zkHandle subId = do
+newSubscriptionRuntimeInfo :: ZHandle -> T.Text -> ConsumerName -> IO (Maybe SubscribeRuntimeInfo)
+newSubscriptionRuntimeInfo zkHandle subId consumerName = do
   watchCtx <- newMVar $ WatchContext
     { wcWaitingConsumers = []
     , wcWorkingConsumers = Set.empty
     , wcWatchStopSignals = HM.empty
     }
   shardCtx <- newMVar HM.empty
-  streamName <- P.getObject subId zkHandle >>= \case
-    Nothing                -> throwIO $ SubscriptionIdNotFound subId
-    Just Subscription {..} -> return subscriptionStreamName
 
-  return SubscribeRuntimeInfo
-    { sriSubscriptionId = subId
-    , sriStreamName = streamName
-    , sriWatchContext = watchCtx
-    , sriShardRuntimeInfo = shardCtx
-    }
+  sub <- P.getObject @ZHandle @'SubRep subId zkHandle
+  let newInfo = SubscribeRuntimeInfo
+        { sriSubscriptionId = subId
+        , sriStreamName = T.empty
+        , sriWatchContext = watchCtx
+        , sriConsumers = Set.singleton consumerName
+        , sriShardRuntimeInfo = shardCtx
+        }
+
+  return $ setStreamName newInfo <$> sub
+  where
+    setStreamName info Subscription{..} = info { sriStreamName = subscriptionStreamName }
 
 --------------------------------------------------------------------------------
 --
