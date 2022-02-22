@@ -56,6 +56,25 @@ jobs:
         with:
           submodules: "recursive"
 
+      # See: https://github.com/haskell/actions/issues/41
+      # also, https://gitlab.haskell.org/ghc/ghc/-/issues/16495
+      - name: Set all tracked file modification times to the time of their last commit
+        run: |
+          rev="HEAD"
+          function touch_file() {
+            for f in $(git ls-tree -r -t --full-name --name-only "$rev"); do
+                touch -d $(git log --pretty=format:%cI -1 "$rev" -- "$f") "$f";
+            done
+          }
+          # main
+          touch_file
+          # submodules
+          export -f touch_file
+          export rev
+          for d in $(ls -d external/*); do
+            bash -c "cd $d && touch_file"
+          done
+
       - name: Cache
         uses: actions/cache@v2
         with:
