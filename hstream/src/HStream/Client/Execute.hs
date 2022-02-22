@@ -9,12 +9,9 @@ module HStream.Client.Execute
   , executeInsert
   ) where
 
-import           Control.Concurrent            (modifyMVar_, readMVar, swapMVar)
+import           Control.Concurrent            (readMVar)
 import           Data.Functor                  (void)
-import qualified Data.List                     as L
 import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as BS
-import qualified Data.Text.IO                  as T
 import           Network.GRPC.HighLevel        (GRPCIOError (GRPCIOBadStatusCode))
 import           Network.GRPC.HighLevel.Client
 import           Z.IO.Network                  (SocketAddr)
@@ -39,7 +36,7 @@ executeInsert :: ClientContext -> T.Text -> Action AppendResponse -> IO ()
 executeInsert ctx@ClientContext{..} sName action = do
   curAddr <- readMVar currentServer
   lookupStream ctx curAddr sName >>= \case
-    Nothing       -> putStrLn "Failed to get any available server."
+    Nothing       -> return ()
     Just realNode -> runWith realNode
   where
     runWith realNode = do
@@ -61,17 +58,5 @@ executeWithAddr_
   -> Action a
   -> (ClientResult 'Normal a -> IO ())
   -> IO ()
-executeWithAddr_ ctx@ClientContext{..} addr action handleOKResp = do
-  resp <- runActionWithAddr addr action
-  case resp of
-    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) ->
-      T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)
-    ClientErrorResponse _ -> do
-      modifyMVar_ availableServers (return . L.delete addr)
-      curServers <- readMVar availableServers
-      case curServers of
-        []  -> putStrLn "No available servers"
-        x:_ -> executeWithAddr_ ctx x action handleOKResp
-    _ -> do
-      void . swapMVar currentServer $ addr
-      handleOKResp resp
+executeWithAddr_ ctx addr action handleOKResp = do
+  void $ getInfoWithAddr ctx addr action (\x -> handleOKResp x >> return Nothing)
