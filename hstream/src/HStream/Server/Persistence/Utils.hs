@@ -35,7 +35,6 @@ module HStream.Server.Persistence.Utils
   , tryDeletePath
   , deleteAllPath
   , tryDeleteAllPath
-  , tryCreateMulti
   , tryGetChildren
   , decodeDataCompletion
   , decodeDataCompletion'
@@ -162,10 +161,6 @@ setZkDataOp path contents = zooSetOpInit path (Just contents) Nothing
 
 tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryCreate zk path = catch (createPath zk path) $
-  \(_ :: ZNODEEXISTS) -> pure ()
-
-tryCreateMulti :: HasCallStack => ZHandle -> [ZooOp] -> IO()
-tryCreateMulti zk ops = catch (void $ zooMulti zk ops) $
   \(_ :: ZNODEEXISTS) -> pure ()
 
 createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
