@@ -34,7 +34,26 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+flag FastBuild
+  default:     False
+  description: Disables all optimisations, leads to faster build time
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(fastbuild)
+    ghc-options: -j -O0
+
+  else
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -j -O2
+
 library
+  import:             shared-properties
   exposed-modules:
     HStream.Common.ConsistentHashing
     HStream.Common.Query
@@ -138,11 +157,8 @@ library
     UnliftedFFITypes
     UnliftedNewtypes
 
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-
 test-suite hstream-common-test
+  import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
@@ -177,12 +193,10 @@ test-suite hstream-common-test
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 
 benchmark common-bench-stats
+  import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            stats.hs
   hs-source-dirs:     bench
@@ -207,7 +221,4 @@ benchmark common-bench-stats
     UnliftedFFITypes
 
   default-language:   Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N

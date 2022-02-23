@@ -84,10 +84,10 @@ jobs:
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             make
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-            build --enable-tests --enable-benchmarks all
+            build --enable-tests --enable-benchmarks --flag FastBuild all
 
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-            install hstream
+            install --flag FastBuild hstream
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             "'cd hstream-http-server && go build -v -o ../dist-newstyle/hstream-http-server main.go'"
 
@@ -117,14 +117,14 @@ jobs:
 
       - name: test
         run: |
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct all
+          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- test --test-show-details=direct --flag FastBuild all
 
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             "'cd hstream-http-server && go test -v ./test/...'"
 
       - name: check
         run: |
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- sdist all
+          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- sdist --flag FastBuild all
 
           # unfortunately, there is no `cabal check all`
           #log_info "Run all cabal check..."

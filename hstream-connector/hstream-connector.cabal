@@ -23,7 +23,26 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+flag FastBuild
+  default:     False
+  description: Disables all optimisations, leads to faster build time
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(fastbuild)
+    ghc-options: -j -O0
+
+  else
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -j -O2
+
 library
+  import:             shared-properties
   exposed-modules:
     HStream.Connector.ClickHouse
     HStream.Connector.HStore
@@ -73,6 +92,3 @@ library
     UnliftedFFITypes
 
   default-language:   Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints

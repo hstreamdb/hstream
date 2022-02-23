@@ -23,7 +23,26 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+flag FastBuild
+  default:     False
+  description: Disables all optimisations, leads to faster build time
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(fastbuild)
+    ghc-options: -j -O0
+
+  else
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -j -O2
+
 library
+  import:           shared-properties
   exposed-modules:
     HStream.Processing.Connector
     HStream.Processing.Encoding
@@ -60,9 +79,9 @@ library
 
   -- hstream-store
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable processor-example0
+  import:           shared-properties
   main-is:          ProcessorExample0.hs
   hs-source-dirs:   example
   build-depends:
@@ -74,9 +93,9 @@ executable processor-example0
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable processor-example1
+  import:           shared-properties
   main-is:          ProcessorExample1.hs
   hs-source-dirs:   example
   build-depends:
@@ -89,9 +108,9 @@ executable processor-example1
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable stream-example0
+  import:           shared-properties
   main-is:          StreamExample0.hs
   hs-source-dirs:   example
   build-depends:
@@ -105,9 +124,9 @@ executable stream-example0
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable stream-example1
+  import:           shared-properties
   main-is:          StreamExample1.hs
   hs-source-dirs:   example
   build-depends:
@@ -121,9 +140,9 @@ executable stream-example1
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable stream-example2
+  import:           shared-properties
   main-is:          StreamExample2.hs
   hs-source-dirs:   example
   build-depends:
@@ -137,9 +156,9 @@ executable stream-example2
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable stream-example3
+  import:           shared-properties
   main-is:          StreamExample3.hs
   hs-source-dirs:   example
   build-depends:
@@ -153,9 +172,9 @@ executable stream-example3
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable stream-example4
+  import:           shared-properties
   main-is:          StreamExample4.hs
   hs-source-dirs:   example
   build-depends:
@@ -169,9 +188,9 @@ executable stream-example4
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall
 
 executable stream-example5
+  import:           shared-properties
   main-is:          StreamExample5.hs
   hs-source-dirs:   example
   build-depends:
@@ -185,4 +204,3 @@ executable stream-example5
     , text
 
   default-language: Haskell2010
-  ghc-options:      -Wall

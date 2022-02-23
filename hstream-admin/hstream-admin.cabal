@@ -24,7 +24,26 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+flag FastBuild
+  default:     False
+  description: Disables all optimisations, leads to faster build time
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(fastbuild)
+    ghc-options: -j -O0
+
+  else
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -j -O2
+
 library
+  import:             shared-properties
   hs-source-dirs:     . gen-hs2
   exposed-modules:
     HStream.Admin.Server.Command
@@ -114,11 +133,8 @@ library
     TypeApplications
     UnliftedFFITypes
 
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-
 executable hadmin
+  import:             shared-properties
   main-is:            admin.hs
   hs-source-dirs:     app
   build-depends:
@@ -157,7 +173,4 @@ executable hadmin
     TypeApplications
     UnliftedFFITypes
 
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
