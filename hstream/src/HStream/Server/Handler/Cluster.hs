@@ -15,10 +15,8 @@ module HStream.Server.Handler.Cluster
 import           Control.Concurrent               (readMVar)
 import           Control.Exception                (Handler (..), catches,
                                                    throwIO)
-import           Control.Monad                    (unless, void, when)
+import           Control.Monad                    (unless, void)
 import           Data.Functor                     ((<&>))
-import           Data.Maybe                       (fromMaybe, isNothing)
-import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           ZooKeeper                        (zooExists)
@@ -29,7 +27,7 @@ import           HStream.Server.Exception         (DataInconsistency (..),
                                                    StreamNotExist (..),
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (clientDefaultKey',
+import           HStream.Server.Handler.Common    (alignDefault,
                                                    orderingKeyToStoreKey)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
@@ -37,7 +35,6 @@ import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils                    (returnResp, textToCBytes)
---------------------------------------------------------------------------------
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
@@ -56,62 +53,64 @@ describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = default
 lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
-lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@(LookupStreamRequest stream orderingKey)) = defaultExceptionHandle $ do
-  Log.info $ "receive lookupStream request: " <> Log.buildString (show req)
+lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStreamRequest {
+  lookupStreamRequestStreamName  = stream,
+  lookupStreamRequestOrderingKey = orderingKey}) = defaultExceptionHandle $ do
+  Log.info $ "receive lookupStream request: " <> Log.buildString' req
   hashRing <- readMVar loadBalanceHashRing
-  let theNode = getAllocatedNode hashRing (stream <> orderingKey)
-      streamName = textToCBytes stream
-      streamID = S.mkStreamId S.StreamTypeStream streamName
-      key = orderingKeyToStoreKey orderingKey
-      path = P.mkPartitionKeysPath streamName <> "/" <> fromMaybe clientDefaultKey' key
+  let key      = alignDefault orderingKey
+      keyCB    = textToCBytes key
+      storeKey = orderingKeyToStoreKey key
+      theNode  = getAllocatedNode hashRing (stream <> key)
+      streamCB = textToCBytes stream
+      streamID = S.mkStreamId S.StreamTypeStream streamCB
+      path     = P.mkPartitionKeysPath streamCB <> "/" <> keyCB
 
-  keyExist <- S.doesStreamPartitionExist scLDClient streamID key
-  when (keyExist && isNothing key) $ P.tryCreate zkHandle path
+  keyExist <- S.doesStreamPartitionExist scLDClient streamID storeKey
   unless keyExist $ do
     zooExists zkHandle path >>= \case
       Just _ -> do
-        Log.fatal $ "key " <> Log.buildString (show orderingKey)
-                 <> " of stream " <> Log.buildText stream
-                 <> " doesn't appear in store, but find in zk"
+        Log.fatal $ Log.buildText $ "key " <> key <> " of stream " <> stream <> " doesn't appear in store, but find in zk"
         throwIO $ DataInconsistency stream orderingKey
       Nothing -> do
-        Log.debug $ "createStraemingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildString (show key)
-        catches (void $ S.createStreamPartition scLDClient streamID key)
-          [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream not exists
-            Handler (\(_ :: S.EXISTS) -> pure ()) -- both stream and partition are already exist
+        Log.debug $ "createStreamingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildText key
+        catches (void $ S.createStreamPartition scLDClient streamID storeKey)
+          [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream does not exists
+            Handler (\(_ :: S.EXISTS)     -> pure ()) -- Both stream and partition already exist
           ]
-        P.tryCreate zkHandle path
-  let resp = LookupStreamResponse {
-      lookupStreamResponseStreamName = stream
-    , lookupStreamResponseOrderingKey = orderingKey
-    , lookupStreamResponseServerNode = Just theNode
-    }
-  returnResp resp
+  P.tryCreate zkHandle path
+  returnResp LookupStreamResponse {
+    lookupStreamResponseStreamName  = stream
+  , lookupStreamResponseOrderingKey = orderingKey
+  , lookupStreamResponseServerNode  = Just theNode
+  }
 
-lookupSubscriptionHandler :: ServerContext
-                          -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
-                          -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
-lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@(LookupSubscriptionRequest subId)) = defaultExceptionHandle $ do
+lookupSubscriptionHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
+  -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
+lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@LookupSubscriptionRequest{
+  lookupSubscriptionRequestSubscriptionId = subId}) = defaultExceptionHandle $ do
   Log.info $ "receive lookupSubscription request: " <> Log.buildString (show req)
   hashRing <- readMVar loadBalanceHashRing
   let theNode = getAllocatedNode hashRing subId
-  let resp = LookupSubscriptionResponse {
-      lookupSubscriptionResponseSubscriptionId = subId
-    , lookupSubscriptionResponseServerNode = Just theNode
-    }
-  returnResp resp
+  returnResp LookupSubscriptionResponse {
+    lookupSubscriptionResponseSubscriptionId = subId
+  , lookupSubscriptionResponseServerNode     = Just theNode
+  }
 
-lookupSubscriptionWithOrderingKeyHandler :: ServerContext
-                          -> ServerRequest 'Normal LookupSubscriptionWithOrderingKeyRequest LookupSubscriptionWithOrderingKeyResponse
-                          -> IO (ServerResponse 'Normal LookupSubscriptionWithOrderingKeyResponse)
-lookupSubscriptionWithOrderingKeyHandler ServerContext{..} (ServerNormalRequest _meta LookupSubscriptionWithOrderingKeyRequest {..}) = defaultExceptionHandle $ do
+lookupSubscriptionWithOrderingKeyHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupSubscriptionWithOrderingKeyRequest LookupSubscriptionWithOrderingKeyResponse
+  -> IO (ServerResponse 'Normal LookupSubscriptionWithOrderingKeyResponse)
+lookupSubscriptionWithOrderingKeyHandler ServerContext{..} (ServerNormalRequest _meta LookupSubscriptionWithOrderingKeyRequest {
+    lookupSubscriptionWithOrderingKeyRequestSubscriptionId = subId
+  , lookupSubscriptionWithOrderingKeyRequestOrderingKey    = key
+  }) = defaultExceptionHandle $ do
   hashRing <- readMVar loadBalanceHashRing
-  let subId = lookupSubscriptionWithOrderingKeyRequestSubscriptionId
-  let orderingKey = lookupSubscriptionWithOrderingKeyRequestOrderingKey
-  let theNode = getAllocatedNode hashRing (subId `T.append` orderingKey)
-  let resp = LookupSubscriptionWithOrderingKeyResponse {
-      lookupSubscriptionWithOrderingKeyResponseSubscriptionId = subId
-    , lookupSubscriptionWithOrderingKeyResponseOrderingKey = orderingKey
-    , lookupSubscriptionWithOrderingKeyResponseServerNode = Just theNode
-    }
-  returnResp resp
+  let theNode = getAllocatedNode hashRing (subId <> alignDefault key)
+  returnResp LookupSubscriptionWithOrderingKeyResponse {
+    lookupSubscriptionWithOrderingKeyResponseSubscriptionId = subId
+  , lookupSubscriptionWithOrderingKeyResponseOrderingKey    = key
+  , lookupSubscriptionWithOrderingKeyResponseServerNode     = Just theNode
+  }

@@ -75,4 +75,4 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
                      Nothing  -> appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
-    else returnErrResp StatusInvalidArgument "Send appendRequest to wrong Server."
+    else returnErrResp StatusUnavailable "Send appendRequest to wrong Server."
