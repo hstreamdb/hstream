@@ -155,16 +155,25 @@ jobs:
       - name: fetch integration tests source code
         uses: actions/checkout@v2
         with:
-          repository: 'hstreamdb/integration-tests'
+          repository: "hstreamdb/integration-tests"
           path: integration-tests
 
       - uses: actions/setup-java@v2
         with:
           distribution: "adopt"
           java-version: 11
-          cache: 'gradle'
+          cache: "gradle"
 
       - uses: gradle/wrapper-validation-action@v1
 
       - name: run integration tests
-        run: "cd integration-tests && export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE && ./gradlew test"
+        run: 'cd integration-tests && export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE && ./gradlew :app:test --debug --tests "io.hstream.testing.BasicTest"'
+
+      - uses: actions/upload-artifact@v2
+        if: ${{ success() }} || ${{ failure() }}
+        with:
+          name: integration-tests-reports
+          path: |
+            integration-tests/.logs
+            integration-tests/app/build/reports
+          retention-days: 7
