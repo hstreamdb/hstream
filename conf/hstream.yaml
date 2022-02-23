@@ -2,39 +2,58 @@
 
 # Configuration for HStream Server
 hserver:
+
   # The identifier of a single HServer node,
   # the value must be given and can be overwritten by cli option `--server-id`
   id: 1
+
   # Server listen address value, the value must be given and shouldn't be "0.0.0.0", if you intend to start a cluster
   # or trying to connect to the server from a different network
   # This value can be overwritten by cli option `--address`
   address: "0.0.0.0"
+
   # Server port value, the value must be given and can be overwritten by cli option `--port`
   port: 6570
+
   # Server port value for internal communications between server nodes,
   # the value must be given and can be overwritten by cli option `--internal-port`
   internal-port: 6571
+
   # The server nodes in the same cluster shares a zookeeper server, this is essential for a server to start
   # Comma separated host:port pairs, each corresponding to a zk zookeeper server.
   # e.g. 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
   # the value must be given and can be overwritten by cli option `--zkuri`
   zkuri: "127.0.0.1:2181"
+
+  # The option which compression should the server use when writing record to store,
+  # which can be one of "none", "lz4" or "lz4hc"
+  # Optional, If not given, then the default value is "lz4"
+  #
+  #compression: "lz4"
+
   # The options used to control logs print by the server node, the following values
   # are the default values if the options is not specified. Also the default value will
   # be overwritten by cli flag `--log-with-color` and option `--log-level`
-  log-with-color: true # optional
-  log-level: info # optional
+  # Optional, the default value will be true
+  #
+  #log-with-color: true
+
+  # Optional, the default value will be info
+  #
+  #log-level: info
 
 # Configuration for HStream Store
-# The configuration for hstore is optional. When the values are not provided,
+# The configuration for hstore is **Optional**. When the values are not provided,
 # hstreamdb will use the following configuration as the default configuration.
 hstore:
-  log-level: info # optional
+  #log-level: info
+
   # Store admin section specify the client config when connecting to the storage admin server
-  store-admin: # optional
-    host: "127.0.0.1" # optional
-    port: 6440 # optional
-    protocol-id: binary # optional
-    conn-timeout: 5000 # optional
-    send-timeout: 5000 # optional
-    recv-timeout: 5000 # optional
+  #
+  #store-admin:
+    #host: "127.0.0.1"
+    #port: 6440
+    #protocol-id: binary
+    #conn-timeout: 5000
+    #send-timeout: 5000
+    #recv-timeout: 5000
