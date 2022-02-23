@@ -43,9 +43,10 @@ executeInsert ctx@ClientContext{..} sName action = do
       resp <- runActionWithAddr (serverNodeToSocketAddr realNode) action
       case resp of
         ClientNormalResponse{} -> printResult resp
-        ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal _))
+        ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ _))
           -> printResult resp
-        ClientErrorResponse _  -> executeInsert ctx sName action
+        ClientErrorResponse _ ->
+          executeInsert ctx sName action
 
 execute :: Format a => ClientContext
   -> Action a -> IO ()

@@ -29,7 +29,6 @@ import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
-import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
@@ -51,7 +50,6 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi        (RecordId (..))
-import qualified HStream.Server.HStreamApi        as Api
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Store                    as HS
@@ -455,11 +453,14 @@ removeSubFromStreamPath zk streamName subName = do
   withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
     P.tryDeletePath zk subscriptionPath
 
+alignDefault :: Text -> Text
+alignDefault x  = if T.null x then clientDefaultKey else x
+
 orderingKeyToStoreKey :: Text -> Maybe CBytes
-orderingKeyToStoreKey orderingKey =
- if T.null orderingKey || orderingKey == clientDefaultKey
-   then Nothing
-   else Just $ textToCBytes orderingKey
+orderingKeyToStoreKey key
+  | key == clientDefaultKey = Nothing
+  | T.null key = Nothing
+  | otherwise  = Just $ textToCBytes key
 
 clientDefaultKey :: Text
 clientDefaultKey = "__default__"
