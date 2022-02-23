@@ -391,10 +391,6 @@ dropHelper sc@ServerContext{..} name checkIfExist isView = do
              <> Log.buildString (T.unpack name)
            returnErrResp StatusNotFound "Object does not exist"
 
-shouldBeServedByThisServer :: HashRing -> Word32 -> Text -> Bool
-shouldBeServedByThisServer hashRing serverID name =
-  (== serverID) . Api.serverNodeId $ getAllocatedNode hashRing name
-
 data SubscriptionStatus = Active | StandBy deriving(Show, Eq)
 
 setSubStatusToActive :: HS.LDClient -> HS.StreamId -> IO ()

@@ -18,12 +18,12 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import           Control.Concurrent               (readMVar)
+import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (clientDefaultKey,
-                                                   shouldBeServedByThisServer)
+import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -73,6 +73,6 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   let identifier = case partitionKey of
                      Just key -> appendRequestStreamName <> key
                      Nothing  -> appendRequestStreamName <> clientDefaultKey
-  if shouldBeServedByThisServer hashRing serverID identifier
+  if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusInvalidArgument "Send appendRequest to wrong Server."
