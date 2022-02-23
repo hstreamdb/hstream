@@ -38,6 +38,7 @@ PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 )
 DEFAULT_DEPLOY_CONF = os.path.join(PROJECT_ROOT, "script/dev_deploy_conf.json")
+DEFAULT_CONTAINER_CONFIG_PATH = "/etc/hstream/config.yaml"
 
 
 def run_sh(
@@ -703,6 +704,10 @@ class HServerService(Service):
             help="Zookeeper key to the store config file",
         )
         start_parser.add_argument(
+            "--config-path",
+            help="HStreamDB configuration file path",
+        )
+        start_parser.add_argument(
             "--store-admin-host",
             required=True,
         )
@@ -735,9 +740,15 @@ class HServerService(Service):
         remotes,
         extra_container_options="",
         rm=False,
+        config_path=None,
         **kargs,
     ):
         opts = "--rm" if rm else ""
+        opts += (
+            f" -v {config_path}:{DEFAULT_CONTAINER_CONFIG_PATH}"
+            if config_path
+            else ""
+        )
         cmds = []
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
@@ -750,6 +761,7 @@ class HServerService(Service):
                     f"{image} /usr/local/bin/hstream-server "
                     f"--host {addr} "
                     f"--address {addr} "
+                    f"--config-path {DEFAULT_CONTAINER_CONFIG_PATH} "
                     f"--zkuri {zkuri} "
                     f"--store-config {store_config} "
                     f"--store-admin-host {store_admin_host} "
@@ -800,6 +812,7 @@ class SimpleService(Service):
             self.local_store_config_path = Path(
                 deploy_cfg["local_store_config_path"]
             )
+            self.hstreamdb_config_path = deploy_cfg.get("hstreamdb_config_path")
             self.admin_hosts = [
                 (host, deploy_cfg["hosts"][host])
                 for host in deploy_cfg["hstore-admin-host"]
@@ -890,6 +903,7 @@ class SimpleService(Service):
             "zkuri": self.zk_ip,
             "store_config": self.config_path_in_zk,
             "store_admin_host": self.admin_hosts[0][1],
+            "config_path": self.hstreamdb_config_path,
         }
         cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
         return cmds

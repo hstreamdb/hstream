@@ -23,7 +23,6 @@ import qualified HStream.Admin.Store.API    as AA
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
 import           HStream.Server.Types       (ServerOpts (..))
-import           HStream.Store              (Compression (CompressionLZ4))
 import qualified HStream.Store.Logger       as Log
 
 data CliOptions = CliOptions
@@ -151,6 +150,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodePort    <- nodeCfgObj .:? "port" .!= 6570
   nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6570
   zkuri            <- nodeCfgObj .:  "zkuri"
+  _compression   <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel     <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor <- nodeCfgObj .:? "log-with-color" .!= True
 
@@ -175,13 +175,11 @@ parseJSONToOptions CliOptions {..} obj = do
   let _ldAdminHost    = fromMaybe storeAdminHost _ldAdminHost_
   let _ldAdminPort    = fromMaybe storeAdminPort _ldAdminPort_
   let _ldLogLevel     = fromMaybe storeLogLevel  _ldLogLevel_
-  let _topicRepFactor = 3
-  let _compression    = CompressionLZ4
-  let _ckpRepFactor   = 1
+  let _topicRepFactor = 1
+  let _ckpRepFactor   = 3
   -- TODO: remove the following 2 options
   let _serverHost     = fromMaybe "0.0.0.0" _serverHost_
   let _ldConfigPath   = _storeConfigPath
-
   return ServerOpts {..}
 
 getConfig :: IO ServerOpts
