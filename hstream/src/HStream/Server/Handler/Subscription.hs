@@ -48,7 +48,7 @@ import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Common.ConsistentHashing (getAllocatedNode)
+import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
@@ -100,7 +100,7 @@ deleteSubscriptionHandler
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
   { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
   hr <- readMVar loadBalanceHashRing
-  unless (serverNodeId (getAllocatedNode hr subId) == serverID) $
+  unless (getAllocatedNodeId hr subId == serverID) $
     throwIO SubscriptionWatchOnDifferentNode
 
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
