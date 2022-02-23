@@ -12,6 +12,7 @@ module HStream.Common.ConsistentHashing
   , lookupKey
 
   , getAllocatedNode
+  , getAllocatedNodeId
   , size
   ) where
 
@@ -105,3 +106,6 @@ hashKey salt (Key key) = salt `hashWithSalt` hash key
 
 getAllocatedNode :: HashRing -> T.Text -> ServerNode
 getAllocatedNode hashRing key = lookupKey (Key key) hashRing
+
+getAllocatedNodeId :: HashRing -> T.Text -> ServerNodeId
+getAllocatedNodeId = (serverNodeId .) . getAllocatedNode

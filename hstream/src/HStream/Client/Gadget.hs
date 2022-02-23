@@ -11,7 +11,10 @@ import           Control.Concurrent
 import           Control.Monad
 import qualified Data.List                     as L
 import qualified Data.Text                     as T
+import qualified Data.Text.Encoding            as BS
+import qualified Data.Text.IO                  as T
 import qualified Data.Vector                   as V
+import           Network.GRPC.HighLevel
 import           Network.GRPC.HighLevel.Client
 import           Proto3.Suite                  (def)
 import           Z.IO.Network.SocketAddr       (SocketAddr (..))
@@ -61,13 +64,17 @@ lookupSubscription ctx addr subId = do
 -- with the given address instead of which from ClientContext.
 getInfoWithAddr
   :: ClientContext -> SocketAddr
-  -> (HStreamClientApi -> IO (ClientResult 'Normal a))
+  -> Action a
   -> (ClientResult 'Normal a -> IO (Maybe b))
   -> IO (Maybe b)
 getInfoWithAddr ctx@ClientContext{..} addr action cont = do
   resp <- runActionWithAddr addr action
   case resp of
-    ClientErrorResponse _ -> do
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
+      T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)
+      return Nothing
+    ClientErrorResponse err -> do
+      putStrLn $ "Error: " <> show err <> " , retry on a different server node"
       modifyMVar_ availableServers (return . L.delete addr)
       curServers <- readMVar availableServers
       case curServers of
