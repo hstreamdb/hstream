@@ -122,20 +122,23 @@ jobs:
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             "'cd hstream-http-server && go test -v ./test/...'"
 
-      - name: check
-        run: |
-          python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- sdist all
+      # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
+      # `cabal check` will emit a warning even if the `-O2` option is just
+      # an flag. This is disabled until the problem is fixed.
+      #- name: check
+      #  run: |
+      #    python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- sdist all
 
-          # unfortunately, there is no `cabal check all`
-          #log_info "Run all cabal check..."
-          # Note that we ignore hstream-store package to run cabal check, because there
-          # is an unexpected warning:
-          #   ...
-          #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
-          #   Warning: Hackage would reject this package.
-          for dir in hstream-sql hstream-processing hstream; do
-            python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
-          done
+      #    # unfortunately, there is no `cabal check all`
+      #    #log_info "Run all cabal check..."
+      #    # Note that we ignore hstream-store package to run cabal check, because there
+      #    # is an unexpected warning:
+      #    #   ...
+      #    #   Warning: 'cpp-options': -std=c++17 is not portable C-preprocessor flag
+      #    #   Warning: Hackage would reject this package.
+      #    for dir in hstream-sql hstream-processing hstream; do
+      #      python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} "'cd $dir && cabal check'"
+      #    done
 
       # TODO
       #- name: haddock
