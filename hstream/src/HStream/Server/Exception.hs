@@ -119,9 +119,17 @@ instance Show DataInconsistency where
                                          <> " but exists in zk."
 instance Exception DataInconsistency
 
-newtype ZkNodeExists = ZkNodeExists Text
- deriving (Show)
-instance Exception ZkNodeExists
+data StreamExists = StreamExists Bool Bool
+  deriving (Show)
+instance Exception StreamExists
+
+handleStreamExists :: StreamExists -> StatusDetails
+handleStreamExists (StreamExists zkExists storeExists)
+  | zkExists && storeExists = "StreamExists: Stream has been created"
+  | zkExists    = "StreamExists: Inconsistency found. The stream was created, but not persisted to disk"
+  | storeExists = "StreamExists: Inconsistency found. The stream was persisted to disk"
+                <> ", but no record of creating the stream is found."
+  | otherwise   = "Impossible happened: Stream does not exist, but some how throw stream exist exception"
 
 --------------------------------------------------------------------------------
 
@@ -134,7 +142,9 @@ defaultHandlers retFun = [
   Handler (\(err :: SomeSQLException) ->
     retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
   Handler (\(_ :: Store.EXISTS) ->
-    retFun StatusAlreadyExists "Stream already exists"),
+    retFun StatusAlreadyExists "Stream already exists in store"),
+  Handler (\(err :: StreamExists) ->
+    retFun StatusAlreadyExists $ handleStreamExists err),
   Handler (\(_ :: ObjectNotExist) ->
     retFun StatusNotFound "Object not found"),
   Handler (\(_ :: SubscriptionWatchOnDifferentNode) ->

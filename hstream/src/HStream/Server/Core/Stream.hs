@@ -8,30 +8,31 @@ module HStream.Server.Core.Stream
   , appendStream
   ) where
 
-import           Control.Exception                (throwIO)
-import           Control.Monad                    (unless, void)
+import           Control.Exception                (catch, throwIO)
+import           Control.Monad                    (unless, void, when)
 import qualified Data.ByteString                  as BS
-import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (isJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import qualified Data.Vector                      as V
 import           GHC.Stack                        (HasCallStack)
 import           Network.GRPC.HighLevel.Generated
-import           ZooKeeper                        (zooExists)
+import           Z.Data.CBytes                    (CBytes)
+import           ZooKeeper                        (zooExists, zooMulti)
+import           ZooKeeper.Exception              (ZNODEEXISTS)
+import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.HStore         (transToStreamName)
+import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (FoundActiveSubscription (FoundActiveSubscription),
-                                                   StreamNotExist (StreamNotExist),
-                                                   ZkNodeExists (ZkNodeExists))
+import           HStream.Server.Exception         (FoundActiveSubscription (..),
+                                                   StreamExists (..),
+                                                   StreamNotExist (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
-                                                   createStreamRelatedPath,
                                                    removeStreamRelatedPath)
-import           HStream.Server.Persistence       (mkPartitionKeysPath,
-                                                   streamRootPath,
-                                                   tryGetChildren)
+import           HStream.Server.Persistence       (streamRootPath)
+import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
@@ -41,24 +42,29 @@ import           HStream.Utils
 -------------------------------------------------------------------------------
 
 -- createStream will create a stream with a default partition
+-- FIXME: Currently, creating a stream which partially exists will do the job
+-- but return failure response
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerResponse 'Normal API.Stream)
 createStream ServerContext{..} stream@API.Stream{..} = do
-  let name = textToCBytes streamStreamName
-  keys <- tryGetChildren zkHandle $ mkPartitionKeysPath name
-  -- If there is a previous stream with same name failed to perform a deleted operation and
-  -- did not retry, or a client try to create a stream already existed.
-  unless (null keys) $ throwIO (ZkNodeExists streamStreamName)
-  createStreamRelatedPath zkHandle name
-  S.createStream scLDClient (transToStreamName streamStreamName) $
-    S.LogAttrs (S.HsLogAttrs (fromIntegral streamReplicationFactor) Map.empty)
+  let nameCB   = textToCBytes streamStreamName
+      streamId = transToStreamName streamStreamName
+      repFac   = fromIntegral streamReplicationFactor
+  zNodesExist <- catch (createStreamRelatedPath zkHandle nameCB >> return False)
+                       (\(_::ZNODEEXISTS) -> return True)
+  storeExists <- catch (S.createStream scLDClient streamId (S.LogAttrs $ S.HsLogAttrs repFac mempty)
+                        >> return False)
+                       (\(_ :: S.EXISTS) -> return True)
+  when (storeExists || zNodesExist) $ do
+    Log.warning $ "Stream exists in" <> (if zNodesExist then " <zk path>" else "") <> (if storeExists then " <hstore>." else ".")
+    throwIO $ StreamExists zNodesExist storeExists
   returnResp stream
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
              -> IO (ServerResponse 'Normal Empty)
 deleteStream sc@ServerContext{..} API.DeleteStreamRequest{..} = do
-  zNodeExists <- checkZkPathExist
-  storeExists <- checkStreamExist
+  zNodeExists <- isJust <$> zooExists zkHandle (streamRootPath <> "/" <> nameCB)
+  storeExists <- S.doesStreamExist scLDClient streamId
   case (zNodeExists, storeExists) of
     -- Normal path
     (True, True) -> normalDelete
@@ -79,18 +85,15 @@ deleteStream sc@ServerContext{..} API.DeleteStreamRequest{..} = do
       if isActive
         then do
           unless deleteStreamRequestForce $ throwIO FoundActiveSubscription
-          S.archiveStream scLDClient streamName
+          S.archiveStream scLDClient streamId
         else storeDelete
       cleanZkNode
+    storeDelete  = void $ deleteStoreStream sc streamId deleteStreamRequestIgnoreNonExist
 
-    storeDelete  = void $ deleteStoreStream sc streamName deleteStreamRequestIgnoreNonExist
-
-    streamName       = transToStreamName deleteStreamRequestStreamName
-    nameCB           = textToCBytes deleteStreamRequestStreamName
-    checkZkPathExist = isJust <$> zooExists zkHandle (streamRootPath <> "/" <> nameCB)
-    checkStreamExist = S.doesStreamExist scLDClient streamName
-    checkIfActive    = checkIfSubsOfStreamActive zkHandle nameCB
-    cleanZkNode      = removeStreamRelatedPath zkHandle nameCB
+    streamId      = transToStreamName deleteStreamRequestStreamName
+    nameCB        = textToCBytes deleteStreamRequestStreamName
+    checkIfActive = checkIfSubsOfStreamActive zkHandle nameCB
+    cleanZkNode   = removeStreamRelatedPath zkHandle nameCB
 
 listStreams
   :: HasCallStack
@@ -118,3 +121,19 @@ appendStream ServerContext{..} API.AppendRequest{..} partitionKey = do
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
   let records = V.zipWith (\_ idx -> API.RecordId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records
+
+--------------------------------------------------------------------------------
+
+createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
+createStreamRelatedPath zk streamName = do
+  -- rootPath/streams/{streamName}
+  -- rootPath/streams/{streamName}/keys
+  -- rootPath/streams/{streamName}/subscriptions
+  -- rootPath/lock/streams/{streamName}
+  -- rootPath/lock/streams/{streamName}/subscriptions
+  let streamPath = P.streamRootPath <> "/" <> streamName
+      keyPath    = P.mkPartitionKeysPath streamName
+      subPath    = P.mkStreamSubsPath streamName
+      lockPath   = P.streamLockPath <> "/" <> streamName
+      streamSubLockPath = P.mkStreamSubsLockPath streamName
+  void $ zooMulti zk $ P.createPathOp <$> [streamPath, keyPath, subPath, lockPath, streamSubLockPath]

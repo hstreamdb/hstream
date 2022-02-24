@@ -66,8 +66,7 @@ import           ZooKeeper                            (Resource, zooCreate,
                                                        zooCreateOpInit,
                                                        zooDelete, zooDeleteAll,
                                                        zooGet, zooGetChildren,
-                                                       zooMulti, zooSet,
-                                                       zooSetOpInit,
+                                                       zooSet, zooSetOpInit,
                                                        zookeeperResInit)
 import           ZooKeeper.Exception
 import           ZooKeeper.Types
@@ -119,8 +118,7 @@ mkStreamSubsPath :: CBytes -> CBytes
 mkStreamSubsPath streamName = streamRootPath <> "/" <> streamName <> "/subscriptions"
 
 paths :: [CBytes]
-paths = [ "/hstreamdb"
-        , rootPath
+paths = [ rootPath
         , serverRootPath
         , lockPath
         , queriesPath
