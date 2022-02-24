@@ -86,6 +86,15 @@ mkExceptionHandle retFun cleanFun = flip catches [
 defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
 defaultExceptionHandle = mkExceptionHandle returnErrResp $ return ()
 
+appendStreamExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
+appendStreamExceptionHandle action = defaultExceptionHandle $ catches action [
+  Handler (\(err :: Store.NOTFOUND) -> do
+    returnErrResp StatusUnavailable $ StatusDetails (BS.pack (show err))),
+  Handler (\(err :: Store.NOTINSERVERCONFIG) -> do
+    returnErrResp StatusUnavailable $ StatusDetails (BS.pack (show err)))
+  ]
+
+
 defaultExceptionHandle' :: IO () -> IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
 defaultExceptionHandle' = mkExceptionHandle returnErrResp
 
