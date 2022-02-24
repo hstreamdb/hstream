@@ -33,7 +33,24 @@ source-repository head
   type:     git
   location: https://github.com/hstreamdb/hstream
 
+flag ReleaseBuild
+  default:     False
+  description:
+    Enables all optimisations, leads to slower build time and better performance
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(releasebuild)
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -O2
+
 library
+  import:             shared-properties
   exposed-modules:
     HStream.Store
     HStream.Store.Internal.LogDevice
@@ -109,11 +126,9 @@ library
   includes:           hs_logdevice.h
   include-dirs:       include /usr/local/include
   build-tool-depends: hsc2hs:hsc2hs -any
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
 
 test-suite hstream-store-test
+  import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:
@@ -154,12 +169,10 @@ test-suite hstream-store-test
     UnliftedFFITypes
 
   build-tool-depends: hspec-discover:hspec-discover ==2.*
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 
 benchmark hstore-bench-append
+  import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            AppendBench.hs
   hs-source-dirs:     bench
@@ -187,12 +200,10 @@ benchmark hstore-bench-append
     UnliftedFFITypes
 
   default-language:   Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 
 benchmark hstore-bench-append-batch
+  import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            AppendBatchBench.hs
   hs-source-dirs:     bench
@@ -220,12 +231,10 @@ benchmark hstore-bench-append-batch
     UnliftedFFITypes
 
   default-language:   Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
 
 executable hstore-bench-writter
+  import:           shared-properties
   main-is:          writeBench.hs
   hs-source-dirs:   app
   build-depends:
@@ -241,7 +250,4 @@ executable hstore-bench-writter
     , Z-IO
 
   default-language: Haskell2010
-  ghc-options:
-    -Wall -Wcompat -Widentities -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-    -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
