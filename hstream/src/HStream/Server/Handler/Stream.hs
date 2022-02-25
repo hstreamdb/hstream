@@ -21,7 +21,8 @@ import           Control.Concurrent               (readMVar)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
-import           HStream.Server.Exception         (defaultExceptionHandle)
+import           HStream.Server.Exception         (appendStreamExceptionHandle,
+                                                   defaultExceptionHandle)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.Types             (ServerContext (..))
@@ -66,7 +67,7 @@ appendHandler
   :: ServerContext
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
-appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = defaultExceptionHandle $ do
+appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
   Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
