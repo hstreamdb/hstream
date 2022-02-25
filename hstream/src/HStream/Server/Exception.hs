@@ -12,6 +12,7 @@ import           Control.Exception                    (Exception (..),
                                                        IOException,
                                                        SomeException, catches,
                                                        displayException)
+import qualified Control.Exception                    as CE
 import qualified Data.ByteString.Char8                as BS
 import           Data.Text                            (Text)
 import           Data.Text.Encoding                   (encodeUtf8)
@@ -30,12 +31,12 @@ import           Network.GRPC.HighLevel.Client
 import           Network.GRPC.HighLevel.Server
 import           ZooKeeper.Exception
 
--- TODO: More exception handle needs specific handling.
-mkExceptionHandle :: (StatusCode -> StatusDetails -> IO (ServerResponse t a))
-                  -> IO ()
-                  -> IO (ServerResponse t a)
-                  -> IO (ServerResponse t a)
-mkExceptionHandle retFun cleanFun = flip catches [
+type RetFun t a = (StatusCode -> StatusDetails -> IO (ServerResponse t a))
+type CleanFun = IO ()
+type Handlers t a = [CE.Handler (ServerResponse t a)]
+
+defaultHandlers :: RetFun t a -> CleanFun -> Handlers t a
+defaultHandlers retFun cleanFun = [
   Handler (\(err :: SomeSQLException) ->
     retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
   Handler (\(_ :: Store.EXISTS) ->
@@ -83,19 +84,31 @@ mkExceptionHandle retFun cleanFun = flip catches [
     retFun StatusUnknown $ StatusDetails ("UnKnown exception: " <> BS.pack (show err)))
   ]
 
+mkExceptionHandle :: Handlers t a -> IO (ServerResponse t a) -> IO (ServerResponse t a)
+mkExceptionHandle = flip catches
+
 defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-defaultExceptionHandle = mkExceptionHandle returnErrResp $ return ()
+defaultExceptionHandle = mkExceptionHandle $ defaultHandlers returnErrResp (return ())
+
+appendStreamExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
+appendStreamExceptionHandle = mkExceptionHandle $ [
+  Handler (\(err :: Store.NOTFOUND) -> do
+    returnErrResp StatusUnavailable $ StatusDetails (BS.pack (show err))),
+  Handler (\(err :: Store.NOTINSERVERCONFIG) -> do
+    returnErrResp StatusUnavailable $ StatusDetails (BS.pack (show err)))
+  ] ++ defaultHandlers returnErrResp (return ())
+
 
 defaultExceptionHandle' :: IO () -> IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-defaultExceptionHandle' = mkExceptionHandle returnErrResp
+defaultExceptionHandle' = mkExceptionHandle . defaultHandlers returnErrResp
 
 defaultServerStreamExceptionHandle :: IO (ServerResponse 'ServerStreaming a)
                                    -> IO (ServerResponse 'ServerStreaming a)
-defaultServerStreamExceptionHandle = mkExceptionHandle returnServerStreamingResp $ return ()
+defaultServerStreamExceptionHandle = mkExceptionHandle $ defaultHandlers returnServerStreamingResp (return ())
 
 defaultBiDiStreamExceptionHandle :: IO (ServerResponse 'BiDiStreaming a)
                                  -> IO (ServerResponse 'BiDiStreaming a)
-defaultBiDiStreamExceptionHandle = mkExceptionHandle returnBiDiStreamingResp $ return ()
+defaultBiDiStreamExceptionHandle = mkExceptionHandle $ defaultHandlers returnBiDiStreamingResp (return ())
 
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)
