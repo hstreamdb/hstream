@@ -18,11 +18,11 @@ import           System.Exit                (exitSuccess)
 import           Z.Data.CBytes              (CBytes)
 import           Z.IO.Network               (PortNumber (PortNumber))
 
-
 import qualified HStream.Admin.Store.API    as AA
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
 import           HStream.Server.Types       (ServerOpts (..))
+import           HStream.Store              (Compression (..))
 import qualified HStream.Store.Logger       as Log
 
 data CliOptions = CliOptions
@@ -34,6 +34,7 @@ data CliOptions = CliOptions
   , _serverID_           :: Maybe Word32
   , _serverLogLevel_     :: Maybe Log.Level
   , _serverLogWithColor_ :: Bool
+  , _compression_        :: Maybe Compression
   , _ldAdminHost_        :: Maybe ByteString
   , _ldAdminPort_        :: Maybe Int
   , _ldLogLevel_         :: Maybe Log.LDLogLevel
@@ -78,6 +79,12 @@ serverID = option auto
   $ long "server-id"
   <> metavar "UINT32"
   <> help "ID of the hstream server node"
+
+compression :: O.Parser Compression
+compression = option auto
+  $ long "compression"
+  <> metavar "none | lz4 | lz4hc"
+  <> help "Compression option when write records to store"
 
 logLevel :: O.Parser Log.Level
 logLevel = option auto
@@ -135,6 +142,7 @@ parseWithFile = do
   _ldLogLevel_         <- optional ldLogLevel
   _zkUri_              <- optional zkUri
   _serverLogLevel_     <- optional logLevel
+  _compression_        <- optional compression
   _serverLogWithColor_ <- logWithColor
   _storeConfigPath     <- storeConfigPath
   return CliOptions {..}
@@ -150,7 +158,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodePort    <- nodeCfgObj .:? "port" .!= 6570
   nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6570
   zkuri            <- nodeCfgObj .:  "zkuri"
-  _compression   <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
+  recordCompression   <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel     <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor <- nodeCfgObj .:? "log-with-color" .!= True
 
@@ -161,6 +169,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
   let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
   let _serverAddress      = fromMaybe nodeAddress _serverAddress_
+  let _compression        = fromMaybe recordCompression _compression_
 
   storeCfgObj  <- obj .:? "hstore" .!= mempty
   storeLogLevel <- read <$> storeCfgObj .:? "log-level" .!= "info"
