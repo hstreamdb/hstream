@@ -358,8 +358,8 @@ class ZookeeperService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
-                    f"{container_bin} run -td {docker_opts} "
-                    f"--name {container_name} "
+                    f"{container_bin} run -td --restart unless-stopped "
+                    f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
                     f"{image} {container_cmd}' "
@@ -390,9 +390,9 @@ class ZookeeperService(Service):
                 f"printf -v __ %q "
                 f"{node_value} "
                 f'&& ssh {host} "'
-                f'{waiting} && '
-                f'{container_bin} exec -t {container_name} zkCli.sh create {key} $__ || '
-                f'{container_bin} exec -t {container_name} zkCli.sh set {key} $__'
+                f"{waiting} && "
+                f"{container_bin} exec -t {container_name} zkCli.sh create {key} $__ || "
+                f"{container_bin} exec -t {container_name} zkCli.sh set {key} $__"
                 f'"'
             )
             return [store_command(host) for (host, _) in remotes]
@@ -526,7 +526,8 @@ class HStoreAdminService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"--name {container_name} "
                     f"--network host {image} /usr/local/bin/ld-admin-server "
                     f"--config-path {config_path} "
                     "--enable-maintenance-manager "
@@ -657,7 +658,8 @@ class HStoreService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
-                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    "--name {container_name} "
                     "--network host "
                     f"-v {data_dir}:/data/store "
                     f"{image} /usr/local/bin/logdeviced "
@@ -756,7 +758,8 @@ class HServerService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"--name {container_name} "
                     "--network host "
                     f"{image} /usr/local/bin/hstream-server "
                     f"--host {addr} "
