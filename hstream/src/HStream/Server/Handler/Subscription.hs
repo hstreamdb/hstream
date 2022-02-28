@@ -536,10 +536,7 @@ genRecordStream ctx@ServerContext {..} shardInfoMVar = do
 
   mRecords <- doRead
   case mRecords of
-    Nothing -> do
-      -- FIXME: No need sleep here? reader read will block if there are no data to read.
-      threadDelay 1000000
-      genRecordStream ctx shardInfoMVar
+    Nothing -> genRecordStream ctx shardInfoMVar
     Just records -> do
       doSend records
       let recordIds = V.map (fromJust . receivedRecordRecordId) records
