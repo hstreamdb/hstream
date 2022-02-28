@@ -899,7 +899,10 @@ class QuickBuildDevImageCommand:
     def parser(self, subparsers):
         p = subparsers.add_parser(
             self.COMMAND,
-            help="Quick build a new hstream image based on current project source",
+            help=(
+                "Quick build a new hstream server image based on current "
+                "project source. (NOTE: http server is not included.)"
+            ),
         )
         p.add_argument(
             "--builder-image",
@@ -925,19 +928,25 @@ class QuickBuildDevImageCommand:
             f"Temp install dir: {installdir}, autoclean: {clean_installdir}"
         )
         try:
-            bins = [
-                ("hstream", "hstream-server", "/usr/local/bin/hstream-server"),
-                ("hstream", "hstream-client", "/usr/local/bin/hstream-client"),
-                ("hstream-admin", "hadmin", "/usr/local/bin/hadmin"),
+            hs_targets = "hstream hstream-admin"
+            files = [
+                (
+                    f"{installdir}/hstream-server",
+                    "/usr/local/bin/hstream-server",
+                ),
+                (
+                    f"{installdir}/hstream-client",
+                    "/usr/local/bin/hstream-client",
+                ),
+                (f"{installdir}/hadmin", "/usr/local/bin/hadmin"),
+                (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),
             ]
-            targets = set(x for x, _, _ in bins)
 
             install_cmd = (
-                f"cabal install --installdir={installdir} " + " ".join(targets)
+                f"cabal install --installdir={installdir} {hs_targets}"
             )
             copy_cmd = " && ".join(
-                f"docker cp -L {installdir}/{x} {tmp_name}:{y}"
-                for _, x, y in bins
+                f"docker cp -L {x} {tmp_name}:{y}" for x, y in files
             )
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
             run_sh(
