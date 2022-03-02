@@ -11,7 +11,7 @@ import           Control.Concurrent               (MVar, newMVar)
 import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
-import           Data.List                        (sort)
+import           Data.List                        (find, sort)
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
@@ -42,6 +42,12 @@ import           HStream.Store                    (EXISTS (..), HsLogAttrs (..),
                                                    initCheckpointStoreLogID,
                                                    newLDClient)
 import           HStream.Utils
+import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
+                                                   AuthProperty (authPropName),
+                                                   ProcessMeta,
+                                                   SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
+                                                   getAuthProperties)
+import           Text.Printf                      (printf)
 
 {-
   Starting hservers will no longer be happening in parallel.
@@ -109,6 +115,8 @@ initializeServer ServerOpts{..} zk = do
         Host . toByteString . CB.toBytes $ _serverHost
     , Network.GRPC.HighLevel.Generated.serverPort =
         Port . fromIntegral $ _serverPort
+    , Network.GRPC.HighLevel.Generated.sslConfig =
+        fmap initializeTlsConfig _tlsConfig
     },
     defaultServiceOptions {
       Network.GRPC.HighLevel.Generated.serverHost =
@@ -138,3 +146,17 @@ initializeHashRing zk = do
     zooGetChildren zk serverRootPath
   serverNodes <- mapM (getServerNode' zk) children
   newMVar . constructHashRing . sort $ serverNodes
+
+initializeTlsConfig :: TlsConfig -> ServerSSLConfig
+initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler
+  where
+    authType = maybe SslDontRequestClientCertificate (const SslRequestAndRequireClientCertificateAndVerify) caPath
+    authHandler = fmap (const authProcess) caPath
+
+-- ref: https://github.com/grpc/grpc/blob/master/doc/server_side_auth.md
+authProcess :: ProcessMeta
+authProcess authCtx _ = do
+  prop <- getAuthProperties authCtx
+  let cn = find ((== "x509_common_name") . authPropName) prop
+  Log.info . Log.buildString . printf "user:[%s] is logging in" $ show cn
+  return $ AuthProcessorResult mempty mempty StatusOk ""

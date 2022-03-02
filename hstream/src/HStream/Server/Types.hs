@@ -59,6 +59,7 @@ data ServerOpts = ServerOpts
   , _serverLogLevel     :: Log.Level
   , _serverLogWithColor :: Bool
   , _ldLogLevel         :: Log.LDLogLevel
+  , _tlsConfig          :: Maybe TlsConfig
   } deriving (Show)
 
 type Timestamp = Int64
@@ -213,3 +214,10 @@ data SystemResourcePercentageUsage =
   } deriving (Eq, Generic, Show)
 instance FromJSON SystemResourcePercentageUsage
 instance ToJSON SystemResourcePercentageUsage
+
+data TlsConfig
+  = TlsConfig {
+    keyPath  :: String
+  , certPath :: String
+  , caPath   :: Maybe String
+  } deriving (Show)
