@@ -1,13 +1,10 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
-import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
@@ -15,7 +12,6 @@ import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
-import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
@@ -186,30 +182,3 @@ data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
 data SendStatus = SendStopping
                 | SendStopped
                 | SendRunning
-
-data LoadReport = LoadReport {
-    sysResUsage    :: SystemResourceUsage
-  , sysResPctUsage :: SystemResourcePercentageUsage
-  , isUnderloaded  :: Bool
-  , isOverloaded   :: Bool
-  } deriving (Eq, Generic, Show)
-instance FromJSON LoadReport
-instance ToJSON LoadReport
-
-data SystemResourceUsage
-  = SystemResourceUsage {
-    cpuUsage      :: (Integer, Integer)
-  , txTotal       :: Integer
-  , rxTotal       :: Integer
-  , collectedTime :: Integer
-  } deriving (Eq, Generic, Show, FromJSON, ToJSON)
-
-data SystemResourcePercentageUsage =
-  SystemResourcePercentageUsage {
-    cpuPctUsage       :: Double
-  , memoryPctUsage    :: Double
-  , bandwidthInUsage  :: Double
-  , bandwidthOutUsage :: Double
-  } deriving (Eq, Generic, Show)
-instance FromJSON SystemResourcePercentageUsage
-instance ToJSON SystemResourcePercentageUsage

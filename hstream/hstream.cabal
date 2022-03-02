@@ -54,7 +54,6 @@ library
     HStream.Server.Handler.Common
     HStream.Server.Initialization
     HStream.Server.InternalHandler
-    HStream.Server.LoadReport
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
     HStream.Server.Types
