@@ -156,7 +156,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeId      <- nodeCfgObj .:  "id"
   nodeAddress <- nodeCfgObj .:  "address"
   nodePort    <- nodeCfgObj .:? "port" .!= 6570
-  nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6570
+  nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6571
   zkuri            <- nodeCfgObj .:  "zkuri"
   recordCompression   <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel     <- nodeCfgObj .:? "log-level" .!= "info"
