@@ -10,6 +10,7 @@ module HStream.Utils
   , module HStream.Utils.JSON
   , module HStream.Utils.Compression
   , module HStream.Utils.Codec
+  , module HStream.Utils.Validation
 
   , genUnique
   , throwIOError
@@ -33,6 +34,7 @@ import           HStream.Utils.JSON
 import           HStream.Utils.RPC
 import           HStream.Utils.Table
 import           HStream.Utils.Time
+import           HStream.Utils.Validation
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --

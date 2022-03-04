@@ -34,6 +34,7 @@ module HStream.Exception
   , SomeInvalidArgument
   , InvalidArgument (..)
   , InvalidReplicaFactor (..)
+  , InvalidObjectIdentifier (..)
   , InvalidShardCount (..)
   , InvalidRecord (..)
   , InvalidResourceType (..)
@@ -310,6 +311,7 @@ MAKE_SUB_EX(SomeHServerException, SomeInvalidArgument)
 
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidArgument, (ExInfo String), exDescription)
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidReplicaFactor, String, )
+MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidObjectIdentifier, String, )
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidShardCount, String, )
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidRecord, String, )
 MAKE_PARTICULAR_EX_1(SomeInvalidArgument, InvalidResourceType, String, )
