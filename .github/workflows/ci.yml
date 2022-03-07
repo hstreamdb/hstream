@@ -4,8 +4,8 @@ on:
   push:
     branches: [main, master]
 
-  pull_request:
-    branches: [main, master]
+  # pull_request:
+  #   branches: [main, master]
 
 env:
   NEW_HSTREAM_IMAGE: new_hstream_image
