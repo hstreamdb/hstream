@@ -73,13 +73,73 @@ data ServerContext = ServerContext {
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  --, subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
-  , scSubscribeRuntimeInfo   :: MVar (HM.HashMap SubscriptionId SubscribeRuntimeInfo)
+  , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: MVar HashRing
 }
+
+data SubscribeContextNewWrapper = SubscribeContextNewWrapper
+  { scnwState :: TVar SubscribeState,
+    scnwContext :: TVar (Maybe SubscribeContext)
+  }
+
+data SubscribeContextWrapper = SubscribeContextWrapper
+  { scwState :: TVar SubscribeState,
+    scwContext :: SubscribeContext
+  }
+
+data SubscribeState
+  = SubscribeStateNew
+  | SubscribeStateRunning
+  | SubscribeStateStopping
+  | SubscribeStateStopped
+  deriving (Eq, Show)
+
+data SubscribeContext = SubscribeContext
+  { subSubscriptionId :: T.Text,
+    subStreamName :: T.Text,
+    subAckTimeoutSeconds :: Int32,
+    subLdCkpReader :: HS.LdCkpReader,
+    subLdReader :: HS.LdReader,
+    subConsumerContexts :: TVar (HM.HashMap ConsumerName ConsumerContext),
+    subShardContexts :: TVar (HM.HashMap HS.LogID SubscribeShardContext),
+    subAssignment :: Assignment
+  }
+
+data ConsumerContext = ConsumerContext
+  { ccConsumerName :: ConsumerName,
+    ccIsValid :: TVar Bool,
+    -- use MVar for streamSend because only on thread can use streamSend at the
+    -- same time
+    ccStreamSend :: MVar (StreamSend StreamingFetchResponse)
+  }
+
+data SubscribeShardContext = SubscribeShardContext
+  { sscAckWindow :: AckWindow,
+    sscLogId :: HS.LogID
+  }
+
+data Assignment = Assignment
+  { totalShards :: TVar (Set.Set HS.LogID),
+    unassignedShards :: TVar [HS.LogID],
+    waitingReadShards :: TVar [HS.LogID],
+    waitingReassignedShards :: TVar [HS.LogID],
+    waitingConsumers :: TVar [ConsumerName],
+    shard2Consumer :: TVar (HM.HashMap HS.LogID ConsumerName),
+    consumer2Shards :: TVar (HM.HashMap ConsumerName (TVar (Set.Set HS.LogID))),
+    consumerWorkloads :: TVar (Set.Set ConsumerWorkload)
+  }
+
+data ConsumerWorkload = ConsumerWorkload
+  { cwConsumerName :: ConsumerName,
+    cwShardCount :: Int
+  }
+instance Eq ConsumerWorkload where
+  (==) w1 w2 = cwConsumerName == cwConsumerName && cwShardCount w1 == cwShardCount w2 
+instance Ord ConsumerWorkload where
+  (<=) w1 w2 = w1 == w2 || cwShardCount w1 < cwShardCount w2 
 
 type SubscriptionId = T.Text
 type OrderingKey = T.Text
@@ -103,113 +163,3 @@ printAckedRanges :: Map.Map RecordId RecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
-
--- data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
---     sriStreamName        :: T.Text
---   , sriLogId             :: HS.C_LogID
---   , sriAckTimeoutSeconds :: Int32
---   , sriLdCkpReader       :: HS.LDSyncCkpReader
---   , sriLdReader          :: Maybe HS.LDReader
---   , sriWindowLowerBound  :: RecordId
---   , sriWindowUpperBound  :: RecordId
---   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
---   , sriBatchNumMap       :: Map.Map Word64 Word32
---   , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
---   , sriValid             :: Bool
---   , sriSignals           :: V.Vector (MVar ())
--- }
-
-data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriSubscriptionId :: SubscriptionId
-  , sriStreamName :: T.Text
-  , sriWatchContext :: MVar WatchContext
-  , sriShardRuntimeInfo :: MVar (HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo))
-}
-
-data WatchContext = WatchContext {
-    wcWaitingConsumers :: [ConsumerWatch]
-  , wcWorkingConsumers :: Set.Set ConsumerWorkload
-  , wcWatchStopSignals :: HM.HashMap ConsumerName (MVar ())
-}
-
-addNewConsumerToCtx :: WatchContext -> ConsumerName -> StreamSend WatchSubscriptionResponse -> IO(WatchContext, MVar ())
-addNewConsumerToCtx ctx@WatchContext{..} name streamSend = do
-  stopSignal <- newEmptyMVar
-  let signals = HM.insert name stopSignal wcWatchStopSignals
-  let consumerWatch = mkConsumerWatch name streamSend
-  let newCtx = ctx
-        { wcWaitingConsumers = wcWaitingConsumers ++ [consumerWatch]
-        , wcWatchStopSignals = signals
-        }
-  return (newCtx, stopSignal)
-
-removeConsumerFromCtx :: WatchContext -> ConsumerName -> IO WatchContext
-removeConsumerFromCtx ctx@WatchContext{..} name =
-  return ctx {wcWatchStopSignals = HM.delete name wcWatchStopSignals}
-
-data ConsumerWatch = ConsumerWatch {
-    cwConsumerName :: ConsumerName
-  , cwWatchStream  :: StreamSend WatchSubscriptionResponse
-}
-
-mkConsumerWatch :: ConsumerName -> StreamSend WatchSubscriptionResponse -> ConsumerWatch
-mkConsumerWatch = ConsumerWatch
-
-data ConsumerWorkload = ConsumerWorkload {
-    cwConsumerWatch :: ConsumerWatch
-  , cwShards        :: Set.Set OrderingKey
-}
-
-mkConsumerWorkload :: ConsumerWatch -> Set.Set OrderingKey -> ConsumerWorkload
-mkConsumerWorkload = ConsumerWorkload
-
-instance Eq ConsumerWorkload where
-  (==) w1 w2 = Set.size (cwShards w1) == Set.size (cwShards w2)
-instance Ord ConsumerWorkload where
-  (<=) w1 w2 = Set.size (cwShards w1) <= Set.size (cwShards w2)
-
-data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
-    ssriStreamName        :: T.Text
-  , ssriLogId             :: HS.C_LogID
-  , ssriAckTimeoutSeconds :: Int32
-  , ssriLdCkpReader       :: HS.LDSyncCkpReader
-  , ssriLdReader          :: HS.LDReader
-  , ssriWindowLowerBound  :: RecordId
-  , ssriWindowUpperBound  :: RecordId
-  , ssriAckedRanges       :: Map.Map RecordId RecordIdRange
-  , ssriBatchNumMap       :: Map.Map Word64 Word32
-  , ssriConsumerName      :: ConsumerName
-  , ssriStreamSend        :: StreamSend StreamingFetchResponse
-  , ssriSendStatus        :: SendStatus
-}
-
-data SendStatus = SendStopping
-                | SendStopped
-                | SendRunning
-
-data LoadReport = LoadReport {
-    sysResUsage    :: SystemResourceUsage
-  , sysResPctUsage :: SystemResourcePercentageUsage
-  , isUnderloaded  :: Bool
-  , isOverloaded   :: Bool
-  } deriving (Eq, Generic, Show)
-instance FromJSON LoadReport
-instance ToJSON LoadReport
-
-data SystemResourceUsage
-  = SystemResourceUsage {
-    cpuUsage      :: (Integer, Integer)
-  , txTotal       :: Integer
-  , rxTotal       :: Integer
-  , collectedTime :: Integer
-  } deriving (Eq, Generic, Show, FromJSON, ToJSON)
-
-data SystemResourcePercentageUsage =
-  SystemResourcePercentageUsage {
-    cpuPctUsage       :: Double
-  , memoryPctUsage    :: Double
-  , bandwidthInUsage  :: Double
-  , bandwidthOutUsage :: Double
-  } deriving (Eq, Generic, Show)
-instance FromJSON SystemResourcePercentageUsage
-instance ToJSON SystemResourcePercentageUsage
