@@ -1,52 +1,51 @@
 {
     "hosts": {
-        "hclient-001": "192.168.10.33",
-        "hserver-0001": "192.168.10.216",
-        "hserver-0002": "192.168.10.147",
-        "hserver-0003": "192.168.10.165"
+        "remote_ssh_host1": "192.168.10.1",
+        "remote_ssh_host2": "192.168.10.2",
+        "remote_ssh_host3": "192.168.10.3",
+        "remote_ssh_host4": "192.168.10.4"
     },
     "zookeeper": {
         "hosts": [
-            "hserver-0001",
-            "hserver-0002",
-            "hserver-0003"
+            "remote_ssh_host2",
+            "remote_ssh_host3",
+            "remote_ssh_host4"
         ],
-        "local_config_path": "$PWD/zoo.cfg",
-        "remote_config_path": "/root/.config/dev-deploy/zoo.cfg"
+        "enable-metrics-provider": true
     },
     "hstore": {
         "hosts": [
-            "hserver-0001",
-            "hserver-0002",
-            "hserver-0003"
+            "remote_ssh_host2",
+            "remote_ssh_host3",
+            "remote_ssh_host4"
         ],
         "local_config_path": "$PWD/logdevice.conf",
         "remote_config_path": "/root/.config/dev-deploy/logdevice.conf"
     },
     "hstore-admin": {
         "hosts": [
-            "hclient-001"
+            "remote_ssh_host1"
         ]
     },
     "hserver": {
         "hosts": [
-            "hserver-0001",
-            "hserver-0002",
-            "hserver-0003"
+            "remote_ssh_host2",
+            "remote_ssh_host3",
+            "remote_ssh_host4"
         ]
     },
     "prometheus": {
         "hosts": [
-            "hclient-001"
+            "remote_ssh_host1"
         ],
         "local_config_path": "$PWD/config.yml",
-        "remote_config_path": "/root/.config/dev-deploy/prometheus.config.yml"
+        "remote_config_path": "/root/.config/dev-deploy/config.yml"
     },
     "node-exporter": {
         "hosts": [
-            "hserver-0001",
-            "hserver-0002",
-            "hserver-0003"
+            "remote_ssh_host2",
+            "remote_ssh_host3",
+            "remote_ssh_host4"
         ]
     }
 }

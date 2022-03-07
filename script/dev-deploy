@@ -346,6 +346,7 @@ class ZookeeperService(Service):
         extra_container_options="",
         container_cmd="",
         rm=False,
+        metrics_provider=False,
         **kargs,
     ):
 
@@ -369,6 +370,11 @@ class ZookeeperService(Service):
                 mount_zk_conf = ""
                 if zk_remote_conf is not None:
                     mount_zk_conf = f"-v {zk_remote_conf}:/conf/zoo.cfg"
+                enable_metrics_provider = (
+                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider"'
+                    if metrics_provider
+                    else ""
+                )
 
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
@@ -376,7 +382,7 @@ class ZookeeperService(Service):
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
-                    f"{mount_zk_conf} "
+                    f"{mount_zk_conf} {enable_metrics_provider} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -943,6 +949,9 @@ class SimpleService(Service):
             self.zk_remote_conf = deploy_cfg["zookeeper"].get(
                 "remote_config_path"
             )
+            self.zk_enable_metrics_provider = (
+                deploy_cfg["zookeeper"].get("enable-metrics-provider") == True
+            )
             self.hstore_local_conf = deploy_cfg["hstore"].get(
                 "local_config_path"
             )
@@ -1012,6 +1021,7 @@ class SimpleService(Service):
             "remotes": self.zk_hosts,
             "persistent-dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
             "zk_remote_conf": self.zk_remote_conf,
+            "metrics_provider": self.zk_enable_metrics_provider,
             **zk_args,
         }
         cmds.extend(self.ZK_SVC.start_cmd(**zk_start_args))
@@ -1084,7 +1094,7 @@ class SimpleService(Service):
         prometheus_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
-            "config_path": self.prometheus_local_conf,
+            "config_path": self.prometheus_remote_conf,
             "remotes": self.prometheus_hosts,
         }
         cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
