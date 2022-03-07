@@ -66,7 +66,7 @@ base = describe "BaseSpec" $ do
     S.renameStream' client stream1 streamName2
     S.doesStreamPartitionExist client stream1 key `shouldReturn` False
     S.doesStreamPartitionExist client stream2 key `shouldReturn` True
-    S.listStreamPartitions client stream1 `shouldThrow` (const True :: Selector S.NOTFOUND)
+    S.listStreamPartitions client stream1 `shouldThrow` S.isNOTFOUND
     S.listStreamPartitions client stream2 `shouldReturn` [keyString]
 
     S.getUnderlyingLogId client stream2 key `shouldReturn` log_id
