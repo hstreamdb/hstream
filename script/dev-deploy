@@ -1170,9 +1170,7 @@ class SimpleService(Service):
             **zk_args, remove_container=False
         )
 
-        cmds = [*stop_cmds, *remove_hstore_cmds, *remove_zk_cmds]
-
-        return cmds
+        return [*stop_cmds, *remove_hstore_cmds, *remove_zk_cmds]
 
     def print_help(self):
         return self.cmd.print_help()

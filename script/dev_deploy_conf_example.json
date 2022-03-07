@@ -1,28 +1,52 @@
 {
     "hosts": {
-        "remote_ssh_host1": "192.168.10.1",
-        "remote_ssh_host2": "192.168.10.2",
-        "remote_ssh_host3": "192.168.10.3",
-        "remote_ssh_host4": "192.168.10.4"
+        "hclient-001": "192.168.10.33",
+        "hserver-0001": "192.168.10.216",
+        "hserver-0002": "192.168.10.147",
+        "hserver-0003": "192.168.10.165"
     },
-    "local_store_config_path": "$PWD/logdevice.conf",
-    "hstreamdb_config_path": "",
-    "zookeeper-host": [
-        "remote_ssh_host2",
-        "remote_ssh_host3",
-        "remote_ssh_host4"
-    ],
-    "hstore-host": [
-        "remote_ssh_host2",
-        "remote_ssh_host3",
-        "remote_ssh_host4"
-    ],
-    "hstore-admin-host": [
-        "remote_ssh_host1"
-    ],
-    "hserver-host": [
-        "remote_ssh_host2",
-        "remote_ssh_host3",
-        "remote_ssh_host4"
-    ]
+    "zookeeper": {
+        "hosts": [
+            "hserver-0001",
+            "hserver-0002",
+            "hserver-0003"
+        ],
+        "local_config_path": "$PWD/zoo.cfg",
+        "remote_config_path": "/root/.config/dev-deploy/zoo.cfg"
+    },
+    "hstore": {
+        "hosts": [
+            "hserver-0001",
+            "hserver-0002",
+            "hserver-0003"
+        ],
+        "local_config_path": "$PWD/logdevice.conf",
+        "remote_config_path": "/root/.config/dev-deploy/logdevice.conf"
+    },
+    "hstore-admin": {
+        "hosts": [
+            "hclient-001"
+        ]
+    },
+    "hserver": {
+        "hosts": [
+            "hserver-0001",
+            "hserver-0002",
+            "hserver-0003"
+        ]
+    },
+    "prometheus": {
+        "hosts": [
+            "hclient-001"
+        ],
+        "local_config_path": "$PWD/config.yml",
+        "remote_config_path": "/root/.config/dev-deploy/prometheus.config.yml"
+    },
+    "node-exporter": {
+        "hosts": [
+            "hserver-0001",
+            "hserver-0002",
+            "hserver-0003"
+        ]
+    }
 }
