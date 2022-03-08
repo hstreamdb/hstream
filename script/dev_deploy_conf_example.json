@@ -15,6 +15,7 @@
     },
     "hstore": {
         "image": "hstreamdb/hstream:v0.7.1",
+        "persistent-dir": "/data/store",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",

@@ -986,6 +986,13 @@ class SimpleService(Service):
                 "image", PrometheusService.DEFAULT_IMAGE_TAG
             )
 
+            self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
+                "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
+            )
+            self.hstore_persistent_dir = deploy_cfg["hstore"].get(
+                "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
+            )
+
     def start_cmd(self, config: str, **kargs) -> List[str]:
         self.parse_config(config)
         cmds = []
@@ -1027,7 +1034,7 @@ class SimpleService(Service):
         }
         zk_start_args = {
             "remotes": self.zk_hosts,
-            "persistent-dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
+            "persistent-dir": self.zk_persistent_dir,
             "metrics_provider": self.zk_enable_metrics_provider,
             **zk_args,
         }
@@ -1065,7 +1072,7 @@ class SimpleService(Service):
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "image": self.hstore_image,
             "config_path": self.config_path_in_zk,
-            "data_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
+            "data_dir": self.hstore_persistent_dir,
             "shards": 1,
             "remotes": self.hstore_hosts,
         }
@@ -1170,7 +1177,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hstore_hosts,
-            "persistent_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
+            "persistent_dir": self.hstore_persistent_dir,
         }
         remove_hstore_cmds = self.HSTORE_SVC.remove_cmd(
             # since we already removed the container
@@ -1182,7 +1189,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
             "remotes": self.zk_hosts,
-            "persistent_dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
+            "persistent_dir": self.zk_persistent_dir,
         }
         remove_zk_cmds = self.ZK_SVC.remove_cmd(
             **zk_args, remove_container=False
