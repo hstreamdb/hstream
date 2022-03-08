@@ -46,7 +46,8 @@ base = describe "BaseSpec" $ do
     ss `shouldContain` [streamId]
 
   it "stream partition" $ do
-    let key = Just "some_key"
+    let keyString = "some_key"
+        key = Just keyString
     streamName1 <- newRandomName 5
     streamName2 <- newRandomName 5
     let stream1 = S.mkStreamId S.StreamTypeStream streamName1
@@ -60,10 +61,13 @@ base = describe "BaseSpec" $ do
 
     log_id <- S.createStreamPartition client stream1 key
     S.doesStreamPartitionExist client stream1 key `shouldReturn` True
+    S.listStreamPartitions client stream1 `shouldReturn` [keyString]
 
     S.renameStream' client stream1 streamName2
     S.doesStreamPartitionExist client stream1 key `shouldReturn` False
     S.doesStreamPartitionExist client stream2 key `shouldReturn` True
+    S.listStreamPartitions client stream1 `shouldThrow` S.isNOTFOUND
+    S.listStreamPartitions client stream2 `shouldReturn` [keyString]
 
     S.getUnderlyingLogId client stream2 key `shouldReturn` log_id
 

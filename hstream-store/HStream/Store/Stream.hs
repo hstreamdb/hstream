@@ -22,6 +22,7 @@ module HStream.Store.Stream
   , removeStream
   , findStreams
   , doesStreamExist
+  , listStreamPartitions
   , doesStreamPartitionExist
   , getStreamExtraAttrs
   , updateStreamExtraAttrs
@@ -117,6 +118,7 @@ import           Data.Hashable                    (Hashable)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Int                         (Int64)
+import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
@@ -344,6 +346,13 @@ doesStreamExist client streamid = do
       case r of
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
+
+listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO [CBytes]
+listStreamPartitions client streamid = do
+  dir_path <- getStreamDirPath streamid
+  StreamSettings{..} <- readIORef gloStreamSettings
+  L.delete streamDefaultKey <$>
+    (LD.logDirLogsNames =<< LD.getLogDirectory client dir_path)
 
 doesStreamPartitionExist
   :: HasCallStack
