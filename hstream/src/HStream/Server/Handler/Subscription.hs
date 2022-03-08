@@ -153,7 +153,7 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
     firstRecv = undefined
 
 initSub :: ServerContext -> SubscriptionId -> IO SubscribeContextWrapper
-initSub ServerContext {..} subId = do
+initSub serverCtx@ServerContext {..} subId = do
   (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
     subMap <- readTVar scSubscribeContexts 
     case HM.lookup subId subMap of
@@ -173,10 +173,12 @@ initSub ServerContext {..} subId = do
   if needInit
     then do
       subCtx <- doSubInit subId
-      atomically $ do
+      wrapper <- atomically $ do
         writeTVar scnwContext (Just subCtx)
         writeTVar scnwState SubscribeStateRunning
         return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
+      forkIO $ sendRecords serverCtx wrapper 
+      return wrapper
     else do
       mctx <- readTVarIO scnwContext
       return $ SubscribeContextWrapper {scwState = scnwState, scwContext = fromJust mctx}
@@ -293,6 +295,7 @@ initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do
 
 sendRecords :: ServerContext -> SubscribeContextWrapper -> IO ()
 sendRecords ServerContext {..} SubscribeContextWrapper {..} =
+  threadDelay 10000
   let SubscribeContext {..} = scwContext 
   loop
   where
