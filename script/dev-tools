@@ -197,7 +197,7 @@ def get_ldadmin_server_port(container_bin):
 def admin_addr(container_bin):
     if not is_service_started(container_bin, "store"):
         return logerr(
-            "Please start the dev-cluster first. Run: dev-tools cluster-start"
+            "Please start the dev-cluster first. Run: dev-tools start-services"
         )
 
     host = get_ldadmin_server_host(container_bin)
@@ -430,7 +430,7 @@ def swagger_ui_start(container_bin, port, swagger_path=None, no_regen=False):
 def run_ldshell(image, container_bin, command, cmd_args):
     if not is_service_started(container_bin, "store"):
         return logerr(
-            "Please start the dev-cluster first. Run: dev-tools cluster-start"
+            "Please start the dev-cluster first. Run: dev-tools start-services"
         )
 
     host = "127.0.0.1"
