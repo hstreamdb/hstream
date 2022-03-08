@@ -15,24 +15,30 @@ Relatead ghc issues:
 
 module HStream.Store.Internal.LogDevice.LogConfigTypes where
 
-import           Control.Applicative            (liftA2)
-import           Control.Exception              (finally)
-import           Control.Monad                  (void, when, (<=<))
-import qualified Data.Map.Strict                as Map
+import           Control.Applicative                            (liftA2)
+import           Control.Exception                              (finally)
+import           Control.Monad                                  (void, when,
+                                                                 (<=<))
+import qualified Data.Map.Strict                                as Map
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
-import           GHC.Stack                      (HasCallStack, callStack)
-import           Z.Data.CBytes                  (CBytes)
-import qualified Z.Data.CBytes                  as CBytes
-import           Z.Foreign                      (BA#, BAArray#, MBA#)
-import qualified Z.Foreign                      as Z
+import           GHC.Stack                                      (HasCallStack,
+                                                                 callStack)
+import           Z.Data.CBytes                                  (CBytes)
+import qualified Z.Data.CBytes                                  as CBytes
+import           Z.Foreign                                      (BA#, BAArray#,
+                                                                 MBA#)
+import qualified Z.Foreign                                      as Z
 
-import qualified HStream.Store.Exception        as E
+import           HStream.Foreign                                hiding (BA#,
+                                                                 BAArray#, MBA#)
+import qualified HStream.Store.Exception                        as E
 import           HStream.Store.Internal.Foreign
+import           HStream.Store.Internal.LogDevice.LogAttributes
 import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
@@ -72,10 +78,12 @@ hsLogAttrsFromPtr :: Ptr LogDeviceLogAttributes -> IO HsLogAttrs
 hsLogAttrsFromPtr attrs =
   liftA2 HsLogAttrs (getAttrsReplicationFactorFromPtr attrs) (getAttrsExtrasFromPtr attrs)
 
+-- TODO: remove
 logGroupGetHsLogAttrs :: LDLogGroup -> IO HsLogAttrs
 logGroupGetHsLogAttrs group =
   withForeignPtr group $ hsLogAttrsFromPtr <=< c_ld_loggroup_get_attrs
 
+-- TODO: remove
 logDirectoryGetHsLogAttrs :: LDDirectory -> IO HsLogAttrs
 logDirectoryGetHsLogAttrs dir =
   withForeignPtr dir $ hsLogAttrsFromPtr <=< c_ld_logdirectory_get_attrs
@@ -320,8 +328,12 @@ logDirLogFullName dir name =
       CBytes.fromCString =<< c_ld_logdir_log_full_name dir' name'
 
 -- Note that this pointer is only valid if LogDirectory is valid.
-logDirectorypGetAttrs :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
-logDirectorypGetAttrs dir = withForeignPtr dir c_ld_logdirectory_get_attrs
+logDirectoryGetAttrsPtr :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
+logDirectoryGetAttrsPtr dir = withForeignPtr dir c_ld_logdirectory_get_attrs
+
+logDirectoryGetAttrs :: LDDirectory -> IO LogAttributes
+logDirectoryGetAttrs dir =
+  withForeignPtr dir $ peekLogAttributes <=< c_ld_logdirectory_get_attrs
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_child_full_name"
   c_ld_logdir_child_full_name
@@ -478,6 +490,28 @@ makeLogGroup client path start end attrs mkParent = do
         when (group == nullPtr) $ E.throwStoreError "null loggroup" callStack
         newForeignPtr c_free_logdevice_loggroup_fun group
 
+makeLogGroup_
+  :: HasCallStack
+  => LDClient
+  -> CBytes
+  -> C_LogID -> C_LogID
+  -> Maybe LogAttributes
+  -> Bool
+  -> IO LDLogGroup
+makeLogGroup_ client path start end attrs mkParent = do
+  logAttrs <- case attrs of
+                Just at -> newLDLogAttrs at
+                Nothing -> newForeignPtr_ nullPtr
+  withForeignPtr client $ \client' ->
+    withForeignPtr logAttrs $ \attrs' ->
+      CBytes.withCBytesUnsafe path $ \path' -> do
+        let cfun = c_ld_client_make_loggroup client' path' start end attrs' mkParent
+        MakeLogGroupCbData errno group _ <-
+          withAsync makeLogGroupCbDataSize peekMakeLogGroupCbData cfun
+        void $ E.throwStreamErrorIfNotOK' errno
+        when (group == nullPtr) $ E.throwStoreError "null loggroup" callStack
+        newForeignPtr c_free_logdevice_loggroup_fun group
+
 getLogGroupSync :: HasCallStack => LDClient -> CBytes -> IO LDLogGroup
 getLogGroupSync client path =
   withForeignPtr client $ \client' ->
@@ -591,8 +625,13 @@ logGroupGetFullName group =
 {-# INLINE logGroupGetFullName #-}
 
 -- Note that this pointer **may** only valid if LogGroup is valid.
-logGroupGetAttrs :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
-logGroupGetAttrs group = withForeignPtr group c_ld_loggroup_get_attrs
+logGroupGetAttrsPtr :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
+logGroupGetAttrsPtr group = withForeignPtr group c_ld_loggroup_get_attrs
+{-# INLINE logGroupGetAttrsPtr #-}
+
+logGroupGetAttrs :: LDLogGroup -> IO LogAttributes
+logGroupGetAttrs group =
+  withForeignPtr group $ peekLogAttributes <=< c_ld_loggroup_get_attrs
 {-# INLINE logGroupGetAttrs #-}
 
 logGroupGetExtraAttr :: LDLogGroup -> CBytes -> IO (Maybe CBytes)

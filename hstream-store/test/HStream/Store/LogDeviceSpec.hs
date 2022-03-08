@@ -2,6 +2,7 @@ module HStream.Store.LogDeviceSpec where
 
 import           Control.Exception                (bracket)
 import           Control.Monad                    (void)
+import           Data.Default                     (def)
 import           Data.List                        (sort)
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
@@ -73,17 +74,17 @@ logdirSpec = describe "LogDirectory" $ do
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
 
-
 loggroupAround :: SpecWith (CBytes, S.C_LogID) -> Spec
 loggroupAround = aroundAll $ \runTest -> bracket setup clean runTest
   where
     setup = do
-      let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                          , S.logExtraAttrs = Map.fromList [("A", "B")]
-                                          }
+      let attrs = def { I.logReplicationFactor = I.def1 1
+                      , I.logBacklogDuration = I.def1 (Just 60)
+                      , I.logAttrsExtras = Map.fromList [("A", "B")]
+                      }
           logid = 104
           logname = "LogDeviceSpec_LogGroupSpec"
-      lg <- I.makeLogGroup client logname logid logid attrs False
+      lg <- I.makeLogGroup_ client logname logid logid (Just attrs) False
       void $ I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
       return (logname, logid)
     clean (logname, _logid) = do
@@ -91,12 +92,12 @@ loggroupAround = aroundAll $ \runTest -> bracket setup clean runTest
 
 loggroupSpec :: Spec
 loggroupSpec = describe "LogGroup" $ loggroupAround $ parallel $ do
-
   it "log group get attrs" $ \(lgname, _logid) -> do
     lg <- I.getLogGroup client lgname
-    attrs' <- I.logGroupGetHsLogAttrs lg
-    S.logReplicationFactor attrs' `shouldBe` 1
-    Map.lookup "A" (S.logExtraAttrs attrs') `shouldBe` Just "B"
+    attrs' <- I.logGroupGetAttrs lg
+    I.logReplicationFactor attrs' `shouldBe` I.def1 1
+    I.logBacklogDuration attrs' `shouldBe` I.def1 (Just 60)
+    Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
 
   it "log group get and set range" $ \(lgname, logid) -> do
     let logid' = logid + 1

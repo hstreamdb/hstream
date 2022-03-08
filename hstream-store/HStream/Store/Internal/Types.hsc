@@ -24,12 +24,22 @@ import           Z.Data.Vector            (Bytes)
 import qualified Z.Data.Vector            as Vec
 import qualified Z.Foreign                as Z
 
+-------------------------------------------------------------------------------
+
 #include "hs_logdevice.h"
+
+#define hsc_const_pattern(ns, cls, val)                                        \
+    hsc_printf("pattern %s_%s :: %s\n", #cls, #val, #cls);                     \
+    hsc_printf("pattern %s_%s = %s %lld\n", #cls, #val, #cls, ns::cls::val);
+
+#define hsc_const_show(cls, val)                                               \
+   hsc_printf("  show %s_%s = \"%s\"\n", #cls, #val, #val);
 
 -------------------------------------------------------------------------------
 
 type LDClient = ForeignPtr LogDeviceClient
 type LDLogGroup = ForeignPtr LogDeviceLogGroup
+type LDLogsConfigAttr = ForeignPtr LogDeviceLogsConfigAttr
 type LDLogAttrs = ForeignPtr LogDeviceLogAttributes
 type LDLogHeadAttrs = ForeignPtr LogDeviceLogHeadAttributes
 type LDLogTailAttrs = ForeignPtr LogDeviceLogTailAttributes
@@ -454,6 +464,9 @@ data LogDeviceSyncCheckpointedReader
 data LogDeviceVersionedConfigStore
 data LogDeviceLogGroup
 data LogDeviceLogDirectory
+-- facebook::logdevice::logsconfig::Attribute
+data LogDeviceLogsConfigAttr
+-- facebook::logdevice::logsconfig::LogAttributes
 data LogDeviceLogAttributes
 data LogDeviceLogHeadAttributes
 data LogDeviceLogTailAttributes
@@ -515,6 +528,38 @@ fromCompression CompressionNone = ((#const static_cast<HsInt>(Compression::NONE)
 fromCompression (CompressionZSTD lvl) = ((#const static_cast<HsWord8>(Compression::ZSTD)), lvl)
 fromCompression CompressionLZ4 = ((#const static_cast<HsInt>(Compression::LZ4)), 0)
 fromCompression CompressionLZ4HC = ((#const static_cast<HsInt>(Compression::LZ4_HC)), 0)
+
+-------------------------------------------------------------------------------
+
+newtype NodeLocationScope = NodeLocationScope Word8
+  deriving (Eq, Ord)
+
+-- a special scope indicating the smallest scope: an individual node
+#const_pattern facebook::logdevice, NodeLocationScope, NODE
+
+-- actual (non-special) scopes representing the location of a node
+#const_pattern facebook::logdevice, NodeLocationScope, RACK
+#const_pattern facebook::logdevice, NodeLocationScope, ROW
+#const_pattern facebook::logdevice, NodeLocationScope, CLUSTER
+#const_pattern facebook::logdevice, NodeLocationScope, DATA_CENTER
+#const_pattern facebook::logdevice, NodeLocationScope, REGION
+
+-- the root scope is a special scope which guarantees to cover all other
+-- scopes defined
+#const_pattern facebook::logdevice, NodeLocationScope, ROOT
+
+#const_pattern facebook::logdevice, NodeLocationScope, INVALID
+
+instance Show NodeLocationScope where
+#const_show NodeLocationScope, NODE
+#const_show NodeLocationScope, RACK
+#const_show NodeLocationScope, ROW
+#const_show NodeLocationScope, CLUSTER
+#const_show NodeLocationScope, DATA_CENTER
+#const_show NodeLocationScope, REGION
+#const_show NodeLocationScope, ROOT
+#const_show NodeLocationScope, INVALID
+  show (NodeLocationScope x) = "Unknown NodeLocationScope: " <> show x
 
 -------------------------------------------------------------------------------
 

@@ -380,7 +380,7 @@ getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
 getStreamReplicaFactor client streamid = do
   dir_path <- getStreamDirPath streamid
   dir <- LD.getLogDirectory client dir_path
-  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectorypGetAttrs dir
+  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectoryGetAttrsPtr dir
 
 getStreamExtraAttrs :: FFI.LDClient -> StreamId -> IO (Map CBytes CBytes)
 getStreamExtraAttrs client streamid = do
@@ -398,7 +398,7 @@ updateStreamExtraAttrs
   -> IO (Map CBytes CBytes)
 updateStreamExtraAttrs client streamid new_attrs = do
   dir_path <- getStreamDirPath streamid
-  attrs <- LD.logDirectorypGetAttrs =<< LD.getLogDirectory client dir_path
+  attrs <- LD.logDirectoryGetAttrsPtr =<< LD.getLogDirectory client dir_path
   attrs' <- LD.updateLogAttrsExtrasPtr attrs new_attrs
   withForeignPtr attrs' $
     LD.syncLogsConfigVersion client <=< LD.ldWriteAttributes client dir_path
