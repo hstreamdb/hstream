@@ -377,6 +377,8 @@ data UpdateLogsOpts = UpdateLogsOpts
   { updatePath              :: CBytes
   , updateUnset             :: [CBytes]
   , updateReplicationFactor :: Maybe Int
+  , updateSyncedCopies      :: Maybe Int
+  , updateBacklogDuration   :: Maybe Int
   , updateExtras            :: Map.Map CBytes CBytes
   } deriving (Show)
 
@@ -394,6 +396,20 @@ updateLogsOptsParser = UpdateLogsOpts
                             <> metavar "INT"
                             <> help "number of nodes on which to persist a record"
                             ))
+  <*> optional (option auto
+      ( long "synced-copied"
+     <> metavar "INT"
+     <> help ( "The number of copies that must be acknowledged by storage nodes as"
+            <> "synced to disk before the record is acknowledged to client as fully"
+            <> "appended. Can be 0. Capped at replicationFactor."
+             )
+      ))
+  <*> optional (option auto
+      ( long "backlog"
+     <> metavar "INT"
+     <> help ( "Duration that a record can exist in the log before it expires and"
+            <> "gets deleted (in senconds). Valid value must be at least 1 second.")
+      ))
   <*> (Map.fromList <$> many (option parseLogExtraAttr
                               ( long "extra-attributes"
                               <> metavar "KEY:VALUE"
