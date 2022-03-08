@@ -275,6 +275,24 @@ addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do
   writeTVar unassignedShards newUnassign 
   writeTVar subShardContexts newShardCtxs 
 
+initConsumer :: SubscribeContext -> ConsumerName -> StreamSend StreamingFetchResponse -> IO ()
+initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do 
+  let Assignment {..} = subAssignment
+  oldWcs <- readTVar waitingConsumers
+  writeTVar waitingConsumers (oldWcs ++ [consumerName])
+
+  iv <- newTVar True
+  ss <- newTVar streamSend
+  let cc = ConsumerContext
+            { ccConsumerName = consumerName,
+              ccIsValid = iv,
+              ccStreamSend = ss 
+            }
+  oldCcs <- readTVar subConsumerContexts
+  writeTVar subConsumerContexts (HM.insert consumerName cc odlCcs)
+
+  
+
   
 
 
