@@ -6,6 +6,7 @@ module HStream.Store.StreamSpec (spec) where
 import           Control.Concurrent               (threadDelay)
 import           Control.Monad                    (replicateM, void)
 import           Data.Int
+import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
 import           Z.Data.Vector.Base               (Bytes)
@@ -61,13 +62,13 @@ base = describe "BaseSpec" $ do
 
     log_id <- S.createStreamPartition client stream1 key
     S.doesStreamPartitionExist client stream1 key `shouldReturn` True
-    S.listStreamPartitions client stream1 `shouldReturn` [keyString]
+    S.listStreamPartitions client stream1 >>= (`shouldSatisfy` M.member keyString)
 
     S.renameStream' client stream1 streamName2
     S.doesStreamPartitionExist client stream1 key `shouldReturn` False
     S.doesStreamPartitionExist client stream2 key `shouldReturn` True
     S.listStreamPartitions client stream1 `shouldThrow` S.isNOTFOUND
-    S.listStreamPartitions client stream2 `shouldReturn` [keyString]
+    S.listStreamPartitions client stream2 >>= (`shouldSatisfy` M.member keyString)
 
     S.getUnderlyingLogId client stream2 key `shouldReturn` log_id
 
