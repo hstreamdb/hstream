@@ -114,11 +114,11 @@ import           Control.Monad                    (filterM, forM, forM_, void,
                                                    (<=<))
 import           Data.Bits                        (bit)
 import qualified Data.Cache                       as Cache
+import           Data.Foldable                    (foldrM)
 import           Data.Hashable                    (Hashable)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
 import           Data.Int                         (Int64)
-import qualified Data.List                        as L
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
@@ -134,6 +134,7 @@ import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
 import qualified Z.IO.FileSystem                  as FS
 
+import qualified Data.Map                         as M
 import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
@@ -347,12 +348,15 @@ doesStreamExist client streamid = do
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
 
-listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO [CBytes]
+listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (M.Map CBytes FFI.C_LogID)
 listStreamPartitions client streamid = do
   dir_path <- getStreamDirPath streamid
-  StreamSettings{..} <- readIORef gloStreamSettings
-  L.delete streamDefaultKey <$>
-    (LD.logDirLogsNames =<< LD.getLogDirectory client dir_path)
+  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+  foldrM insertMap M.empty keys
+  where
+    insertMap key keyMap = do
+      logId <- getUnderlyingLogId client streamid (Just key)
+      return $ M.insert key logId keyMap
 
 doesStreamPartitionExist
   :: HasCallStack
