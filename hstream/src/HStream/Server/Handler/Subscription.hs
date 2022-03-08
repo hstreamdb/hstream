@@ -291,17 +291,138 @@ initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do
   oldCcs <- readTVar subConsumerContexts
   writeTVar subConsumerContexts (HM.insert consumerName cc odlCcs)
 
-  
+sendRecords :: SubscribeContext -> SubscribeContextWrapper -> IO ()
+sendRecords SubscribeContext {..} SubscribeContextWrapper {..} =
+  loop
+  where
+    loop = do
+      state <- readTVarIO scwState
+      if state == SubscribeStateRunning
+        then do
+          atomically $ do
+            assignShards subAssignment
+            assignWaitingConsumers subAssignment
+          addRead subAssignment
+          recordBatches <- readRecords
+          let receivedRecords = recordBatchesToReceivedRecords recordBatches
+          sendReceivedRecords receivedRecords
+          -- TODO: resend
+        else 
+          return ()
 
-  
+    addRead :: Assignment -> IO ()
+    addRead = undefined
 
+    readRecords :: IO [RecordBatch]
+    readRecords = undefined
 
+    recordBatchesToReceivedRecords :: [RecordBatch] -> [ReceivedRecord]
+    recordBatchesToReceivedRecords = undefined
 
+    sendReceivedRecords :: [ReceivedRecord] -> IO ()
+    sendReceivedRecords = undefined
 
+assignShards :: Assignment -> STM ()
+assignShards assignment@Assignment {..} = do
+  unassign <- readTVar unassignedShards
+  tryAssignShards unassign True
 
+  reassign <- readTVar waitingReassignedShards
+  tryAssignShards reassign False
+  where
+    tryAssignShards :: [S.C_LogID] -> Bool -> STM ()
+    tryAssignShards logs needStartReading =
+      foldM_
+        ( \goOn shard ->
+            if goOn
+              then tryAssignShard shard needStartReading
+              else return goOn
+        )
+        True
+        logs
 
+    tryAssignShard :: LogId -> Bool -> STM Bool
+    tryAssignShard logId needStartReading = do
+      waiters <- readTVar waitingConsumers
+      if null waiters
+        then do
+          workSet <- readTVar consumerWorkloads
+          if Set.null workSet
+            then return False
+            else do
+              let consumer = cwConsumerName $ fromJust $ Set.lookupMin workSet
+              doAssign assignment consumer logId needStartReading
+              return True
+        else do
+          let waiter = head waiters
+          doAssign assignment waiter logId needStartReading
+          return True
 
+doAssign :: Assignment -> ConsumerName -> LogId -> Bool -> STM ()
+doAssign Assignment {..} consumerName logId needStartReading = do
+  if needStartReading
+    then do
+      waitShards <- readTVar waitingReadShards
+      writeTVar waitingReadShards (waitShards ++ [logId])
+    else return ()
 
+  s2c <- readTVar shard2Consumer
+  writeTVar shard2Consumer (HM.insert logId consumerName s2c)
+  c2s <- readTVar consumer2Shards
+  workSet <- readTVar consumerWorkloads
+  case HM.lookup consumerName c2s of
+    Nothing -> do
+      set <- newTVar (Set.singleton logId)
+      writeTVar consumer2Shards (HM.insert consumerName set c2s)
+      writeTVar consumerWorkloads (Set.insert (ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = 1}) workSet)
+    Just ts -> do
+      set <- readTVar ts
+      writeTVar ts (Set.insert logId set)
+      let old = ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = Set.size set}
+      let new = old {cwShardCount = (Set.size set) + 1}
+      writeTVar consumerWorkloads (Set.insert new (Set.delete old workSet))
 
+assignWaitingConsumers :: Assignment -> STM ()
+assignWaitingConsumers assignment@Assignment {..} = do
+  consumers <- readTVar waitingConsumers
+  foldM_
+    ( \goOn consumer ->
+        if goOn
+          then tryAssignConsumer consumer
+          else return goOn
+    )
+    True
+    consumers
+  where
+    tryAssignConsumer :: ConsumerName -> STM Bool
+    tryAssignConsumer consumerName = do
+      workloads <- readTVar consumerWorkloads
+      case Set.lookupMax workloads of
+        Nothing -> return False
+        Just ConsumerWorkload {..} -> do
+          if cwShardCount > 1
+            then do
+              shard <- removeOneShardFromConsumer cwConsumerName
+              doAssign assignment consumerName shard False
+              return True
+            else do
+              return False
 
+    removeOneShardFromConsumer :: ConsumerName -> STM LogId
+    removeOneShardFromConsumer consumerName = do
+      c2s <- readTVar consumer2Shards
+      let shardsTVar = c2s HM.! consumerName
+      shards <- readTVar shardsTVar
+      let (shard, newShards) = Set.deleteFindMax shards
+      writeTVar shardsTVar newShards
+      workloads <- readTVar consumerWorkloads
+      let oldCount = Set.size shards
+          target = ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = oldCount}
+          tempWorkloads = Set.delete target workloads
+          newWorkloads = Set.insert target {cwShardCount = oldCount - 1} tempWorkloads
+      writeTVar consumerWorkloads newWorkloads
 
+      s2c <- readTVar shard2Consumer
+      let newS2c = HM.delete shard s2c
+      writeTVar shard2Consumer newS2c
+      return shard
