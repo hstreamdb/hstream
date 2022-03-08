@@ -341,7 +341,6 @@ class ZookeeperService(Service):
         remotes,
         container_name,
         image,
-        zk_remote_conf,
         persistent_dir=None,
         extra_container_options="",
         container_cmd="",
@@ -367,11 +366,8 @@ class ZookeeperService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                mount_zk_conf = ""
-                if zk_remote_conf is not None:
-                    mount_zk_conf = f"-v {zk_remote_conf}:/conf/zoo.cfg"
                 enable_metrics_provider = (
-                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider"'
+                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider $ZOO_CFG_EXTRA"'
                     if metrics_provider
                     else ""
                 )
@@ -382,7 +378,7 @@ class ZookeeperService(Service):
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
-                    f"{mount_zk_conf} {enable_metrics_provider} "
+                    f"{enable_metrics_provider} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -943,12 +939,6 @@ class SimpleService(Service):
                 for host in (deploy_cfg["prometheus"])["hosts"]
             ]
 
-            self.zk_local_conf = deploy_cfg["zookeeper"].get(
-                "local_config_path"
-            )
-            self.zk_remote_conf = deploy_cfg["zookeeper"].get(
-                "remote_config_path"
-            )
             self.zk_enable_metrics_provider = (
                 deploy_cfg["zookeeper"].get("enable-metrics-provider") == True
             )
@@ -991,12 +981,6 @@ class SimpleService(Service):
         self.parse_config(config)
         cmds = []
 
-        if self.zk_local_conf is not None:
-            assert self.zk_remote_conf is not None
-            for (remote, _) in self.zk_hosts:
-                cmds.append(
-                    scp_command(self.zk_local_conf, remote, self.zk_remote_conf)
-                )
         if self.hstore_local_conf is not None:
             assert self.hstore_remote_conf is not None
             for (remote, _) in self.hstore_hosts:
@@ -1031,12 +1015,10 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
             "image": self.zk_image,
-            "zk_local_conf": self.zk_local_conf,
         }
         zk_start_args = {
             "remotes": self.zk_hosts,
             "persistent-dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
-            "zk_remote_conf": self.zk_remote_conf,
             "metrics_provider": self.zk_enable_metrics_provider,
             **zk_args,
         }
