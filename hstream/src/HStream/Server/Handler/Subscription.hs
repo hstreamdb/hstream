@@ -203,7 +203,7 @@ doSubInit ServerContext{..} subId = do
       consumerContexts <- newTVar HM.empty 
       shardContexts <- newTVar HM.empty 
       assignment <- mkEmptyAssignment
-      let shardInfo =
+      let emptySubCtx =
             SubscribeContext
               { subSubscriptionId = subId,
                 subStreamName = subscriptionStreamName ,
@@ -215,6 +215,8 @@ doSubInit ServerContext{..} subId = do
                 subShardContexts = shardContexts,
                 subAssignment = assignment
               }
+      shards <- getShards subscriptionStreamName 
+      addNewShardsToSubCtx emptySubCtx shards
   where
     mkEmptyAssignment :: IO Assignment
     mkEmptyAssignment = do 
@@ -238,5 +240,50 @@ doSubInit ServerContext{..} subId = do
             consumer2Shards = c2s,
             consumerWorkloads = cws 
           }
+
+    getShards :: T.Text -> IO [HS.C_LogID]
+    getShards streamName = undefined
+
+addNewShardsToSubCtx :: SubscribeContext -> [HS.C_LogID] -> IO ()  
+addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do  
+  let Assignment {..} = subAssignment
+  oldTotal <- readTVar totalShards
+  oldUnassign <- readTVar unassignedShards 
+  oldShardCtxs <- readTVar subShardContexts 
+  let (newTotal, newUnassign, newShardCtxs) = foldM 
+                  (
+                    \ (ot, ou, os) l -> 
+                      if Set.member l ot 
+                      then return (ot, ou, os)      
+                      else
+                        lb <- newTVar $ RecordId S.LSN_MIN 0 
+                        ub <- newTVar maxBound 
+                        ar <- newTVar $ Map.empty
+                        bn <- newTVar $ Map.empty
+                        let ackWindow = AckWindow
+                              { awWindowLowerBound = lb,
+                                awWindowUpperBound = ub,
+                                awAckedRanges = ar,
+                                awBatchNumMap = bn 
+                              }
+                            subShardCtx = SubscribeShardContext {sscAckWindow = ackWindow, sscLogId = l} 
+                        return (Set.insert l ot, ou ++ [l], HM.insert l subShardCtx os) 
+                  )
+                  (oldTotal, oldUnassign, oldShardCtxs)
+                  (pure shards)
+  writeTVar totalShards newTotal
+  writeTVar unassignedShards newUnassign 
+  writeTVar subShardContexts newShardCtxs 
+
+  
+
+
+
+
+
+
+
+
+
 
 
