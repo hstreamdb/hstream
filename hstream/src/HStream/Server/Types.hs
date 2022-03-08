@@ -104,7 +104,7 @@ data SubscribeContext = SubscribeContext
     subLdCkpReader :: HS.LdCkpReader,
     subLdReader :: HS.LdReader,
     subConsumerContexts :: TVar (HM.HashMap ConsumerName ConsumerContext),
-    subShardContexts :: TVar (HM.HashMap HS.LogID SubscribeShardContext),
+    subShardContexts :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment :: Assignment
   }
 
@@ -118,17 +118,17 @@ data ConsumerContext = ConsumerContext
 
 data SubscribeShardContext = SubscribeShardContext
   { sscAckWindow :: AckWindow,
-    sscLogId :: HS.LogID
+    sscLogId :: HS.C_LogID
   }
 
 data Assignment = Assignment
-  { totalShards :: TVar (Set.Set HS.LogID),
-    unassignedShards :: TVar [HS.LogID],
-    waitingReadShards :: TVar [HS.LogID],
-    waitingReassignedShards :: TVar [HS.LogID],
+  { totalShards :: TVar (Set.Set HS.C_LogID),
+    unassignedShards :: TVar [HS.C_LogID],
+    waitingReadShards :: TVar [HS.C_LogID],
+    waitingReassignedShards :: TVar [HS.C_LogID],
     waitingConsumers :: TVar [ConsumerName],
-    shard2Consumer :: TVar (HM.HashMap HS.LogID ConsumerName),
-    consumer2Shards :: TVar (HM.HashMap ConsumerName (TVar (Set.Set HS.LogID))),
+    shard2Consumer :: TVar (HM.HashMap HS.C_LogID ConsumerName),
+    consumer2Shards :: TVar (HM.HashMap ConsumerName (TVar (Set.Set HS.C_LogID))),
     consumerWorkloads :: TVar (Set.Set ConsumerWorkload)
   }
 
