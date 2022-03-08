@@ -291,8 +291,9 @@ initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do
   oldCcs <- readTVar subConsumerContexts
   writeTVar subConsumerContexts (HM.insert consumerName cc odlCcs)
 
-sendRecords :: SubscribeContext -> SubscribeContextWrapper -> IO ()
-sendRecords SubscribeContext {..} SubscribeContextWrapper {..} =
+sendRecords :: ServerContext -> SubscribeContextWrapper -> IO ()
+sendRecords ServerContext {..} SubscribeContextWrapper {..} =
+  let SubscribeContext {..} = scwContext 
   loop
   where
     loop = do
@@ -303,24 +304,104 @@ sendRecords SubscribeContext {..} SubscribeContextWrapper {..} =
             assignShards subAssignment
             assignWaitingConsumers subAssignment
           addRead subAssignment
-          recordBatches <- readRecords
-          let receivedRecords = recordBatchesToReceivedRecords recordBatches
-          sendReceivedRecords receivedRecords
+          recordBatches <- readRecordBatches
+          let receivedRecordsVecs = fmap decodeRecordBatch recordBatches 
+          sendReceivedRecordsVecs receivedRecordsVecs  
           -- TODO: resend
         else 
           return ()
 
-    addRead :: Assignment -> IO ()
-    addRead = undefined
+    addRead :: S.LdCkpReader -> Assignment -> IO ()
+    addRead ldCkpReader Assignment {..} = do 
+      shards <- atomically $ do
+        shards <- readTVar waitingReadShards
+        writeTVar waitingReadShards []
+        return shards
+      forM_ 
+        shards 
+        (\shard -> S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX)
 
-    readRecords :: IO [RecordBatch]
-    readRecords = undefined
+    readRecordBatches :: IO [S.DataRecord]
+    readRecordBatches = undefined
+
+    decodeRecordBatch :: S.DataRecord -> (S.C_LogID, V.Vector ReceivedRecord)
+    decodeRecordBatch = undefined 
 
     recordBatchesToReceivedRecords :: [RecordBatch] -> [ReceivedRecord]
     recordBatchesToReceivedRecords = undefined
 
-    sendReceivedRecords :: [ReceivedRecord] -> IO ()
-    sendReceivedRecords = undefined
+    sendReceivedRecordsVecs :: [(S.C_LogID, V.Vector ReceivedRecord)] -> IO ()
+    sendReceivedRecordsVecs vecs =
+      foldM
+        (
+          \ skipSet (logId, vec)->
+            if Set.member logId skipSet
+            then return skipSet
+            else do
+              ok <- sendReceivedRecords logId vec
+              if ok
+              then return skipSet
+              else return $ Set.insert logId skipSet
+        )
+        Set.empty
+        vecs
+
+    sendReceivedRecords :: S.C_LogID -> V.Vector ReceivedRecord -> IO Bool 
+    sendReceivedRecords logId records = do 
+      let Assignment {..} = subAssignment
+      mres <- atomically $ do
+        s2c <- readTVar shard2Consumer
+        let consumer = s2c HM.! logId 
+        ccs <- readTVar subConsumerContexts 
+        let ConsumerContext {..} = ccs HM.! consumerName 
+        if ccIsValid
+        then return $ Just (ccConsumerName, ccStreamSend)
+        else Nothing 
+      case mres of
+        -- TODO
+        Nothing -> undefined
+        Just (consumerName, streamSend) = do 
+          streamSend (StreamingFetchResponse records) >>= \case
+            Left err -> do
+              Log.error $ "send records error, will remove the consumer: " <> show err
+              atomically $ invalidConsumer consumerName 
+              let ReceivedRecord {..} = V.head records
+                  lsn = recordIdBatchId receivedRecordRecordId
+              resetReadingOffset logId lsn
+              return False
+            Right _ -> do
+              return True 
+
+    invalidConsumer :: ConsumerName -> STM ()
+    invalidConsumer consumer = do 
+      let Assignment {..} = subAssignment
+      ccs <- readTVar subConsumerContexts
+      let cc@ConsumerContext {..} = ccs HM.! consumer
+      iv <- readTVar ccIsValid
+      writeTVar ccIsValid False
+
+      c2s <- readTVar consumer2Shards
+      let worksTVar = c2s HM.! consumer
+      works <- readTVar worksTVar
+      writeTVar worksTVar Set.empty
+      let nc2s = HM.delete consmer c2s
+      writeTVar subConsumerContexts nc2s
+
+      rs <- readTVar waitingReassignedShards 
+      s2c <- readTVar shard2Consumer 
+      (nrs, ns2c) <- foldM
+        (
+          \ (nrs, ns2c) s ->
+            (nrs ++ [s], HM.delete s ns2c)
+        )
+        (rs, s2c)
+        works
+      writeTVar waitingReassignedShards nrs 
+      writeTVar shard2Consumer ns2c 
+
+    resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
+    resetReadingOffset logId startOffset = do 
+      S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX 
 
 assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do
