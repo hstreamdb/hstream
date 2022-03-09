@@ -370,7 +370,7 @@ class ZookeeperService(Service):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
                 enable_metrics_provider = (
-                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider $ZOO_CFG_EXTRA"'
+                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider"'
                     if metrics_provider
                     else ""
                 )
