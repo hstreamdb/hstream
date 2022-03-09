@@ -250,10 +250,11 @@ message HStreamRecordHeader {
 }
 
 message RecordId {
+  uint64 shardId = 1;
   // LSN of the total batch records
-  uint64 batchId = 1;
+  uint64 batchId = 2;
   // Offset of each record in the batch
-  uint32 batchIndex = 2;
+  uint32 batchIndex = 3;
 }
 
 message TerminateQueriesRequest {

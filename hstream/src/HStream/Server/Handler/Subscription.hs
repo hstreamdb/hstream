@@ -148,6 +148,7 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
   StreamingFetchRequest {..} <- firstRecv 
   wrapper@SubscribeContextWrapper {..} <- initSub ctx subId
   initConsumer scwContext consumerName streamSend
+  recvAcks scwState scwContext streamRecv
   where
     firstRecv :: IO StreamingFetchRequest 
     firstRecv = undefined
@@ -510,3 +511,107 @@ assignWaitingConsumers assignment@Assignment {..} = do
       let newS2c = HM.delete shard s2c
       writeTVar shard2Consumer newS2c
       return shard
+
+recvAcks :: ServerContext -> TVar SubscribeState -> TVar Bool ->  (StreamRecv StreamingFetchRequest) -> SubscribeContext -> IO () 
+recvAcks ServerContext {..} subState isConsumerValid streamRecv subCtx@SubscribeContext {..} = loop 
+  where
+    loop = do 
+      check
+      streamRecv >>= \case
+        Left (err :: grpcIOError) -> do
+          -- invalid consumer
+          Log.error . Log.buildString $ "streamRecv error: " <> show err
+          throwIO GRPCStreamRecvError
+        Right Nothing -> do
+          -- This means that the consumer finished sending acks actively.
+          throwIO GRPCStreamRecvCloseError
+        Right (Just StreamingFetchRequest {..}) ->
+          if V.null streamingFetchRequestAckIds
+            then loop 
+            else do
+              doAcks scLDClient subCtx streamingFetchRequestAckIds
+              loop
+
+    -- throw error when check can not pass
+    check :: IO Bool
+    check = undefined
+
+doAcks
+  :: S.LDClient
+  -> SubscribeContext  
+  -> V.Vector RecordId
+  -> IO ()
+doAcks ldclient subCtx ackRecordIds = do
+  let group = HM.toList $ groupRecordIds ackRecordIds
+  forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
+  where
+    groupRecordIds :: V.Vector RecordId -> HM.HashMap C_LogID (V.Vector RecordId)
+    groupRecordIds recordIds =  
+      V.foldl'
+        (
+          \ g r -> 
+            let shardId = recordIdShardId r 
+            in 
+                if HM.member shardId g 
+                then 
+                  let ov = g HM.! shardId
+                  in  HM.insert shardId (V.snoc ov r) g 
+                else
+                  HM.insert shardId (V.singleton r) g 
+        )
+        HM.empty
+        recordIds
+
+doAck
+  :: S.LDClient
+  -> SubscribeContext  
+  -> HS.C_LogID
+  -> V.Vector RecordId
+  -> IO ()
+doAck ldclient SubscribeContext {..} logId recordIds= do
+  res <- atomically $ do
+    scs <- readTVar subShardContexts
+    SubscribeShardContext {..} <- scs HM.！logId
+    let AckWindow {..} = sscAckWindow
+    lb <- readTVar awWindowLowerBound
+    ub <- readTVar awWindowUpperBound
+    ars <- readTVar awAckedRanges
+    bnm <- readTVar awBatchNumMap
+    let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b lb a bnm) ars recordIds 
+    let commitLSN = recordIdBatchId $ fromJust $ getCommitRecordId newAckedRanges bnm 
+    case tryUpdateWindowLowerBound newAckedRanges lb bnm commitLSN of
+      Just (ranges, newLowerBound) -> do 
+        let newBatchNumMap = Map.dropWhileAntitone (<= commitLSN) bnm 
+        writeTVar awAckedRanges ranges
+        writeTVar awWindowLowerBound newLowerBound
+        writeTVar awBatchNumMap newBatchNumMap 
+        return (Just commitLSN)
+      Nothing -> 
+        writeTVar awAckedRanges newAckedRanges 
+        return Nothing
+  case res of
+    Just lsn -> S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn)
+    Nothin -> return ()
+    
+tryUpdateWindowLowerBound
+  :: Map.Map RecordId RecordIdRange -- ^ ackedRanges
+  -> RecordId                       -- ^ lower bound record of current window
+  -> Map.Map Word64 Word32          -- ^ batchNumMap
+  -> Maybe RecordId                 -- ^ commitPoint
+  -> Maybe (Map.Map RecordId RecordIdRange, RecordId)
+tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commitPoint) =
+  Map.lookupMin ackedRanges >>= \(_, RecordIdRange minStartRecordId minEndRecordId) ->
+    if | minStartRecordId == lowerBoundRecordId && (recordIdBatchId minEndRecordId) == (recordIdBatchId commitPoint) ->
+            -- The current ackedRange [minStartRecordId, minEndRecordId] contains the complete batch record and can be committed directly,
+            -- so remove the hole range [minStartRecordId, minEndRecordId], update windowLowerBound to successor of minEndRecordId
+           Just (Map.delete minStartRecordId ackedRanges, getSuccessor minEndRecordId batchNumMap)
+       | minStartRecordId == lowerBoundRecordId ->
+           -- The ackedRange [minStartRecordId, commitPoint] contains the complete batch record and will be committed,
+           -- update ackedRange to [successor of commitPoint, minEndRecordId]
+           let newAckedRanges = Map.delete minStartRecordId ackedRanges
+               startRecordId = getSuccessor commitPoint batchNumMap
+               newAckedRanges' = Map.insert startRecordId (RecordIdRange startRecordId minEndRecordId) newAckedRanges
+            in Just(newAckedRanges', startRecordId)
+       | otherwise -> Nothing
+tryUpdateWindowLowerBound _ _ _ Nothing = Nothing
+
