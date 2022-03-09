@@ -146,7 +146,7 @@ streamingFetchInternal
   -> IO ()
 streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   StreamingFetchRequest {..} <- firstRecv 
-  wrapper@SubscribeContextWrapper {..} <- initSub ctx subId
+  wrapper@SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId 
   consumerCtx <- initConsumer scwContext consumerName streamSend
   recvAcks scwState scwContext consumerCtx streamRecv
   where
