@@ -375,13 +375,23 @@ class ZookeeperService(Service):
                     else ""
                 )
 
+                resource_constraints = (
+                    f"--memory={self.zk_memory_cpus[0]}"
+                    if self.zk_memory_cpus[0] is not None
+                    else ""
+                ) + (
+                    f" --cpus={self.zk_memory_cpus[1]}"
+                    if self.zk_memory_cpus[1] is not None
+                    else ""
+                )
+
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
                     f"{container_bin} run -td --restart unless-stopped "
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
-                    f"{enable_metrics_provider} "
+                    f"{enable_metrics_provider} {resource_constraints} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -545,9 +555,20 @@ class HStoreAdminService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
+                resource_constraints = (
+                    f"--memory={self.hadmin_memory_cpus[0]}"
+                    if self.hadmin_memory_cpus[0] is not None
+                    else ""
+                ) + (
+                    f" --cpus={self.hadmin_memory_cpus[1]}"
+                    if self.hadmin_memory_cpus[1] is not None
+                    else ""
+                )
+
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d --restart unless-stopped "
+                    f"{opts} {resource_constraints} "
                     f"--name {container_name} "
                     f"--network host {image} /usr/local/bin/ld-admin-server "
                     f"--config-path {config_path} "
@@ -677,10 +698,21 @@ class HStoreService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
+                resource_constraints = (
+                    f"--memory={self.hstore_memory_cpus[0]}"
+                    if self.hstore_memory_cpus[0] is not None
+                    else ""
+                ) + (
+                    f" --cpus={self.hstore_memory_cpus[1]}"
+                    if self.hstore_memory_cpus[1] is not None
+                    else ""
+                )
+
                 cmds.append(
                     f"ssh {host} '"
                     f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d --restart unless-stopped "
+                    f"{opts} {resource_constraints} "
                     f"--name {container_name} "
                     "--network host "
                     f"-v {data_dir}:/data/store "
@@ -779,9 +811,20 @@ class HServerService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
+                resource_constraints = (
+                    f"--memory={self.hserver_memory_cpus[0]}"
+                    if self.hserver_memory_cpus[0] is not None
+                    else ""
+                ) + (
+                    f" --cpus={self.hserver_memory_cpus[1]}"
+                    if self.hserver_memory_cpus[1] is not None
+                    else ""
+                )
+
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d --restart unless-stopped "
+                    f"{opts} {resource_constraints} "
                     f"--name {container_name} "
                     "--network host "
                     f"{image} /usr/local/bin/hstream-server "
@@ -863,6 +906,17 @@ class PrometheusService(Service):
             if config_path
             else ""
         )
+
+        resource_constraints = (
+            f"--memory={self.prometheus_memory_cpus[0]}"
+            if self.prometheus_memory_cpus[0] is not None
+            else ""
+        ) + (
+            f" --cpus={self.prometheus_memory_cpus[1]}"
+            if self.prometheus_memory_cpus[1] is not None
+            else ""
+        )
+
         cmds = []
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
@@ -876,7 +930,8 @@ class PrometheusService(Service):
 
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d --restart unless-stopped "
+                    f"{opts} {resource_constraints} "
                     f"--name {container_name} "
                     f"--network host "
                     f"{mount_cfg}"
@@ -992,6 +1047,16 @@ class SimpleService(Service):
             self.hstore_persistent_dir = deploy_cfg["hstore"].get(
                 "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
             )
+
+            get_memory_cpus = lambda obj_name: (
+                deploy_cfg[obj_name].get("memory"),
+                deploy_cfg[obj_name].get("cpus"),
+            )
+            self.zk_memory_cpus = get_memory_cpus("zookeeper")
+            self.hstore_memory_cpus = get_memory_cpus("hstore")
+            self.hadmin_memory_cpus = get_memory_cpus("hstore-admin")
+            self.hserver_memory_cpus = get_memory_cpus("hserver")
+            self.prometheus_memory_cpus = get_memory_cpus("prometheus")
 
     def start_cmd(self, config: str, **kargs) -> List[str]:
         self.parse_config(config)
