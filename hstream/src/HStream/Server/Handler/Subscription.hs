@@ -147,8 +147,8 @@ streamingFetchInternal
 streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   StreamingFetchRequest {..} <- firstRecv 
   wrapper@SubscribeContextWrapper {..} <- initSub ctx subId
-  initConsumer scwContext consumerName streamSend
-  recvAcks scwState scwContext streamRecv
+  consumerCtx <- initConsumer scwContext consumerName streamSend
+  recvAcks scwState scwContext consumerCtx streamRecv
   where
     firstRecv :: IO StreamingFetchRequest 
     firstRecv = undefined
@@ -278,7 +278,7 @@ addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do
   writeTVar unassignedShards newUnassign 
   writeTVar subShardContexts newShardCtxs 
 
-initConsumer :: SubscribeContext -> ConsumerName -> StreamSend StreamingFetchResponse -> IO ()
+initConsumer :: SubscribeContext -> ConsumerName -> StreamSend StreamingFetchResponse -> IO ConsumerContext 
 initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do 
   let Assignment {..} = subAssignment
   oldWcs <- readTVar waitingConsumers
@@ -293,6 +293,7 @@ initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do
             }
   oldCcs <- readTVar subConsumerContexts
   writeTVar subConsumerContexts (HM.insert consumerName cc odlCcs)
+  return cc
 
 sendRecords :: ServerContext -> SubscribeContextWrapper -> IO ()
 sendRecords ServerContext {..} SubscribeContextWrapper {..} =
