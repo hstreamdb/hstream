@@ -6,6 +6,7 @@
         "remote_ssh_host4": "192.168.10.4"
     },
     "zookeeper": {
+        "persistent-dir": "/data/zookeeper",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",
