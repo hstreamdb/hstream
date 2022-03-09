@@ -297,7 +297,7 @@ initConsumer SubscribeContext {..} consumerName streamSend = atomically $ do
 sendRecords :: ServerContext -> SubscribeContextWrapper -> IO ()
 sendRecords ServerContext {..} SubscribeContextWrapper {..} =
   threadDelay 10000
-  let SubscribeContext {..} = scwContext 
+  let subCtx@SubscribeContext {..} = scwContext 
   loop
   where
     loop = do
@@ -368,40 +368,13 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
           streamSend (StreamingFetchResponse records) >>= \case
             Left err -> do
               Log.error $ "send records error, will remove the consumer: " <> show err
-              atomically $ invalidConsumer consumerName 
+              atomically $ invalidConsumer subCtx consumerName 
               let ReceivedRecord {..} = V.head records
                   lsn = recordIdBatchId receivedRecordRecordId
               resetReadingOffset logId lsn
               return False
             Right _ -> do
               return True 
-
-    invalidConsumer :: ConsumerName -> STM ()
-    invalidConsumer consumer = do 
-      let Assignment {..} = subAssignment
-      ccs <- readTVar subConsumerContexts
-      let cc@ConsumerContext {..} = ccs HM.! consumer
-      iv <- readTVar ccIsValid
-      writeTVar ccIsValid False
-
-      c2s <- readTVar consumer2Shards
-      let worksTVar = c2s HM.! consumer
-      works <- readTVar worksTVar
-      writeTVar worksTVar Set.empty
-      let nc2s = HM.delete consmer c2s
-      writeTVar subConsumerContexts nc2s
-
-      rs <- readTVar waitingReassignedShards 
-      s2c <- readTVar shard2Consumer 
-      (nrs, ns2c) <- foldM
-        (
-          \ (nrs, ns2c) s ->
-            (nrs ++ [s], HM.delete s ns2c)
-        )
-        (rs, s2c)
-        works
-      writeTVar waitingReassignedShards nrs 
-      writeTVar shard2Consumer ns2c 
 
     resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
     resetReadingOffset logId startOffset = do 
@@ -512,18 +485,20 @@ assignWaitingConsumers assignment@Assignment {..} = do
       writeTVar shard2Consumer newS2c
       return shard
 
-recvAcks :: ServerContext -> TVar SubscribeState -> TVar Bool ->  (StreamRecv StreamingFetchRequest) -> SubscribeContext -> IO () 
-recvAcks ServerContext {..} subState isConsumerValid streamRecv subCtx@SubscribeContext {..} = loop 
+recvAcks :: ServerContext -> TVar SubscribeState -> SubscribeContext -> ConsumerContext ->  (StreamRecv StreamingFetchRequest) -> IO () 
+recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContext {..} streamRecv = loop 
   where
     loop = do 
       check
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
-          -- invalid consumer
           Log.error . Log.buildString $ "streamRecv error: " <> show err
+          -- invalid consumer
+          invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvError
         Right Nothing -> do
           -- This means that the consumer finished sending acks actively.
+          invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvCloseError
         Right (Just StreamingFetchRequest {..}) ->
           if V.null streamingFetchRequestAckIds
@@ -593,6 +568,36 @@ doAck ldclient SubscribeContext {..} logId recordIds= do
     Just lsn -> S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn)
     Nothin -> return ()
     
+invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()
+invalidConsumer SubscribeContext{..} consumer = do 
+  ccs <- readTVar subConsumerContexts
+  let cc@ConsumerContext {..} = ccs HM.! consumer
+  iv <- readTVar ccIsValid
+  if iv
+  then do
+    writeTVar ccIsValid False
+
+    let Assignment {..} = subAssignment
+    c2s <- readTVar consumer2Shards
+    let worksTVar = c2s HM.! consumer
+    works <- readTVar worksTVar
+    writeTVar worksTVar Set.empty
+    let nc2s = HM.delete consmer c2s
+    writeTVar consumer2Shards nc2s
+
+    rs <- readTVar waitingReassignedShards 
+    s2c <- readTVar shard2Consumer 
+    (nrs, ns2c) <- foldM
+      (
+        \ (nrs, ns2c) s ->
+          (nrs ++ [s], HM.delete s ns2c)
+      )
+      (rs, s2c)
+      works
+    writeTVar waitingReassignedShards nrs 
+    writeTVar shard2Consumer ns2c 
+  else pure () 
+
 tryUpdateWindowLowerBound
   :: Map.Map RecordId RecordIdRange -- ^ ackedRanges
   -> RecordId                       -- ^ lower bound record of current window
