@@ -166,7 +166,11 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
   recvAcks scwState scwContext consumerCtx streamRecv
   where
     firstRecv :: IO StreamingFetchRequest 
-    firstRecv = undefined
+    firstRecv = 
+      streamRecv >>= \case
+        Left _                -> throwIO GRPCStreamRecvError
+        Right Nothing         -> throwIO GRPCStreamRecvCloseError
+        Right (Just firstReq) -> return firstReq 
 
 initSub :: ServerContext -> SubscriptionId -> IO SubscribeContextWrapper
 initSub serverCtx@ServerContext {..} subId = do
