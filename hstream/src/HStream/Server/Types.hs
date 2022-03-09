@@ -121,6 +121,13 @@ data SubscribeShardContext = SubscribeShardContext
     sscLogId :: HS.C_LogID
   }
 
+data AckWindow = AckWindow
+  { awWindowLowerBound :: TVar RecordId,
+    awWindowUpperBound :: TVar RecordId,
+    awAckedRanges :: TVar (Map.Map RecordId RecordIdRange),
+    awBatchNumMap :: TVar (Map.Map Word64 Word32)
+  }
+
 data Assignment = Assignment
   { totalShards :: TVar (Set.Set HS.C_LogID),
     unassignedShards :: TVar [HS.C_LogID],
