@@ -915,6 +915,88 @@ class PrometheusService(Service):
         return cmds
 
 
+class NodeExporterService(Service):
+    KEYS = ["node-exporter"]
+    DEFAULT_CONTAINER_NAME = "deploy_node_exporter"
+    DEFAULT_IMAGE_TAG = "docker.io/prom/node-exporter"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage node-exporter service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default=NodeExporterService.DEFAULT_IMAGE_TAG
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        rm=False,
+        **args,
+    ):
+        opts = "--rm" if rm else ""
+        opts += (
+            f" --memory={self.node_exporter_memory_cpus[0]}"
+            if self.node_exporter_memory_cpus[0] is not None
+            else ""
+        ) + (
+            f" --cpus={self.node_exporter_memory_cpus[1]} "
+            if self.node_exporter_memory_cpus[1] is not None
+            else ""
+        )
+        cmds = []
+
+        for (i, (host, addr)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run -d --restart unless-stopped "
+                    f"{opts} "
+                    f"--name {container_name} "
+                    f"--network host "
+                    f"{image}"
+                    f"'"
+                )
+        return cmds
+
+
 class SimpleService(Service):
     KEYS = ["simple"]
     DEFAULT_CONTAINER_BIN = "docker"
@@ -932,6 +1014,7 @@ class SimpleService(Service):
         self.HSTORE_SVC = super().get_service(HStoreService)
         self.HSERVER_SVC = super().get_service(HServerService)
         self.PROMETHEUS_SVC = super().get_service(PrometheusService)
+        self.NODE_EXPORTER_SVC = super().get_service(NodeExporterService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -975,6 +1058,10 @@ class SimpleService(Service):
             self.prometheus_hosts = [
                 (host, deploy_cfg["hosts"][host])
                 for host in (deploy_cfg["prometheus"])["hosts"]
+            ]
+            self.node_exporter_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in (deploy_cfg["node-exporter"])["hosts"]
             ]
 
             self.zk_enable_metrics_provider = (
@@ -1153,6 +1240,15 @@ class SimpleService(Service):
         }
         cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
 
+        # start node-exporter
+        node_exporter_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+            "image": self.node_exporter_image,
+            "remotes": self.node_exporter_hosts,
+        }
+        cmds.extend(self.NODE_EXPORTER_SVC.start_cmd(**node_exporter_args))
+
         return cmds
 
     def stop_cmd(self, config: str, **kargs) -> List[str]:
@@ -1204,6 +1300,15 @@ class SimpleService(Service):
         }
         cmds.extend(self.PROMETHEUS_SVC.stop_cmd(**prometheus_args))
 
+        # stop node-exporter
+        node_exporter_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.node_exporter_hosts,
+            "force": True,
+        }
+        cmds.extend(self.NODE_EXPORTER_SVC.stop_cmd(**node_exporter_args))
+
         return cmds
 
     def remove_cmd(self, config: str, **kargs) -> List[str]:
@@ -1254,5 +1359,6 @@ if __name__ == "__main__":
     s.register(HStoreService)
     s.register(HServerService)
     s.register(PrometheusService)
+    s.register(NodeExporterService)
     s.register(SimpleService)
     s.run()
