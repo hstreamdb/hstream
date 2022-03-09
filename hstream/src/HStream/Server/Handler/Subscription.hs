@@ -137,8 +137,23 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx bidiRequest = undefined
-
+streamingFetchHandler ctx bidiRequest = 
+  try (streamingFetchInternal ctx bidiRequest) >>= \case
+    Right _ -> return $
+      ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
+    Left (err :: SubscribeInnerError) -> handleException err
+    Left _  -> return $
+      ServerBiDiResponse [] StatusUnknown . StatusDetails $ ""
+  where
+    handleException :: SubscribeInnerError -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
+    handleException GRPCStreamRecvError = return $
+      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer recv error"
+    handleException GRPCStreamRecvCloseError = return $
+      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer is closed"
+    handleException SubscribeInValidError = return $
+      ServerBiDiResponse [] StatusAborted . StatusDetails $ "subscription is invalid"
+    handleException ConsumerInValidError = return $
+      ServerBiDiResponse [] StatusAborted . StatusDetails $ "consumer is invalid"
 
 streamingFetchInternal
   :: ServerContext
@@ -170,7 +185,7 @@ initSub serverCtx@ServerContext {..} subId = do
         case state of
           SubscribeStateNew -> retry
           SubscribeStateRunning -> return (False, wrapper)
-          -- TODO: how to deal with other state ?
+          _ -> throwSTM SubscribeInValidError 
   if needInit
     then do
       subCtx <- doSubInit subId
@@ -606,6 +621,9 @@ invalidConsumer SubscribeContext{..} consumer = do
       works
     writeTVar waitingReassignedShards nrs 
     writeTVar shard2Consumer ns2c 
+    
+    let nccs = HM.delete conusmer ccs
+    writeTVar subConsumerContexts nccs 
   else pure () 
 
 tryUpdateWindowLowerBound
@@ -629,4 +647,12 @@ tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commi
             in Just(newAckedRanges', startRecordId)
        | otherwise -> Nothing
 tryUpdateWindowLowerBound _ _ _ Nothing = Nothing
+
+data SubscribeInnerError = GRPCStreamRecvError
+                             | GRPCStreamRecvCloseError
+                             | GRPCStreamSendError
+                             | ConsumerInValidError
+                             | SubscribeInValidError 
+  deriving (Show)
+instance Exception SubscribeInnerError
 
