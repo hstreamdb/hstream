@@ -30,12 +30,12 @@ module HStream.Store.Stream
   , getUnderlyingLogId
   , getStreamIdFromLogId
 
-    -- * Internal Log
+    -- * Logdevice Log
   , FFI.LogID (..)
   , FFI.C_LogID
   , FFI.LDLogGroup
   , FFI.LDDirectory
-    -- ** Log
+    -- ** Log attributes
   , FFI.LogAttrs (LogAttrs, LogAttrsDef)
   , FFI.HsLogAttrs (..)
 
@@ -245,7 +245,7 @@ showStreamName = CBytes.unpack . streamName
 createStream :: HasCallStack => FFI.LDClient -> StreamId -> FFI.LogAttrs -> IO ()
 createStream client streamid attrs = do
   path <- getStreamDirPath streamid
-  void $ LD.makeLogDirectory client path attrs True
+  void $ LD.makeLogDirectory_ client path attrs True
   -- create default loggroup
   (log_path, key) <- getStreamLogPath streamid Nothing
   logid <- createRandomLogGroup client log_path FFI.LogAttrsDef
@@ -476,7 +476,7 @@ initCheckpointStoreLogID client attrs = do
   r <- try $ LD.getLogGroupByID client checkpointStoreLogID
   case r of
     Left (_ :: E.NOTFOUND) -> do
-      _ <- LD.makeLogGroup client "/hstream/internal/checkpoint" checkpointStoreLogID checkpointStoreLogID attrs True
+      _ <- LD.makeLogGroup_ client "/hstream/internal/checkpoint" checkpointStoreLogID checkpointStoreLogID attrs True
       return checkpointStoreLogID
     Right _ -> return checkpointStoreLogID
 
@@ -563,7 +563,7 @@ createRandomLogGroup client logPath attrs = go 10
          then E.throwStoreError "Ran out all retries, but still failed :(" callStack
          else do
            logid <- genUnique
-           result <- try $ LD.makeLogGroup client logPath logid logid attrs True
+           result <- try $ LD.makeLogGroup_ client logPath logid logid attrs True
            case result of
              Right group -> do
                LD.syncLogsConfigVersion client =<< LD.logGroupGetVersion group

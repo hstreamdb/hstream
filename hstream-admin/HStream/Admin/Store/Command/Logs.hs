@@ -54,12 +54,12 @@ runLogsUpdate conf UpdateLogsOpts{..} = do
           Right loggroup         -> S.logGroupGetAttrs loggroup
           Left (_ :: S.NOTFOUND) -> S.logDirectoryGetAttrs =<< S.getLogDirectory client updatePath
       let attrs' =
-            attrs { logReplicationFactor = maybe logReplicationFactor S.def1 updateReplicationFactor
-                  , logSyncedCopies = maybe logSyncedCopies S.def1 updateSyncedCopies
-                  , logBacklogDuration = maybe logBacklogDuration (S.def1 . Just) updateBacklogDuration
+            attrs { logReplicationFactor = maybe logReplicationFactor S.defAttr1 updateReplicationFactor
+                  , logSyncedCopies = maybe logSyncedCopies S.defAttr1 updateSyncedCopies
+                  , logBacklogDuration = maybe logBacklogDuration (S.defAttr1 . Just) updateBacklogDuration
                   , logAttrsExtras = updateExtras `Map.union` logAttrsExtras
                   }
-      attrsPtr <- S.newLDLogAttrs attrs'
+      attrsPtr <- S.pokeLogAttributes attrs'
       withForeignPtr attrsPtr $ S.ldWriteAttributes client updatePath
     case res of
       Right version                     ->
@@ -134,12 +134,12 @@ createLogs conf CreateLogsOpts{..} = do
     "otherwise use --directory to create a directory."
 
   withResource (buildLDClientRes conf Map.empty) $ \client -> do
-    let attrs = S.LogAttrs logsAttributes
+    let attrs = S.LogAttrs createLogsOptsAttributes
     if isDirectory
-       then S.makeLogDirectory client path attrs True >> putStrLn "Create log directory successfully!" >> return ()
+       then S.makeLogDirectory_ client path attrs True >> putStrLn "Create log directory successfully!" >> return ()
        else let start = fromJust fromId
                 end = fromJust toId
-             in S.makeLogGroup client path start end attrs True >> putStrLn "Create log group successfully!" >> return ()
+             in S.makeLogGroup_ client path start end attrs True >> putStrLn "Create log group successfully!" >> return ()
 
 runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
 runLogsRemove conf RemoveLogsOpts{..} = do
