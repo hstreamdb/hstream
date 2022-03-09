@@ -9,11 +9,16 @@ module HStream.Foreign
   , peekN
   , BA# (..)
   , MBA# (..)
+  , BAArray# (..)
 
   -- * StdString
   , Z.StdString
   , peekStdStringToCBytesN
   , peekStdStringToCBytesIdx
+
+  -- * Optional
+  , withAllocMaybePrim
+  , withAllocMaybePrim2
 
   -- * Vector
   , StdVector
@@ -24,6 +29,7 @@ module HStream.Foreign
   -- * Map
   , PeekMapFun
   , peekCppMap
+  , withHsCBytesMapUnsafe
 
   -- * Misc
   , c_delete_string
@@ -34,19 +40,21 @@ module HStream.Foreign
   , cal_offset_std_string
   ) where
 
-import           Control.Exception        (finally)
-import           Control.Monad            (forM)
-import           Data.Int                 (Int64)
-import qualified Data.Map.Strict          as Map
-import           Data.Primitive.ByteArray
+import           Control.Exception  (finally)
+import           Control.Monad      (forM)
+import           Data.Int           (Int64)
+import           Data.Map.Strict    (Map)
+import qualified Data.Map.Strict    as Map
+import           Data.Primitive
 import           Foreign.C.Types
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.Storable
 import           GHC.Prim
-import           Z.Data.CBytes            (CBytes)
-import qualified Z.Data.CBytes            as CBytes
-import qualified Z.Foreign                as Z
+import qualified Z.Data.Array       as Z
+import           Z.Data.CBytes      (CBytes)
+import qualified Z.Data.CBytes      as CBytes
+import qualified Z.Foreign          as Z
 
 -------------------------------------------------------------------------------
 
@@ -60,6 +68,30 @@ peekN len ptr
 
 newtype BA# a = BA# ByteArray#
 newtype MBA# a = MBA# (MutableByteArray# RealWorld)
+newtype BAArray# a = BAArray# ArrayArray#
+
+-------------------------------------------------------------------------------
+-- Optional
+
+withAllocMaybePrim :: forall a b. Prim a => Maybe a -> (Ptr a -> IO b) -> IO b
+withAllocMaybePrim (Just x) f = do
+  buf <- newAlignedPinnedPrimArray 1
+  writePrimArray buf 0 x
+  !b <- Z.withMutablePrimArrayContents buf f
+  return b
+withAllocMaybePrim Nothing f = f nullPtr
+{-# INLINABLE withAllocMaybePrim #-}
+
+withAllocMaybePrim2 :: forall a b. Prim a
+                    => Maybe (Maybe a) -> (Bool -> Ptr a -> IO b) -> IO b
+withAllocMaybePrim2 (Just (Just x)) f = do
+  buf <- newAlignedPinnedPrimArray 1
+  writePrimArray buf 0 x
+  !b <- Z.withMutablePrimArrayContents buf $ \ptr -> f True ptr
+  return b
+withAllocMaybePrim2 (Just Nothing) f = f True nullPtr
+withAllocMaybePrim2 Nothing f = f False nullPtr
+{-# INLINABLE withAllocMaybePrim2 #-}
 
 -------------------------------------------------------------------------------
 
@@ -148,6 +180,17 @@ peekCppMap f peekKey delKey peekVal delVal = do
       keys <- peekKey len keys_ptr
       values <- peekVal len values_ptr
       return . Map.fromList $ zip keys values
+
+withHsCBytesMapUnsafe
+  :: Map CBytes CBytes
+  -> (Int -> BAArray# a -> BAArray# a -> IO b)
+  -> IO b
+withHsCBytesMapUnsafe hsmap f = do
+  let hsmap' = Map.toList hsmap
+      ks = map (CBytes.rawPrimArray . fst) hsmap'
+      vs = map (CBytes.rawPrimArray . snd) hsmap'
+  Z.withPrimArrayListUnsafe ks $ \ks' l ->
+    Z.withPrimArrayListUnsafe vs $ \vs' _ -> f l (BAArray# ks') (BAArray# vs')
 
 -------------------------------------------------------------------------------
 

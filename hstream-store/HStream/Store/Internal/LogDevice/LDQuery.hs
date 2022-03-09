@@ -18,6 +18,7 @@ import qualified Z.Data.CBytes                  as CBytes
 import           Z.Foreign                      (BA#, MBA#)
 import qualified Z.Foreign                      as Z
 
+import           HStream.Foreign                hiding (BA#, MBA#)
 import           HStream.Store.Exception        (throwStoreError)
 import           HStream.Store.Internal.Foreign
 
