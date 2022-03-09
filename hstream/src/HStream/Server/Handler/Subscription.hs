@@ -369,8 +369,21 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
           return []
         Right dataRecords -> return dataRecords
 
-    decodeRecordBatch :: S.DataRecord -> (S.C_LogID, V.Vector ReceivedRecord)
-    decodeRecordBatch = undefined 
+    decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, V.Vector ReceivedRecord)
+    decodeRecordBatch dataRecord = 
+      let payload = recordPayload dataRecord
+          logId = recordLogId dataRecord 
+          lsn = recordLSN dataRecord
+          recordBatch = decodeBatch payload
+          batch = recordBatchBatch recordBatch
+          receivedRecords = mkReceivedRecords batchId batch 
+      in
+          (logId, receivedRecords)
+        
+
+    mkReceivedRecords :: Word64 -> V.Vector ByteString -> V.Vector ReceivedRecord
+    mkReceivedRecords batchId records =
+      V.imap (\ i a -> ReceivedRecord (Just $ RecordId batchId (fromIntegral index)) a) records   
 
     recordBatchesToReceivedRecords :: [RecordBatch] -> [ReceivedRecord]
     recordBatchesToReceivedRecords = undefined
