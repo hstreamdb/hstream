@@ -332,6 +332,7 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches 
           sendReceivedRecordsVecs receivedRecordsVecs  
           -- TODO: resend
+          loop
         else 
           return ()
 
