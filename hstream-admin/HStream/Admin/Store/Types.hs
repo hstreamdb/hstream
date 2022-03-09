@@ -1,4 +1,6 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE ApplicativeDo  #-}
+{-# LANGUAGE CPP            #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -25,6 +27,7 @@ import qualified Z.Data.Vector            as V
 
 import qualified HStream.Admin.Store.API  as AA
 import qualified HStream.Logger           as Log
+import           HStream.Store            (LogAttributes (..))
 import qualified HStream.Store            as S
 import           HStream.Utils            (withoutPrefix)
 
@@ -482,45 +485,31 @@ parseLogExtraAttr = eitherReader $ parse . V.packASCII
       P.skipSpaces
       return (fromBytes n, fromBytes s)
 
-logsAttrsParser :: Parser S.HsLogAttrs
-logsAttrsParser = S.HsLogAttrs
-  <$> option auto ( long "replication-factor"
-                 <> metavar "INT"
-                 <> showDefault
-                 <> value 3
-                 -- TODO: fix here if `replicate_across` field added
-                 <> help "Number of nodes on which to persist a record. Default number is 3"
-                  )
-  <*> fmap Map.fromList (many (option parseLogExtraAttr ( long "extra-attributes"
-                                                       <> metavar "STRING:STRING"
-                                                       <> help "Arbitrary fields that logdevice does not recognize."
-                                                        )
-                              ))
-
--- TODO
--- logAttrsParser :: Parser S.LogAttributes
--- logAttrsParser = S.HsLogAttrs
---   <$> option auto ( long "replication-factor"
---                  <> metavar "INT"
---                  <> showDefault
---                  <> value 3
---                  -- TODO: fix here if `replicate_across` field added
---                  <> help "Number of nodes on which to persist a record. Default number is 3"
---                   )
---   <*> fmap Map.fromList (many (option parseLogExtraAttr ( long "extra-attributes"
---                                                        <> metavar "STRING:STRING"
---                                                        <> help "Arbitrary fields that logdevice does not recognize."
---                                                         )
---                               ))
+logAttrsParser :: Parser S.LogAttributes
+logAttrsParser = do
+  logReplicationFactor <- S.defAttr1 <$> option auto
+      ( long "replication-factor"
+     <> metavar "INT"
+     <> showDefault
+     <> value 3
+     -- TODO: fix here if `replicate_across` field added
+     <> help "Number of nodes on which to persist a record. Default number is 3"
+      )
+  logAttrsExtras <- Map.fromList <$> (many (option parseLogExtraAttr
+      ( long "extra-attributes"
+     <> metavar "STRING:STRING"
+     <> help "Arbitrary fields that logdevice does not recognize."
+      )))
+  pure S.def{logReplicationFactor, logAttrsExtras}
 
 data CreateLogsOpts = CreateLogsOpts
-  { path                     :: CBytes
-  , fromId                   :: Maybe S.C_LogID
-  , toId                     :: Maybe S.C_LogID
-  , isDirectory              :: Bool
+  { path                :: CBytes
+  , fromId              :: Maybe S.C_LogID
+  , toId                :: Maybe S.C_LogID
+  , isDirectory         :: Bool
   -- TODO
   -- , showVersion    :: Bool
-  , createLogsOptsAttributes :: S.HsLogAttrs
+  , createLogsOptsAttrs :: S.LogAttributes
   } deriving (Show)
 
 createLogsParser :: Parser CreateLogsOpts
@@ -545,7 +534,7 @@ createLogsParser = CreateLogsOpts
   --                    <> help ("Should we show the version of the config tree after "
   --                    <> "the operation or not.")
   --                     )
-  <*> logsAttrsParser
+  <*> logAttrsParser
 
 -------------------------------------------------------------------------------
 

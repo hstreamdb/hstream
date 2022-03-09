@@ -9,7 +9,6 @@ import           Control.Monad            (when)
 import qualified Data.ByteString          as BS
 import qualified Data.ByteString.Internal as BS
 import           Data.Int
-import           Data.Map.Strict          (Map)
 import           Data.Primitive
 import           Data.Word
 import           Foreign.C
@@ -119,13 +118,6 @@ pattern C_BYTE_OFFSET_INVALID :: Word64
 pattern C_BYTE_OFFSET_INVALID = (#const facebook::logdevice::BYTE_OFFSET_INVALID)
 
 type C_LogsConfigVersion = Word64
-
-data HsLogAttrs = HsLogAttrs
-  { logReplicationFactor :: Int
-  , logExtraAttrs        :: Map CBytes CBytes
-  } deriving (Show)
-
-data LogAttrs = LogAttrs HsLogAttrs | LogAttrsPtr LDLogAttrs | LogAttrsDef
 
 data VcsValueCallbackData = VcsValueCallbackData
   { vcsValCallbackSt  :: !ErrorCode
@@ -531,6 +523,7 @@ fromCompression CompressionLZ4HC = ((#const static_cast<HsInt>(Compression::LZ4_
 
 -------------------------------------------------------------------------------
 
+-- FIXME: consider this: using hsthrift generated code
 newtype NodeLocationScope = NodeLocationScope { unNodeLocationScope :: Word8 }
   deriving (Eq, Ord)
 

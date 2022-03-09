@@ -3,7 +3,6 @@
 {-# LANGUAGE CPP            #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE MagicHash      #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-
 Note that we need this UnboxedTuples to force ghci use -fobject-code for all
 related modules. Or ghci will complain "panic".

@@ -107,9 +107,7 @@ fileBased = context "FileBasedCheckpointedReader" $ do
 preRsmBased :: Spec
 preRsmBased = context "Pre-RSMBasedCheckpointedReader" $ do
   it "get the logid for checkpointStore" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.empty
-                                        }
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.initCheckpointStoreLogID client attrs `shouldReturn` (1 `shiftL` 56)
 
 rsmBased :: Spec

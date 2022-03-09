@@ -48,10 +48,10 @@ createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerRespons
 createStream ServerContext{..} stream@API.Stream{..} = do
   let nameCB   = textToCBytes streamStreamName
       streamId = transToStreamName streamStreamName
-      repFac   = fromIntegral streamReplicationFactor
+      attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor }
   zNodesExist <- catch (createStreamRelatedPath zkHandle nameCB >> return False)
                        (\(_::ZNODEEXISTS) -> return True)
-  storeExists <- catch (S.createStream scLDClient streamId (S.LogAttrs $ S.HsLogAttrs repFac mempty)
+  storeExists <- catch (S.createStream scLDClient streamId attrs
                         >> return False)
                        (\(_ :: S.EXISTS) -> return True)
   when (storeExists || zNodesExist) $ do
