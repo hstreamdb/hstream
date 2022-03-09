@@ -38,6 +38,7 @@ module HStream.Foreign
   , c_delete_vector_of_int64
   , c_delete_std_vec_of_folly_small_vec_of_double
   , cal_offset_std_string
+  , bool2cbool
   ) where
 
 import           Control.Exception  (finally)
@@ -73,24 +74,29 @@ newtype BAArray# a = BAArray# ArrayArray#
 -------------------------------------------------------------------------------
 -- Optional
 
-withAllocMaybePrim :: forall a b. Prim a => Maybe a -> (Ptr a -> IO b) -> IO b
-withAllocMaybePrim (Just x) f = do
+withAllocMaybePrim :: forall a b c. Prim a
+                    => (c -> a) -> Maybe c -> (Ptr a -> IO b) -> IO b
+withAllocMaybePrim t (Just x) f = do
   buf <- newAlignedPinnedPrimArray 1
-  writePrimArray buf 0 x
+  writePrimArray buf 0 (t x)
   !b <- Z.withMutablePrimArrayContents buf f
   return b
-withAllocMaybePrim Nothing f = f nullPtr
+withAllocMaybePrim _ Nothing f = f nullPtr
 {-# INLINABLE withAllocMaybePrim #-}
 
-withAllocMaybePrim2 :: forall a b. Prim a
-                    => Maybe (Maybe a) -> (Bool -> Ptr a -> IO b) -> IO b
-withAllocMaybePrim2 (Just (Just x)) f = do
+withAllocMaybePrim2
+  :: forall a b c. Prim a
+  => (c -> a)
+  -> Maybe (Maybe c)
+  -> (Bool -> Ptr a -> IO b)
+  -> IO b
+withAllocMaybePrim2 t (Just (Just x)) f = do
   buf <- newAlignedPinnedPrimArray 1
-  writePrimArray buf 0 x
+  writePrimArray buf 0 (t x)
   !b <- Z.withMutablePrimArrayContents buf $ \ptr -> f True ptr
   return b
-withAllocMaybePrim2 (Just Nothing) f = f True nullPtr
-withAllocMaybePrim2 Nothing f = f False nullPtr
+withAllocMaybePrim2 _ (Just Nothing) f = f True nullPtr
+withAllocMaybePrim2 _ Nothing f = f False nullPtr
 {-# INLINABLE withAllocMaybePrim2 #-}
 
 -------------------------------------------------------------------------------
@@ -209,3 +215,7 @@ HS_CPP_DELETE(delete_std_vec_of_folly_small_vec_of_double, (StdVector (FollySmal
     CFUN :: Ptr HSOBJ -> Int -> IO (Ptr HSOBJ)
 
 HS_CPP_CAL_OFFSET(cal_offset_std_string, Z.StdString)
+
+bool2cbool :: Bool -> CBool
+bool2cbool True  = 1
+bool2cbool False = 0

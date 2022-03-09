@@ -1,16 +1,16 @@
 {-# LANGUAGE CApiFFI         #-}
 {-# LANGUAGE CPP             #-}
-{-# LANGUAGE DeriveAnyClass  #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 module HStream.Store.Internal.Types where
 
-import qualified Data.ByteString          as BS
-import qualified Data.ByteString.Internal as BS
 import           Control.Exception        (bracket, finally)
 import           Control.Monad            (when)
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Internal as BS
 import           Data.Int
 import           Data.Map.Strict          (Map)
+import           Data.Primitive
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
@@ -531,7 +531,7 @@ fromCompression CompressionLZ4HC = ((#const static_cast<HsInt>(Compression::LZ4_
 
 -------------------------------------------------------------------------------
 
-newtype NodeLocationScope = NodeLocationScope Word8
+newtype NodeLocationScope = NodeLocationScope { unNodeLocationScope :: Word8 }
   deriving (Eq, Ord)
 
 -- a special scope indicating the smallest scope: an individual node
