@@ -514,11 +514,11 @@ recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContex
         Left (err :: grpcIOError) -> do
           Log.error . Log.buildString $ "streamRecv error: " <> show err
           -- invalid consumer
-          invalidConsumer subCtx ccConsumerName
+          atomically $ invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvError
         Right Nothing -> do
           -- This means that the consumer finished sending acks actively.
-          invalidConsumer subCtx ccConsumerName
+          atomically $ invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvCloseError
         Right (Just StreamingFetchRequest {..}) ->
           if V.null streamingFetchRequestAckIds
