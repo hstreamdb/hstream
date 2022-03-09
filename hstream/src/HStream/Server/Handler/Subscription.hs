@@ -508,8 +508,17 @@ recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContex
               loop
 
     -- throw error when check can not pass
-    check :: IO Bool
-    check = undefined
+    check :: IO () 
+    check = do 
+      ss <- readTVarIO subState
+      if ss /= SubscribeStateRunning 
+      then throwIO SubscribeInValidError
+      else do 
+        cv <- readTVarIO ccIsValid
+        if cv
+        then return ()
+        else throwIO ConsumerInValidError 
+      
 
 doAcks
   :: S.LDClient
