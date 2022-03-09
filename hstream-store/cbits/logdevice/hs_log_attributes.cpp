@@ -6,14 +6,17 @@ extern "C" {
 // ----------------------------------------------------------------------------
 
 LogAttributes*
-poke_log_attributes(int* replicationFactor_val, HsBool replicationFactor_inh,
-                    //
-                    int* syncedCopies_val, HsBool syncedCopies_inh,
-                    //
-                    HsBool backlogDuration_flag, int* backlogDuration_val,
-                    HsBool backlogDuration_inh,
+#define _ARG(ty, name) ty *name##_val, HsBool name##_inh
+#define _MAYBE_ARG(ty, name)                                                   \
+  HsBool name##_flag, ty *name##_val, HsBool name##_inh
+poke_log_attributes(_ARG(int, replicationFactor), _ARG(int, syncedCopies),
+                    _ARG(int, maxWritesInFlight), _ARG(bool, singleWriter),
+                    _ARG(facebook::logdevice::NodeLocationScope,
+                         syncReplicationScope),
+                    _MAYBE_ARG(int, backlogDuration),
                     //
                     HsInt extras_len, StgArrBytes** keys, StgArrBytes** vals) {
+#undef _ARG
   auto attrs = LogAttributes();
 #define ADD_ATTR(x)                                                            \
   if (x##_val) {                                                               \
@@ -30,6 +33,9 @@ poke_log_attributes(int* replicationFactor_val, HsBool replicationFactor_inh,
   }
   ADD_ATTR(replicationFactor)
   ADD_ATTR(syncedCopies)
+  ADD_ATTR(maxWritesInFlight)
+  ADD_ATTR(singleWriter)
+  ADD_ATTR(syncReplicationScope)
   ADD_MAYBE_ATTR(backlogDuration, std::chrono::seconds, std::chrono::seconds)
 #undef ADD_ATTR
 #undef ADD_MAYBE_ATTR
@@ -52,6 +58,9 @@ void peek_log_attributes(LogAttributes* attrs,
   HsBool *X##_flag, HsBool *X##_val_flag, T *X##_val, HsBool *X##_inh
                          ARG(HsInt, replicationFactor),
                          ARG(HsInt, syncedCopies),
+                         ARG(HsInt, maxWritesInFlight), ARG(bool, singleWriter),
+                         ARG(facebook::logdevice::NodeLocationScope,
+                             syncReplicationScope),
                          ARG_MAYBE(HsInt, backlogDuration))
 #undef ARG
 #undef ARG_MAYBE
@@ -74,6 +83,9 @@ void peek_log_attributes(LogAttributes* attrs,
   }
   PEEK(replicationFactor);
   PEEK(syncedCopies);
+  PEEK(maxWritesInFlight);
+  PEEK(singleWriter);
+  PEEK(syncReplicationScope);
   PEEK_MAYBE(backlogDuration, .count());
 #undef PEEK
 #undef PEEK_MAYBE

@@ -20,10 +20,12 @@ spec = do
 
 logdirSpec :: Spec
 logdirSpec = describe "LogDirectory" $ do
+  let attrs = def { I.logReplicationFactor = I.defAttr1 1
+                  , I.logBacklogDuration = I.defAttr1 (Just 60)
+                  , I.logAttrsExtras = Map.fromList [("A", "B")]
+                  }
+
   it "get log directory children name" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
-                                        }
     dirname <- ("/" `FS.join`) =<< newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
     _ <- I.makeLogDirectory client (dirname <> "/A") attrs False
@@ -37,10 +39,7 @@ logdirSpec = describe "LogDirectory" $ do
     I.getLogDirectory client dirname `shouldThrow` anyException
 
   it "get log directory logs name" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
-                                        }
-        logid1 = 101
+    let logid1 = 101
         logid2 = 102
     dirname <- ("/" `FS.join`) =<< newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
@@ -56,10 +55,7 @@ logdirSpec = describe "LogDirectory" $ do
     I.getLogDirectory client dirname `shouldThrow` anyException
 
   it "get log group and child directory" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [("A", "B")]
-                                        }
-        logid = 103
+    let logid = 103
     dirname <- ("/" `FS.join`) =<< newRandomName 10
     _ <- I.makeLogDirectory client dirname attrs False
     _ <- I.makeLogDirectory client (dirname <> "/A") attrs False
@@ -74,20 +70,37 @@ logdirSpec = describe "LogDirectory" $ do
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
 
+  it "Loggroup's attributes should be inherited by the parent directory" $ do
+    dirname <- ("/" `FS.join`) =<< newRandomName 10
+    let logid = 104
+        lgname = dirname <> "/A"
+    _ <- I.makeLogDirectory client dirname attrs False
+    I.syncLogsConfigVersion client =<< I.logGroupGetVersion
+                                   =<< I.makeLogGroup client lgname logid logid def False
+    lg <- I.getLogGroup client lgname
+    attrs' <- I.logGroupGetAttrs lg
+    I.logReplicationFactor attrs' `shouldBe` I.Attribute (Just 1) True
+    I.logBacklogDuration attrs' `shouldBe` I.Attribute (Just (Just 60)) True
+    Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
+    I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
+
 loggroupAround :: SpecWith (CBytes, S.C_LogID) -> Spec
 loggroupAround = aroundAll $ \runTest -> bracket setup clean runTest
   where
     setup = do
-      let attrs = def { I.logReplicationFactor = I.def1 1
-                      , I.logBacklogDuration = I.def1 (Just 60)
+      let attrs = def { I.logReplicationFactor = I.defAttr1 1
+                      , I.logBacklogDuration = I.defAttr1 (Just 60)
+                      , I.logSingleWriter = I.defAttr1 True
+                      -- TODO
+                      -- , I.logSyncReplicationScope = I.defAttr1 S.NodeLocationScope_DATA_CENTER
                       , I.logAttrsExtras = Map.fromList [("A", "B")]
                       }
           logid = 104
           logname = "LogDeviceSpec_LogGroupSpec"
-      lg <- I.makeLogGroup_ client logname logid logid (Just attrs) False
+      lg <- I.makeLogGroup client logname logid logid attrs False
       void $ I.syncLogsConfigVersion client =<< I.logGroupGetVersion lg
       return (logname, logid)
-    clean (logname, _logid) = do
+    clean (logname, _logid) =
       I.syncLogsConfigVersion client =<< I.removeLogGroup client logname
 
 loggroupSpec :: Spec
@@ -95,8 +108,11 @@ loggroupSpec = describe "LogGroup" $ loggroupAround $ parallel $ do
   it "log group get attrs" $ \(lgname, _logid) -> do
     lg <- I.getLogGroup client lgname
     attrs' <- I.logGroupGetAttrs lg
-    I.logReplicationFactor attrs' `shouldBe` I.def1 1
-    I.logBacklogDuration attrs' `shouldBe` I.def1 (Just 60)
+    I.logReplicationFactor attrs' `shouldBe` I.defAttr1 1
+    I.logBacklogDuration attrs' `shouldBe` I.defAttr1 (Just 60)
+    I.logSingleWriter attrs' `shouldBe` I.defAttr1 True
+    -- TODO
+    -- I.logSyncReplicationScope attrs' `shouldBe` I.defAttr1 S.NodeLocationScope_DATA_CENTER
     Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
 
   it "log group get and set range" $ \(lgname, logid) -> do

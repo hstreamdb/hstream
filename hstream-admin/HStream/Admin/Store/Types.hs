@@ -497,14 +497,30 @@ logsAttrsParser = S.HsLogAttrs
                                                         )
                               ))
 
+-- TODO
+-- logAttrsParser :: Parser S.LogAttributes
+-- logAttrsParser = S.HsLogAttrs
+--   <$> option auto ( long "replication-factor"
+--                  <> metavar "INT"
+--                  <> showDefault
+--                  <> value 3
+--                  -- TODO: fix here if `replicate_across` field added
+--                  <> help "Number of nodes on which to persist a record. Default number is 3"
+--                   )
+--   <*> fmap Map.fromList (many (option parseLogExtraAttr ( long "extra-attributes"
+--                                                        <> metavar "STRING:STRING"
+--                                                        <> help "Arbitrary fields that logdevice does not recognize."
+--                                                         )
+--                               ))
+
 data CreateLogsOpts = CreateLogsOpts
-  { path           :: CBytes
-  , fromId         :: Maybe S.C_LogID
-  , toId           :: Maybe S.C_LogID
-  , isDirectory    :: Bool
+  { path                     :: CBytes
+  , fromId                   :: Maybe S.C_LogID
+  , toId                     :: Maybe S.C_LogID
+  , isDirectory              :: Bool
   -- TODO
   -- , showVersion    :: Bool
-  , logsAttributes :: S.HsLogAttrs
+  , createLogsOptsAttributes :: S.HsLogAttrs
   } deriving (Show)
 
 createLogsParser :: Parser CreateLogsOpts

@@ -44,6 +44,7 @@ import           HStream.Store.Internal.Types
 -------------------------------------------------------------------------------
 -- * LogAttributes
 
+{-# DEPRECATED hsLogAttrsToLDLogAttrs "" #-}
 hsLogAttrsToLDLogAttrs :: HsLogAttrs -> IO LDLogAttrs
 hsLogAttrsToLDLogAttrs HsLogAttrs{..} = do
   let extras = Map.toList logExtraAttrs
@@ -268,17 +269,35 @@ logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
 logDirectoryGetVersion :: LDDirectory -> IO C_LogsConfigVersion
 logDirectoryGetVersion dir = withForeignPtr dir c_ld_logdirectory_get_version
 
-makeLogDirectory
+{-# DEPRECATED makeLogDirectory_ "use makeLogDirectory instead" #-}
+makeLogDirectory_
   :: LDClient
   -> CBytes
   -> LogAttrs
   -> Bool
   -> IO LDDirectory
-makeLogDirectory client path attrs mkParent = do
+makeLogDirectory_ client path attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
                 LogAttrsPtr p -> return p
                 LogAttrsDef   -> newForeignPtr_ nullPtr
+  withForeignPtr client $ \client' ->
+    withForeignPtr logAttrs $ \attrs' ->
+      CBytes.withCBytesUnsafe path $ \path' -> do
+        let cfun = c_ld_client_make_directory client' path' mkParent attrs'
+        MakeDirectoryCbData errno directory _ <-
+          withAsync makeDirectoryCbDataSize peekMakeDirectoryCbData cfun
+        void $ E.throwStreamErrorIfNotOK' errno
+        newForeignPtr c_free_logdevice_logdirectory_fun directory
+
+makeLogDirectory
+  :: LDClient
+  -> CBytes
+  -> LogAttributes
+  -> Bool
+  -> IO LDDirectory
+makeLogDirectory client path attrs mkParent = do
+  logAttrs <- pokeLogAttributes attrs
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -467,7 +486,8 @@ makeLogGroupSync client path start end attrs mkParent = do
             c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
         newForeignPtr c_free_logdevice_loggroup_fun group'
 
-makeLogGroup
+{-# DEPRECATED makeLogGroup_ "use makeLogGroup instead" #-}
+makeLogGroup_
   :: HasCallStack
   => LDClient
   -> CBytes
@@ -475,7 +495,7 @@ makeLogGroup
   -> LogAttrs
   -> Bool
   -> IO LDLogGroup
-makeLogGroup client path start end attrs mkParent = do
+makeLogGroup_ client path start end attrs mkParent = do
   logAttrs <- case attrs of
                 LogAttrs val  -> hsLogAttrsToLDLogAttrs val
                 LogAttrsPtr p -> return p
@@ -490,18 +510,16 @@ makeLogGroup client path start end attrs mkParent = do
         when (group == nullPtr) $ E.throwStoreError "null loggroup" callStack
         newForeignPtr c_free_logdevice_loggroup_fun group
 
-makeLogGroup_
+makeLogGroup
   :: HasCallStack
   => LDClient
   -> CBytes
   -> C_LogID -> C_LogID
-  -> Maybe LogAttributes
+  -> LogAttributes
   -> Bool
   -> IO LDLogGroup
-makeLogGroup_ client path start end attrs mkParent = do
-  logAttrs <- case attrs of
-                Just at -> newLDLogAttrs at
-                Nothing -> newForeignPtr_ nullPtr
+makeLogGroup client path start end attrs mkParent = do
+  logAttrs <- pokeLogAttributes attrs
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
