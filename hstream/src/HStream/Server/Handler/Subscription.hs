@@ -382,8 +382,7 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
         then return $ Just (ccConsumerName, ccStreamSend)
         else Nothing 
       case mres of
-        -- TODO
-        Nothing -> undefined
+        Nothing -> return False 
         Just (consumerName, streamSend) = do 
           streamSend (StreamingFetchResponse records) >>= \case
             Left err -> do
