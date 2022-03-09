@@ -217,6 +217,10 @@ message CreateQueryStreamResponse {
   Query streamQuery = 2;
 }
 
+message HStreamRecordBatch {
+  repeated bytes batch = 1;
+}
+
 message HStreamRecord {
   // Required.
   HStreamRecordHeader header = 1;
