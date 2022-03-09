@@ -347,7 +347,27 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
         (\shard -> S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX)
 
     readRecordBatches :: IO [S.DataRecord]
-    readRecordBatches = undefined
+    readRecordBatches = 
+      S.ckpReaderReadAllowGap ssriLdCkpReader 1000 >>= \case
+        Left gap@S.GapRecord {..} -> do
+          atomically $ do
+            scs <- readTVar subShardContexts
+            let SubscribeShardContext {..} = scs HM.! gapLogID
+                AckWindow {..} = sscAckWindow
+            ranges <- readTVar awAckedRanges
+            batchNumMap <- readTVar awBatchNumMap
+            -- insert gap range to ackedRanges
+            let gapLoRecordId = RecordId gapLoLSN minBound
+                gapHiRecordId = RecordId gapHiLSN maxBound
+                newRanges = Map.insert gapLoRecordId (RecordIdRange gapLoRecordId gapHiRecordId) ranges 
+                -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
+                -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
+                groupNums = map (, 0) [gapLoLSN, gapHiLSN]
+                newBatchNumMap = Map.union batchNumMap (Map.fromList groupNums)
+            writeTVar awAckedRanges newRanges
+            writeTVar awBatchNumMap newBatchNumMap
+          return []
+        Right dataRecords -> return dataRecords
 
     decodeRecordBatch :: S.DataRecord -> (S.C_LogID, V.Vector ReceivedRecord)
     decodeRecordBatch = undefined 
