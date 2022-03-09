@@ -6,6 +6,7 @@
         "remote_ssh_host4": "192.168.10.4"
     },
     "zookeeper": {
+        "persistent-dir": "/data/zookeeper",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",
@@ -14,6 +15,8 @@
         "enable-metrics-provider": true
     },
     "hstore": {
+        "image": "hstreamdb/hstream:v0.7.1",
+        "persistent-dir": "/data/store",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",
@@ -23,11 +26,13 @@
         "remote_config_path": "/root/.config/dev-deploy/logdevice.conf"
     },
     "hstore-admin": {
+        "image": "hstreamdb/hstream:v0.7.1",
         "hosts": [
             "remote_ssh_host1"
         ]
     },
     "hserver": {
+        "image": "hstreamdb/hstream:v0.7.1",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",

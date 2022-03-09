@@ -236,6 +236,7 @@ class ZookeeperService(Service):
     KEYS = ["zookeeper", "zk"]
     DEFAULT_CONTAINER_NAME = "deploy_zookeeper"
     DEFAULT_PERSISTENT_DIR = "/data/zookeeper"
+    DEFAULT_IMAGE_TAG = "docker.io/zookeeper:3.6"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -260,7 +261,9 @@ class ZookeeperService(Service):
         # ------------------------------
         # zookeeper start
         start_parser = argparse.ArgumentParser(add_help=False)
-        start_parser.add_argument("--image", default="docker.io/zookeeper:3.6")
+        start_parser.add_argument(
+            "--image", default=ZookeeperService.DEFAULT_IMAGE_TAG
+        )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument("--container-cmd", default="")
         start_parser.add_argument(
@@ -341,7 +344,6 @@ class ZookeeperService(Service):
         remotes,
         container_name,
         image,
-        zk_remote_conf,
         persistent_dir=None,
         extra_container_options="",
         container_cmd="",
@@ -367,9 +369,6 @@ class ZookeeperService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                mount_zk_conf = ""
-                if zk_remote_conf is not None:
-                    mount_zk_conf = f"-v {zk_remote_conf}:/conf/zoo.cfg"
                 enable_metrics_provider = (
                     '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider"'
                     if metrics_provider
@@ -382,7 +381,7 @@ class ZookeeperService(Service):
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
-                    f"{mount_zk_conf} {enable_metrics_provider} "
+                    f"{enable_metrics_provider} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -422,6 +421,7 @@ class ZookeeperService(Service):
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
+    DEFAULT_IMAGE_TAG = "docker.io/hstreamdb/hstream"
     BOOTSTRAP_CMD = (
         "hadmin store nodes-config bootstrap --metadata-replicate-across "
     )
@@ -456,7 +456,7 @@ class HStoreAdminService(Service):
         # hstore-admin start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
+            "--image", default=HStoreAdminService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
@@ -589,6 +589,7 @@ class HStoreService(Service):
     KEYS = ["hstore"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore"
     DEFAULT_PERSISTENT_DIR = "/data/store"
+    DEFAULT_IMAGE_TAG = "docker.io/hstreamdb/hstream"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -616,7 +617,7 @@ class HStoreService(Service):
         # hstore start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
+            "--image", default=HStoreService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
@@ -696,6 +697,7 @@ class HStoreService(Service):
 class HServerService(Service):
     KEYS = ["hserver"]
     DEFAULT_CONTAINER_NAME = "deploy_hserver"
+    DEFAULT_IMAGE_TAG = "docker.io/hstreamdb/hstream"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -718,7 +720,7 @@ class HServerService(Service):
         )
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
+            "--image", default=HServerService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
@@ -799,6 +801,7 @@ class PrometheusService(Service):
     KEYS = ["prometheus"]
     DEFAULT_CONTAINER_NAME = "deploy_prometheus"
     DEFAULT_PERSISTENT_DIR = "/data/prometheus"
+    DEFAULT_IMAGE_TAG = "docker.io/prom/prometheus"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -819,7 +822,9 @@ class PrometheusService(Service):
             type=str,
         )
         start_parser = argparse.ArgumentParser(add_help=False)
-        start_parser.add_argument("--image", default="prom/prometheus")
+        start_parser.add_argument(
+            "--image", default=PrometheusService.DEFAULT_IMAGE_TAG
+        )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
             "--prometheus-config",
@@ -847,7 +852,7 @@ class PrometheusService(Service):
         container_bin,
         container_name,
         remotes,
-        image="prom/prometheus",
+        image,
         rm=False,
         config_path=None,
         **args,
@@ -943,12 +948,6 @@ class SimpleService(Service):
                 for host in (deploy_cfg["prometheus"])["hosts"]
             ]
 
-            self.zk_local_conf = deploy_cfg["zookeeper"].get(
-                "local_config_path"
-            )
-            self.zk_remote_conf = deploy_cfg["zookeeper"].get(
-                "remote_config_path"
-            )
             self.zk_enable_metrics_provider = (
                 deploy_cfg["zookeeper"].get("enable-metrics-provider") == True
             )
@@ -971,16 +970,33 @@ class SimpleService(Service):
                 "remote_config_path"
             )
 
+            self.zk_image = deploy_cfg["zookeeper"].get(
+                "image", ZookeeperService.DEFAULT_IMAGE_TAG
+            )
+            self.hstore_image = deploy_cfg["hstore"].get(
+                "image", HStoreService.DEFAULT_IMAGE_TAG
+            )
+            self.hadmin_image = deploy_cfg["hstore-admin"].get(
+                "image", HStoreAdminService.DEFAULT_IMAGE_TAG
+            )
+            self.hserver_image = deploy_cfg["hserver"].get(
+                "image", HServerService.DEFAULT_IMAGE_TAG
+            )
+            self.prometheus_image = deploy_cfg["prometheus"].get(
+                "image", PrometheusService.DEFAULT_IMAGE_TAG
+            )
+
+            self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
+                "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
+            )
+            self.hstore_persistent_dir = deploy_cfg["hstore"].get(
+                "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
+            )
+
     def start_cmd(self, config: str, **kargs) -> List[str]:
         self.parse_config(config)
         cmds = []
 
-        if self.zk_local_conf is not None:
-            assert self.zk_remote_conf is not None
-            for (remote, _) in self.zk_hosts:
-                cmds.append(
-                    scp_command(self.zk_local_conf, remote, self.zk_remote_conf)
-                )
         if self.hstore_local_conf is not None:
             assert self.hstore_remote_conf is not None
             for (remote, _) in self.hstore_hosts:
@@ -1014,13 +1030,11 @@ class SimpleService(Service):
         zk_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "image": "docker.io/zookeeper:3.6",
-            "zk_local_conf": self.zk_local_conf,
+            "image": self.zk_image,
         }
         zk_start_args = {
             "remotes": self.zk_hosts,
-            "persistent-dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
-            "zk_remote_conf": self.zk_remote_conf,
+            "persistent-dir": self.zk_persistent_dir,
             "metrics_provider": self.zk_enable_metrics_provider,
             **zk_args,
         }
@@ -1046,7 +1060,7 @@ class SimpleService(Service):
         admin_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "image": "docker.io/hstreamdb/hstream",
+            "image": self.hadmin_image,
             "config_path": self.config_path_in_zk,
             "remotes": self.admin_hosts,
         }
@@ -1056,9 +1070,9 @@ class SimpleService(Service):
         store_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "image": "docker.io/hstreamdb/hstream",
+            "image": self.hstore_image,
             "config_path": self.config_path_in_zk,
-            "data_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
+            "data_dir": self.hstore_persistent_dir,
             "shards": 1,
             "remotes": self.hstore_hosts,
         }
@@ -1082,7 +1096,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HServerService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hserver_hosts,
-            "image": "docker.io/hstreamdb/hstream",
+            "image": self.hserver_image,
             "zkuri": self.zk_ip,
             "store_config": self.config_path_in_zk,
             "store_admin_host": self.admin_hosts[0][1],
@@ -1095,6 +1109,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
             "config_path": self.prometheus_remote_conf,
+            "image": self.prometheus_image,
             "remotes": self.prometheus_hosts,
         }
         cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
@@ -1162,7 +1177,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hstore_hosts,
-            "persistent_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
+            "persistent_dir": self.hstore_persistent_dir,
         }
         remove_hstore_cmds = self.HSTORE_SVC.remove_cmd(
             # since we already removed the container
@@ -1174,7 +1189,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
             "remotes": self.zk_hosts,
-            "persistent_dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
+            "persistent_dir": self.zk_persistent_dir,
         }
         remove_zk_cmds = self.ZK_SVC.remove_cmd(
             **zk_args, remove_container=False
