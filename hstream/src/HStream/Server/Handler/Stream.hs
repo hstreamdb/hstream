@@ -10,8 +10,7 @@ module HStream.Server.Handler.Stream
     createStreamHandler,
     deleteStreamHandler,
     listStreamsHandler,
-    appendHandler
-  )
+    appendHandler)
 where
 
 import qualified Data.Vector                      as V
@@ -72,8 +71,8 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
-                     Just key -> appendRequestStreamName <> key
-                     Nothing  -> appendRequestStreamName <> clientDefaultKey
+        Just key -> appendRequestStreamName <> key
+        Nothing  -> appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."

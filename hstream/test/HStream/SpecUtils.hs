@@ -43,6 +43,7 @@ import           HStream.Client.Action
 import           HStream.Client.Utils
 import           HStream.SQL
 import           HStream.Server.HStreamApi
+import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),
                                                    ValueKind (ValueKindStructValue))
@@ -325,6 +326,16 @@ fetchClickHouse source =
     case q of
       Right res -> return res
       _         -> return V.empty
+
+readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
+readBatchPayload name = do
+  let nameCB = textToCBytes name
+  client <- S.newLDClient "/data/store/logdevice.conf"
+  logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream nameCB) Nothing
+  reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing 10
+  S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
+  x <- S.ckpReaderRead reader 1000
+  return $ hstreamRecordBatchBatch . decodeBatch . S.recordPayload $ head x
 
 --------------------------------------------------------------------------------
 

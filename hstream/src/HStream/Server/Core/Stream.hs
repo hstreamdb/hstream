@@ -107,20 +107,22 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r)
 
 appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
-appendStream ServerContext{..} API.AppendRequest{..} partitionKey = do
+appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
+  appendRequestRecords = records} partitionKey = do
   timestamp <- getProtoTimestamp
-  let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
-      payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
-      streamName = textToCBytes appendRequestStreamName
-      streamID = S.mkStreamId S.StreamTypeStream streamName
-      key = textToCBytes <$> partitionKey
+  let payload = encodeBatch . API.HStreamRecordBatch $
+        encodeRecord . updateRecordTimestamp timestamp <$> records
+      payloadSize = fromIntegral $ BS.length payload
   -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
-
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName payloadSize
   logId <- S.getUnderlyingLogId scLDClient streamID key
-  S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
-  let records = V.zipWith (\_ idx -> API.RecordId appendCompLSN idx) appendRequestRecords [0..]
-  return $ API.AppendResponse appendRequestStreamName records
+  S.AppendCompletion {..} <- S.appendBS scLDClient logId payload Nothing
+  let rids = V.zipWith API.RecordId (V.replicate (length records) appendCompLSN) [0..]
+  return $ API.AppendResponse sName rids
+  where
+    streamName  = textToCBytes sName
+    streamID    = S.mkStreamId S.StreamTypeStream streamName
+    key         = textToCBytes <$> partitionKey
 
 --------------------------------------------------------------------------------
 
