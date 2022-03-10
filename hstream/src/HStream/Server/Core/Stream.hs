@@ -11,7 +11,7 @@ module HStream.Server.Core.Stream
 import           Control.Exception                (catch, throwIO)
 import           Control.Monad                    (unless, void, when)
 import qualified Data.ByteString                  as BS
-import           Data.Maybe                       (isJust)
+import           Data.Maybe                       (fromMaybe, isJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import qualified Data.Vector                      as V
@@ -103,7 +103,8 @@ listStreams
 listStreams ServerContext{..} API.ListStreamsRequest = do
   streams <- S.findStreams scLDClient S.StreamTypeStream
   V.forM (V.fromList streams) $ \stream -> do
-    r <- S.getStreamReplicaFactor scLDClient stream
+    -- FIXME: should the default value be 0?
+    r <- fromMaybe 0 . S.attrValue . S.logReplicationFactor <$> S.getStreamLogAttrs scLDClient stream
     return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r)
 
 appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse

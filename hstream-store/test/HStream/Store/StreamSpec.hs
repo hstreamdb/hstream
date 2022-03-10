@@ -99,7 +99,7 @@ base = describe "BaseSpec" $ do
     S.doesStreamExist client newStreamId `shouldReturn` True
 
   it "stream replication factor" $ do
-    S.getStreamReplicaFactor client newStreamId `shouldReturn` 1
+    S.logReplicationFactor <$> S.getStreamLogAttrs client newStreamId `shouldReturn` S.defAttr1 1
 
   it "stream head record timestamp" $ do
     -- since there is no records in this stream
