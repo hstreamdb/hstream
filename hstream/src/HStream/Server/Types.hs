@@ -145,7 +145,7 @@ data ConsumerWorkload = ConsumerWorkload
     cwShardCount :: Int
   }
 instance Eq ConsumerWorkload where
-  (==) w1 w2 = cwConsumerName == cwConsumerName && cwShardCount w1 == cwShardCount w2 
+  (==) w1 w2 = cwConsumerName w1 == cwConsumerName w2 && cwShardCount w1 == cwShardCount w2 
 instance Ord ConsumerWorkload where
   (<=) w1 w2 = w1 == w2 || cwShardCount w1 < cwShardCount w2 
 
@@ -155,15 +155,15 @@ type OrderingKey = T.Text
 data ShardRecordId = ShardRecordId {
   sriBatchId :: Word64,
   sriBatchIndex :: Word32
-} deriving (Eq, Show)
+} deriving (Eq, Ord, Show)
 
 instance Bounded ShardRecordId where
   minBound = ShardRecordId minBound minBound
   maxBound = ShardRecordId maxBound maxBound
 
 data ShardRecordIdRange = ShardRecordIdRange
-  { startShardRecordId :: ShardRecordId,
-    endShardRecordId   :: ShardRecordId
+  { startRecordId :: ShardRecordId,
+    endRecordId   :: ShardRecordId
   } deriving (Eq, Show)
 
 printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
