@@ -98,7 +98,17 @@ deleteSubscriptionHandler
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ undefined
+  { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
+  Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
+
+  hr <- readMVar loadBalanceHashRing
+  unless (getAllocatedNodeId hr subId == serverID) $
+    throwIO SubscriptionWatchOnDifferentNode
+
+  subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
+  when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
+  Core.deleteSubscription ctx (fromJust subscription)
+  returnResp Empty
 -- --------------------------------------------------------------------------------
 
 checkSubscriptionExistHandler
