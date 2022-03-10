@@ -229,7 +229,6 @@ doSubInit ServerContext{..} subId = do
             SubscribeContext
               { subSubscriptionId = subId,
                 subStreamName = subscriptionStreamName ,
-                --TODO: check unit
                 subAckTimeoutSeconds = subscriptionAckTimeoutSeconds,
                 subLdCkpReader = ldCkpReader, 
                 subLdReader = ldReader,
@@ -331,7 +330,6 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
           recordBatches <- readRecordBatches
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches 
           sendReceivedRecordsVecs receivedRecordsVecs  
-          -- TODO: resend
           loop
         else 
           return ()
