@@ -393,7 +393,7 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
             if Set.member logId skipSet
             then return skipSet
             else do
-              ok <- sendReceivedRecords logId batchId vec
+              ok <- sendReceivedRecords logId batchId vec False
               if ok
               then return skipSet
               else return $ Set.insert logId skipSet
@@ -430,10 +430,8 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
               Log.error $ "send records error, will remove the consumer: " <> show err
               atomically $ invalidConsumer subCtx consumerName 
               if not isResent
-              then do 
-                let ReceivedRecord {..} = V.head records
-                    lsn = recordIdBatchId receivedRecordRecordId
-                resetReadingOffset logId lsn
+              then 
+                resetReadingOffset logId batchId 
               else pure ()
               return False
             Right _ -> do
@@ -459,19 +457,14 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
         S.readerStartReading subLdReader logId batchId batchId 
         dataRecord <- S.readerRead ldreader 1 
         let (_, _, records) = decodeRecordBatch dataRecord 
-        if length records /= V.length recordIds
-          then do
-            Log.fatal $ "unexpected error: read records error"
-          else do
-            let 
-              resendRecords = 
-                V.foldl' 
-                  (\a RecordId {..} -> 
-                    V.snoc a (records ! recordIdBatchIndex) 
-                  ) 
-                  V.empty
-                  resendRecordIds
-            sendReceivedRecords logId batchId resendRecords
+            resendRecords = 
+              V.foldl' 
+                (\a RecordId {..} -> 
+                  V.snoc a (records ! recordIdBatchIndex) 
+                ) 
+                V.empty
+                resendRecordIds
+        sendReceivedRecords logId batchId resendRecords True
       
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       flip V.filter recordIds $ \recordId ->
