@@ -12,10 +12,10 @@
 
 module HStream.Server.Handler.Subscription
   (
-    -- createSubscriptionHandler,
-    -- deleteSubscriptionHandler,
-    -- listSubscriptionsHandler,
-    -- checkSubscriptionExistHandler,
+    createSubscriptionHandler,
+    deleteSubscriptionHandler,
+    listSubscriptionsHandler,
+    checkSubscriptionExistHandler,
     -- watchSubscriptionHandler,
     streamingFetchHandler,
     -- routineForSubs,
@@ -78,61 +78,49 @@ import           HStream.Utils                    (cBytesToText, decodeBatch,
 
 --------------------------------------------------------------------------------
 
--- createSubscriptionHandler
---   :: ServerContext
---   -> ServerRequest 'Normal Subscription Subscription
---   -> IO (ServerResponse 'Normal Subscription)
--- createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata sub@Subscription{..}) = defaultExceptionHandle $ do
---   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
---   bindSubToStreamPath zkHandle streamName subName
---   catch (Core.createSubscription ctx sub) $
---     \(e :: StreamNotExist) -> removeSubFromStreamPath zkHandle streamName subName >> throwIO e
---   returnResp sub
---   where
---     streamName = textToCBytes subscriptionStreamName
---     subName = textToCBytes subscriptionSubscriptionId
+createSubscriptionHandler
+  :: ServerContext
+  -> ServerRequest 'Normal Subscription Subscription
+  -> IO (ServerResponse 'Normal Subscription)
+createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata sub@Subscription{..}) = defaultExceptionHandle $ do
+  Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
+  bindSubToStreamPath zkHandle streamName subName
+  catch (Core.createSubscription ctx sub) $
+    \(e :: StreamNotExist) -> removeSubFromStreamPath zkHandle streamName subName >> throwIO e
+  returnResp sub
+  where
+    streamName = textToCBytes subscriptionStreamName
+    subName = textToCBytes subscriptionSubscriptionId
 --------------------------------------------------------------------------------
 
--- -- FIXME: depend on memory info to deal with delete operation may be wrong, even if all the create/delete requests
--- -- are redirected to same server. What if this server crash, or the consistante hash choose another server to deal
--- -- these requests? We need some way to rebuild all these memory infos first.
--- deleteSubscriptionHandler
---   :: ServerContext
---   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
---   -> IO (ServerResponse 'Normal Empty)
--- deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
---   { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
---   hr <- readMVar loadBalanceHashRing
---   unless (getAllocatedNodeId hr subId == serverID) $
---     throwIO SubscriptionWatchOnDifferentNode
---
---   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
---   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
---   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
---   Core.deleteSubscription ctx (fromJust subscription)
---   returnResp Empty
+deleteSubscriptionHandler
+  :: ServerContext
+  -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
+  { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ undefined
 -- --------------------------------------------------------------------------------
---
--- checkSubscriptionExistHandler
---   :: ServerContext
---   -> ServerRequest 'Normal CheckSubscriptionExistRequest CheckSubscriptionExistResponse
---   -> IO (ServerResponse 'Normal CheckSubscriptionExistResponse)
--- checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
---   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
---   let sid = checkSubscriptionExistRequestSubscriptionId
---   res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
---   returnResp . CheckSubscriptionExistResponse $ res
+
+checkSubscriptionExistHandler
+  :: ServerContext
+  -> ServerRequest 'Normal CheckSubscriptionExistRequest CheckSubscriptionExistResponse
+  -> IO (ServerResponse 'Normal CheckSubscriptionExistResponse)
+checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
+  Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
+  let sid = checkSubscriptionExistRequestSubscriptionId
+  res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
+  returnResp . CheckSubscriptionExistResponse $ res
 -- --------------------------------------------------------------------------------
---
--- listSubscriptionsHandler
---   :: ServerContext
---   -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
---   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
--- listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
---   Log.debug "Receive listSubscriptions request"
---   res <- ListSubscriptionsResponse <$> Core.listSubscriptions sc
---   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
---   returnResp res
+
+listSubscriptionsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
+  -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
+listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
+  Log.debug "Receive listSubscriptions request"
+  res <- ListSubscriptionsResponse <$> Core.listSubscriptions sc
+  Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
+  returnResp res
 -- --------------------------------------------------------------------------------
 
 streamingFetchHandler

@@ -9,7 +9,7 @@
 module HStream.Server.Handler
   (
     handlers,
-    routineForSubs
+    -- routineForSubs
   )
 where
 
@@ -49,7 +49,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListSubscriptions = listSubscriptionsHandler serverContext,
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
 
-        hstreamApiWatchSubscription = watchSubscriptionHandler serverContext,
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
