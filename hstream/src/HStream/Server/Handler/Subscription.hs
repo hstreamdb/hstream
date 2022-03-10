@@ -24,12 +24,13 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Concurrent.STM
 import           Control.Concurrent.Async         (concurrently_)
-import           Control.Exception                (catch, onException, throwIO,
-                                                   try, Exception)
-import           Control.Monad                    (forM_, unless, when, foldM_, foldM)
-import qualified Data.ByteString as B
+import           Control.Concurrent.STM
+import           Control.Exception                (Exception, catch,
+                                                   onException, throwIO, try)
+import           Control.Monad                    (foldM, foldM_, forM_, unless,
+                                                   when)
+import qualified Data.ByteString                  as B
 import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -72,8 +73,8 @@ import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (cBytesToText, returnResp,
-                                                   textToCBytes, decodeBatch)
+import           HStream.Utils                    (cBytesToText, decodeBatch,
+                                                   returnResp, textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -104,14 +105,14 @@ import           HStream.Utils                    (cBytesToText, returnResp,
 --   hr <- readMVar loadBalanceHashRing
 --   unless (getAllocatedNodeId hr subId == serverID) $
 --     throwIO SubscriptionWatchOnDifferentNode
--- 
+--
 --   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 --   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
 --   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
 --   Core.deleteSubscription ctx (fromJust subscription)
 --   returnResp Empty
 -- --------------------------------------------------------------------------------
--- 
+--
 -- checkSubscriptionExistHandler
 --   :: ServerContext
 --   -> ServerRequest 'Normal CheckSubscriptionExistRequest CheckSubscriptionExistResponse
@@ -122,7 +123,7 @@ import           HStream.Utils                    (cBytesToText, returnResp,
 --   res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
 --   returnResp . CheckSubscriptionExistResponse $ res
 -- --------------------------------------------------------------------------------
--- 
+--
 -- listSubscriptionsHandler
 --   :: ServerContext
 --   -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
@@ -138,7 +139,7 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx bidiRequest = 
+streamingFetchHandler ctx bidiRequest =
   try (streamingFetchInternal ctx bidiRequest) >>= \case
     Right _ -> return $
       ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
@@ -161,22 +162,22 @@ streamingFetchInternal
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO ()
 streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
-  StreamingFetchRequest {..} <- firstRecv 
-  wrapper@SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId 
+  StreamingFetchRequest {..} <- firstRecv
+  wrapper@SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName streamSend
   recvAcks ctx scwState scwContext consumerCtx streamRecv
   where
-    firstRecv :: IO StreamingFetchRequest 
-    firstRecv = 
+    firstRecv :: IO StreamingFetchRequest
+    firstRecv =
       streamRecv >>= \case
         Left _                -> throwIO GRPCStreamRecvError
         Right Nothing         -> throwIO GRPCStreamRecvCloseError
-        Right (Just firstReq) -> return firstReq 
+        Right (Just firstReq) -> return firstReq
 
 initSub :: ServerContext -> SubscriptionId -> IO SubscribeContextWrapper
 initSub serverCtx@ServerContext {..} subId = do
   (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
-    subMap <- readTVar scSubscribeContexts 
+    subMap <- readTVar scSubscribeContexts
     case HM.lookup subId subMap of
       Nothing -> do
         state <- newTVar SubscribeStateNew
@@ -188,9 +189,9 @@ initSub serverCtx@ServerContext {..} subId = do
       Just wrapper@SubscribeContextNewWrapper {..} -> do
         state <- readTVar scnwState
         case state of
-          SubscribeStateNew -> retry
+          SubscribeStateNew     -> retry
           SubscribeStateRunning -> return (False, wrapper)
-          _ -> throwSTM SubscribeInValidError 
+          _                     -> throwSTM SubscribeInValidError
   if needInit
     then do
       subCtx <- doSubInit serverCtx subId
@@ -198,7 +199,7 @@ initSub serverCtx@ServerContext {..} subId = do
         writeTVar scnwContext (Just subCtx)
         writeTVar scnwState SubscribeStateRunning
         return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
-      forkIO $ sendRecords serverCtx scwState scwContext 
+      forkIO $ sendRecords serverCtx scwState scwContext
       return wrapper
     else do
       mctx <- readTVarIO scnwContext
@@ -209,10 +210,10 @@ doSubInit ServerContext{..} subId = do
   P.getObject subId zkHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
-      throwIO $ SubscriptionIdNotFound subId 
+      throwIO $ SubscriptionIdNotFound subId
     Just Subscription {..} -> do
       -- create a ldCkpReader for reading new records
-      let readerName = textToCBytes subId 
+      let readerName = textToCBytes subId
       ldCkpReader <-
         --TODO: check this
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
@@ -223,28 +224,28 @@ doSubInit ServerContext{..} subId = do
       ldReader <- S.newLDReader scLDClient 5000 Nothing
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
-      consumerContexts <- newTVarIO HM.empty 
-      shardContexts <- newTVarIO HM.empty 
+      consumerContexts <- newTVarIO HM.empty
+      shardContexts <- newTVarIO HM.empty
       assignment <- mkEmptyAssignment
       let emptySubCtx =
             SubscribeContext
               { subSubscriptionId = subId,
                 subStreamName = subscriptionStreamName ,
                 subAckTimeoutSeconds = subscriptionAckTimeoutSeconds,
-                subLdCkpReader = ldCkpReader, 
+                subLdCkpReader = ldCkpReader,
                 subLdReader = ldReader,
                 subConsumerContexts = consumerContexts,
                 subShardContexts = shardContexts,
                 subAssignment = assignment
               }
-      shards <- getShards subscriptionStreamName 
+      shards <- getShards subscriptionStreamName
       addNewShardsToSubCtx emptySubCtx shards
       return emptySubCtx
   where
     mkEmptyAssignment :: IO Assignment
-    mkEmptyAssignment = do 
+    mkEmptyAssignment = do
       total <- newTVarIO Set.empty
-      unassign <- newTVarIO [] 
+      unassign <- newTVarIO []
       waitingRead <- newTVarIO []
       waitingReassign <- newTVarIO []
       wc <- newTVarIO []
@@ -252,57 +253,57 @@ doSubInit ServerContext{..} subId = do
       c2s <- newTVarIO HM.empty
       cws <- newTVarIO Set.empty
 
-      return 
+      return
         Assignment
-          { totalShards = total, 
-            unassignedShards = unassign, 
-            waitingReadShards = waitingRead, 
-            waitingReassignedShards = waitingReassign, 
-            waitingConsumers = wc, 
+          { totalShards = total,
+            unassignedShards = unassign,
+            waitingReadShards = waitingRead,
+            waitingReassignedShards = waitingReassign,
+            waitingConsumers = wc,
             shard2Consumer = s2c,
             consumer2Shards = c2s,
-            consumerWorkloads = cws 
+            consumerWorkloads = cws
           }
 
     getShards :: T.Text -> IO [S.C_LogID]
     getShards streamName = undefined
 
-addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()  
-addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do  
+addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
+addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do
   let Assignment {..} = subAssignment
   oldTotal <- readTVar totalShards
-  oldUnassign <- readTVar unassignedShards 
-  oldShardCtxs <- readTVar subShardContexts 
-  (newTotal, newUnassign, newShardCtxs) <- 
-    foldM 
+  oldUnassign <- readTVar unassignedShards
+  oldShardCtxs <- readTVar subShardContexts
+  (newTotal, newUnassign, newShardCtxs) <-
+    foldM
       (
-        \ (ot, ou, os) l -> 
-          if Set.member l ot 
-          then return (ot, ou, os)      
+        \ (ot, ou, os) l ->
+          if Set.member l ot
+          then return (ot, ou, os)
           else do
-            lb <- newTVar $ ShardRecordId S.LSN_MIN 0 
-            ub <- newTVar maxBound 
+            lb <- newTVar $ ShardRecordId S.LSN_MIN 0
+            ub <- newTVar maxBound
             ar <- newTVar $ Map.empty
             bn <- newTVar $ Map.empty
             let ackWindow = AckWindow
                   { awWindowLowerBound = lb,
                     awWindowUpperBound = ub,
                     awAckedRanges = ar,
-                    awBatchNumMap = bn 
+                    awBatchNumMap = bn
                   }
-                subShardCtx = SubscribeShardContext {sscAckWindow = ackWindow, sscLogId = l} 
-            return (Set.insert l ot, ou ++ [l], HM.insert l subShardCtx os) 
+                subShardCtx = SubscribeShardContext {sscAckWindow = ackWindow, sscLogId = l}
+            return (Set.insert l ot, ou ++ [l], HM.insert l subShardCtx os)
       )
       (oldTotal, oldUnassign, oldShardCtxs)
       shards
   writeTVar totalShards newTotal
-  writeTVar unassignedShards newUnassign 
-  writeTVar subShardContexts newShardCtxs 
+  writeTVar unassignedShards newUnassign
+  writeTVar subShardContexts newShardCtxs
 
-initConsumer :: SubscribeContext -> ConsumerName -> StreamSend StreamingFetchResponse -> IO ConsumerContext 
-initConsumer SubscribeContext {..} consumerName streamSend = do 
+initConsumer :: SubscribeContext -> ConsumerName -> StreamSend StreamingFetchResponse -> IO ConsumerContext
+initConsumer SubscribeContext {..} consumerName streamSend = do
   ss <- newMVar streamSend
-  atomically $ do 
+  atomically $ do
     let Assignment {..} = subAssignment
     oldWcs <- readTVar waitingConsumers
     writeTVar waitingConsumers (oldWcs ++ [consumerName])
@@ -311,7 +312,7 @@ initConsumer SubscribeContext {..} consumerName streamSend = do
     let cc = ConsumerContext
               { ccConsumerName = consumerName,
                 ccIsValid = iv,
-                ccStreamSend = ss 
+                ccStreamSend = ss
               }
     oldCcs <- readTVar subConsumerContexts
     writeTVar subConsumerContexts (HM.insert consumerName cc oldCcs)
@@ -331,24 +332,24 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
             assignWaitingConsumers subAssignment
           addRead subLdCkpReader subAssignment
           recordBatches <- readRecordBatches
-          let receivedRecordsVecs = fmap decodeRecordBatch recordBatches 
-          sendReceivedRecordsVecs receivedRecordsVecs  
+          let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
+          sendReceivedRecordsVecs receivedRecordsVecs
           loop
-        else 
+        else
           return ()
 
     addRead :: S.LDSyncCkpReader -> Assignment -> IO ()
-    addRead ldCkpReader Assignment {..} = do 
+    addRead ldCkpReader Assignment {..} = do
       shards <- atomically $ do
         shards <- readTVar waitingReadShards
         writeTVar waitingReadShards []
         return shards
-      forM_ 
-        shards 
+      forM_
+        shards
         (\shard -> S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX)
 
     readRecordBatches :: IO [S.DataRecord Bytes]
-    readRecordBatches = 
+    readRecordBatches =
       S.ckpReaderReadAllowGap subLdCkpReader 1000 >>= \case
         Left gap@S.GapRecord {..} -> do
           atomically $ do
@@ -360,7 +361,7 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
             -- insert gap range to ackedRanges
             let gapLoRecordId = ShardRecordId gapLoLSN minBound
                 gapHiRecordId = ShardRecordId gapHiLSN maxBound
-                newRanges = Map.insert gapLoRecordId (ShardRecordIdRange gapLoRecordId gapHiRecordId) ranges 
+                newRanges = Map.insert gapLoRecordId (ShardRecordIdRange gapLoRecordId gapHiRecordId) ranges
                 -- also need to insert lo_lsn record and hi_lsn record to batchNumMap
                 -- because we need to use these info in `tryUpdateWindowLowerBound` function later.
                 groupNums = map (, 0) [gapLoLSN, gapHiLSN]
@@ -371,23 +372,23 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
         Right dataRecords -> return dataRecords
 
     decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
-    decodeRecordBatch dataRecord = 
+    decodeRecordBatch dataRecord =
       let payload = S.recordPayload dataRecord
-          logId = S.recordLogID dataRecord 
+          logId = S.recordLogID dataRecord
           batchId = S.recordLSN dataRecord
           recordBatch = decodeBatch payload
-          batch = hstreamRecordBatchBatch recordBatch         
-          (shardRecordIds, receivedRecords) = mkReceivedRecords logId batchId batch 
+          batch = hstreamRecordBatchBatch recordBatch
+          (shardRecordIds, receivedRecords) = mkReceivedRecords logId batchId batch
       in
           (logId, batchId, shardRecordIds, receivedRecords)
-        
+
 
     mkReceivedRecords :: S.C_LogID -> Word64 -> V.Vector B.ByteString -> (V.Vector ShardRecordId, V.Vector ReceivedRecord)
     mkReceivedRecords logId batchId records =
-      let 
-          shardRecordIds = V.imap (\ i a -> ShardRecordId batchId (fromIntegral i))  records   
-          receivedRecords = V.imap (\ i a -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) records   
-      in  (shardRecordIds, receivedRecords) 
+      let
+          shardRecordIds = V.imap (\ i a -> ShardRecordId batchId (fromIntegral i))  records
+          receivedRecords = V.imap (\ i a -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) records
+      in  (shardRecordIds, receivedRecords)
 
     sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)] -> IO ()
     sendReceivedRecordsVecs vecs =
@@ -405,14 +406,14 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
         Set.empty
         vecs
 
-    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> V.Vector ReceivedRecord -> Bool -> IO Bool 
-    sendReceivedRecords logId batchId shardRecordIds records isResent = do 
+    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> V.Vector ReceivedRecord -> Bool -> IO Bool
+    sendReceivedRecords logId batchId shardRecordIds records isResent = do
       let Assignment {..} = subAssignment
       mres <- atomically $ do
-        if not isResent 
+        if not isResent
         then do
           scs <- readTVar subShardContexts
-          let SubscribeShardContext {..} = scs HM.! logId 
+          let SubscribeShardContext {..} = scs HM.! logId
               AckWindow {..} = sscAckWindow
           batchNumMap <- readTVar awBatchNumMap
           let newBatchNumMap = Map.insert batchId (fromIntegral $ V.length records) batchNumMap
@@ -420,28 +421,28 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
         else pure ()
 
         s2c <- readTVar shard2Consumer
-        let consumer = s2c HM.! logId 
-        ccs <- readTVar subConsumerContexts 
+        let consumer = s2c HM.! logId
+        ccs <- readTVar subConsumerContexts
         let ConsumerContext {..} = ccs HM.! consumer
         iv <- readTVar ccIsValid
-        if iv 
+        if iv
         then return $ Just (ccConsumerName, ccStreamSend)
-        else return Nothing 
+        else return Nothing
       case mres of
-        Nothing -> return False 
-        Just (consumerName, streamSend) -> 
+        Nothing -> return False
+        Just (consumerName, streamSend) ->
           withMVar streamSend (\ss -> ss (StreamingFetchResponse records)) >>= \case
             Left err -> do
               Log.fatal $ "send records error, will remove the consumer: " <> (Log.buildString $ show err)
-              atomically $ invalidConsumer subCtx consumerName 
+              atomically $ invalidConsumer subCtx consumerName
               if not isResent
-              then 
-                resetReadingOffset logId batchId 
+              then
+                resetReadingOffset logId batchId
               else pure ()
               return False
             Right _ -> do
-              registerResend logId batchId shardRecordIds 
-              return True 
+              registerResend logId batchId shardRecordIds
+              return True
 
     registerResend logId batchId recordIds =
       void $ registerLowResTimer
@@ -451,44 +452,44 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
     resendTimeoutRecords logId batchId recordIds = do
       resendRecordIds <- atomically $ do
         scs <- readTVar subShardContexts
-        let SubscribeShardContext {..} = scs HM.! logId 
-            AckWindow {..} = sscAckWindow 
+        let SubscribeShardContext {..} = scs HM.! logId
+            AckWindow {..} = sscAckWindow
         ranges <- readTVar awAckedRanges
         lb <- readTVar awWindowLowerBound
-        return $ filterUnackedRecordIds recordIds ranges lb 
+        return $ filterUnackedRecordIds recordIds ranges lb
 
-      if V.null resendRecordIds 
+      if V.null resendRecordIds
       then return ()
       else do
-        S.readerStartReading subLdReader logId batchId batchId 
-        dataRecord <- S.readerRead subLdReader 1 
-        if length dataRecord /= 1 
-        then do 
+        S.readerStartReading subLdReader logId batchId batchId
+        dataRecord <- S.readerRead subLdReader 1
+        if length dataRecord /= 1
+        then do
           -- TODO: handle error here
           Log.fatal . Log.buildString $ "read error"
         else do
-          let (_, _, _, records) = decodeRecordBatch $ head dataRecord 
-              resendRecords = 
-                V.foldl' 
-                  (\a ShardRecordId {..} -> 
-                    V.snoc a (records V.! fromIntegral sriBatchIndex) 
-                  ) 
+          let (_, _, _, records) = decodeRecordBatch $ head dataRecord
+              resendRecords =
+                V.foldl'
+                  (\a ShardRecordId {..} ->
+                    V.snoc a (records V.! fromIntegral sriBatchIndex)
+                  )
                   V.empty
                   resendRecordIds
           void $ sendReceivedRecords logId batchId resendRecordIds resendRecords True
-      
+
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
       flip V.filter recordIds $ \recordId ->
         (recordId >= windowLowerBound)
           && case Map.lookupLE recordId ackedRanges of
-            Nothing                               -> True
+            Nothing                                    -> True
             Just (_, ShardRecordIdRange _ endRecordId) -> recordId > endRecordId
 
-      
+
 
     resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
-    resetReadingOffset logId startOffset = do 
-      S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX 
+    resetReadingOffset logId startOffset = do
+      S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX
 
 assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do
@@ -595,10 +596,10 @@ assignWaitingConsumers assignment@Assignment {..} = do
       writeTVar shard2Consumer newS2c
       return shard
 
-recvAcks :: ServerContext -> TVar SubscribeState -> SubscribeContext -> ConsumerContext ->  (StreamRecv StreamingFetchRequest) -> IO () 
-recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContext {..} streamRecv = loop 
+recvAcks :: ServerContext -> TVar SubscribeState -> SubscribeContext -> ConsumerContext ->  (StreamRecv StreamingFetchRequest) -> IO ()
+recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContext {..} streamRecv = loop
   where
-    loop = do 
+    loop = do
       check
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
@@ -612,27 +613,27 @@ recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContex
           throwIO GRPCStreamRecvCloseError
         Right (Just StreamingFetchRequest {..}) ->
           if V.null streamingFetchRequestAckIds
-            then loop 
+            then loop
             else do
               doAcks scLDClient subCtx streamingFetchRequestAckIds
               loop
 
     -- throw error when check can not pass
-    check :: IO () 
-    check = do 
+    check :: IO ()
+    check = do
       ss <- readTVarIO subState
-      if ss /= SubscribeStateRunning 
+      if ss /= SubscribeStateRunning
       then throwIO SubscribeInValidError
-      else do 
+      else do
         cv <- readTVarIO ccIsValid
         if cv
         then return ()
-        else throwIO ConsumerInValidError 
-      
+        else throwIO ConsumerInValidError
+
 
 doAcks
   :: S.LDClient
-  -> SubscribeContext  
+  -> SubscribeContext
   -> V.Vector RecordId
   -> IO ()
 doAcks ldclient subCtx ackRecordIds = do
@@ -640,25 +641,25 @@ doAcks ldclient subCtx ackRecordIds = do
   forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
   where
     groupRecordIds :: V.Vector RecordId -> HM.HashMap S.C_LogID (V.Vector RecordId)
-    groupRecordIds recordIds =  
+    groupRecordIds recordIds =
       V.foldl'
         (
-          \ g r -> 
-            let shardId = recordIdShardId r 
-            in 
-                if HM.member shardId g 
-                then 
+          \ g r ->
+            let shardId = recordIdShardId r
+            in
+                if HM.member shardId g
+                then
                   let ov = g HM.! shardId
-                  in  HM.insert shardId (V.snoc ov r) g 
+                  in  HM.insert shardId (V.snoc ov r) g
                 else
-                  HM.insert shardId (V.singleton r) g 
+                  HM.insert shardId (V.singleton r) g
         )
         HM.empty
         recordIds
 
 doAck
   :: S.LDClient
-  -> SubscribeContext  
+  -> SubscribeContext
   -> S.C_LogID
   -> V.Vector RecordId
   -> IO ()
@@ -672,25 +673,25 @@ doAck ldclient SubscribeContext {..} logId recordIds= do
     ars <- readTVar awAckedRanges
     bnm <- readTVar awBatchNumMap
     let shardRecordIds = recordIds2ShardRecordIds recordIds
-    let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b lb a bnm) ars shardRecordIds 
-    let commitShardRecordId = getCommitRecordId newAckedRanges bnm 
+    let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b lb a bnm) ars shardRecordIds
+    let commitShardRecordId = getCommitRecordId newAckedRanges bnm
     case tryUpdateWindowLowerBound newAckedRanges lb bnm commitShardRecordId of
-      Just (ranges, newLowerBound) -> do 
+      Just (ranges, newLowerBound) -> do
         let batchId = sriBatchId $ fromJust commitShardRecordId
-        let newBatchNumMap = Map.dropWhileAntitone (<= batchId) bnm 
+        let newBatchNumMap = Map.dropWhileAntitone (<= batchId) bnm
         writeTVar awAckedRanges ranges
         writeTVar awWindowLowerBound newLowerBound
-        writeTVar awBatchNumMap newBatchNumMap 
+        writeTVar awBatchNumMap newBatchNumMap
         return (Just batchId)
-      Nothing -> do 
-        writeTVar awAckedRanges newAckedRanges 
+      Nothing -> do
+        writeTVar awAckedRanges newAckedRanges
         return Nothing
   case res of
     Just lsn -> S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn)
-    Nothing -> return ()
-    
+    Nothing  -> return ()
+
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()
-invalidConsumer SubscribeContext{..} consumer = do 
+invalidConsumer SubscribeContext{..} consumer = do
   ccs <- readTVar subConsumerContexts
   let cc@ConsumerContext {..} = ccs HM.! consumer
   iv <- readTVar ccIsValid
@@ -706,8 +707,8 @@ invalidConsumer SubscribeContext{..} consumer = do
     let nc2s = HM.delete consumer c2s
     writeTVar consumer2Shards nc2s
 
-    rs <- readTVar waitingReassignedShards 
-    s2c <- readTVar shard2Consumer 
+    rs <- readTVar waitingReassignedShards
+    s2c <- readTVar shard2Consumer
     (nrs, ns2c) <- foldM
       (
         \ (nrs, ns2c) s ->
@@ -715,12 +716,12 @@ invalidConsumer SubscribeContext{..} consumer = do
       )
       (rs, s2c)
       works
-    writeTVar waitingReassignedShards nrs 
-    writeTVar shard2Consumer ns2c 
-    
+    writeTVar waitingReassignedShards nrs
+    writeTVar shard2Consumer ns2c
+
     let nccs = HM.delete consumer ccs
-    writeTVar subConsumerContexts nccs 
-  else pure () 
+    writeTVar subConsumerContexts nccs
+  else pure ()
 
 tryUpdateWindowLowerBound
   :: Map.Map ShardRecordId ShardRecordIdRange -- ^ ackedRanges
@@ -748,10 +749,10 @@ data SubscribeInnerError = GRPCStreamRecvError
                              | GRPCStreamRecvCloseError
                              | GRPCStreamSendError
                              | ConsumerInValidError
-                             | SubscribeInValidError 
+                             | SubscribeInValidError
   deriving (Show)
 instance Exception SubscribeInnerError
 
 recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
-recordIds2ShardRecordIds = 
+recordIds2ShardRecordIds =
       V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})

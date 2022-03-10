@@ -26,7 +26,7 @@ import           HStream.Utils                 (textToCBytes)
 -- listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 -- listSubscriptions ServerContext{..} =
 --   V.fromList . Map.elems <$> P.listObjects zkHandle
--- 
+--
 -- createSubscription :: ServerContext -> Subscription -> IO ()
 -- createSubscription ServerContext {..} sub@Subscription{..} = do
 --   let streamName = transToStreamName subscriptionStreamName
@@ -36,7 +36,7 @@ import           HStream.Utils                 (textToCBytes)
 --               <> Log.buildString' streamName
 --     throwIO StreamNotExist
 --   P.storeObject subscriptionSubscriptionId sub zkHandle
--- 
+--
 -- deleteSubscription :: ServerContext -> Subscription -> IO ()
 -- deleteSubscription ServerContext {..} Subscription{subscriptionSubscriptionId = subId
 --   , subscriptionStreamName = streamName} = do
@@ -52,9 +52,9 @@ import           HStream.Utils                 (textToCBytes)
 --   P.removeObject @ZHandle @'P.SubRep subId zkHandle
 --   modifyMVar_ scSubscribeRuntimeInfo $ \subMap -> do
 --     return $ HM.delete subId subMap
--- 
+--
 -- --------------------------------------------------------------------------------
--- 
+--
 -- checkNotActive :: WatchContext -> IO ()
 -- checkNotActive WatchContext {..}
 --   | HM.null wcWatchStopSignals && Set.null wcWorkingConsumers

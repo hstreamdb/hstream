@@ -7,7 +7,7 @@
 module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
-import Control.Concurrent.STM
+import           Control.Concurrent.STM
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
@@ -26,9 +26,7 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (
-                                                   StreamingFetchResponse
-                                                   )
+import           HStream.Server.HStreamApi        (StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
@@ -82,12 +80,12 @@ data ServerContext = ServerContext {
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
-  { scnwState :: TVar SubscribeState,
+  { scnwState   :: TVar SubscribeState,
     scnwContext :: TVar (Maybe SubscribeContext)
   }
 
 data SubscribeContextWrapper = SubscribeContextWrapper
-  { scwState :: TVar SubscribeState,
+  { scwState   :: TVar SubscribeState,
     scwContext :: SubscribeContext
   }
 
@@ -99,34 +97,34 @@ data SubscribeState
   deriving (Eq, Show)
 
 data SubscribeContext = SubscribeContext
-  { subSubscriptionId :: T.Text,
-    subStreamName :: T.Text,
+  { subSubscriptionId    :: T.Text,
+    subStreamName        :: T.Text,
     subAckTimeoutSeconds :: Int32,
-    subLdCkpReader :: HS.LDSyncCkpReader,
-    subLdReader :: HS.LDReader,
-    subConsumerContexts :: TVar (HM.HashMap ConsumerName ConsumerContext),
-    subShardContexts :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
-    subAssignment :: Assignment
+    subLdCkpReader       :: HS.LDSyncCkpReader,
+    subLdReader          :: HS.LDReader,
+    subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
+    subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
+    subAssignment        :: Assignment
   }
 
 data ConsumerContext = ConsumerContext
   { ccConsumerName :: ConsumerName,
-    ccIsValid :: TVar Bool,
+    ccIsValid      :: TVar Bool,
     -- use MVar for streamSend because only on thread can use streamSend at the
     -- same time
-    ccStreamSend :: MVar (StreamSend StreamingFetchResponse)
+    ccStreamSend   :: MVar (StreamSend StreamingFetchResponse)
   }
 
 data SubscribeShardContext = SubscribeShardContext
   { sscAckWindow :: AckWindow,
-    sscLogId :: HS.C_LogID
+    sscLogId     :: HS.C_LogID
   }
 
 data AckWindow = AckWindow
   { awWindowLowerBound :: TVar ShardRecordId,
     awWindowUpperBound :: TVar ShardRecordId,
-    awAckedRanges :: TVar (Map.Map ShardRecordId ShardRecordIdRange),
-    awBatchNumMap :: TVar (Map.Map Word64 Word32)
+    awAckedRanges      :: TVar (Map.Map ShardRecordId ShardRecordIdRange),
+    awBatchNumMap      :: TVar (Map.Map Word64 Word32)
   }
 
 data Assignment = Assignment
@@ -142,18 +140,18 @@ data Assignment = Assignment
 
 data ConsumerWorkload = ConsumerWorkload
   { cwConsumerName :: ConsumerName,
-    cwShardCount :: Int
+    cwShardCount   :: Int
   }
 instance Eq ConsumerWorkload where
-  (==) w1 w2 = cwConsumerName w1 == cwConsumerName w2 && cwShardCount w1 == cwShardCount w2 
+  (==) w1 w2 = cwConsumerName w1 == cwConsumerName w2 && cwShardCount w1 == cwShardCount w2
 instance Ord ConsumerWorkload where
-  (<=) w1 w2 = w1 == w2 || cwShardCount w1 < cwShardCount w2 
+  (<=) w1 w2 = w1 == w2 || cwShardCount w1 < cwShardCount w2
 
 type SubscriptionId = T.Text
 type OrderingKey = T.Text
 
 data ShardRecordId = ShardRecordId {
-  sriBatchId :: Word64,
+  sriBatchId    :: Word64,
   sriBatchIndex :: Word32
 } deriving (Eq, Ord, Show)
 
