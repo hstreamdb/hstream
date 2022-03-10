@@ -7,6 +7,7 @@
 module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
+import Control.Concurrent.STM
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
@@ -25,9 +26,9 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (RecordId (..),
-                                                   StreamingFetchResponse (..),
-                                                   WatchSubscriptionResponse (..))
+import           HStream.Server.HStreamApi        (
+                                                   StreamingFetchResponse
+                                                   )
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
@@ -101,8 +102,8 @@ data SubscribeContext = SubscribeContext
   { subSubscriptionId :: T.Text,
     subStreamName :: T.Text,
     subAckTimeoutSeconds :: Int32,
-    subLdCkpReader :: HS.LdCkpReader,
-    subLdReader :: HS.LdReader,
+    subLdCkpReader :: HS.LDSyncCkpReader,
+    subLdReader :: HS.LDReader,
     subConsumerContexts :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment :: Assignment
@@ -122,9 +123,9 @@ data SubscribeShardContext = SubscribeShardContext
   }
 
 data AckWindow = AckWindow
-  { awWindowLowerBound :: TVar RecordId,
-    awWindowUpperBound :: TVar RecordId,
-    awAckedRanges :: TVar (Map.Map RecordId RecordIdRange),
+  { awWindowLowerBound :: TVar ShardRecordId,
+    awWindowUpperBound :: TVar ShardRecordId,
+    awAckedRanges :: TVar (Map.Map ShardRecordId ShardRecordIdRange),
     awBatchNumMap :: TVar (Map.Map Word64 Word32)
   }
 
@@ -151,22 +152,21 @@ instance Ord ConsumerWorkload where
 type SubscriptionId = T.Text
 type OrderingKey = T.Text
 
-instance Bounded RecordId where
-  minBound = RecordId minBound minBound
-  maxBound = RecordId maxBound maxBound
+data ShardRecordId = ShardRecordId {
+  sriBatchId :: Word64,
+  sriBatchIndex :: Word32
+} deriving (Eq, Show)
 
-data RecordIdRange = RecordIdRange
-  { startRecordId :: RecordId,
-    endRecordId   :: RecordId
-  } deriving (Eq)
+instance Bounded ShardRecordId where
+  minBound = ShardRecordId minBound minBound
+  maxBound = ShardRecordId maxBound maxBound
 
-instance Show RecordIdRange where
-  show RecordIdRange{..} = "{(" <> show (recordIdBatchId startRecordId) <> ","
-                                <> show (recordIdBatchIndex startRecordId) <> "), ("
-                                <> show (recordIdBatchId endRecordId) <> ","
-                                <> show (recordIdBatchIndex endRecordId) <> ")}"
+data ShardRecordIdRange = ShardRecordIdRange
+  { startShardRecordId :: ShardRecordId,
+    endShardRecordId   :: ShardRecordId
+  } deriving (Eq, Show)
 
-printAckedRanges :: Map.Map RecordId RecordIdRange -> String
+printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
