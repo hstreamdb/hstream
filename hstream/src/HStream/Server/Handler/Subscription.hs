@@ -401,16 +401,19 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
         Set.empty
         vecs
 
-    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ReceivedRecord -> IO Bool 
-    sendReceivedRecords logId batchId records = do 
+    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ReceivedRecord -> Bool -> IO Bool 
+    sendReceivedRecords logId batchId records isResent = do 
       let Assignment {..} = subAssignment
       mres <- atomically $ do
-        scs <- readTVar subShardContexts
-        let SubscribeShardContext {..} = scs HM.! logId 
-            AckWindow {..} = sscAckWindow
-        batchNumMap <- readTVar awBatchNumMap
-        let newBatchNumMap = HM.insert batchId (v.length records) batchNumMap
-        writeTVar awBatchNumMap newBatchNumMap
+        if not isResent 
+        then do
+          scs <- readTVar subShardContexts
+          let SubscribeShardContext {..} = scs HM.! logId 
+              AckWindow {..} = sscAckWindow
+          batchNumMap <- readTVar awBatchNumMap
+          let newBatchNumMap = HM.insert batchId (v.length records) batchNumMap
+          writeTVar awBatchNumMap newBatchNumMap
+        else pure ()
 
         s2c <- readTVar shard2Consumer
         let consumer = s2c HM.! logId 
@@ -426,12 +429,56 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
             Left err -> do
               Log.error $ "send records error, will remove the consumer: " <> show err
               atomically $ invalidConsumer subCtx consumerName 
-              let ReceivedRecord {..} = V.head records
-                  lsn = recordIdBatchId receivedRecordRecordId
-              resetReadingOffset logId lsn
+              if not isResent
+              then do 
+                let ReceivedRecord {..} = V.head records
+                    lsn = recordIdBatchId receivedRecordRecordId
+                resetReadingOffset logId lsn
+              else pure ()
               return False
             Right _ -> do
+              let recordIds = V.map (fromJust . receivedRecordRecordId) records
+              registerResend logId batchId recordIds
               return True 
+
+    registerResend logId batchId recordIds =
+      void $ registerLowResTimer
+           (fromIntegral (subAckTimeoutSeconds * 10))
+           (void $ forkIO $ resendTimeoutRecords logId batchId recordIds)
+
+    resendTimeoutRecords logId batchId recordIds = do
+      resendRecordIds <- atomically $ do
+        scs <- readTVar subShardContexts
+        let SubscribeShardContext {..} = scs HM.! logId 
+            AckWindow {..} = sscAckWindow 
+        return $ filterUnackedRecordIds recordIds awAckedRanges awWindowLowerBound 
+
+      if V.null resendRecordIds
+      then return ()
+      else do
+        S.readerStartReading subLdReader logId batchId batchId 
+        dataRecord <- S.readerRead ldreader 1 
+        let (_, _, records) = decodeRecordBatch dataRecord 
+        if length records /= V.length recordIds
+          then do
+            Log.fatal $ "unexpected error: read records error"
+          else do
+            let 
+              resendRecords = 
+                V.foldl' 
+                  (\a RecordId {..} -> 
+                    V.snoc a (records ! recordIdBatchIndex) 
+                  ) 
+                  V.empty
+                  resendRecordIds
+            sendReceivedRecords logId batchId resendRecords
+      
+    filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
+      flip V.filter recordIds $ \recordId ->
+        (recordId >= windowLowerBound)
+          && case Map.lookupLE recordId ackedRanges of
+            Nothing                               -> True
+            Just (_, RecordIdRange _ endRecordId) -> recordId > endRecordId
 
     resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
     resetReadingOffset logId startOffset = do 
