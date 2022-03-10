@@ -15,7 +15,6 @@ Relatead ghc issues:
 
 module HStream.Store.Internal.LogDevice.LogConfigTypes where
 
-import           Control.Applicative                            (liftA2)
 import           Control.Exception                              (finally)
 import           Control.Monad                                  (void, when,
                                                                  (<=<))
@@ -44,17 +43,6 @@ import           HStream.Store.Internal.Types
 -------------------------------------------------------------------------------
 -- * LogAttributes
 
-{-# DEPRECATED hsLogAttrsToLDLogAttrs "" #-}
-hsLogAttrsToLDLogAttrs :: HsLogAttrs -> IO LDLogAttrs
-hsLogAttrsToLDLogAttrs HsLogAttrs{..} = do
-  let extras = Map.toList logExtraAttrs
-  let ks = map (CBytes.rawPrimArray . fst) extras
-      vs = map (CBytes.rawPrimArray . snd) extras
-  Z.withPrimArrayListUnsafe ks $ \ks' l ->
-    Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
-      i <- c_new_log_attributes (fromIntegral logReplicationFactor) l ks' vs'
-      newForeignPtr c_free_log_attributes_fun i
-
 getLogAttrsExtra :: LDLogAttrs -> CBytes -> IO (Maybe CBytes)
 getLogAttrsExtra attrs key = withForeignPtr attrs $ \attrs' ->
   CBytes.withCBytesUnsafe key $ \key' -> do
@@ -74,20 +62,6 @@ updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
       i <- c_update_log_attrs_extras attrs' l ks' vs'
       newForeignPtr c_free_log_attributes_fun i
-
-hsLogAttrsFromPtr :: Ptr LogDeviceLogAttributes -> IO HsLogAttrs
-hsLogAttrsFromPtr attrs =
-  liftA2 HsLogAttrs (getAttrsReplicationFactorFromPtr attrs) (getAttrsExtrasFromPtr attrs)
-
--- TODO: remove
-logGroupGetHsLogAttrs :: LDLogGroup -> IO HsLogAttrs
-logGroupGetHsLogAttrs group =
-  withForeignPtr group $ hsLogAttrsFromPtr <=< c_ld_loggroup_get_attrs
-
--- TODO: remove
-logDirectoryGetHsLogAttrs :: LDDirectory -> IO HsLogAttrs
-logDirectoryGetHsLogAttrs dir =
-  withForeignPtr dir $ hsLogAttrsFromPtr <=< c_ld_logdirectory_get_attrs
 
 getAttrsExtrasFromPtr :: Ptr LogDeviceLogAttributes -> IO (Map.Map CBytes CBytes)
 getAttrsExtrasFromPtr attrs = do
@@ -269,27 +243,6 @@ logDirectoryGetLogsName recursive dir = withForeignPtr dir $ \dir' -> do
 logDirectoryGetVersion :: LDDirectory -> IO C_LogsConfigVersion
 logDirectoryGetVersion dir = withForeignPtr dir c_ld_logdirectory_get_version
 
-{-# DEPRECATED makeLogDirectory_ "use makeLogDirectory instead" #-}
-makeLogDirectory_
-  :: LDClient
-  -> CBytes
-  -> LogAttrs
-  -> Bool
-  -> IO LDDirectory
-makeLogDirectory_ client path attrs mkParent = do
-  logAttrs <- case attrs of
-                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
-                LogAttrsPtr p -> return p
-                LogAttrsDef   -> newForeignPtr_ nullPtr
-  withForeignPtr client $ \client' ->
-    withForeignPtr logAttrs $ \attrs' ->
-      CBytes.withCBytesUnsafe path $ \path' -> do
-        let cfun = c_ld_client_make_directory client' path' mkParent attrs'
-        MakeDirectoryCbData errno directory _ <-
-          withAsync makeDirectoryCbDataSize peekMakeDirectoryCbData cfun
-        void $ E.throwStreamErrorIfNotOK' errno
-        newForeignPtr c_free_logdevice_logdirectory_fun directory
-
 makeLogDirectory
   :: LDClient
   -> CBytes
@@ -470,14 +423,11 @@ makeLogGroupSync
   -> CBytes
   -> C_LogID
   -> C_LogID
-  -> LogAttrs
+  -> LogAttributes
   -> Bool
   -> IO LDLogGroup
 makeLogGroupSync client path start end attrs mkParent = do
-  logAttrs <- case attrs of
-                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
-                LogAttrsPtr p -> return p
-                LogAttrsDef   -> newForeignPtr_ nullPtr
+  logAttrs <- pokeLogAttributes attrs
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -485,30 +435,6 @@ makeLogGroupSync client path start end attrs mkParent = do
           void $ E.throwStreamErrorIfNotOK $
             c_ld_client_make_loggroup_sync client' path' start end attrs' mkParent group''
         newForeignPtr c_free_logdevice_loggroup_fun group'
-
-{-# DEPRECATED makeLogGroup_ "use makeLogGroup instead" #-}
-makeLogGroup_
-  :: HasCallStack
-  => LDClient
-  -> CBytes
-  -> C_LogID -> C_LogID
-  -> LogAttrs
-  -> Bool
-  -> IO LDLogGroup
-makeLogGroup_ client path start end attrs mkParent = do
-  logAttrs <- case attrs of
-                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
-                LogAttrsPtr p -> return p
-                LogAttrsDef   -> newForeignPtr_ nullPtr
-  withForeignPtr client $ \client' ->
-    withForeignPtr logAttrs $ \attrs' ->
-      CBytes.withCBytesUnsafe path $ \path' -> do
-        let cfun = c_ld_client_make_loggroup client' path' start end attrs' mkParent
-        MakeLogGroupCbData errno group _ <-
-          withAsync makeLogGroupCbDataSize peekMakeLogGroupCbData cfun
-        void $ E.throwStreamErrorIfNotOK' errno
-        when (group == nullPtr) $ E.throwStoreError "null loggroup" callStack
-        newForeignPtr c_free_logdevice_loggroup_fun group
 
 makeLogGroup
   :: HasCallStack

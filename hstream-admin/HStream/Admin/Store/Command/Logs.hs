@@ -134,12 +134,13 @@ createLogs conf CreateLogsOpts{..} = do
     "otherwise use --directory to create a directory."
 
   withResource (buildLDClientRes conf Map.empty) $ \client -> do
-    let attrs = S.LogAttrs createLogsOptsAttributes
     if isDirectory
-       then S.makeLogDirectory_ client path attrs True >> putStrLn "Create log directory successfully!" >> return ()
+       then do _ <- S.makeLogDirectory client path createLogsOptsAttrs True
+               putStrLn "Create log directory successfully!"
        else let start = fromJust fromId
                 end = fromJust toId
-             in S.makeLogGroup_ client path start end attrs True >> putStrLn "Create log group successfully!" >> return ()
+             in do _ <- S.makeLogGroup client path start end createLogsOptsAttrs True
+                   putStrLn "Create log group successfully!"
 
 runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
 runLogsRemove conf RemoveLogsOpts{..} = do

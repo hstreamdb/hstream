@@ -30,11 +30,11 @@ base = describe "BaseSpec" $ do
   it "create stream" $ do
     print $ "Create a new stream: " <> S.showStreamName streamId
     S.doesStreamExist client streamId `shouldReturn` False
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
-                                                                         , ("A", "B")
-                                                                         ]
-                                        }
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1
+                      , S.logAttrsExtras = Map.fromList [ ("greet", "hi")
+                                                        , ("A", "B")
+                                                        ]
+                      }
     S.createStream client streamId attrs
     S.doesStreamExist client streamId `shouldReturn` True
 
@@ -53,9 +53,7 @@ base = describe "BaseSpec" $ do
     streamName2 <- newRandomName 5
     let stream1 = S.mkStreamId S.StreamTypeStream streamName1
         stream2 = S.mkStreamId S.StreamTypeStream streamName2
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.empty
-                                        }
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client stream1 attrs
     S.doesStreamExist client stream1 `shouldReturn` True
     S.doesStreamPartitionExist client stream1 key `shouldReturn` False
@@ -73,11 +71,11 @@ base = describe "BaseSpec" $ do
     S.getUnderlyingLogId client stream2 key `shouldReturn` log_id
 
   it "create the same stream should throw EXISTS" $ do
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.fromList [ ("greet", "hi")
-                                                                         , ("A", "B")
-                                                                         ]
-                                        }
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1
+                      , S.logAttrsExtras = Map.fromList [ ("greet", "hi")
+                                                        , ("A", "B")
+                                                        ]
+                      }
     S.createStream client streamId attrs `shouldThrow` S.isEXISTS
 
   it "get full path of loggroup by name or id shoule be equal" $ do
@@ -142,9 +140,7 @@ writeReadSpec :: Spec
 writeReadSpec = describe "WriteReadSpec" $ do
   it "simple write read" $ do
     streamid <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.empty
-                                        }
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client streamid attrs
     S.doesStreamExist client streamid `shouldReturn` True
     logid <- S.getUnderlyingLogId client streamid Nothing
@@ -160,9 +156,7 @@ writeReadSpec = describe "WriteReadSpec" $ do
 
   it "archive a stream should not effect exist reading" $ do
     streamid <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
-    let attrs = S.LogAttrs S.HsLogAttrs { S.logReplicationFactor = 1
-                                        , S.logExtraAttrs = Map.empty
-                                        }
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client streamid attrs
     S.doesStreamExist client streamid `shouldReturn` True
     logid <- S.getUnderlyingLogId client streamid Nothing

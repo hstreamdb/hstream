@@ -37,10 +37,7 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    serverRootPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
-import           HStream.Store                    (EXISTS (..), HsLogAttrs (..),
-                                                   LogAttrs (..),
-                                                   initCheckpointStoreLogID,
-                                                   newLDClient)
+import qualified HStream.Store                    as S
 import           HStream.Utils
 
 {-
@@ -90,9 +87,10 @@ initializeServer
   -> IO (ServiceOptions, ServiceOptions, ServerContext)
 initializeServer ServerOpts{..} zk = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
-  ldclient <- newLDClient _ldConfigPath
-  _ <- catch (void $ initCheckpointStoreLogID ldclient (LogAttrs $ HsLogAttrs _ckpRepFactor mempty))
-        (\(_ :: EXISTS) -> return ())
+  ldclient <- S.newLDClient _ldConfigPath
+  let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
+  _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
+             (\(_ :: S.EXISTS) -> return ())
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
 
   statsHolder <- newStatsHolder

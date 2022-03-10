@@ -23,7 +23,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import qualified HStream.Store                    as HS
+import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),
                                                    cBytesToText, returnErrResp,
@@ -39,7 +39,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   case plan of
     HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _ -> do
       create sink
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) HS.StreamTypeView
+      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
       returnResp $ View { viewViewId = cBytesToText qid
                         , viewStatus = getPBStatus Running
                         , viewCreatedTime = timestamp
@@ -48,8 +48,8 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
                         }
     _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
   where
-    mkLogAttrs = HS.LogAttrs . HS.HsLogAttrs scDefaultStreamRepFactor
-    create sName = HS.createStream scLDClient (HCH.transToViewStreamName sName) (mkLogAttrs Map.empty)
+    attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
+    create sName = S.createStream scLDClient (HCH.transToViewStreamName sName) attrs
 
 listViewsHandler
   :: ServerContext
