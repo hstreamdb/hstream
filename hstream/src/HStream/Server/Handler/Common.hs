@@ -407,20 +407,6 @@ getSubscriptionStatus client streamId = do
         "0" -> return StandBy
         _   -> error "Unknown status"
 
-createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
-createStreamRelatedPath zk streamName = do
-  -- streamRootPath/streams/{streamName}
-  let streamPath =  P.streamRootPath <> "/" <> streamName
-  -- streamRootPath/streams/{streamName}/keys
-      keyPath = P.mkPartitionKeysPath streamName
-  -- streamRootPath/streams/{streamName}/subscriptions
-      subPath= P.mkStreamSubsPath streamName
-  -- streamLockPath/lock/streams/{streamName}
-      lockPath = P.streamLockPath <> "/" <> streamName
-  -- streamLockPath/lock/streams/{streamName}/subscriptions
-      streamSubLockPath = P.mkStreamSubsLockPath streamName
-  mapM_ (P.tryCreate zk) [streamPath, keyPath, subPath, lockPath, streamSubLockPath]
-
 removeStreamRelatedPath :: ZHandle -> CBytes -> IO ()
 removeStreamRelatedPath zk streamName = do
   let streamPath = P.streamRootPath <> "/" <> streamName

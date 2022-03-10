@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 module HStream.Admin.Store.Command.Logs
   ( runLogsCmd
@@ -10,11 +12,11 @@ import           Control.Monad                    (forM_, guard, unless, when,
 import           Data.Bits                        (shiftR, (.&.))
 import           Data.Char                        (toUpper)
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, fromMaybe, isJust,
-                                                   isNothing)
+import           Data.Maybe                       (fromJust, isJust, isNothing)
 import           Foreign.ForeignPtr               (withForeignPtr)
 import           System.IO                        (hFlush, stdout)
 import           System.IO.Unsafe                 (unsafePerformIO)
+import qualified Text.Casing                      as Casting
 import           Z.Data.CBytes                    (CBytes, unpack)
 import           Z.IO.Exception                   (try, tryJust)
 import           Z.IO.Time                        (SystemTime (..),
@@ -24,6 +26,7 @@ import           Z.IO.Time                        (SystemTime (..),
 import           HStream.Admin.Store.API
 import           HStream.Admin.Store.Types
 import qualified HStream.Store                    as S
+import           HStream.Store.Internal.LogDevice (LogAttributes (..))
 import qualified HStream.Store.Internal.LogDevice as S
 
 runLogsCmd :: HeaderConfig AdminAPI -> LogsConfigCmd -> IO ()
@@ -46,14 +49,17 @@ runLogsUpdate conf UpdateLogsOpts{..} = do
       c <- putStrLn warn >> getChar
       guard (toUpper c == 'Y')
       res <- try $ S.getLogGroup client updatePath
-      attrs <- case res of
-                 Right loggroup         -> S.logGroupGetHsLogAttrs loggroup
-                 Left (_ :: S.NOTFOUND) ->
-                   S.logDirectoryGetHsLogAttrs =<< S.getLogDirectory client updatePath
-      let attrs' = S.HsLogAttrs
-                   (fromMaybe (S.logReplicationFactor attrs) updateReplicationFactor)
-                   (updateExtras `Map.union` S.logExtraAttrs attrs)
-      attrsPtr <- S.hsLogAttrsToLDLogAttrs attrs'
+      attrs@S.LogAttributes{..} <-
+        case res of
+          Right loggroup         -> S.logGroupGetAttrs loggroup
+          Left (_ :: S.NOTFOUND) -> S.logDirectoryGetAttrs =<< S.getLogDirectory client updatePath
+      let attrs' =
+            attrs { logReplicationFactor = maybe logReplicationFactor S.defAttr1 updateReplicationFactor
+                  , logSyncedCopies = maybe logSyncedCopies S.defAttr1 updateSyncedCopies
+                  , logBacklogDuration = maybe logBacklogDuration (S.defAttr1 . Just) updateBacklogDuration
+                  , logAttrsExtras = updateExtras `Map.union` logAttrsExtras
+                  }
+      attrsPtr <- S.pokeLogAttributes attrs'
       withForeignPtr attrsPtr $ S.ldWriteAttributes client updatePath
     case res of
       Right version                     ->
@@ -128,12 +134,13 @@ createLogs conf CreateLogsOpts{..} = do
     "otherwise use --directory to create a directory."
 
   withResource (buildLDClientRes conf Map.empty) $ \client -> do
-    let attrs = S.LogAttrs logsAttributes
     if isDirectory
-       then S.makeLogDirectory client path attrs True >> putStrLn "Create log directory successfully!" >> return ()
+       then do _ <- S.makeLogDirectory client path createLogsOptsAttrs True
+               putStrLn "Create log directory successfully!"
        else let start = fromJust fromId
                 end = fromJust toId
-             in S.makeLogGroup client path start end attrs True >> putStrLn "Create log group successfully!" >> return ()
+             in do _ <- S.makeLogGroup client path start end createLogsOptsAttrs True
+                   putStrLn "Create log group successfully!"
 
 runLogsRemove :: HeaderConfig AdminAPI -> RemoveLogsOpts -> IO ()
 runLogsRemove conf RemoveLogsOpts{..} = do
@@ -192,9 +199,9 @@ printLogGroup' level verbose logGroup = do
   when verbose $ do
     version <- S.logGroupGetVersion logGroup
     emit $ "  Version: " <> show version
-    extraAttrs <- S.logGroupGetHsLogAttrs logGroup
+    attrs <- S.logGroupGetAttrs logGroup
     emit "  Attributes:"
-    printExtraAttributes level extraAttrs
+    printLogAttributes level attrs
 
 printLogDirectory :: S.LDClient -> Int -> Bool -> S.LDDirectory -> IO ()
 printLogDirectory = flip printLogDirectory' 0
@@ -230,12 +237,23 @@ printLogDirectory' client level maxDepth verbose logDirectory = do
       S.logDirChildFullName logDirectory >=> S.getLogDirectory client >=>
       printLogDirectory' client (level + 1) maxDepth verbose
 
-printExtraAttributes :: Int -> S.HsLogAttrs -> IO ()
-printExtraAttributes level S.HsLogAttrs{..} = do
-  let emit s = putStrLn $ replicate ((level + 1) * shift) ' ' <> "- " <> s
-  emit $ "replication factor: " <> show logReplicationFactor
-  forM_ (Map.toList logExtraAttrs) $ \(k, v) ->
+printLogAttributes :: Int -> LogAttributes -> IO ()
+printLogAttributes level LogAttributes{..} = do
+  let cast = Casting.toKebab . Casting.dropPrefix . Casting.fromAny
+      emit s = putStrLn $ replicate ((level + 1) * shift) ' ' <> "- " <> s
+#define _SHOW_ATTR(x) cast #x <> ": " <> showAttributeVal x
+  emit $ _SHOW_ATTR(logReplicationFactor)
+  emit $ _SHOW_ATTR(logSyncedCopies)
+  emit $ _SHOW_ATTR(logBacklogDuration)
+  forM_ (Map.toList logAttrsExtras) $ \(k, v) ->
     emit $ unpack k <> ": " <> unpack v
+#undef _SHOW_ATTR
+
+showAttributeVal :: Show a => S.Attribute a -> String
+showAttributeVal S.Attribute{..} =
+  -- TODO
+  let overridden = if not attrInherited then "    (Overridden)" else ""
+   in (show . fromJust $ attrValue) <> overridden
 
 runLogsSetRange :: HeaderConfig AdminAPI -> SetRangeOpts -> IO ()
 runLogsSetRange conf SetRangeOpts{..} = do

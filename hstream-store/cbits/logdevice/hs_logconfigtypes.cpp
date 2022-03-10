@@ -5,15 +5,8 @@ extern "C" {
 // ----------------------------------------------------------------------------
 // LogAttributes
 
-#if __GLASGOW_HASKELL__ < 810
-LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
-                                  StgMutArrPtrs* keys_, StgMutArrPtrs* vals_) {
-  StgArrBytes** keys = (StgArrBytes**)keys_->payload;
-  StgArrBytes** vals = (StgArrBytes**)vals_->payload;
-#else
 LogAttributes* new_log_attributes(int replicationFactor, HsInt extras_len,
                                   StgArrBytes** keys, StgArrBytes** vals) {
-#endif
   auto attrs = LogAttributes().with_replicationFactor(replicationFactor);
   if (extras_len > 0) {
     LogAttributes::ExtrasMap extras;
@@ -42,16 +35,8 @@ std::string* get_log_attrs_extra(LogAttributes* attrs, char* key) {
   return new_hs_std_string(std::move(extras[key]));
 }
 
-#if __GLASGOW_HASKELL__ < 810
-LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
-                                       StgMutArrPtrs* keys_,
-                                       StgMutArrPtrs* vals_) {
-  StgArrBytes** keys = (StgArrBytes**)keys_->payload;
-  StgArrBytes** vals = (StgArrBytes**)vals_->payload;
-#else
 LogAttributes* update_log_attrs_extras(LogAttributes* attrs, HsInt extras_len,
                                        StgArrBytes** keys, StgArrBytes** vals) {
-#endif
   LogAttributes::ExtrasMap extras;
   extras = attrs->extras().hasValue() ? attrs->extras().value()
                                       : LogAttributes::ExtrasMap();
@@ -317,23 +302,12 @@ uint64_t ld_loggroup_get_version(logdevice_loggroup_t* group) {
   return group->rep->version();
 }
 
-#if __GLASGOW_HASKELL__ < 810
-facebook::logdevice::Status ld_loggroup_update_extra_attrs(
-    logdevice_client_t* client, logdevice_loggroup_t* group,
-    //
-    HsInt extras_len, StgMutArrPtrs* keys_, StgMutArrPtrs* vals_,
-    //
-    HsStablePtr mvar, HsInt cap, logsconfig_status_cb_data_t* data) {
-  StgArrBytes** keys = (StgArrBytes**)keys_->payload;
-  StgArrBytes** vals = (StgArrBytes**)vals_->payload;
-#else
 facebook::logdevice::Status ld_loggroup_update_extra_attrs(
     logdevice_client_t* client, logdevice_loggroup_t* group,
     //
     HsInt extras_len, StgArrBytes** keys, StgArrBytes** vals,
     //
     HsStablePtr mvar, HsInt cap, logsconfig_status_cb_data_t* data) {
-#endif
   const std::string& path = group->rep->getFullyQualifiedName();
   const LogAttributes& logAttrs = group->rep->attrs();
 

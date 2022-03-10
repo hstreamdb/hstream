@@ -22,6 +22,7 @@ module HStream.Store.Stream
   , removeStream
   , findStreams
   , doesStreamExist
+  , listStreamPartitions
   , doesStreamPartitionExist
   , getStreamExtraAttrs
   , updateStreamExtraAttrs
@@ -29,16 +30,27 @@ module HStream.Store.Stream
   , getUnderlyingLogId
   , getStreamIdFromLogId
 
-    -- * Internal Log
+    -- * Logdevice
   , FFI.LogID (..)
   , FFI.C_LogID
   , FFI.LDLogGroup
   , FFI.LDDirectory
-    -- ** Log
-  , FFI.LogAttrs (LogAttrs, LogAttrsDef)
-  , FFI.HsLogAttrs (..)
+  , FFI.NodeLocationScope (..)
+  , pattern FFI.NodeLocationScope_NODE
+  , pattern FFI.NodeLocationScope_RACK
+  , pattern FFI.NodeLocationScope_ROW
+  , pattern FFI.NodeLocationScope_CLUSTER
+  , pattern FFI.NodeLocationScope_DATA_CENTER
+  , pattern FFI.NodeLocationScope_REGION
+  , pattern FFI.NodeLocationScope_ROOT
+  , pattern FFI.NodeLocationScope_INVALID
 
-    -- * Writer
+    -- * Log attributes
+  , LD.Attribute (..)
+  , LD.LogAttributes (..)
+  , LD.defAttr1
+
+    -- * Logdevice Writer
   , LD.append
   , LD.appendBS
   , LD.appendBatch
@@ -50,7 +62,7 @@ module HStream.Store.Stream
   , pattern FFI.KeyTypeUndefined
   , FFI.Compression (..)
 
-    -- * Checkpoint Store
+    -- * Logdevice Checkpoint Store
   , FFI.LDCheckpointStore
   , initCheckpointStoreLogID
   , checkpointStoreLogID
@@ -62,7 +74,7 @@ module HStream.Store.Stream
   , LD.ckpStoreRemoveCheckpoints
   , LD.ckpStoreRemoveAllCheckpoints
 
-    -- * Reader
+    -- * Logdevice Reader
   , FFI.RecordByteOffset (..)
   , FFI.DataRecord (..)
   , FFI.DataRecordAttr (..)
@@ -104,6 +116,9 @@ module HStream.Store.Stream
     -- * Internal helpers
   , getStreamDirPath
   , getStreamLogPath
+
+    -- * Re-export
+  , def
   ) where
 
 import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
@@ -113,6 +128,8 @@ import           Control.Monad                    (filterM, forM, forM_, void,
                                                    (<=<))
 import           Data.Bits                        (bit)
 import qualified Data.Cache                       as Cache
+import           Data.Default                     (def)
+import           Data.Foldable                    (foldrM)
 import           Data.Hashable                    (Hashable)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
@@ -132,6 +149,7 @@ import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
 import qualified Z.IO.FileSystem                  as FS
 
+import qualified Data.Map                         as M
 import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
@@ -239,13 +257,13 @@ showStreamName = CBytes.unpack . streamName
 -- | Create stream
 --
 -- Currently a Stream is a loggroup which only contains one random logid.
-createStream :: HasCallStack => FFI.LDClient -> StreamId -> FFI.LogAttrs -> IO ()
+createStream :: HasCallStack => FFI.LDClient -> StreamId -> LD.LogAttributes -> IO ()
 createStream client streamid attrs = do
   path <- getStreamDirPath streamid
   void $ LD.makeLogDirectory client path attrs True
   -- create default loggroup
   (log_path, key) <- getStreamLogPath streamid Nothing
-  logid <- createRandomLogGroup client log_path FFI.LogAttrsDef
+  logid <- createRandomLogGroup client log_path def
   updateGloLogPathCache streamid key logid
 
 createStreamPartition
@@ -258,7 +276,7 @@ createStreamPartition client streamid m_key = do
   stream_exist <- doesStreamExist client streamid
   if stream_exist
      then do (log_path, key) <- getStreamLogPath streamid m_key
-             logid <- createRandomLogGroup client log_path FFI.LogAttrsDef
+             logid <- createRandomLogGroup client log_path def
              updateGloLogPathCache streamid key logid
              pure logid
      else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
@@ -345,6 +363,16 @@ doesStreamExist client streamid = do
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
 
+listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (M.Map CBytes FFI.C_LogID)
+listStreamPartitions client streamid = do
+  dir_path <- getStreamDirPath streamid
+  keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
+  foldrM insertMap M.empty keys
+  where
+    insertMap key keyMap = do
+      logId <- getUnderlyingLogId client streamid (Just key)
+      return $ M.insert key logId keyMap
+
 doesStreamPartitionExist
   :: HasCallStack
   => FFI.LDClient
@@ -371,13 +399,13 @@ getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
 getStreamReplicaFactor client streamid = do
   dir_path <- getStreamDirPath streamid
   dir <- LD.getLogDirectory client dir_path
-  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectorypGetAttrs dir
+  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectoryGetAttrsPtr dir
 
 getStreamExtraAttrs :: FFI.LDClient -> StreamId -> IO (Map CBytes CBytes)
 getStreamExtraAttrs client streamid = do
   dir_path <- getStreamDirPath streamid
   dir <- LD.getLogDirectory client dir_path
-  FFI.logExtraAttrs <$> LD.logDirectoryGetHsLogAttrs dir
+  LD.logAttrsExtras <$> LD.logDirectoryGetAttrs dir
 
 -- | Update a bunch of extra attrs in the stream, return the old attrs.
 --
@@ -389,7 +417,7 @@ updateStreamExtraAttrs
   -> IO (Map CBytes CBytes)
 updateStreamExtraAttrs client streamid new_attrs = do
   dir_path <- getStreamDirPath streamid
-  attrs <- LD.logDirectorypGetAttrs =<< LD.getLogDirectory client dir_path
+  attrs <- LD.logDirectoryGetAttrsPtr =<< LD.getLogDirectory client dir_path
   attrs' <- LD.updateLogAttrsExtrasPtr attrs new_attrs
   withForeignPtr attrs' $
     LD.syncLogsConfigVersion client <=< LD.ldWriteAttributes client dir_path
@@ -458,7 +486,7 @@ getStreamIdFromLogId client logid = do
 -- idx: 63...56...0
 --      |    |    |
 -- bit: 00...1...00
-initCheckpointStoreLogID :: FFI.LDClient -> FFI.LogAttrs -> IO FFI.C_LogID
+initCheckpointStoreLogID :: FFI.LDClient -> LD.LogAttributes -> IO FFI.C_LogID
 initCheckpointStoreLogID client attrs = do
   r <- try $ LD.getLogGroupByID client checkpointStoreLogID
   case r of
@@ -540,7 +568,7 @@ createRandomLogGroup
   :: HasCallStack
   => FFI.LDClient
   -> CBytes
-  -> FFI.LogAttrs
+  -> LD.LogAttributes
   -> IO FFI.C_LogID
 createRandomLogGroup client logPath attrs = go 10
   where

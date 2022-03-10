@@ -62,6 +62,7 @@ library
     HStream.Store.Internal.LogDevice.Checkpoint
     HStream.Store.Internal.LogDevice.Configuration
     HStream.Store.Internal.LogDevice.LDQuery
+    HStream.Store.Internal.LogDevice.LogAttributes
     HStream.Store.Internal.LogDevice.LogConfigTypes
     HStream.Store.Internal.LogDevice.Reader
     HStream.Store.Internal.LogDevice.VersionedConfigStore
@@ -74,6 +75,7 @@ library
     , bytestring      ^>=0.10
     , cache           ^>=0.1
     , containers      ^>=0.6
+    , data-default    ^>=0.7
     , ghc-prim        >=0.5   && <1.0
     , hashable        ^>=1.3.5
     , hstream-common
@@ -115,6 +117,7 @@ library
     cbits/hs_logdevice.cpp
     cbits/logdevice/hs_checkpoint.cpp
     cbits/logdevice/hs_ldquery.cpp
+    cbits/logdevice/hs_log_attributes.cpp
     cbits/logdevice/hs_logconfigtypes.cpp
     cbits/logdevice/hs_reader.cpp
     cbits/logdevice/hs_versioned_config_store.cpp
@@ -125,7 +128,7 @@ library
   extra-lib-dirs:     /usr/local/lib
   includes:           hs_logdevice.h
   include-dirs:       include /usr/local/include
-  build-tool-depends: hsc2hs:hsc2hs -any
+  build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
 
 test-suite hstream-store-test
   import:             shared-properties
@@ -146,6 +149,7 @@ test-suite hstream-store-test
     , base            >=4.11 && <5
     , bytestring      ^>=0.10
     , containers      ^>=0.6
+    , data-default    ^>=0.7
     , hspec
     , hstream-common
     , hstream-store

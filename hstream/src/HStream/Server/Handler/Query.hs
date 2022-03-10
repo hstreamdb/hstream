@@ -80,7 +80,8 @@ createQueryStreamHandler
         rFac  = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
     (builder, source, sink, _) <-
       genStreamBuilderWithStream tName sName select
-    S.createStream scLDClient (transToStreamName sink) $ S.LogAttrs (S.HsLogAttrs rFac Map.empty)
+    let attrs = S.def{ S.logReplicationFactor = S.defAttr1 rFac }
+    S.createStream scLDClient (transToStreamName sink) attrs
     let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
     void $
       handleCreateAsSelect
@@ -200,14 +201,13 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
     _ -> discard
   where
-    mkLogAttrs = S.HsLogAttrs scDefaultStreamRepFactor
     create sName = do
-      let attrs = mkLogAttrs Map.empty
+      let attrs = S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor }
       Log.debug . Log.buildString $
         "CREATE: new stream " <> show sName
           <> " with attributes: "
           <> show attrs
-      S.createStream scLDClient sName (S.LogAttrs attrs)
+      S.createStream scLDClient sName attrs
     sendResp ma valueSerde = do
       case ma of
         Nothing -> returnCommandQueryResp V.empty
@@ -239,7 +239,7 @@ executePushQueryHandler
             S.createStream
               scLDClient
               (transToTempStreamName sink)
-              (S.LogAttrs $ S.HsLogAttrs scDefaultStreamRepFactor Map.empty)
+              (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
             -- create persistent query
             (qid, _) <-
               P.createInsertPersistentQuery
@@ -386,7 +386,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
         throwIO StreamNotExist
       else do
         HS.createStream scLDClient (HCH.transToTempStreamName sink)
-          (HS.LogAttrs $ HS.HsLogAttrs scDefaultStreamRepFactor Map.empty)
+          (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
         (qid, timestamp) <- handleCreateAsSelect ctx taskBuilder'
           createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
         ldreader' <- HS.newLDRsmCkpReader scLDClient
