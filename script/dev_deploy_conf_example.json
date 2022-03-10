@@ -27,12 +27,16 @@
     },
     "hstore-admin": {
         "image": "hstreamdb/hstream:v0.7.1",
+        "memory": "1024m",
+        "cpus": "0.5",
         "hosts": [
             "remote_ssh_host1"
         ]
     },
     "hserver": {
         "image": "hstreamdb/hstream:v0.7.1",
+        "memory": "2048m",
+        "cpus": "1.5",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",
