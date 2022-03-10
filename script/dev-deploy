@@ -86,6 +86,15 @@ def is_container_running(remote, container_name, container_bin="docker"):
     return False
 
 
+def scp_command(local_file, remote, remote_file) -> str:
+    cmd = ""
+    file_dir = os.path.dirname(remote_file)
+    if file_dir != "":
+        cmd += f"ssh {remote} 'mkdir -p {file_dir}' && "
+    cmd += f"scp {local_file} {remote}:{remote_file}"
+    return cmd
+
+
 # -----------------------------------------------------------------------------
 
 
@@ -227,6 +236,7 @@ class ZookeeperService(Service):
     KEYS = ["zookeeper", "zk"]
     DEFAULT_CONTAINER_NAME = "deploy_zookeeper"
     DEFAULT_PERSISTENT_DIR = "/data/zookeeper"
+    DEFAULT_IMAGE_TAG = "docker.io/zookeeper:3.6"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -251,7 +261,9 @@ class ZookeeperService(Service):
         # ------------------------------
         # zookeeper start
         start_parser = argparse.ArgumentParser(add_help=False)
-        start_parser.add_argument("--image", default="docker.io/zookeeper:3.6")
+        start_parser.add_argument(
+            "--image", default=ZookeeperService.DEFAULT_IMAGE_TAG
+        )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument("--container-cmd", default="")
         start_parser.add_argument(
@@ -336,6 +348,7 @@ class ZookeeperService(Service):
         extra_container_options="",
         container_cmd="",
         rm=False,
+        metrics_provider=False,
         **kargs,
     ):
 
@@ -356,12 +369,19 @@ class ZookeeperService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
+                enable_metrics_provider = (
+                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider"'
+                    if metrics_provider
+                    else ""
+                )
+
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
-                    f"{container_bin} run -td {docker_opts} "
-                    f"--name {container_name} "
+                    f"{container_bin} run -td --restart unless-stopped "
+                    f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
+                    f"{enable_metrics_provider} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -390,9 +410,9 @@ class ZookeeperService(Service):
                 f"printf -v __ %q "
                 f"{node_value} "
                 f'&& ssh {host} "'
-                f'{waiting} && '
-                f'{container_bin} exec -t {container_name} zkCli.sh create {key} $__ || '
-                f'{container_bin} exec -t {container_name} zkCli.sh set {key} $__'
+                f"{waiting} && "
+                f"{container_bin} exec -t {container_name} zkCli.sh create {key} $__ || "
+                f"{container_bin} exec -t {container_name} zkCli.sh set {key} $__"
                 f'"'
             )
             return [store_command(host) for (host, _) in remotes]
@@ -401,6 +421,7 @@ class ZookeeperService(Service):
 class HStoreAdminService(Service):
     KEYS = ["hstore-admin"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore_admin"
+    DEFAULT_IMAGE_TAG = "docker.io/hstreamdb/hstream"
     BOOTSTRAP_CMD = (
         "hadmin store nodes-config bootstrap --metadata-replicate-across "
     )
@@ -435,7 +456,7 @@ class HStoreAdminService(Service):
         # hstore-admin start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
+            "--image", default=HStoreAdminService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
@@ -526,7 +547,8 @@ class HStoreAdminService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"--name {container_name} "
                     f"--network host {image} /usr/local/bin/ld-admin-server "
                     f"--config-path {config_path} "
                     "--enable-maintenance-manager "
@@ -567,6 +589,7 @@ class HStoreService(Service):
     KEYS = ["hstore"]
     DEFAULT_CONTAINER_NAME = "deploy_hstore"
     DEFAULT_PERSISTENT_DIR = "/data/store"
+    DEFAULT_IMAGE_TAG = "docker.io/hstreamdb/hstream"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -594,7 +617,7 @@ class HStoreService(Service):
         # hstore start
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
+            "--image", default=HStoreService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
@@ -657,7 +680,8 @@ class HStoreService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
-                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"--name {container_name} "
                     "--network host "
                     f"-v {data_dir}:/data/store "
                     f"{image} /usr/local/bin/logdeviced "
@@ -673,6 +697,7 @@ class HStoreService(Service):
 class HServerService(Service):
     KEYS = ["hserver"]
     DEFAULT_CONTAINER_NAME = "deploy_hserver"
+    DEFAULT_IMAGE_TAG = "docker.io/hstreamdb/hstream"
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -695,7 +720,7 @@ class HServerService(Service):
         )
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default="docker.io/hstreamdb/hstream"
+            "--image", default=HServerService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         start_parser.add_argument(
@@ -756,7 +781,8 @@ class HServerService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --name {container_name} "
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"--name {container_name} "
                     "--network host "
                     f"{image} /usr/local/bin/hstream-server "
                     f"--host {addr} "
@@ -766,6 +792,95 @@ class HServerService(Service):
                     f"--store-config {store_config} "
                     f"--store-admin-host {store_admin_host} "
                     f"--server-id {i} "
+                    f"'"
+                )
+        return cmds
+
+
+class PrometheusService(Service):
+    KEYS = ["prometheus"]
+    DEFAULT_CONTAINER_NAME = "deploy_prometheus"
+    DEFAULT_PERSISTENT_DIR = "/data/prometheus"
+    DEFAULT_IMAGE_TAG = "docker.io/prom/prometheus"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage prometheus service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default=PrometheusService.DEFAULT_IMAGE_TAG
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        start_parser.add_argument(
+            "--prometheus-config",
+            help="Prometheus configuration file path",
+        )
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        rm=False,
+        config_path=None,
+        **args,
+    ):
+        opts = "--rm" if rm else ""
+        opts += (
+            f" -v {config_path}:{DEFAULT_CONTAINER_CONFIG_PATH}"
+            if config_path
+            else ""
+        )
+        cmds = []
+        for (i, (host, addr)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                mount_cfg = ""
+                if config_path is not None:
+                    mount_cfg = (
+                        f"-v {config_path}:/etc/prometheus/prometheus.yml "
+                    )
+
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"--name {container_name} "
+                    f"--network host "
+                    f"{mount_cfg}"
+                    f"{image}"
                     f"'"
                 )
         return cmds
@@ -787,6 +902,7 @@ class SimpleService(Service):
         self.HSTORE_ADMIN_SVC = super().get_service(HStoreAdminService)
         self.HSTORE_SVC = super().get_service(HStoreService)
         self.HSERVER_SVC = super().get_service(HServerService)
+        self.PROMETHEUS_SVC = super().get_service(PrometheusService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -803,42 +919,123 @@ class SimpleService(Service):
             deploy_cfg = json.load(f)
             self.zk_hosts = [
                 (host, deploy_cfg["hosts"][host])
-                for host in deploy_cfg["zookeeper-host"]
+                for host in (deploy_cfg["zookeeper"])["hosts"]
             ]
             self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
             self.config_path_in_zk = (
                 "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
             )
             self.local_store_config_path = Path(
-                deploy_cfg["local_store_config_path"]
+                (deploy_cfg["hstore"])["local_config_path"]
             )
-            self.hstreamdb_config_path = deploy_cfg.get("hstreamdb_config_path")
+            self.hstreamdb_config_path = deploy_cfg["hserver"].get(
+                "local_config_path"
+            )
             self.admin_hosts = [
                 (host, deploy_cfg["hosts"][host])
-                for host in deploy_cfg["hstore-admin-host"]
+                for host in (deploy_cfg["hstore-admin"])["hosts"]
             ]
             self.hstore_hosts = [
                 (host, deploy_cfg["hosts"][host])
-                for host in deploy_cfg["hstore-host"]
+                for host in (deploy_cfg["hstore"])["hosts"]
             ]
             self.hserver_hosts = [
                 (host, deploy_cfg["hosts"][host])
-                for host in deploy_cfg["hserver-host"]
+                for host in (deploy_cfg["hserver"])["hosts"]
             ]
+            self.prometheus_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in (deploy_cfg["prometheus"])["hosts"]
+            ]
+
+            self.zk_enable_metrics_provider = (
+                deploy_cfg["zookeeper"].get("enable-metrics-provider") == True
+            )
+            self.hstore_local_conf = deploy_cfg["hstore"].get(
+                "local_config_path"
+            )
+            self.hstore_remote_conf = deploy_cfg["hstore"].get(
+                "remote_config_path"
+            )
+            self.hserver_local_conf = deploy_cfg["hserver"].get(
+                "local_config_path"
+            )
+            self.hserver_remote_conf = deploy_cfg["hserver"].get(
+                "remote_config_path"
+            )
+            self.prometheus_local_conf = deploy_cfg["prometheus"].get(
+                "local_config_path"
+            )
+            self.prometheus_remote_conf = deploy_cfg["prometheus"].get(
+                "remote_config_path"
+            )
+
+            self.zk_image = deploy_cfg["zookeeper"].get(
+                "image", ZookeeperService.DEFAULT_IMAGE_TAG
+            )
+            self.hstore_image = deploy_cfg["hstore"].get(
+                "image", HStoreService.DEFAULT_IMAGE_TAG
+            )
+            self.hadmin_image = deploy_cfg["hstore-admin"].get(
+                "image", HStoreAdminService.DEFAULT_IMAGE_TAG
+            )
+            self.hserver_image = deploy_cfg["hserver"].get(
+                "image", HServerService.DEFAULT_IMAGE_TAG
+            )
+            self.prometheus_image = deploy_cfg["prometheus"].get(
+                "image", PrometheusService.DEFAULT_IMAGE_TAG
+            )
+
+            self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
+                "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
+            )
+            self.hstore_persistent_dir = deploy_cfg["hstore"].get(
+                "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
+            )
 
     def start_cmd(self, config: str, **kargs) -> List[str]:
         self.parse_config(config)
         cmds = []
 
+        if self.hstore_local_conf is not None:
+            assert self.hstore_remote_conf is not None
+            for (remote, _) in self.hstore_hosts:
+                cmds.append(
+                    scp_command(
+                        self.hstore_local_conf, remote, self.hstore_remote_conf
+                    )
+                )
+        if self.hserver_local_conf is not None:
+            assert self.hserver_remote_conf is not None
+            for (remote, _) in self.hserver_hosts:
+                cmds.append(
+                    scp_command(
+                        self.hserver_local_conf,
+                        remote,
+                        self.hserver_remote_conf,
+                    )
+                )
+        if self.prometheus_local_conf is not None:
+            assert self.prometheus_remote_conf is not None
+            for (remote, _) in self.prometheus_hosts:
+                cmds.append(
+                    scp_command(
+                        self.prometheus_local_conf,
+                        remote,
+                        self.prometheus_remote_conf,
+                    )
+                )
+
         # start zookeeper
         zk_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "image": "docker.io/zookeeper:3.6",
+            "image": self.zk_image,
         }
         zk_start_args = {
             "remotes": self.zk_hosts,
-            "persistent-dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
+            "persistent-dir": self.zk_persistent_dir,
+            "metrics_provider": self.zk_enable_metrics_provider,
             **zk_args,
         }
         cmds.extend(self.ZK_SVC.start_cmd(**zk_start_args))
@@ -863,7 +1060,7 @@ class SimpleService(Service):
         admin_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "image": "docker.io/hstreamdb/hstream",
+            "image": self.hadmin_image,
             "config_path": self.config_path_in_zk,
             "remotes": self.admin_hosts,
         }
@@ -873,9 +1070,9 @@ class SimpleService(Service):
         store_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "image": "docker.io/hstreamdb/hstream",
+            "image": self.hstore_image,
             "config_path": self.config_path_in_zk,
-            "data_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
+            "data_dir": self.hstore_persistent_dir,
             "shards": 1,
             "remotes": self.hstore_hosts,
         }
@@ -899,13 +1096,24 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HServerService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hserver_hosts,
-            "image": "docker.io/hstreamdb/hstream",
+            "image": self.hserver_image,
             "zkuri": self.zk_ip,
             "store_config": self.config_path_in_zk,
             "store_admin_host": self.admin_hosts[0][1],
             "config_path": self.hstreamdb_config_path,
         }
         cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
+
+        # start prometheus
+        prometheus_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
+            "config_path": self.prometheus_remote_conf,
+            "image": self.prometheus_image,
+            "remotes": self.prometheus_hosts,
+        }
+        cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
+
         return cmds
 
     def stop_cmd(self, config: str, **kargs) -> List[str]:
@@ -947,6 +1155,16 @@ class SimpleService(Service):
             "force": True,
         }
         cmds.extend(self.ZK_SVC.stop_cmd(**zk_args))
+
+        # stop prometheus
+        prometheus_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.prometheus_hosts,
+            "force": True,
+        }
+        cmds.extend(self.PROMETHEUS_SVC.stop_cmd(**prometheus_args))
+
         return cmds
 
     def remove_cmd(self, config: str, **kargs) -> List[str]:
@@ -959,7 +1177,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hstore_hosts,
-            "persistent_dir": HStoreService.DEFAULT_PERSISTENT_DIR,
+            "persistent_dir": self.hstore_persistent_dir,
         }
         remove_hstore_cmds = self.HSTORE_SVC.remove_cmd(
             # since we already removed the container
@@ -971,11 +1189,12 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
             "remotes": self.zk_hosts,
-            "persistent_dir": ZookeeperService.DEFAULT_PERSISTENT_DIR,
+            "persistent_dir": self.zk_persistent_dir,
         }
         remove_zk_cmds = self.ZK_SVC.remove_cmd(
             **zk_args, remove_container=False
         )
+
         return [*stop_cmds, *remove_hstore_cmds, *remove_zk_cmds]
 
     def print_help(self):
@@ -995,5 +1214,6 @@ if __name__ == "__main__":
     s.register(HStoreAdminService)
     s.register(HStoreService)
     s.register(HServerService)
+    s.register(PrometheusService)
     s.register(SimpleService)
     s.run()

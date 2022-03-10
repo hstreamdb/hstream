@@ -734,4 +734,3 @@ data SubscribeInnerError = GRPCStreamRecvError
                              | SubscribeInValidError 
   deriving (Show)
 instance Exception SubscribeInnerError
-

@@ -12,11 +12,13 @@ import           Control.Exception                    (Exception (..),
                                                        IOException,
                                                        SomeException, catches,
                                                        displayException)
-import qualified Control.Exception                    as CE
 import qualified Data.ByteString.Char8                as BS
 import           Data.Text                            (Text)
 import           Data.Text.Encoding                   (encodeUtf8)
 import           Database.MySQL.Base                  (ERRException)
+import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.HighLevel.Server        (ServerResponse)
+import           ZooKeeper.Exception
 
 import qualified HStream.Logger                       as Log
 import           HStream.SQL.Exception                (SomeSQLException,
@@ -27,88 +29,32 @@ import           HStream.Utils                        (TaskStatus,
                                                        returnBiDiStreamingResp,
                                                        returnErrResp,
                                                        returnServerStreamingResp)
-import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Server
-import           ZooKeeper.Exception
 
-type RetFun t a = (StatusCode -> StatusDetails -> IO (ServerResponse t a))
-type CleanFun = IO ()
-type Handlers t a = [CE.Handler (ServerResponse t a)]
+defaultExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+defaultExceptionHandle = mkExceptionHandle $ defaultHandlers returnErrResp
 
-defaultHandlers :: RetFun t a -> CleanFun -> Handlers t a
-defaultHandlers retFun cleanFun = [
-  Handler (\(err :: SomeSQLException) ->
-    retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
-  Handler (\(_ :: Store.EXISTS) ->
-    retFun StatusAlreadyExists "Stream already exists"),
-  Handler (\(_ :: ObjectNotExist) ->
-    retFun StatusNotFound "Object not found"),
-  Handler (\(_ :: SubscriptionWatchOnDifferentNode) ->
-    retFun StatusAborted "Subscription is bound to a different node"),
-  Handler (\(_ :: FoundActiveConsumers) ->
-    retFun StatusFailedPrecondition "Subscription still has active consumers"),
-  Handler (\(_ :: FoundActiveSubscription) ->
-    retFun StatusFailedPrecondition "Stream still has active consumers"),
-  Handler (\(err :: Store.SomeHStoreException) -> do
-    cleanFun
-    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
-  Handler(\(ConsumerExist name :: ConsumerExist) -> do
-    retFun StatusInvalidArgument $ StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")),
-  Handler (\(err :: PersistenceException) ->
-    retFun StatusAborted $ StatusDetails (BS.pack . displayException $ err)),
-  Handler (\(_ :: QueryTerminatedOrNotExist) ->
-    retFun StatusInvalidArgument "Query is already terminated or does not exist"),
-  Handler (\(err :: StreamNotExist) ->
-    retFun StatusNotFound $ StatusDetails (BS.pack . displayException $ err)),
-  Handler (\(SubscriptionIdNotFound subId :: SubscriptionIdNotFound) ->
-    retFun StatusNotFound $ StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found")),
-  Handler (\(err :: IOException) -> do
-    Log.fatal $ Log.buildString (displayException err)
-    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
-  Handler (\(err :: ERRException) -> do
-    retFun StatusInternal $ StatusDetails ("Mysql error " <> BS.pack (show err))),
-  Handler (\(err :: ConnectorAlreadyExists) -> do
-    let ConnectorAlreadyExists st = err
-    retFun StatusAlreadyExists $ StatusDetails ("Connector exists with status  " <> BS.pack (show st))),
-  Handler (\(ConnectorRestartErr st :: ConnectorRestartErr) -> do
-    retFun StatusInternal $ StatusDetails ("Cannot restart a connector with status  " <> BS.pack (show st))),
-  Handler (\(_ :: ConnectorNotExist) -> do
-    retFun StatusNotFound "Connector not found"),
-  Handler (\(err :: ZNODEEXISTS) -> do
-    retFun StatusAlreadyExists $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err))),
-  Handler (\(err :: ZNONODE) -> do
-    retFun StatusNotFound $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err))),
-  Handler (\(err :: ZooException) -> do
-    retFun StatusInternal $ StatusDetails ("Zookeeper exception: " <> BS.pack (show err))),
-  Handler (\(err :: SomeException) -> do
-    retFun StatusUnknown $ StatusDetails ("UnKnown exception: " <> BS.pack (show err)))
-  ]
+appendStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+appendStreamExceptionHandle = prependDefaultHandler handlers returnErrResp
+  where
+    handlers = [
+      Handler (\(err :: Store.NOTFOUND) ->
+        returnErrResp StatusUnavailable $ mkStatusDetails err),
+      Handler (\(err :: Store.NOTINSERVERCONFIG) ->
+        returnErrResp StatusUnavailable $ mkStatusDetails err)
+      ]
 
-mkExceptionHandle :: Handlers t a -> IO (ServerResponse t a) -> IO (ServerResponse t a)
-mkExceptionHandle = flip catches
+defaultServerStreamExceptionHandle :: ExceptionHandle (ServerResponse 'ServerStreaming a)
+defaultServerStreamExceptionHandle = mkExceptionHandle $ defaultHandlers returnServerStreamingResp
 
-defaultExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-defaultExceptionHandle = mkExceptionHandle $ defaultHandlers returnErrResp (return ())
+defaultBiDiStreamExceptionHandle :: ExceptionHandle (ServerResponse 'BiDiStreaming a)
+defaultBiDiStreamExceptionHandle = mkExceptionHandle $ defaultHandlers returnBiDiStreamingResp
 
-appendStreamExceptionHandle :: IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-appendStreamExceptionHandle = mkExceptionHandle $ [
-  Handler (\(err :: Store.NOTFOUND) -> do
-    returnErrResp StatusUnavailable $ StatusDetails (BS.pack (show err))),
-  Handler (\(err :: Store.NOTINSERVERCONFIG) -> do
-    returnErrResp StatusUnavailable $ StatusDetails (BS.pack (show err)))
-  ] ++ defaultHandlers returnErrResp (return ())
+-- If user needs to deal with some exceptions specifically, the user can add such handlers in the very front of the
+-- defaultHandlers, eg. Some rpc handlers may require cleansing after exception capture.
+prependDefaultHandler :: Handlers t a -> RetFun t a -> ExceptionHandle (ServerResponse t a)
+prependDefaultHandler handlers retFun = mkExceptionHandle $ handlers ++ defaultHandlers retFun
 
-
-defaultExceptionHandle' :: IO () -> IO (ServerResponse 'Normal a) -> IO (ServerResponse 'Normal a)
-defaultExceptionHandle' = mkExceptionHandle . defaultHandlers returnErrResp
-
-defaultServerStreamExceptionHandle :: IO (ServerResponse 'ServerStreaming a)
-                                   -> IO (ServerResponse 'ServerStreaming a)
-defaultServerStreamExceptionHandle = mkExceptionHandle $ defaultHandlers returnServerStreamingResp (return ())
-
-defaultBiDiStreamExceptionHandle :: IO (ServerResponse 'BiDiStreaming a)
-                                 -> IO (ServerResponse 'BiDiStreaming a)
-defaultBiDiStreamExceptionHandle = mkExceptionHandle $ defaultHandlers returnBiDiStreamingResp (return ())
+--------------------------------------------------------------------------------
 
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)
@@ -166,6 +112,75 @@ instance Show DataInconsistency where
                                          <> " but exists in zk."
 instance Exception DataInconsistency
 
-newtype ZkNodeExists = ZkNodeExists Text
- deriving (Show)
-instance Exception ZkNodeExists
+data StreamExists = StreamExists Bool Bool
+  deriving (Show)
+instance Exception StreamExists
+
+handleStreamExists :: StreamExists -> StatusDetails
+handleStreamExists (StreamExists zkExists storeExists)
+  | zkExists && storeExists = "StreamExists: Stream has been created"
+  | zkExists    = "StreamExists: Inconsistency found. The stream was created, but not persisted to disk"
+  | storeExists = "StreamExists: Inconsistency found. The stream was persisted to disk"
+                <> ", but no record of creating the stream is found."
+  | otherwise   = "Impossible happened: Stream does not exist, but some how throw stream exist exception"
+
+--------------------------------------------------------------------------------
+
+type RetFun t a = (StatusCode -> StatusDetails -> IO (ServerResponse t a))
+type Handlers t a = [Handler (ServerResponse t a)]
+type ExceptionHandle a = IO a -> IO a
+
+defaultHandlers :: RetFun t a -> Handlers t a
+defaultHandlers retFun = [
+  Handler (\(err :: SomeSQLException) ->
+    retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
+  Handler (\(_ :: Store.EXISTS) ->
+    retFun StatusAlreadyExists "Stream already exists in store"),
+  Handler (\(err :: StreamExists) ->
+    retFun StatusAlreadyExists $ handleStreamExists err),
+  Handler (\(_ :: ObjectNotExist) ->
+    retFun StatusNotFound "Object not found"),
+  Handler (\(_ :: SubscriptionWatchOnDifferentNode) ->
+    retFun StatusAborted "Subscription is bound to a different node"),
+  Handler (\(_ :: FoundActiveConsumers) ->
+    retFun StatusFailedPrecondition "Subscription still has active consumers"),
+  Handler (\(_ :: FoundActiveSubscription) ->
+    retFun StatusFailedPrecondition "Stream still has active consumers"),
+  Handler (\(err :: Store.SomeHStoreException) -> do
+    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
+  Handler(\(ConsumerExist name :: ConsumerExist) -> do
+    retFun StatusInvalidArgument $ StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")),
+  Handler (\(err :: PersistenceException) ->
+    retFun StatusAborted $ StatusDetails (BS.pack . displayException $ err)),
+  Handler (\(_ :: QueryTerminatedOrNotExist) ->
+    retFun StatusInvalidArgument "Query is already terminated or does not exist"),
+  Handler (\(err :: StreamNotExist) ->
+    retFun StatusNotFound $ StatusDetails (BS.pack . displayException $ err)),
+  Handler (\(SubscriptionIdNotFound subId :: SubscriptionIdNotFound) ->
+    retFun StatusNotFound $ StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found")),
+  Handler (\(err :: IOException) -> do
+    Log.fatal $ Log.buildString (displayException err)
+    retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
+  Handler (\(err :: ERRException) -> do
+    retFun StatusInternal $ "Mysql error " <> mkStatusDetails err),
+  Handler (\(err :: ConnectorAlreadyExists) -> do
+    retFun StatusAlreadyExists $ mkStatusDetails err),
+  Handler (\(err :: ConnectorRestartErr) -> do
+    retFun StatusInternal $ mkStatusDetails err),
+  Handler (\(_ :: ConnectorNotExist) -> do
+    retFun StatusNotFound "Connector not found"),
+  Handler (\(err :: ZNODEEXISTS) -> do
+    retFun StatusAlreadyExists $ "Zookeeper exception: " <> mkStatusDetails err),
+  Handler (\(err :: ZNONODE) -> do
+    retFun StatusNotFound $ "Zookeeper exception: " <> mkStatusDetails err),
+  Handler (\(err :: ZooException) -> do
+    retFun StatusInternal $ "Zookeeper exception: " <> mkStatusDetails err),
+  Handler (\(err :: SomeException) -> do
+    retFun StatusUnknown $ "UnKnown exception: " <> mkStatusDetails err)
+  ]
+
+mkExceptionHandle :: Handlers t a -> ExceptionHandle (ServerResponse t a)
+mkExceptionHandle = flip catches
+
+mkStatusDetails :: Exception a => a -> StatusDetails
+mkStatusDetails = StatusDetails . BS.pack . displayException

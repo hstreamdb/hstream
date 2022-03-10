@@ -15,38 +15,33 @@ Relatead ghc issues:
 
 module HStream.Store.Internal.LogDevice.LogConfigTypes where
 
-import           Control.Applicative            (liftA2)
-import           Control.Exception              (finally)
-import           Control.Monad                  (void, when, (<=<))
-import qualified Data.Map.Strict                as Map
+import           Control.Exception                              (finally)
+import           Control.Monad                                  (void, when,
+                                                                 (<=<))
+import qualified Data.Map.Strict                                as Map
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
-import           GHC.Stack                      (HasCallStack, callStack)
-import           Z.Data.CBytes                  (CBytes)
-import qualified Z.Data.CBytes                  as CBytes
-import           Z.Foreign                      (BA#, BAArray#, MBA#)
-import qualified Z.Foreign                      as Z
+import           GHC.Stack                                      (HasCallStack,
+                                                                 callStack)
+import           Z.Data.CBytes                                  (CBytes)
+import qualified Z.Data.CBytes                                  as CBytes
+import           Z.Foreign                                      (BA#, BAArray#,
+                                                                 MBA#)
+import qualified Z.Foreign                                      as Z
 
-import qualified HStream.Store.Exception        as E
+import           HStream.Foreign                                hiding (BA#,
+                                                                 BAArray#, MBA#)
+import qualified HStream.Store.Exception                        as E
 import           HStream.Store.Internal.Foreign
+import           HStream.Store.Internal.LogDevice.LogAttributes
 import           HStream.Store.Internal.Types
 
 -------------------------------------------------------------------------------
 -- * LogAttributes
-
-hsLogAttrsToLDLogAttrs :: HsLogAttrs -> IO LDLogAttrs
-hsLogAttrsToLDLogAttrs HsLogAttrs{..} = do
-  let extras = Map.toList logExtraAttrs
-  let ks = map (CBytes.rawPrimArray . fst) extras
-      vs = map (CBytes.rawPrimArray . snd) extras
-  Z.withPrimArrayListUnsafe ks $ \ks' l ->
-    Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
-      i <- c_new_log_attributes (fromIntegral logReplicationFactor) l ks' vs'
-      newForeignPtr c_free_log_attributes_fun i
 
 getLogAttrsExtra :: LDLogAttrs -> CBytes -> IO (Maybe CBytes)
 getLogAttrsExtra attrs key = withForeignPtr attrs $ \attrs' ->
@@ -67,18 +62,6 @@ updateLogAttrsExtrasPtr attrs' logExtraAttrs = do
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> do
       i <- c_update_log_attrs_extras attrs' l ks' vs'
       newForeignPtr c_free_log_attributes_fun i
-
-hsLogAttrsFromPtr :: Ptr LogDeviceLogAttributes -> IO HsLogAttrs
-hsLogAttrsFromPtr attrs =
-  liftA2 HsLogAttrs (getAttrsReplicationFactorFromPtr attrs) (getAttrsExtrasFromPtr attrs)
-
-logGroupGetHsLogAttrs :: LDLogGroup -> IO HsLogAttrs
-logGroupGetHsLogAttrs group =
-  withForeignPtr group $ hsLogAttrsFromPtr <=< c_ld_loggroup_get_attrs
-
-logDirectoryGetHsLogAttrs :: LDDirectory -> IO HsLogAttrs
-logDirectoryGetHsLogAttrs dir =
-  withForeignPtr dir $ hsLogAttrsFromPtr <=< c_ld_logdirectory_get_attrs
 
 getAttrsExtrasFromPtr :: Ptr LogDeviceLogAttributes -> IO (Map.Map CBytes CBytes)
 getAttrsExtrasFromPtr attrs = do
@@ -263,14 +246,11 @@ logDirectoryGetVersion dir = withForeignPtr dir c_ld_logdirectory_get_version
 makeLogDirectory
   :: LDClient
   -> CBytes
-  -> LogAttrs
+  -> LogAttributes
   -> Bool
   -> IO LDDirectory
 makeLogDirectory client path attrs mkParent = do
-  logAttrs <- case attrs of
-                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
-                LogAttrsPtr p -> return p
-                LogAttrsDef   -> newForeignPtr_ nullPtr
+  logAttrs <- pokeLogAttributes attrs
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -320,8 +300,12 @@ logDirLogFullName dir name =
       CBytes.fromCString =<< c_ld_logdir_log_full_name dir' name'
 
 -- Note that this pointer is only valid if LogDirectory is valid.
-logDirectorypGetAttrs :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
-logDirectorypGetAttrs dir = withForeignPtr dir c_ld_logdirectory_get_attrs
+logDirectoryGetAttrsPtr :: LDDirectory -> IO (Ptr LogDeviceLogAttributes)
+logDirectoryGetAttrsPtr dir = withForeignPtr dir c_ld_logdirectory_get_attrs
+
+logDirectoryGetAttrs :: LDDirectory -> IO LogAttributes
+logDirectoryGetAttrs dir =
+  withForeignPtr dir $ peekLogAttributes <=< c_ld_logdirectory_get_attrs
 
 foreign import ccall unsafe "hs_logdevice.h ld_logdir_child_full_name"
   c_ld_logdir_child_full_name
@@ -439,14 +423,11 @@ makeLogGroupSync
   -> CBytes
   -> C_LogID
   -> C_LogID
-  -> LogAttrs
+  -> LogAttributes
   -> Bool
   -> IO LDLogGroup
 makeLogGroupSync client path start end attrs mkParent = do
-  logAttrs <- case attrs of
-                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
-                LogAttrsPtr p -> return p
-                LogAttrsDef   -> newForeignPtr_ nullPtr
+  logAttrs <- pokeLogAttributes attrs
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -460,14 +441,11 @@ makeLogGroup
   => LDClient
   -> CBytes
   -> C_LogID -> C_LogID
-  -> LogAttrs
+  -> LogAttributes
   -> Bool
   -> IO LDLogGroup
 makeLogGroup client path start end attrs mkParent = do
-  logAttrs <- case attrs of
-                LogAttrs val  -> hsLogAttrsToLDLogAttrs val
-                LogAttrsPtr p -> return p
-                LogAttrsDef   -> newForeignPtr_ nullPtr
+  logAttrs <- pokeLogAttributes attrs
   withForeignPtr client $ \client' ->
     withForeignPtr logAttrs $ \attrs' ->
       CBytes.withCBytesUnsafe path $ \path' -> do
@@ -591,8 +569,13 @@ logGroupGetFullName group =
 {-# INLINE logGroupGetFullName #-}
 
 -- Note that this pointer **may** only valid if LogGroup is valid.
-logGroupGetAttrs :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
-logGroupGetAttrs group = withForeignPtr group c_ld_loggroup_get_attrs
+logGroupGetAttrsPtr :: LDLogGroup -> IO (Ptr LogDeviceLogAttributes)
+logGroupGetAttrsPtr group = withForeignPtr group c_ld_loggroup_get_attrs
+{-# INLINE logGroupGetAttrsPtr #-}
+
+logGroupGetAttrs :: LDLogGroup -> IO LogAttributes
+logGroupGetAttrs group =
+  withForeignPtr group $ peekLogAttributes <=< c_ld_loggroup_get_attrs
 {-# INLINE logGroupGetAttrs #-}
 
 logGroupGetExtraAttr :: LDLogGroup -> CBytes -> IO (Maybe CBytes)

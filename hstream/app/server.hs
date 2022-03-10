@@ -65,8 +65,6 @@ serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
   Log.i $ "Server is starting on port " <> Log.buildInt (unPort serverPort)
   Log.i "*************************"
   api <- handlers sc
-  internalApi <- internalHandlers sc
-  void . forkIO $ hstreamInternalServer internalApi optionsInternal
   hstreamApiServer api options
 
 main :: IO ()
