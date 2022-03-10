@@ -120,7 +120,7 @@ pokeLogAttributes LogAttributes{..} =
   withAllocMaybePrim fromIntegral _ARG(logSyncedCopies)
   withAllocMaybePrim fromIntegral _ARG(logMaxWritesInFlight)
   withAllocMaybePrim bool2cbool _ARG(logSingleWriter)
-  withAllocMaybePrim unNodeLocationScope _ARG(logSyncReplicationScope)
+  withAllocMaybePrim id _ARG(logSyncReplicationScope)
   withAllocMaybePrim2 fromIntegral _MAYBE_ARG(logBacklogDuration)
   withHsCBytesMapUnsafe logAttrsExtras $ \l ks vs -> do
 #define _ARG_TO(name) name##' (attrInherited name)
@@ -201,7 +201,7 @@ foreign import ccall unsafe "hs_logdevice.h poke_log_attributes"
     -- ^ logMaxWritesInFlight
     -> Ptr CBool -> Bool
     -- ^ logSingleWriter
-    -> Ptr Word8 -> Bool
+    -> Ptr NodeLocationScope -> Bool
     -- ^ logSyncReplicationScope
     -> Bool -> Ptr CInt -> Bool
     -- ^ logBacklogDuration
