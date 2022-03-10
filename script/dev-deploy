@@ -105,8 +105,8 @@ def set_config_path(custom: str, origin: str) -> str:
 
 def set_resource_constraints(memory_cpus: tuple[str, str]) -> str:
     memory, cpus = memory_cpus
-    return (f" --memory={memory} " if memory is not None else "") + (
-        f" --cpus={cpus} " if cpus is not None else ""
+    return (f" --memory={memory} " if memory else "") + (
+        f" --cpus={cpus} " if cpus else ""
     )
 
 
