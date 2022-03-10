@@ -56,6 +56,10 @@ prependDefaultHandler handlers retFun = mkExceptionHandle $ handlers ++ defaultH
 
 --------------------------------------------------------------------------------
 
+newtype InvalidArgument = InvalidArgument String
+  deriving (Show)
+instance Exception InvalidArgument
+
 data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)
 instance Exception QueryTerminatedOrNotExist
@@ -141,6 +145,8 @@ defaultHandlers :: RetFun t a -> Handlers t a
 defaultHandlers retFun = [
   Handler (\(err :: SomeSQLException) ->
     retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
+  Handler (\(err :: InvalidArgument) ->
+    retFun StatusInvalidArgument $ mkStatusDetails err),
   Handler (\(_ :: Store.EXISTS) ->
     retFun StatusAlreadyExists "Stream already exists in store"),
   Handler (\(err :: StreamExists) ->

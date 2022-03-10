@@ -9,7 +9,6 @@ module HStream.Server.Handler.View where
 
 import qualified Data.ByteString.Char8            as BSC
 import           Data.List                        (find)
-import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
