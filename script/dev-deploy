@@ -95,6 +95,21 @@ def scp_command(local_file, remote, remote_file) -> str:
     return cmd
 
 
+def set_rm_intermediate(rm: bool) -> str:
+    return " --rm " if rm else ""
+
+
+def set_config_path(custom: str, origin: str) -> str:
+    return f" -v {custom}:{origin} "
+
+
+def set_resource_constraints(memory_cpus: tuple[str, str]) -> str:
+    memory, cpus = memory_cpus
+    return (f" --memory={memory} " if memory is not None else "") + (
+        f" --cpus={cpus} " if cpus is not None else ""
+    )
+
+
 # -----------------------------------------------------------------------------
 
 
@@ -352,7 +367,9 @@ class ZookeeperService(Service):
         **kargs,
     ):
 
-        docker_opts = "--rm " if rm else ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(self.zk_memory_cpus)
+
         zoo_servers = " ".join(
             f"server.{i}={hostname}:2888:3888;2181"
             for (i, (host, hostname)) in enumerate(remotes)
@@ -361,8 +378,10 @@ class ZookeeperService(Service):
         if persistent_dir:
             persistent_dir = persistent_dir.rstrip("/")
             pre_cmd = f"mkdir -p {persistent_dir}" + "/{data,datalog} && "
-            docker_opts += f"-v {persistent_dir}/data:/data \
-                -v {persistent_dir}/datalog:/datalog"
+            docker_opts += set_config_path(f"{persistent_dir}/data", "/data")
+            docker_opts += set_config_path(
+                f"{persistent_dir}/datalog", "/datalog"
+            )
 
         cmds = []
         for (i, (host, _)) in enumerate(remotes):
@@ -375,23 +394,13 @@ class ZookeeperService(Service):
                     else ""
                 )
 
-                resource_constraints = (
-                    f"--memory={self.zk_memory_cpus[0]}"
-                    if self.zk_memory_cpus[0] is not None
-                    else ""
-                ) + (
-                    f" --cpus={self.zk_memory_cpus[1]}"
-                    if self.zk_memory_cpus[1] is not None
-                    else ""
-                )
-
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
                     f"{container_bin} run -td --restart unless-stopped "
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
-                    f"{enable_metrics_provider} {resource_constraints} "
+                    f"{enable_metrics_provider} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -549,26 +558,18 @@ class HStoreAdminService(Service):
         rm=False,
         **kargs,
     ):
-        opts = "--rm" if rm else ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(self.hadmin_memory_cpus)
+
         cmds = []
         for (i, (host, _)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                resource_constraints = (
-                    f"--memory={self.hadmin_memory_cpus[0]}"
-                    if self.hadmin_memory_cpus[0] is not None
-                    else ""
-                ) + (
-                    f" --cpus={self.hadmin_memory_cpus[1]}"
-                    if self.hadmin_memory_cpus[1] is not None
-                    else ""
-                )
-
                 cmds.append(
                     f"ssh {host} '"
                     f"{container_bin} run -d --restart unless-stopped "
-                    f"{opts} {resource_constraints} "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host {image} /usr/local/bin/ld-admin-server "
                     f"--config-path {config_path} "
@@ -691,28 +692,20 @@ class HStoreService(Service):
         rm: bool = False,
         **kargs,
     ) -> List[str]:
-        opts = "--rm" if rm else ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(self.hstore_memory_cpus)
+
         cmds = []
         shards_path = Path(data_dir).joinpath("NSHARDS")
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                resource_constraints = (
-                    f"--memory={self.hstore_memory_cpus[0]}"
-                    if self.hstore_memory_cpus[0] is not None
-                    else ""
-                ) + (
-                    f" --cpus={self.hstore_memory_cpus[1]}"
-                    if self.hstore_memory_cpus[1] is not None
-                    else ""
-                )
-
                 cmds.append(
                     f"ssh {host} '"
                     f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
                     f"{container_bin} run -d --restart unless-stopped "
-                    f"{opts} {resource_constraints} "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     "--network host "
                     f"-v {data_dir}:/data/store "
@@ -800,31 +793,22 @@ class HServerService(Service):
         config_path=None,
         **kargs,
     ):
-        opts = "--rm" if rm else ""
-        opts += (
-            f" -v {config_path}:{DEFAULT_CONTAINER_CONFIG_PATH}"
-            if config_path
-            else ""
-        )
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(self.hserver_memory_cpus)
+        if config_path is not None:
+            docker_opts += set_config_path(
+                f"{config_path}", f"{DEFAULT_CONTAINER_CONFIG_PATH}"
+            )
         cmds = []
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                resource_constraints = (
-                    f"--memory={self.hserver_memory_cpus[0]}"
-                    if self.hserver_memory_cpus[0] is not None
-                    else ""
-                ) + (
-                    f" --cpus={self.hserver_memory_cpus[1]}"
-                    if self.hserver_memory_cpus[1] is not None
-                    else ""
-                )
 
                 cmds.append(
                     f"ssh {host} '"
                     f"{container_bin} run -d --restart unless-stopped "
-                    f"{opts} {resource_constraints} "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     "--network host "
                     f"{image} /usr/local/bin/hstream-server "
@@ -900,22 +884,12 @@ class PrometheusService(Service):
         config_path=None,
         **args,
     ):
-        opts = "--rm" if rm else ""
-        opts += (
-            f" -v {config_path}:{DEFAULT_CONTAINER_CONFIG_PATH}"
-            if config_path
-            else ""
-        )
-
-        resource_constraints = (
-            f"--memory={self.prometheus_memory_cpus[0]}"
-            if self.prometheus_memory_cpus[0] is not None
-            else ""
-        ) + (
-            f" --cpus={self.prometheus_memory_cpus[1]}"
-            if self.prometheus_memory_cpus[1] is not None
-            else ""
-        )
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(self.prometheus_memory_cpus)
+        if config_path is not None:
+            docker_opts += set_config_path(
+                f"{config_path}", f"{DEFAULT_CONTAINER_CONFIG_PATH}"
+            )
 
         cmds = []
         for (i, (host, addr)) in enumerate(remotes):
@@ -931,7 +905,7 @@ class PrometheusService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"{container_bin} run -d --restart unless-stopped "
-                    f"{opts} {resource_constraints} "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
                     f"{mount_cfg}"
