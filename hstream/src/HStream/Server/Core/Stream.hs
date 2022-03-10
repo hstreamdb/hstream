@@ -117,7 +117,7 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName payloadSize
   logId <- S.getUnderlyingLogId scLDClient streamID key
   S.AppendCompletion {..} <- S.appendBS scLDClient logId payload Nothing
-  let rids = V.zipWith API.RecordId (V.replicate (length records) appendCompLSN) [0..]
+  let rids = V.zipWith (API.RecordId logId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse sName rids
   where
     streamName  = textToCBytes sName
