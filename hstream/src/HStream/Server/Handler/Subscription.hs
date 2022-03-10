@@ -369,34 +369,31 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
           return []
         Right dataRecords -> return dataRecords
 
-    decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, V.Vector ReceivedRecord)
+    decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, Word64, V.Vector ReceivedRecord)
     decodeRecordBatch dataRecord = 
       let payload = recordPayload dataRecord
           logId = recordLogId dataRecord 
-          lsn = recordLSN dataRecord
+          batchId = recordLSN dataRecord
           recordBatch = decodeBatch payload
-          batch = recordBatchBatch recordBatch
+          batch = hstreamRecordBatchBatch recordBatch         
           receivedRecords = mkReceivedRecords batchId batch 
       in
-          (logId, receivedRecords)
+          (logId, batchId, receivedRecords)
         
 
     mkReceivedRecords :: Word64 -> V.Vector ByteString -> V.Vector ReceivedRecord
     mkReceivedRecords batchId records =
       V.imap (\ i a -> ReceivedRecord (Just $ RecordId batchId (fromIntegral index)) a) records   
 
-    recordBatchesToReceivedRecords :: [RecordBatch] -> [ReceivedRecord]
-    recordBatchesToReceivedRecords = undefined
-
-    sendReceivedRecordsVecs :: [(S.C_LogID, V.Vector ReceivedRecord)] -> IO ()
+    sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ReceivedRecord)] -> IO ()
     sendReceivedRecordsVecs vecs =
       foldM
         (
-          \ skipSet (logId, vec)->
+          \ skipSet (logId, batchId, vec)->
             if Set.member logId skipSet
             then return skipSet
             else do
-              ok <- sendReceivedRecords logId vec
+              ok <- sendReceivedRecords logId batchId vec
               if ok
               then return skipSet
               else return $ Set.insert logId skipSet
@@ -404,10 +401,17 @@ sendRecords ServerContext {..} SubscribeContextWrapper {..} =
         Set.empty
         vecs
 
-    sendReceivedRecords :: S.C_LogID -> V.Vector ReceivedRecord -> IO Bool 
-    sendReceivedRecords logId records = do 
+    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ReceivedRecord -> IO Bool 
+    sendReceivedRecords logId batchId records = do 
       let Assignment {..} = subAssignment
       mres <- atomically $ do
+        scs <- readTVar subShardContexts
+        let SubscribeShardContext {..} = scs HM.! logId 
+            AckWindow {..} = sscAckWindow
+        batchNumMap <- readTVar awBatchNumMap
+        let newBatchNumMap = HM.insert batchId (v.length records) batchNumMap
+        writeTVar awBatchNumMap newBatchNumMap
+
         s2c <- readTVar shard2Consumer
         let consumer = s2c HM.! logId 
         ccs <- readTVar subConsumerContexts 
