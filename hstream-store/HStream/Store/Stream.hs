@@ -149,7 +149,6 @@ import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
 import qualified Z.IO.FileSystem                  as FS
 
-import qualified Data.Map                         as M
 import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
@@ -363,15 +362,15 @@ doesStreamExist client streamid = do
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
 
-listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (M.Map CBytes FFI.C_LogID)
+listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (Map.Map CBytes FFI.C_LogID)
 listStreamPartitions client streamid = do
   dir_path <- getStreamDirPath streamid
   keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
-  foldrM insertMap M.empty keys
+  foldrM insertMap Map.empty keys
   where
     insertMap key keyMap = do
       logId <- getUnderlyingLogId client streamid (Just key)
-      return $ M.insert key logId keyMap
+      return $ Map.insert key logId keyMap
 
 doesStreamPartitionExist
   :: HasCallStack

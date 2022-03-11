@@ -8,6 +8,7 @@ module HStream.Server.Initialization
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
+import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
@@ -97,7 +98,7 @@ initializeServer ServerOpts{..} zk = do
 
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
-  subscribeRuntimeInfo <- newMVar HM.empty
+  subCtxs <- newTVarIO HM.empty
 
   hashRing <- initializeHashRing zk
 
@@ -121,7 +122,7 @@ initializeServer ServerOpts{..} zk = do
     , scDefaultStreamRepFactor = _topicRepFactor
     , runningQueries           = runningQs
     , runningConnectors        = runningCs
-    , scSubscribeRuntimeInfo   = subscribeRuntimeInfo
+    , scSubscribeContexts      = subCtxs
     , cmpStrategy              = _compression
     , headerConfig             = headerConfig
     , scStatsHolder            = statsHolder

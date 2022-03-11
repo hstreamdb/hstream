@@ -96,13 +96,6 @@ newtype ConsumerExist = ConsumerExist Text
   deriving (Show)
 instance Exception ConsumerExist
 
-data SubscribeInnerError = GRPCStreamRecvError
-                             | GRPCStreamRecvCloseError
-                             | GRPCStreamSendError
-                             | ConsumerInValidError
-  deriving (Show)
-instance Exception SubscribeInnerError
-
 data FoundActiveConsumers = FoundActiveConsumers
   deriving (Show)
 instance Exception FoundActiveConsumers
