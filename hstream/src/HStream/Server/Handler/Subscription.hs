@@ -510,25 +510,29 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
 assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do
   unassign <- readTVar unassignedShards
-  tryAssignShards unassign True
+  successCount <- tryAssignShards unassign True
   -- TODO: Fix this
-  writeTVar unassignedShards []
+  writeTVar unassignedShards (drop successCount unassign)
 
   reassign <- readTVar waitingReassignedShards
-  tryAssignShards reassign False
-  -- TODO: Fix this
-  writeTVar waitingReassignedShards []
+  reassignSuccessCount <- tryAssignShards reassign False
+  writeTVar waitingReassignedShards (drop reassignSuccessCount reassign)
   where
-    tryAssignShards :: [S.C_LogID] -> Bool -> STM ()
-    tryAssignShards logs needStartReading =
-      foldM_
-        ( \goOn shard ->
+    tryAssignShards :: [S.C_LogID] -> Bool -> STM Int
+    tryAssignShards logs needStartReading = do
+      (_, successCount) <- foldM
+        ( \(goOn, n) shard ->
             if goOn
-              then tryAssignShard shard needStartReading
-              else return goOn
+              then do
+                ok <- tryAssignShard shard needStartReading
+                if ok
+                then return (True, n + 1)
+                else return (False, n)
+              else return (goOn, n)
         )
-        True
+        (True, 0)
         logs
+      return successCount
 
     tryAssignShard :: S.C_LogID -> Bool -> STM Bool
     tryAssignShard logId needStartReading = do
