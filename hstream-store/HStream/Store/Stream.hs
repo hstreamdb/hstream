@@ -10,7 +10,7 @@ module HStream.Store.Stream
   , showStreamName
   , mkStreamId
   , mkStreamIdFromFullLogDir
-  , getStreamReplicaFactor
+  , getStreamLogAttrs
   , getStreamPartitionHeadTimestamp
     -- ** Operations
   , createStream
@@ -394,11 +394,11 @@ doesStreamPartitionExist client streamid m_key = do
 -------------------------------------------------------------------------------
 -- StreamAttrs
 
-getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
-getStreamReplicaFactor client streamid = do
+getStreamLogAttrs :: FFI.LDClient -> StreamId -> IO LD.LogAttributes
+getStreamLogAttrs client streamid = do
   dir_path <- getStreamDirPath streamid
   dir <- LD.getLogDirectory client dir_path
-  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectoryGetAttrsPtr dir
+  LD.logDirectoryGetAttrs dir
 
 getStreamExtraAttrs :: FFI.LDClient -> StreamId -> IO (Map CBytes CBytes)
 getStreamExtraAttrs client streamid = do
