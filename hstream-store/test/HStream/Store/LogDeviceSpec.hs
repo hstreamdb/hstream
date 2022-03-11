@@ -18,6 +18,17 @@ spec = do
   loggroupSpec
   logdirSpec
 
+logdirAround :: I.LogAttributes -> SpecWith CBytes -> Spec
+logdirAround attrs = aroundAll $ \runTest -> bracket setup clean runTest
+  where
+    setup = do
+      dirname <- ("/" `FS.join`) =<< newRandomName 10
+      lddir <- I.makeLogDirectory client dirname attrs False
+      void $ I.syncLogsConfigVersion client =<< I.logDirectoryGetVersion lddir
+      return dirname
+    clean dirname =
+      I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
+
 logdirSpec :: Spec
 logdirSpec = describe "LogDirectory" $ do
   let attrs = def { I.logReplicationFactor = I.defAttr1 1
@@ -70,6 +81,12 @@ logdirSpec = describe "LogDirectory" $ do
     I.syncLogsConfigVersion client =<< I.removeLogDirectory client dirname True
     I.getLogDirectory client dirname `shouldThrow` anyException
 
+  let attrs_ra = def { I.logReplicateAcross = I.defAttr1 [(S.NodeLocationScope_DATA_CENTER, 3)] }
+  logdirAround attrs_ra $ it "attributes: logReplicateAcross" $ \dirname -> do
+    dir <- I.getLogDirectory client dirname
+    attrs_got <- I.logDirectoryGetAttrs dir
+    S.logReplicateAcross attrs_got `shouldBe` I.defAttr1 [(S.NodeLocationScope_DATA_CENTER, 3)]
+
   it "Loggroup's attributes should be inherited by the parent directory" $ do
     dirname <- ("/" `FS.join`) =<< newRandomName 10
     let logid = 104
@@ -91,8 +108,7 @@ loggroupAround = aroundAll $ \runTest -> bracket setup clean runTest
       let attrs = def { I.logReplicationFactor = I.defAttr1 1
                       , I.logBacklogDuration = I.defAttr1 (Just 60)
                       , I.logSingleWriter = I.defAttr1 True
-                      -- TODO
-                      -- , I.logSyncReplicationScope = I.defAttr1 S.NodeLocationScope_DATA_CENTER
+                      , I.logSyncReplicationScope = I.defAttr1 S.NodeLocationScope_DATA_CENTER
                       , I.logAttrsExtras = Map.fromList [("A", "B")]
                       }
           logid = 104
@@ -111,8 +127,7 @@ loggroupSpec = describe "LogGroup" $ loggroupAround $ parallel $ do
     I.logReplicationFactor attrs' `shouldBe` I.defAttr1 1
     I.logBacklogDuration attrs' `shouldBe` I.defAttr1 (Just 60)
     I.logSingleWriter attrs' `shouldBe` I.defAttr1 True
-    -- TODO
-    -- I.logSyncReplicationScope attrs' `shouldBe` I.defAttr1 S.NodeLocationScope_DATA_CENTER
+    I.logSyncReplicationScope attrs' `shouldBe` I.defAttr1 S.NodeLocationScope_DATA_CENTER
     Map.lookup "A" (I.logAttrsExtras attrs') `shouldBe` Just "B"
 
   it "log group get and set range" $ \(lgname, logid) -> do
