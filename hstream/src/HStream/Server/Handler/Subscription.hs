@@ -264,7 +264,10 @@ doSubInit ServerContext{..} subId = do
           }
 
     getShards :: T.Text -> IO [S.C_LogID]
-    getShards streamName = undefined
+    getShards streamName = do
+      let streamId = transToStreamName streamName
+      res <- S.listStreamPartitions scLDClient streamId
+      return $ Map.elems res
 
 addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
 addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do
