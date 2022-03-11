@@ -368,6 +368,7 @@ class ZookeeperService(Service):
         **kargs,
     ):
 
+        docker_opts = ""
         docker_opts += set_rm_intermediate(rm)
         docker_opts += set_resource_constraints(memory_cpus)
 
@@ -560,6 +561,7 @@ class HStoreAdminService(Service):
         rm=False,
         **kargs,
     ):
+        docker_opts = ""
         docker_opts += set_rm_intermediate(rm)
         docker_opts += set_resource_constraints(memory_cpus)
 
@@ -695,6 +697,7 @@ class HStoreService(Service):
         rm: bool = False,
         **kargs,
     ) -> List[str]:
+        docker_opts = ""
         docker_opts += set_rm_intermediate(rm)
         docker_opts += set_resource_constraints(memory_cpus)
 
@@ -797,6 +800,7 @@ class HServerService(Service):
         config_path=None,
         **kargs,
     ):
+        docker_opts = ""
         docker_opts += set_rm_intermediate(rm)
         docker_opts += set_resource_constraints(memory_cpus)
         if config_path is not None:
@@ -889,6 +893,7 @@ class PrometheusService(Service):
         config_path=None,
         **args,
     ):
+        docker_opts = ""
         docker_opts += set_rm_intermediate(rm)
         docker_opts += set_resource_constraints(memory_cpus)
         if config_path is not None:
@@ -975,8 +980,9 @@ class NodeExporterService(Service):
         rm=False,
         **args,
     ):
-        opts += set_rm_intermediate(rm)
-        opts += set_resource_constraints(memory_cpus)
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
         cmds = []
 
         for (i, (host, addr)) in enumerate(remotes):
@@ -986,7 +992,7 @@ class NodeExporterService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"{container_bin} run -d --restart unless-stopped "
-                    f"{opts} "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
                     f"{image}"
@@ -1098,6 +1104,9 @@ class SimpleService(Service):
             )
             self.prometheus_image = deploy_cfg["prometheus"].get(
                 "image", PrometheusService.DEFAULT_IMAGE_TAG
+            )
+            self.node_exporter_image = deploy_cfg["node-exporter"].get(
+                "image", NodeExporterService.DEFAULT_IMAGE_TAG
             )
 
             self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
