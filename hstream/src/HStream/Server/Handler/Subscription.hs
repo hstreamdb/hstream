@@ -210,7 +210,7 @@ initSub serverCtx@ServerContext {..} subId = do
       return $ SubscribeContextWrapper {scwState = scnwState, scwContext = fromJust mctx}
 
 doSubInit :: ServerContext -> SubscriptionId -> IO SubscribeContext
-doSubInit ServerContext{..} subId = do
+doSubInit ctx@ServerContext{..} subId = do
   P.getObject subId zkHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
@@ -220,8 +220,8 @@ doSubInit ServerContext{..} subId = do
       let readerName = textToCBytes subId
       ldCkpReader <-
         --TODO: check this
-        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
-      S.ckpReaderSetTimeout ldCkpReader 3000
+        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 5000 Nothing 10
+      S.ckpReaderSetTimeout ldCkpReader 100
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
 
       -- create a ldReader for rereading unacked records
@@ -243,7 +243,7 @@ doSubInit ServerContext{..} subId = do
                 subShardContexts = shardContexts,
                 subAssignment = assignment
               }
-      shards <- getShards subscriptionStreamName
+      shards <- getShards ctx subscriptionStreamName
       Log.debug $ "get shards: " <> (Log.buildString $ show shards)
       addNewShardsToSubCtx emptySubCtx shards
       return emptySubCtx
@@ -271,11 +271,11 @@ doSubInit ServerContext{..} subId = do
             consumerWorkloads = cws
           }
 
-    getShards :: T.Text -> IO [S.C_LogID]
-    getShards streamName = do
-      let streamId = transToStreamName streamName
-      res <- S.listStreamPartitions scLDClient streamId
-      return $ Map.elems res
+getShards :: ServerContext -> T.Text -> IO [S.C_LogID]
+getShards ServerContext{..} streamName = do
+  let streamId = transToStreamName streamName
+  res <- S.listStreamPartitions scLDClient streamId
+  return $ Map.elems res
 
 addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
 addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do
@@ -328,7 +328,7 @@ initConsumer SubscribeContext {..} consumerName streamSend = do
     return cc
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
-sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
+sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
   Log.debug $ "enter sendRecords"
   threadDelay 10000
   loop
@@ -338,6 +338,8 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
       state <- readTVarIO subState
       if state == SubscribeStateRunning
         then do
+          newShards <- getNewShards
+          addNewShardsToSubCtx subCtx newShards
           atomically $ do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
@@ -347,10 +349,26 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
           sendReceivedRecordsVecs receivedRecordsVecs
           Log.debug $ "pass sendReceivedRecordsVecs"
-          threadDelay 1000000
+          --threadDelay 1000000
           loop
         else
           return ()
+
+    getNewShards :: IO [S.C_LogID]
+    getNewShards = do
+      shards <- getShards ctx subStreamName
+      atomically $ do
+        let Assignment {..} = subAssignment
+        shardSet <- readTVar totalShards
+        unassigned <- readTVar unassignedShards
+        foldM
+          (\a b ->
+            if Set.member b shardSet
+            then return a
+            else return $ a ++ [b]
+          )
+          []
+          shards
 
     addRead :: S.LDSyncCkpReader -> Assignment -> IO ()
     addRead ldCkpReader Assignment {..} = do
@@ -501,8 +519,6 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
             Nothing                                    -> True
             Just (_, ShardRecordIdRange _ endRecordId) -> recordId > endRecordId
 
-
-
     resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
     resetReadingOffset logId startOffset = do
       S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX
@@ -511,7 +527,6 @@ assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do
   unassign <- readTVar unassignedShards
   successCount <- tryAssignShards unassign True
-  -- TODO: Fix this
   writeTVar unassignedShards (drop successCount unassign)
 
   reassign <- readTVar waitingReassignedShards
