@@ -96,7 +96,7 @@ insertIntoStream sName insertType payload API.HStreamApi{..} = do
         JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
         RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
       record = buildRecord header payload
-  hstreamApiAppend (mkClientNormalRequest def
+  hstreamApiAppend0 (mkClientNormalRequest def
     { API.appendRequestStreamName = sName
     , API.appendRequestRecords    = V.singleton record
     })
