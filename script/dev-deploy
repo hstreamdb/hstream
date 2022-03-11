@@ -359,6 +359,7 @@ class ZookeeperService(Service):
         remotes,
         container_name,
         image,
+        memory_cpus,
         persistent_dir=None,
         extra_container_options="",
         container_cmd="",
@@ -368,7 +369,7 @@ class ZookeeperService(Service):
     ):
 
         docker_opts += set_rm_intermediate(rm)
-        docker_opts += set_resource_constraints(self.zk_memory_cpus)
+        docker_opts += set_resource_constraints(memory_cpus)
 
         zoo_servers = " ".join(
             f"server.{i}={hostname}:2888:3888;2181"
@@ -553,13 +554,14 @@ class HStoreAdminService(Service):
         container_name,
         remotes,
         image,
+        memory_cpus,
         config_path,
         extra_container_options="",
         rm=False,
         **kargs,
     ):
         docker_opts += set_rm_intermediate(rm)
-        docker_opts += set_resource_constraints(self.hadmin_memory_cpus)
+        docker_opts += set_resource_constraints(memory_cpus)
 
         cmds = []
         for (i, (host, _)) in enumerate(remotes):
@@ -685,6 +687,7 @@ class HStoreService(Service):
         container_bin: str,
         container_name: str,
         image: str,
+        memory_cpus: str,
         data_dir: str,
         shards: int,
         config_path: str,
@@ -693,7 +696,7 @@ class HStoreService(Service):
         **kargs,
     ) -> List[str]:
         docker_opts += set_rm_intermediate(rm)
-        docker_opts += set_resource_constraints(self.hstore_memory_cpus)
+        docker_opts += set_resource_constraints(memory_cpus)
 
         cmds = []
         shards_path = Path(data_dir).joinpath("NSHARDS")
@@ -784,6 +787,7 @@ class HServerService(Service):
         container_bin,
         container_name,
         image,
+        memory_cpus,
         zkuri,
         store_config,
         store_admin_host,
@@ -794,7 +798,7 @@ class HServerService(Service):
         **kargs,
     ):
         docker_opts += set_rm_intermediate(rm)
-        docker_opts += set_resource_constraints(self.hserver_memory_cpus)
+        docker_opts += set_resource_constraints(memory_cpus)
         if config_path is not None:
             docker_opts += set_config_path(
                 config_path, DEFAULT_CONTAINER_CONFIG_PATH
@@ -880,12 +884,13 @@ class PrometheusService(Service):
         container_name,
         remotes,
         image,
+        memory_cpus,
         rm=False,
         config_path=None,
         **args,
     ):
         docker_opts += set_rm_intermediate(rm)
-        docker_opts += set_resource_constraints(self.prometheus_memory_cpus)
+        docker_opts += set_resource_constraints(memory_cpus)
         if config_path is not None:
             docker_opts += set_config_path(
                 config_path, "/etc/prometheus/prometheus.yml"
@@ -915,6 +920,81 @@ class PrometheusService(Service):
         return cmds
 
 
+class NodeExporterService(Service):
+    KEYS = ["node-exporter"]
+    DEFAULT_CONTAINER_NAME = "deploy_node_exporter"
+    DEFAULT_IMAGE_TAG = "docker.io/prom/node-exporter"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage node-exporter service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default=NodeExporterService.DEFAULT_IMAGE_TAG
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        memory_cpus,
+        rm=False,
+        **args,
+    ):
+        opts += set_rm_intermediate(rm)
+        opts += set_resource_constraints(memory_cpus)
+        cmds = []
+
+        for (i, (host, addr)) in enumerate(remotes):
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run -d --restart unless-stopped "
+                    f"{opts} "
+                    f"--name {container_name} "
+                    f"--network host "
+                    f"{image}"
+                    f"'"
+                )
+        return cmds
+
+
 class SimpleService(Service):
     KEYS = ["simple"]
     DEFAULT_CONTAINER_BIN = "docker"
@@ -932,6 +1012,7 @@ class SimpleService(Service):
         self.HSTORE_SVC = super().get_service(HStoreService)
         self.HSERVER_SVC = super().get_service(HServerService)
         self.PROMETHEUS_SVC = super().get_service(PrometheusService)
+        self.NODE_EXPORTER_SVC = super().get_service(NodeExporterService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -975,6 +1056,10 @@ class SimpleService(Service):
             self.prometheus_hosts = [
                 (host, deploy_cfg["hosts"][host])
                 for host in (deploy_cfg["prometheus"])["hosts"]
+            ]
+            self.node_exporter_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in (deploy_cfg["node-exporter"])["hosts"]
             ]
 
             self.zk_enable_metrics_provider = (
@@ -1031,6 +1116,7 @@ class SimpleService(Service):
             self.hadmin_memory_cpus = get_memory_cpus("hstore-admin")
             self.hserver_memory_cpus = get_memory_cpus("hserver")
             self.prometheus_memory_cpus = get_memory_cpus("prometheus")
+            self.node_exporter_memory_cpus = get_memory_cpus("node-exporter")
 
     def start_cmd(self, config: str, **kargs) -> List[str]:
         self.parse_config(config)
@@ -1070,6 +1156,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
             "image": self.zk_image,
+            "memory_cpus": self.zk_memory_cpus,
         }
         zk_start_args = {
             "remotes": self.zk_hosts,
@@ -1100,6 +1187,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
             "image": self.hadmin_image,
+            "memory_cpus": self.hadmin_memory_cpus,
             "config_path": self.config_path_in_zk,
             "remotes": self.admin_hosts,
         }
@@ -1110,6 +1198,7 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "image": self.hstore_image,
+            "memory_cpus": self.hstore_memory_cpus,
             "config_path": self.config_path_in_zk,
             "data_dir": self.hstore_persistent_dir,
             "shards": 1,
@@ -1136,6 +1225,7 @@ class SimpleService(Service):
             "container_name": HServerService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hserver_hosts,
             "image": self.hserver_image,
+            "memory_cpus": self.hserver_memory_cpus,
             "zkuri": self.zk_ip,
             "store_config": self.config_path_in_zk,
             "store_admin_host": self.admin_hosts[0][1],
@@ -1149,9 +1239,20 @@ class SimpleService(Service):
             "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
             "config_path": self.prometheus_remote_conf,
             "image": self.prometheus_image,
+            "memory_cpus": self.prometheus_memory_cpus,
             "remotes": self.prometheus_hosts,
         }
         cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
+
+        # start node-exporter
+        node_exporter_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+            "image": self.node_exporter_image,
+            "memory_cpus": self.node_exporter_memory_cpus,
+            "remotes": self.node_exporter_hosts,
+        }
+        cmds.extend(self.NODE_EXPORTER_SVC.start_cmd(**node_exporter_args))
 
         return cmds
 
@@ -1204,6 +1305,15 @@ class SimpleService(Service):
         }
         cmds.extend(self.PROMETHEUS_SVC.stop_cmd(**prometheus_args))
 
+        # stop node-exporter
+        node_exporter_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.node_exporter_hosts,
+            "force": True,
+        }
+        cmds.extend(self.NODE_EXPORTER_SVC.stop_cmd(**node_exporter_args))
+
         return cmds
 
     def remove_cmd(self, config: str, **kargs) -> List[str]:
@@ -1254,5 +1364,6 @@ if __name__ == "__main__":
     s.register(HStoreService)
     s.register(HServerService)
     s.register(PrometheusService)
+    s.register(NodeExporterService)
     s.register(SimpleService)
     s.run()
