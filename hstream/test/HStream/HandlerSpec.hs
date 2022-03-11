@@ -55,14 +55,14 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
   aroundWith withRandomStreamName $ do
     it "test createStream request" $ \(api, name) -> do
-      let stream = Stream name 3
+      let stream = mkStream name 3
       createStreamRequest api stream `shouldReturn` stream
       -- create an existed stream should fail
       createStreamRequest api stream `shouldThrow` anyException
 
   aroundWith (withRandomStreamNames 5) $ do
     it "test listStream request" $ \(api, names) -> do
-      let createStreamReqs = zipWith Stream names [1, 2, 3, 3, 2]
+      let createStreamReqs = zipWith mkStream names [1, 2, 3, 3, 2]
       forM_ createStreamReqs $ \stream -> do
         createStreamRequest api stream `shouldReturn` stream
 
@@ -73,7 +73,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
   aroundWith withRandomStreamName $ do
     it "test deleteStream request" $ \(api, name) -> do
-      let stream = Stream name 1
+      let stream = mkStream name 1
       createStreamRequest api stream `shouldReturn` stream
       resp <- listStreamRequest api
       resp `shouldSatisfy` V.elem stream
@@ -90,7 +90,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       payload1 <- newRandomByteString 5
       payload2 <- newRandomByteString 5
       timeStamp <- getProtoTimestamp
-      let stream = Stream name 1
+      let stream = mkStream name 1
           header  = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
           record1 = buildRecord header payload1
           record2 = buildRecord header payload2

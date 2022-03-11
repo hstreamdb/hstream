@@ -90,7 +90,7 @@ createQueryStreamHandler
         createQueryStreamRequestQueryStatements
         query
         S.StreamTypeStream
-    let streamResp = Stream sink (fromIntegral rFac)
+    let streamResp = Stream sink (fromIntegral rFac) 0
         -- FIXME: The value query returned should have been fully assigned
         queryResp = def { queryId = tName }
     returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
