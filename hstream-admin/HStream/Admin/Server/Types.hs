@@ -133,6 +133,13 @@ streamParser = API.Stream
                      <> O.value 3
                      <> O.help "replication-factor"
                       )
+  <*> O.option O.auto ( O.long "backlog-duration"
+                     <> O.short 'b'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 0
+                     <> O.help "Backlog duration in seconds"
+                      )
 
 -------------------------------------------------------------------------------
 

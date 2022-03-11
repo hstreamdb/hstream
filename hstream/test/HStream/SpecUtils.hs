@@ -27,6 +27,7 @@ import qualified Data.Text                        as Text
 import qualified Data.Text.Encoding               as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import           Data.Word                        (Word32)
 import qualified Database.ClickHouseDriver.Client as ClickHouse
 import qualified Database.ClickHouseDriver.Types  as ClickHouse
 import qualified Database.MySQL.Base              as MySQL
@@ -197,7 +198,7 @@ withRandomStream :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi ->
 withRandomStream = provideRunTest setup clean
   where
     setup api = do name <- newRandomText 20
-                   _ <- createStreamReq api (Stream name 1)
+                   _ <- createStreamReq api (mkStream name 1)
                    threadDelay 1000000
                    return name
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
@@ -206,11 +207,17 @@ withRandomStreams :: Int -> ActionWith (HStreamClientApi, [T.Text]) -> HStreamCl
 withRandomStreams n = provideRunTest setup clean
   where
     setup api = replicateM n $ do name <- newRandomText 20
-                                  _ <- createStreamReq api (Stream name 1)
+                                  _ <- createStreamReq api (mkStream name 1)
                                   threadDelay 1000000
                                   return name
     clean api names = forM_ names $ \name -> do
       cleanStreamReq api name `shouldReturn` PB.Empty
+
+mkStreamWithName :: T.Text -> Stream
+mkStreamWithName name = def { streamStreamName = name, streamReplicationFactor = 1}
+
+mkStream :: T.Text -> Word32 -> Stream
+mkStream name repFac = def { streamStreamName = name, streamReplicationFactor = repFac}
 
 createStreamReq :: HStreamClientApi -> Stream -> IO Stream
 createStreamReq HStreamApi{..} stream =

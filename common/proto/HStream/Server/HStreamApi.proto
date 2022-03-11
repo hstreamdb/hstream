@@ -206,6 +206,7 @@ message ListSubscriptionsResponse {
 message Stream {
   string streamName = 1;
   uint32 replicationFactor = 2;
+  uint32 backlogDuration = 3;
 }
 
 message CreateQueryStreamRequest {

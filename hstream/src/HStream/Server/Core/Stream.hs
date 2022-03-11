@@ -27,6 +27,7 @@ import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
 import           HStream.Server.Exception         (FoundActiveSubscription (..),
+                                                   InvalidArgument (..),
                                                    StreamExists (..),
                                                    StreamNotExist (..))
 import qualified HStream.Server.HStreamApi        as API
@@ -46,10 +47,14 @@ import           HStream.Utils
 -- FIXME: Currently, creating a stream which partially exists will do the job
 -- but return failure response
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerResponse 'Normal API.Stream)
-createStream ServerContext{..} stream@API.Stream{..} = do
+createStream ServerContext{..} stream@API.Stream{
+  streamBacklogDuration = backlogSec, ..} = do
+  when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
   let nameCB   = textToCBytes streamStreamName
       streamId = transToStreamName streamStreamName
-      attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor }
+      attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
+                   , S.logBacklogDuration   = S.defAttr1 $
+                      if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   zNodesExist <- catch (createStreamRelatedPath zkHandle nameCB >> return False)
                        (\(_::ZNODEEXISTS) -> return True)
   storeExists <- catch (S.createStream scLDClient streamId attrs
@@ -106,7 +111,8 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
   V.forM (V.fromList streams) $ \stream -> do
     -- FIXME: should the default value be 0?
     r <- fromMaybe 0 . S.attrValue . S.logReplicationFactor <$> S.getStreamLogAttrs scLDClient stream
-    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r)
+    b <- fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration <$> S.getStreamLogAttrs scLDClient stream
+    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b)
 
 appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
