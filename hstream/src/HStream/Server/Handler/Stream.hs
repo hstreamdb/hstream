@@ -10,7 +10,8 @@ module HStream.Server.Handler.Stream
     createStreamHandler,
     deleteStreamHandler,
     listStreamsHandler,
-    appendHandler)
+    appendHandler,
+    append0Handler)
 where
 
 import qualified Data.Vector                      as V
@@ -75,4 +76,17 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
         Nothing  -> appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
+    else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+
+append0Handler
+  :: ServerContext
+  -> ServerRequest 'Normal AppendRequest AppendResponse
+  -> IO (ServerResponse 'Normal AppendResponse)
+append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
+  Log.debug $ "Receive Append0 Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
+  let partitionKey = getRecordKey . V.head $ appendRequestRecords
+  hashRing <- readMVar loadBalanceHashRing
+  let identifier = appendRequestStreamName <> clientDefaultKey
+  if getAllocatedNodeId hashRing identifier == serverID
+    then C.append0Stream sc request partitionKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."

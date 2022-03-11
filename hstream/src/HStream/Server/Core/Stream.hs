@@ -6,6 +6,7 @@ module HStream.Server.Core.Stream
   , deleteStream
   , listStreams
   , appendStream
+  , append0Stream
   ) where
 
 import           Control.Exception                (catch, throwIO)
@@ -123,7 +124,22 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
     streamName  = textToCBytes sName
     streamID    = S.mkStreamId S.StreamTypeStream streamName
     key         = textToCBytes <$> partitionKey
+--------------------------------------------------------------------------------
+append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
+append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
+  timestamp <- getProtoTimestamp
+  let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
+      payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
+      streamName = textToCBytes appendRequestStreamName
+      streamID = S.mkStreamId S.StreamTypeStream streamName
+      key = textToCBytes <$> partitionKey
+  -- XXX: Should we add a server option to toggle Stats?
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
 
+  logId <- S.getUnderlyingLogId scLDClient streamID key
+  S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
+  let records = V.zipWith (\_ idx -> API.RecordId logId appendCompLSN idx) appendRequestRecords [0..]
+  return $ API.AppendResponse appendRequestStreamName records
 --------------------------------------------------------------------------------
 
 createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
