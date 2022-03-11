@@ -137,7 +137,8 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx bidiRequest =
+streamingFetchHandler ctx bidiRequest = do
+  Log.debug $ "recv server call: streamingFetch"
   try (streamingFetchInternal ctx bidiRequest) >>= \case
     Right _ -> return $
       ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
@@ -161,9 +162,13 @@ streamingFetchInternal
   -> IO ()
 streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
   StreamingFetchRequest {..} <- firstRecv
+  Log.debug $ "pass first recv"
   wrapper@SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId
+  Log.debug $ "pass initSub"
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName streamSend
+  Log.debug $ "pass initConsumer"
   recvAcks ctx scwState scwContext consumerCtx streamRecv
+  Log.debug $ "pass recvAcks"
   where
     firstRecv :: IO StreamingFetchRequest
     firstRecv =
@@ -197,6 +202,7 @@ initSub serverCtx@ServerContext {..} subId = do
         writeTVar scnwContext (Just subCtx)
         writeTVar scnwState SubscribeStateRunning
         return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
+      Log.debug $ "ready to forkIO run sendRecords"
       forkIO $ sendRecords serverCtx scwState scwContext
       return wrapper
     else do
@@ -215,6 +221,7 @@ doSubInit ServerContext{..} subId = do
       ldCkpReader <-
         --TODO: check this
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 1 Nothing 10
+      S.ckpReaderSetTimeout ldCkpReader 3000
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
 
       -- create a ldReader for rereading unacked records
@@ -237,6 +244,7 @@ doSubInit ServerContext{..} subId = do
                 subAssignment = assignment
               }
       shards <- getShards subscriptionStreamName
+      Log.debug $ "get shards: " <> (Log.buildString $ show shards)
       addNewShardsToSubCtx emptySubCtx shards
       return emptySubCtx
   where
@@ -321,10 +329,12 @@ initConsumer SubscribeContext {..} consumerName streamSend = do
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
+  Log.debug $ "enter sendRecords"
   threadDelay 10000
   loop
   where
     loop = do
+      Log.debug $ "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
         then do
@@ -333,8 +343,11 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
             assignWaitingConsumers subAssignment
           addRead subLdCkpReader subAssignment
           recordBatches <- readRecordBatches
+          Log.debug $ "readBatches size " <> (Log.buildInt $ length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
           sendReceivedRecordsVecs receivedRecordsVecs
+          Log.debug $ "pass sendReceivedRecordsVecs"
+          threadDelay 1000000
           loop
         else
           return ()
@@ -347,7 +360,9 @@ sendRecords ServerContext {..} subState subCtx@SubscribeContext {..} = do
         return shards
       forM_
         shards
-        (\shard -> S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX)
+        (\shard -> do
+            Log.debug $ "start reading "  <> (Log.buildString $ show shard)
+            S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX)
 
     readRecordBatches :: IO [S.DataRecord Bytes]
     readRecordBatches =
@@ -496,9 +511,13 @@ assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do
   unassign <- readTVar unassignedShards
   tryAssignShards unassign True
+  -- TODO: Fix this
+  writeTVar unassignedShards []
 
   reassign <- readTVar waitingReassignedShards
   tryAssignShards reassign False
+  -- TODO: Fix this
+  writeTVar waitingReassignedShards []
   where
     tryAssignShards :: [S.C_LogID] -> Bool -> STM ()
     tryAssignShards logs needStartReading =
