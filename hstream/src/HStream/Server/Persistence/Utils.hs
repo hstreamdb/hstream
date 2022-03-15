@@ -2,9 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Persistence.Utils
-  ( defaultHandle
-
-  , rootPath
+  ( rootPath
   , serverRootPath
   , lockPath
   , serverRootLockPath
@@ -74,9 +72,6 @@ import           ZooKeeper.Types
 import qualified HStream.Logger                       as Log
 import           HStream.Server.Persistence.Exception
 import           HStream.Utils                        (textToCBytes)
-
-defaultHandle :: HasCallStack => CBytes -> Resource ZHandle
-defaultHandle network = zookeeperResInit network 5000 Nothing 0
 
 rootPath :: CBytes
 rootPath = "/hstream"
