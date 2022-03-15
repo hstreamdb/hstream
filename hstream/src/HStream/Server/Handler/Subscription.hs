@@ -341,6 +341,9 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
           newShards <- getNewShards
           addNewShardsToSubCtx subCtx newShards
           atomically $ do
+            checkHasAvailableShards
+            checkHasAvailableConsumers
+          atomically $ do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
           addRead subLdCkpReader subAssignment
@@ -369,6 +372,20 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
           )
           []
           shards
+
+    checkHasAvailableShards :: STM ()
+    checkHasAvailableShards = do
+      shards <- readTVar subShardContexts
+      if HM.null shards
+      then retry
+      else pure ()
+
+    checkHasAvailableConsumers :: STM ()
+    checkHasAvailableConsumers = do
+      consumers <- readTVar subConsumerContexts
+      if HM.null consumers
+      then retry
+      else pure ()
 
     addRead :: S.LDSyncCkpReader -> Assignment -> IO ()
     addRead ldCkpReader Assignment {..} = do
