@@ -49,5 +49,5 @@ package proto3-suite
 constraints:
     Z-IO          == 0.8.1.1
   , Z-Data        == 0.8.8.0
-  , zoovisitor    == 0.1.7.0
+  , zoovisitor    == 0.2.0.0
   , blaze-textual == 0.2.1.0
