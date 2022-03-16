@@ -86,12 +86,12 @@ def is_container_running(remote, container_name, container_bin="docker"):
     return False
 
 
-def scp_command(local_file, remote, remote_file, extra_opts="") -> str:
+def scp_command(local_file, remote, remote_file) -> str:
     cmd = ""
     file_dir = os.path.dirname(remote_file)
     if file_dir != "":
         cmd += f"ssh {remote} 'mkdir -p {file_dir}' && "
-    cmd += f"scp {extra_opts} {local_file} {remote}:{remote_file}"
+    cmd += f"scp -r {local_file} {remote}:{remote_file}"
     return cmd
 
 
@@ -1157,7 +1157,6 @@ class SimpleService(Service):
                         self.prometheus_local_conf,
                         remote,
                         self.prometheus_remote_conf,
-                        extra_opts="-r",
                     )
                 )
 
