@@ -16,10 +16,8 @@ import           Data.List                        (sort)
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
-import           Network.GRPC.HighLevel.Generated
 import           System.Exit                      (exitFailure)
 import qualified Z.Data.CBytes                    as CB
-import           Z.Foreign                        (toByteString)
 import           ZooKeeper                        (zooCreateOpInit,
                                                    zooGetChildren, zooMulti,
                                                    zooSetOpInit)
@@ -83,9 +81,7 @@ initNodePath zk serverID host port port' = do
       zooCreateOpInit (path <> "/" <> CB.pack (show serverID))
                       content 0 zooOpenAclUnsafe ZooEphemeral
 
-initializeServer
-  :: ServerOpts -> ZHandle
-  -> IO (ServiceOptions, ServiceOptions, ServerContext)
+initializeServer :: ServerOpts -> ZHandle -> IO ServerContext
 initializeServer ServerOpts{..} zk = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   ldclient <- S.newLDClient _ldConfigPath
@@ -102,32 +98,20 @@ initializeServer ServerOpts{..} zk = do
 
   hashRing <- initializeHashRing zk
 
-  return (
-    defaultServiceOptions {
-      Network.GRPC.HighLevel.Generated.serverHost =
-        Host . toByteString . CB.toBytes $ _serverHost
-    , Network.GRPC.HighLevel.Generated.serverPort =
-        Port . fromIntegral $ _serverPort
-    },
-    defaultServiceOptions {
-      Network.GRPC.HighLevel.Generated.serverHost =
-        Host . toByteString . CB.toBytes $ _serverHost
-    , Network.GRPC.HighLevel.Generated.serverPort =
-        Port . fromIntegral $ _serverInternalPort
-    },
-    ServerContext {
-      zkHandle                 = zk
-    , scLDClient               = ldclient
-    , serverID                 = _serverID
-    , scDefaultStreamRepFactor = _topicRepFactor
-    , runningQueries           = runningQs
-    , runningConnectors        = runningCs
-    , scSubscribeContexts      = subCtxs
-    , cmpStrategy              = _compression
-    , headerConfig             = headerConfig
-    , scStatsHolder            = statsHolder
-    , loadBalanceHashRing      = hashRing
-    })
+  return
+    ServerContext
+      { zkHandle                 = zk
+      , scLDClient               = ldclient
+      , serverID                 = _serverID
+      , scDefaultStreamRepFactor = _topicRepFactor
+      , runningQueries           = runningQs
+      , runningConnectors        = runningCs
+      , scSubscribeContexts      = subCtxs
+      , cmpStrategy              = _compression
+      , headerConfig             = headerConfig
+      , scStatsHolder            = statsHolder
+      , loadBalanceHashRing      = hashRing
+      }
 
 --------------------------------------------------------------------------------
 

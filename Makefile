@@ -16,7 +16,7 @@ grpc:: grpc-cpp grpc-hs grpc-gateway
 
 grpc-hs: grpc-cpp
 	($(CABAL) build proto3-suite && mkdir -p ~/.cabal/bin && \
-		$(CABAL) exec which compile-proto-file_hstream | xargs -I{} cp {} $(PROTO_COMPILE_HS))
+		$(CABAL) exec which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS))
 	(cd common/proto && $(PROTO_COMPILE_HS) \
 		--includeDir /usr/local/include \
 		--proto google/protobuf/struct.proto \
