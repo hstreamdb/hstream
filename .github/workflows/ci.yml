@@ -82,6 +82,8 @@ jobs:
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             update
           python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
+            "'make clean'"
+          python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             make
           python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
             build --enable-tests --enable-benchmarks all
