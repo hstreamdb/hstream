@@ -24,7 +24,8 @@ import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception         (appendStreamExceptionHandle,
                                                    defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Handler.Common    (clientDefaultKey)
+import           HStream.Server.Handler.Common    (alignDefault,
+                                                   clientDefaultKey)
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -72,7 +73,7 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
-        Just key -> appendRequestStreamName <> key
+        Just key -> appendRequestStreamName <> alignDefault key
         Nothing  -> appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
