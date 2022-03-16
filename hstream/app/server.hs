@@ -6,12 +6,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Concurrent               (MVar, forkIO, putMVar,
-                                                   takeMVar, threadDelay)
-import           Control.Monad                    (forever, void)
+                                                   takeMVar)
+import           Control.Monad                    (void)
 import           Data.List                        (sort)
 import qualified Data.Text                        as T
-import           Network.GRPC.HighLevel           (ServiceOptions (..))
-import           Network.GRPC.HighLevel.Client    (Port (unPort))
+import qualified Network.GRPC.HighLevel           as GRPC
+import qualified Network.GRPC.HighLevel.Client    as GRPC
+import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Text.RawString.QQ                (r)
 import           ZooKeeper                        (withResource,
                                                    zooWatchGetChildren,
@@ -31,21 +32,33 @@ import           HStream.Server.Persistence       (getServerNode',
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerOpts (..))
 import qualified HStream.Store.Logger             as Log
-import           HStream.Utils                    (setupSigsegvHandler)
+import           HStream.Utils                    (cbytes2bs,
+                                                   setupSigsegvHandler)
+
+main :: IO ()
+main = getConfig >>= app
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
+  let serverOnStarted = Log.i $ "Server is started on port " <> Log.buildInt _serverPort
+  let grpcOpts =
+        GRPC.defaultServiceOptions
+        { GRPC.serverHost = GRPC.Host . cbytes2bs $ _serverHost
+        , GRPC.serverPort = GRPC.Port . fromIntegral $ _serverPort
+        , GRPC.serverOnStarted = Just serverOnStarted
+        }
   setupSigsegvHandler
   Log.setLogDeviceDbgLevel' _ldLogLevel
   let zkRes = zookeeperResInit _zkUri Nothing{- WatcherFn -} 5000 Nothing 0
   withResource zkRes $ \zk -> do
     initializeAncestors zk
-    (options, options', serverContext) <- initializeServer config zk
-    initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
-    serve options options' serverContext
 
-serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
-serve options@ServiceOptions{..} _optionsInternal sc@ServerContext{..} = do
+    serverContext <- initializeServer config zk
+    initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+    serve grpcOpts serverContext
+
+serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
+serve options@GRPC.ServiceOptions{..} sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
   -- GRPC service
   Log.i "************************"
@@ -56,15 +69,9 @@ serve options@ServiceOptions{..} _optionsInternal sc@ServerContext{..} = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
-  Log.i $ "Server is starting on port " <> Log.buildInt (unPort serverPort)
   Log.i "*************************"
   api <- handlers sc
   hstreamApiServer api options
-
-main :: IO ()
-main = do
-  config <- getConfig
-  app config
 
 --------------------------------------------------------------------------------
 

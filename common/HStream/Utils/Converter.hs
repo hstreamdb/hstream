@@ -12,6 +12,7 @@ module HStream.Utils.Converter
   , zJsonValueToValue
     --
   , cBytesToText
+  , cbytes2bs
   , cBytesToLazyText
   , textToCBytes
   , textToZBuilder
@@ -34,6 +35,7 @@ module HStream.Utils.Converter
 
 import qualified Data.Aeson             as Aeson
 import           Data.Bifunctor         (Bifunctor (second))
+import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Lazy   as BL
 import qualified Data.HashMap.Strict    as HM
 import qualified Data.Map               as M
@@ -123,6 +125,9 @@ valueToZJsonValue (PB.Value (Just _)) = error "impossible happened"
 
 cBytesToText :: ZCB.CBytes -> T.Text
 cBytesToText = T.pack . ZCB.unpack
+
+cbytes2bs :: ZCB.CBytes -> BS.ByteString
+cbytes2bs = ZF.toByteString . ZCB.toBytes
 
 cBytesToLazyText :: ZCB.CBytes -> TL.Text
 cBytesToLazyText = TL.fromStrict . cBytesToText
