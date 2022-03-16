@@ -216,17 +216,19 @@ doSubInit ctx@ServerContext{..} subId = do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
       throwIO $ SubscriptionIdNotFound subId
     Just Subscription {..} -> do
-      -- create a ldCkpReader for reading new records
       let readerName = textToCBytes subId
+      -- Notice: doc this. shard count can not larger than this.
+      let maxReadLogs = 1000
+      -- see: https://logdevice.io/api/classfacebook_1_1logdevice_1_1_client.html#a797d6ebcb95ace4b95a198a293215103
+      let ldReaderBufferSize = 10
+      -- create a ldCkpReader for reading new records
       ldCkpReader <-
-        --TODO: check this
-        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 5000 Nothing 10
-      S.ckpReaderSetTimeout ldCkpReader 100
+        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize) 5
+      S.ckpReaderSetTimeout ldCkpReader 10
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
 
       -- create a ldReader for rereading unacked records
-      --TODO: check this
-      ldReader <- S.newLDReader scLDClient 5000 Nothing
+      ldReader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
       consumerContexts <- newTVarIO HM.empty
