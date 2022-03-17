@@ -22,8 +22,8 @@ import           Z.Data.ASCII             (c2w)
 import           Z.Data.CBytes            (CBytes, fromBytes)
 import qualified Z.Data.Parser            as P
 import qualified Z.Data.Text              as T
-import           Z.Data.Vector            (Bytes)
 import qualified Z.Data.Vector            as V
+import           Z.Data.Vector            (Bytes)
 
 import qualified HStream.Admin.Store.API  as AA
 import qualified HStream.Logger           as Log

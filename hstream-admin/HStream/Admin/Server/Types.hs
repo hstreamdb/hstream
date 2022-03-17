@@ -5,8 +5,8 @@ import qualified Data.Aeson                as Aeson
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
-import           Z.Data.CBytes             (CBytes)
 import qualified Z.Data.CBytes             as CB
+import           Z.Data.CBytes             (CBytes)
 import           Z.IO.Network.SocketAddr   (PortNumber)
 
 import qualified HStream.Logger            as Log

@@ -16,12 +16,12 @@ import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Stack
-import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as CBytes
-import           Z.Data.Vector                  (Bytes)
+import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.Vector                  as V
-import           Z.Foreign                      (CInt)
+import           Z.Data.Vector                  (Bytes)
 import qualified Z.Foreign                      as Z
+import           Z.Foreign                      (CInt)
 
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign

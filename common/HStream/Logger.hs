@@ -43,8 +43,8 @@ import qualified Data.Text             as Text
 import qualified Data.Text.Lazy        as TL
 import           GHC.Stack             (HasCallStack)
 import qualified Text.Read             as Read
-import           Z.Data.Builder        (Builder)
 import qualified Z.Data.Builder        as B
+import           Z.Data.Builder        (Builder)
 import qualified Z.Data.CBytes         as CBytes
 import qualified Z.IO.Logger           as Log
 

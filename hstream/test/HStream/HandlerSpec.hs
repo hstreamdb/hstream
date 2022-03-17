@@ -11,8 +11,8 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (race)
 import           Control.Monad                    (forM, forM_, replicateM,
                                                    void, when)
-import           Data.IORef
 import           Data.Int                         (Int32)
+import           Data.IORef
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)

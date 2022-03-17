@@ -6,8 +6,8 @@ module HStream.SQL
   , module HStream.SQL.ExecPlan
   ) where
 
-import           HStream.SQL.AST      hiding (StreamName)
 import           HStream.SQL.Abs
+import           HStream.SQL.AST      hiding (StreamName)
 import           HStream.SQL.Codegen
 import           HStream.SQL.ExecPlan
 import           HStream.SQL.Parse
