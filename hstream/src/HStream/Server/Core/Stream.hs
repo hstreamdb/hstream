@@ -30,9 +30,9 @@ import           HStream.Server.Exception         (FoundActiveSubscription (..),
                                                    InvalidArgument (..),
                                                    StreamExists (..),
                                                    StreamNotExist (..))
-import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
                                                    removeStreamRelatedPath)
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (streamRootPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))

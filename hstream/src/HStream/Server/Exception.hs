@@ -21,9 +21,9 @@ import           Network.GRPC.HighLevel.Server        (ServerResponse)
 import           ZooKeeper.Exception
 
 import qualified HStream.Logger                       as Log
+import           HStream.Server.Persistence.Exception (PersistenceException)
 import           HStream.SQL.Exception                (SomeSQLException,
                                                        formatSomeSQLException)
-import           HStream.Server.Persistence.Exception (PersistenceException)
 import qualified HStream.Store                        as Store
 import           HStream.Utils                        (TaskStatus,
                                                        returnBiDiStreamingResp,

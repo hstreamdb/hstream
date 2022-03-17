@@ -37,10 +37,10 @@ import           HStream.Client.Type              (ClientContext (..))
 import           HStream.Client.Utils             (mkGRPCClientConf)
 import qualified HStream.Common.Query             as Query
 import qualified HStream.Logger                   as Log
+import           HStream.Server.HStreamApi
 import           HStream.SQL
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
-import           HStream.Server.HStreamApi
 import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,

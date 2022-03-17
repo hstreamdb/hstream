@@ -17,8 +17,8 @@ module HStream.Common.ConsistentHashing
   ) where
 
 import           Data.Foldable             (foldr')
-import qualified Data.HashMap.Strict       as HM
 import           Data.Hashable
+import qualified Data.HashMap.Strict       as HM
 import           Data.IntMap.Strict        (IntMap)
 import qualified Data.IntMap.Strict        as IntMap
 import           Data.Maybe                (fromMaybe)

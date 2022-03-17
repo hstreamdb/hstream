@@ -18,8 +18,8 @@ import           GHC.Conc
 import           GHC.Exts
 import           GHC.Stack
 import           Z.Data.CBytes                (CBytes)
-import           Z.Foreign                    (BA#, MBA#)
 import qualified Z.Foreign                    as Z
+import           Z.Foreign                    (BA#, MBA#)
 
 import           HStream.Foreign              hiding (BA#, MBA#)
 import qualified HStream.Logger               as Log
