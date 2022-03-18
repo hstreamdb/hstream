@@ -225,11 +225,11 @@ doSubInit ctx@ServerContext{..} subId = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize) 5
-      S.ckpReaderSetTimeout ldCkpReader 10
+      void $ S.ckpReaderSetTimeout ldCkpReader 10
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
 
       -- create a ldReader for rereading unacked records
-      ldReader <- S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
+      ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
       consumerContexts <- newTVarIO HM.empty
@@ -247,7 +247,7 @@ doSubInit ctx@ServerContext{..} subId = do
                 subAssignment = assignment
               }
       shards <- getShards ctx subscriptionStreamName
-      Log.debug $ "get shards: " <> (Log.buildString $ show shards)
+      Log.debug $ "get shards: " <> Log.buildString (show shards)
       addNewShardsToSubCtx emptySubCtx shards
       return emptySubCtx
   where
@@ -515,8 +515,9 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
       if V.null resendRecordIds
       then return ()
       else do
-        S.readerStartReading subLdReader logId batchId batchId
-        dataRecord <- S.readerRead subLdReader 1
+        dataRecord <- withMVar subLdReader $ \reader -> do
+          S.readerStartReading reader logId batchId batchId
+          S.readerRead reader 1
         if length dataRecord /= 1
         then do
           -- TODO: handle error here

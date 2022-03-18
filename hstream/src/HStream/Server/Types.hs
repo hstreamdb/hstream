@@ -6,9 +6,8 @@
 
 module HStream.Server.Types where
 
-import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
+import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
-import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
@@ -16,7 +15,6 @@ import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
-import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
@@ -101,7 +99,7 @@ data SubscribeContext = SubscribeContext
     subStreamName        :: T.Text,
     subAckTimeoutSeconds :: Int32,
     subLdCkpReader       :: HS.LDSyncCkpReader,
-    subLdReader          :: HS.LDReader,
+    subLdReader          :: MVar HS.LDReader,
     subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment        :: Assignment
