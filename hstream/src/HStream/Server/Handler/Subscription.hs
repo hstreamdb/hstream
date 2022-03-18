@@ -45,8 +45,8 @@ import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64, Word8)
 import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
-import           Z.Data.Vector                    (Bytes)
 import qualified Z.Data.Vector                    as ZV
+import           Z.Data.Vector                    (Bytes)
 import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
@@ -59,13 +59,13 @@ import           HStream.Server.Exception         (StreamNotExist (..),
                                                    SubscriptionIdNotFound (..),
                                                    SubscriptionWatchOnDifferentNode (..),
                                                    defaultExceptionHandle)
-import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId,
                                                    orderingKeyToStoreKey,
                                                    removeSubFromStreamPath)
+import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..),
                                                    mkPartitionKeysPath)
 import qualified HStream.Server.Persistence       as P

@@ -15,13 +15,13 @@ import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
-import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
-import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (handleCreateAsSelect)
+import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),

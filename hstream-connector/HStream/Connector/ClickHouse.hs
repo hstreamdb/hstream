@@ -15,8 +15,8 @@ import           Data.Scientific                 (floatingOrInteger)
 import qualified Data.Text                       as Text
 import qualified Database.ClickHouseDriver       as CK
 import qualified Database.ClickHouseDriver.Types as CK
-import           HStream.Utils                   (flattenJSON)
 import           Haxl.Core                       (Env)
+import           HStream.Utils                   (flattenJSON)
 
 import qualified HStream.Logger                  as Log
 import           HStream.Processing.Connector    (SinkConnector (..))
