@@ -91,7 +91,7 @@ def scp_command(local_file, remote, remote_file) -> str:
     file_dir = os.path.dirname(remote_file)
     if file_dir != "":
         cmd += f"ssh {remote} 'mkdir -p {file_dir}' && "
-    cmd += f"scp {local_file} {remote}:{remote_file}"
+    cmd += f"scp -r {local_file} {remote}:{remote_file}"
     return cmd
 
 

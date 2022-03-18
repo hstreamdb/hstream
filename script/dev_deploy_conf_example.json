@@ -47,8 +47,8 @@
         "hosts": [
             "remote_ssh_host1"
         ],
-        "local_config_path": "$PWD/config.yml",
-        "remote_config_path": "/root/.config/dev-deploy/config.yml"
+        "local_config_path": "$PWD/prometheus-config-dir",
+        "remote_config_path": "/root/.config/dev-deploy/prometheus-config-dir"
     },
     "node-exporter": {
         "hosts": [
