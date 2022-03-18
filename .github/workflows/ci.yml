@@ -150,7 +150,7 @@ jobs:
       # -------------------------------------------------------------------------------
 
       - name: stop all started services
-        run: python3 script/dev-tools stop-services
+        run: docker rm -f $(docker ps -a -q)
 
       - name: quick build new hstream image
         run: |
@@ -173,7 +173,10 @@ jobs:
       - uses: gradle/wrapper-validation-action@v1
 
       - name: run integration tests
-        run: 'cd integration-tests && export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE && ./gradlew :app:test --debug --tests "io.hstream.testing.BasicTest"'
+        run: |
+          cd integration-tests
+          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+          ./gradlew :app:test --info --fail-fast --tests "io.hstream.testing.BasicTest"
 
       - uses: actions/upload-artifact@v2
         if: ${{ success() }} || ${{ failure() }}
