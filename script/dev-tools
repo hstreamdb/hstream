@@ -942,16 +942,18 @@ class QuickBuildDevImageCommand:
                 (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),
             ]
 
-            install_cmd = (
-                f"cabal install --installdir={installdir} {hs_targets}"
+            # Install
+            run_sh(
+                f"python3 {__file__} cabal --check --no-interactive "
+                f"--no-services-required --image {builder_image} --no-services-required "
+                f"-- install --installdir={installdir} {hs_targets}"
             )
-            copy_cmd = " && ".join(
-                f"docker cp -L {x} {tmp_name}:{y}" for x, y in files
-            )
+            # Copy
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
             run_sh(
-                f"python3 {__file__} shell --image {builder_image} --no-services-required "
-                f" --command '{install_cmd} && {copy_cmd}'"
+                " && ".join(
+                    f"docker cp -L {x} {tmp_name}:{y}" for x, y in files
+                )
             )
             run_sh(f"docker commit {tmp_name} {tag}")
         except Exception as e:
