@@ -26,9 +26,9 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (DataInconsistency (..),
                                                    StreamNotExist (..),
                                                    defaultExceptionHandle)
+import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (alignDefault,
                                                    orderingKeyToStoreKey)
-import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types

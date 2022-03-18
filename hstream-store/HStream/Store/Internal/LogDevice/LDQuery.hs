@@ -13,10 +13,10 @@ import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc          (free)
 import           Foreign.Ptr
 import           GHC.Stack
-import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.CBytes                  (CBytes)
-import qualified Z.Foreign                      as Z
+import qualified Z.Data.CBytes                  as CBytes
 import           Z.Foreign                      (BA#, MBA#)
+import qualified Z.Foreign                      as Z
 
 import           HStream.Foreign                hiding (BA#, MBA#)
 import           HStream.Store.Exception        (throwStoreError)

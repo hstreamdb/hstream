@@ -15,8 +15,8 @@ import           ZooKeeper.Types               (ZHandle)
 import           HStream.Connector.HStore      (transToStreamName)
 import qualified HStream.Logger                as Log
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common (removeSubFromStreamPath)
 import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Common (removeSubFromStreamPath)
 import qualified HStream.Server.Persistence    as P
 import           HStream.Server.Types
 import qualified HStream.Store                 as S

@@ -20,8 +20,8 @@ import           HStream.Client.Action
 import           HStream.Client.Gadget
 import           HStream.Client.Type           (ClientContext (..))
 import           HStream.Client.Utils
-import           HStream.Server.HStreamApi
 import           HStream.SQL
+import           HStream.Server.HStreamApi
 import           HStream.Utils                 (Format)
 
 executeShowPlan :: ClientContext -> ShowObject -> IO ()

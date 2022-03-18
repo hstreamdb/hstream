@@ -18,11 +18,11 @@ import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Stack
-import qualified Z.Data.CBytes                  as ZC
 import           Z.Data.CBytes                  (CBytes)
+import qualified Z.Data.CBytes                  as ZC
 import           Z.Data.Vector.Base             (Bytes)
-import qualified Z.Foreign                      as Z
 import           Z.Foreign                      (BA#, MBA#)
+import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
 import           HStream.Store.Internal.Foreign (cbool2bool, retryWhileAgain,

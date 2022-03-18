@@ -18,9 +18,9 @@ import           Data.Bifunctor
 import           Data.Function                    (on, (&))
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.Int                         (Int64)
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
+import           Data.Int                         (Int64)
 import           Data.List                        (find, (\\))
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
@@ -48,17 +48,17 @@ import           HStream.Processing.Processor     (getTaskName,
 import           HStream.Processing.Store
 import qualified HStream.Processing.Stream        as PS
 import           HStream.Processing.Type          hiding (StreamName, Timestamp)
-import           HStream.Server.Exception
-import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector
-import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
-import           HStream.Server.Types
 import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.ExecPlan             (genExecutionPlan)
+import           HStream.Server.Exception
+import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Connector
+import qualified HStream.Server.Persistence       as P
+import           HStream.Server.Types
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB

@@ -23,8 +23,8 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception         (appendStreamExceptionHandle,
                                                    defaultExceptionHandle)
-import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.HStreamApi
+import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.Types             (ServerContext (..))
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
