@@ -342,7 +342,7 @@ readBatchPayload name = do
   reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing 10
   S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
   x <- S.ckpReaderRead reader 1000
-  return $ hstreamRecordBatchBatch . decodeBatch . S.recordPayload $ head x
+  return $ hstreamRecordBatchBatch . decodeBytesToMessage . S.recordPayload $ head x
 
 --------------------------------------------------------------------------------
 

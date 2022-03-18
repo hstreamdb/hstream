@@ -105,7 +105,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       appendResponseStreamName resp `shouldBe` name
       recordIdBatchIndex <$> appendResponseRecordIds resp `shouldBe` V.fromList [0, 1]
       batchPayload <- readBatchPayload name
-      fmap (hstreamRecordPayload . decodeByteStringRecord) batchPayload `shouldBe` V.fromList [payload1, payload2]
+      fmap (hstreamRecordPayload . decodeByteStringToMessage) batchPayload `shouldBe` V.fromList [payload1, payload2]
 
 -------------------------------------------------------------------------------------------------
 

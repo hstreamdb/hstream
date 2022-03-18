@@ -134,7 +134,7 @@ getJsonFormatRecord dataRecord
    | flag == Enumerated (Right HStreamRecordHeader_FlagJSON) = Just $ Payload logid payload lsn timestamp
    | otherwise = Nothing
   where
-    record    = decodeRecord $ S.recordPayload dataRecord
+    record    = decodeBytesToMessage $ S.recordPayload dataRecord
     flag      = getPayloadFlag record
     payload   = getPayload record
     logid     = S.recordLogID dataRecord
@@ -156,7 +156,7 @@ writeRecordToHStore ldclient streamType SinkRecord{..} = do
   logId <- S.getUnderlyingLogId ldclient streamId Nothing
   timestamp <- getProtoTimestamp
   let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
-  let payload = encodeRecord $ buildRecord header (BL.toStrict snkValue)
+  let payload = encodeMessage $ buildRecord header (BL.toStrict snkValue)
   _ <- S.appendBS ldclient logId payload Nothing
   return ()
 

@@ -6,17 +6,16 @@ module HStream.Utils.BuildRecord where
 
 import           Control.Exception         (displayException)
 import           Data.ByteString           (ByteString)
-import qualified Data.ByteString           as B
 import qualified Data.ByteString.Lazy      as BL
 import           Data.Int                  (Int64)
 import           Data.Map.Strict           (Map)
 import           Data.Maybe                (fromJust)
 import           Data.Text                 (Text)
+import           Google.Protobuf.Timestamp
 import qualified Proto3.Suite              as PT
 import           Z.Data.Vector             (Bytes)
 import           Z.Foreign                 (fromByteString, toByteString)
 
-import           Google.Protobuf.Timestamp
 import           HStream.Server.HStreamApi
 
 buildRecordHeader
@@ -37,30 +36,17 @@ buildRecordHeader flag mp timestamp key =
 buildRecord :: HStreamRecordHeader -> ByteString -> HStreamRecord
 buildRecord header = HStreamRecord (Just header)
 
-encodeRecord :: HStreamRecord -> ByteString
-encodeRecord = BL.toStrict . PT.toLazyByteString
+encodeMessage :: PT.Message a => a  -> ByteString
+encodeMessage = BL.toStrict . PT.toLazyByteString
 
-decodeRecord :: Bytes -> HStreamRecord
-decodeRecord = decodeByteStringRecord . toByteString
+decodeBytesToMessage :: PT.Message a => Bytes -> a
+decodeBytesToMessage = decodeByteStringToMessage . toByteString
 
-decodeByteStringRecord :: B.ByteString -> HStreamRecord
-decodeByteStringRecord record =
-  let rc = PT.fromByteString record
+decodeByteStringToMessage :: PT.Message a => ByteString -> a
+decodeByteStringToMessage msg =
+  let rc = PT.fromByteString msg
   in case rc of
-      Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
-      Right res -> res
-
-encodeBatch :: HStreamRecordBatch -> ByteString
-encodeBatch = BL.toStrict . PT.toLazyByteString
-
-decodeBatch :: Bytes -> HStreamRecordBatch
-decodeBatch = decodeByteStringBatch . toByteString
-
-decodeByteStringBatch :: B.ByteString -> HStreamRecordBatch
-decodeByteStringBatch batch =
-  let rc = PT.fromByteString batch
-  in case rc of
-      Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
+      Left e    -> error $ "Decode proto message error: " <> displayException e
       Right res -> res
 
 getPayload :: HStreamRecord -> Bytes
@@ -76,14 +62,14 @@ getTimeStamp HStreamRecord{..} =
   in ts
 
 getRecordKey :: HStreamRecord -> Maybe Text
-getRecordKey record =
-  case fmap hstreamRecordHeaderKey . hstreamRecordHeader $ record of
+getRecordKey HStreamRecord{..} =
+  case hstreamRecordHeaderKey <$> hstreamRecordHeader of
     Just "__default__" -> Nothing
     Just ""            -> Nothing
-    key'               -> key'
+    key                -> key
 
 updateRecordTimestamp :: Timestamp -> HStreamRecord -> HStreamRecord
 updateRecordTimestamp timestamp HStreamRecord{..} =
-  let oldHeader = fromJust hstreamRecordHeader
-      newHeader = oldHeader { hstreamRecordHeaderPublishTime = Just timestamp }
-   in HStreamRecord (Just newHeader) hstreamRecordPayload
+  HStreamRecord (update <$> hstreamRecordHeader) hstreamRecordPayload
+  where
+    update header = header { hstreamRecordHeaderPublishTime = Just timestamp }

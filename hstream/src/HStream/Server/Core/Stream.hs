@@ -118,8 +118,8 @@ appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.Appen
 appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
   appendRequestRecords = records} partitionKey = do
   timestamp <- getProtoTimestamp
-  let payload = encodeBatch . API.HStreamRecordBatch $
-        encodeRecord . updateRecordTimestamp timestamp <$> records
+  let payload = encodeMessage . API.HStreamRecordBatch $
+        encodeMessage . updateRecordTimestamp timestamp <$> records
       payloadSize = fromIntegral $ BS.length payload
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName payloadSize
@@ -135,7 +135,7 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
 append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
 append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
   timestamp <- getProtoTimestamp
-  let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
+  let payloads = encodeMessage . updateRecordTimestamp timestamp <$> appendRequestRecords
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
       streamName = textToCBytes appendRequestStreamName
       streamID = S.mkStreamId S.StreamTypeStream streamName

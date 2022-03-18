@@ -73,7 +73,8 @@ import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (cBytesToText, decodeBatch,
+import           HStream.Utils                    (cBytesToText,
+                                                   decodeBytesToMessage,
                                                    returnResp, textToCBytes)
 
 --------------------------------------------------------------------------------
@@ -429,7 +430,7 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
       let payload = S.recordPayload dataRecord
           logId = S.recordLogID dataRecord
           batchId = S.recordLSN dataRecord
-          recordBatch = decodeBatch payload
+          recordBatch = decodeBytesToMessage payload
           batch = hstreamRecordBatchBatch recordBatch
           (shardRecordIds, receivedRecords) = mkReceivedRecords logId batchId batch
       in
