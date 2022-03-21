@@ -403,7 +403,7 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
 
     readRecordBatches :: IO [S.DataRecord Bytes]
     readRecordBatches =
-      S.ckpReaderReadAllowGap subLdCkpReader 1000 >>= \case
+      S.ckpReaderReadAllowGap subLdCkpReader 100 >>= \case
         Left gap@S.GapRecord {..} -> do
           atomically $ do
             scs <- readTVar subShardContexts
