@@ -25,7 +25,7 @@ import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
-import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (NodeInfo (..),
@@ -120,4 +120,4 @@ initializeHashRing zk = do
   StringsCompletion (StringVector children) <-
     zooGetChildren zk serverRootPath
   serverNodes <- mapM (getServerNode' zk) children
-  newMVar . constructHashRing . sort $ serverNodes
+  newMVar . constructServerMap . sort $ serverNodes
