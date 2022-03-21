@@ -79,7 +79,7 @@ data ServerContext = ServerContext {
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
   { scnwState   :: TVar SubscribeState,
-    scnwContext :: TVar (Maybe SubscribeContext)
+    scnwContext :: TMVar SubscribeContext
   }
 
 data SubscribeContextWrapper = SubscribeContextWrapper

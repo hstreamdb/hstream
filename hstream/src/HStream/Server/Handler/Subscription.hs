@@ -16,38 +16,29 @@ module HStream.Server.Handler.Subscription
     deleteSubscriptionHandler,
     listSubscriptionsHandler,
     checkSubscriptionExistHandler,
-    -- watchSubscriptionHandler,
-    streamingFetchHandler,
-    -- routineForSubs,
-    -- stopSendingRecords
+    streamingFetchHandler
   )
 where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async         (concurrently_)
 import           Control.Concurrent.STM
-import           Control.Exception                (Exception, catch,
-                                                   onException, throwIO, try)
+import           Control.Exception                (Exception, catch, throwIO,
+                                                   try)
 import           Control.Monad                    (foldM, foldM_, forM_, unless,
                                                    when)
 import qualified Data.ByteString                  as B
-import           Data.Function                    (on)
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (modifyIORef', newIORef,
-                                                   readIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isNothing)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Data.Word                        (Word32, Word64, Word8)
+import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.Vector                    as ZV
 import           Z.Data.Vector                    (Bytes)
-import           Z.Foreign                        (toByteString)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
@@ -63,18 +54,15 @@ import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId,
-                                                   orderingKeyToStoreKey,
                                                    removeSubFromStreamPath)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (ObjRepType (..),
-                                                   mkPartitionKeysPath)
+import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (cBytesToText, decodeBatch,
-                                                   returnResp, textToCBytes)
+import           HStream.Utils                    (decodeBatch, returnResp,
+                                                   textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -160,15 +148,15 @@ streamingFetchInternal
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO ()
-streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv streamSend) = do
+streamingFetchInternal ctx (ServerBiDiRequest _ streamRecv streamSend) = do
   StreamingFetchRequest {..} <- firstRecv
-  Log.debug $ "pass first recv"
-  wrapper@SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId
-  Log.debug $ "pass initSub"
+  Log.debug "pass first recv"
+  SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId
+  Log.debug "pass initSub"
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName streamSend
-  Log.debug $ "pass initConsumer"
+  Log.debug "pass initConsumer"
   recvAcks ctx scwState scwContext consumerCtx streamRecv
-  Log.debug $ "pass recvAcks"
+  Log.debug "pass recvAcks"
   where
     firstRecv :: IO StreamingFetchRequest
     firstRecv =
@@ -177,38 +165,40 @@ streamingFetchInternal ctx@ServerContext {..} (ServerBiDiRequest _ streamRecv st
         Right Nothing         -> throwIO GRPCStreamRecvCloseError
         Right (Just firstReq) -> return firstReq
 
+-- FIXME: seems SubscribeContextNewWrapper is never used after initSub, which means
+-- its content will never be updated.
+-- Check if a subscription is running. If not, complete init, and spawn a new thread to perform sendRecords.
 initSub :: ServerContext -> SubscriptionId -> IO SubscribeContextWrapper
 initSub serverCtx@ServerContext {..} subId = do
   (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
     subMap <- readTVar scSubscribeContexts
     case HM.lookup subId subMap of
       Nothing -> do
-        state <- newTVar SubscribeStateNew
-        ctx <- newTVar Nothing
-        let wrapper = SubscribeContextNewWrapper {scnwState = state, scnwContext = ctx}
+        wrapper <- SubscribeContextNewWrapper <$> newTVar SubscribeStateNew <*> newEmptyTMVar
         let newSubMap = HM.insert subId wrapper subMap
         writeTVar scSubscribeContexts newSubMap
         return (True, wrapper)
       Just wrapper@SubscribeContextNewWrapper {..} -> do
-        state <- readTVar scnwState
-        case state of
+        readTVar scnwState >>= \case
           SubscribeStateNew     -> retry
           SubscribeStateRunning -> return (False, wrapper)
           _                     -> throwSTM SubscribeInValidError
   if needInit
     then do
       subCtx <- doSubInit serverCtx subId
-      wrapper@SubscribeContextWrapper {..} <- atomically $ do
-        writeTVar scnwContext (Just subCtx)
+      wrapper@SubscribeContextWrapper{..} <- atomically $ do
+        putTMVar scnwContext subCtx
         writeTVar scnwState SubscribeStateRunning
         return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
-      Log.debug $ "ready to forkIO run sendRecords"
-      forkIO $ sendRecords serverCtx scwState scwContext
+      Log.debug $ "ready to forkIO run sendRecords for sub " <> Log.buildText subId
+      void . forkIO $ sendRecords serverCtx scwState scwContext
       return wrapper
     else do
-      mctx <- readTVarIO scnwContext
-      return $ SubscribeContextWrapper {scwState = scnwState, scwContext = fromJust mctx}
+      mctx <- atomically $ readTMVar scnwContext
+      return $ SubscribeContextWrapper {scwState = scnwState, scwContext = mctx}
 
+-- For each subscriptionId, create ldCkpReader and ldReader, then
+-- add all shards of target stream to SubscribeContext
 doSubInit :: ServerContext -> SubscriptionId -> IO SubscribeContext
 doSubInit ctx@ServerContext{..} subId = do
   P.getObject subId zkHandle >>= \case
@@ -273,6 +263,7 @@ doSubInit ctx@ServerContext{..} subId = do
             consumerWorkloads = cws
           }
 
+-- get all partitions of the specified stream
 getShards :: ServerContext -> T.Text -> IO [S.C_LogID]
 getShards ServerContext{..} streamName = do
   let streamId = transToStreamName streamName
@@ -280,135 +271,116 @@ getShards ServerContext{..} streamName = do
   return $ Map.elems res
 
 addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
-addNewShardsToSubCtx SubscribeContext {..} shards = atomically $ do
-  let Assignment {..} = subAssignment
+addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shards = atomically $ do
   oldTotal <- readTVar totalShards
   oldUnassign <- readTVar unassignedShards
   oldShardCtxs <- readTVar subShardContexts
-  (newTotal, newUnassign, newShardCtxs) <-
-    foldM
-      (
-        \ (ot, ou, os) l ->
-          if Set.member l ot
-          then return (ot, ou, os)
-          else do
-            lb <- newTVar $ ShardRecordId S.LSN_MIN 0
-            ub <- newTVar maxBound
-            ar <- newTVar $ Map.empty
-            bn <- newTVar $ Map.empty
-            let ackWindow = AckWindow
-                  { awWindowLowerBound = lb,
-                    awWindowUpperBound = ub,
-                    awAckedRanges = ar,
-                    awBatchNumMap = bn
-                  }
-                subShardCtx = SubscribeShardContext {sscAckWindow = ackWindow, sscLogId = l}
-            return (Set.insert l ot, ou ++ [l], HM.insert l subShardCtx os)
-      )
-      (oldTotal, oldUnassign, oldShardCtxs)
-      shards
+  (newTotal, newUnassign, newShardCtxs)
+    <- foldM addShards (oldTotal, oldUnassign, oldShardCtxs) shards
   writeTVar totalShards newTotal
   writeTVar unassignedShards newUnassign
   writeTVar subShardContexts newShardCtxs
+  where
+    addShards old@(total, unassign, ctx) logId
+      | Set.member logId total = return old
+      | otherwise = do
+          lowerBound <- newTVar $ ShardRecordId S.LSN_MIN 0
+          upperBound <- newTVar maxBound
+          range <- newTVar Map.empty
+          batchMp <- newTVar Map.empty
+          let ackWindow = AckWindow
+                { awWindowLowerBound = lowerBound,
+                  awWindowUpperBound = upperBound,
+                  awAckedRanges = range,
+                  awBatchNumMap = batchMp
+                }
+              subShardCtx = SubscribeShardContext {sscAckWindow = ackWindow, sscLogId = logId}
+          return (Set.insert logId total, unassign ++ [logId], HM.insert logId subShardCtx ctx)
 
+-- Add consumer and sender to the waitlist and consumerCtx
 initConsumer :: SubscribeContext -> ConsumerName -> StreamSend StreamingFetchResponse -> IO ConsumerContext
-initConsumer SubscribeContext {..} consumerName streamSend = do
-  ss <- newMVar streamSend
+initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName streamSend = do
+  sender <- newMVar streamSend
   atomically $ do
-    let Assignment {..} = subAssignment
-    oldWcs <- readTVar waitingConsumers
-    writeTVar waitingConsumers (oldWcs ++ [consumerName])
+    modifyTVar' waitingConsumers (\consumers -> consumers ++ [consumerName])
 
-    iv <- newTVar True
+    isValid <- newTVar True
     let cc = ConsumerContext
               { ccConsumerName = consumerName,
-                ccIsValid = iv,
-                ccStreamSend = ss
+                ccIsValid = isValid,
+                ccStreamSend = sender
               }
-    oldCcs <- readTVar subConsumerContexts
-    writeTVar subConsumerContexts (HM.insert consumerName cc oldCcs)
+    modifyTVar' subConsumerContexts (HM.insert consumerName cc)
     return cc
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
-sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
-  Log.debug $ "enter sendRecords"
+sendRecords ctx subState subCtx@SubscribeContext {..} = do
+  Log.debug "enter sendRecords"
   threadDelay 10000
   loop
   where
     loop = do
-      Log.debug $ "enter sendRecords loop"
+      Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
         then do
           newShards <- getNewShards
-          addNewShardsToSubCtx subCtx newShards
+          unless (L.null newShards) $ do
+            addNewShardsToSubCtx subCtx newShards
+            Log.info $ "add shards " <> Log.buildString (show newShards)
+                    <> " to consumer " <> Log.buildText subSubscriptionId
           atomically $ do
-            checkHasAvailableShards
-            checkHasAvailableConsumers
+            checkAvailable subShardContexts
+            checkAvailable subConsumerContexts
           atomically $ do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
           addRead subLdCkpReader subAssignment
           recordBatches <- readRecordBatches
-          Log.debug $ "readBatches size " <> (Log.buildInt $ length recordBatches)
+          Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
           sendReceivedRecordsVecs receivedRecordsVecs
-          Log.debug $ "pass sendReceivedRecordsVecs"
-          --threadDelay 1000000
+          Log.debug "pass sendReceivedRecordsVecs"
           loop
         else
           return ()
 
+    checkAvailable :: TVar (HM.HashMap k v) -> STM()
+    checkAvailable tv = readTVar tv >>= check . not . HM.null
+
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
       shards <- getShards ctx subStreamName
-      atomically $ do
-        let Assignment {..} = subAssignment
-        shardSet <- readTVar totalShards
-        unassigned <- readTVar unassignedShards
-        foldM
-          (\a b ->
-            if Set.member b shardSet
-            then return a
-            else return $ a ++ [b]
-          )
-          []
-          shards
-
-    checkHasAvailableShards :: STM ()
-    checkHasAvailableShards = do
-      shards <- readTVar subShardContexts
-      if HM.null shards
-      then retry
-      else pure ()
-
-    checkHasAvailableConsumers :: STM ()
-    checkHasAvailableConsumers = do
-      consumers <- readTVar subConsumerContexts
-      if HM.null consumers
-      then retry
-      else pure ()
+      if L.null shards
+        then return []
+        else do
+          atomically $ do
+            let Assignment {..} = subAssignment
+            shardSet <- readTVar totalShards
+            foldM
+              (\a b ->
+                if Set.member b shardSet
+                then return a
+                else return $ a ++ [b]
+              )
+              []
+              shards
 
     addRead :: S.LDSyncCkpReader -> Assignment -> IO ()
     addRead ldCkpReader Assignment {..} = do
-      shards <- atomically $ do
-        shards <- readTVar waitingReadShards
-        writeTVar waitingReadShards []
-        return shards
-      forM_
-        shards
-        (\shard -> do
-            Log.debug $ "start reading "  <> (Log.buildString $ show shard)
-            S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX)
+      shards <- atomically $ swapTVar waitingReadShards []
+      forM_ shards $ \shard -> do
+        Log.debug $ "start reading " <> (Log.buildString $ show shard)
+        S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX
 
     readRecordBatches :: IO [S.DataRecord Bytes]
-    readRecordBatches =
+    readRecordBatches = do
       S.ckpReaderReadAllowGap subLdCkpReader 1000 >>= \case
         Left gap@S.GapRecord {..} -> do
+          Log.debug $ "reader meet gap: " <> Log.buildString (show gap)
           atomically $ do
             scs <- readTVar subShardContexts
-            let SubscribeShardContext {..} = scs HM.! gapLogID
-                AckWindow {..} = sscAckWindow
+            let SubscribeShardContext {sscAckWindow=AckWindow{..}} = scs HM.! gapLogID
             ranges <- readTVar awAckedRanges
             batchNumMap <- readTVar awBatchNumMap
             -- insert gap range to ackedRanges
@@ -435,11 +407,10 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
       in
           (logId, batchId, shardRecordIds, receivedRecords)
 
-
     mkReceivedRecords :: S.C_LogID -> Word64 -> V.Vector B.ByteString -> (V.Vector ShardRecordId, V.Vector ReceivedRecord)
     mkReceivedRecords logId batchId records =
       let
-          shardRecordIds = V.imap (\ i a -> ShardRecordId batchId (fromIntegral i))  records
+          shardRecordIds = V.imap (\ i _ -> ShardRecordId batchId (fromIntegral i)) records
           receivedRecords = V.imap (\ i a -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) records
       in  (shardRecordIds, receivedRecords)
 
@@ -462,12 +433,12 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
     sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> V.Vector ReceivedRecord -> Bool -> IO Bool
     sendReceivedRecords logId batchId shardRecordIds records isResent = do
       let Assignment {..} = subAssignment
+      -- if current send is not a resent, insert record related info into AckWindow
       mres <- atomically $ do
         if not isResent
         then do
           scs <- readTVar subShardContexts
-          let SubscribeShardContext {..} = scs HM.! logId
-              AckWindow {..} = sscAckWindow
+          let SubscribeShardContext {sscAckWindow = AckWindow{..}} = scs HM.! logId
           batchNumMap <- readTVar awBatchNumMap
           let newBatchNumMap = Map.insert batchId (fromIntegral $ V.length records) batchNumMap
           writeTVar awBatchNumMap newBatchNumMap
@@ -490,14 +461,16 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
         Just (consumerName, streamSend) ->
           withMVar streamSend (\ss -> ss (StreamingFetchResponse records)) >>= \case
             Left err -> do
-              Log.fatal $ "send records error, will remove the consumer: " <> (Log.buildString $ show err)
+              Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
+                       <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
+              Log.fatal $ "send records error, will remove the consumer " <> Log.buildText consumerName <> ": " <> Log.buildString (show err)
               atomically $ invalidConsumer subCtx consumerName
-              if not isResent
-              then
+              unless isResent $ do
                 resetReadingOffset logId batchId
-              else pure ()
               return False
             Right _ -> do
+              Log.debug $ "send records from " <> Log.buildInt logId <> " to consumer " <> Log.buildText consumerName
+                       <> ", batchId=" <> Log.buildInt batchId <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
               -- registerResend logId batchId shardRecordIds
               return True
 
@@ -509,15 +482,22 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
     resendTimeoutRecords logId batchId recordIds = do
       resendRecordIds <- atomically $ do
         scs <- readTVar subShardContexts
-        let SubscribeShardContext {..} = scs HM.! logId
-            AckWindow {..} = sscAckWindow
+        let SubscribeShardContext {sscAckWindow=AckWindow{..}} = scs HM.! logId
         ranges <- readTVar awAckedRanges
         lb <- readTVar awWindowLowerBound
-        return $ filterUnackedRecordIds recordIds ranges lb
+        let res = filterUnackedRecordIds recordIds ranges lb
+        -- unless (V.null res) $ do
+        --   traceM $ "There are " <> show (V.length res) <> " records need to resent"
+        --         <> ", batchId=" <> show batchId
+        --   traceM $ "windowLowerBound=" <> show lb
+        --   traceM $ "ackedRanges=" <> show ranges
+        --   mp <- readTVar awBatchNumMap
+        --   traceM $ "batchNumMap=" <> show mp
+        return res
 
-      if V.null resendRecordIds
-      then return ()
-      else do
+      unless (V.null resendRecordIds) $ do
+        Log.debug $ "There are " <> Log.buildInt (V.length resendRecordIds) <> " records need to resent"
+                 <> ", batchId=" <> Log.buildInt batchId
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
           S.readerRead reader 1
@@ -586,20 +566,18 @@ assignShards assignment@Assignment {..} = do
               doAssign assignment consumer logId needStartReading
               return True
         else do
+          -- FIXME: a waiting consumer was assigned a shard now, but it still
+          -- in waitingConsumers list, is it right?
           let waiter = head waiters
           doAssign assignment waiter logId needStartReading
           return True
 
 doAssign :: Assignment -> ConsumerName -> S.C_LogID -> Bool -> STM ()
 doAssign Assignment {..} consumerName logId needStartReading = do
-  if needStartReading
-    then do
-      waitShards <- readTVar waitingReadShards
-      writeTVar waitingReadShards (waitShards ++ [logId])
-    else return ()
+  when needStartReading $ do
+    modifyTVar' waitingReadShards (\shards -> shards ++ [logId])
 
-  s2c <- readTVar shard2Consumer
-  writeTVar shard2Consumer (HM.insert logId consumerName s2c)
+  modifyTVar' shard2Consumer (HM.insert logId consumerName)
   c2s <- readTVar consumer2Shards
   workSet <- readTVar consumerWorkloads
   case HM.lookup consumerName c2s of
@@ -611,7 +589,7 @@ doAssign Assignment {..} consumerName logId needStartReading = do
       set <- readTVar ts
       writeTVar ts (Set.insert logId set)
       let old = ConsumerWorkload {cwConsumerName = consumerName, cwShardCount = Set.size set}
-      let new = old {cwShardCount = (Set.size set) + 1}
+      let new = old {cwShardCount = Set.size set + 1}
       writeTVar consumerWorkloads (Set.insert new (Set.delete old workSet))
 
 assignWaitingConsumers :: Assignment -> STM ()
@@ -664,11 +642,17 @@ assignWaitingConsumers assignment@Assignment {..} = do
           writeTVar shard2Consumer newS2c
           return $ Just shard
 
-recvAcks :: ServerContext -> TVar SubscribeState -> SubscribeContext -> ConsumerContext ->  (StreamRecv StreamingFetchRequest) -> IO ()
-recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContext {..} streamRecv = loop
+recvAcks
+  :: ServerContext
+  -> TVar SubscribeState
+  -> SubscribeContext
+  -> ConsumerContext
+  -> StreamRecv StreamingFetchRequest
+  -> IO ()
+recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = loop
   where
     loop = do
-      check
+      checkSubRunning
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
           Log.fatal . Log.buildString $ "streamRecv error: " <> show err
@@ -679,25 +663,22 @@ recvAcks ServerContext {..} subState subCtx@SubscribeContext {..} ConsumerContex
           -- This means that the consumer finished sending acks actively.
           atomically $ invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvCloseError
-        Right (Just StreamingFetchRequest {..}) ->
-          if V.null streamingFetchRequestAckIds
-            then loop
-            else do
-              doAcks scLDClient subCtx streamingFetchRequestAckIds
-              loop
+        Right (Just StreamingFetchRequest {..}) -> do
+          unless (V.null streamingFetchRequestAckIds) $
+            doAcks scLDClient subCtx streamingFetchRequestAckIds
+          loop
 
     -- throw error when check can not pass
-    check :: IO ()
-    check = do
-      ss <- readTVarIO subState
-      if ss /= SubscribeStateRunning
+    checkSubRunning :: IO ()
+    checkSubRunning = do
+      state <- readTVarIO subState
+      if state /= SubscribeStateRunning
       then throwIO SubscribeInValidError
       else do
-        cv <- readTVarIO ccIsValid
-        if cv
+        isValid <- readTVarIO ccIsValid
+        if isValid
         then return ()
         else throwIO ConsumerInValidError
-
 
 doAcks
   :: S.LDClient
@@ -712,15 +693,13 @@ doAcks ldclient subCtx ackRecordIds = do
     groupRecordIds recordIds =
       V.foldl'
         (
-          \ g r ->
-            let shardId = recordIdShardId r
-            in
-                if HM.member shardId g
-                then
-                  let ov = g HM.! shardId
-                  in  HM.insert shardId (V.snoc ov r) g
-                else
-                  HM.insert shardId (V.singleton r) g
+          \ g r@RecordId{..} ->
+            if HM.member recordIdShardId g
+            then
+              let ov = g HM.! recordIdShardId
+              in  HM.insert recordIdShardId (V.snoc ov r) g
+            else
+              HM.insert recordIdShardId (V.singleton r) g
         )
         HM.empty
         recordIds
@@ -734,8 +713,7 @@ doAck
 doAck ldclient SubscribeContext {..} logId recordIds= do
   res <- atomically $ do
     scs <- readTVar subShardContexts
-    let SubscribeShardContext {..} = scs HM.! logId
-    let AckWindow {..} = sscAckWindow
+    let SubscribeShardContext {sscAckWindow = AckWindow{..}} = scs HM.! logId
     lb <- readTVar awWindowLowerBound
     ub <- readTVar awWindowUpperBound
     ars <- readTVar awAckedRanges
@@ -745,8 +723,14 @@ doAck ldclient SubscribeContext {..} logId recordIds= do
     let commitShardRecordId = getCommitRecordId newAckedRanges bnm
     case tryUpdateWindowLowerBound newAckedRanges lb bnm commitShardRecordId of
       Just (ranges, newLowerBound) -> do
+        -- traceM $ "[stream " <> show logId <> "] update window lower bound, from {"
+        --       <> show lb <> "} to {"
+        --       <> show newLowerBound <> "}"
         let batchId = sriBatchId $ fromJust commitShardRecordId
         let newBatchNumMap = Map.dropWhileAntitone (<= batchId) bnm
+        -- traceM $ "[stream " <> show logId <> "] has a new ckp " <> show batchId <> ", after commit, length of ackRanges is: "
+        --       <> show (Map.size newAckedRanges) <> ", 10 smallest ackedRanges: " <> printAckedRanges (Map.take 10 newAckedRanges)
+        -- traceM $ "[stream " <> show logId <> "] update batchNumMap, 10 smallest batchNumMap: " <> show (Map.take 10 newBatchNumMap)
         writeTVar awAckedRanges ranges
         writeTVar awWindowLowerBound newLowerBound
         writeTVar awBatchNumMap newBatchNumMap
@@ -755,11 +739,13 @@ doAck ldclient SubscribeContext {..} logId recordIds= do
         writeTVar awAckedRanges newAckedRanges
         return Nothing
   case res of
-    Just lsn -> S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn)
+    Just lsn -> do
+        Log.info $ "[stream " <> Log.buildInt logId <> "] commit checkpoint = " <> Log.buildString (show lsn)
+        S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn)
     Nothing  -> return ()
 
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()
-invalidConsumer SubscribeContext{..} consumer = do
+invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = do
   ccs <- readTVar subConsumerContexts
   case HM.lookup consumer ccs of
     Nothing -> pure ()
@@ -772,26 +758,22 @@ invalidConsumer SubscribeContext{..} consumer = do
         let Assignment {..} = subAssignment
         c2s <- readTVar consumer2Shards
         let worksTVar = c2s HM.! consumer
-        works <- readTVar worksTVar
-        writeTVar worksTVar Set.empty
+        works <- swapTVar worksTVar Set.empty
         let nc2s = HM.delete consumer c2s
         writeTVar consumer2Shards nc2s
 
-        rs <- readTVar waitingReassignedShards
-        s2c <- readTVar shard2Consumer
-        (nrs, ns2c) <- foldM
-          (
-            \ (nrs, ns2c) s ->
-              return (nrs ++ [s], HM.delete s ns2c)
-          )
-          (rs, s2c)
-          works
-        writeTVar waitingReassignedShards nrs
-        writeTVar shard2Consumer ns2c
+    idleShards <- readTVar waitingReassignedShards
+    shardMap <- readTVar shard2Consumer
+    (shardsNeedAssign, newShardMap)
+      <- foldM unbindShardWithConsumer (idleShards, shardMap) works
+    writeTVar waitingReassignedShards shardsNeedAssign
+    writeTVar shard2Consumer newShardMap
 
-        let nccs = HM.delete consumer ccs
-        writeTVar subConsumerContexts nccs
-      else pure ()
+    let newConsumerCtx = HM.delete consumer ccs
+    writeTVar subConsumerContexts newConsumerCtx
+  else pure ()
+  where
+    unbindShardWithConsumer (shards, mp) logId = return (shards ++ [logId], HM.delete logId mp)
 
 tryUpdateWindowLowerBound
   :: Map.Map ShardRecordId ShardRecordIdRange -- ^ ackedRanges
@@ -816,13 +798,13 @@ tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commi
 tryUpdateWindowLowerBound _ _ _ Nothing = Nothing
 
 data SubscribeInnerError = GRPCStreamRecvError
-                             | GRPCStreamRecvCloseError
-                             | GRPCStreamSendError
-                             | ConsumerInValidError
-                             | SubscribeInValidError
+                         | GRPCStreamRecvCloseError
+                         | GRPCStreamSendError
+                         | ConsumerInValidError
+                         | SubscribeInValidError
   deriving (Show)
 instance Exception SubscribeInnerError
 
 recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
 recordIds2ShardRecordIds =
-      V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
+  V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
