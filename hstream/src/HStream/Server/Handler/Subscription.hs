@@ -218,7 +218,7 @@ doSubInit ctx@ServerContext{..} subId = do
     Just Subscription {..} -> do
       let readerName = textToCBytes subId
       -- Notice: doc this. shard count can not larger than this.
-      let maxReadLogs = 1000
+      let maxReadLogs = 100
       -- see: https://logdevice.io/api/classfacebook_1_1logdevice_1_1_client.html#a797d6ebcb95ace4b95a198a293215103
       let ldReaderBufferSize = 10
       -- create a ldCkpReader for reading new records
@@ -228,7 +228,7 @@ doSubInit ctx@ServerContext{..} subId = do
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
 
       -- create a ldReader for rereading unacked records
-      ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
+      ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just 1)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
       consumerContexts <- newTVarIO HM.empty
