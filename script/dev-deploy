@@ -836,6 +836,8 @@ class PrometheusService(Service):
     KEYS = ["prometheus"]
     DEFAULT_CONTAINER_NAME = "deploy_prometheus"
     DEFAULT_PERSISTENT_DIR = "/data/prometheus"
+    DEFAULT_CONTAINER_CONFIG_PATH = "/etc/prometheus"
+    # config file `/etc/prometheus/prometheus.yml`
     DEFAULT_IMAGE_TAG = "docker.io/prom/prometheus"
 
     def __init__(self, cmdparsers):
@@ -898,7 +900,7 @@ class PrometheusService(Service):
         docker_opts += set_resource_constraints(memory_cpus)
         if config_path is not None:
             docker_opts += set_config_path(
-                config_path, "/etc/prometheus/prometheus.yml"
+                config_path, self.DEFAULT_CONTAINER_CONFIG_PATH
             )
 
         cmds = []
@@ -906,19 +908,12 @@ class PrometheusService(Service):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                mount_cfg = ""
-                if config_path is not None:
-                    mount_cfg = (
-                        f"-v {config_path}:/etc/prometheus/prometheus.yml "
-                    )
-
                 cmds.append(
                     f"ssh {host} '"
                     f"{container_bin} run -d --restart unless-stopped "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
-                    f"{mount_cfg}"
                     f"{image}"
                     f"'"
                 )
