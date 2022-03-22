@@ -421,7 +421,7 @@ class ZookeeperService(Service):
 
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
-                    f"{container_bin} run -td"
+                    f"{container_bin} run -td "
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
@@ -597,7 +597,7 @@ class HStoreAdminService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run -d"
+                    f"{container_bin} run -d "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host {image} /usr/local/bin/ld-admin-server "
@@ -737,7 +737,7 @@ class HStoreService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
-                    f"{container_bin} run -d"
+                    f"{container_bin} run -d "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     "--network host "
@@ -844,7 +844,7 @@ class HServerService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run -d"
+                    f"{container_bin} run -d "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     "--network host "
@@ -938,7 +938,7 @@ class PrometheusService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run -d"
+                    f"{container_bin} run -d "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
@@ -1016,7 +1016,7 @@ class NodeExporterService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run -d"
+                    f"{container_bin} run -d "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
