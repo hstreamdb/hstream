@@ -19,7 +19,7 @@ import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
 import           ZooKeeper.Types
 
-import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (getConfig)
 import           HStream.Server.Handler           (handlers)
@@ -88,6 +88,6 @@ updateHashRing zk mhr = do
     action (StringsCompletion (StringVector children)) = do
       _ <- takeMVar mhr
       serverNodes <- mapM (getServerNode' zk) children
-      let hr' = constructHashRing . sort $ serverNodes
+      let hr' = constructServerMap . sort $ serverNodes
       putMVar mhr hr'
       Log.debug . Log.buildString $ show hr'
