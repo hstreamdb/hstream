@@ -41,7 +41,9 @@
             "remote_ssh_host2",
             "remote_ssh_host3",
             "remote_ssh_host4"
-        ]
+        ],
+        "local_config_path": "$PWD/server.conf",
+        "remote_config_path": "/root/.config/dev-deploy/server.conf"
     },
     "prometheus": {
         "hosts": [
