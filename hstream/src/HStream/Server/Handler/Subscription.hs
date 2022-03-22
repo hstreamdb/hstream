@@ -494,7 +494,7 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
               else pure ()
               return False
             Right _ -> do
-              registerResend logId batchId shardRecordIds
+              -- registerResend logId batchId shardRecordIds
               return True
 
     registerResend logId batchId recordIds =
