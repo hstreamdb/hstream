@@ -29,7 +29,7 @@ except Exception:
 
     argcomplete = MagicMock()
     argcomplete.autocomplete = lambda x: logwarn(
-        "There is no tab completion supported since no argcomplete found!"
+        "There is no tab completion supported since argcomplete not found!"
     )
 
 HOME = os.getenv("HOME")
@@ -872,6 +872,24 @@ class SwaggerStartCommand:
         swagger_ui_start(**args)
 
 
+class HadminStoreCommand:
+    COMMAND = "hadmin-store"
+
+    def parser(self, subparsers):
+        _parser = subparsers.add_parser("hadmin-store", help="")
+        _parser.add_argument(
+            "--image",
+            "-i",
+            default=IMAGES["DB_IMAGE"],
+        )
+        _parser.add_argument("--container-bin", default="docker")
+        _parser.add_argument("cmd_args", nargs="*")
+
+    def run(self, **args):
+        args["command"] = "hadmin store"
+        run_hadmin(**args)
+
+
 class LDShellCommand:
     COMMAND = "ldshell"
 
@@ -975,6 +993,7 @@ if __name__ == "__main__":
     c.register(ShellCommand)
     c.register(CabalCommand)
     c.register(InfoCommand)
+    c.register(HadminStoreCommand)
     c.register(SwaggerStartCommand)
     c.register(LDShellCommand)
     c.run()
