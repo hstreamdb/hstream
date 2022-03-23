@@ -5,8 +5,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent               (MVar, forkIO, putMVar,
-                                                   takeMVar)
+import           Control.Concurrent               (MVar, forkIO, modifyMVar_)
 import           Control.Monad                    (void)
 import           Data.List                        (sort)
 import qualified Data.Text                        as T
@@ -58,7 +57,7 @@ app config@ServerOpts{..} = do
     serve grpcOpts serverContext
 
 serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
-serve options@GRPC.ServiceOptions{..} sc@ServerContext{..} = do
+serve options sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
   -- GRPC service
   Log.i "************************"
@@ -79,15 +78,11 @@ serve options@GRPC.ServiceOptions{..} sc@ServerContext{..} = do
 -- when we have a large number of nodes in the cluster.
 -- TODO: Instead of reconstruction, we should use the operation insert/delete.
 updateHashRing :: ZHandle -> MVar HashRing -> IO ()
-updateHashRing zk mhr = do
-  zooWatchGetChildren zk serverRootPath
-    callback action
+updateHashRing zk mhr = zooWatchGetChildren zk serverRootPath callback action
   where
-    callback HsWatcherCtx {..} =
-      updateHashRing watcherCtxZHandle mhr
+    callback HsWatcherCtx{..} = updateHashRing watcherCtxZHandle mhr
+
     action (StringsCompletion (StringVector children)) = do
-      _ <- takeMVar mhr
-      serverNodes <- mapM (getServerNode' zk) children
-      let hr' = constructServerMap . sort $ serverNodes
-      putMVar mhr hr'
-      Log.debug . Log.buildString $ show hr'
+      modifyMVar_ mhr $ \_ -> do
+        serverNodes <- mapM (getServerNode' zk) children
+        pure $ constructServerMap . sort $ serverNodes
