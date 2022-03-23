@@ -2,13 +2,11 @@
 {-# LANGUAGE TypeApplications #-}
 module HStream.Server.Core.Subscription where
 
-import           Control.Concurrent            (modifyMVar_, withMVar)
 import           Control.Concurrent.STM
-import           Control.Exception             (throwIO)
+import           Control.Exception             (Exception, throwIO)
 import           Control.Monad                 (unless)
 import qualified Data.HashMap.Strict           as HM
 import qualified Data.Map.Strict               as Map
-import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import           ZooKeeper.Types               (ZHandle)
 
@@ -58,3 +56,7 @@ checkNoActiveConsumer ServerContext {..} subId =
     case HM.lookup subId scs of
       Nothing -> return ()
       Just _  -> throwSTM FoundActiveConsumers
+
+data FoundActiveConsumers = FoundActiveConsumers
+  deriving (Show)
+instance Exception FoundActiveConsumers

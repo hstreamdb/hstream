@@ -10,22 +10,23 @@
 
 module HStream.Server.Persistence.Object where
 
-import           Control.Exception                 (handle)
-import           Control.Monad                     (forM)
-import           Data.Bifunctor                    (second)
-import qualified Data.Map                          as Map
-import           Data.Maybe                        (fromJust, isJust)
-import           ZooKeeper                         (zooExists, zooGetChildren)
+import           Control.Exception                    (handle)
+import           Control.Monad                        (forM)
+import           Data.Bifunctor                       (second)
+import qualified Data.Map                             as Map
+import           Data.Maybe                           (fromJust, isJust)
+import           ZooKeeper                            (zooExists,
+                                                       zooGetChildren)
 import           ZooKeeper.Exception
-import           ZooKeeper.Types                   (StringVector (..),
-                                                    StringsCompletion (..),
-                                                    ZHandle)
+import           ZooKeeper.Types                      (StringVector (..),
+                                                       StringsCompletion (..),
+                                                       ZHandle)
 
-import           HStream.Server.Exception
-import           HStream.Server.HStreamApi         (Subscription)
+import           HStream.Server.HStreamApi            (Subscription)
 import           HStream.Server.Persistence.Common
+import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
-import           HStream.Utils                     (cBytesToText)
+import           HStream.Utils                        (cBytesToText)
 
 -------------------------------------------------------------------------------
 
