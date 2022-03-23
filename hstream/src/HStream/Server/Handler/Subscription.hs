@@ -126,7 +126,7 @@ streamingFetchHandler
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
 streamingFetchHandler ctx bidiRequest = do
-  Log.debug $ "recv server call: streamingFetch"
+  Log.debug "recv server call: streamingFetch"
   try (streamingFetchInternal ctx bidiRequest) >>= \case
     Right _ -> return $
       ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
@@ -370,7 +370,7 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
     addRead ldCkpReader Assignment {..} = do
       shards <- atomically $ swapTVar waitingReadShards []
       forM_ shards $ \shard -> do
-        Log.debug $ "start reading " <> (Log.buildString $ show shard)
+        Log.debug $ "start reading " <> Log.buildString (show shard)
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX
 
     readRecordBatches :: IO [S.DataRecord Bytes]
@@ -749,29 +749,27 @@ invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = 
   ccs <- readTVar subConsumerContexts
   case HM.lookup consumer ccs of
     Nothing -> pure ()
-    Just cc@ConsumerContext {..} -> do
-      iv <- readTVar ccIsValid
-      if iv
+    Just ConsumerContext {..} -> do
+      consumerValid <- readTVar ccIsValid
+      if consumerValid
       then do
         writeTVar ccIsValid False
-
-        let Assignment {..} = subAssignment
         c2s <- readTVar consumer2Shards
         let worksTVar = c2s HM.! consumer
         works <- swapTVar worksTVar Set.empty
         let nc2s = HM.delete consumer c2s
         writeTVar consumer2Shards nc2s
 
-    idleShards <- readTVar waitingReassignedShards
-    shardMap <- readTVar shard2Consumer
-    (shardsNeedAssign, newShardMap)
-      <- foldM unbindShardWithConsumer (idleShards, shardMap) works
-    writeTVar waitingReassignedShards shardsNeedAssign
-    writeTVar shard2Consumer newShardMap
+        idleShards <- readTVar waitingReassignedShards
+        shardMap <- readTVar shard2Consumer
+        (shardsNeedAssign, newShardMap)
+          <- foldM unbindShardWithConsumer (idleShards, shardMap) works
+        writeTVar waitingReassignedShards shardsNeedAssign
+        writeTVar shard2Consumer newShardMap
 
-    let newConsumerCtx = HM.delete consumer ccs
-    writeTVar subConsumerContexts newConsumerCtx
-  else pure ()
+        let newConsumerCtx = HM.delete consumer ccs
+        writeTVar subConsumerContexts newConsumerCtx
+      else pure ()
   where
     unbindShardWithConsumer (shards, mp) logId = return (shards ++ [logId], HM.delete logId mp)
 
