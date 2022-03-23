@@ -104,14 +104,14 @@ data SubscribeContext = SubscribeContext
     subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment        :: Assignment,
-    subCurrentTime ::  TVar Word64, 
-    subWaitingCheckedRecordIds :: TVar [CheckedRecordIds] 
+    subCurrentTime ::  TVar Word64,
+    subWaitingCheckedRecordIds :: TVar [CheckedRecordIds]
   }
 
 data CheckedRecordIds = CheckedRecordIds {
-  crDeadline :: Word64,
-  crLogId :: HS.C_LogID,
-  crBatchId :: Word64,
+  crDeadline  :: Word64,
+  crLogId     :: HS.C_LogID,
+  crBatchId   :: Word64,
   crRecordIds :: V.Vector ShardRecordId
 }
 

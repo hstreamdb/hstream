@@ -28,8 +28,8 @@ import           Control.Concurrent.Async         (concurrently_)
 import           Control.Concurrent.STM
 import           Control.Exception                (Exception, catch,
                                                    onException, throwIO, try)
-import           Control.Monad                    (foldM, foldM_, forM_, unless,
-                                                   when, forever)
+import           Control.Monad                    (foldM, foldM_, forM_,
+                                                   forever, unless, when)
 import qualified Data.ByteString                  as B
 import           Data.Function                    (on)
 import           Data.Functor
@@ -234,7 +234,7 @@ doSubInit ctx@ServerContext{..} subId = do
       consumerContexts <- newTVarIO HM.empty
       shardContexts <- newTVarIO HM.empty
       assignment <- mkEmptyAssignment
-      curTime <- newTVarIO 0 
+      curTime <- newTVarIO 0
       checkList <- newTVarIO []
       let emptySubCtx =
             SubscribeContext
@@ -246,7 +246,7 @@ doSubInit ctx@ServerContext{..} subId = do
                 subConsumerContexts = consumerContexts,
                 subShardContexts = shardContexts,
                 subAssignment = assignment,
-                subCurrentTime = curTime, 
+                subCurrentTime = curTime,
                 subWaitingCheckedRecordIds = checkList
               }
       shards <- getShards ctx subscriptionStreamName
@@ -363,8 +363,8 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
             writeIORef isFirstSendRef False
             void $ forkIO $ forever $ do
               threadDelay (100 * 1000)
-              updateClockAndDoResend 
-          else pure () 
+              updateClockAndDoResend
+          else pure ()
           sendReceivedRecordsVecs receivedRecordsVecs
           Log.debug $ "pass sendReceivedRecordsVecs"
           --threadDelay 1000000
@@ -378,7 +378,7 @@ sendRecords ctx@ServerContext {..} subState subCtx@SubscribeContext {..} = do
         ct <- readTVar subCurrentTime
         let newTime = ct + 1
         checkList <- readTVar subWaitingCheckedRecordIds
-        let (doneList, leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList 
+        let (doneList, leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
         writeTVar subCurrentTime newTime
         writeTVar subWaitingCheckedRecordIds leftList
         return doneList
