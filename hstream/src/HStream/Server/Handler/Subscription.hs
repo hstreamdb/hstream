@@ -462,8 +462,8 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
           withMVar streamSend (\ss -> ss (StreamingFetchResponse records)) >>= \case
             Left err -> do
               Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
-                       <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
-              Log.fatal $ "send records error, will remove the consumer " <> Log.buildText consumerName <> ": " <> Log.buildString (show err)
+                       <> ", num of records=" <> Log.buildInt (V.length shardRecordIds) <> "\n"
+                       <> "send records error, will remove the consumer " <> Log.buildText consumerName <> ": " <> Log.buildString (show err)
               atomically $ invalidConsumer subCtx consumerName
               unless isResent $ do
                 resetReadingOffset logId batchId
