@@ -136,52 +136,74 @@ type ExceptionHandle a = IO a -> IO a
 
 defaultHandlers :: RetFun t a -> Handlers t a
 defaultHandlers retFun = [
-  Handler (\(err :: SomeSQLException) ->
+  Handler (\(err :: SomeSQLException) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusInvalidArgument $ StatusDetails (BS.pack . formatSomeSQLException $ err)),
-  Handler (\(err :: InvalidArgument) ->
+  Handler (\(err :: InvalidArgument) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusInvalidArgument $ mkStatusDetails err),
-  Handler (\(_ :: Store.EXISTS) ->
+  Handler (\(err :: Store.EXISTS) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusAlreadyExists "Stream already exists in store"),
-  Handler (\(err :: StreamExists) ->
+  Handler (\(err :: StreamExists) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusAlreadyExists $ handleStreamExists err),
-  Handler (\(_ :: ObjectNotExist) ->
+  Handler (\(err :: ObjectNotExist) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusNotFound "Object not found"),
-  Handler (\(_ :: SubscriptionWatchOnDifferentNode) ->
+  Handler (\(err :: SubscriptionWatchOnDifferentNode) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusAborted "Subscription is bound to a different node"),
-  Handler (\(_ :: FoundActiveConsumers) ->
+  Handler (\(err :: FoundActiveConsumers) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusFailedPrecondition "Subscription still has active consumers"),
-  Handler (\(_ :: FoundActiveSubscription) ->
+  Handler (\(err :: FoundActiveSubscription) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusFailedPrecondition "Stream still has active consumers"),
   Handler (\(err :: Store.SomeHStoreException) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
-  Handler(\(ConsumerExist name :: ConsumerExist) -> do
+  Handler(\(err@(ConsumerExist name) :: ConsumerExist) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusInvalidArgument $ StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")),
-  Handler (\(err :: PersistenceException) ->
+  Handler (\(err :: PersistenceException) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusAborted $ StatusDetails (BS.pack . displayException $ err)),
-  Handler (\(_ :: QueryTerminatedOrNotExist) ->
+  Handler (\(err :: QueryTerminatedOrNotExist) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusInvalidArgument "Query is already terminated or does not exist"),
-  Handler (\(err :: StreamNotExist) ->
+  Handler (\(err :: StreamNotExist) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusNotFound $ StatusDetails (BS.pack . displayException $ err)),
-  Handler (\(SubscriptionIdNotFound subId :: SubscriptionIdNotFound) ->
+  Handler (\(err@(SubscriptionIdNotFound subId) :: SubscriptionIdNotFound) -> do
+    Log.warning $ Log.buildString' err
     retFun StatusNotFound $ StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found")),
   Handler (\(err :: IOException) -> do
-    Log.fatal $ Log.buildString (displayException err)
+    Log.fatal $ Log.buildString' err
     retFun StatusInternal $ StatusDetails (BS.pack . displayException $ err)),
   Handler (\(err :: ERRException) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusInternal $ "Mysql error " <> mkStatusDetails err),
   Handler (\(err :: ConnectorAlreadyExists) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusAlreadyExists $ mkStatusDetails err),
   Handler (\(err :: ConnectorRestartErr) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusInternal $ mkStatusDetails err),
-  Handler (\(_ :: ConnectorNotExist) -> do
+  Handler (\(err :: ConnectorNotExist) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusNotFound "Connector not found"),
   Handler (\(err :: ZNODEEXISTS) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusAlreadyExists $ "Zookeeper exception: " <> mkStatusDetails err),
   Handler (\(err :: ZNONODE) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusNotFound $ "Zookeeper exception: " <> mkStatusDetails err),
   Handler (\(err :: ZooException) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusInternal $ "Zookeeper exception: " <> mkStatusDetails err),
   Handler (\(err :: SomeException) -> do
+    Log.fatal $ Log.buildString' err
     retFun StatusUnknown $ "UnKnown exception: " <> mkStatusDetails err)
   ]
 
