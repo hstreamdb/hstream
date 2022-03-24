@@ -755,18 +755,18 @@ invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = 
       then do
         writeTVar ccIsValid False
         c2s <- readTVar consumer2Shards
-        let worksTVar = c2s HM.! consumer
-        works <- swapTVar worksTVar Set.empty
-        let nc2s = HM.delete consumer c2s
-        writeTVar consumer2Shards nc2s
-
-        idleShards <- readTVar waitingReassignedShards
-        shardMap <- readTVar shard2Consumer
-        (shardsNeedAssign, newShardMap)
-          <- foldM unbindShardWithConsumer (idleShards, shardMap) works
-        writeTVar waitingReassignedShards shardsNeedAssign
-        writeTVar shard2Consumer newShardMap
-
+        case HM.lookup consumer c2s of
+          Nothing        -> pure ()
+          Just worksTVar -> do
+            works <- swapTVar worksTVar Set.empty
+            let nc2s = HM.delete consumer c2s
+            writeTVar consumer2Shards nc2s
+            idleShards <- readTVar waitingReassignedShards
+            shardMap <- readTVar shard2Consumer
+            (shardsNeedAssign, newShardMap)
+              <- foldM unbindShardWithConsumer (idleShards, shardMap) works
+            writeTVar waitingReassignedShards shardsNeedAssign
+            writeTVar shard2Consumer newShardMap
         let newConsumerCtx = HM.delete consumer ccs
         writeTVar subConsumerContexts newConsumerCtx
       else pure ()
