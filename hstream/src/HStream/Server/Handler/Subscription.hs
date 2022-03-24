@@ -566,10 +566,9 @@ assignShards assignment@Assignment {..} = do
               doAssign assignment consumer logId needStartReading
               return True
         else do
-          -- FIXME: a waiting consumer was assigned a shard now, but it still
-          -- in waitingConsumers list, is it right?
           let waiter = head waiters
           doAssign assignment waiter logId needStartReading
+          writeTVar waitingConsumers (tail waiters)
           return True
 
 doAssign :: Assignment -> ConsumerName -> S.C_LogID -> Bool -> STM ()
