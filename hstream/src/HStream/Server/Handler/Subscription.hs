@@ -27,6 +27,7 @@ import           Control.Exception                (Exception, Handler (Handler),
                                                    catch, throwIO)
 import           Control.Monad                    (foldM, forM_, forever,
                                                    unless, when)
+import qualified Data.ByteString                  as BS
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (newIORef, readIORef,
@@ -41,8 +42,6 @@ import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.Vector                    as ZV
-import           Z.Data.Vector                    (Bytes)
 import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
@@ -66,8 +65,9 @@ import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (decodeBatch, mkServerErrResp,
-                                                   returnResp, textToCBytes)
+import           HStream.Utils                    (decodeByteStringBatch,
+                                                   mkServerErrResp, returnResp,
+                                                   textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -350,7 +350,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
           else pure ()
           successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
           let cSubscriptionId = textToCBytes subSubscriptionId
-              byteSize = fromIntegral $ sum $ map (ZV.length . S.recordPayload) recordBatches
+              byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
               recordSize = fromIntegral $ length recordBatches
           Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
           Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
@@ -414,7 +414,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
         Log.debug $ "start reading " <> Log.buildString (show shard)
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX
 
-    readRecordBatches :: IO [S.DataRecord Bytes]
+    readRecordBatches :: IO [S.DataRecord BS.ByteString]
     readRecordBatches = do
       S.ckpReaderReadAllowGap subLdCkpReader 100 >>= \case
         Left gap@S.GapRecord {..} -> do
@@ -577,13 +577,13 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
     resetReadingOffset logId startOffset = do
       S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX
 
-decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
+decodeRecordBatch :: S.DataRecord BS.ByteString -> (S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
 decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
   where
     payload = S.recordPayload dataRecord
     logId = S.recordLogID dataRecord
     batchId = S.recordLSN dataRecord
-    recordBatch = decodeBatch payload
+    recordBatch = decodeByteStringBatch payload
     indexedRecords = V.indexed $ hstreamRecordBatchBatch recordBatch
     shardRecordIds = V.map (\(i, _) -> ShardRecordId batchId (fromIntegral i)) indexedRecords
     receivedRecords = V.map (\(i, a) -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) indexedRecords
