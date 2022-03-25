@@ -1,8 +1,4 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.Types where
 
@@ -40,6 +36,7 @@ data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverID                 :: Word32
   , scDefaultStreamRepFactor :: Int
+  , scMaxRecordSize          :: Int
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)

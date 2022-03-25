@@ -18,6 +18,7 @@ import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
 import           System.Exit                      (exitFailure)
+import           Text.Printf                      (printf)
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper                        (zooCreateOpInit,
                                                    zooGetChildren, zooMulti,
@@ -28,7 +29,8 @@ import           ZooKeeper.Types
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Config            (ServerOpts (..))
+import           HStream.Server.Config            (ServerOpts (..),
+                                                   TlsConfig (..))
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (NodeInfo (..),
                                                    decodeZNodeValue,
@@ -47,7 +49,6 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProc
                                                    SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
                                                    StatusCode (StatusOk),
                                                    getAuthProperties)
-import           Text.Printf                      (printf)
 
 {-
   Starting hservers will no longer be happening in parallel.
@@ -113,6 +114,7 @@ initializeServer ServerOpts{..} zk serverState = do
       , scLDClient               = ldclient
       , serverID                 = _serverID
       , scDefaultStreamRepFactor = _topicRepFactor
+      , scMaxRecordSize          = _maxRecordSize
       , runningQueries           = runningQs
       , runningConnectors        = runningCs
       , scSubscribeContexts      = subCtxs

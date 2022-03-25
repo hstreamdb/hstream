@@ -107,6 +107,8 @@ appendStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
   handlers ++ defaultHandlers
   where
     handlers = [
+      Handler (\(_ :: C.RecordTooBig) ->
+        return (StatusFailedPrecondition, "Record size exceeds the maximum size limit" )),
       Handler (\(err :: Store.NOTFOUND) ->
         return (StatusUnavailable, mkStatusDetails err)),
       Handler (\(err :: Store.NOTINSERVERCONFIG) ->

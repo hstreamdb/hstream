@@ -35,6 +35,7 @@ import           HStream.Server.Persistence       (getServerNode',
                                                    serverRootPath)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
+import qualified HStream.Store.Logger             as Log
 import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
                                                    setupSigsegvHandler)
 
