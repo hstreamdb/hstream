@@ -100,6 +100,10 @@ data FoundActiveConsumers = FoundActiveConsumers
   deriving (Show)
 instance Exception FoundActiveConsumers
 
+data SubscriptionIsDeleting = SubscriptionIsDeleting
+  deriving (Show)
+instance Exception SubscriptionIsDeleting
+
 data FoundActiveSubscription = FoundActiveSubscription
   deriving (Show)
 instance Exception FoundActiveSubscription
@@ -157,6 +161,9 @@ defaultHandlers retFun = [
   Handler (\(err :: FoundActiveConsumers) -> do
     Log.warning $ Log.buildString' err
     retFun StatusFailedPrecondition "Subscription still has active consumers"),
+  Handler (\(err :: SubscriptionIsDeleting) -> do
+    Log.warning $ Log.buildString' err
+    retFun StatusAborted "Subscription is been deleting, please wait a while"),
   Handler (\(err :: FoundActiveSubscription) -> do
     Log.warning $ Log.buildString' err
     retFun StatusFailedPrecondition "Stream still has active consumers"),

@@ -87,7 +87,7 @@ deleteSubscriptionHandler
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
+  { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForced = forced}) = defaultExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
   hr <- readMVar loadBalanceHashRing
@@ -96,7 +96,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 
   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
-  Core.deleteSubscription ctx (fromJust subscription)
+  Core.deleteSubscription ctx (fromJust subscription) forced
   returnResp Empty
 -- --------------------------------------------------------------------------------
 
@@ -675,12 +675,16 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
     checkSubRunning = do
       state <- readTVarIO subState
       if state /= SubscribeStateRunning
-      then throwIO SubscribeInValidError
+      then do
+        atomically $ invalidConsumer subCtx ccConsumerName
+        throwIO SubscribeInValidError
       else do
         isValid <- readTVarIO ccIsValid
         if isValid
         then return ()
-        else throwIO ConsumerInValidError
+        else do
+          atomically $ invalidConsumer subCtx ccConsumerName
+          throwIO ConsumerInValidError
 
 doAcks
   :: S.LDClient
