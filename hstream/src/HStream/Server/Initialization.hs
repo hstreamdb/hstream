@@ -28,6 +28,7 @@ import           ZooKeeper.Types
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Config            (ServerOpts (..))
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (NodeInfo (..),
                                                    decodeZNodeValue,

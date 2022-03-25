@@ -3,6 +3,7 @@
 
 module HStream.Server.Config
   ( getConfig
+  , ServerOpts (..)
   ) where
 
 import           Control.Exception          (throwIO)
@@ -22,10 +23,40 @@ import           Z.IO.Network               (PortNumber (PortNumber))
 import qualified HStream.Admin.Store.API    as AA
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
-import           HStream.Server.Types       (ServerOpts (..),
-                                             TlsConfig (TlsConfig))
 import           HStream.Store              (Compression (..))
 import qualified HStream.Store.Logger       as Log
+
+data ServerOpts = ServerOpts
+  { _serverHost         :: CBytes
+  , _serverPort         :: PortNumber
+  , _serverAddress      :: String
+  , _serverInternalPort :: PortNumber
+  , _serverID           :: Word32
+  , _zkUri              :: CBytes
+  , _ldConfigPath       :: CBytes
+  , _topicRepFactor     :: Int
+  , _ckpRepFactor       :: Int
+  , _compression        :: Compression
+  , _tlsConfig          :: Maybe TlsConfig
+  , _serverLogLevel     :: Log.Level
+  , _serverLogWithColor :: Bool
+
+  , _ldAdminHost        :: ByteString
+  , _ldAdminPort        :: Int
+  , _ldAdminProtocolId  :: AA.ProtocolId
+  , _ldAdminConnTimeout :: Int
+  , _ldAdminSendTimeout :: Int
+  , _ldAdminRecvTimeout :: Int
+  , _ldLogLevel         :: Log.LDLogLevel
+
+  } deriving (Show)
+
+data TlsConfig
+  = TlsConfig {
+    keyPath  :: String
+  , certPath :: String
+  , caPath   :: Maybe String
+  } deriving (Show)
 
 data CliOptions = CliOptions
   { _configPath          :: String

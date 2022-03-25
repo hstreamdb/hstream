@@ -23,7 +23,7 @@ import           ZooKeeper.Types
 
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Config            (getConfig)
+import           HStream.Server.Config            (ServerOpts (..), getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
@@ -34,8 +34,7 @@ import           HStream.Server.Persistence       (getServerNode',
                                                    initializeAncestors,
                                                    serverRootPath)
 import           HStream.Server.Types             (ServerContext (..),
-                                                   ServerOpts (..), ServerState)
-import qualified HStream.Store.Logger             as Log
+                                                   ServerState)
 import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
                                                    setupSigsegvHandler)
 
