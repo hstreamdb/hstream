@@ -297,15 +297,6 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
       hmapC <- readMVar runningQueries
       swapMVar runningQueries $ HM.delete qid hmapC
 
-handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
-handleTerminateConnector ServerContext{..} cid = do
-  hmapC <- readMVar runningConnectors
-  case HM.lookup cid hmapC of
-    Just tid -> do
-      void $ killThread tid
-      Log.debug . Log.buildString $ "TERMINATE: terminated connector: " <> show cid
-    _        -> throwIO ConnectorNotExist
-
 --------------------------------------------------------------------------------
 -- Query
 

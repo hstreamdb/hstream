@@ -22,8 +22,8 @@ where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
-import           Control.Exception                (Exception, catch, throwIO,
-                                                   try)
+import           Control.Exception                (Exception, Handler (Handler),
+                                                   catch, throwIO)
 import           Control.Monad                    (foldM, foldM_, forM_, unless,
                                                    when)
 import qualified Data.ByteString                  as B
@@ -43,14 +43,17 @@ import           Z.Data.Vector                    (Bytes)
 import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
+import           Data.Text.Encoding               (encodeUtf8)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (StreamNotExist (..),
+import           HStream.Server.Exception         (ExceptionHandle, Handlers,
+                                                   StreamNotExist (..),
                                                    SubscriptionIdNotFound (..),
-                                                   SubscriptionWatchOnDifferentNode (..),
-                                                   defaultExceptionHandle)
+                                                   defaultHandlers,
+                                                   mkExceptionHandle,
+                                                   setRespType)
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
@@ -62,8 +65,8 @@ import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (decodeBatch, returnResp,
-                                                   textToCBytes)
+import           HStream.Utils                    (decodeBatch, mkServerErrResp,
+                                                   returnResp, textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -71,7 +74,7 @@ createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata sub@Subscription{..}) = defaultExceptionHandle $ do
+createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata sub@Subscription{..}) = subExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
   bindSubToStreamPath zkHandle streamName subName
   catch (Core.createSubscription ctx sub) $
@@ -87,12 +90,12 @@ deleteSubscriptionHandler
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId }) = defaultExceptionHandle $ do
+  { deleteSubscriptionRequestSubscriptionId = subId }) = subExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
   hr <- readMVar loadBalanceHashRing
   unless (getAllocatedNodeId hr subId == serverID) $
-    throwIO SubscriptionWatchOnDifferentNode
+    throwIO SubscriptionOnDifferentNode
 
   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
@@ -115,7 +118,7 @@ listSubscriptionsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
-listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = defaultExceptionHandle $ do
+listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = subExceptionHandle $ do
   Log.debug "Receive listSubscriptions request"
   res <- ListSubscriptionsResponse <$> Core.listSubscriptions sc
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
@@ -126,24 +129,10 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx bidiRequest = do
+streamingFetchHandler ctx bidiRequest = subStreamingExceptionHandle do
   Log.debug "recv server call: streamingFetch"
-  try (streamingFetchInternal ctx bidiRequest) >>= \case
-    Right _ -> return $
-      ServerBiDiResponse [] StatusUnknown . StatusDetails $ "should not reach here"
-    Left (err :: SubscribeInnerError) -> handleException err
-    Left _  -> return $
-      ServerBiDiResponse [] StatusUnknown . StatusDetails $ ""
-  where
-    handleException :: SubscribeInnerError -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-    handleException GRPCStreamRecvError = return $
-      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer recv error"
-    handleException GRPCStreamRecvCloseError = return $
-      ServerBiDiResponse [] StatusCancelled . StatusDetails $ "consumer is closed"
-    handleException SubscribeInValidError = return $
-      ServerBiDiResponse [] StatusAborted . StatusDetails $ "subscription is invalid"
-    handleException ConsumerInValidError = return $
-      ServerBiDiResponse [] StatusAborted . StatusDetails $ "consumer is invalid"
+  streamingFetchInternal ctx bidiRequest
+  return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
 
 streamingFetchInternal
   :: ServerContext
@@ -797,6 +786,12 @@ tryUpdateWindowLowerBound ackedRanges lowerBoundRecordId batchNumMap (Just commi
        | otherwise -> Nothing
 tryUpdateWindowLowerBound _ _ _ Nothing = Nothing
 
+recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
+recordIds2ShardRecordIds =
+  V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
+
+--------------------------------------------------------------------------------
+-- Exception and Exception Handlers
 data SubscribeInnerError = GRPCStreamRecvError
                          | GRPCStreamRecvCloseError
                          | GRPCStreamSendError
@@ -805,6 +800,40 @@ data SubscribeInnerError = GRPCStreamRecvError
   deriving (Show)
 instance Exception SubscribeInnerError
 
-recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
-recordIds2ShardRecordIds =
-  V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
+newtype ConsumerExists = ConsumerExists T.Text
+  deriving (Show)
+instance Exception ConsumerExists
+
+data SubscriptionOnDifferentNode = SubscriptionOnDifferentNode
+  deriving (Show)
+instance Exception SubscriptionOnDifferentNode
+
+subscriptionExceptionHandler :: Handlers (StatusCode, StatusDetails)
+subscriptionExceptionHandler = [
+  Handler (\(err :: SubscriptionOnDifferentNode) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusAborted, "Subscription is bound to a different node")),
+  Handler (\(err :: Core.FoundActiveConsumers) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusFailedPrecondition, "Subscription still has active consumers")),
+  Handler(\(err@(ConsumerExists name) :: ConsumerExists) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusInvalidArgument, StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")))
+  ]
+
+subExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+subExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  subscriptionExceptionHandler ++ defaultHandlers
+
+subStreamingExceptionHandle :: ExceptionHandle (ServerResponse 'BiDiStreaming a)
+subStreamingExceptionHandle = mkExceptionHandle . setRespType (ServerBiDiResponse mempty) $
+  innerErrorHandlers ++ subscriptionExceptionHandler ++ defaultHandlers
+
+innerErrorHandlers :: Handlers (StatusCode, StatusDetails)
+innerErrorHandlers = [Handler $ \(err :: SubscribeInnerError) -> case err of
+  GRPCStreamRecvError      -> return (StatusCancelled, "Consumer recv error")
+  GRPCStreamRecvCloseError -> return (StatusCancelled, "Consumer is closed")
+  GRPCStreamSendError      -> return (StatusCancelled, "Consumer send request error")
+  SubscribeInValidError    -> return (StatusAborted,   "Invalid Subscription")
+  ConsumerInValidError     -> return (StatusAborted,   "Invalid Consumer")
+  ]

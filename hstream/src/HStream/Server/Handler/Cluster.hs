@@ -13,19 +13,18 @@ module HStream.Server.Handler.Cluster
   ) where
 
 import           Control.Concurrent               (readMVar)
-import           Control.Exception                (Handler (..), catches,
-                                                   throwIO)
+import           Control.Exception                (Exception (..), Handler (..),
+                                                   catches, throwIO)
 import           Control.Monad                    (unless, void)
 import           Data.Functor                     ((<&>))
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           ZooKeeper                        (zooExists)
 
+import           Data.Text                        (Text)
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception         (DataInconsistency (..),
-                                                   StreamNotExist (..),
-                                                   defaultExceptionHandle)
+import           HStream.Server.Exception
 import           HStream.Server.Handler.Common    (alignDefault,
                                                    orderingKeyToStoreKey)
 import           HStream.Server.HStreamApi
@@ -34,7 +33,8 @@ import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (returnResp, textToCBytes)
+import           HStream.Utils                    (mkServerErrResp, returnResp,
+                                                   textToCBytes)
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
@@ -55,7 +55,7 @@ lookupStreamHandler :: ServerContext
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
 lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStreamRequest {
   lookupStreamRequestStreamName  = stream,
-  lookupStreamRequestOrderingKey = orderingKey}) = defaultExceptionHandle $ do
+  lookupStreamRequestOrderingKey = orderingKey}) = lookupStreamExceptionHandle $ do
   Log.info $ "receive lookupStream request: " <> Log.buildString' req
   hashRing <- readMVar loadBalanceHashRing
   let key      = alignDefault orderingKey
@@ -114,3 +114,22 @@ lookupSubscriptionWithOrderingKeyHandler ServerContext{..} (ServerNormalRequest 
   , lookupSubscriptionWithOrderingKeyResponseOrderingKey    = key
   , lookupSubscriptionWithOrderingKeyResponseServerNode     = Just theNode
   }
+
+--------------------------------------------------------------------------------
+-- Exception and Exception Handlers
+
+data DataInconsistency = DataInconsistency Text Text
+  deriving (Show)
+instance Exception DataInconsistency where
+  displayException (DataInconsistency streamName key) =
+    "Partition " <> show key <> " of stream " <> show streamName
+    <> " doesn't appear in store, but exists in zk."
+
+lookupStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+lookupStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  dataInconsistencyHandler ++ defaultHandlers
+  where
+    dataInconsistencyHandler = [
+      Handler (\(err :: DataInconsistency) ->
+        return (StatusAborted, mkStatusDetails err))
+      ]

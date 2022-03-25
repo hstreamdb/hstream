@@ -7,9 +7,12 @@ module HStream.Server.Core.Stream
   , listStreams
   , appendStream
   , append0Stream
+  , FoundActiveSubscription (..)
+  , StreamExists (..)
   ) where
 
-import           Control.Exception                (catch, throwIO)
+import           Control.Exception                (Exception (displayException),
+                                                   catch, throwIO)
 import           Control.Monad                    (unless, void, when)
 import qualified Data.ByteString                  as BS
 import           Data.Maybe                       (fromMaybe, isJust)
@@ -26,9 +29,7 @@ import           ZooKeeper.Types                  (ZHandle)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (FoundActiveSubscription (..),
-                                                   InvalidArgument (..),
-                                                   StreamExists (..),
+import           HStream.Server.Exception         (InvalidArgument (..),
                                                    StreamNotExist (..))
 import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
                                                    removeStreamRelatedPath)
@@ -162,3 +163,17 @@ createStreamRelatedPath zk streamName = do
       lockPath   = P.streamLockPath <> "/" <> streamName
       streamSubLockPath = P.mkStreamSubsLockPath streamName
   void $ zooMulti zk $ P.createPathOp <$> [streamPath, keyPath, subPath, lockPath, streamSubLockPath]
+
+data FoundActiveSubscription = FoundActiveSubscription
+  deriving (Show)
+instance Exception FoundActiveSubscription
+
+data StreamExists = StreamExists Bool Bool
+  deriving (Show)
+instance Exception StreamExists where
+  displayException (StreamExists zkExists storeExists)
+    | zkExists && storeExists = "StreamExists: Stream has been created"
+    | zkExists    = "StreamExists: Inconsistency found. The stream was created, but not persisted to disk"
+    | storeExists = "StreamExists: Inconsistency found. The stream was persisted to disk"
+                 <> ", but no record of creating the stream is found."
+    | otherwise   = "Impossible happened: Stream does not exist, but some how throw stream exist exception"
