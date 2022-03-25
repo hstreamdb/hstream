@@ -57,8 +57,7 @@ import           HStream.Server.Exception         (ExceptionHandle, Handlers,
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
-                                                   insertAckedRecordId,
-                                                   removeSubFromStreamPath)
+                                                   insertAckedRecordId)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
@@ -78,7 +77,7 @@ createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata s
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
   bindSubToStreamPath zkHandle streamName subName
   catch (Core.createSubscription ctx sub) $
-    \(e :: StreamNotExist) -> removeSubFromStreamPath zkHandle streamName subName >> throwIO e
+    \(e :: StreamNotExist) -> Core.removeSubFromStreamPath zkHandle streamName subName >> throwIO e
   returnResp sub
   where
     streamName = textToCBytes subscriptionStreamName
@@ -90,7 +89,7 @@ deleteSubscriptionHandler
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId }) = subExceptionHandle $ do
+  { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForced = forced}) = subExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
   hr <- readMVar loadBalanceHashRing
@@ -99,7 +98,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 
   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
-  Core.deleteSubscription ctx (fromJust subscription)
+  Core.deleteSubscription ctx (fromJust subscription) forced
   returnResp Empty
 -- --------------------------------------------------------------------------------
 
@@ -683,12 +682,16 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
     checkSubRunning = do
       state <- readTVarIO subState
       if state /= SubscribeStateRunning
-      then throwIO SubscribeInValidError
+      then do
+        atomically $ invalidConsumer subCtx ccConsumerName
+        throwIO SubscribeInValidError
       else do
         isValid <- readTVarIO ccIsValid
         if isValid
         then return ()
-        else throwIO ConsumerInValidError
+        else do
+          atomically $ invalidConsumer subCtx ccConsumerName
+          throwIO ConsumerInValidError
 
 doAcks
   :: S.LDClient
@@ -843,7 +846,10 @@ subscriptionExceptionHandler = [
     return (StatusFailedPrecondition, "Subscription still has active consumers")),
   Handler(\(err@(ConsumerExists name) :: ConsumerExists) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInvalidArgument, StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")))
+    return (StatusInvalidArgument, StatusDetails ("Consumer " <> encodeUtf8 name <> " exist"))),
+  Handler (\(err :: Core.SubscriptionIsDeleting) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusAborted, "Subscription is been deleting, please wait a while"))
   ]
 
 subExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
@@ -855,10 +861,10 @@ subStreamingExceptionHandle = mkExceptionHandle . setRespType (ServerBiDiRespons
   innerErrorHandlers ++ subscriptionExceptionHandler ++ defaultHandlers
 
 innerErrorHandlers :: Handlers (StatusCode, StatusDetails)
-innerErrorHandlers = [Handler $ \(err :: SubscribeInnerError) -> case err of
-  GRPCStreamRecvError      -> return (StatusCancelled, "Consumer recv error")
-  GRPCStreamRecvCloseError -> return (StatusCancelled, "Consumer is closed")
-  GRPCStreamSendError      -> return (StatusCancelled, "Consumer send request error")
-  SubscribeInValidError    -> return (StatusAborted,   "Invalid Subscription")
-  ConsumerInValidError     -> return (StatusAborted,   "Invalid Consumer")
+innerErrorHandlers = [Handler $ \(err :: SubscribeInnerError) -> return case err of
+  GRPCStreamRecvError      -> (StatusCancelled, "Consumer recv error")
+  GRPCStreamRecvCloseError -> (StatusCancelled, "Consumer is closed")
+  GRPCStreamSendError      -> (StatusCancelled, "Consumer send request error")
+  SubscribeInValidError    -> (StatusAborted,   "Invalid Subscription")
+  ConsumerInValidError     -> (StatusAborted,   "Invalid Consumer")
   ]
