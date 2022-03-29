@@ -16,10 +16,10 @@ import           Z.Data.CBytes                        (CBytes)
 import           Z.IO.Time                            (getSystemTime')
 
 import           HStream.Processing.Stream            (Materialized)
-import           HStream.SQL.Codegen                  (SerMat)
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
+import           HStream.SQL.Codegen                  (SerMat)
 import           HStream.Utils                        (TaskStatus (..))
 
 type PStoreMem   = (QueriesM, ConnectorsM)

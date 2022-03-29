@@ -5,8 +5,8 @@ module HStream.Store.Internal.LogDevice.Configuration where
 import           Data.Word
 import           Foreign.C.Types
 import           Foreign.Ptr
-import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Data.CBytes                  as CBytes
+import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Foreign                      as Z
 
 import           HStream.Store.Internal.Foreign

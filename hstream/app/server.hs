@@ -21,8 +21,8 @@ import           ZooKeeper.Types
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (getConfig)
-import           HStream.Server.HStreamApi        (hstreamApiServer)
 import           HStream.Server.Handler           (handlers)
+import           HStream.Server.HStreamApi        (hstreamApiServer)
 import           HStream.Server.Initialization    (initNodePath,
                                                    initializeServer,
                                                    initializeTlsConfig)

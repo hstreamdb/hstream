@@ -54,12 +54,12 @@ import           HStream.Server.Exception         (ExceptionHandle, Handlers,
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    setRespType)
-import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId,
                                                    removeSubFromStreamPath)
+import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types

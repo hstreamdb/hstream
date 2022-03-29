@@ -8,8 +8,8 @@ import qualified Criterion.Main.Options as C
 import qualified Data.ByteString        as B
 import qualified Options.Applicative    as O
 import           Z.Data.CBytes          (CBytes)
-import           Z.Data.Vector          (Bytes)
 import qualified Z.Data.Vector          as V
+import           Z.Data.Vector          (Bytes)
 
 import qualified Data.ByteUnits         as BU
 import qualified HStream.Store          as S

@@ -10,8 +10,8 @@ import           Data.Function
 import           Data.Scientific
 import           HStream.SQL.AST
 import           HStream.SQL.Internal.Codegen
-import           Test.HUnit
 import           Test.Hspec
+import           Test.HUnit
 
 spec :: Spec
 spec = describe "Math Scalar Functions" do

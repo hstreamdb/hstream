@@ -18,8 +18,8 @@ import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (atomicModifyIORef')
 import           Data.Int                         (Int64)
+import           Data.IORef                       (atomicModifyIORef')
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
@@ -33,8 +33,8 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
+import           Z.Data.CBytes                    (CBytes)
 import           ZooKeeper.Recipe                 (withLock)
 import           ZooKeeper.Types                  (ZHandle)
 
@@ -47,10 +47,10 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
-import           HStream.SQL.Codegen
 import           HStream.Server.Exception
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (TaskStatus (..),

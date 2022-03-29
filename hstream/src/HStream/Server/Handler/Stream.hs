@@ -23,8 +23,8 @@ import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
-import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (clientDefaultKey)
+import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Store                    as Store
 import           HStream.ThirdParty.Protobuf      as PB

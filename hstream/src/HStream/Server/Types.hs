@@ -16,8 +16,8 @@ import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
-import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.CBytes                    as CB
+import           Z.Data.CBytes                    (CBytes)
 import           Z.IO.Network                     (PortNumber)
 import           ZooKeeper.Types                  (ZHandle)
 

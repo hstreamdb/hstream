@@ -23,16 +23,16 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
 import qualified Data.HashMap.Strict              as HM
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
-import qualified HStream.SQL.Codegen              as CodeGen
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
                                                    StreamNotExist (..),
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    mkStatusDetails, setRespType)
-import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (handleCreateSinkConnector)
+import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import qualified HStream.SQL.Codegen              as CodeGen
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),

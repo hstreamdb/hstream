@@ -31,9 +31,9 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
 import           HStream.Server.Exception         (InvalidArgument (..),
                                                    StreamNotExist (..))
-import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
                                                    removeStreamRelatedPath)
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (streamRootPath)
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))

@@ -10,8 +10,8 @@ import qualified Data.ByteString.Lazy   as LB
 import qualified Data.ByteUnits         as BU
 import qualified Options.Applicative    as O
 import           Z.Data.CBytes          (CBytes)
-import           Z.Data.Vector          (Bytes)
 import qualified Z.Data.Vector          as V
+import           Z.Data.Vector          (Bytes)
 import qualified Z.Foreign              as ZF
 
 import qualified HStream.Store          as S
