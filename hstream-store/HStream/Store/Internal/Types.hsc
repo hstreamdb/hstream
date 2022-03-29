@@ -1,7 +1,11 @@
 {-# LANGUAGE CApiFFI         #-}
 {-# LANGUAGE CPP             #-}
+{-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE UnboxedTuples   #-}
 
+-- FIXME: consider this: split this module into a new
+-- HStream.Store.Internal.LogDevice.Types
 module HStream.Store.Internal.Types where
 
 import           Control.Exception        (bracket, finally)
@@ -525,7 +529,7 @@ fromCompression CompressionLZ4HC = ((#const static_cast<HsInt>(Compression::LZ4_
 
 -- FIXME: consider this: using hsthrift generated code
 newtype NodeLocationScope = NodeLocationScope { unNodeLocationScope :: Word8 }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Prim)
 
 -- a special scope indicating the smallest scope: an individual node
 #const_pattern facebook::logdevice, NodeLocationScope, NODE

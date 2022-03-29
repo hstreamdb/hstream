@@ -50,6 +50,19 @@ decodeByteStringRecord record =
       Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
       Right res -> res
 
+encodeBatch :: HStreamRecordBatch -> ByteString
+encodeBatch = BL.toStrict . PT.toLazyByteString
+
+decodeBatch :: Bytes -> HStreamRecordBatch
+decodeBatch = decodeByteStringBatch . toByteString
+
+decodeByteStringBatch :: B.ByteString -> HStreamRecordBatch
+decodeByteStringBatch batch =
+  let rc = PT.fromByteString batch
+  in case rc of
+      Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
+      Right res -> res
+
 getPayload :: HStreamRecord -> Bytes
 getPayload HStreamRecord{..} = fromByteString hstreamRecordPayload
 

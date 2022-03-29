@@ -2,12 +2,11 @@
 {-# LANGUAGE TypeApplications #-}
 module HStream.Server.Core.Subscription where
 
-import           Control.Concurrent            (modifyMVar_, withMVar)
-import           Control.Exception             (throwIO)
+import           Control.Concurrent.STM
+import           Control.Exception             (Exception, throwIO)
 import           Control.Monad                 (unless)
 import qualified Data.HashMap.Strict           as HM
 import qualified Data.Map.Strict               as Map
-import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import           ZooKeeper.Types               (ZHandle)
 
@@ -38,25 +37,26 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   P.storeObject subscriptionSubscriptionId sub zkHandle
 
 deleteSubscription :: ServerContext -> Subscription -> IO ()
-deleteSubscription ServerContext {..} Subscription{subscriptionSubscriptionId = subId
+deleteSubscription ctx@ServerContext{..} Subscription{subscriptionSubscriptionId = subId
   , subscriptionStreamName = streamName} = do
-  mInfo <- withMVar scSubscribeRuntimeInfo (return . HM.lookup subId)
-  case mInfo of
-    Just SubscribeRuntimeInfo {..} ->
-      withMVar sriWatchContext checkNotActive
-    Nothing -> pure ()
+  checkNoActiveConsumer ctx subId
+
   -- FIXME: There are still inconsistencies here. If any failure occurs after removeSubFromStreamPath
   -- and if the client doesn't retry, then we will find that the subscription still binds to the stream but we
   -- can't get the related subscription's information
   removeSubFromStreamPath zkHandle (textToCBytes streamName) (textToCBytes subId)
   P.removeObject @ZHandle @'P.SubRep subId zkHandle
-  modifyMVar_ scSubscribeRuntimeInfo $ \subMap -> do
-    return $ HM.delete subId subMap
 
---------------------------------------------------------------------------------
+-- --------------------------------------------------------------------------------
+-- FIXME: This is too strict.
+checkNoActiveConsumer :: ServerContext -> SubscriptionId -> IO ()
+checkNoActiveConsumer ServerContext {..} subId =
+  atomically $ do
+    scs <- readTVar scSubscribeContexts
+    case HM.lookup subId scs of
+      Nothing -> return ()
+      Just _  -> throwSTM FoundActiveConsumers
 
-checkNotActive :: WatchContext -> IO ()
-checkNotActive WatchContext {..}
-  | HM.null wcWatchStopSignals && Set.null wcWorkingConsumers
-              = return ()
-  | otherwise = throwIO FoundActiveConsumers
+data FoundActiveConsumers = FoundActiveConsumers
+  deriving (Show)
+instance Exception FoundActiveConsumers

@@ -30,6 +30,7 @@ module HStream.Foreign
   , PeekMapFun
   , peekCppMap
   , withHsCBytesMapUnsafe
+  , withPrimListPairUnsafe
 
   -- * Misc
   , c_delete_string
@@ -41,7 +42,7 @@ module HStream.Foreign
   , bool2cbool
   ) where
 
-import           Control.Exception  (finally)
+import           Control.Exception  (assert, finally)
 import           Control.Monad      (forM)
 import           Data.Int           (Int64)
 import           Data.Map.Strict    (Map)
@@ -197,6 +198,14 @@ withHsCBytesMapUnsafe hsmap f = do
       vs = map (CBytes.rawPrimArray . snd) hsmap'
   Z.withPrimArrayListUnsafe ks $ \ks' l ->
     Z.withPrimArrayListUnsafe vs $ \vs' _ -> f l (BAArray# ks') (BAArray# vs')
+
+withPrimListPairUnsafe :: (Prim a, Prim b)
+                       => [(a, b)] -> (Int -> BA# a -> BA# b -> IO c) -> IO c
+withPrimListPairUnsafe pairs f = do
+  let keys = primArrayFromList $ map fst pairs
+      vals = primArrayFromList $ map snd pairs
+  Z.withPrimArrayUnsafe keys $ \ba la -> do
+    Z.withPrimArrayUnsafe vals $ \bb lb -> assert (la == lb) $ f la (BA# ba) (BA# bb)
 
 -------------------------------------------------------------------------------
 

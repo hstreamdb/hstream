@@ -11,10 +11,12 @@
 module HStream.Server.Handler.Query where
 
 import           Control.Concurrent
-import           Control.Exception                (handle)
+import           Control.Exception                (Exception, Handler (..),
+                                                   handle)
 import           Control.Monad                    (join)
 import qualified Data.Aeson                       as Aeson
 import           Data.Bifunctor
+import qualified Data.ByteString.Char8            as BS
 import           Data.Function                    (on, (&))
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
@@ -52,6 +54,8 @@ import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
+import           HStream.SQL.Exception            (SomeSQLException,
+                                                   formatSomeSQLException)
 import           HStream.SQL.ExecPlan             (genExecutionPlan)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -73,7 +77,7 @@ createQueryStreamHandler ::
   IO (ServerResponse 'Normal CreateQueryStreamResponse)
 createQueryStreamHandler
   sc@ServerContext {..}
-  (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = defaultExceptionHandle $ do
+  (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = queryExceptionHandle $ do
     RQSelect select <- parseAndRefine createQueryStreamRequestQueryStatements
     tName <- genTaskName
     let sName = streamStreamName <$> createQueryStreamRequestQueryStream
@@ -90,7 +94,7 @@ createQueryStreamHandler
         createQueryStreamRequestQueryStatements
         query
         S.StreamTypeStream
-    let streamResp = Stream sink (fromIntegral rFac)
+    let streamResp = Stream sink (fromIntegral rFac) 0
         -- FIXME: The value query returned should have been fully assigned
         queryResp = def { queryId = tName }
     returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
@@ -101,7 +105,7 @@ executeQueryHandler ::
   ServerContext ->
   ServerRequest 'Normal CommandQuery CommandQueryResponse ->
   IO (ServerResponse 'Normal CommandQueryResponse)
-executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata CommandQuery {..}) = defaultExceptionHandle $ do
+executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata CommandQuery {..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan' <- streamCodegen commandQueryStmtText
   case plan' of
@@ -370,7 +374,7 @@ createQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateQueryRequest Query
   -> IO (ServerResponse 'Normal Query)
-createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = defaultExceptionHandle $ do
+createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Create Query Request."
     <> "Query ID: "      <> Log.buildText createQueryRequestId
     <> "Query Command: " <> Log.buildText createQueryRequestQueryText
@@ -434,7 +438,7 @@ terminateQueriesHandler
   :: ServerContext
   -> ServerRequest 'Normal TerminateQueriesRequest TerminateQueriesResponse
   -> IO (ServerResponse 'Normal TerminateQueriesResponse)
-terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueriesRequest{..}) = defaultExceptionHandle $ do
+terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueriesRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
   qids <-
@@ -454,7 +458,7 @@ deleteQueryHandler
   -> ServerRequest 'Normal DeleteQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) =
-  defaultExceptionHandle $ do
+  queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.buildText deleteQueryRequestId
     P.removeQuery (textToCBytes deleteQueryRequestId) zkHandle
@@ -474,3 +478,29 @@ restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQuer
     --     P.withMaybeZHandle zkHandle $ P.setQueryStatus (P.queryId query) P.Running
     --     returnResp Empty
       -- Nothing    -> returnErrResp StatusInternal "Query does not exist"
+
+--------------------------------------------------------------------------------
+-- Exception and Exception Handler
+
+data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
+  deriving (Show)
+instance Exception QueryTerminatedOrNotExist
+
+queryExceptionHandlers :: Handlers (StatusCode, StatusDetails)
+queryExceptionHandlers =[
+  Handler (\(err :: QueryTerminatedOrNotExist) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusInvalidArgument, "Query is already terminated or does not exist"))
+  ]
+
+sqlExceptionHandlers :: Handlers (StatusCode, StatusDetails)
+sqlExceptionHandlers =[
+  Handler (\(err :: SomeSQLException) -> do
+    Log.fatal $ Log.buildString' err
+    return (StatusInvalidArgument, StatusDetails . BS.pack . formatSomeSQLException $ err))
+  ]
+
+queryExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+queryExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  sqlExceptionHandlers ++ queryExceptionHandlers ++
+  connectorExceptionHandlers ++ defaultHandlers

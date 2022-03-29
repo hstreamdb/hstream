@@ -87,6 +87,7 @@ library
   cxx-sources:
     cbits/hs_struct.cpp
     cbits/hs_utils.cpp
+    cbits/hash.cpp
     cbits/query/Query.cpp
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
@@ -106,6 +107,7 @@ library
     , casing                >=0.1.4
     , containers
     , data-default
+    , digest
     , deepseq
     , ghc-prim              >=0.5   && <1.0
     , grpc-haskell

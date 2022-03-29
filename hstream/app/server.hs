@@ -5,54 +5,62 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent               (MVar, forkIO, putMVar,
-                                                   takeMVar, threadDelay)
-import           Control.Monad                    (forever, void)
+import           Control.Concurrent               (MVar, forkIO, modifyMVar_)
+import           Control.Monad                    (void)
 import           Data.List                        (sort)
 import qualified Data.Text                        as T
-import           Network.GRPC.HighLevel           (ServiceOptions (..))
-import           Network.GRPC.HighLevel.Client    (Port (unPort))
+import qualified Network.GRPC.HighLevel           as GRPC
+import qualified Network.GRPC.HighLevel.Client    as GRPC
+import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Text.RawString.QQ                (r)
 import           ZooKeeper                        (withResource,
-                                                   zooWatchGetChildren)
+                                                   zooWatchGetChildren,
+                                                   zookeeperResInit)
 import           ZooKeeper.Types
 
-import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (getConfig)
 import           HStream.Server.HStreamApi        (hstreamApiServer)
-import           HStream.Server.HStreamInternal
-import           HStream.Server.Handler           (handlers, routineForSubs)
+import           HStream.Server.Handler           (handlers)
 import           HStream.Server.Initialization    (initNodePath,
-                                                   initializeServer)
-import           HStream.Server.InternalHandler
-import           HStream.Server.Persistence       (defaultHandle,
-                                                   getServerNode',
+                                                   initializeServer,
+                                                   initializeTlsConfig)
+import           HStream.Server.Persistence       (getServerNode',
                                                    initializeAncestors,
                                                    serverRootPath)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerOpts (..))
 import qualified HStream.Store.Logger             as Log
-import           HStream.Utils                    (setupSigsegvHandler)
+import           HStream.Utils                    (cbytes2bs,
+                                                   setupSigsegvHandler)
+
+main :: IO ()
+main = getConfig >>= app
 
 app :: ServerOpts -> IO ()
 app config@ServerOpts{..} = do
+  let serverOnStarted = Log.i $ "Server is started on port " <> Log.buildInt _serverPort
+  let grpcOpts =
+        GRPC.defaultServiceOptions
+        { GRPC.serverHost = GRPC.Host . cbytes2bs $ _serverHost
+        , GRPC.serverPort = GRPC.Port . fromIntegral $ _serverPort
+        , GRPC.serverOnStarted = Just serverOnStarted
+        , GRPC.sslConfig = fmap initializeTlsConfig _tlsConfig
+        }
   setupSigsegvHandler
   Log.setLogDeviceDbgLevel' _ldLogLevel
-  withResource (defaultHandle _zkUri) $ \zk -> do
+  let zkRes = zookeeperResInit _zkUri Nothing{- WatcherFn -} 5000 Nothing 0
+  withResource zkRes $ \zk -> do
     initializeAncestors zk
-    (options, options', serverContext) <- initializeServer config zk
-    initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
-    serve options options' serverContext
 
-serve :: ServiceOptions -> ServiceOptions -> ServerContext -> IO ()
-serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
+    serverContext <- initializeServer config zk
+    initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+    serve grpcOpts serverContext
+
+serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
+serve options sc@ServerContext{..} = do
   void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
-  -- FIXME: now every server should be responsible for monitor zk partition path periodically,
-  -- even no subscription req will redirect to current server. This is probably not a good idea
-  void . forkIO $ forever $ do
-    threadDelay 2000000
-    routineForSubs sc
   -- GRPC service
   Log.i "************************"
   putStrLn [r|
@@ -62,15 +70,9 @@ serve options@ServiceOptions{..} optionsInternal sc@ServerContext{..} = do
   |_||_||___/ |_| |_|_\___|_||_|_| |_|
 
   |]
-  Log.i $ "Server is starting on port " <> Log.buildInt (unPort serverPort)
   Log.i "*************************"
   api <- handlers sc
   hstreamApiServer api options
-
-main :: IO ()
-main = do
-  config <- getConfig
-  app config
 
 --------------------------------------------------------------------------------
 
@@ -78,15 +80,11 @@ main = do
 -- when we have a large number of nodes in the cluster.
 -- TODO: Instead of reconstruction, we should use the operation insert/delete.
 updateHashRing :: ZHandle -> MVar HashRing -> IO ()
-updateHashRing zk mhr = do
-  zooWatchGetChildren zk serverRootPath
-    callback action
+updateHashRing zk mhr = zooWatchGetChildren zk serverRootPath callback action
   where
-    callback HsWatcherCtx {..} =
-      updateHashRing watcherCtxZHandle mhr
+    callback HsWatcherCtx{..} = updateHashRing watcherCtxZHandle mhr
+
     action (StringsCompletion (StringVector children)) = do
-      _ <- takeMVar mhr
-      serverNodes <- mapM (getServerNode' zk) children
-      let hr' = constructHashRing . sort $ serverNodes
-      putMVar mhr hr'
-      Log.debug . Log.buildString $ show hr'
+      modifyMVar_ mhr $ \_ -> do
+        serverNodes <- mapM (getServerNode' zk) children
+        pure $ constructServerMap . sort $ serverNodes

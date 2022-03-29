@@ -2,6 +2,7 @@
 module HStream.Server.Persistence.Exception where
 
 import           Control.Exception (Exception (..), SomeException (..))
+import           Data.Text         (Text)
 import           Data.Typeable     (cast)
 
 data PersistenceException = forall e . Exception e => PersistenceException e
@@ -88,16 +89,15 @@ instance Exception ConnectorStillRunning where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
 
-data SubscriptionRemoved = SubscriptionRemoved
-  deriving Show
-
-instance Exception SubscriptionRemoved where
-  toException   = persistenceExceptionToException
-  fromException = persistenceExceptionFromException
-
 data UnexpectedZkEvent = UnexpectedZkEvent
   deriving Show
 
 instance Exception UnexpectedZkEvent where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+
+newtype SubscriptionIdOccupied = SubscriptionIdOccupied Text
+  deriving (Show)
+instance Exception SubscriptionIdOccupied where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException

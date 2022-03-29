@@ -5,9 +5,11 @@
 module HStream.Server.Initialization
   ( initializeServer
   , initNodePath
+  , initializeTlsConfig
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
+import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
@@ -15,10 +17,8 @@ import           Data.List                        (find, sort)
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
-import           Network.GRPC.HighLevel.Generated
 import           System.Exit                      (exitFailure)
 import qualified Z.Data.CBytes                    as CB
-import           Z.Foreign                        (toByteString)
 import           ZooKeeper                        (zooCreateOpInit,
                                                    zooGetChildren, zooMulti,
                                                    zooSetOpInit)
@@ -26,7 +26,7 @@ import qualified ZooKeeper.Recipe                 as Recipe
 import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
-import           HStream.Common.ConsistentHashing (HashRing, constructHashRing)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (NodeInfo (..),
@@ -42,7 +42,9 @@ import           HStream.Utils
 import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
                                                    AuthProperty (authPropName),
                                                    ProcessMeta,
+                                                   ServerSSLConfig (ServerSSLConfig),
                                                    SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
+                                                   StatusCode (StatusOk),
                                                    getAuthProperties)
 import           Text.Printf                      (printf)
 
@@ -88,9 +90,7 @@ initNodePath zk serverID host port port' = do
       zooCreateOpInit (path <> "/" <> CB.pack (show serverID))
                       content 0 zooOpenAclUnsafe ZooEphemeral
 
-initializeServer
-  :: ServerOpts -> ZHandle
-  -> IO (ServiceOptions, ServiceOptions, ServerContext)
+initializeServer :: ServerOpts -> ZHandle -> IO ServerContext
 initializeServer ServerOpts{..} zk = do
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   ldclient <- S.newLDClient _ldConfigPath
@@ -103,38 +103,24 @@ initializeServer ServerOpts{..} zk = do
 
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty
-  subscribeRuntimeInfo <- newMVar HM.empty
+  subCtxs <- newTVarIO HM.empty
 
   hashRing <- initializeHashRing zk
 
-  return (
-    defaultServiceOptions {
-      Network.GRPC.HighLevel.Generated.serverHost =
-        Host . toByteString . CB.toBytes $ _serverHost
-    , Network.GRPC.HighLevel.Generated.serverPort =
-        Port . fromIntegral $ _serverPort
-    , Network.GRPC.HighLevel.Generated.sslConfig =
-        fmap initializeTlsConfig _tlsConfig
-    },
-    defaultServiceOptions {
-      Network.GRPC.HighLevel.Generated.serverHost =
-        Host . toByteString . CB.toBytes $ _serverHost
-    , Network.GRPC.HighLevel.Generated.serverPort =
-        Port . fromIntegral $ _serverInternalPort
-    },
-    ServerContext {
-      zkHandle                 = zk
-    , scLDClient               = ldclient
-    , serverID                 = _serverID
-    , scDefaultStreamRepFactor = _topicRepFactor
-    , runningQueries           = runningQs
-    , runningConnectors        = runningCs
-    , scSubscribeRuntimeInfo   = subscribeRuntimeInfo
-    , cmpStrategy              = _compression
-    , headerConfig             = headerConfig
-    , scStatsHolder            = statsHolder
-    , loadBalanceHashRing      = hashRing
-    })
+  return
+    ServerContext
+      { zkHandle                 = zk
+      , scLDClient               = ldclient
+      , serverID                 = _serverID
+      , scDefaultStreamRepFactor = _topicRepFactor
+      , runningQueries           = runningQs
+      , runningConnectors        = runningCs
+      , scSubscribeContexts      = subCtxs
+      , cmpStrategy              = _compression
+      , headerConfig             = headerConfig
+      , scStatsHolder            = statsHolder
+      , loadBalanceHashRing      = hashRing
+      }
 
 --------------------------------------------------------------------------------
 
@@ -143,7 +129,7 @@ initializeHashRing zk = do
   StringsCompletion (StringVector children) <-
     zooGetChildren zk serverRootPath
   serverNodes <- mapM (getServerNode' zk) children
-  newMVar . constructHashRing . sort $ serverNodes
+  newMVar . constructServerMap . sort $ serverNodes
 
 initializeTlsConfig :: TlsConfig -> ServerSSLConfig
 initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler

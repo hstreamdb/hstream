@@ -1,111 +1,55 @@
 {-# OPTIONS_GHC -Wno-orphans   #-}
 
 module HStream.Common.ConsistentHashing
-  ( HashRing(..)
-  , Key(..)
-
-  , constructHashRing
-  , empty
+  ( ServerMap
+  , HashRing
+  , constructServerMap
   , insert
   , delete
-  , lookupHashed
-  , lookupKey
-
+  , size
   , getAllocatedNode
   , getAllocatedNodeId
-  , size
   ) where
 
-import           Data.Foldable             (foldr')
-import qualified Data.HashMap.Strict       as HM
-import           Data.Hashable
-import           Data.IntMap.Strict        (IntMap)
-import qualified Data.IntMap.Strict        as IntMap
-import           Data.Maybe                (fromMaybe)
+import           Data.Hashable             (hash)
+import qualified Data.Map.Strict           as M
 import qualified Data.Text                 as T
-import           Data.Word                 (Word32)
+import           Data.Word                 (Word32, Word64)
 import           Prelude                   hiding (lookup, null)
 
 import           HStream.Server.HStreamApi (ServerNode (..))
 
-type ServerNodeId = Word32
+getAllocatedNodeId :: ServerMap -> T.Text -> ServerNodeId
+getAllocatedNodeId = (serverNodeId .) . getAllocatedNode
 
-data HashRing = HashRing
-  { nodeMap  :: !(IntMap ServerNode)
-    -- ^ Map of { HashedKey: ServerNode }
-  , vnodes   :: !(HM.HashMap ServerNodeId [Int])
-    -- ^ Virtual nodes, we will rehash by 'replicas' to generate this map.
-    -- The value is a list of HashedKey.
-  , replicas :: !Int
-  } deriving (Eq, Show)
-
-empty :: HashRing
-empty = HashRing IntMap.empty HM.empty 5
-
-lookupHashed :: Int -> HashRing -> ServerNode
-lookupHashed h HashRing {..} = case IntMap.lookupGE h nodeMap of
-  Just (_, node) -> node
-  Nothing        -> snd $ IntMap.findMin nodeMap
-
-lookupKey :: Key -> HashRing -> ServerNode
-lookupKey k HashRing {..} = case IntMap.lookupGE (hash k) nodeMap of
-  Just (_, node) -> node
-  Nothing        -> snd $ IntMap.findMin nodeMap
-
-insert :: ServerNode -> HashRing -> HashRing
-insert node@ServerNode{..} ring@HashRing {..}
-  | HM.member serverNodeId vnodes = ring
-  | otherwise = HashRing
-  { nodeMap  = foldr' (`IntMap.insert` node) nodeMap keys
-  , vnodes   = HM.insert serverNodeId keys vnodes
-  , replicas = replicas
-  }
+getAllocatedNode :: ServerMap -> T.Text  -> ServerNode
+getAllocatedNode nodes k =
+  snd $ M.elemAt serverNum nodes
   where
-    keys = take replicas
-      $ filter (\key -> not $ IntMap.member key nodeMap)
-      $ generateVirtualNodes node
-
-delete :: ServerNode -> HashRing -> HashRing
-delete ServerNode{..} HashRing {..} = HashRing
-  { nodeMap  = foldr IntMap.delete nodeMap keys
-  , vnodes   = HM.delete serverNodeId vnodes
-  , replicas = replicas
-  }
-  where
-    keys = fromMaybe [] (HM.lookup serverNodeId vnodes)
-
-size :: HashRing -> Int
-size HashRing{..} = HM.size vnodes
-
-constructHashRing :: [ServerNode] -> HashRing
-constructHashRing = foldr insert empty
-
-generateVirtualNodes :: ServerNode -> [Int]
-generateVirtualNodes node = (`hashWithSalt` node) <$> [0..]
-
-instance Hashable ServerNode where
-  hashWithSalt = flip hashServerNode
-
-newtype Key = Key T.Text
-  deriving Show
-
-instance Hashable Key where
-  hashWithSalt = hashKey
+    serverNum = fromIntegral (c_get_allocated_num key nums)
+    nums = fromIntegral $ size nodes
+    key  = fromIntegral $ hash k
 
 --------------------------------------------------------------------------------
 
--- Modify the following two functions to change hash function
-hashServerNode :: ServerNode -> Int -> Int
-hashServerNode ServerNode{..} x
-  = x `hashWithSalt` show serverNodeId
-      `hashWithSalt` serverNodeHost
-      `hashWithSalt` serverNodePort
+type ServerNodeId = Word32
 
-hashKey :: Int -> Key -> Int
-hashKey salt (Key key) = salt `hashWithSalt` hash key
+type HashRing = ServerMap
+type ServerMap = M.Map Word32 ServerNode
 
-getAllocatedNode :: HashRing -> T.Text -> ServerNode
-getAllocatedNode hashRing key = lookupKey (Key key) hashRing
+insert :: ServerNode -> ServerMap -> ServerMap
+insert node@ServerNode{..} = M.insert serverNodeId node
 
-getAllocatedNodeId :: HashRing -> T.Text -> ServerNodeId
-getAllocatedNodeId = (serverNodeId .) . getAllocatedNode
+delete :: ServerNode -> ServerMap -> ServerMap
+delete ServerNode{..} = M.delete serverNodeId
+
+size :: ServerMap -> Int
+size = M.size
+
+constructServerMap :: [ServerNode] -> ServerMap
+constructServerMap = foldr insert M.empty
+
+-------------------------------------------------------------------------------
+
+foreign import ccall unsafe "hs_common.h get_allocated_num"
+  c_get_allocated_num ::  Word64 -> Word64 -> Word64

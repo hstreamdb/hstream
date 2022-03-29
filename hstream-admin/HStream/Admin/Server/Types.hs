@@ -115,7 +115,7 @@ data StreamCommand
   deriving (Show)
 
 streamCmdParser :: O.Parser StreamCommand
-streamCmdParser = O.subparser
+streamCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams"))
  <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Create a stream"))
   )
@@ -133,6 +133,13 @@ streamParser = API.Stream
                      <> O.value 3
                      <> O.help "replication-factor"
                       )
+  <*> O.option O.auto ( O.long "backlog-duration"
+                     <> O.short 'b'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 0
+                     <> O.help "Backlog duration in seconds"
+                      )
 
 -------------------------------------------------------------------------------
 
@@ -145,7 +152,7 @@ data SubscriptionCommand
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
-subscriptionCmdParser = O.subparser
+subscriptionCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "get all subscriptions"))
  <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
                                (O.progDesc "create a subscription"))

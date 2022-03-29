@@ -27,6 +27,7 @@ import qualified Data.Text                        as Text
 import qualified Data.Text.Encoding               as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
+import           Data.Word                        (Word32)
 import qualified Database.ClickHouseDriver.Client as ClickHouse
 import qualified Database.ClickHouseDriver.Types  as ClickHouse
 import qualified Database.MySQL.Base              as MySQL
@@ -43,6 +44,7 @@ import           HStream.Client.Action
 import           HStream.Client.Utils
 import           HStream.SQL
 import           HStream.Server.HStreamApi
+import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),
                                                    ValueKind (ValueKindStructValue))
@@ -196,7 +198,7 @@ withRandomStream :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi ->
 withRandomStream = provideRunTest setup clean
   where
     setup api = do name <- newRandomText 20
-                   _ <- createStreamReq api (Stream name 1)
+                   _ <- createStreamReq api (mkStream name 1)
                    threadDelay 1000000
                    return name
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
@@ -205,11 +207,17 @@ withRandomStreams :: Int -> ActionWith (HStreamClientApi, [T.Text]) -> HStreamCl
 withRandomStreams n = provideRunTest setup clean
   where
     setup api = replicateM n $ do name <- newRandomText 20
-                                  _ <- createStreamReq api (Stream name 1)
+                                  _ <- createStreamReq api (mkStream name 1)
                                   threadDelay 1000000
                                   return name
     clean api names = forM_ names $ \name -> do
       cleanStreamReq api name `shouldReturn` PB.Empty
+
+mkStreamWithName :: T.Text -> Stream
+mkStreamWithName name = def { streamStreamName = name, streamReplicationFactor = 1}
+
+mkStream :: T.Text -> Word32 -> Stream
+mkStream name repFac = def { streamStreamName = name, streamReplicationFactor = repFac}
 
 createStreamReq :: HStreamClientApi -> Stream -> IO Stream
 createStreamReq HStreamApi{..} stream =
@@ -325,6 +333,16 @@ fetchClickHouse source =
     case q of
       Right res -> return res
       _         -> return V.empty
+
+readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
+readBatchPayload name = do
+  let nameCB = textToCBytes name
+  client <- S.newLDClient "/data/store/logdevice.conf"
+  logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream nameCB) Nothing
+  reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing 10
+  S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
+  x <- S.ckpReaderRead reader 1000
+  return $ hstreamRecordBatchBatch . decodeBatch . S.recordPayload $ head x
 
 --------------------------------------------------------------------------------
 

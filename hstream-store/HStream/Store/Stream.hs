@@ -10,7 +10,7 @@ module HStream.Store.Stream
   , showStreamName
   , mkStreamId
   , mkStreamIdFromFullLogDir
-  , getStreamReplicaFactor
+  , getStreamLogAttrs
   , getStreamPartitionHeadTimestamp
     -- ** Operations
   , createStream
@@ -149,7 +149,6 @@ import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
 import qualified Z.IO.FileSystem                  as FS
 
-import qualified Data.Map                         as M
 import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
@@ -363,15 +362,15 @@ doesStreamExist client streamid = do
         Left (_ :: E.NOTFOUND) -> return False
         Right _                -> return True
 
-listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (M.Map CBytes FFI.C_LogID)
+listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (Map.Map CBytes FFI.C_LogID)
 listStreamPartitions client streamid = do
   dir_path <- getStreamDirPath streamid
   keys <- LD.logDirLogsNames =<< LD.getLogDirectory client dir_path
-  foldrM insertMap M.empty keys
+  foldrM insertMap Map.empty keys
   where
     insertMap key keyMap = do
       logId <- getUnderlyingLogId client streamid (Just key)
-      return $ M.insert key logId keyMap
+      return $ Map.insert key logId keyMap
 
 doesStreamPartitionExist
   :: HasCallStack
@@ -395,11 +394,11 @@ doesStreamPartitionExist client streamid m_key = do
 -------------------------------------------------------------------------------
 -- StreamAttrs
 
-getStreamReplicaFactor :: FFI.LDClient -> StreamId -> IO Int
-getStreamReplicaFactor client streamid = do
+getStreamLogAttrs :: FFI.LDClient -> StreamId -> IO LD.LogAttributes
+getStreamLogAttrs client streamid = do
   dir_path <- getStreamDirPath streamid
   dir <- LD.getLogDirectory client dir_path
-  LD.getAttrsReplicationFactorFromPtr =<< LD.logDirectoryGetAttrsPtr dir
+  LD.logDirectoryGetAttrs dir
 
 getStreamExtraAttrs :: FFI.LDClient -> StreamId -> IO (Map CBytes CBytes)
 getStreamExtraAttrs client streamid = do

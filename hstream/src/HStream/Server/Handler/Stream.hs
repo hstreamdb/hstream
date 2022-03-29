@@ -10,22 +10,23 @@ module HStream.Server.Handler.Stream
     createStreamHandler,
     deleteStreamHandler,
     listStreamsHandler,
-    appendHandler
-  )
+    appendHandler,
+    append0Handler)
 where
 
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import           Control.Concurrent               (readMVar)
+import           Control.Exception
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
-import           HStream.Server.Exception         (appendStreamExceptionHandle,
-                                                   defaultExceptionHandle)
+import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.Types             (ServerContext (..))
+import qualified HStream.Store                    as Store
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
@@ -35,7 +36,7 @@ createStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal Stream Stream
   -> IO (ServerResponse 'Normal Stream)
-createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultExceptionHandle $ do
+createStreamHandler sc (ServerNormalRequest _metadata stream) = createStreamExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
   C.createStream sc stream
 
@@ -51,7 +52,7 @@ deleteStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
   C.deleteStream sc request
 
@@ -72,8 +73,56 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
-                     Just key -> appendRequestStreamName <> key
-                     Nothing  -> appendRequestStreamName <> clientDefaultKey
+        Just key -> appendRequestStreamName <> key
+        Nothing  -> appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+
+append0Handler
+  :: ServerContext
+  -> ServerRequest 'Normal AppendRequest AppendResponse
+  -> IO (ServerResponse 'Normal AppendResponse)
+append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
+  Log.debug $ "Receive Append0 Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
+  let partitionKey = getRecordKey . V.head $ appendRequestRecords
+  hashRing <- readMVar loadBalanceHashRing
+  let identifier = appendRequestStreamName <> clientDefaultKey
+  if getAllocatedNodeId hashRing identifier == serverID
+    then C.append0Stream sc request partitionKey >>= returnResp
+    else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+
+--------------------------------------------------------------------------------
+-- Exception Handlers
+
+streamExistsHandlers :: Handlers (StatusCode, StatusDetails)
+streamExistsHandlers = [
+  Handler (\(err :: C.StreamExists) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusAlreadyExists, mkStatusDetails err))
+  ]
+
+appendStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+appendStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  handlers ++ defaultHandlers
+  where
+    handlers = [
+      Handler (\(err :: Store.NOTFOUND) ->
+        return (StatusUnavailable, mkStatusDetails err)),
+      Handler (\(err :: Store.NOTINSERVERCONFIG) ->
+        return (StatusUnavailable, mkStatusDetails err))
+      ]
+
+createStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+createStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  streamExistsHandlers ++ defaultHandlers
+
+deleteStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  deleteExceptionHandler ++ defaultHandlers
+  where
+    deleteExceptionHandler = [
+      Handler (\(err :: C.FoundActiveSubscription) -> do
+       Log.warning $ Log.buildString' err
+       return (StatusFailedPrecondition, "Stream still has active consumers"))
+      ]

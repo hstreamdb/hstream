@@ -49,7 +49,6 @@ import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.SQL.Codegen
 import           HStream.Server.Exception
-import           HStream.Server.HStreamApi        (RecordId (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import qualified HStream.Store                    as HS
@@ -61,11 +60,11 @@ import           HStream.Utils                    (TaskStatus (..),
 --------------------------------------------------------------------------------
 
 insertAckedRecordId
-  :: RecordId                        -- ^ recordId need to insert
-  -> RecordId                        -- ^ lowerBound of current window
-  -> Map.Map RecordId RecordIdRange  -- ^ ackedRanges
+  :: ShardRecordId                        -- ^ recordId need to insert
+  -> ShardRecordId                        -- ^ lowerBound of current window
+  -> Map.Map ShardRecordId ShardRecordIdRange  -- ^ ackedRanges
   -> Map.Map Word64 Word32           -- ^ batchNumMap
-  -> Map.Map RecordId RecordIdRange
+  -> Map.Map ShardRecordId ShardRecordIdRange
 insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
   -- [..., {leftStartRid, leftEndRid}, recordId, {rightStartRid, rightEndRid}, ... ]
   --       | ---- leftRange ----    |            |  ---- rightRange ----    |
@@ -89,66 +88,66 @@ insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
          in Map.insert recordId (rightRange {startRecordId = recordId}) m1
       | otherwise = if checkDuplicat leftRange rightRange
                       then ackedRanges
-                      else Map.insert recordId (RecordIdRange recordId recordId) ackedRanges
+                      else Map.insert recordId (ShardRecordIdRange recordId recordId) ackedRanges
 
     checkDuplicat leftRange rightRange =
          recordId >= startRecordId leftRange && recordId <= endRecordId leftRange
       || recordId >= startRecordId rightRange && recordId <= endRecordId rightRange
 
 getCommitRecordId
-  :: Map.Map RecordId RecordIdRange -- ^ ackedRanges
+  :: Map.Map ShardRecordId ShardRecordIdRange -- ^ ackedRanges
   -> Map.Map Word64 Word32          -- ^ batchNumMap
-  -> Maybe RecordId
+  -> Maybe ShardRecordId
 getCommitRecordId ackedRanges batchNumMap = do
-  (_, RecordIdRange _ maxRid@RecordId{..}) <- Map.lookupMin ackedRanges
-  cnt <- Map.lookup recordIdBatchId batchNumMap
-  if recordIdBatchIndex == cnt - 1
+  (_, ShardRecordIdRange _ maxRid@ShardRecordId{..}) <- Map.lookupMin ackedRanges
+  cnt <- Map.lookup sriBatchId batchNumMap
+  if sriBatchIndex == cnt - 1
      -- if maxRid is a complete batch, commit maxRid
     then Just maxRid
      -- else we check the precursor of maxRid and return it as commit point
     else do
-      let lsn = recordIdBatchId - 1
+      let lsn = sriBatchId - 1
       cnt' <- Map.lookup lsn batchNumMap
-      Just $ RecordId lsn (cnt' - 1)
+      Just $ ShardRecordId lsn (cnt' - 1)
 
-lookupLTWithDefault :: RecordId -> Map.Map RecordId RecordIdRange -> RecordIdRange
-lookupLTWithDefault recordId ranges = maybe (RecordIdRange minBound minBound) snd $ Map.lookupLT recordId ranges
+lookupLTWithDefault :: ShardRecordId -> Map.Map ShardRecordId ShardRecordIdRange -> ShardRecordIdRange
+lookupLTWithDefault recordId ranges = maybe (ShardRecordIdRange minBound minBound) snd $ Map.lookupLT recordId ranges
 
-lookupGTWithDefault :: RecordId -> Map.Map RecordId RecordIdRange -> RecordIdRange
-lookupGTWithDefault recordId ranges = maybe (RecordIdRange maxBound maxBound) snd $ Map.lookupGT recordId ranges
+lookupGTWithDefault :: ShardRecordId -> Map.Map ShardRecordId ShardRecordIdRange -> ShardRecordIdRange
+lookupGTWithDefault recordId ranges = maybe (ShardRecordIdRange maxBound maxBound) snd $ Map.lookupGT recordId ranges
 
 -- is r1 the successor of r2
-isSuccessor :: RecordId -> RecordId -> Map.Map Word64 Word32 -> Bool
+isSuccessor :: ShardRecordId -> ShardRecordId -> Map.Map Word64 Word32 -> Bool
 isSuccessor r1 r2 batchNumMap
   | r2 == minBound = False
   | r1 <= r2 = False
-  | recordIdBatchId r1 == recordIdBatchId r2 = recordIdBatchIndex r1 == recordIdBatchIndex r2 + 1
-  | recordIdBatchId r1 > recordIdBatchId r2 = isLastInBatch r2 batchNumMap && (recordIdBatchId r1 == recordIdBatchId r2 + 1) && (recordIdBatchIndex r1 == 0)
+  | sriBatchId r1 == sriBatchId r2 = sriBatchIndex r1 == sriBatchIndex r2 + 1
+  | sriBatchId r1 > sriBatchId r2 = isLastInBatch r2 batchNumMap && (sriBatchId r1 == sriBatchId r2 + 1) && (sriBatchIndex r1 == 0)
 
-isPrecursor :: RecordId -> RecordId -> Map.Map Word64 Word32 -> Bool
+isPrecursor :: ShardRecordId -> ShardRecordId -> Map.Map Word64 Word32 -> Bool
 isPrecursor r1 r2 batchNumMap
   | r2 == maxBound = False
   | otherwise = isSuccessor r2 r1 batchNumMap
 
-isLastInBatch :: RecordId -> Map.Map Word64 Word32 -> Bool
+isLastInBatch :: ShardRecordId -> Map.Map Word64 Word32 -> Bool
 isLastInBatch recordId batchNumMap =
-  case Map.lookup (recordIdBatchId recordId) batchNumMap of
+  case Map.lookup (sriBatchId recordId) batchNumMap of
     Nothing  ->
-      let msg = "no recordIdBatchId found: " <> show recordId <> ", head of batchNumMap: " <> show (Map.lookupMin batchNumMap)
+      let msg = "no sriBatchId found: " <> show recordId <> ", head of batchNumMap: " <> show (Map.lookupMin batchNumMap)
        in error msg
     Just num | num == 0 -> True
-             | otherwise -> recordIdBatchIndex recordId == num - 1
+             | otherwise -> sriBatchIndex recordId == num - 1
 
-getSuccessor :: RecordId -> Map.Map Word64 Word32 -> RecordId
-getSuccessor r@RecordId{..} batchNumMap =
+getSuccessor :: ShardRecordId -> Map.Map Word64 Word32 -> ShardRecordId
+getSuccessor r@ShardRecordId{..} batchNumMap =
   if isLastInBatch r batchNumMap
-  then RecordId (recordIdBatchId + 1) 0
-  else r {recordIdBatchIndex = recordIdBatchIndex + 1}
+  then ShardRecordId (sriBatchId + 1) 0
+  else r {sriBatchIndex = sriBatchIndex + 1}
 
-isValidRecordId :: RecordId -> Map.Map Word64 Word32 -> Bool
-isValidRecordId RecordId{..} batchNumMap =
-  case Map.lookup recordIdBatchId batchNumMap of
-    Just maxIdx | recordIdBatchIndex >= maxIdx || recordIdBatchIndex < 0 -> False
+isValidRecordId :: ShardRecordId -> Map.Map Word64 Word32 -> Bool
+isValidRecordId ShardRecordId{..} batchNumMap =
+  case Map.lookup sriBatchId batchNumMap of
+    Just maxIdx | sriBatchIndex >= maxIdx || sriBatchIndex < 0 -> False
                 | otherwise -> True
     Nothing -> False
 
@@ -297,15 +296,6 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
     releasePid qid = do
       hmapC <- readMVar runningQueries
       swapMVar runningQueries $ HM.delete qid hmapC
-
-handleTerminateConnector :: ServerContext -> CB.CBytes -> IO ()
-handleTerminateConnector ServerContext{..} cid = do
-  hmapC <- readMVar runningConnectors
-  case HM.lookup cid hmapC of
-    Just tid -> do
-      void $ killThread tid
-      Log.debug . Log.buildString $ "TERMINATE: terminated connector: " <> show cid
-    _        -> throwIO ConnectorNotExist
 
 --------------------------------------------------------------------------------
 -- Query

@@ -91,8 +91,43 @@ def scp_command(local_file, remote, remote_file) -> str:
     file_dir = os.path.dirname(remote_file)
     if file_dir != "":
         cmd += f"ssh {remote} 'mkdir -p {file_dir}' && "
-    cmd += f"scp {local_file} {remote}:{remote_file}"
+    cmd += f"scp -r {local_file} {remote}:{remote_file}"
     return cmd
+
+
+def set_rm_intermediate(rm: bool) -> str:
+    return " --rm " if rm else ""
+
+
+def set_config_path(custom: str, origin: str) -> str:
+    return f" -v {custom}:{origin} "
+
+
+def set_resource_constraints(memory_cpus: Tuple[str, str]) -> str:
+    memory, cpus = memory_cpus
+    return (
+        f" --memory={memory} " if memory else ""
+        f" --cpus={cpus} " if cpus else ""
+    )
+
+
+def synchronize_configs(
+    local_config_path: str,
+    remote_config_path: str,
+    hosts: List[Tuple[str, str]],
+) -> List[str]:
+    cmds = []
+    if local_config_path is not None:
+        assert remote_config_path is not None
+        for (remote, _) in hosts:
+            cmds.append(
+                scp_command(local_config_path, remote, remote_config_path)
+            )
+    return cmds
+
+
+def set_restart(restart: bool) -> str:
+    return " --restart unless-stopped " if restart else ""
 
 
 # -----------------------------------------------------------------------------
@@ -344,25 +379,33 @@ class ZookeeperService(Service):
         remotes,
         container_name,
         image,
+        memory_cpus,
         persistent_dir=None,
         extra_container_options="",
         container_cmd="",
         rm=False,
         metrics_provider=False,
+        restart=True,
         **kargs,
     ):
 
-        docker_opts = "--rm " if rm else ""
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+
         zoo_servers = " ".join(
             f"server.{i}={hostname}:2888:3888;2181"
-            for (i, (host, hostname)) in enumerate(remotes)
+            for (i, (_, hostname)) in enumerate(remotes)
         )
         pre_cmd = ""
         if persistent_dir:
             persistent_dir = persistent_dir.rstrip("/")
             pre_cmd = f"mkdir -p {persistent_dir}" + "/{data,datalog} && "
-            docker_opts += f"-v {persistent_dir}/data:/data \
-                -v {persistent_dir}/datalog:/datalog"
+            docker_opts += set_config_path(f"{persistent_dir}/data", "/data")
+            docker_opts += set_config_path(
+                f"{persistent_dir}/datalog", "/datalog"
+            )
 
         cmds = []
         for (i, (host, _)) in enumerate(remotes):
@@ -370,14 +413,15 @@ class ZookeeperService(Service):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
                 enable_metrics_provider = (
-                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider"'
+                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus'
+                    '.PrometheusMetricsProvider" '
                     if metrics_provider
                     else ""
                 )
 
                 cmds.append(
                     f"ssh {host} '{pre_cmd} "
-                    f"{container_bin} run -td --restart unless-stopped "
+                    f"{container_bin} run -td "
                     f"{docker_opts} --name {container_name} "
                     f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
                     f"--network host {extra_container_options} "
@@ -534,20 +578,27 @@ class HStoreAdminService(Service):
         container_name,
         remotes,
         image,
+        memory_cpus,
         config_path,
         extra_container_options="",
         rm=False,
+        restart=True,
         **kargs,
     ):
-        opts = "--rm" if rm else ""
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+
         cmds = []
-        for (i, (host, _)) in enumerate(remotes):
+        for (host, _) in remotes:
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host {image} /usr/local/bin/ld-admin-server "
                     f"--config-path {config_path} "
@@ -663,14 +714,20 @@ class HStoreService(Service):
         container_bin: str,
         container_name: str,
         image: str,
+        memory_cpus: Tuple[str, str],
         data_dir: str,
         shards: int,
         config_path: str,
         remotes: List[Tuple[str, str]],
         rm: bool = False,
+        restart: bool = True,
         **kargs,
     ) -> List[str]:
-        opts = "--rm" if rm else ""
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+
         cmds = []
         shards_path = Path(data_dir).joinpath("NSHARDS")
         for (i, (host, addr)) in enumerate(remotes):
@@ -680,14 +737,15 @@ class HStoreService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"mkdir -p {data_dir} && echo {shards} | tee {shards_path} && "
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     "--network host "
-                    f"-v {data_dir}:/data/store "
+                    f"-v {data_dir}:{data_dir} "
                     f"{image} /usr/local/bin/logdeviced "
                     f"--config-path {config_path} "
                     f"--name ld_{i} --address {addr} "
-                    f"--local-log-store-path /data/store "
+                    f"--local-log-store-path {data_dir} "
                     f"--num-shards {shards} "
                     f"'"
                 )
@@ -759,6 +817,7 @@ class HServerService(Service):
         container_bin,
         container_name,
         image,
+        memory_cpus,
         zkuri,
         store_config,
         store_admin_host,
@@ -766,14 +825,18 @@ class HServerService(Service):
         extra_container_options="",
         rm=False,
         config_path=None,
+        restart=True,
         **kargs,
     ):
-        opts = "--rm" if rm else ""
-        opts += (
-            f" -v {config_path}:{DEFAULT_CONTAINER_CONFIG_PATH}"
-            if config_path
-            else ""
-        )
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+
+        if config_path is not None:
+            docker_opts += set_config_path(
+                config_path, DEFAULT_CONTAINER_CONFIG_PATH
+            )
         cmds = []
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
@@ -781,7 +844,8 @@ class HServerService(Service):
             else:
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     "--network host "
                     f"{image} /usr/local/bin/hstream-server "
@@ -792,6 +856,7 @@ class HServerService(Service):
                     f"--store-config {store_config} "
                     f"--store-admin-host {store_admin_host} "
                     f"--server-id {i} "
+                    f"--store-log-level error "
                     f"'"
                 )
         return cmds
@@ -853,33 +918,108 @@ class PrometheusService(Service):
         container_name,
         remotes,
         image,
+        memory_cpus,
         rm=False,
         config_path=None,
+        restart=True,
         **args,
     ):
-        opts = "--rm" if rm else ""
-        opts += (
-            f" -v {config_path}:{DEFAULT_CONTAINER_CONFIG_PATH}"
-            if config_path
-            else ""
-        )
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+        if config_path is not None:
+            docker_opts += set_config_path(config_path, "/etc/prometheus")
+
         cmds = []
-        for (i, (host, addr)) in enumerate(remotes):
+        for (host, _) in remotes:
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
-                mount_cfg = ""
-                if config_path is not None:
-                    mount_cfg = (
-                        f"-v {config_path}:/etc/prometheus/prometheus.yml "
-                    )
-
                 cmds.append(
                     f"ssh {host} '"
-                    f"{container_bin} run {opts} -d --restart unless-stopped "
+                    f"{container_bin} run -d "
+                    f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
-                    f"{mount_cfg}"
+                    f"{image}"
+                    f"'"
+                )
+        return cmds
+
+
+class NodeExporterService(Service):
+    KEYS = ["node-exporter"]
+    DEFAULT_CONTAINER_NAME = "deploy_node_exporter"
+    DEFAULT_IMAGE_TAG = "docker.io/prom/node-exporter"
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage node-exporter service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default=NodeExporterService.DEFAULT_IMAGE_TAG
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        memory_cpus,
+        rm=False,
+        restart=True,
+        **args,
+    ):
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+        cmds = []
+
+        for (host, _) in remotes:
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run -d "
+                    f"{docker_opts} "
+                    f"--name {container_name} "
+                    f"--network host "
                     f"{image}"
                     f"'"
                 )
@@ -890,6 +1030,14 @@ class SimpleService(Service):
     KEYS = ["simple"]
     DEFAULT_CONTAINER_BIN = "docker"
     DEFAULT_STORE_CONFIG_NODE_IN_ZK = "/logdevice.conf"
+    ALL_SERVICES = [
+        "zk",
+        "hstore",
+        "hadmin",
+        "hserver",
+        "prometheus",
+        "node-exporter",
+    ]
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -903,6 +1051,7 @@ class SimpleService(Service):
         self.HSTORE_SVC = super().get_service(HStoreService)
         self.HSERVER_SVC = super().get_service(HServerService)
         self.PROMETHEUS_SVC = super().get_service(PrometheusService)
+        self.NODE_EXPORTER_SVC = super().get_service(NodeExporterService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -910,7 +1059,21 @@ class SimpleService(Service):
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
-        action_subparser.add_parser("start", help="start sevices")
+
+        start_parser = argparse.ArgumentParser(add_help=False)
+        total_choices = SimpleService.ALL_SERVICES[:]
+        total_choices.append("all")
+        start_parser.add_argument(
+            "--disable-restart",
+            choices=total_choices,
+            nargs="+",
+            default=[],
+            help="disable container restart strategy.",
+        )
+        action_subparser.add_parser(
+            "start", help="start services", parents=[start_parser]
+        )
+
         action_subparser.add_parser("stop", help="stop services")
         action_subparser.add_parser("remove", help="remove persistent data")
 
@@ -922,14 +1085,9 @@ class SimpleService(Service):
                 for host in (deploy_cfg["zookeeper"])["hosts"]
             ]
             self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
+            # config_path_in_zk: zk:host1:2181,host2:2181/logdevice.conf
             self.config_path_in_zk = (
                 "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
-            )
-            self.local_store_config_path = Path(
-                (deploy_cfg["hstore"])["local_config_path"]
-            )
-            self.hstreamdb_config_path = deploy_cfg["hserver"].get(
-                "local_config_path"
             )
             self.admin_hosts = [
                 (host, deploy_cfg["hosts"][host])
@@ -947,9 +1105,13 @@ class SimpleService(Service):
                 (host, deploy_cfg["hosts"][host])
                 for host in (deploy_cfg["prometheus"])["hosts"]
             ]
+            self.node_exporter_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in (deploy_cfg["node-exporter"])["hosts"]
+            ]
 
-            self.zk_enable_metrics_provider = (
-                deploy_cfg["zookeeper"].get("enable-metrics-provider") == True
+            self.zk_enable_metrics_provider = deploy_cfg["zookeeper"].get(
+                "enable-metrics-provider"
             )
             self.hstore_local_conf = deploy_cfg["hstore"].get(
                 "local_config_path"
@@ -985,6 +1147,9 @@ class SimpleService(Service):
             self.prometheus_image = deploy_cfg["prometheus"].get(
                 "image", PrometheusService.DEFAULT_IMAGE_TAG
             )
+            self.node_exporter_image = deploy_cfg["node-exporter"].get(
+                "image", NodeExporterService.DEFAULT_IMAGE_TAG
+            )
 
             self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
                 "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
@@ -993,38 +1158,28 @@ class SimpleService(Service):
                 "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
             )
 
-    def start_cmd(self, config: str, **kargs) -> List[str]:
-        self.parse_config(config)
-        cmds = []
+            get_memory_cpus = lambda obj_name: (
+                deploy_cfg[obj_name].get("memory"),
+                deploy_cfg[obj_name].get("cpus"),
+            )
+            self.zk_memory_cpus = get_memory_cpus("zookeeper")
+            self.hstore_memory_cpus = get_memory_cpus("hstore")
+            self.hadmin_memory_cpus = get_memory_cpus("hstore-admin")
+            self.hserver_memory_cpus = get_memory_cpus("hserver")
+            self.prometheus_memory_cpus = get_memory_cpus("prometheus")
+            self.node_exporter_memory_cpus = get_memory_cpus("node-exporter")
 
-        if self.hstore_local_conf is not None:
-            assert self.hstore_remote_conf is not None
-            for (remote, _) in self.hstore_hosts:
-                cmds.append(
-                    scp_command(
-                        self.hstore_local_conf, remote, self.hstore_remote_conf
-                    )
-                )
-        if self.hserver_local_conf is not None:
-            assert self.hserver_remote_conf is not None
-            for (remote, _) in self.hserver_hosts:
-                cmds.append(
-                    scp_command(
-                        self.hserver_local_conf,
-                        remote,
-                        self.hserver_remote_conf,
-                    )
-                )
-        if self.prometheus_local_conf is not None:
-            assert self.prometheus_remote_conf is not None
-            for (remote, _) in self.prometheus_hosts:
-                cmds.append(
-                    scp_command(
-                        self.prometheus_local_conf,
-                        remote,
-                        self.prometheus_remote_conf,
-                    )
-                )
+    def start_cmd(self, config: str, disable_restart, **kargs) -> List[str]:
+        self.parse_config(config)
+        cmds = self.pre_start()
+
+        disable_restarted = set()
+        for choice in disable_restart:
+            if choice == "all":
+                disable_restarted.update(SimpleService.ALL_SERVICES)
+            else:
+                disable_restarted.add(choice)
+        loginfo(f"{disable_restarted=}")
 
         # start zookeeper
         zk_args = {
@@ -1034,8 +1189,10 @@ class SimpleService(Service):
         }
         zk_start_args = {
             "remotes": self.zk_hosts,
-            "persistent-dir": self.zk_persistent_dir,
+            "persistent_dir": self.zk_persistent_dir,
             "metrics_provider": self.zk_enable_metrics_provider,
+            "memory_cpus": self.zk_memory_cpus,
+            "restart": False if "zk" in disable_restarted else True,
             **zk_args,
         }
         cmds.extend(self.ZK_SVC.start_cmd(**zk_start_args))
@@ -1043,7 +1200,7 @@ class SimpleService(Service):
         zk_store_args = {
             "remotes": [self.zk_hosts[0]],
             "key": self.DEFAULT_STORE_CONFIG_NODE_IN_ZK,
-            "file": self.local_store_config_path,
+            "file": self.hstore_local_conf,
             "value": None,
             **zk_args,
         }
@@ -1061,8 +1218,10 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
             "image": self.hadmin_image,
+            "memory_cpus": self.hadmin_memory_cpus,
             "config_path": self.config_path_in_zk,
             "remotes": self.admin_hosts,
+            "restart": False if "hadmin" in disable_restarted else True,
         }
         cmds.extend(self.HSTORE_ADMIN_SVC.start_cmd(**admin_args))
 
@@ -1071,10 +1230,13 @@ class SimpleService(Service):
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
             "image": self.hstore_image,
+            "memory_cpus": self.hstore_memory_cpus,
             "config_path": self.config_path_in_zk,
             "data_dir": self.hstore_persistent_dir,
+            # FIXME: make shards configurable
             "shards": 1,
             "remotes": self.hstore_hosts,
+            "restart": False if "hstore" in disable_restarted else True,
         }
         cmds.extend(self.HSTORE_SVC.start_cmd(**store_args))
 
@@ -1097,10 +1259,12 @@ class SimpleService(Service):
             "container_name": HServerService.DEFAULT_CONTAINER_NAME,
             "remotes": self.hserver_hosts,
             "image": self.hserver_image,
+            "memory_cpus": self.hserver_memory_cpus,
             "zkuri": self.zk_ip,
             "store_config": self.config_path_in_zk,
             "store_admin_host": self.admin_hosts[0][1],
-            "config_path": self.hstreamdb_config_path,
+            "config_path": self.hserver_remote_conf,
+            "restart": False if "hserver" in disable_restarted else True,
         }
         cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
 
@@ -1110,9 +1274,22 @@ class SimpleService(Service):
             "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
             "config_path": self.prometheus_remote_conf,
             "image": self.prometheus_image,
+            "memory_cpus": self.prometheus_memory_cpus,
             "remotes": self.prometheus_hosts,
+            "restart": False if "prometheus" in disable_restarted else True,
         }
         cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
+
+        # start node-exporter
+        node_exporter_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+            "image": self.node_exporter_image,
+            "memory_cpus": self.node_exporter_memory_cpus,
+            "remotes": self.node_exporter_hosts,
+            "restart": False if "node-exporter" in disable_restarted else True,
+        }
+        cmds.extend(self.NODE_EXPORTER_SVC.start_cmd(**node_exporter_args))
 
         return cmds
 
@@ -1165,6 +1342,15 @@ class SimpleService(Service):
         }
         cmds.extend(self.PROMETHEUS_SVC.stop_cmd(**prometheus_args))
 
+        # stop node-exporter
+        node_exporter_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.node_exporter_hosts,
+            "force": True,
+        }
+        cmds.extend(self.NODE_EXPORTER_SVC.stop_cmd(**node_exporter_args))
+
         return cmds
 
     def remove_cmd(self, config: str, **kargs) -> List[str]:
@@ -1200,6 +1386,36 @@ class SimpleService(Service):
     def print_help(self):
         return self.cmd.print_help()
 
+    def pre_start(self):
+        """
+        pre-start will synchronize config files to all hosts
+        """
+        cmds = []
+        # FIXME: store local config is always required because user should set zookeeper related field, which cannot
+        #  be default
+        cmds.extend(
+            synchronize_configs(
+                self.hstore_local_conf,
+                self.hstore_remote_conf,
+                self.hstore_hosts,
+            )
+        )
+        cmds.extend(
+            synchronize_configs(
+                self.hserver_local_conf,
+                self.hserver_remote_conf,
+                self.hserver_hosts,
+            )
+        )
+        cmds.extend(
+            synchronize_configs(
+                self.prometheus_local_conf,
+                self.prometheus_remote_conf,
+                self.prometheus_hosts,
+            )
+        )
+        return cmds
+
 
 # -----------------------------------------------------------------------------
 
@@ -1215,5 +1431,6 @@ if __name__ == "__main__":
     s.register(HStoreService)
     s.register(HServerService)
     s.register(PrometheusService)
+    s.register(NodeExporterService)
     s.register(SimpleService)
     s.run()

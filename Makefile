@@ -5,7 +5,7 @@ all:: thrift grpc sql
 THRIFT_COMPILE = thrift-compiler
 BNFC = bnfc
 PROTO_COMPILE = protoc
-PROTO_COMPILE_HS = compile-proto-file
+PROTO_COMPILE_HS = ~/.cabal/bin/compile-proto-file_hstream
 PROTO_CPP_PLUGIN ?= /usr/local/bin/grpc_cpp_plugin
 
 thrift::
@@ -15,11 +15,26 @@ thrift::
 grpc:: grpc-cpp grpc-hs grpc-gateway
 
 grpc-hs: grpc-cpp
-	(cabal build proto3-suite && mkdir -p ~/.local/bin && find dist-newstyle/ -type f -name "compile-proto-file" | xargs -I{} cp {} ~/.local/bin/)
-	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/struct.proto --out ../gen-hs)
-	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --proto google/protobuf/empty.proto --out ../gen-hs)
-	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --includeDir . --proto HStream/Server/HStreamApi.proto --out ../gen-hs)
-	(cd common/proto && $(PROTO_COMPILE_HS) --includeDir /usr/local/include --includeDir . --proto HStream/Server/HStreamInternal.proto --out ../gen-hs)
+	($(CABAL) build proto3-suite && mkdir -p ~/.cabal/bin && \
+		$(CABAL) exec which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS))
+	(cd common/proto && $(PROTO_COMPILE_HS) \
+		--includeDir /usr/local/include \
+		--proto google/protobuf/struct.proto \
+		--out ../gen-hs)
+	(cd common/proto && $(PROTO_COMPILE_HS) \
+		--includeDir /usr/local/include \
+		--proto google/protobuf/empty.proto \
+		--out ../gen-hs)
+	(cd common/proto && $(PROTO_COMPILE_HS) \
+		--includeDir /usr/local/include \
+		--includeDir . \
+		--proto HStream/Server/HStreamApi.proto \
+		--out ../gen-hs)
+	(cd common/proto && $(PROTO_COMPILE_HS) \
+		--includeDir /usr/local/include \
+		--includeDir . \
+		--proto HStream/Server/HStreamInternal.proto \
+		--out ../gen-hs)
 
 grpc-cpp:
 	(cd common && mkdir -p gen-cpp && \
@@ -62,4 +77,4 @@ clean:
 		-o -name "gen-sql" \
 		-o -name "gen-src" \
 		| xargs rm -rf
-	rm -rf ~/.local/bin/$(PROTO_COMPILE_HS)
+	rm -rf $(PROTO_COMPILE_HS)

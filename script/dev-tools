@@ -29,7 +29,7 @@ except Exception:
 
     argcomplete = MagicMock()
     argcomplete.autocomplete = lambda x: logwarn(
-        "There is no tab completion supported since no argcomplete found!"
+        "There is no tab completion supported since argcomplete not found!"
     )
 
 HOME = os.getenv("HOME")
@@ -217,7 +217,6 @@ def run_hadmin(image, container_bin, command, cmd_args):
         user_command = f"{command} --host={host} --port={port}"
         if cmd_args:
             user_command = user_command + " " + " ".join(cmd_args)
-            container_opts = "-t"
     else:
         user_command = command
 
@@ -872,6 +871,24 @@ class SwaggerStartCommand:
         swagger_ui_start(**args)
 
 
+class HadminStoreCommand:
+    COMMAND = "hadmin-store"
+
+    def parser(self, subparsers):
+        _parser = subparsers.add_parser("hadmin-store", help="")
+        _parser.add_argument(
+            "--image",
+            "-i",
+            default=IMAGES["DB_IMAGE"],
+        )
+        _parser.add_argument("--container-bin", default="docker")
+        _parser.add_argument("cmd_args", nargs="*")
+
+    def run(self, **args):
+        args["command"] = "hadmin store"
+        run_hadmin(**args)
+
+
 class LDShellCommand:
     COMMAND = "ldshell"
 
@@ -942,16 +959,18 @@ class QuickBuildDevImageCommand:
                 (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),
             ]
 
-            install_cmd = (
-                f"cabal install --installdir={installdir} {hs_targets}"
+            # Install
+            run_sh(
+                f"python3 {__file__} cabal --check --no-interactive "
+                f"--no-services-required --image {builder_image} --no-services-required "
+                f"-- install --installdir={installdir} {hs_targets}"
             )
-            copy_cmd = " && ".join(
-                f"docker cp -L {x} {tmp_name}:{y}" for x, y in files
-            )
+            # Copy
             run_sh(f"docker run -td --rm --name {tmp_name} {base_image} bash")
             run_sh(
-                f"python3 {__file__} shell --image {builder_image} --no-services-required "
-                f" --command '{install_cmd} && {copy_cmd}'"
+                " && ".join(
+                    f"docker cp -L {x} {tmp_name}:{y}" for x, y in files
+                )
             )
             run_sh(f"docker commit {tmp_name} {tag}")
         except Exception as e:
@@ -973,6 +992,7 @@ if __name__ == "__main__":
     c.register(ShellCommand)
     c.register(CabalCommand)
     c.register(InfoCommand)
+    c.register(HadminStoreCommand)
     c.register(SwaggerStartCommand)
     c.register(LDShellCommand)
     c.run()

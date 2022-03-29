@@ -27,24 +27,30 @@
     },
     "hstore-admin": {
         "image": "hstreamdb/hstream:v0.7.1",
+        "memory": "1024m",
+        "cpus": "0.5",
         "hosts": [
             "remote_ssh_host1"
         ]
     },
     "hserver": {
         "image": "hstreamdb/hstream:v0.7.1",
+        "memory": "2048m",
+        "cpus": "1.5",
         "hosts": [
             "remote_ssh_host2",
             "remote_ssh_host3",
             "remote_ssh_host4"
-        ]
+        ],
+        "local_config_path": "$PWD/server.conf",
+        "remote_config_path": "/root/.config/dev-deploy/server.conf"
     },
     "prometheus": {
         "hosts": [
             "remote_ssh_host1"
         ],
-        "local_config_path": "$PWD/config.yml",
-        "remote_config_path": "/root/.config/dev-deploy/config.yml"
+        "local_config_path": "$PWD/prometheus-config-dir",
+        "remote_config_path": "/root/.config/dev-deploy/prometheus-config-dir"
     },
     "node-exporter": {
         "hosts": [

@@ -1,10 +1,13 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.Types where
 
-import           Control.Concurrent               (MVar, ThreadId, newEmptyMVar)
+import           Control.Concurrent               (MVar, ThreadId)
+import           Control.Concurrent.STM
 import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
@@ -21,9 +24,7 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (RecordId (..),
-                                                   StreamingFetchResponse (..),
-                                                   WatchSubscriptionResponse (..))
+import           HStream.Server.HStreamApi        (StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
@@ -70,119 +71,102 @@ data ServerContext = ServerContext {
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
-  --, subscribeRuntimeInfo     :: MVar (HM.HashMap SubscriptionId (MVar SubscribeRuntimeInfo))
-  , scSubscribeRuntimeInfo   :: MVar (HM.HashMap SubscriptionId SubscribeRuntimeInfo)
+  , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: MVar HashRing
 }
 
+data SubscribeContextNewWrapper = SubscribeContextNewWrapper
+  { scnwState   :: TVar SubscribeState,
+    scnwContext :: TMVar SubscribeContext
+  }
+
+data SubscribeContextWrapper = SubscribeContextWrapper
+  { scwState   :: TVar SubscribeState,
+    scwContext :: SubscribeContext
+  }
+
+data SubscribeState
+  = SubscribeStateNew
+  | SubscribeStateRunning
+  | SubscribeStateStopping
+  | SubscribeStateStopped
+  deriving (Eq, Show)
+
+data SubscribeContext = SubscribeContext
+  { subSubscriptionId    :: T.Text,
+    subStreamName        :: T.Text,
+    subAckTimeoutSeconds :: Int32,
+    subLdCkpReader       :: HS.LDSyncCkpReader,
+    subLdReader          :: MVar HS.LDReader,
+    subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
+    subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
+    subAssignment        :: Assignment
+  }
+
+data ConsumerContext = ConsumerContext
+  { ccConsumerName :: ConsumerName,
+    ccIsValid      :: TVar Bool,
+    -- use MVar for streamSend because only on thread can use streamSend at the
+    -- same time
+    ccStreamSend   :: MVar (StreamSend StreamingFetchResponse)
+  }
+
+data SubscribeShardContext = SubscribeShardContext
+  { sscAckWindow :: AckWindow,
+    sscLogId     :: HS.C_LogID
+  }
+
+data AckWindow = AckWindow
+  { awWindowLowerBound :: TVar ShardRecordId,
+    awWindowUpperBound :: TVar ShardRecordId,
+    awAckedRanges      :: TVar (Map.Map ShardRecordId ShardRecordIdRange),
+    awBatchNumMap      :: TVar (Map.Map Word64 Word32)
+  }
+
+data Assignment = Assignment
+  { totalShards :: TVar (Set.Set HS.C_LogID),
+    unassignedShards :: TVar [HS.C_LogID],
+    waitingReadShards :: TVar [HS.C_LogID],
+    waitingReassignedShards :: TVar [HS.C_LogID],
+    waitingConsumers :: TVar [ConsumerName],
+    shard2Consumer :: TVar (HM.HashMap HS.C_LogID ConsumerName),
+    consumer2Shards :: TVar (HM.HashMap ConsumerName (TVar (Set.Set HS.C_LogID))),
+    consumerWorkloads :: TVar (Set.Set ConsumerWorkload)
+  }
+
+data ConsumerWorkload = ConsumerWorkload
+  { cwConsumerName :: ConsumerName,
+    cwShardCount   :: Int
+  }
+instance Eq ConsumerWorkload where
+  (==) w1 w2 = cwConsumerName w1 == cwConsumerName w2 && cwShardCount w1 == cwShardCount w2
+instance Ord ConsumerWorkload where
+  (<=) w1 w2 = w1 == w2 || cwShardCount w1 <= cwShardCount w2
+
 type SubscriptionId = T.Text
 type OrderingKey = T.Text
 
-instance Bounded RecordId where
-  minBound = RecordId minBound minBound
-  maxBound = RecordId maxBound maxBound
+data ShardRecordId = ShardRecordId {
+  sriBatchId    :: Word64,
+  sriBatchIndex :: Word32
+} deriving (Eq, Ord, Show)
 
-data RecordIdRange = RecordIdRange
-  { startRecordId :: RecordId,
-    endRecordId   :: RecordId
-  } deriving (Eq)
+instance Bounded ShardRecordId where
+  minBound = ShardRecordId minBound minBound
+  maxBound = ShardRecordId maxBound maxBound
 
-instance Show RecordIdRange where
-  show RecordIdRange{..} = "{(" <> show (recordIdBatchId startRecordId) <> ","
-                                <> show (recordIdBatchIndex startRecordId) <> "), ("
-                                <> show (recordIdBatchId endRecordId) <> ","
-                                <> show (recordIdBatchIndex endRecordId) <> ")}"
+data ShardRecordIdRange = ShardRecordIdRange
+  { startRecordId :: ShardRecordId,
+    endRecordId   :: ShardRecordId
+  } deriving (Eq, Show)
 
-printAckedRanges :: Map.Map RecordId RecordIdRange -> String
+printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
-
--- data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
---     sriStreamName        :: T.Text
---   , sriLogId             :: HS.C_LogID
---   , sriAckTimeoutSeconds :: Int32
---   , sriLdCkpReader       :: HS.LDSyncCkpReader
---   , sriLdReader          :: Maybe HS.LDReader
---   , sriWindowLowerBound  :: RecordId
---   , sriWindowUpperBound  :: RecordId
---   , sriAckedRanges       :: Map.Map RecordId RecordIdRange
---   , sriBatchNumMap       :: Map.Map Word64 Word32
---   , sriStreamSends       :: HM.HashMap ConsumerName (StreamSend StreamingFetchResponse)
---   , sriValid             :: Bool
---   , sriSignals           :: V.Vector (MVar ())
--- }
-
-data SubscribeRuntimeInfo = SubscribeRuntimeInfo {
-    sriSubscriptionId :: SubscriptionId
-  , sriStreamName :: T.Text
-  , sriWatchContext :: MVar WatchContext
-  , sriShardRuntimeInfo :: MVar (HM.HashMap OrderingKey (MVar ShardSubscribeRuntimeInfo))
-}
-
-data WatchContext = WatchContext {
-    wcWaitingConsumers :: [ConsumerWatch]
-  , wcWorkingConsumers :: Set.Set ConsumerWorkload
-  , wcWatchStopSignals :: HM.HashMap ConsumerName (MVar ())
-}
-
-addNewConsumerToCtx :: WatchContext -> ConsumerName -> StreamSend WatchSubscriptionResponse -> IO(WatchContext, MVar ())
-addNewConsumerToCtx ctx@WatchContext{..} name streamSend = do
-  stopSignal <- newEmptyMVar
-  let signals = HM.insert name stopSignal wcWatchStopSignals
-  let consumerWatch = mkConsumerWatch name streamSend
-  let newCtx = ctx
-        { wcWaitingConsumers = wcWaitingConsumers ++ [consumerWatch]
-        , wcWatchStopSignals = signals
-        }
-  return (newCtx, stopSignal)
-
-removeConsumerFromCtx :: WatchContext -> ConsumerName -> IO WatchContext
-removeConsumerFromCtx ctx@WatchContext{..} name =
-  return ctx {wcWatchStopSignals = HM.delete name wcWatchStopSignals}
-
-data ConsumerWatch = ConsumerWatch {
-    cwConsumerName :: ConsumerName
-  , cwWatchStream  :: StreamSend WatchSubscriptionResponse
-}
-
-mkConsumerWatch :: ConsumerName -> StreamSend WatchSubscriptionResponse -> ConsumerWatch
-mkConsumerWatch = ConsumerWatch
-
-data ConsumerWorkload = ConsumerWorkload {
-    cwConsumerWatch :: ConsumerWatch
-  , cwShards        :: Set.Set OrderingKey
-}
-
-mkConsumerWorkload :: ConsumerWatch -> Set.Set OrderingKey -> ConsumerWorkload
-mkConsumerWorkload = ConsumerWorkload
-
-instance Eq ConsumerWorkload where
-  (==) w1 w2 = Set.size (cwShards w1) == Set.size (cwShards w2)
-instance Ord ConsumerWorkload where
-  (<=) w1 w2 = Set.size (cwShards w1) <= Set.size (cwShards w2)
-
-data ShardSubscribeRuntimeInfo = ShardSubscribeRuntimeInfo {
-    ssriStreamName        :: T.Text
-  , ssriLogId             :: HS.C_LogID
-  , ssriAckTimeoutSeconds :: Int32
-  , ssriLdCkpReader       :: HS.LDSyncCkpReader
-  , ssriLdReader          :: HS.LDReader
-  , ssriWindowLowerBound  :: RecordId
-  , ssriWindowUpperBound  :: RecordId
-  , ssriAckedRanges       :: Map.Map RecordId RecordIdRange
-  , ssriBatchNumMap       :: Map.Map Word64 Word32
-  , ssriConsumerName      :: ConsumerName
-  , ssriStreamSend        :: StreamSend StreamingFetchResponse
-  , ssriSendStatus        :: SendStatus
-}
-
-data SendStatus = SendStopping
-                | SendStopped
-                | SendRunning
 
 data TlsConfig
   = TlsConfig {

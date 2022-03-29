@@ -6,12 +6,16 @@ module HStream.Server.Core.Stream
   , deleteStream
   , listStreams
   , appendStream
+  , append0Stream
+  , FoundActiveSubscription (..)
+  , StreamExists (..)
   ) where
 
-import           Control.Exception                (catch, throwIO)
+import           Control.Exception                (Exception (displayException),
+                                                   catch, throwIO)
 import           Control.Monad                    (unless, void, when)
 import qualified Data.ByteString                  as BS
-import           Data.Maybe                       (isJust)
+import           Data.Maybe                       (fromMaybe, isJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import qualified Data.Vector                      as V
@@ -25,8 +29,7 @@ import           ZooKeeper.Types                  (ZHandle)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (FoundActiveSubscription (..),
-                                                   StreamExists (..),
+import           HStream.Server.Exception         (InvalidArgument (..),
                                                    StreamNotExist (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
@@ -45,10 +48,14 @@ import           HStream.Utils
 -- FIXME: Currently, creating a stream which partially exists will do the job
 -- but return failure response
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerResponse 'Normal API.Stream)
-createStream ServerContext{..} stream@API.Stream{..} = do
+createStream ServerContext{..} stream@API.Stream{
+  streamBacklogDuration = backlogSec, ..} = do
+  when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
   let nameCB   = textToCBytes streamStreamName
       streamId = transToStreamName streamStreamName
-      attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor }
+      attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
+                   , S.logBacklogDuration   = S.defAttr1 $
+                      if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   zNodesExist <- catch (createStreamRelatedPath zkHandle nameCB >> return False)
                        (\(_::ZNODEEXISTS) -> return True)
   storeExists <- catch (S.createStream scLDClient streamId attrs
@@ -103,11 +110,31 @@ listStreams
 listStreams ServerContext{..} API.ListStreamsRequest = do
   streams <- S.findStreams scLDClient S.StreamTypeStream
   V.forM (V.fromList streams) $ \stream -> do
-    r <- S.getStreamReplicaFactor scLDClient stream
-    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r)
+    -- FIXME: should the default value be 0?
+    r <- fromMaybe 0 . S.attrValue . S.logReplicationFactor <$> S.getStreamLogAttrs scLDClient stream
+    b <- fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration <$> S.getStreamLogAttrs scLDClient stream
+    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b)
 
 appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
-appendStream ServerContext{..} API.AppendRequest{..} partitionKey = do
+appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
+  appendRequestRecords = records} partitionKey = do
+  timestamp <- getProtoTimestamp
+  let payload = encodeBatch . API.HStreamRecordBatch $
+        encodeRecord . updateRecordTimestamp timestamp <$> records
+      payloadSize = fromIntegral $ BS.length payload
+  -- XXX: Should we add a server option to toggle Stats?
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName payloadSize
+  logId <- S.getUnderlyingLogId scLDClient streamID key
+  S.AppendCompletion {..} <- S.appendBS scLDClient logId payload Nothing
+  let rids = V.zipWith (API.RecordId logId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
+  return $ API.AppendResponse sName rids
+  where
+    streamName  = textToCBytes sName
+    streamID    = S.mkStreamId S.StreamTypeStream streamName
+    key         = textToCBytes <$> partitionKey
+--------------------------------------------------------------------------------
+append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
+append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
   timestamp <- getProtoTimestamp
   let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
@@ -119,9 +146,8 @@ appendStream ServerContext{..} API.AppendRequest{..} partitionKey = do
 
   logId <- S.getUnderlyingLogId scLDClient streamID key
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
-  let records = V.zipWith (\_ idx -> API.RecordId appendCompLSN idx) appendRequestRecords [0..]
+  let records = V.zipWith (\_ idx -> API.RecordId logId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records
-
 --------------------------------------------------------------------------------
 
 createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
@@ -137,3 +163,17 @@ createStreamRelatedPath zk streamName = do
       lockPath   = P.streamLockPath <> "/" <> streamName
       streamSubLockPath = P.mkStreamSubsLockPath streamName
   void $ zooMulti zk $ P.createPathOp <$> [streamPath, keyPath, subPath, lockPath, streamSubLockPath]
+
+data FoundActiveSubscription = FoundActiveSubscription
+  deriving (Show)
+instance Exception FoundActiveSubscription
+
+data StreamExists = StreamExists Bool Bool
+  deriving (Show)
+instance Exception StreamExists where
+  displayException (StreamExists zkExists storeExists)
+    | zkExists && storeExists = "StreamExists: Stream has been created"
+    | zkExists    = "StreamExists: Inconsistency found. The stream was created, but not persisted to disk"
+    | storeExists = "StreamExists: Inconsistency found. The stream was persisted to disk"
+                 <> ", but no record of creating the stream is found."
+    | otherwise   = "Impossible happened: Stream does not exist, but some how throw stream exist exception"

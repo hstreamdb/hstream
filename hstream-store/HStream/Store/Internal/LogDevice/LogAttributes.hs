@@ -3,6 +3,7 @@
 {-# LANGUAGE CPP            #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE MagicHash      #-}
+{-# LANGUAGE MultiWayIf     #-}
 {-
 Note that we need this UnboxedTuples to force ghci use -fobject-code for all
 related modules. Or ghci will complain "panic".
@@ -22,11 +23,13 @@ import           Control.Exception              (finally)
 import           Data.Default                   (Default, def)
 import           Data.Map.Strict                (Map)
 import qualified Data.Map.Strict                as Map
+import           Data.Maybe                     (fromMaybe)
 import           Data.Primitive
 import           Data.Word
 import           Foreign.C
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
+import           GHC.Exts
 import           GHC.Generics                   (Generic)
 import           Z.Data.CBytes                  (CBytes)
 import qualified Z.Foreign                      as Z
@@ -49,6 +52,7 @@ defAttr1 :: a -> Attribute a
 defAttr1 x = Attribute (Just x) False
 
 type ScopeReplicationFactors = [(NodeLocationScope, Int)]
+type Milliseconds = Int
 
 data LogAttributes = LogAttributes
   { logReplicationFactor    :: Attribute Int
@@ -66,10 +70,10 @@ data LogAttributes = LogAttributes
   , logSyncReplicationScope :: Attribute NodeLocationScope
     -- ^ The location scope to enforce failure domain properties, by default
     -- the scope is in the individual node level.
-    -- logReplicateAcross provides a more general way to do the same thing.
-  -- TODO: , logReplicateAcross      :: Attribute ScopeReplicationFactors
+    -- 'logReplicateAcross' provides a more general way to do the same thing.
+  , logReplicateAcross      :: Attribute ScopeReplicationFactors
     -- ^ Defines cross-domain replication. A vector of replication factors
-    -- at various scopes. When this option is given, replicationFactor_ is
+    -- at various scopes. When this option is given, logReplicationFactor is
     -- optional. This option is best explained by examples:
     --  - "node: 3, rack: 2" means "replicate each record to at least 3 nodes
     --    in at least 2 different racks".
@@ -84,30 +88,52 @@ data LogAttributes = LogAttributes
   , logBacklogDuration      :: Attribute (Maybe Int)
     -- ^ Duration that a record can exist in the log before it expires and
     -- gets deleted (in senconds). Valid value must be at least 1 second.
-  -- TODO: , logScdEnabled           :: Attribute Bool
-    -- ^ Indicate whether or not the Single Copy Delivery optimization should be
-    -- used.
-  -- TODO: , logLocalScdEnabled      :: Attribute Bool
-    -- ^ Indicate whether or not to use Local Single Copy Delivery. This is
-    -- ignored if scdEnabled_ is false.
+  -- , logNodeSetSize                        :: Attribute (Maybe Int)
+  --   -- ^ Size of the nodeset for the log. Optional. If value is not specified,
+  --   -- the nodeset for the log is considered to be all storage nodes in the
+  --   -- config.
+  -- , logDeliveryLatency                    :: Attribute (Maybe Milliseconds)
+  --   -- ^ Maximum amount of time to artificially delay delivery of newly written
+  --   -- records (increases delivery latency but improves server and client
+  --   -- performance), in milliseconds.
+  -- , logScdEnabled                         :: Attribute Bool
+  --   -- ^ Indicate whether or not the Single Copy Delivery optimization should be
+  --   -- used.
+  -- , logLocalScdEnabled                    :: Attribute Bool
+  --   -- ^ Indicate whether or not to use Local Single Copy Delivery. This is
+  --   -- ignored if scdEnabled_ is false.
+  -- , logStickyCopySets                     :: Attribute Bool
+  --   -- ^ True if copysets on this log should be "sticky". See docblock in
+  --   -- StickyCopySetManager.h
+  -- , logMutablePerEpochLogMetadataEnabled  ::Attribute Bool
+  --   -- ^ If true, write mutable per-epoch metadata along with every data record.
+  -- , logSequencerAffinity                  :: Attribute (Maybe CBytes)
+  --   -- ^ The location affinity of the sequencer. Sequencer routing will try to
+  --   -- find a sequencer in the given location first before looking elsewhere.
+  -- , logSequencerBatching                  :: Attribute Bool
+  --   -- ^ Enables or disables batching on sequencer.
+  -- , logSequencerBatchingTimeTrigger       :: Attribute Milliseconds
+  --   -- ^ Buffered writes for a log will be flushed when
+  --   -- the oldest of them has been buffered for this amount of time.
+  -- , logSequencerBatchingSizeTrigger       :: Attribute Word64
+  --   -- ^ Buffered writes for a log will be flushed as soon as this many payload
+  --   -- bytes are buffered.
+  -- , logSequencerBatchingCompression       :: Attribute Compression
+  --   -- ^ Compression codec
+  -- , logSequencerBatchingPassthruThreshold :: Attribute Word64
+  --   -- ^ Writes with payload size greater than this value will not be batched.
+  -- , logTailOptimized                      :: Attribute Bool
+  --   -- ^ If true, reading the tail of the log will be significantly more
+  --   -- efficient. The trade-off is more memory usage depending on the record
+  --   -- size.
 
   -- TODO
-  -- nodeSetSize
-  -- deliveryLatency
-  -- writeToken
-  -- stickyCopySets_
-  -- mutablePerEpochLogMetadataEnabled
-  -- permissions_
-  -- acls_
-  -- aclsShadow
-  -- sequencerAffinity
-  -- sequencerBatching
-  -- sequencerBatchingTimeTrigger
-  -- sequencerBatchingSizeTrigger
-  -- sequencerBatchingCompression
-  -- sequencerBatchingPassthruThreshold
-  -- shadow
-  -- tailOptimized
+  -- WriteToken
+  -- Permissions
+  -- Acls
+  -- AclsShadow
+  --
+  -- Shadow
 
   , logAttrsExtras          :: Map CBytes CBytes
   } deriving (Show, Eq, Generic, Default)
@@ -116,45 +142,55 @@ pokeLogAttributes :: LogAttributes -> IO LDLogAttrs
 pokeLogAttributes LogAttributes{..} =
 #define _ARG(name) (attrValue name) $ \name##' ->
 #define _MAYBE_ARG(name) (attrValue name) $ \name##_flag name##' ->
+#define _MAYBE_LIST_PAIR_ARG(name) (fromMaybe [] $ attrValue name) $ \name##_l name##_keys name##_vals ->
   withAllocMaybePrim fromIntegral _ARG(logReplicationFactor)
   withAllocMaybePrim fromIntegral _ARG(logSyncedCopies)
   withAllocMaybePrim fromIntegral _ARG(logMaxWritesInFlight)
   withAllocMaybePrim bool2cbool _ARG(logSingleWriter)
-  withAllocMaybePrim unNodeLocationScope _ARG(logSyncReplicationScope)
+  withAllocMaybePrim id _ARG(logSyncReplicationScope)
+  withPrimListPairUnsafe _MAYBE_LIST_PAIR_ARG(logReplicateAcross)
   withAllocMaybePrim2 fromIntegral _MAYBE_ARG(logBacklogDuration)
   withHsCBytesMapUnsafe logAttrsExtras $ \l ks vs -> do
 #define _ARG_TO(name) name##' (attrInherited name)
 #define _MAYBE_ARG_TO(name) name##_flag name##' (attrInherited name)
+#define _MAYBE_LIST_PAIR_TO(name) name##_l name##_keys name##_vals (attrInherited name)
     i <- poke_log_attributes _ARG_TO(logReplicationFactor)
                              _ARG_TO(logSyncedCopies)
                              _ARG_TO(logMaxWritesInFlight)
                              _ARG_TO(logSingleWriter)
                              _ARG_TO(logSyncReplicationScope)
+                             _MAYBE_LIST_PAIR_TO(logReplicateAcross)
                              _MAYBE_ARG_TO(logBacklogDuration)
                              l ks vs
     newForeignPtr free_log_attributes_fun i
 #undef _ARG
-#undef _ARG_TO
 #undef _MAYBE_ARG
+#undef _MAYBE_LIST_PAIR_ARG
+#undef _ARG_TO
 #undef _MAYBE_ARG_TO
+#undef _MAYBE_LIST_PAIR_TO
 
 peekLogAttributes :: Ptr LogDeviceLogAttributes -> IO LogAttributes
 peekLogAttributes ptr = do
+  replicateAcross_size <- get_replicateAcross_size ptr
 #define _ARG(name) name##_flag name##_val name##_inh
 #define _MAYBE_ARG(name) name##_flag name##_val_flag name##_val name##_inh
+#define _MAYBE_LIST_PAIR(name) name##_len name##_key name##_val name##_inh
   -- LogAttributes constructors
   (    logReplicationFactor
    , ( logSyncedCopies
    , ( logMaxWritesInFlight
    , ( logSingleWriter
    , ( logSyncReplicationScope
+   , ( logReplicateAcross
    , ( logBacklogDuration
-   , _)))))) <-
+   , _))))))) <-
     runPeek id $ \_ARG(replicationFactor) ->
     runPeek id $ \_ARG(syncedCopies) ->
     runPeek id $ \_ARG(maxWritesInFlight) ->
     runPeek cbool2bool $ \_ARG(singleWriter) ->
     runPeek NodeLocationScope $ \_ARG(syncReplicationScope) ->
+    runPeekMaybeListPair replicateAcross_size $ \_MAYBE_LIST_PAIR(replicateAcross) ->
     runPeekMaybe id $ \_MAYBE_ARG(backlogDuration) ->
       peek_log_attributes
         ptr
@@ -163,6 +199,7 @@ peekLogAttributes ptr = do
         _ARG(maxWritesInFlight)
         _ARG(singleWriter)
         _ARG(syncReplicationScope)
+        _MAYBE_LIST_PAIR(replicateAcross)
         _MAYBE_ARG(backlogDuration)
   logAttrsExtras <- peekLogAttributesExtras ptr
   return LogAttributes{..}
@@ -201,8 +238,10 @@ foreign import ccall unsafe "hs_logdevice.h poke_log_attributes"
     -- ^ logMaxWritesInFlight
     -> Ptr CBool -> Bool
     -- ^ logSingleWriter
-    -> Ptr Word8 -> Bool
+    -> Ptr NodeLocationScope -> Bool
     -- ^ logSyncReplicationScope
+    -> Int -> BA# NodeLocationScope -> BA# Int -> Bool
+    -- ^ logReplicateAcross
     -> Bool -> Ptr CInt -> Bool
     -- ^ logBacklogDuration
     -> Int -> BAArray# Word8 -> BAArray# Word8
@@ -222,6 +261,8 @@ foreign import ccall unsafe "hs_logdevice.h peek_log_attributes"
     -- ^ logSingleWriter
     -> MBA# CBool -> MBA# Word8 -> MBA# CBool
     -- ^ logSyncReplicationScope
+    -> Int -> MBA# a -> MBA# b -> MBA# CBool
+    -- ^ logReplicateAcross
     -> MBA# CBool -> MBA# CBool -> MBA# Int -> MBA# CBool
     -- ^ logBacklogDuration
     -> IO ()
@@ -242,6 +283,9 @@ foreign import ccall unsafe "hs_logdevice.h peek_log_attributes_extras"
     -> MBA# (Ptr (StdVector Z.StdString))
     -> MBA# (Ptr (StdVector Z.StdString))
     -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h get_replicateAcross_size"
+  get_replicateAcross_size :: Ptr LogDeviceLogAttributes -> IO Int
 
 -------------------------------------------------------------------------------
 
@@ -273,3 +317,20 @@ runPeekMaybe t f = do
     (0, _) -> pure (Attribute Nothing (cbool2bool inh), r)
     (_, 0) -> pure (Attribute (Just Nothing) (cbool2bool inh), r)
     (_, _) -> pure (Attribute (Just $ Just $ t val) (cbool2bool inh), r)
+
+runPeekMaybeListPair
+  :: (Prim a, Prim b)
+  => Int
+  -> (Int -> MBA# a -> MBA# b -> MBA# CBool -> IO c)
+  -> IO (Attribute [(a, b)], c)
+runPeekMaybeListPair size f = do
+  let validSize = max size 0
+  (ma@(MutablePrimArray ma#) :: MutablePrimArray RealWorld a) <- newPrimArray validSize
+  (mb@(MutablePrimArray mb#) :: MutablePrimArray RealWorld b) <- newPrimArray validSize
+  (!inh, r)<- Z.allocPrimUnsafe $ \inh' -> f size (MBA# ma#) (MBA# mb#) (MBA# inh')
+  !pa <- unsafeFreezePrimArray ma
+  !pb <- unsafeFreezePrimArray mb
+  if | size < 0  -> pure (Attribute Nothing (cbool2bool inh), r)
+     | size == 0 -> pure (Attribute (Just []) (cbool2bool inh), r)
+     | otherwise -> let xs = zip (primArrayToList pa) (primArrayToList pb)
+                     in pure (Attribute (Just xs) (cbool2bool inh), r)
