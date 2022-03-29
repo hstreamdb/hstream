@@ -24,7 +24,8 @@ import           HStream.Server.Config            (getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (hstreamApiServer)
 import           HStream.Server.Initialization    (initNodePath,
-                                                   initializeServer)
+                                                   initializeServer,
+                                                   initializeTlsConfig)
 import           HStream.Server.Persistence       (getServerNode',
                                                    initializeAncestors,
                                                    serverRootPath)
@@ -45,6 +46,7 @@ app config@ServerOpts{..} = do
         { GRPC.serverHost = GRPC.Host . cbytes2bs $ _serverHost
         , GRPC.serverPort = GRPC.Port . fromIntegral $ _serverPort
         , GRPC.serverOnStarted = Just serverOnStarted
+        , GRPC.sslConfig = fmap initializeTlsConfig _tlsConfig
         }
   setupSigsegvHandler
   Log.setLogDeviceDbgLevel' _ldLogLevel

@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE BangPatterns  #-}
 
 module HStream.Server.Config
   ( getConfig
@@ -7,7 +8,7 @@ module HStream.Server.Config
 import           Control.Exception          (throwIO)
 import           Data.ByteString            (ByteString)
 import qualified Data.ByteString.Char8      as BSC
-import           Data.Maybe                 (fromMaybe)
+import           Data.Maybe                 (fromMaybe, isJust)
 import qualified Data.Text                  as Text
 import           Data.Word                  (Word32)
 import           Data.Yaml                  as Y
@@ -21,7 +22,8 @@ import           Z.IO.Network               (PortNumber (PortNumber))
 import qualified HStream.Admin.Store.API    as AA
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
-import           HStream.Server.Types       (ServerOpts (..))
+import           HStream.Server.Types       (ServerOpts (..),
+                                             TlsConfig (TlsConfig))
 import           HStream.Store              (Compression (..))
 import qualified HStream.Store.Logger       as Log
 
@@ -40,6 +42,10 @@ data CliOptions = CliOptions
   , _ldLogLevel_         :: Maybe Log.LDLogLevel
   , _zkUri_              :: Maybe CBytes
   , _storeConfigPath     :: CBytes
+  , _enableTls_          :: Bool
+  , _tlsKeyPath_         :: Maybe String
+  , _tlsCertPath_        :: Maybe String
+  , _tlsCaPath_          :: Maybe String
   }
   deriving Show
 
@@ -129,9 +135,32 @@ storeConfigPath = strOption
   <> metavar "PATH" <> value "/data/store/logdevice.conf"
   <> help "Storage config path"
 
+enableTls :: O.Parser Bool
+enableTls = flag False True
+  $  long "enable-tls"
+  <> help "enable tls, require tls-key-path, tls-cert-path options"
+
+tlsKeyPath :: O.Parser String
+tlsKeyPath = strOption
+  $  long "tls-key-path"
+  <> metavar "PATH"
+  <> help "private key path"
+
+tlsCertPath :: O.Parser String
+tlsCertPath = strOption
+  $  long "tls-cert-path"
+  <> metavar "PATH"
+  <> help "signed certificate path"
+
+tlsCaPath :: O.Parser String
+tlsCaPath = strOption
+  $  long "tls-ca-path"
+  <> metavar "PATH"
+  <> help "trusted CA(Certificate Authority) path"
+
 parseWithFile :: O.Parser CliOptions
 parseWithFile = do
-  _configPath <- configPath
+  _configPath          <- configPath
   _serverHost_         <- optional serverHost
   _serverPort_         <- optional serverPort
   _serverAddress_      <- optional serverAddress
@@ -145,6 +174,10 @@ parseWithFile = do
   _compression_        <- optional compression
   _serverLogWithColor_ <- logWithColor
   _storeConfigPath     <- storeConfigPath
+  _enableTls_          <- enableTls
+  _tlsKeyPath_         <- optional tlsKeyPath
+  _tlsCertPath_        <- optional tlsCertPath
+  _tlsCaPath_          <- optional tlsCaPath
   return CliOptions {..}
 
 parseFileToJSON :: FilePath -> IO Y.Object
@@ -189,6 +222,24 @@ parseJSONToOptions CliOptions {..} obj = do
   -- TODO: remove the following 2 options
   let _serverHost     = fromMaybe "0.0.0.0" _serverHost_
   let _ldConfigPath   = _storeConfigPath
+
+  -- TLS config
+  nodeEnableTls <- nodeCfgObj .:? "enable-tls" .!= False
+  nodeTlsKeyPath <- nodeCfgObj .:? "tls-key-path"
+  nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
+  nodeTlsCaPath <- nodeCfgObj .:? "tls-ca-path"
+
+  let _enableTls = _enableTls_ || nodeEnableTls
+  let _firstJust x y = if isJust x then x else y
+  let _tlsKeyPath = _firstJust _tlsKeyPath_ nodeTlsKeyPath
+  let _tlsCertPath = _firstJust _tlsCertPath_ nodeTlsCertPath
+  let _tlsCaPath = _firstJust _tlsCaPath_ nodeTlsCaPath
+  let !_tlsConfig = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
+                    (False, _, _) -> Nothing
+                    (_, Nothing, _) -> error "enable-tls=true, but tls-key-path is empty"
+                    (_, _, Nothing) -> error "enable-tls=true, but tls-cert-path is empty"
+                    (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
+
   return ServerOpts {..}
 
 getConfig :: IO ServerOpts

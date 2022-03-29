@@ -56,6 +56,7 @@ data ServerOpts = ServerOpts
   , _serverLogLevel     :: Log.Level
   , _serverLogWithColor :: Bool
   , _ldLogLevel         :: Log.LDLogLevel
+  , _tlsConfig          :: Maybe TlsConfig
   } deriving (Show)
 
 type Timestamp = Int64
@@ -166,3 +167,10 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+data TlsConfig
+  = TlsConfig {
+    keyPath  :: String
+  , certPath :: String
+  , caPath   :: Maybe String
+  } deriving (Show)

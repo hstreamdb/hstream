@@ -5,6 +5,7 @@
 module HStream.Server.Initialization
   ( initializeServer
   , initNodePath
+  , initializeTlsConfig
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
@@ -12,7 +13,7 @@ import           Control.Concurrent.STM           (newTVarIO)
 import           Control.Exception                (SomeException, catch, try)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
-import           Data.List                        (sort)
+import           Data.List                        (find, sort)
 import qualified Data.Text                        as T
 import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32)
@@ -38,6 +39,14 @@ import           HStream.Server.Types
 import           HStream.Stats                    (newStatsHolder)
 import qualified HStream.Store                    as S
 import           HStream.Utils
+import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
+                                                   AuthProperty (authPropName),
+                                                   ProcessMeta,
+                                                   ServerSSLConfig (ServerSSLConfig),
+                                                   SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
+                                                   StatusCode (StatusOk),
+                                                   getAuthProperties)
+import           Text.Printf                      (printf)
 
 {-
   Starting hservers will no longer be happening in parallel.
@@ -121,3 +130,17 @@ initializeHashRing zk = do
     zooGetChildren zk serverRootPath
   serverNodes <- mapM (getServerNode' zk) children
   newMVar . constructServerMap . sort $ serverNodes
+
+initializeTlsConfig :: TlsConfig -> ServerSSLConfig
+initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler
+  where
+    authType = maybe SslDontRequestClientCertificate (const SslRequestAndRequireClientCertificateAndVerify) caPath
+    authHandler = fmap (const authProcess) caPath
+
+-- ref: https://github.com/grpc/grpc/blob/master/doc/server_side_auth.md
+authProcess :: ProcessMeta
+authProcess authCtx _ = do
+  prop <- getAuthProperties authCtx
+  let cn = find ((== "x509_common_name") . authPropName) prop
+  Log.info . Log.buildString . printf "user:[%s] is logging in" $ show cn
+  return $ AuthProcessorResult mempty mempty StatusOk ""
