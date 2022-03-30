@@ -19,7 +19,7 @@ module HStream.Utils.RPC
   , getServerResp
   , getProtoTimestamp
   , isSuccessful
-  , mkEnumerated
+  , pattern EnumPB
   , showNodeStatus
   , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
   ) where
@@ -94,15 +94,16 @@ isSuccessful :: ClientResult 'Normal a -> Bool
 isSuccessful (ClientNormalResponse _ _ _ StatusOk _) = True
 isSuccessful _                                       = False
 
-mkEnumerated :: a -> PB.Enumerated a
-mkEnumerated x = PB.Enumerated (Right x)
+pattern EnumPB :: a -> PB.Enumerated a
+pattern EnumPB x = PB.Enumerated (Right x)
 
 showNodeStatus :: PB.Enumerated NodeState -> T.Text
 showNodeStatus = \case
-  PB.Enumerated (Right NodeStateRunning)    -> "Running"
-  PB.Enumerated (Right NodeStateDead)       -> "Dead"
-  PB.Enumerated (Right NodeStateTerminated) -> "Terminated"
-  _                                         -> "Unknown"
+  EnumPB NodeStateStarting    -> "Starting"
+  EnumPB NodeStateRunning     -> "Running"
+  EnumPB NodeStateUnavailable -> "Unavailable"
+  EnumPB NodeStateDead        -> "Dead"
+  _                           -> "Unknown"
 
 -- A type synonym could also work but the pattern synonyms defined below cannot
 -- be bundled with a type synonym when other modules import these definitions

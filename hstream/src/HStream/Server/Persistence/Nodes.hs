@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -42,7 +43,8 @@ import           HStream.Server.Persistence.Utils  (decodeZNodeValue',
                                                     serverRootPath)
 import           HStream.Server.Types              (ServerID)
 import           HStream.Utils                     (cBytesToIntegral,
-                                                    mkEnumerated, textToCBytes)
+                                                    pattern EnumPB,
+                                                    textToCBytes)
 
 data NodeInfo = NodeInfo
   { serverHost         :: T.Text
@@ -109,4 +111,4 @@ getClusterStatus zk = do
   StringsCompletion (StringVector aliveNodes) <- zooGetChildren zk serverRootPath
   return $ foldr (HM.update updateState) hmap (HM.keys hmap \\ map cBytesToIntegral aliveNodes)
   where
-    updateState x = Just x {serverNodeStatusState = mkEnumerated NodeStateDead}
+    updateState x = Just x {serverNodeStatusState = EnumPB NodeStateDead}

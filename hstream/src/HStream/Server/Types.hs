@@ -24,11 +24,13 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi        (StreamingFetchResponse)
+import           HStream.Server.HStreamApi        (NodeState,
+                                                   StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
 import qualified HStream.Store.Logger             as Log
+import qualified Proto3.Suite                     as PB
 
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"
@@ -60,9 +62,8 @@ data ServerOpts = ServerOpts
   } deriving (Show)
 
 type Timestamp = Int64
-
 type ServerID = Word32
-type ServerRanking = [ServerID]
+type ServerState = PB.Enumerated NodeState
 
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
@@ -76,6 +77,7 @@ data ServerContext = ServerContext {
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: MVar HashRing
+  , scServerState            :: MVar ServerState
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
