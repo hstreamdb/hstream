@@ -59,6 +59,17 @@ appendBS client logid (BS.PS payload offset len) m_key_attr =
     __append__ client' logid payload' offset len m_key_attr
 {-# INLINABLE appendBS #-}
 
+appendCompressedBS
+  :: HasCallStack
+  => LDClient
+  -> C_LogID
+  -> BS.ByteString
+  -> Compression
+  -> Maybe (KeyType, CBytes)
+  -> IO AppendCompletion
+appendCompressedBS client logid payload = appendBatchBS client logid [payload]
+{-# INLINABLE appendCompressedBS #-}
+
 __append__
   :: HasCallStack
   => Ptr LogDeviceClient
@@ -212,7 +223,7 @@ foreign import ccall safe "hs_logdevice.h logdevice_append_with_attrs_sync"
     :: Ptr LogDeviceClient
     -> C_LogID
     -> Ptr Word8 -> Int -> Int    -- ^ Payload pointer,offset,length
-    -> KeyType -> (Ptr Word8)     -- ^ attrs: optional_key
+    -> KeyType -> Ptr Word8       -- ^ attrs: optional_key
     -> Ptr Int64      -- ^ returned timestamp, should be NULL
     -> Ptr LSN        -- ^ returned value, log sequence number
     -> IO ErrorCode
