@@ -53,6 +53,7 @@ module HStream.Store.Stream
     -- * Logdevice Writer
   , LD.append
   , LD.appendBS
+  , LD.appendCompressedBS
   , LD.appendBatch
   , LD.appendBatchBS
   , LD.AppendCompletion (..)
