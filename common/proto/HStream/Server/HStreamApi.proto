@@ -461,9 +461,10 @@ message ServerNode {
 }
 
 enum NodeState {
-  Running = 0;
-  Terminated = 1;
-  Dead = 2;
+  Starting = 0;
+  Running = 1;
+  Unavailable = 2;
+  Dead = 3;
 }
 
 message ServerNodeStatus {

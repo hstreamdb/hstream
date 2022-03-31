@@ -66,7 +66,7 @@ initNodePath zk serverID host port port' = do
   void $ Recipe.withLock zk serverRootLockPath (CB.pack . show . hashUnique $ uniq) $ do
     serverStatusMap <- decodeZNodeValue zk serverRootPath
     let nodeStatus = ServerNodeStatus
-          { serverNodeStatusState = mkEnumerated NodeStateRunning
+          { serverNodeStatusState = EnumPB NodeStateRunning
           , serverNodeStatusNode  = Just ServerNode
               { serverNodeId = serverID
               , serverNodeHost = host
@@ -90,9 +90,8 @@ initNodePath zk serverID host port port' = do
       zooCreateOpInit (path <> "/" <> CB.pack (show serverID))
                       content 0 zooOpenAclUnsafe ZooEphemeral
 
-initializeServer :: ServerOpts -> ZHandle -> IO ServerContext
-initializeServer ServerOpts{..} zk = do
-  Log.setLogLevel _serverLogLevel _serverLogWithColor
+initializeServer :: ServerOpts -> ZHandle -> MVar ServerState -> IO ServerContext
+initializeServer ServerOpts{..} zk serverState = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
@@ -120,6 +119,7 @@ initializeServer ServerOpts{..} zk = do
       , headerConfig             = headerConfig
       , scStatsHolder            = statsHolder
       , loadBalanceHashRing      = hashRing
+      , scServerState            = serverState
       }
 
 --------------------------------------------------------------------------------

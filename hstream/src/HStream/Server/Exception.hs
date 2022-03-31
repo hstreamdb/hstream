@@ -51,6 +51,10 @@ newtype SubscriptionIdNotFound = SubscriptionIdNotFound Text
   deriving (Show)
 instance Exception SubscriptionIdNotFound
 
+data ServerNotAvailable = ServerNotAvailable
+  deriving (Show)
+instance Exception ServerNotAvailable
+
 --------------------------------------------------------------------------------
 
 type MkResp t a = StatusCode -> StatusDetails -> ServerResponse t a
@@ -62,6 +66,9 @@ setRespType mkResp = map (uncurry mkResp <$>)
 
 defaultHandlers :: Handlers (StatusCode, StatusDetails)
 defaultHandlers = [
+  Handler (\(err :: ServerNotAvailable) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusUnavailable, "Server is still starting")),
   Handler (\(err :: Store.EXISTS) -> do
     Log.warning $ Log.buildString' err
     return (StatusAlreadyExists, "Stream already exists in store")),
@@ -73,19 +80,19 @@ defaultHandlers = [
     return (StatusNotFound, "Object not found")),
   Handler (\(err :: Store.SomeHStoreException) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInternal, StatusDetails (BS.pack . displayException $ err))),
+    return (StatusInternal, mkStatusDetails err)),
   Handler (\(err :: PersistenceException) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAborted, StatusDetails (BS.pack . displayException $ err))),
+    return (StatusAborted, mkStatusDetails err)),
   Handler (\(err :: StreamNotExist) -> do
     Log.warning $ Log.buildString' err
-    return (StatusNotFound, StatusDetails (BS.pack . displayException $ err))),
+    return (StatusNotFound, mkStatusDetails err)),
   Handler (\(err@(SubscriptionIdNotFound subId) :: SubscriptionIdNotFound) -> do
     Log.warning $ Log.buildString' err
     return (StatusNotFound, StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found"))),
   Handler (\(err :: IOException) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusInternal, StatusDetails . BS.pack . displayException $ err)),
+    return (StatusInternal, mkStatusDetails err)),
   Handler (\(err :: ZNODEEXISTS) -> do
     Log.fatal $ Log.buildString' err
     return (StatusAlreadyExists, "Zookeeper exception: " <> mkStatusDetails err)),
