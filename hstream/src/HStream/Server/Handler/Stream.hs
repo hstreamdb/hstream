@@ -6,8 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Stream
-  (
-    createStreamHandler,
+  ( createStreamHandler,
     deleteStreamHandler,
     listStreamsHandler,
     appendHandler,
@@ -53,9 +52,10 @@ deleteStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
+deleteStreamHandler sc (ServerNormalRequest _metadata request@DeleteStreamRequest{..}) = deleteStreamExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
-  C.deleteStream sc request
+  if deleteStreamRequestForce then C.deleteStream sc request
+    else returnErrResp StatusUnimplemented "Currently only forced deletion is supported"
 
 listStreamsHandler
   :: ServerContext

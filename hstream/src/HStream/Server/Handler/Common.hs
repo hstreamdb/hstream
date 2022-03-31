@@ -15,16 +15,13 @@ import           Control.Exception                (Handler (Handler),
                                                    onException, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
-import qualified Data.ByteString.Char8            as C
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
-import           Data.IORef                       (atomicModifyIORef')
 import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
-import           Data.Unique                      (hashUnique, newUnique)
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
@@ -35,8 +32,6 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    runOps)
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
-import           ZooKeeper.Recipe                 (withLock)
-import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
@@ -51,9 +46,7 @@ import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
-import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (TaskStatus (..),
-                                                   returnErrResp, returnResp,
                                                    textToCBytes)
 
 --------------------------------------------------------------------------------
@@ -203,23 +196,9 @@ handlePushQueryCanceled ServerCall{..} handle = do
       -> when b handle
     _ -> putStrLn "impossible happened"
 
-eitherToResponse :: Either SomeException () -> a -> IO (ServerResponse 'Normal a)
-eitherToResponse (Left err) _   =
-  returnErrResp StatusInternal $ StatusDetails (C.pack . displayException $ err)
-eitherToResponse (Right _) resp =
-  returnResp resp
-
 responseWithErrorMsgIfNothing :: Maybe a -> StatusCode -> StatusDetails -> IO (ServerResponse 'Normal a)
 responseWithErrorMsgIfNothing (Just resp) _ _ = return $ ServerNormalResponse (Just resp) mempty StatusOk ""
 responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalResponse Nothing mempty errCode msg
-
--- getStartRecordId :: Api.Subscription -> RecordId
--- getStartRecordId Api.Subscription{..} =
---   let Api.SubscriptionOffset{..} = fromJust subscriptionOffset
---       rid = case fromJust subscriptionOffsetOffset of
---                Api.SubscriptionOffsetOffsetSpecialOffset _ -> error "shoud not reach here"
---                Api.SubscriptionOffsetOffsetRecordOffset r  -> r
---     in rid
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
@@ -359,67 +338,6 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
         Right _                  -> return (x:terminatedQids)
 
 --------------------------------------------------------------------------------
-
-{-# DEPRECATED dropHelper "Use deleteStream or deleteView instead" #-}
-dropHelper :: ServerContext -> Text -> Bool -> Bool
-  -> IO (ServerResponse 'Normal Empty)
-dropHelper sc@ServerContext{..} name checkIfExist isView = do
-  when isView $ atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-  let sName = if isView then HCS.transToViewStreamName name else HCS.transToStreamName name
-  streamExists <- HS.doesStreamExist scLDClient sName
-  if streamExists
-    then terminateQueryAndRemove sc (textToCBytes name)
-      >> terminateRelatedQueries sc (textToCBytes name)
-      >> HS.removeStream scLDClient sName
-      >> returnResp Empty
-    else if checkIfExist
-           then returnResp Empty
-           else do
-           Log.warning $ "Drop: tried to remove a nonexistent object: "
-             <> Log.buildString (T.unpack name)
-           returnErrResp StatusNotFound "Object does not exist"
-
-data SubscriptionStatus = Active | StandBy deriving(Show, Eq)
-
-setSubStatusToActive :: HS.LDClient -> HS.StreamId -> IO ()
-setSubStatusToActive client streamId = void $ HS.updateStreamExtraAttrs client streamId (Map.singleton "subscriptionStatus" "1")
-
-setSubStatusToStandBy :: HS.LDClient -> HS.StreamId -> IO ()
-setSubStatusToStandBy client streamId = void $ HS.updateStreamExtraAttrs client streamId (Map.singleton "subscriptionStatus" "0")
-
-getSubscriptionStatus :: HS.LDClient -> HS.StreamId -> IO SubscriptionStatus
-getSubscriptionStatus client streamId = do
-  Map.lookup "SubscriptionStatus" <$> HS.getStreamExtraAttrs client streamId >>= \case
-    Nothing     -> error "No status for subscription."
-    Just status ->
-      case status of
-        "1" -> return Active
-        "0" -> return StandBy
-        _   -> error "Unknown status"
-
-removeStreamRelatedPath :: ZHandle -> CBytes -> IO ()
-removeStreamRelatedPath zk streamName = do
-  let streamPath = P.streamRootPath <> "/" <> streamName
-      streamLockPath = P.mkStreamSubsLockPath streamName
-  P.tryDeleteAllPath zk streamPath >> P.tryDeleteAllPath zk streamLockPath
-
-checkIfSubsOfStreamActive :: ZHandle -> CBytes -> IO Bool
-checkIfSubsOfStreamActive zk streamName = do
-  -- xxx/lock/streams/{streamName}/subscriptions
-  let lockPath = P.mkStreamSubsLockPath streamName
-  -- xxx/streams/{streamName}/subscriptions
-  let subscriptionPath = P.mkStreamSubsPath streamName
-  uniq <- newUnique
-  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
-    not . null <$> P.tryGetChildren zk subscriptionPath
-
-bindSubToStreamPath :: ZHandle -> CBytes -> CBytes -> IO ()
-bindSubToStreamPath zk streamName subName = do
-  let lockPath = P.mkStreamSubsLockPath streamName
-  let subscriptionPath = P.mkStreamSubsPath streamName <> "/" <> subName
-  uniq <- newUnique
-  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
-    P.tryCreate zk subscriptionPath
 
 alignDefault :: Text -> Text
 alignDefault x  = if T.null x then clientDefaultKey else x

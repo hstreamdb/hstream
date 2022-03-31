@@ -39,6 +39,10 @@ newtype InvalidArgument = InvalidArgument String
   deriving (Show)
 instance Exception InvalidArgument
 
+newtype OperationNotSupported = OperationNotSupported String
+  deriving (Show)
+instance Exception OperationNotSupported
+
 data ObjectNotExist = ObjectNotExist
   deriving (Show)
 instance Exception ObjectNotExist
