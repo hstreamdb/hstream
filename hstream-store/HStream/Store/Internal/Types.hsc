@@ -514,9 +514,9 @@ instance Read Compression where
   readPrec = do
     i <- Read.lexP
     case i of
-      Read.Ident "none"  -> return CompressionNone
-      Read.Ident "lz4"   -> return CompressionLZ4
-      Read.Ident "lz4hc" -> return CompressionLZ4HC
+      Read.Ident "none"        -> return CompressionNone
+      Read.Ident "lz4"         -> return CompressionLZ4
+      Read.Ident "lz4hc"       -> return CompressionLZ4HC
       x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
 fromCompression :: Compression -> C_Compression

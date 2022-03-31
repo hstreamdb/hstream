@@ -125,7 +125,7 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName payloadSize
   logId <- S.getUnderlyingLogId scLDClient streamID key
-  S.AppendCompletion {..} <- S.appendCompressedBS scLDClient logId payload cmpStrategy Nothing
+  S.AppendCompletion {..} <- S.appendBS scLDClient logId payload Nothing
   let rids = V.zipWith (API.RecordId logId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse sName rids
   where

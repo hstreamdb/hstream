@@ -191,7 +191,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodePort    <- nodeCfgObj .:? "port" .!= 6570
   nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6571
   zkuri            <- nodeCfgObj .:  "zkuri"
-  serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
+  recordCompression   <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
   nodeLogLevel     <- nodeCfgObj .:? "log-level" .!= "info"
   nodeLogWithColor <- nodeCfgObj .:? "log-with-color" .!= True
 
@@ -202,7 +202,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
   let _serverLogWithColor = nodeLogWithColor || _serverLogWithColor_
   let _serverAddress      = fromMaybe nodeAddress _serverAddress_
-  let _compression        = fromMaybe serverCompression _compression_
+  let _compression        = fromMaybe recordCompression _compression_
 
   storeCfgObj  <- obj .:? "hstore" .!= mempty
   storeLogLevel <- read <$> storeCfgObj .:? "log-level" .!= "info"
