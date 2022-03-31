@@ -509,7 +509,6 @@ data Compression
   | CompressionLZ4HC
   deriving (Eq, Ord, Show)
 
--- TODO: Doesn't support `CompressionZSTD Int` now
 instance Read Compression where
   readPrec = do
     i <- Read.lexP
@@ -517,6 +516,9 @@ instance Read Compression where
       Read.Ident "none"  -> return CompressionNone
       Read.Ident "lz4"   -> return CompressionLZ4
       Read.Ident "lz4hc" -> return CompressionLZ4HC
+      Read.Ident "zstd" -> do
+        Read.Symbol ":" <- Read.lexP
+        CompressionZSTD <$> Read.readPrec
       x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
 fromCompression :: Compression -> C_Compression
