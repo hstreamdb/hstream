@@ -176,3 +176,6 @@ data TlsConfig
   , certPath :: String
   , caPath   :: Maybe String
   } deriving (Show)
+
+maxRetentionSeconds :: Integral a => a
+maxRetentionSeconds = 7 * 24 * 3600

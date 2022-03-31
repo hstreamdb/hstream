@@ -31,6 +31,7 @@ import           Test.Hspec
 
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
+import           HStream.Server.Types             (maxRetentionSeconds)
 import           HStream.SpecUtils
 import           HStream.Store.Logger             (pattern C_DBG_ERROR,
                                                    setLogDeviceDbgLevel)
@@ -56,30 +57,32 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
   aroundWith withRandomStreamName $ do
     it "test createStream request" $ \(api, name) -> do
       let stream = mkStream name 3
-      createStreamRequest api stream `shouldReturn` stream
+      createStreamRequest api stream `shouldReturn` stream {streamBacklogDuration = maxRetentionSeconds}
       -- create an existed stream should fail
       createStreamRequest api stream `shouldThrow` anyException
 
   aroundWith (withRandomStreamNames 5) $ do
     it "test listStream request" $ \(api, names) -> do
       let createStreamReqs = zipWith mkStream names [1, 2, 3, 3, 2]
-      forM_ createStreamReqs $ \stream -> do
-        createStreamRequest api stream `shouldReturn` stream
+      createStreamReqs' <- forM createStreamReqs $ \stream -> do
+        let stream' = stream {streamBacklogDuration = maxRetentionSeconds}
+        createStreamRequest api stream `shouldReturn` stream'
+        return stream'
 
       resp <- listStreamRequest api
       let sortedResp = Set.fromList $ V.toList resp
-          sortedReqs = Set.fromList createStreamReqs
+          sortedReqs = Set.fromList createStreamReqs'
       sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedResp)
 
   aroundWith withRandomStreamName $ do
     it "test deleteStream request" $ \(api, name) -> do
       let stream = mkStream name 1
-      createStreamRequest api stream `shouldReturn` stream
+      createStreamRequest api stream `shouldReturn` stream {streamBacklogDuration = maxRetentionSeconds}
       resp <- listStreamRequest api
-      resp `shouldSatisfy` V.elem stream
+      resp `shouldSatisfy` V.elem stream {streamBacklogDuration = maxRetentionSeconds}
       deleteStreamRequest api name `shouldReturn` PB.Empty
       resp' <- listStreamRequest api
-      resp' `shouldNotSatisfy`  V.elem stream
+      resp' `shouldNotSatisfy`  V.elem stream {streamBacklogDuration = maxRetentionSeconds}
       -- delete a nonexistent stream without ignoreNonExist set should throw an exception
       deleteStreamRequest api name `shouldThrow` anyException
       -- delete a nonexistent stream with ignoreNonExist set should be okay
@@ -96,7 +99,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
           record2 = buildRecord header payload2
       -- append to a nonexistent stream should throw exception
       appendRequest api name (V.fromList [record1, record2]) `shouldThrow` anyException
-      createStreamRequest api stream `shouldReturn` stream
+      createStreamRequest api stream `shouldReturn` stream  {streamBacklogDuration = maxRetentionSeconds}
       -- FIXME: Even we have called the "syncLogsConfigVersion" method, there is
       -- __no__ guarantee that subsequent "append" will have an up-to-date view
       -- of the LogsConfig. For details, see Logdevice::Client::syncLogsConfigVersion

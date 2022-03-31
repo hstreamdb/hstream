@@ -36,12 +36,12 @@ import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (streamRootPath)
 import qualified HStream.Server.Persistence       as P
-import           HStream.Server.Types             (ServerContext (..))
+import           HStream.Server.Types             (ServerContext (..),
+                                                   maxRetentionSeconds)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
-
 -------------------------------------------------------------------------------
 
 -- createStream will create a stream with a default partition
@@ -55,7 +55,7 @@ createStream ServerContext{..} stream@API.Stream{
       streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                    , S.logBacklogDuration   = S.defAttr1 $
-                      if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
+                      if backlogSec > 0 then Just $ fromIntegral backlogSec else Just maxRetentionSeconds}
   zNodesExist <- catch (createStreamRelatedPath zkHandle nameCB >> return False)
                        (\(_::ZNODEEXISTS) -> return True)
   storeExists <- catch (S.createStream scLDClient streamId attrs
@@ -64,7 +64,7 @@ createStream ServerContext{..} stream@API.Stream{
   when (storeExists || zNodesExist) $ do
     Log.warning $ "Stream exists in" <> (if zNodesExist then " <zk path>" else "") <> (if storeExists then " <hstore>." else ".")
     throwIO $ StreamExists zNodesExist storeExists
-  returnResp stream
+  returnResp stream {API.streamBacklogDuration = maxRetentionSeconds}
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest

@@ -43,6 +43,7 @@ import           Test.Hspec
 import           HStream.Client.Action
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
+import           HStream.Server.Types             (maxRetentionSeconds)
 import           HStream.SQL
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
@@ -352,6 +353,7 @@ runCreateStreamSql api sql = do
   createStream sName rFac api`grpcShouldReturn`
     def { streamStreamName        = sName
         , streamReplicationFactor = fromIntegral rFac
+        , streamBacklogDuration   = maxRetentionSeconds
         }
 
 runInsertSql :: HStreamClientApi -> T.Text -> Expectation
@@ -366,7 +368,8 @@ runCreateWithSelectSql api sql = do
   resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (words $ T.unpack sql) api
   createQueryStreamResponseQueryStream resp `shouldBe`
     Just def { streamStreamName        = stream
-             , streamReplicationFactor = fromIntegral $ rRepFactor rOptions}
+             , streamReplicationFactor = fromIntegral $ rRepFactor rOptions
+             }
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
