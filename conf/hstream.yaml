@@ -7,26 +7,33 @@ hserver:
   # the value must be given and can be overwritten by cli option `--server-id`
   id: 1
 
-  # Server listen address value, the value must be given and shouldn't be "0.0.0.0", if you intend to start a cluster
-  # or trying to connect to the server from a different network
+  # Server listen address value, the value must be given and shouldn't be
+  # "0.0.0.0", if you intend to start a cluster or trying to connect to the
+  # server from a different network.
+  #
   # This value can be overwritten by cli option `--address`
   address: "0.0.0.0"
 
-  # Server port value, the value must be given and can be overwritten by cli option `--port`
+  # Server port value, the value must be given and can be overwritten by cli
+  # option `--port`
   port: 6570
 
   # Server port value for internal communications between server nodes,
   # the value must be given and can be overwritten by cli option `--internal-port`
   internal-port: 6571
 
-  # The server nodes in the same cluster shares a zookeeper server, this is essential for a server to start
+  # The server nodes in the same cluster shares a zookeeper server, this is
+  # essential for a server to start.
+  #
   # Comma separated host:port pairs, each corresponding to a zk zookeeper server.
   # e.g. 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
   # the value must be given and can be overwritten by cli option `--zkuri`
   zkuri: "127.0.0.1:2181"
 
   # The option which compression should the server use when writing record to store,
-  # which can be one of "none", "lz4" or "lz4hc"
+  # which can be one of "none", "lz4", "lz4hc" or "zstd:1"(the next number "1" is for
+  # zstd_level, you can also choose other level)
+  #
   # Optional, If not given, then the default value is "lz4"
   #
   #compression: "lz4"
