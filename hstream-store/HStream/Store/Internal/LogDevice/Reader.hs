@@ -4,7 +4,7 @@
 
 module HStream.Store.Internal.LogDevice.Reader where
 
-import           Control.Monad                  (forM, void)
+import           Control.Monad                  (forM, unless, void)
 import qualified Data.ByteString                as BS
 import           Data.Int                       (Int32, Int64)
 import           Data.Map.Strict                (Map)
@@ -206,13 +206,25 @@ checkpointedReaderIsReadingAny reader = withForeignPtr reader $
 --
 -- The maximum timeout is 2^31-1 milliseconds (about 24 days).  If a timeout
 -- larger than that is passed in, it will be capped.
-readerSetTimeout :: LDReader -> Int32 -> IO CInt
+readerSetTimeout :: HasCallStack => LDReader -> Int32 -> IO ()
 readerSetTimeout reader ms =
-  withForeignPtr reader $ \reader' -> c_ld_reader_set_timeout reader' ms
+  withForeignPtr reader $ \reader' -> do
+    -- 0 on success, -1 if the parameter was invalid
+    ret <- c_ld_reader_set_timeout reader' ms
+    unless (ret == 0) $ E.throwStreamError C_INVALID_PARAM callStack
 
-ckpReaderSetTimeout :: LDSyncCkpReader -> Int32 -> IO CInt
+-- | Sets the limit on how long 'readerRead' calls may wait for records to
+-- become available.  A timeout of -1 means no limit (infinite timeout).
+-- A timeout of 0 means no waiting (nonblocking reads).
+--
+-- The maximum timeout is 2^31-1 milliseconds (about 24 days).  If a timeout
+-- larger than that is passed in, it will be capped.
+ckpReaderSetTimeout :: HasCallStack => LDSyncCkpReader -> Int32 -> IO ()
 ckpReaderSetTimeout reader ms =
-  withForeignPtr reader $ \reader' -> c_ld_checkpointed_reader_set_timeout reader' ms
+  withForeignPtr reader $ \reader' -> do
+    -- 0 on success, -1 if the parameter was invalid
+    ret <- c_ld_checkpointed_reader_set_timeout reader' ms
+    unless (ret == 0) $ E.throwStreamError C_INVALID_PARAM callStack
 
 readerSetWithoutPayload :: LDReader -> IO ()
 readerSetWithoutPayload reader = withForeignPtr reader c_ld_reader_without_payload

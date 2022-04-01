@@ -117,14 +117,14 @@ dataRecordToSourceRecord ldclient Payload {..} = do
 
 readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore ldclient reader maxlen = do
-  void $ S.ckpReaderSetTimeout reader 1000
+  S.ckpReaderSetTimeout reader 1000   -- 1000 milliseconds
   dataRecords <- S.ckpReaderRead reader maxlen
   let payloads = filter isJust $ map getJsonFormatRecord dataRecords
   mapM (dataRecordToSourceRecord ldclient . fromJust) payloads
 
 readRecordsFromHStore' :: S.LDClient -> S.LDReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore' ldclient reader maxlen = do
-  void $ S.readerSetTimeout reader 1000
+  S.readerSetTimeout reader 1000    -- 1000 milliseconds
   dataRecords <- S.readerRead reader maxlen
   let payloads = filter isJust $ map getJsonFormatRecord dataRecords
   mapM (dataRecordToSourceRecord ldclient . fromJust) payloads
