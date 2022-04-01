@@ -1,14 +1,9 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DeriveAnyClass    #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
-import           Data.ByteString                  (ByteString)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
@@ -17,19 +12,14 @@ import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Z.Data.CBytes                    as CB
-import           Z.Data.CBytes                    (CBytes)
-import           Z.IO.Network                     (PortNumber)
 import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
-import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
-import           HStream.Store                    (Compression)
 import qualified HStream.Store                    as HS
-import qualified HStream.Store.Logger             as Log
 import qualified Proto3.Suite                     as PB
 
 protocolVersion :: T.Text
@@ -37,29 +27,6 @@ protocolVersion = "0.1.0"
 
 serverVersion :: T.Text
 serverVersion = "0.7.0"
-
-data ServerOpts = ServerOpts
-  { _serverHost         :: CBytes
-  , _serverPort         :: PortNumber
-  , _serverAddress      :: String
-  , _serverInternalPort :: PortNumber
-  , _serverID           :: Word32
-  , _zkUri              :: CBytes
-  , _ldConfigPath       :: CBytes
-  , _topicRepFactor     :: Int
-  , _ckpRepFactor       :: Int
-  , _compression        :: Compression
-  , _ldAdminHost        :: ByteString
-  , _ldAdminPort        :: Int
-  , _ldAdminProtocolId  :: AA.ProtocolId
-  , _ldAdminConnTimeout :: Int
-  , _ldAdminSendTimeout :: Int
-  , _ldAdminRecvTimeout :: Int
-  , _serverLogLevel     :: Log.Level
-  , _serverLogWithColor :: Bool
-  , _ldLogLevel         :: Log.LDLogLevel
-  , _tlsConfig          :: Maybe TlsConfig
-  } deriving (Show)
 
 type Timestamp = Int64
 type ServerID = Word32
@@ -69,6 +36,7 @@ data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverID                 :: Word32
   , scDefaultStreamRepFactor :: Int
+  , scMaxRecordSize          :: Int
   , zkHandle                 :: ZHandle
   , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
   , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
@@ -169,10 +137,3 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
-
-data TlsConfig
-  = TlsConfig {
-    keyPath  :: String
-  , certPath :: String
-  , caPath   :: Maybe String
-  } deriving (Show)

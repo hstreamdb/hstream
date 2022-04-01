@@ -3,9 +3,12 @@
 
 module HStream.Server.Config
   ( getConfig
+  , ServerOpts (..)
+  , TlsConfig (..)
   ) where
 
 import           Control.Exception          (throwIO)
+import           Control.Monad              (when)
 import           Data.ByteString            (ByteString)
 import qualified Data.ByteString.Char8      as BSC
 import           Data.Maybe                 (fromMaybe, isJust)
@@ -22,30 +25,62 @@ import           Z.IO.Network               (PortNumber (PortNumber))
 import qualified HStream.Admin.Store.API    as AA
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
-import           HStream.Server.Types       (ServerOpts (..),
-                                             TlsConfig (TlsConfig))
 import           HStream.Store              (Compression (..))
 import qualified HStream.Store.Logger       as Log
 
+data ServerOpts = ServerOpts
+  { _serverHost         :: !CBytes
+  , _serverPort         :: !PortNumber
+  , _serverAddress      :: !String
+  , _serverInternalPort :: !PortNumber
+  , _serverID           :: !Word32
+  , _zkUri              :: !CBytes
+  , _ldConfigPath       :: !CBytes
+  , _topicRepFactor     :: !Int
+  , _ckpRepFactor       :: !Int
+  , _compression        :: !Compression
+  , _maxRecordSize      :: !Int
+  , _tlsConfig          :: !(Maybe TlsConfig)
+  , _serverLogLevel     :: !Log.Level
+  , _serverLogWithColor :: !Bool
+
+  , _ldAdminHost        :: !ByteString
+  , _ldAdminPort        :: !Int
+  , _ldAdminProtocolId  :: !AA.ProtocolId
+  , _ldAdminConnTimeout :: !Int
+  , _ldAdminSendTimeout :: !Int
+  , _ldAdminRecvTimeout :: !Int
+  , _ldLogLevel         :: !Log.LDLogLevel
+  } deriving (Show)
+
+data TlsConfig
+  = TlsConfig {
+    keyPath  :: String
+  , certPath :: String
+  , caPath   :: Maybe String
+  } deriving (Show)
+
 data CliOptions = CliOptions
-  { _configPath          :: String
-  , _serverHost_         :: Maybe CBytes
-  , _serverPort_         :: Maybe PortNumber
-  , _serverAddress_      :: Maybe String
-  , _serverInternalPort_ :: Maybe PortNumber
-  , _serverID_           :: Maybe Word32
-  , _serverLogLevel_     :: Maybe Log.Level
-  , _serverLogWithColor_ :: Bool
-  , _compression_        :: Maybe Compression
-  , _ldAdminHost_        :: Maybe ByteString
-  , _ldAdminPort_        :: Maybe Int
-  , _ldLogLevel_         :: Maybe Log.LDLogLevel
-  , _zkUri_              :: Maybe CBytes
-  , _storeConfigPath     :: CBytes
-  , _enableTls_          :: Bool
-  , _tlsKeyPath_         :: Maybe String
-  , _tlsCertPath_        :: Maybe String
-  , _tlsCaPath_          :: Maybe String
+  { _configPath          :: !String
+  , _serverHost_         :: !(Maybe CBytes)
+  , _serverPort_         :: !(Maybe PortNumber)
+  , _serverAddress_      :: !(Maybe String)
+  , _serverInternalPort_ :: !(Maybe PortNumber)
+  , _serverID_           :: !(Maybe Word32)
+  , _serverLogLevel_     :: !(Maybe Log.Level)
+  , _serverLogWithColor_ :: !Bool
+  , _compression_        :: !(Maybe Compression)
+  , _zkUri_              :: !(Maybe CBytes)
+
+  , _enableTls_          :: !Bool
+  , _tlsKeyPath_         :: !(Maybe String)
+  , _tlsCertPath_        :: !(Maybe String)
+  , _tlsCaPath_          :: !(Maybe String)
+
+  , _ldAdminHost_        :: !(Maybe ByteString)
+  , _ldAdminPort_        :: !(Maybe Int)
+  , _ldLogLevel_         :: !(Maybe Log.LDLogLevel)
+  , _storeConfigPath     :: !CBytes
   }
   deriving Show
 
@@ -138,25 +173,25 @@ storeConfigPath = strOption
 enableTls :: O.Parser Bool
 enableTls = flag False True
   $  long "enable-tls"
-  <> help "enable tls, require tls-key-path, tls-cert-path options"
+  <> help "Enable tls, require tls-key-path, tls-cert-path options"
 
 tlsKeyPath :: O.Parser String
 tlsKeyPath = strOption
   $  long "tls-key-path"
   <> metavar "PATH"
-  <> help "private key path"
+  <> help "TLS key path"
 
 tlsCertPath :: O.Parser String
 tlsCertPath = strOption
   $  long "tls-cert-path"
   <> metavar "PATH"
-  <> help "signed certificate path"
+  <> help "Signed certificate path"
 
 tlsCaPath :: O.Parser String
 tlsCaPath = strOption
   $  long "tls-ca-path"
   <> metavar "PATH"
-  <> help "trusted CA(Certificate Authority) path"
+  <> help "Trusted CA(Certificate Authority) path"
 
 parseWithFile :: O.Parser CliOptions
 parseWithFile = do
@@ -189,12 +224,15 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeId      <- nodeCfgObj .:  "id"
   nodeAddress <- nodeCfgObj .:  "address"
   nodePort    <- nodeCfgObj .:? "port" .!= 6570
-  nodeInternalPort <- nodeCfgObj .:? "internal-port" .!= 6571
-  zkuri            <- nodeCfgObj .:  "zkuri"
+  nodeInternalPort  <- nodeCfgObj .:? "internal-port" .!= 6571
+  zkuri             <- nodeCfgObj .:  "zkuri"
   serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
-  nodeLogLevel     <- nodeCfgObj .:? "log-level" .!= "info"
-  nodeLogWithColor <- nodeCfgObj .:? "log-with-color" .!= True
-
+  nodeLogLevel      <- nodeCfgObj .:? "log-level" .!= "info"
+  nodeLogWithColor  <- nodeCfgObj .:? "log-with-color" .!= True
+  -- TODO: For the max_record_size to work properly, we should also tell user to set payload size for gRPC and LD.
+  _maxRecordSize    <- nodeCfgObj .:? "max-record-size" .!= 1048576
+  when (_maxRecordSize < 0 && _maxRecordSize > 104876)
+    $ error "max-record-size has to be a positive number less than 1MB"
   let _serverPort    = fromMaybe (PortNumber nodePort) _serverPort_
   let _serverID      = fromMaybe nodeId _serverID_
   let _serverInternalPort = fromMaybe (PortNumber nodeInternalPort) _serverInternalPort_

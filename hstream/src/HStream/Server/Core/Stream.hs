@@ -9,6 +9,7 @@ module HStream.Server.Core.Stream
   , append0Stream
   , FoundActiveSubscription (..)
   , StreamExists (..)
+  , RecordTooBig (..)
   ) where
 
 import           Control.Exception                (Exception (displayException),
@@ -121,9 +122,10 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   timestamp <- getProtoTimestamp
   let payload = encodeBatch . API.HStreamRecordBatch $
         encodeRecord . updateRecordTimestamp timestamp <$> records
-      payloadSize = fromIntegral $ BS.length payload
+      payloadSize = BS.length payload
+  when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName payloadSize
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
   logId <- S.getUnderlyingLogId scLDClient streamID key
   -- TODO
   -- S.AppendCompletion {..} <- S.appendCompressedBS scLDClient logId payload cmpStrategy Nothing
@@ -143,6 +145,7 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
       streamName = textToCBytes appendRequestStreamName
       streamID = S.mkStreamId S.StreamTypeStream streamName
       key = textToCBytes <$> partitionKey
+  when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
 
@@ -169,6 +172,10 @@ createStreamRelatedPath zk streamName = do
 data FoundActiveSubscription = FoundActiveSubscription
   deriving (Show)
 instance Exception FoundActiveSubscription
+
+data RecordTooBig = RecordTooBig
+  deriving (Show)
+instance Exception RecordTooBig
 
 data StreamExists = StreamExists Bool Bool
   deriving (Show)
