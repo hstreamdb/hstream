@@ -201,7 +201,7 @@ doSubInit ctx@ServerContext{..} subId = do
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize) 5
-      void $ S.ckpReaderSetTimeout ldCkpReader 10
+      S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
       Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
 
       -- create a ldReader for rereading unacked records
