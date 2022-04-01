@@ -23,12 +23,12 @@ import           ZooKeeper.Types
 
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Cluster
 import           HStream.Server.Config            (ServerOpts (..), getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
-import           HStream.Server.Initialization    (initNodePath,
-                                                   initializeServer,
+import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig)
 import           HStream.Server.Persistence       (getServerNode',
                                                    initializeAncestors,
@@ -51,7 +51,7 @@ app config@ServerOpts{..} = do
   let zkRes = zookeeperResInit _zkUri (Just $ globalWatcherFn serverState) 5000 Nothing 0
   withResource zkRes $ \zk -> do
     let serverOnStarted = do
-          initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
+          joinCluster zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
           Log.i $ "Server is started on port " <> Log.buildInt _serverPort
     let grpcOpts =
           GRPC.defaultServiceOptions
@@ -66,7 +66,7 @@ app config@ServerOpts{..} = do
 
 serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
 serve options sc@ServerContext{..} = do
-  void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
+  void . forkIO $ actionTriggeredByServerNodeChange sc
   -- GRPC service
   Log.i "************************"
   putStrLn [r|
@@ -93,16 +93,3 @@ globalWatcherFn mStateS _ ZooSessionEvent stateZ _ = do
   Log.info $ "Server currently has the state: " <> Log.buildString' newServerState
 globalWatcherFn _ _ event stateZ _ = Log.debug $ "Event " <> Log.buildString' event
                                                <> "happened, current state is " <> Log.buildString' stateZ
-
--- However, reconstruct hashRing every time can be expensive
--- when we have a large number of nodes in the cluster.
--- TODO: Instead of reconstruction, we should use the operation insert/delete.
-updateHashRing :: ZHandle -> MVar HashRing -> IO ()
-updateHashRing zk mhr = zooWatchGetChildren zk serverRootPath callback action
-  where
-    callback HsWatcherCtx{..} = updateHashRing watcherCtxZHandle mhr
-
-    action (StringsCompletion (StringVector children)) = do
-      modifyMVar_ mhr $ \_ -> do
-        serverNodes <- mapM (getServerNode' zk) children
-        pure $ constructServerMap . sort $ serverNodes

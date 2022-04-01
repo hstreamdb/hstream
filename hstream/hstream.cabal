@@ -49,6 +49,7 @@ library
     HStream.Client.Type
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.Cluster
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
