@@ -45,39 +45,39 @@ deleteSubscription :: ServerContext -> Subscription -> Bool -> IO ()
 deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = subId
   , subscriptionStreamName = streamName} forced = do
   (status, msub) <- atomically $ do
-      res <- getSubState
-      case res of
-        Nothing -> pure (NotExist, Nothing)
-        Just (subCtx, stateVar) -> do
-          state <- readTVar stateVar
-          case state of
-            SubscribeStateNew -> retry
-            SubscribeStateRunning -> do
-              isActive <- hasValidConsumers subCtx
-              if isActive
-              then
-                if forced
-                then do
-                  writeTVar stateVar SubscribeStateStopping
-                  pure (CanDeleted, Just (subCtx, stateVar))
-                else
-                  pure (CanNotDeleted, Just (subCtx, stateVar))
-              else do
-                writeTVar stateVar SubscribeStateStopping
-                pure (CanDeleted, Just (subCtx, stateVar))
-            SubscribeStateStopping -> pure (Signaled, Just (subCtx, stateVar))
-            SubscribeStateStopped -> pure (Signaled, Just (subCtx, stateVar))
+    res <- getSubState
+    case res of
+      Nothing -> pure (NotExist, Nothing)
+      Just (subCtx, stateVar) -> do
+        state <- readTVar stateVar
+        case state of
+          SubscribeStateNew -> retry
+          SubscribeStateRunning -> do
+            isActive <- hasValidConsumers subCtx
+            if isActive
+            then if forced
+                 then do
+                   writeTVar stateVar SubscribeStateStopping
+                   pure (CanDelete, Just (subCtx, stateVar))
+                 else
+                   pure (CanNotDelete, Just (subCtx, stateVar))
+            else do
+              writeTVar stateVar SubscribeStateStopping
+              pure (CanDelete, Just (subCtx, stateVar))
+          SubscribeStateStopping -> pure (Signaled, Just (subCtx, stateVar))
+          SubscribeStateStopped  -> pure (Signaled, Just (subCtx, stateVar))
+  Log.debug $ "Subscription deletion has state " <> Log.buildString' status
   case status of
-    NotExist ->  doRemove
-    CanDeleted -> do
+    NotExist  ->  doRemove
+    CanDelete -> do
       let (subCtx, subState) = fromJust msub
       atomically $ waitingStopped subCtx subState
+      Log.info "Subscription stopped, start deleting "
       atomically removeSubFromCtx
       doRemove
-    CanNotDeleted ->  throwIO FoundActiveConsumers
-    Signaled -> throwIO SubscriptionIsDeleting
+    CanNotDelete -> throwIO FoundActiveConsumers
+    Signaled     -> throwIO SubscriptionIsDeleting
   where
-
     doRemove :: IO ()
     doRemove = do
       -- FIXME: There are still inconsistencies here. If any failure occurs after removeSubFromStreamPath
@@ -117,7 +117,8 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
       scs <- readTVar scSubscribeContexts
       writeTVar scSubscribeContexts (HM.delete subId scs)
 
-data DeleteSubStatus = NotExist | CanDeleted | CanNotDeleted | Signaled
+data DeleteSubStatus = NotExist | CanDelete | CanNotDelete | Signaled
+  deriving (Show)
 
 removeSubFromStreamPath :: ZHandle -> CBytes -> CBytes -> IO ()
 removeSubFromStreamPath zk streamName subName = do
