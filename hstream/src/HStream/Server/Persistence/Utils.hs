@@ -179,6 +179,7 @@ tryDeletePath zk path = catch (deletePath zk path) $
   \(_ :: ZNONODE) -> do
     pure ()
 
+-- FIXME: This may not work when one node does not exist with concurrency and it will stop.
 tryDeleteAllPath :: HasCallStack => ZHandle -> CBytes -> IO ()
 tryDeleteAllPath zk path = catch (deleteAllPath zk path) $
   \(_ :: ZNONODE) -> do
