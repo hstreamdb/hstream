@@ -1,5 +1,4 @@
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -85,6 +84,17 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       -- delete a nonexistent stream with ignoreNonExist set should be okay
       cleanStreamReq api name `shouldReturn` PB.Empty
 
+      createStreamRequest api stream `shouldReturn` stream
+      resp <- listStreamRequest api
+      resp `shouldSatisfy` V.elem stream
+      deleteStreamForceRequest api name `shouldReturn` PB.Empty
+      resp' <- listStreamRequest api
+      resp' `shouldNotSatisfy`  V.elem stream
+      -- delete a nonexistent stream without ignoreNonExist set should throw an exception
+      deleteStreamForceRequest api name `shouldThrow` anyException
+      -- delete a nonexistent stream with ignoreNonExist set should be okay
+      cleanStreamReq api name `shouldReturn` PB.Empty
+
   aroundWith withRandomStreamName $ do
     it "test append request" $ \(api, name) -> do
       payload1 <- newRandomByteString 5
@@ -122,6 +132,13 @@ listStreamRequest HStreamApi{..} =
 deleteStreamRequest :: HStreamClientApi -> T.Text -> IO PB.Empty
 deleteStreamRequest HStreamApi{..} streamName =
   let delReq = def { deleteStreamRequestStreamName = streamName }
+      req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiDeleteStream req
+
+deleteStreamForceRequest :: HStreamClientApi -> T.Text -> IO PB.Empty
+deleteStreamForceRequest HStreamApi{..} streamName =
+  let delReq = def { deleteStreamRequestStreamName = streamName,
+                     deleteStreamRequestForce      = True}
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiDeleteStream req
 

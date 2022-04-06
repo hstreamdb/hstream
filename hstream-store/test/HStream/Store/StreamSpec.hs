@@ -85,12 +85,19 @@ base = describe "BaseSpec" $ do
     logpath `shouldBe` logpath'
 
   it "archive stream" $ do
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.archiveStream client streamId
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldNotContain` [streamId]
-    S.unArchiveStream client streamId
+    S.createStream client streamId attrs
     ss' <- S.findStreams client S.StreamTypeStream
     ss' `shouldContain` [streamId]
+    S.archiveStream client streamId
+    ss'' <- S.findStreams client S.StreamTypeStream
+    ss'' `shouldNotContain` [streamId]
+    S.createStream client streamId attrs
+    ss''' <- S.findStreams client S.StreamTypeStream
+    ss''' `shouldContain` [streamId]
 
   it "rename stream" $ do
     print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId

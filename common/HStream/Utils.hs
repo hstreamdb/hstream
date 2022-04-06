@@ -10,12 +10,15 @@ module HStream.Utils
   , module HStream.Utils.JSON
 
   , genUnique
+  , genUniqueId
   ) where
 
 import           Control.Monad              (unless)
 import           Data.Bits                  (shiftL, shiftR, (.&.), (.|.))
 import           Data.Int                   (Int64)
+import           Data.String                (IsString (fromString))
 import           Data.Word                  (Word16, Word32, Word64)
+import           Numeric                    (showHex)
 import           System.Random              (randomRIO)
 import           Z.IO.Time                  (SystemTime (..), getSystemTime')
 
@@ -50,3 +53,8 @@ genUnique = do
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
 {-# INLINE genUnique #-}
+
+genUniqueId :: IsString a => IO a
+genUniqueId = do
+  unique <- genUnique
+  return $ fromString (showHex unique "")

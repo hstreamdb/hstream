@@ -397,12 +397,6 @@ getSubscriptionStatus client streamId = do
         "0" -> return StandBy
         _   -> error "Unknown status"
 
-removeStreamRelatedPath :: ZHandle -> CBytes -> IO ()
-removeStreamRelatedPath zk streamName = do
-  let streamPath = P.streamRootPath <> "/" <> streamName
-      streamLockPath = P.mkStreamSubsLockPath streamName
-  P.tryDeleteAllPath zk streamPath >> P.tryDeleteAllPath zk streamLockPath
-
 checkIfSubsOfStreamActive :: ZHandle -> CBytes -> IO Bool
 checkIfSubsOfStreamActive zk streamName = do
   -- xxx/lock/streams/{streamName}/subscriptions

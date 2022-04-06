@@ -32,8 +32,7 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Common       (deleteStoreStream)
 import           HStream.Server.Exception         (InvalidArgument (..),
                                                    StreamNotExist (..))
-import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
-                                                   removeStreamRelatedPath)
+import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive)
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (streamRootPath)
 import qualified HStream.Server.Persistence       as P
@@ -168,6 +167,12 @@ createStreamRelatedPath zk streamName = do
       lockPath   = P.streamLockPath <> "/" <> streamName
       streamSubLockPath = P.mkStreamSubsLockPath streamName
   void $ zooMulti zk $ P.createPathOp <$> [streamPath, keyPath, subPath, lockPath, streamSubLockPath]
+
+removeStreamRelatedPath :: ZHandle -> CBytes -> IO ()
+removeStreamRelatedPath zk streamName = do
+  let streamPath = P.streamRootPath <> "/" <> streamName
+      streamLockPath = P.streamLockPath <> "/" <> streamName
+  P.tryDeleteAllPath zk streamPath >> P.tryDeleteAllPath zk streamLockPath
 
 data FoundActiveSubscription = FoundActiveSubscription
   deriving (Show)

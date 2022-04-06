@@ -18,7 +18,6 @@ module HStream.Store.Stream
   , renameStream
   , renameStream'
   , archiveStream
-  , unArchiveStream
   , removeStream
   , findStreams
   , doesStreamExist
@@ -154,7 +153,7 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.Store.Exception          as E
 import qualified HStream.Store.Internal.LogDevice as LD
 import qualified HStream.Store.Internal.Types     as FFI
-import           HStream.Utils                    (genUnique)
+import           HStream.Utils                    (genUnique, genUniqueId)
 
 -------------------------------------------------------------------------------
 
@@ -232,7 +231,8 @@ toArchivedStreamName name = do
   if already
      then pure name
      else do prefix <- streamArchivePrefix <$> readIORef gloStreamSettings
-             pure $ prefix <> name
+             suffix <- genUniqueId
+             pure $ prefix <> name <> suffix
 
 -- TODO: validation, a stream name should not:
 -- 1. Contains '/'
@@ -325,10 +325,8 @@ archiveStream client StreamId{..} = do
   archiveStreamName <- toArchivedStreamName streamName
   renameStream client streamType streamName archiveStreamName
 
-unArchiveStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
-unArchiveStream client StreamId{..} = do
-  archivedStreamName <- toArchivedStreamName streamName
-  renameStream client streamType archivedStreamName streamName
+-- TODO?
+-- unArchiveStream :: HasCallStack => FFI.LDClient -> C_LogId -> StreamId -> IO ()
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
 removeStream client streamid = modifyMVar_ gloLogPathCache $ \cache -> do
