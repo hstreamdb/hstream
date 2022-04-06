@@ -135,26 +135,28 @@ test-suite hstream-store-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:
-    HStream.Store.AppenderSpec
     HStream.Store.CheckpointStoreSpec
     HStream.Store.LogDeviceSpec
     HStream.Store.ReaderSpec
     HStream.Store.SettingsSpec
     HStream.Store.SpecUtils
     HStream.Store.StreamSpec
+    HStream.Store.WriterSpec
     HStream.StoreSpec
 
   hs-source-dirs:     test
   build-depends:
-    , base            >=4.11 && <5
-    , bytestring      ^>=0.10
-    , containers      ^>=0.6
-    , data-default    ^>=0.7
+    , base                  >=4.11   && <5
+    , bytestring            ^>=0.10
+    , containers            ^>=0.6
+    , data-default          ^>=0.7
     , hspec
     , hstream-common
     , hstream-store
-    , random          ^>=1.2
-    , vector          ^>=0.12
+    , QuickCheck
+    , quickcheck-instances  ^>=0.3.20
+    , random                ^>=1.2
+    , vector                ^>=0.12
     , Z-Data
     , Z-IO
 

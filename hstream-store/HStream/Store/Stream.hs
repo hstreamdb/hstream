@@ -89,6 +89,7 @@ module HStream.Store.Stream
   , FFI.LDReader
   , LD.newLDReader
   , LD.readerStartReading
+  , LD.DataRecordFormat
   , LD.readerRead
   , LD.readerReadAllowGap
   , LD.readerSetTimeout
