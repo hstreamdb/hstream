@@ -89,9 +89,8 @@ def is_container_running(remote, container_name, container_bin="docker"):
 def scp_command(local_file, remote, remote_file) -> str:
     cmd = ""
     file_dir = os.path.dirname(remote_file)
-    parent_dir = os.path.dirname(file_dir)
-    if parent_dir != "":
-        cmd += f"ssh {remote} 'mkdir -p {parent_dir}' && "
+    if file_dir != "":
+        cmd += f"ssh {remote} 'mkdir -p {file_dir}' && "
     cmd += f"scp -r {local_file} {remote}:{file_dir}"
     return cmd
 
@@ -273,6 +272,7 @@ class ZookeeperService(Service):
     DEFAULT_CONTAINER_NAME = "deploy_zookeeper"
     DEFAULT_PERSISTENT_DIR = "/data/zookeeper"
     DEFAULT_IMAGE_TAG = "docker.io/zookeeper:3.6"
+    DEFAULT_METRICS_PORT = 7070
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -396,7 +396,7 @@ class ZookeeperService(Service):
         docker_opts += set_restart(restart)
 
         zoo_servers = " ".join(
-            f"server.{i}={hostname}:2888:3888;2181"
+            f"server.{i + 1}={hostname}:2888:3888;2181"
             for (i, (_, hostname)) in enumerate(remotes)
         )
         pre_cmd = ""
@@ -414,8 +414,9 @@ class ZookeeperService(Service):
                 logwarn(f"Service {self.KEYS[0]} already running.")
             else:
                 enable_metrics_provider = (
-                    '-e ZOO_CFG_EXTRA="metricsProvider.className=org.apache.zookeeper.metrics.prometheus'
-                    '.PrometheusMetricsProvider" '
+                    f'-e ZOO_CFG_EXTRA="metricsProvider.className='
+                    f"org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider "
+                    f'metricsProvider.httpPort={self.DEFAULT_METRICS_PORT}"'
                     if metrics_provider
                     else ""
                 )
@@ -424,9 +425,10 @@ class ZookeeperService(Service):
                     f"ssh {host} '{pre_cmd} "
                     f"{container_bin} run -td "
                     f"{docker_opts} --name {container_name} "
-                    f'-e ZOO_MY_ID={i} -e ZOO_SERVERS="{zoo_servers}" '
-                    f"--network host {extra_container_options} "
+                    # according to https://hub.docker.com/_/zookeeper, ZOO_MY_ID must between 1 and 255
+                    f'-e ZOO_MY_ID={i + 1} -e ZOO_SERVERS="{zoo_servers}" '
                     f"{enable_metrics_provider} "
+                    f"--network host {extra_container_options} "
                     f"{image} {container_cmd}' "
                 )
 
@@ -1026,10 +1028,12 @@ class NodeExporterService(Service):
                 )
         return cmds
 
+
 class CadvisorService(Service):
     KEYS = ["cadvisor"]
     DEFAULT_CONTAINER_NAME = "deploy_cadvisor"
-    DEFAULT_IMAGE_TAG = "gcr.lank8s.cn/cadvisor/cadvisor:v0.39.3"
+    DEFAULT_IMAGE_TAG = "gcr.io/cadvisor/cadvisor:v0.39.3"
+    DEFAULT_METRICS_PORT = 7000
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -1051,7 +1055,7 @@ class CadvisorService(Service):
         )
         start_parser = argparse.ArgumentParser(add_help=False)
         start_parser.add_argument(
-            "--image", default=NodeExporterService.DEFAULT_IMAGE_TAG
+            "--image", default=CadvisorService.DEFAULT_IMAGE_TAG
         )
         start_parser.add_argument("--rm", action="store_true")
         stop_parser = argparse.ArgumentParser(add_help=False)
@@ -1080,6 +1084,7 @@ class CadvisorService(Service):
         memory_cpus,
         rm=False,
         restart=True,
+        port=DEFAULT_METRICS_PORT,
         **args,
     ):
         docker_opts = ""
@@ -1102,7 +1107,7 @@ class CadvisorService(Service):
                     f"-v /sys:/sys:ro "
                     f"-v /var/lib/docker/:/var/lib/docker:ro "
                     f"-v /dev/disk/:/dev/disk:ro "
-                    f"-p 7000:8080 "
+                    f"-p {port}:8080 "
                     f"--detach=true "
                     f"--privileged=true "
                     f"--device /dev/kmsg "
@@ -1243,6 +1248,9 @@ class SimpleService(Service):
             )
             self.cadvisor_image = deploy_cfg["cadvisor"].get(
                 "image", CadvisorService.DEFAULT_IMAGE_TAG
+            )
+            self.cadvisor_port = deploy_cfg["cadvisor"].get(
+                "port", CadvisorService.DEFAULT_METRICS_PORT
             )
 
             self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
@@ -1394,6 +1402,7 @@ class SimpleService(Service):
             "memory_cpus": self.cadvisor_memory_cpus,
             "remotes": self.cadvisor_hosts,
             "restart": False if "cadvisor" in disable_restarted else True,
+            "port": self.cadvisor_port,
         }
         cmds.extend(self.CADVISOR_SVC.start_cmd(**cadvisor_args))
 
@@ -1457,7 +1466,7 @@ class SimpleService(Service):
         }
         cmds.extend(self.NODE_EXPORTER_SVC.stop_cmd(**node_exporter_args))
 
-        # stop node-exporter
+        # stop cadvisor
         cadvisor_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": CadvisorService.DEFAULT_CONTAINER_NAME,

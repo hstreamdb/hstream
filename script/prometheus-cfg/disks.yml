@@ -1,0 +1,30 @@
+groups:
+  - name: monitoring-disk
+    rules:
+      - record: hstream:disks:used_percent
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"}) * 100
+      - record: hstream:disks:io_overall
+        expr: rate(node_disk_io_now[30s])
+      - record: hstream:disks:read_rate
+        expr: rate(node_disk_read_bytes_total[30s]) / 1024 / 1024
+      - record: hstream:disks:write_rate
+        expr: rate(node_disk_written_bytes_total[30s]) / 1024 / 1024
+      - record: hstream:disks:avg_queue_len
+        expr: rate(node_disk_io_time_weighted_seconds_total[30s])
+      - record: hstream:disks:io_util
+        expr: rate(node_disk_io_time_seconds_total[30s])
+      - record: hstream:disks:avg_r_size
+        expr: rate(node_disk_read_bytes_total[30s]) / rate(node_disk_reads_completed_total[30s])
+      - record: hstream:disks:avg_w_size
+        expr: rate(node_disk_written_bytes_total[30s]) / rate(node_disk_writes_completed_total[30s])
+      - record: hstream:disks:read_await
+        expr: rate(node_disk_read_time_seconds_total[30s]) / rate(node_disk_reads_completed_total[30s])
+      - record: hstream:disks:write_await
+        expr: rate(node_disk_write_time_seconds_total[30s]) / rate(node_disk_writes_completed_total[30s])
+
+  - name: fs
+    rules:
+      - record: hstream_store:fs:read_bytes_total
+        expr: sum(rate(container_fs_reads_bytes_total{name ="deploy_hstore"}[5m])) without (device)
+      - record: hstream_store:fs:write_bytes_total
+        expr: sum(rate(container_fs_writes_bytes_total{name ="deploy_hstore"}[5m])) without (device)

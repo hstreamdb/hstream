@@ -1,0 +1,15 @@
+groups:
+  - name: cluster_stats
+    rules:
+      - record: cluster:cpu:avg_used_seconds_in_1m
+        expr: 100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[1m]) * 100) by (instance))
+      - record: cluster:memory:used_memory_percent
+        expr: 100 - (sum(node_memory_MemAvailable_bytes) by (instance) / sum(node_memory_MemTotal_bytes)  by (instance) * 100)
+      - record: cluster:disk:disk_read_io
+        expr: sum(rate(node_disk_read_bytes_total[1m])) by (instance)
+      - record: cluster:disk:disk_write_io
+        expr: sum(rate(node_disk_written_bytes_total[1m])) by (instance)
+      - record: cluster:net:network_receive_io
+        expr: sum(rate(node_network_receive_bytes_total{device!~"lo | veth.* | docker.* | flannel.* | cali.* | cbr."}[5m])) by (instance)
+      - record: cluster:net:network_transmit_io
+        expr: sum(rate(node_network_transmit_bytes_total{device!~"lo | veth.* | docker.* | flannel.* | cali.* | cbr."}[5m])) by (instance)
