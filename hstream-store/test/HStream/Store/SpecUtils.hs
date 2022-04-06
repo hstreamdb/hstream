@@ -31,5 +31,19 @@ readPayload' logid m_lsn = do
   xs <- S.readerRead reader 10
   return $ map S.recordPayload xs
 
+readLSN :: S.DataRecordFormat a => S.C_LogID -> Maybe S.LSN -> IO [a]
+readLSN logid m_lsn = do
+  sn <- liftA2 fromMaybe (S.getTailLSN client logid) (pure m_lsn)
+  reader <- S.newLDReader client 1 Nothing
+  S.readerSetTimeout reader 5000
+  S.readerStartReading reader logid sn sn
+  go reader []
+  where
+    go reader acc = do
+      xs <- S.readerRead reader 10
+      case xs of
+        []  -> return $ map S.recordPayload acc
+        xs' -> go reader $ acc ++ xs'
+
 newRandomName :: Int -> IO CBytes
 newRandomName n = CBytes.pack . take n . randomRs ('a', 'z') <$> newStdGen

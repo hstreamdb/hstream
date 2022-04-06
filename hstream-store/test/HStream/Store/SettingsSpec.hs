@@ -27,6 +27,6 @@ base = describe "Base" $ do
     _ <- S.append client logid (payload 1024) Nothing
     _ <- S.appendBatch client logid [payload 1024] S.CompressionNone Nothing
     S.append client logid (payload 1025) Nothing `shouldThrow` S.isTOOBIG
-    S.appendBatch client logid [payload 1024, payload 1024] S.CompressionNone Nothing `shouldThrow` S.isTOOBIG
+    S.appendBatch client logid [payload 1024, payload 20, payload 20, payload 20] S.CompressionNone Nothing `shouldThrow` S.isTOOBIG
 
     S.setClientSetting client "max-payload-size" $ CBytes.buildCBytes $ B.int @Int (1024 * 1024)
