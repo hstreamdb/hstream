@@ -1,0 +1,83 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+  external_labels:
+    monitor: "hstream-monitor"
+
+rule_files:
+  - "disks.yml"
+  - "memory_cpus.yml"
+  - "net.yml"
+  - "cluster.yml"
+
+scrape_configs:
+  - job_name: "hstream-server"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["192.168.0.1:9100"]
+        labels:
+          group: "hbench-0001"
+
+      - targets: ["192.168.0.2:9100"]
+        labels:
+          group: "hbench-0002"
+
+      - targets: ["192.168.0.3:9100"]
+        labels:
+          group: "hbench-0003"
+
+  - job_name: "hstream-client"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["192.168.0.4：9100"]
+        labels:
+          group: "hclient-0001"
+
+  - job_name: "zookeeper"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["192.168.0.1:7070"]
+        labels:
+          group: "hbench-0001"
+
+      - targets: ["192.168.0.2:7070"]
+        labels:
+          group: "hbench-0002"
+
+      - targets: ["192.168.0.3:7070"]
+        labels:
+          group: "hbench-0003"
+
+  - job_name: "cadvisor"
+    static_configs:
+      - targets:  ["192.168.0.1:7000"]
+        labels:
+          group: "hbench-0001"
+
+      - targets: ["192.168.0.2:7000"]
+        labels:
+          group: "hbench-0002"
+
+      - targets: ["192.168.0.3:7000"]
+        labels:
+          group: "hbench-0003"
+
+      - targets: ["192.168.0.4:7000"]
+        labels:
+          group: "hclient-0001"
+
+  - job_name: "docker"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["192.168.0.1:9323"]
+        labels:
+          group: "hbench-0001"
+
+      - targets: ["192.168.0.2:9323"]
+        labels:
+          group: "hbench-0002"
+
+      - targets: ["192.168.0.3:9323"]
+        labels:
+          group: "hbench-0003"

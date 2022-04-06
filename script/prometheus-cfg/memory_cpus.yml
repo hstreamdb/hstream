@@ -1,0 +1,15 @@
+groups:
+  - name: memory_cpus
+    rules:
+      - record: hstream:cpu:used_percent
+        expr: sum by (group, instance, job) (100 - ((rate(node_cpu_seconds_total{mode="idle"}[30s])) * 100))
+      - record: hstream:memory:used_percent
+        expr: ((node_memory_MemTotal_bytes - node_memory_MemFree_bytes - node_memory_Buffers_bytes - node_memory_Cached_bytes) / node_memory_MemTotal_bytes) * 100
+      - record: hstream_server:memory
+        expr: container_memory_usage_bytes{name="deploy_hserver"}
+      - record: hstream_store:memory
+        expr: container_memory_usage_bytes{name="deploy_hstore"}
+      - record: hstream_store_admin:memory
+        expr: container_memory_usage_bytes{name="deploy_hstore_admin"}
+      - record: hstream_zookeeper:memory
+        expr: container_memory_usage_bytes{name="deploy_zookeeper"}
