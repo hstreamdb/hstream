@@ -69,8 +69,10 @@ data SubscribeContext = SubscribeContext
   { subSubscriptionId    :: T.Text,
     subStreamName        :: T.Text,
     subAckTimeoutSeconds :: Int32,
+    subMaxUnackedRecords :: Word32,
     subLdCkpReader       :: HS.LDSyncCkpReader,
     subLdReader          :: MVar HS.LDReader,
+    subUnackedRecords    :: TVar Word32,
     subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment        :: Assignment
