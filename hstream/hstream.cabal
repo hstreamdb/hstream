@@ -97,6 +97,7 @@ library
     , haxl
     , hstream-admin
     , hstream-common
+    , hstream-common-stats
     , hstream-connector
     , hstream-processing
     , hstream-sql
@@ -152,6 +153,7 @@ executable hstream-server
     , hstream
     , hstream-admin
     , hstream-common
+    , hstream-common-stats
     , hstream-store
     , optparse-applicative
     , proto3-suite
@@ -183,6 +185,7 @@ executable hstream-client
     , haskeline
     , hstream
     , hstream-common
+    , hstream-common-stats
     , hstream-sql
     , hstream-store
     , network
@@ -227,6 +230,7 @@ test-suite hstream-test
     , hspec
     , hstream
     , hstream-common
+    , hstream-common-stats
     , hstream-sql
     , hstream-store
     , io-streams

@@ -1,6 +1,7 @@
 packages:
   hstream
   common/hstream-common.cabal
+  common/stats/hstream-common-stats.cabal
   hstream-store
   hstream-processing
   hstream-sql

@@ -6,10 +6,6 @@
 #include <cstdint>
 #include <iostream>
 
-#include "logdevice/common/hash.h"
-
-#include "cbits/stats/Stats.h"
-
 // ----------------------------------------------------------------------------
 
 #ifdef __cplusplus
