@@ -9,8 +9,14 @@ cradle:
     - path: "common/test"
       component: "hstream-common:test:hstream-common-test"
 
-    - path: "common/bench/stats.hs"
-      component: "hstream-common:bench:common-bench-stats"
+    - path: "common/stats/."
+      component: "lib:hstream-common-stats"
+
+    - path: "common/stats/test"
+      component: "hstream-common-stats:test:hstream-common-stats-test"
+
+    - path: "common/stats/bench/stats.hs"
+      component: "hstream-common-stats:bench:common-bench-stats"
 
     - path: "external/gRPC-haskell/core/src"
       component: "lib:grpc-haskell-core"
@@ -213,17 +219,17 @@ cradle:
     - path: "external/proto3-suite/src"
       component: "lib:proto3-suite"
 
-    - path: "external/proto3-suite/tests"
-      component: "proto3-suite:test:tests"
-
     - path: "external/proto3-suite/gen"
       component: "proto3-suite:test:tests"
 
+    - path: "external/proto3-suite/tests"
+      component: "proto3-suite:test:tests"
+
     - path: "external/proto3-suite/tools/compile-proto-file/Main.hs"
-      component: "proto3-suite:exe:compile-proto-file"
+      component: "proto3-suite:exe:compile-proto-file_hstream"
 
     - path: "external/proto3-suite/tools/canonicalize-proto-file/Main.hs"
-      component: "proto3-suite:exe:canonicalize-proto-file"
+      component: "proto3-suite:exe:canonicalize-proto-file_hstream"
 
     - path: "external/proto3-wire/src"
       component: "lib:proto3-wire"
