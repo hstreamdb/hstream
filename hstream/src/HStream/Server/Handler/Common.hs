@@ -12,7 +12,7 @@ import           Control.Concurrent               (ThreadId, forkIO, killThread,
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    displayException,
-                                                   onException, throwIO, try)
+                                                   onException, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
 import qualified Data.ByteString.Char8            as C
@@ -47,7 +47,6 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
-import           HStream.Server.Exception
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen

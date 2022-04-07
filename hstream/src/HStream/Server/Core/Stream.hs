@@ -161,11 +161,10 @@ createStreamRelatedPath zk streamName = do
   -- rootPath/lock/streams/{streamName}
   -- rootPath/lock/streams/{streamName}/subscriptions
   let streamPath = P.streamRootPath <> "/" <> streamName
-      keyPath    = P.mkPartitionKeysPath streamName
       subPath    = P.mkStreamSubsPath streamName
       lockPath   = P.streamLockPath <> "/" <> streamName
       streamSubLockPath = P.mkStreamSubsLockPath streamName
-  void $ zooMulti zk $ P.createPathOp <$> [streamPath, keyPath, subPath, lockPath, streamSubLockPath]
+  void $ zooMulti zk $ P.createPathOp <$> [streamPath, subPath, lockPath, streamSubLockPath]
 
 data FoundActiveSubscription = FoundActiveSubscription
   deriving (Show)
