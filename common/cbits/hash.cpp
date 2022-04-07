@@ -1,4 +1,5 @@
 #include "hs_common.h"
+#include <logdevice/common/hash.h>
 
 using namespace facebook::logdevice::hashing;
 

@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               hstream-common
+name:               hstream-common-stats
 version:            0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
@@ -12,17 +12,15 @@ license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             Feng Lee <feng@emqx.io>
-maintainer:         lambda@emqx.io, wangbin@emqx.io, comonad@emqx.io
-tested-with:        GHC ==8.10.4
+maintainer:         lambda@emqx.io
+tested-with:        GHC ==8.10.7
 category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
   cbits/**/*.h
-  clients/**/*.h
-  gen-cpp/**/*.h
-  include/**/*.h
+  include/**/*.inc
 
 custom-setup
   setup-depends:
@@ -51,49 +49,13 @@ common shared-properties
 
 library
   import:             shared-properties
-  exposed-modules:
-    HStream.Common.ConsistentHashing
-    HStream.Common.Query
-    HStream.Foreign
-    HStream.Logger
-    HStream.Server.HStreamApi
-    HStream.Server.HStreamInternal
-    HStream.ThirdParty.Protobuf
-    HStream.Utils
-
-  other-modules:
-    Google.Protobuf.Empty
-    Google.Protobuf.Struct
-    HStream.Utils.BuildRecord
-    HStream.Utils.Common
-    HStream.Utils.Concurrent
-    HStream.Utils.Converter
-    HStream.Utils.Format
-    HStream.Utils.JSON
-    HStream.Utils.RPC
-    HStream.Utils.Table
-    HStream.Utils.TimeInterval
-
-  hs-source-dirs:     . gen-hs
-  include-dirs:       . include gen-cpp /usr/local/include
-  includes:
-    hs_common.h
-    hs_cpp_lib.h
-
-  install-includes:
-    hs_common.h
-    hs_cpp_lib.h
-
+  exposed-modules:    HStream.Stats
+  other-modules:      HStream.Stats.Internal
+  hs-source-dirs:     .
+  include-dirs:       . include /usr/local/include
   cxx-sources:
-    cbits/hash.cpp
-    cbits/hs_struct.cpp
-    cbits/hs_utils.cpp
-    cbits/query/Query.cpp
-    cbits/query/tables/AdminCommandTable.cpp
-    cbits/query.cpp
-    clients/cpp/AdminClient.cpp
-    gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
-    gen-cpp/HStream/Server/HStreamApi.pb.cc
+    cbits/stats/Stats.cpp
+    cbits/stats.cpp
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
@@ -108,16 +70,11 @@ library
     , deepseq
     , digest
     , ghc-prim              >=0.5   && <1.0
-    , grpc-haskell
-    , grpc-haskell-core
     , hashable
+    , hstream-common
     , primitive             ^>=0.7
-    , proto3-suite
-    , proto3-wire
     , random
-    , raw-strings-qq
     , scientific
-    , swagger2
     , table-layout
     , text
     , time
@@ -125,7 +82,6 @@ library
     , vector
     , Z-Data
     , Z-IO
-    , zoovisitor
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
@@ -133,10 +89,6 @@ library
   extra-libraries:
     stdc++
     atomic
-    grpc++
-    gpr
-    grpc++_reflection
-    protobuf
     folly
     logdevice
     ldquery
@@ -155,20 +107,18 @@ library
     UnliftedFFITypes
     UnliftedNewtypes
 
-test-suite hstream-common-test
+test-suite hstream-common-stats-test
   import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:
-    HStream.ConsistentHashingSpec
-    HStream.UtilsSpec
-
+  other-modules:      HStream.StatsSpec
   build-depends:
     , base                  >=4.11 && <5
     , containers            ^>=0.6
     , hspec
     , hstream-common
+    , hstream-common-stats
     , QuickCheck
     , random                ^>=1.2
     , text
@@ -190,4 +140,33 @@ test-suite hstream-common-test
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
+  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+
+benchmark common-bench-stats
+  import:             shared-properties
+  type:               exitcode-stdio-1.0
+  main-is:            stats.hs
+  hs-source-dirs:     bench
+  build-depends:
+    , base                  >=4.11 && <5
+    , bytestring            ^>=0.10
+    , criterion             ^>=1.5
+    , hstream-common
+    , hstream-common-stats
+    , Z-Data
+
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    UnliftedFFITypes
+
+  default-language:   Haskell2010
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
