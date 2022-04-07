@@ -208,6 +208,7 @@ doSubInit ctx@ServerContext{..} subId = do
       ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
+      unackedRecords <- newTVarIO 0
       consumerContexts <- newTVarIO HM.empty
       shardContexts <- newTVarIO HM.empty
       assignment <- mkEmptyAssignment
@@ -216,8 +217,10 @@ doSubInit ctx@ServerContext{..} subId = do
               { subSubscriptionId = subId,
                 subStreamName = subscriptionStreamName ,
                 subAckTimeoutSeconds = subscriptionAckTimeoutSeconds,
+                subMaxUnackedRecords = fromIntegral subscriptionMaxUnackedRecords,
                 subLdCkpReader = ldCkpReader,
                 subLdReader = ldReader,
+                subUnackedRecords = unackedRecords,
                 subConsumerContexts = consumerContexts,
                 subShardContexts = shardContexts,
                 subAssignment = assignment
@@ -323,17 +326,29 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
           addRead subLdCkpReader subAssignment
+          atomically checkUnackedRecords
           recordBatches <- readRecordBatches
           Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
-          sendReceivedRecordsVecs receivedRecordsVecs
+          successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
           Log.debug "pass sendReceivedRecordsVecs"
+          atomically $ addUnackedRecords subCtx successSendRecords
           loop
         else
           return ()
 
     checkAvailable :: TVar (HM.HashMap k v) -> STM()
     checkAvailable tv = readTVar tv >>= check . not . HM.null
+
+    checkUnackedRecords :: STM ()
+    checkUnackedRecords = do
+      unackedRecords <- readTVar subUnackedRecords
+      if unackedRecords >= subMaxUnackedRecords
+      then do
+        -- traceM $ "block on unackedrecords: " <> show unackedRecords
+        retry
+      else pure ()
+
 
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
@@ -362,7 +377,7 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
 
     readRecordBatches :: IO [S.DataRecord Bytes]
     readRecordBatches = do
-      S.ckpReaderReadAllowGap subLdCkpReader 1000 >>= \case
+      S.ckpReaderReadAllowGap subLdCkpReader 100 >>= \case
         Left gap@S.GapRecord {..} -> do
           Log.debug $ "reader meet gap: " <> Log.buildString (show gap)
           atomically $ do
@@ -401,21 +416,22 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
           receivedRecords = V.imap (\ i a -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) records
       in  (shardRecordIds, receivedRecords)
 
-    sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)] -> IO ()
-    sendReceivedRecordsVecs vecs =
-      foldM_
+    sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)] -> IO Int
+    sendReceivedRecordsVecs vecs = do
+      (_, successRecords) <- foldM
         (
-          \ skipSet (logId, batchId, shardRecordIdVec, vec)->
+          \ (skipSet, successRecords) (logId, batchId, shardRecordIdVec, vec)->
             if Set.member logId skipSet
-            then return skipSet
+            then return (skipSet, successRecords)
             else do
               ok <- sendReceivedRecords logId batchId shardRecordIdVec vec False
               if ok
-              then return skipSet
-              else return $ Set.insert logId skipSet
+              then return (skipSet, successRecords + V.length vec)
+              else return (Set.insert logId skipSet, successRecords)
         )
-        Set.empty
+        (Set.empty, 0)
         vecs
+      pure successRecords
 
     sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> V.Vector ReceivedRecord -> Bool -> IO Bool
     sendReceivedRecords logId batchId shardRecordIds records isResent = do
@@ -458,7 +474,7 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
             Right _ -> do
               Log.debug $ "send records from " <> Log.buildInt logId <> " to consumer " <> Log.buildText consumerName
                        <> ", batchId=" <> Log.buildInt batchId <> ", num of records=" <> Log.buildInt (V.length shardRecordIds)
-              -- registerResend logId batchId shardRecordIds
+              registerResend logId batchId shardRecordIds
               return True
 
     registerResend logId batchId recordIds =
@@ -676,7 +692,8 @@ doAcks
   -> SubscribeContext
   -> V.Vector RecordId
   -> IO ()
-doAcks ldclient subCtx ackRecordIds = do
+doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
+  atomically $ addUnackedRecords subCtx (- V.length ackRecordIds)
   let group = HM.toList $ groupRecordIds ackRecordIds
   forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
   where
@@ -790,6 +807,11 @@ recordIds2ShardRecordIds :: V.Vector RecordId -> V.Vector ShardRecordId
 recordIds2ShardRecordIds =
   V.map (\RecordId {..} -> ShardRecordId {sriBatchId = recordIdBatchId, sriBatchIndex = recordIdBatchIndex})
 
+addUnackedRecords :: SubscribeContext -> Int -> STM ()
+addUnackedRecords SubscribeContext {..} count = do
+  -- traceM $ "addUnackedRecords: " <> show count
+  unackedRecords <- readTVar subUnackedRecords
+  writeTVar subUnackedRecords (unackedRecords + fromIntegral count)
 --------------------------------------------------------------------------------
 -- Exception and Exception Handlers
 data SubscribeInnerError = GRPCStreamRecvError

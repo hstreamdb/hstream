@@ -148,6 +148,7 @@ message Subscription {
   string subscriptionId = 1;
   string streamName = 2;
   int32 ackTimeoutSeconds = 3;
+  int32 maxUnackedRecords = 4;
 }
 
 message DeleteSubscriptionRequest {
@@ -166,7 +167,6 @@ message StreamingFetchRequest {
   string subscriptionId = 1;
   string consumerName = 2;
   string orderingKey = 3;
-
   repeated RecordId ackIds = 4;
 }
 
