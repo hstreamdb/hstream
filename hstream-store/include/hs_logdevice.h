@@ -593,23 +593,23 @@ facebook::logdevice::Status logdevice_checkpointed_reader_read(
     logdevice_data_record_t* data_out, logdevice_gap_record_t* gap_out,
     ssize_t* len_out);
 
+void crb_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
+                           c_logid_t* logids, c_lsn_t* lsns, size_t len,
+                           HsStablePtr mvar, HsInt cap,
+                           facebook::logdevice::Status* st_out);
+
+void crb_write_last_read_checkpoints(
+    logdevice_sync_checkpointed_reader_t* reader, const c_logid_t* logids,
+    size_t len, HsStablePtr mvar, HsInt cap,
+    facebook::logdevice::Status* st_out);
+
 facebook::logdevice::Status
 sync_write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
                        c_logid_t* logids, c_lsn_t* lsns, size_t len);
 
-void write_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
-                       c_logid_t* logids, c_lsn_t* lsns, size_t len,
-                       HsStablePtr mvar, HsInt cap,
-                       facebook::logdevice::Status* st_out);
-
 facebook::logdevice::Status
 sync_write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
                                  const c_logid_t* logids, size_t len);
-
-void write_last_read_checkpoints(logdevice_sync_checkpointed_reader_t* reader,
-                                 const c_logid_t* logids, size_t len,
-                                 HsStablePtr mvar, HsInt cap,
-                                 facebook::logdevice::Status* st_out);
 
 // ----------------------------------------------------------------------------
 

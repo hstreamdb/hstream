@@ -46,6 +46,9 @@ newLDReader client max_logs m_buffer_size =
     i <- c_new_logdevice_reader clientPtr max_logs buffer_size
     newForeignPtr c_free_logdevice_reader_fun i
 
+-- NOTE: after you pass the reader and checkpointStore to this function, you
+-- must NOT do anything with the reader and checkpointStore, forget it, the
+-- ownship has "moved".
 newLDSyncCkpReader
   :: CBytes
   -> LDReader
@@ -266,7 +269,7 @@ writeCheckpoints' reader sns retries =
         va = Z.primArrayFromList $ map snd xs
     Z.withPrimArrayUnsafe ka $ \ks' len ->
       Z.withPrimArrayUnsafe va $ \vs' _ -> do
-        let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_checkpoints reader' ks' vs' (fromIntegral len)
+        let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ crb_write_checkpoints reader' ks' vs' (fromIntegral len)
         retryWhileAgain f retries
 {-# INLINABLE writeCheckpoints' #-}
 
@@ -278,9 +281,22 @@ writeLastCheckpoints' reader xs retries =
   withForeignPtr reader $ \reader' -> do
     let topicIDs = Z.primArrayFromList xs
     Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
-      let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ c_write_last_read_checkpoints reader' id' (fromIntegral len)
+      let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ crb_write_last_read_checkpoints reader' id' (fromIntegral len)
       retryWhileAgain f retries
 {-# INLINABLE writeLastCheckpoints' #-}
+
+removeCheckpointes :: HasCallStack => LDSyncCkpReader -> [C_LogID] -> IO ()
+removeCheckpointes reader xs = withForeignPtr reader $ \reader' -> do
+  let logids = Z.primArrayFromList xs
+  Z.withPrimArrayUnsafe logids $ \id' len -> do
+    let f = crb_asyncRemoveCheckpoints reader' id' (fromIntegral len)
+    (err, _ret) <- withAsyncPrimUnsafe (0 :: ErrorCode) f
+    void $ E.throwStreamErrorIfNotOK' err
+
+removeAllCheckpointes :: HasCallStack => LDSyncCkpReader -> IO ()
+removeAllCheckpointes reader = withForeignPtr reader $ \reader' -> do
+  (err, _ret) <- withAsyncPrimUnsafe (0 :: ErrorCode) (crb_asyncRemoveAllCheckpoints reader')
+  void $ E.throwStreamErrorIfNotOK' err
 
 {-# DEPRECATED writeCheckpointsSync "Don't use these, use writeCheckpoints instead" #-}
 writeCheckpointsSync :: LDSyncCkpReader
@@ -433,20 +449,36 @@ foreign import ccall safe "hs_logdevice.h logdevice_checkpointed_reader_read"
     -> Ptr Int
     -> IO ErrorCode
 
-foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
-  c_sync_write_checkpoints_safe
-    :: Ptr LogDeviceSyncCheckpointedReader
-    -> Ptr C_LogID
-    -> Ptr LSN
-    -> Word
-    -> IO ErrorCode
-
-foreign import ccall unsafe "hs_logdevice.h write_checkpoints"
-  c_write_checkpoints
+foreign import ccall unsafe "hs_logdevice.h crb_write_checkpoints"
+  crb_write_checkpoints
     :: Ptr LogDeviceSyncCheckpointedReader
     -> BA# C_LogID
     -> BA# LSN
     -> Word
+    -> StablePtr PrimMVar -> Int
+    -> MBA# Word8
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h crb_write_last_read_checkpoints"
+  crb_write_last_read_checkpoints
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> BA# C_LogID
+    -> Word
+    -> StablePtr PrimMVar -> Int
+    -> MBA# Word8
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h crb_asyncRemoveCheckpoints"
+  crb_asyncRemoveCheckpoints
+    :: Ptr LogDeviceSyncCheckpointedReader
+    -> BA# C_LogID -> Word
+    -> StablePtr PrimMVar -> Int
+    -> MBA# Word8
+    -> IO ()
+
+foreign import ccall unsafe "hs_logdevice.h crb_asyncRemoveAllCheckpoints"
+  crb_asyncRemoveAllCheckpoints
+    :: Ptr LogDeviceSyncCheckpointedReader
     -> StablePtr PrimMVar -> Int
     -> MBA# Word8
     -> IO ()
@@ -458,11 +490,10 @@ foreign import ccall safe "hs_logdevice.h sync_write_last_read_checkpoints"
     -> Word
     -> IO ErrorCode
 
-foreign import ccall unsafe "hs_logdevice.h write_last_read_checkpoints"
-  c_write_last_read_checkpoints
+foreign import ccall safe "hs_logdevice.h sync_write_checkpoints"
+  c_sync_write_checkpoints_safe
     :: Ptr LogDeviceSyncCheckpointedReader
-    -> BA# C_LogID
+    -> Ptr C_LogID
+    -> Ptr LSN
     -> Word
-    -> StablePtr PrimMVar -> Int
-    -> MBA# Word8
-    -> IO ()
+    -> IO ErrorCode
