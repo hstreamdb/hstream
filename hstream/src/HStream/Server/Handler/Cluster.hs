@@ -17,11 +17,10 @@ import           Control.Exception                (Exception (..), Handler (..),
                                                    catches, throwIO)
 import           Control.Monad                    (unless, void)
 import           Data.Functor                     ((<&>))
+import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           ZooKeeper                        (zooExists)
 
-import           Data.Text                        (Text)
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
@@ -59,26 +58,18 @@ lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStrea
   Log.info $ "receive lookupStream request: " <> Log.buildString' req
   hashRing <- readMVar loadBalanceHashRing
   let key      = alignDefault orderingKey
-      keyCB    = textToCBytes key
       storeKey = orderingKeyToStoreKey key
       theNode  = getAllocatedNode hashRing (stream <> key)
       streamCB = textToCBytes stream
       streamID = S.mkStreamId S.StreamTypeStream streamCB
-      path     = P.mkPartitionKeysPath streamCB <> "/" <> keyCB
 
   keyExist <- S.doesStreamPartitionExist scLDClient streamID storeKey
   unless keyExist $ do
-    zooExists zkHandle path >>= \case
-      Just _ -> do
-        Log.fatal $ Log.buildText $ "key " <> key <> " of stream " <> stream <> " doesn't appear in store, but find in zk"
-        throwIO $ DataInconsistency stream orderingKey
-      Nothing -> do
-        Log.debug $ "createStreamingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildText key
-        catches (void $ S.createStreamPartition scLDClient streamID storeKey)
+    Log.debug $ "createStreamingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildText key
+    catches (void $ S.createStreamPartition scLDClient streamID storeKey)
           [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream does not exist
             Handler (\(_ :: S.EXISTS)     -> pure ()) -- Both stream and partition already exist
           ]
-  P.tryCreate zkHandle path
   returnResp LookupStreamResponse {
     lookupStreamResponseStreamName  = stream
   , lookupStreamResponseOrderingKey = orderingKey
