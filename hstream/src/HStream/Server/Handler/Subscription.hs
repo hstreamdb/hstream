@@ -460,7 +460,10 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
                 then return $ Just (ccConsumerName, ccStreamSend)
                 else return Nothing
       case mres of
-        Nothing -> return False
+        Nothing -> do
+          unless isResent $
+            resetReadingOffset logId batchId
+          return False
         Just (consumerName, streamSend) ->
           withMVar streamSend (\ss -> ss (StreamingFetchResponse records)) >>= \case
             Left err -> do
