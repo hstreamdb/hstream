@@ -10,6 +10,7 @@ rule_files:
   - "memory_cpus.yml"
   - "net.yml"
   - "cluster.yml"
+  - "zk.yml"
 
 scrape_configs:
   - job_name: "hstream-server"
