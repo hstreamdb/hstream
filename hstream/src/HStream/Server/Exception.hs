@@ -64,51 +64,87 @@ type ExceptionHandle a = IO a -> IO a
 setRespType :: MkResp t a -> Handlers (StatusCode, StatusDetails) -> Handlers (ServerResponse t a)
 setRespType mkResp = map (uncurry mkResp <$>)
 
-defaultHandlers :: Handlers (StatusCode, StatusDetails)
-defaultHandlers = [
-  Handler (\(err :: ServerNotAvailable) -> do
+serverExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
+serverExceptionHandlers = [
+  Handler $ \(err :: ServerNotAvailable) -> do
     Log.warning $ Log.buildString' err
-    return (StatusUnavailable, "Server is still starting")),
-  Handler (\(err :: Store.EXISTS) -> do
+    return (StatusUnavailable, "Server is still starting")
+  ,
+  Handler $ \(err :: StreamNotExist) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAlreadyExists, "Stream already exists in store")),
-  Handler (\(err :: InvalidArgument) -> do
+    return (StatusNotFound, mkStatusDetails err)
+  ,
+  Handler $ \(err :: InvalidArgument) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInvalidArgument, mkStatusDetails err)),
-  Handler (\(err :: ObjectNotExist) -> do
+    return (StatusInvalidArgument, mkStatusDetails err)
+  ,
+  Handler $ \(err :: ObjectNotExist) -> do
     Log.warning $ Log.buildString' err
-    return (StatusNotFound, "Object not found")),
-  Handler (\(err :: Store.SomeHStoreException) -> do
+    return (StatusNotFound, "Object not found")
+  ,
+  Handler $ \(err@(SubscriptionIdNotFound subId) :: SubscriptionIdNotFound) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInternal, mkStatusDetails err)),
-  Handler (\(err :: PersistenceException) -> do
+    return (StatusNotFound, StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found"))
+  ,
+  Handler $ \(err :: PersistenceException) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAborted, mkStatusDetails err)),
-  Handler (\(err :: StreamNotExist) -> do
-    Log.warning $ Log.buildString' err
-    return (StatusNotFound, mkStatusDetails err)),
-  Handler (\(err@(SubscriptionIdNotFound subId) :: SubscriptionIdNotFound) -> do
-    Log.warning $ Log.buildString' err
-    return (StatusNotFound, StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found"))),
-  Handler (\(err :: IOException) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusInternal, mkStatusDetails err)),
-  Handler (\(err :: ZNODEEXISTS) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusAlreadyExists, "Zookeeper exception: " <> mkStatusDetails err)),
-  Handler (\(err :: ZNONODE) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusNotFound, "Zookeeper exception: " <> mkStatusDetails err)),
-  Handler (\(err :: ZooException) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusInternal, "Zookeeper exception: " <> mkStatusDetails err)),
-  Handler (\(err :: SomeException) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusUnknown, "UnKnown exception: " <> mkStatusDetails err))
+    return (StatusAborted, mkStatusDetails err)
   ]
+
+finalExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
+finalExceptionHandlers = [
+  Handler $ \(err :: IOException) -> do
+    Log.fatal $ Log.buildString' err
+    return (StatusInternal, mkStatusDetails err)
+  ,
+  Handler $ \(err :: SomeException) -> do
+    Log.fatal $ Log.buildString' err
+    return (StatusUnknown, "UnKnown exception: " <> mkStatusDetails err)
+  ]
+
+storeExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
+storeExceptionHandlers = [
+  Handler $ \(err :: Store.EXISTS) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusAlreadyExists, "Stream already exists in store")
+  ,
+  Handler $ \(err :: Store.SomeHStoreException) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusInternal, mkStatusDetails err)
+  ]
+
+zooKeeperExceptionHandler :: Handlers (StatusCode, StatusDetails)
+zooKeeperExceptionHandler = [
+  Handler $ \(e :: ZCONNECTIONLOSS    ) -> handleZKException e StatusUnavailable,
+  Handler $ \(e :: ZBADARGUMENTS      ) -> handleZKException e StatusInvalidArgument,
+  Handler $ \(e :: ZSSLCONNECTIONERROR) -> handleZKException e StatusFailedPrecondition,
+  Handler $ \(e :: ZRECONFIGINPROGRESS) -> handleZKException e StatusUnavailable,
+  Handler $ \(e :: ZINVALIDSTATE      ) -> handleZKException e StatusUnavailable,
+  Handler $ \(e :: ZOPERATIONTIMEOUT  ) -> handleZKException e StatusAborted,
+  Handler $ \(e :: ZDATAINCONSISTENCY ) -> handleZKException e StatusAborted,
+  Handler $ \(e :: ZRUNTIMEINCONSISTENCY) -> handleZKException e StatusAborted,
+  Handler $ \(e :: ZSYSTEMERROR       ) -> handleZKException e StatusInternal,
+  Handler $ \(e :: ZMARSHALLINGERROR  ) -> handleZKException e StatusUnknown,
+  Handler $ \(e :: ZUNIMPLEMENTED     ) -> handleZKException e StatusUnknown,
+  Handler $ \(e :: ZNEWCONFIGNOQUORUM ) -> handleZKException e StatusUnknown,
+  Handler $ \(e :: ZNODEEXISTS        ) -> handleZKException e StatusAlreadyExists,
+  Handler $ \(e :: ZNONODE            ) -> handleZKException e StatusNotFound,
+  Handler $ \(e :: ZooException       ) -> handleZKException e StatusInternal
+  ]
+
+defaultHandlers :: Handlers (StatusCode, StatusDetails)
+defaultHandlers = serverExceptionHandlers
+               ++ storeExceptionHandlers
+               ++ zooKeeperExceptionHandler
+               ++ finalExceptionHandlers
 
 mkExceptionHandle :: Handlers (ServerResponse t a) -> ExceptionHandle (ServerResponse t a)
 mkExceptionHandle = flip catches
 
 mkStatusDetails :: Exception a => a -> StatusDetails
 mkStatusDetails = StatusDetails . BS.pack . displayException
+
+handleZKException :: Exception a => a -> StatusCode -> IO (StatusCode, StatusDetails)
+handleZKException e status = do
+  Log.fatal $ Log.buildString' e
+  return (status, "Zookeeper exception: " <> mkStatusDetails e)

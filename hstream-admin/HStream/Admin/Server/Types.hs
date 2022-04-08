@@ -167,8 +167,10 @@ subscriptionParser = API.Subscription
                  <> O.help "subscription id" )
   <*> O.strOption ( O.long "stream" <> O.metavar "StreamName"
                  <> O.help "the stream associated with the subscription" )
-  <*> O.option O.auto ( O.long "timeout" <> O.metavar "INT" <> O.value 60
+  <*> O.option O.auto ( O.long "ackTimeout" <> O.metavar "INT" <> O.value 60
                      <> O.help "subscription timeout in seconds")
+  <*> O.option O.auto ( O.long "maxUnackedRecords" <> O.metavar "INT" <> O.value 10000
+                     <> O.help "maximum count of unacked records")
 
 -------------------------------------------------------------------------------
 
