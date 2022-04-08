@@ -5,7 +5,7 @@ groups:
         expr: sum(rate(container_network_receive_bytes_total{name ="deploy_hserver"}[5m])) without (interface)
       - record: hstream_server:total_transmit_bytes_5m
         expr: sum(rate(container_network_transmit_bytes_total{name ="deploy_hserver"}[5m])) without (interface)
-      - record: hstream_server:total_received_bytes_5m
+      - record: hstream_store:total_received_bytes_5m
         expr: sum(rate(container_network_receive_bytes_total{name ="deploy_hstore"}[5m])) without (interface)
-      - record: hstream_server:total_transmit_bytes_5m
+      - record: hstream_store:total_transmit_bytes_5m
         expr: sum(rate(container_network_transmit_bytes_total{name ="deploy_hstore"}[5m])) without (interface)

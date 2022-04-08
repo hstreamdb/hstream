@@ -1,0 +1,126 @@
+groups:
+  - name: zookeeper_common
+    rules:
+      - record: zk_approximate_data_size
+        expr: approximate_data_size
+      - record: zk_avg_latency
+        expr: avg_latency
+      - record: zk_znode_count
+        expr: znode_count
+      - record: zk_ephemerals_count
+        expr: ephemerals_count
+      - record: zk_open_file_descriptor_count
+        expr: open_file_descriptor_count
+      - record: zk_max_latency
+        expr: max_latency
+      - record: zk_min_latency
+        expr: min_latency
+      - record: zk_avg_latency
+        expr: avg_latency
+      - record: zk_num_alive_connections
+        expr: num_alive_connections
+      - record: zk_outstanding_requests
+        expr: outstanding_requests
+      - record: zk_packets_received
+        expr: packets_received
+      - record: zk_packets_sent
+        expr: packets_sent
+      - record: zk_synced_followers
+        expr: synced_followers
+      - record: zk_pending_syncs
+        expr: pending_syncs
+      - record: zk_unrecoverable_error_count
+        expr: unrecoverable_error_count
+      - record: zk_uptime_ms
+        expr: uptime
+      - record: zk_commit_count
+        expr: commit_count
+      - record: zk_outstanding_requests
+        expr: outstanding_requests
+      - record: zk_ack_latency_sum_rate_5min
+        expr: rate(ack_latency_sum[5m])
+
+  - name: zookeeper_watcher
+    rules:
+      - record: zk_watch_count
+        expr: watch_count
+      - record: zk_node_changed_watch_count
+        expr: node_changed_watch_count_sum
+      - record: zk_node_children_watch_count
+        expr: node_children_watch_count_sum
+      - record: zk_node_deleted_watch_count
+        expr: node_deleted_watch_count_sum
+      - record: zk_node_created_watch_count
+        expr: node_created_watch_count_sum
+      - record: zk_dead_watchers_cleared
+        expr: dead_watchers_cleared
+
+  - name: zookeeper_quorum
+    rules:
+      - record: zk_leader_uptime
+        expr: leader_uptime
+      - record: zk_leaners
+        expr: leaners
+      - record: zk_quorum_size
+        expr: quorum_size
+      - record: zk_election_time_ms
+        expr: election_time
+      - record: zk_election_time_count
+        expr: election_time_count
+      - record: zk_election_time_sum_ms
+        expr: election_time_sum
+      - record: zk_election_avg_time_ms
+        expr: election_time_sum/election_time_count
+      - record: zk_quit_leading_due_to_disloyal_voter
+        expr: quit_leading_due_to_disloyal_voter
+      - record: zk_commit_process_time_sum_rate_5min
+        expr: rate(commit_process_time_sum[5m])
+      - record: zk_read_commitproc_time_rate_5min
+        expr: rate(read_commitproc_time_ms_sum[5m])
+      - record: zk_write_commitproc_time_rate_5min
+        expr: rate(write_commitproc_time_ms_sum[5m])
+      - record: zk_quorum_ack_latency_rate_5min
+        expr: rate(quorum_ack_latency_sum[5m])
+
+  - name: zookeeper_read_write
+    rules:
+      - record: zk_write_per_namespace_bytes
+        expr: write_per_namespace{key!="logdevice.conf"}
+      - record: zk_read_per_namespace_bytes
+        expr: read_per_namespace{key!="logdevice.conf"}
+      - record: zk_fsynctime_ms
+        expr: fsynctime
+      - record: zk_fsynctime_sum_ms
+        expr: fsynctime_sum
+      - record: zk_fsynctime_avg_ms
+        expr: fsynctime_sum/fsynctime_count
+      - record: zk_fsynctime_rate_1min
+        expr: irate(fsynctime_sum[1m])
+      - record: zk_readlatency_sum_ms
+        expr: readlatency_sum
+      - record: zk_readlatency_sum_rate_1min
+        expr: rate(readlatency_sum[1m])
+      - record: zk_updatelatency_sum_ms
+        expr: updatelatency_sum
+      - record: zk_updatelatency_sum_rate_1min
+        expr: rate(updatelatency_sum[1m])
+
+  - name: zookeeper_snapshot_and_txn
+    rules:
+      - record: zk_snap_count
+        expr: snap_count
+      - record: zk_snapshottime_sum_ms
+        expr: snapshottime_sum
+      - record: zk_snapshottime_count
+        expr: snapshottime_count
+      - record: zk_snapshottime_avg_ms
+        expr: snapshottime_sum/snapshottime_count
+
+  - name: zookeeper_jvm
+    rules:
+      - record: zk_jvm_threads_current
+        expr: jvm_threads_current
+      - record: zk_jvm_gc_collection_seconds_sum
+        expr: jvm_gc_collection_seconds_sum
+      - record: zk_jvm_memory_pool_bytes_used
+        expr: jvm_memory_pool_bytes_used
