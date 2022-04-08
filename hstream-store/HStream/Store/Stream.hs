@@ -102,8 +102,6 @@ module HStream.Store.Stream
   , newLDFileCkpReader
   , newLDRsmCkpReader
   , newLDZkCkpReader
-  , LD.writeCheckpoints
-  , LD.writeLastCheckpoints
   , LD.ckpReaderStartReading
   , LD.startReadingFromCheckpoint
   , LD.startReadingFromCheckpointOrStart
@@ -114,6 +112,10 @@ module HStream.Store.Stream
   , LD.ckpReaderSetIncludeByteOffset
   , LD.ckpReaderSetWaitOnlyWhenNoData
   , LD.ckpReaderStopReading
+  , LD.writeCheckpoints
+  , LD.writeLastCheckpoints
+  , LD.removeCheckpointes
+  , LD.removeAllCheckpointes
 
     -- * Internal helpers
   , getStreamDirPath
@@ -516,6 +518,7 @@ newLDFileCkpReader
   -- to the value in settings if it is Nothing.
   -> Word32
   -- ^ The number of retries when synchronously writing checkpoints.
+  -- FIXME: This option has no means currently, user can set retries while writing.
   -> IO FFI.LDSyncCkpReader
 newLDFileCkpReader client name root_path max_logs m_buffer_size retries = do
   store <- LD.newFileBasedCheckpointStore root_path
@@ -538,6 +541,7 @@ newLDRsmCkpReader
   -- to the value in settings if it is Nothing.
   -> Word32
   -- ^ The number of retries when synchronously writing checkpoints.
+  -- FIXME: This option has no means currently, user can set retries while writing.
   -> IO FFI.LDSyncCkpReader
 newLDRsmCkpReader client name logid timeout max_logs m_buffer_size retries = do
   store <- LD.newRSMBasedCheckpointStore client logid timeout
@@ -556,6 +560,7 @@ newLDZkCkpReader
   -- to the value in settings if it is Nothing.
   -> Word32
   -- ^ The number of retries when synchronously writing checkpoints.
+  -- FIXME: This option has no means currently, user can set retries while writing.
   -> IO FFI.LDSyncCkpReader
 newLDZkCkpReader client name max_logs m_buffer_size retries = do
   store <- LD.newZookeeperBasedCheckpointStore client

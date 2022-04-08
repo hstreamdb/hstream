@@ -34,6 +34,14 @@ readerSpec readerName logid new_reader new_ckp_store = do
     S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
 
+  it "read a removed checkpoint should throw NOTFOUND" $ do
+    _ <- S.append client logid "hello" Nothing
+    until_lsn <- S.getTailLSN client logid
+    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
+    S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
+    S.removeCheckpointes ckpReader [logid]
+    S.ckpStoreGetLSN checkpointStore readerName logid `shouldThrow` S.isNOTFOUND
+
   it "read with checkpoint" $ do
     start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing
     _ <- S.append client logid "2" Nothing
