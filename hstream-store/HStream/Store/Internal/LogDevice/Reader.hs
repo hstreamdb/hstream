@@ -285,16 +285,16 @@ writeLastCheckpoints' reader xs retries =
       retryWhileAgain f retries
 {-# INLINABLE writeLastCheckpoints' #-}
 
-removeCheckpointes :: HasCallStack => LDSyncCkpReader -> [C_LogID] -> IO ()
-removeCheckpointes reader xs = withForeignPtr reader $ \reader' -> do
+removeCheckpoints :: HasCallStack => LDSyncCkpReader -> [C_LogID] -> IO ()
+removeCheckpoints reader xs = withForeignPtr reader $ \reader' -> do
   let logids = Z.primArrayFromList xs
   Z.withPrimArrayUnsafe logids $ \id' len -> do
     let f = crb_asyncRemoveCheckpoints reader' id' (fromIntegral len)
     (err, _ret) <- withAsyncPrimUnsafe (0 :: ErrorCode) f
     void $ E.throwStreamErrorIfNotOK' err
 
-removeAllCheckpointes :: HasCallStack => LDSyncCkpReader -> IO ()
-removeAllCheckpointes reader = withForeignPtr reader $ \reader' -> do
+removeAllCheckpoints :: HasCallStack => LDSyncCkpReader -> IO ()
+removeAllCheckpoints reader = withForeignPtr reader $ \reader' -> do
   (err, _ret) <- withAsyncPrimUnsafe (0 :: ErrorCode) (crb_asyncRemoveAllCheckpoints reader')
   void $ E.throwStreamErrorIfNotOK' err
 

@@ -117,8 +117,8 @@ module HStream.Store.Stream
   , LD.ckpReaderStopReading
   , LD.writeCheckpoints
   , LD.writeLastCheckpoints
-  , LD.removeCheckpointes
-  , LD.removeAllCheckpointes
+  , LD.removeCheckpoints
+  , LD.removeAllCheckpoints
 
     -- * Internal helpers
   , getStreamDirPath
