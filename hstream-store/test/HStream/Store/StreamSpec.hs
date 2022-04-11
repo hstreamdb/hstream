@@ -9,6 +9,7 @@ import           Data.Int
 import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
+import           Z.Data.CBytes                    (CBytes)
 import           Z.Data.Vector.Base               (Bytes)
 
 import qualified HStream.Store                    as S
@@ -18,6 +19,7 @@ import           HStream.Store.SpecUtils
 spec :: Spec
 spec = describe "StreamSpec" $ do
   base
+  archiveStreamSpec
   writeReadSpec
 
 base :: Spec
@@ -84,14 +86,6 @@ base = describe "BaseSpec" $ do
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
     logpath `shouldBe` logpath'
 
-  it "archive stream" $ do
-    S.archiveStream client streamId
-    ss <- S.findStreams client S.StreamTypeStream
-    ss `shouldNotContain` [streamId]
-    S.unArchiveStream client streamId
-    ss' <- S.findStreams client S.StreamTypeStream
-    ss' `shouldContain` [streamId]
-
   it "rename stream" $ do
     print $ "Rename stream " <> S.showStreamName streamId <> " to " <> S.showStreamName newStreamId
     S.renameStream' client streamId (S.streamName newStreamId)
@@ -136,6 +130,28 @@ base = describe "BaseSpec" $ do
     S.removeStream client newStreamId
     S.doesStreamExist client newStreamId `shouldReturn` False
 
+archiveStreamSpec :: Spec
+archiveStreamSpec = describe "ArchiveStreamSpec" $ do
+  streamId <- S.mkStreamId S.StreamTypeStream <$> runIO (newRandomName 5)
+
+  it "archive stream" $ do
+    let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
+    S.createStream client streamId attrs
+
+    archived <- S.archiveStream client streamId
+    ss <- S.findStreams client S.StreamTypeStream
+    ss `shouldNotContain` [streamId]
+    S.doesArchivedStreamExist client archived `shouldReturn` True
+
+    S.unArchiveStream client archived (S.streamName streamId)
+    ss' <- S.findStreams client S.StreamTypeStream
+    ss' `shouldContain` [streamId]
+
+    archived' <- S.archiveStream client streamId
+    S.doesArchivedStreamExist client archived `shouldReturn` True
+    S.removeArchivedStream client archived'
+    S.doesArchivedStreamExist client archived `shouldReturn` False
+
 writeReadSpec :: Spec
 writeReadSpec = describe "WriteReadSpec" $ do
   it "simple write read" $ do
@@ -169,6 +185,6 @@ writeReadSpec = describe "WriteReadSpec" $ do
     [record] <- S.readerRead reader 1
     S.recordPayload record `shouldBe` ("hello" :: Bytes)
 
-    S.archiveStream client streamid
+    _ <- S.archiveStream client streamid
     res' <- S.readerRead reader 2
     map S.recordPayload res' `shouldBe` ["hello" :: Bytes, "hello"]
