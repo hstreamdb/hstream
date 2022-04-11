@@ -59,8 +59,7 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
                  then do
                    writeTVar stateVar SubscribeStateStopping
                    pure (CanDelete, Just (subCtx, stateVar))
-                 else
-                   pure (CanNotDelete, Just (subCtx, stateVar))
+                 else pure (CanNotDelete, Just (subCtx, stateVar))
             else do
               writeTVar stateVar SubscribeStateStopping
               pure (CanDelete, Just (subCtx, stateVar))
@@ -68,7 +67,7 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
           SubscribeStateStopped  -> pure (Signaled, Just (subCtx, stateVar))
   Log.debug $ "Subscription deletion has state " <> Log.buildString' status
   case status of
-    NotExist  ->  doRemove
+    NotExist  -> doRemove
     CanDelete -> do
       let (subCtx@SubscribeContext{..}, subState) = fromJust msub
       atomically $ waitingStopped subCtx subState
@@ -97,7 +96,7 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
           case subState of
             SubscribeStateNew -> retry
             _ -> do
-              subCtx <- takeTMVar scnwContext
+              subCtx <- readTMVar scnwContext
               return $ Just (subCtx, scnwState)
 
     hasValidConsumers :: SubscribeContext -> STM Bool

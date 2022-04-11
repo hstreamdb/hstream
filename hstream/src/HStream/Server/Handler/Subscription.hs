@@ -328,10 +328,10 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
           addRead subLdCkpReader subAssignment
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
-          Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
+          -- Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
           successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-          Log.debug "pass sendReceivedRecordsVecs"
+          -- Log.debug "pass sendReceivedRecordsVecs"
           atomically $ addUnackedRecords subCtx successSendRecords
           loop
         else
