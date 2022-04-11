@@ -93,7 +93,9 @@ deleteStream sc@ServerContext{..} API.DeleteStreamRequest{..} = do
       if isActive
         then do
           unless deleteStreamRequestForce $ throwIO FoundActiveSubscription
-          S.archiveStream scLDClient streamId
+          -- TODO: delete the archived stream when the stream is no longer needed
+          _archivedStream <- S.archiveStream scLDClient streamId
+          pure ()
         else storeDelete
       cleanZkNode
     storeDelete  = void $ deleteStoreStream sc streamId deleteStreamRequestIgnoreNonExist

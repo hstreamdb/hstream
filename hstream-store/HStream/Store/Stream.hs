@@ -7,6 +7,7 @@ module HStream.Store.Stream
   , updateGloStreamSettings
   , StreamType (..)
   , StreamId (streamType, streamName)
+  , ArchivedStream
   , showStreamName
   , mkStreamId
   , mkStreamIdFromFullLogDir
@@ -18,7 +19,9 @@ module HStream.Store.Stream
   , renameStream
   , renameStream'
   , archiveStream
+  , doesArchivedStreamExist
   , unArchiveStream
+  , removeArchivedStream
   , removeStream
   , findStreams
   , doesStreamExist
@@ -147,6 +150,7 @@ import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
+import qualified Z.Data.Builder                   as ZB
 import qualified Z.Data.CBytes                    as CBytes
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.Data.Text                      as ZT
@@ -207,10 +211,31 @@ updateGloLogPathCache streamid key logid =
       Nothing -> Cache.insert c streamid (Map.singleton key logid) >> pure c
       Just mp -> Cache.insert c streamid (Map.insert key logid mp) >> pure c
 
+newtype ArchivedStream = ArchivedStream CBytes
+
+isArchiveStreamName :: StreamName -> IO Bool
+isArchiveStreamName name = do
+  prefix <- CBytes.toBytes . streamArchivePrefix <$> readIORef gloStreamSettings
+  let name' = CBytes.toBytes name
+  pure $ prefix `ZV.isPrefixOf` name'
+
+-- ArchivedStreamName format: "prefix + name + suffix"
+toArchivedStreamName :: HasCallStack => FFI.LDClient -> StreamId -> IO CBytes
+toArchivedStreamName client streamid@StreamId{..} = do
+  -- we use default loggroup's logid as the suffix
+  logid <- getUnderlyingLogId client streamid Nothing
+  let suffix = CBytes.buildCBytes $ ZB.int logid
+  already <- isArchiveStreamName streamName
+  if already
+     then pure $ streamName <> suffix
+     else do prefix <- streamArchivePrefix <$> readIORef gloStreamSettings
+             pure $ prefix <> streamName <> suffix
+
 -------------------------------------------------------------------------------
 
 data StreamType = StreamTypeStream | StreamTypeView | StreamTypeTemp
   deriving (Show, Eq, Generic)
+
 instance Hashable StreamType
 
 type StreamName = CBytes
@@ -221,21 +246,8 @@ data StreamId = StreamId
   -- ^ A stream name is an identifier of the stream.
   -- The first character of the StreamName should not be '/'.
   } deriving (Show, Eq, Generic)
+
 instance Hashable StreamId
-
-isArchiveStreamName :: StreamName -> IO Bool
-isArchiveStreamName name = do
-  prefix <- CBytes.toBytes . streamArchivePrefix <$> readIORef gloStreamSettings
-  let name' = CBytes.toBytes name
-  pure $ prefix `ZV.isPrefixOf` name'
-
-toArchivedStreamName :: StreamName -> IO StreamName
-toArchivedStreamName name = do
-  already <- isArchiveStreamName name
-  if already
-     then pure name
-     else do prefix <- streamArchivePrefix <$> readIORef gloStreamSettings
-             pure $ prefix <> name
 
 -- TODO: validation, a stream name should not:
 -- 1. Contains '/'
@@ -321,17 +333,26 @@ _renameStrem_ client from to = do
 {-# INLINABLE _renameStrem_ #-}
 
 -- | Archive a stream, then you won't find it by 'findStreams'.
+-- Return the archived stream, so that you can unarchive or remove it.
 --
 -- Note that all operations depend on logid will work as expected.
-archiveStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
-archiveStream client StreamId{..} = do
-  archiveStreamName <- toArchivedStreamName streamName
-  renameStream client streamType streamName archiveStreamName
+archiveStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ArchivedStream
+archiveStream client streamid = do
+  archiveStreamName <- toArchivedStreamName client streamid
+  renameStream' client streamid archiveStreamName
+  return $ ArchivedStream archiveStreamName
 
-unArchiveStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
-unArchiveStream client StreamId{..} = do
-  archivedStreamName <- toArchivedStreamName streamName
-  renameStream client streamType archivedStreamName streamName
+doesArchivedStreamExist :: HasCallStack => FFI.LDClient -> ArchivedStream -> IO Bool
+doesArchivedStreamExist client (ArchivedStream name) =
+  doesStreamExist client $ StreamId StreamTypeStream name
+
+unArchiveStream
+  :: HasCallStack => FFI.LDClient -> ArchivedStream -> StreamName -> IO ()
+unArchiveStream client (ArchivedStream name) = renameStream client StreamTypeStream name
+
+removeArchivedStream :: HasCallStack => FFI.LDClient -> ArchivedStream -> IO ()
+removeArchivedStream client (ArchivedStream name) =
+  removeStream client $ StreamId StreamTypeStream name
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
 removeStream client streamid = modifyMVar_ gloLogPathCache $ \cache -> do
