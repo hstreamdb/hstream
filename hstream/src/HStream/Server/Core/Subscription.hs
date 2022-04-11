@@ -70,10 +70,11 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
   case status of
     NotExist  ->  doRemove
     CanDelete -> do
-      let (subCtx, subState) = fromJust msub
+      let (subCtx@SubscribeContext{..}, subState) = fromJust msub
       atomically $ waitingStopped subCtx subState
       Log.info "Subscription stopped, start deleting "
       atomically removeSubFromCtx
+      S.removeAllCheckpoints subLdCkpReader
       doRemove
     CanNotDelete -> throwIO FoundActiveConsumers
     Signaled     -> throwIO SubscriptionIsDeleting
