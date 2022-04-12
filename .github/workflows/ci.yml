@@ -176,7 +176,7 @@ jobs:
         run: |
           cd integration-tests
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
-          ./gradlew :app:test --info --fail-fast --tests "io.hstream.testing.BasicTest"
+          ./gradlew test --info --fail-fast -Dtag='basicTest'
 
       - uses: actions/upload-artifact@v2
         if: ${{ success() }} || ${{ failure() }}
