@@ -20,6 +20,7 @@ bug-reports:        https://github.com/hstreamdb/hstream/issues
 build-type:         Custom
 extra-source-files:
   cbits/**/*.h
+  include/*.h
   include/**/*.inc
 
 custom-setup
@@ -55,7 +56,7 @@ library
   include-dirs:       . include /usr/local/include
   cxx-sources:
     cbits/stats/Stats.cpp
-    cbits/stats.cpp
+    cbits/hs_stats.cpp
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:

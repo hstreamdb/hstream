@@ -63,7 +63,6 @@ void MultiLevelTimeSeriesWrapper<VT, CT>::addValue(const ValueType& n) {
 using PerStreamTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
 
 struct PerStreamStats {
-
 #define STAT_DEFINE(name, _) StatsCounter name{};
 #include "per_stream_stats.inc"
   void aggregate(PerStreamStats const& other, StatsAggOptional agg_override);
