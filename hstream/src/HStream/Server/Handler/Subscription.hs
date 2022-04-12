@@ -25,12 +25,15 @@ import           Control.Concurrent.STM
 import           Control.Exception                (Exception, Handler (Handler),
                                                    catch, throwIO)
 import           Control.Monad                    (foldM, foldM_, forM_, unless,
+                                                   forever,
                                                    when)
 import qualified Data.ByteString                  as B
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
+import           Data.IORef                       (modifyIORef', newIORef,
+                                                   readIORef, writeIORef)
 import           Data.Maybe                       (fromJust, isNothing)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
@@ -212,6 +215,8 @@ doSubInit ctx@ServerContext{..} subId = do
       consumerContexts <- newTVarIO HM.empty
       shardContexts <- newTVarIO HM.empty
       assignment <- mkEmptyAssignment
+      curTime <- newTVarIO 0
+      checkList <- newTVarIO []
       let emptySubCtx =
             SubscribeContext
               { subSubscriptionId = subId,
@@ -223,7 +228,9 @@ doSubInit ctx@ServerContext{..} subId = do
                 subUnackedRecords = unackedRecords,
                 subConsumerContexts = consumerContexts,
                 subShardContexts = shardContexts,
-                subAssignment = assignment
+                subAssignment = assignment,
+                subCurrentTime = curTime,
+                subWaitingCheckedRecordIds = checkList
               }
       shards <- getShards ctx subscriptionStreamName
       Log.debug $ "get shards: " <> Log.buildString (show shards)
@@ -307,9 +314,10 @@ sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ctx subState subCtx@SubscribeContext {..} = do
   Log.debug "enter sendRecords"
   threadDelay 10000
-  loop
+  isFirstSendRef <- newIORef True
+  loop isFirstSendRef
   where
-    loop = do
+    loop isFirstSendRef = do
       Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
@@ -330,12 +338,32 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
           recordBatches <- readRecordBatches
           Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
+          isFirstSend <- readIORef isFirstSendRef
+          if isFirstSend
+          then do
+            writeIORef isFirstSendRef False
+            void $ forkIO $ forever $ do
+              threadDelay (100 * 1000)
+              updateClockAndDoResend
+          else pure ()
           successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
           Log.debug "pass sendReceivedRecordsVecs"
           atomically $ addUnackedRecords subCtx successSendRecords
-          loop
+          loop isFirstSendRef
         else
           return ()
+
+    updateClockAndDoResend :: IO ()
+    updateClockAndDoResend = do
+      doneList <- atomically $ do
+        ct <- readTVar subCurrentTime
+        let newTime = ct + 1
+        checkList <- readTVar subWaitingCheckedRecordIds
+        let (doneList, leftList) = span ( \CheckedRecordIds {..} -> crDeadline <= newTime) checkList
+        writeTVar subCurrentTime newTime
+        writeTVar subWaitingCheckedRecordIds leftList
+        return doneList
+      forM_ doneList (\CheckedRecordIds {..} -> resendTimeoutRecords crLogId crBatchId crRecordIds)
 
     checkAvailable :: TVar (HM.HashMap k v) -> STM()
     checkAvailable tv = readTVar tv >>= check . not . HM.null
@@ -480,10 +508,17 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
               registerResend logId batchId shardRecordIds
               return True
 
-    registerResend logId batchId recordIds =
-      void $ registerLowResTimer
-           (fromIntegral (subAckTimeoutSeconds * 10))
-           (void $ forkIO $ resendTimeoutRecords logId batchId recordIds)
+    registerResend logId batchId recordIds = atomically $ do
+      currentTime <- readTVar subCurrentTime
+      checkList <- readTVar subWaitingCheckedRecordIds
+      let checkedRecordIds = CheckedRecordIds {
+                              crDeadline =  currentTime + fromIntegral (subAckTimeoutSeconds * 10),
+                              crLogId = logId,
+                              crBatchId = batchId,
+                              crRecordIds = recordIds
+                            }
+      let newCheckList = checkList ++ [checkedRecordIds]
+      writeTVar subWaitingCheckedRecordIds newCheckList
 
     resendTimeoutRecords logId batchId recordIds = do
       resendRecordIds <- atomically $ do

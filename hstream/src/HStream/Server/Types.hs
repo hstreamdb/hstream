@@ -9,6 +9,7 @@ import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Z.Data.CBytes                    as CB
@@ -75,8 +76,17 @@ data SubscribeContext = SubscribeContext
     subUnackedRecords    :: TVar Word32,
     subConsumerContexts  :: TVar (HM.HashMap ConsumerName ConsumerContext),
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
-    subAssignment        :: Assignment
+    subAssignment        :: Assignment,
+    subCurrentTime ::  TVar Word64,
+    subWaitingCheckedRecordIds :: TVar [CheckedRecordIds]
   }
+
+data CheckedRecordIds = CheckedRecordIds {
+  crDeadline  :: Word64,
+  crLogId     :: HS.C_LogID,
+  crBatchId   :: Word64,
+  crRecordIds :: V.Vector ShardRecordId
+}
 
 data ConsumerContext = ConsumerContext
   { ccConsumerName :: ConsumerName,
