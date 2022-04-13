@@ -53,11 +53,30 @@ std::string PerStreamStats::toJson() {
   return folly::toJson(this->toJsonObj());
 }
 
+void PerSubscriptionStats::aggregate(PerSubscriptionStats const& other,
+                                     StatsAggOptional agg_override) {
+#define STAT_DEFINE(name, agg)                                                 \
+  aggregateStat(StatsAgg::agg, agg_override, name, other.name);
+#include "per_subscription_stats.inc"
+}
+
+folly::dynamic PerSubscriptionStats::toJsonObj() {
+  folly::dynamic map = folly::dynamic::object;
+#define STAT_DEFINE(name, _)                                                   \
+  /* we know that all names are unique */                                      \
+  map[#name] = name.load();
+#include "per_subscription_stats.inc"
+  return map;
+}
+
+std::string PerSubscriptionStats::toJson() {
+  return folly::toJson(this->toJsonObj());
+}
+
 // ----------------------------------------------------------------------------
-// All Stats
 
 PerStreamTimeSeries::Duration
-StatsParams::maxInterval(std::string string_name) {
+StatsParams::maxStreamStatsInterval(std::string string_name) {
 #define TIME_SERIES_DEFINE(name, strings, _, __)                               \
   for (const std::string& str : strings) {                                     \
     if (str == string_name) {                                                  \
@@ -68,6 +87,22 @@ StatsParams::maxInterval(std::string string_name) {
   ld_check(false);
   return PerStreamTimeSeries::Duration{};
 }
+
+PerStreamTimeSeries::Duration
+StatsParams::maxSubscribptionStatsInterval(std::string string_name) {
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == string_name) {                                                  \
+      return this->time_intervals_##name.back();                               \
+    }                                                                          \
+  }
+#include "per_subscription_time_series.inc"
+  ld_check(false);
+  return PerStreamTimeSeries::Duration{};
+}
+
+// ----------------------------------------------------------------------------
+// All Stats
 
 Stats::Stats(const FastUpdateableSharedPtr<StatsParams>* params)
     : params(params) {}
@@ -98,43 +133,53 @@ void Stats::aggregateForDestroyedThread(Stats const& other) {
 void Stats::aggregateCompoundStats(Stats const& other,
                                    StatsAggOptional agg_override,
                                    bool destroyed_threads) {
+#define _PER_STATS(x, ty)                                                      \
+  this->x.withWLock([&agg_override, other_stats = other.synchronizedCopy(      \
+                                        &Stats::x)](auto& this_stats) {        \
+    for (const auto& kv : other_stats) {                                       \
+      ld_check(kv.second != nullptr);                                          \
+      auto& stats_ptr = this_stats[kv.first];                                  \
+      if (stats_ptr == nullptr) {                                              \
+        stats_ptr = std::make_shared<ty>();                                    \
+      }                                                                        \
+      stats_ptr->aggregate(*kv.second, agg_override);                          \
+    }                                                                          \
+  });
 
   // Aggregate per stream stats. Use synchronizedCopy() to copy other's
   // per_stream_stats into temporary vector, to avoid holding a read lock on it
   // while we aggregate.
-  this->per_stream_stats.withWLock(
-      [&agg_override, other_per_stream_stats_entries =
-                          other.synchronizedCopy(&Stats::per_stream_stats)](
-          auto& this_per_stream_stats) {
-        for (const auto& kv : other_per_stream_stats_entries) {
-          ld_check(kv.second != nullptr);
-          auto& stats_ptr = this_per_stream_stats[kv.first];
-          if (stats_ptr == nullptr) {
-            stats_ptr = std::make_shared<PerStreamStats>();
-          }
-          stats_ptr->aggregate(*kv.second, agg_override);
-        }
-      });
+  _PER_STATS(per_stream_stats, PerStreamStats)
+  _PER_STATS(per_subscription_stats, PerSubscriptionStats)
+#undef _PER_STATS
 }
 
 void Stats::deriveStats() {}
 
-void Stats::reset() { per_stream_stats.wlock()->clear(); }
+void Stats::reset() {
+  per_stream_stats.wlock()->clear();
+  per_subscription_stats.wlock()->clear();
+}
 
 folly::dynamic Stats::toJsonObj() {
   folly::dynamic result = folly::dynamic::object;
 
-  // per_stream_stats
-  folly::dynamic per_stream_stats_obj = folly::dynamic::object;
-  auto per_stream_stats = this->synchronizedCopy(&Stats::per_stream_stats);
-  for (const auto& s : per_stream_stats) {
-    ld_check(s.second != nullptr);
-    per_stream_stats_obj[s.first] = s.second->toJsonObj();
-  }
-  result["per_stream_stats"] = per_stream_stats_obj;
+#define _PER_TO_JSON(x)                                                        \
+  folly::dynamic x##_obj = folly::dynamic::object;                             \
+  auto x##_stats = this->synchronizedCopy(&Stats::x);                          \
+  for (const auto& s : x##_stats) {                                            \
+    ld_check(s.second != nullptr);                                             \
+    x##_obj[s.first] = s.second->toJsonObj();                                  \
+  }                                                                            \
+  result[#x] = x##_obj;
+
+  _PER_TO_JSON(per_stream_stats)
+  _PER_TO_JSON(per_subscription_stats)
+#undef _PER_TO_JSON
 
   return result;
 }
+
 std::string Stats::toJson() { return folly::toJson(this->toJsonObj()); }
 
 // ----------------------------------------------------------------------------
