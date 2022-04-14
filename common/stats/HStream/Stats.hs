@@ -99,12 +99,12 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
     let interval_len = length intervals
     -- NOTE only for unsafe ffi
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
-    (ret, map) <-
+    (ret, statMap) <-
       peekCppMap
         (I.c_stream_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
         peekStdStringToCBytesN c_delete_vector_of_string
         peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
-    if ret == 0 then pure map
+    if ret == 0 then pure statMap
                 else do Log.fatal "stream_time_series_getall failed!"
                         pure Map.empty
 
@@ -113,6 +113,43 @@ PER_X_STAT_ADD(subscription_stat_, name)                                       \
 PER_X_STAT_GET(subscription_stat_, name)                                       \
 PER_X_STAT_GETALL(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
+
+#define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
+PER_X_STAT_ADD(subscription_time_series_, name)
+#include "../include/per_subscription_time_series.inc"
+
+subscription_time_series_get
+  :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
+subscription_time_series_get (StatsHolder holder) method_name stream_name intervals =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe method_name $ \method_name' ->
+  withCBytesUnsafe stream_name $ \stream_name' -> do
+    let interval_len = length intervals
+    (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
+    forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
+    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
+    !ret <- I.subscription_time_series_get
+              holder' (BA# method_name') (BA# stream_name')
+              interval_len (BA# intervals') (MBA# mba#)
+    !pa <- unsafeFreezePrimArray mpa
+    return $ if ret == 0 then Just (primArrayToList pa) else Nothing
+
+subscription_time_series_getall_by_name
+  :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])
+subscription_time_series_getall_by_name (StatsHolder holder) name intervals =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe name $ \name' -> do
+    let interval_len = length intervals
+    -- NOTE only for unsafe ffi
+    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
+    (ret, statMap) <-
+      peekCppMap
+        (I.subscription_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
+        peekStdStringToCBytesN c_delete_vector_of_string
+        peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
+    if ret == 0 then pure statMap
+                else do Log.fatal "subscription_time_series_getall failed!"
+                        pure Map.empty
 
 #undef PER_X_STAT_ADD
 #undef PER_X_STAT_GET
