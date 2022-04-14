@@ -26,7 +26,7 @@ TIME_SERIES_DEFINE(append_in_bytes,
                        std::chrono::seconds(60),
                        std::chrono::seconds(300),
                        std::chrono::seconds(600)}),
-                   2);
+                   2)
 
 // Payload bytes sent out in records
 TIME_SERIES_DEFINE(record_bytes,
@@ -35,6 +35,6 @@ TIME_SERIES_DEFINE(record_bytes,
                        std::chrono::seconds(900),
                        std::chrono::seconds(1800),
                        std::chrono::seconds(3600)}),
-                   2);
+                   2)
 
 #undef TIME_SERIES_DEFINE

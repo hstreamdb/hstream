@@ -554,4 +554,33 @@ int perXTimeSeriesGetall(
   return 0;
 }
 
+#define PER_X_STAT_DEFINE(prefix, x, x_ty, stat_name)                          \
+  void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
+                               int64_t val) {                                  \
+    PER_X_STAT_ADD(stats_holder, x, x_ty, stat_name, key, val);                \
+  }                                                                            \
+  int64_t prefix##get_##stat_name(Stats* stats, const char* key) {             \
+    PER_X_STAT_GET(stats, x, stat_name, key);                                  \
+  }                                                                            \
+  void prefix##getall_##stat_name(                                             \
+      Stats* stats, HsInt* len, std::string** keys_ptr, int64_t** values_ptr,  \
+      std::vector<std::string>** keys_, std::vector<int64_t>** values_) {      \
+    if (stats) {                                                               \
+      auto& stats_rlock = *(stats->x.rlock());                                 \
+      cppMapToHs<std::unordered_map<std::string, std::shared_ptr<x_ty>>,       \
+                 std::string, int64_t, std::nullptr_t,                         \
+                 std::function<int64_t(std::shared_ptr<x_ty>)>&&>(             \
+          stats_rlock, nullptr,                                                \
+          [](auto&& val) { return val->stat_name.load(); }, len, keys_ptr,     \
+          values_ptr, keys_, values_);                                         \
+    }                                                                          \
+  }
+
+#define PER_X_TIME_SERIES_DEFINE(prefix, x, x_ty, ts_ty, stat_name)            \
+  void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
+                               int64_t val) {                                  \
+    PER_X_TIME_SERIES_ADD(stats_holder, x, x_ty, stat_name, ts_ty,             \
+                          std::string(key), val);                              \
+  }
+
 }} // namespace hstream::common
