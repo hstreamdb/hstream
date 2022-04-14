@@ -21,57 +21,57 @@ import           Foreign.ForeignPtr
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
 
 import           HStream.Foreign
-import           HStream.Stats.Internal
+import qualified HStream.Stats.Internal   as I
 
 -------------------------------------------------------------------------------
 
-newtype Stats = Stats { unStats :: ForeignPtr CStats }
-newtype StatsHolder = StatsHolder { unStatsHolder :: ForeignPtr CStatsHolder }
+newtype Stats = Stats { unStats :: ForeignPtr I.CStats }
+newtype StatsHolder = StatsHolder { unStatsHolder :: ForeignPtr I.CStatsHolder }
 
 newStatsHolder :: IO StatsHolder
 newStatsHolder = StatsHolder <$>
-  (newForeignPtr c_delete_stats_holder_fun =<< c_new_stats_holder)
+  (newForeignPtr I.c_delete_stats_holder_fun =<< I.c_new_stats_holder)
 
 newAggregateStats :: StatsHolder -> IO Stats
 newAggregateStats (StatsHolder holder) = withForeignPtr holder $ \holder' ->
-  Stats <$> (newForeignPtr c_delete_stats_fun =<< c_new_aggregate_stats holder')
+  Stats <$> (newForeignPtr I.c_delete_stats_fun =<< I.c_new_aggregate_stats holder')
 
 -- TODO: add Show instance for StatsHolder
 printStatsHolder :: StatsHolder -> IO ()
-printStatsHolder (StatsHolder holder) = withForeignPtr holder c_stats_holder_print
+printStatsHolder (StatsHolder holder) = withForeignPtr holder I.c_stats_holder_print
 
-#define STREAM_STAT_ADD(PREFIX, STATS_NAME) \
-PREFIX##_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();              \
-PREFIX##_##STATS_NAME (StatsHolder holder) stream_name val =                   \
+#define PER_X_STAT_ADD(PREFIX, STATS_NAME)                                     \
+PREFIX##add_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();           \
+PREFIX##add_##STATS_NAME (StatsHolder holder) key val =                        \
   withForeignPtr holder $ \holder' ->                                          \
-  withCBytesUnsafe stream_name $ \stream_name' ->                              \
-    c_##PREFIX##_##STATS_NAME holder' (BA# stream_name') val;
+  withCBytesUnsafe key $ \key' ->                                              \
+    I.PREFIX##add_##STATS_NAME holder' (BA# key') val;
 
 -- TODO: Error while return value is a negative number.
-#define STREAM_STAT_GET(PREFIX, STATS_NAME)                                    \
-PREFIX##_##STATS_NAME :: Stats -> CBytes -> IO Int64;                          \
-PREFIX##_##STATS_NAME (Stats stats) stream_name =                              \
+#define PER_X_STAT_GET(PREFIX, STATS_NAME)                                     \
+PREFIX##get_##STATS_NAME :: Stats -> CBytes -> IO Int64;                       \
+PREFIX##get_##STATS_NAME (Stats stats) key =                                   \
   withForeignPtr stats $ \stats' ->                                            \
-  withCBytesUnsafe stream_name $ \stream_name' ->                              \
-    c_##PREFIX##_##STATS_NAME stats' (BA# stream_name');
+  withCBytesUnsafe key $ \key' ->                                              \
+    I.PREFIX##get_##STATS_NAME stats' (BA# key');
 
-#define STREAM_STAT_GETALL(prefix, stats_name)                                 \
-prefix##_##stats_name :: Stats -> IO (Map.Map CBytes Int64);                   \
-prefix##_##stats_name (Stats stats) =                                          \
+#define PER_X_STAT_GETALL(PREFIX, STATS_NAME)                                  \
+PREFIX##getall_##STATS_NAME :: Stats -> IO (Map.Map CBytes Int64);             \
+PREFIX##getall_##STATS_NAME (Stats stats) =                                    \
   withForeignPtr stats $ \stats' ->                                            \
     peekCppMap                                                                 \
-      (c_##prefix##_##stats_name stats')                                       \
+      (I.PREFIX##getall_##STATS_NAME stats')                                   \
       peekStdStringToCBytesN c_delete_vector_of_string                         \
       peekN c_delete_vector_of_int64;
 
 #define STAT_DEFINE(name, _)                                                   \
-STREAM_STAT_ADD(stream_stat_add, name)                                         \
-STREAM_STAT_GET(stream_stat_get, name)                                         \
-STREAM_STAT_GETALL(stream_stat_getall, name)
+PER_X_STAT_ADD(stream_stat_, name)                                             \
+PER_X_STAT_GET(stream_stat_, name)                                             \
+PER_X_STAT_GETALL(stream_stat_, name)
 #include "../include/per_stream_stats.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
-STREAM_STAT_ADD(stream_time_series_add, name)
+PER_X_STAT_ADD(stream_time_series_, name)
 #include "../include/per_stream_time_series.inc"
 
 stream_time_series_get
@@ -84,7 +84,7 @@ stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
     (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
     forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
-    !ret <- c_stream_time_series_get
+    !ret <- I.c_stream_time_series_get
               holder' (BA# method_name') (BA# stream_name')
               interval_len (BA# intervals') (MBA# mba#)
     !pa <- unsafeFreezePrimArray mpa
@@ -99,6 +99,16 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
     -- NOTE only for unsafe ffi
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
     peekCppMap
-      (c_stream_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
+      (I.c_stream_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
       peekStdStringToCBytesN c_delete_vector_of_string
       peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
+
+#define STAT_DEFINE(name, _)                                                   \
+PER_X_STAT_ADD(subscription_stat_, name)                                       \
+PER_X_STAT_GET(subscription_stat_, name)                                       \
+PER_X_STAT_GETALL(subscription_stat_, name)
+#include "../include/per_subscription_stats.inc"
+
+#undef PER_X_STAT_ADD
+#undef PER_X_STAT_GET
+#undef PER_X_STAT_GETALL
