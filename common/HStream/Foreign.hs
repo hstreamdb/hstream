@@ -158,21 +158,21 @@ HS_CPP_VEC_OFFSET(cal_offset_vec_of_folly_small_vec_of_double, (FollySmallVector
 
 -------------------------------------------------------------------------------
 
-type PeekMapFun dk dv ck cv
+type PeekMapFun a dk dv ck cv
   = MBA# Int
  -- ^ returned map size
  -> MBA# (Ptr dk) -> MBA# (Ptr dv)
  -> MBA# (Ptr ck) -> MBA# (Ptr cv)
- -> IO ()
+ -> IO a
 
 peekCppMap
-  :: forall dk dv ck cv k v. Ord k
-  => PeekMapFun dk dv ck cv
+  :: forall a dk dv ck cv k v. Ord k
+  => PeekMapFun a dk dv ck cv
   -> PeekNFun dk k -> DeleteFun ck
   -> PeekNFun dv v -> DeleteFun cv
-  -> IO (Map.Map k v)
+  -> IO (a, Map.Map k v)
 peekCppMap f peekKey delKey peekVal delVal = do
-  (len, (keys_ptr, (values_ptr, (keys_vec, (values_vec, _))))) <-
+  (len, (keys_ptr, (values_ptr, (keys_vec, (values_vec, ret))))) <-
     Z.withPrimUnsafe (0 :: Int) $ \len ->
     Z.withPrimUnsafe nullPtr $ \keys ->
     Z.withPrimUnsafe nullPtr $ \values ->
@@ -180,13 +180,13 @@ peekCppMap f peekKey delKey peekVal delVal = do
     Z.withPrimUnsafe nullPtr $ \values_vec ->
       f (MBA# len) (MBA# keys) (MBA# values) (MBA# keys_vec) (MBA# values_vec)
   finally
-    (buildExtras len keys_ptr values_ptr)
+    (buildExtras ret len keys_ptr values_ptr)
     (delKey keys_vec <> delVal values_vec)
   where
-    buildExtras len keys_ptr values_ptr = do
+    buildExtras ret len keys_ptr values_ptr = do
       keys <- peekKey len keys_ptr
       values <- peekVal len values_ptr
-      return . Map.fromList $ zip keys values
+      return (ret, Map.fromList $ zip keys values)
 
 withHsCBytesMapUnsafe
   :: Map CBytes CBytes

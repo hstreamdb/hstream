@@ -21,6 +21,7 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async         (async, wait)
 import           Control.Concurrent.STM
 import           Control.Exception                (Exception, Handler (Handler),
                                                    catch, throwIO)
@@ -59,8 +60,7 @@ import           HStream.Server.Exception         (ExceptionHandle, Handlers,
 import           HStream.Server.Handler.Common    (bindSubToStreamPath,
                                                    getCommitRecordId,
                                                    getSuccessor,
-                                                   insertAckedRecordId,
-                                                   removeSubFromStreamPath)
+                                                   insertAckedRecordId)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
@@ -80,7 +80,7 @@ createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata s
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
   bindSubToStreamPath zkHandle streamName subName
   catch (Core.createSubscription ctx sub) $
-    \(e :: StreamNotExist) -> removeSubFromStreamPath zkHandle streamName subName >> throwIO e
+    \(e :: StreamNotExist) -> Core.removeSubFromStreamPath zkHandle streamName subName >> throwIO e
   returnResp sub
   where
     streamName = textToCBytes subscriptionStreamName
@@ -92,7 +92,7 @@ deleteSubscriptionHandler
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId }) = subExceptionHandle $ do
+  { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force}) = subExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
   hr <- readMVar loadBalanceHashRing
@@ -101,7 +101,8 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 
   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
-  Core.deleteSubscription ctx (fromJust subscription)
+  Core.deleteSubscription ctx (fromJust subscription) force
+  Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
 -- --------------------------------------------------------------------------------
 
@@ -147,7 +148,7 @@ streamingFetchInternal ctx (ServerBiDiRequest _ streamRecv streamSend) = do
   Log.debug "pass initSub"
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName streamSend
   Log.debug "pass initConsumer"
-  recvAcks ctx scwState scwContext consumerCtx streamRecv
+  async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
   Log.debug "pass recvAcks"
   where
     firstRecv :: IO StreamingFetchRequest
@@ -179,8 +180,11 @@ initSub serverCtx@ServerContext {..} subId = do
         putTMVar scnwContext subCtx
         writeTVar scnwState SubscribeStateRunning
         return SubscribeContextWrapper {scwState = scnwState, scwContext = subCtx}
-      Log.debug $ "ready to forkIO run sendRecords for sub " <> Log.buildText subId
-      void . forkIO $ sendRecords serverCtx scwState scwContext
+      tid <- myThreadId
+      let errHandler = \case
+            Left e  -> throwTo tid e
+            Right _ -> pure ()
+      void $ forkFinally (sendRecords serverCtx scwState scwContext) errHandler
       return wrapper
     else do
       mctx <- atomically $ readTMVar scnwContext
@@ -204,8 +208,6 @@ doSubInit ctx@ServerContext{..} subId = do
       ldCkpReader <-
         S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize) 5
       S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
-      Log.debug $ "created a ldCkpReader for subscription {" <> Log.buildText subId <> "}"
-
       -- create a ldReader for rereading unacked records
       ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
@@ -313,7 +315,6 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
 sendRecords ctx subState subCtx@SubscribeContext {..} = do
-  Log.debug "enter sendRecords"
   threadDelay 10000
   isFirstSendRef <- newIORef True
   loop isFirstSendRef
@@ -337,7 +338,7 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
           addRead subLdCkpReader subAssignment
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
-          Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
+          -- Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
           isFirstSend <- readIORef isFirstSendRef
           if isFirstSend
@@ -348,11 +349,12 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
               updateClockAndDoResend
           else pure ()
           successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-          Log.debug "pass sendReceivedRecordsVecs"
+          -- Log.debug "pass sendReceivedRecordsVecs"
           atomically $ addUnackedRecords subCtx successSendRecords
           loop isFirstSendRef
         else
-          return ()
+          when (state == SubscribeStateStopping) $
+            throwIO SubscribeInValidError
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do
@@ -712,6 +714,7 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
   where
     loop = do
       checkSubRunning
+      Log.debug "Waiting for acks from client"
       streamRecv >>= \case
         Left (err :: grpcIOError) -> do
           Log.fatal . Log.buildString $ "streamRecv error: " <> show err
@@ -732,12 +735,17 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
     checkSubRunning = do
       state <- readTVarIO subState
       if state /= SubscribeStateRunning
-      then throwIO SubscribeInValidError
+      then do
+        Log.warning "Invalid Subscrtipion: Subscription is not running"
+        atomically $ invalidConsumer subCtx ccConsumerName
+        throwIO SubscribeInValidError
       else do
         isValid <- readTVarIO ccIsValid
         if isValid
         then return ()
-        else throwIO ConsumerInValidError
+        else do
+          atomically $ invalidConsumer subCtx ccConsumerName
+          throwIO ConsumerInValidError
 
 doAcks
   :: S.LDClient
@@ -929,7 +937,10 @@ subscriptionExceptionHandler = [
     return (StatusFailedPrecondition, "Subscription still has active consumers")),
   Handler(\(err@(ConsumerExists name) :: ConsumerExists) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInvalidArgument, StatusDetails ("Consumer " <> encodeUtf8 name <> " exist")))
+    return (StatusInvalidArgument, StatusDetails ("Consumer " <> encodeUtf8 name <> " exist"))),
+  Handler (\(err :: Core.SubscriptionIsDeleting) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusAborted, "Subscription is being deleted, please wait a while"))
   ]
 
 subExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
@@ -942,9 +953,19 @@ subStreamingExceptionHandle = mkExceptionHandle . setRespType (ServerBiDiRespons
 
 innerErrorHandlers :: Handlers (StatusCode, StatusDetails)
 innerErrorHandlers = [Handler $ \(err :: SubscribeInnerError) -> case err of
-  GRPCStreamRecvError      -> return (StatusCancelled, "Consumer recv error")
-  GRPCStreamRecvCloseError -> return (StatusCancelled, "Consumer is closed")
-  GRPCStreamSendError      -> return (StatusCancelled, "Consumer send request error")
-  SubscribeInValidError    -> return (StatusAborted,   "Invalid Subscription")
-  ConsumerInValidError     -> return (StatusAborted,   "Invalid Consumer")
+  GRPCStreamRecvError      -> do
+    Log.warning "Consumer recv error"
+    return (StatusCancelled, "Consumer recv error")
+  GRPCStreamRecvCloseError -> do
+    Log.warning "Consumer is closed"
+    return (StatusCancelled, "Consumer is closed")
+  GRPCStreamSendError      -> do
+    Log.warning "Consumer send request error"
+    return (StatusCancelled, "Consumer send request error")
+  SubscribeInValidError    -> do
+    Log.warning "Invalid Subscription"
+    return (StatusAborted, "Invalid Subscription")
+  ConsumerInValidError     -> do
+    Log.warning "Invalid Consumer"
+    return (StatusAborted, "Invalid Consumer")
   ]

@@ -420,14 +420,6 @@ bindSubToStreamPath zk streamName subName = do
   withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
     P.tryCreate zk subscriptionPath
 
-removeSubFromStreamPath :: ZHandle -> CBytes -> CBytes -> IO ()
-removeSubFromStreamPath zk streamName subName = do
-  let lockPath = P.mkStreamSubsLockPath streamName
-  let subscriptionPath = P.mkStreamSubsPath streamName <> "/" <> subName
-  uniq <- newUnique
-  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
-    P.tryDeletePath zk subscriptionPath
-
 alignDefault :: Text -> Text
 alignDefault x  = if T.null x then clientDefaultKey else x
 

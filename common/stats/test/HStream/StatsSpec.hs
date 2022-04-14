@@ -21,13 +21,24 @@ statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats counter" $ do
     h <- newStatsHolder
-    stream_stat_add_append_payload_bytes h "/topic_1" 100
-    stream_stat_add_append_payload_bytes h "/topic_1" 100
-    stream_stat_add_append_payload_bytes h "/topic_2" 100
+    stream_stat_add_append_payload_bytes h "topic_1" 100
+    stream_stat_add_append_payload_bytes h "topic_1" 100
+    stream_stat_add_append_payload_bytes h "topic_2" 100
+
+    stream_stat_add_append_requests_total h "/topic_1" 1
+    stream_stat_add_append_requests_total h "/topic_1" 1
+    stream_stat_add_append_requests_total h "/topic_2" 1
 
     s <- newAggregateStats h
-    stream_stat_get_append_payload_bytes s "/topic_1" `shouldReturn` 200
-    stream_stat_get_append_payload_bytes s "/topic_2" `shouldReturn` 100
+    stream_stat_get_append_payload_bytes s "topic_1" `shouldReturn` 200
+    stream_stat_get_append_payload_bytes s "topic_2" `shouldReturn` 100
+
+    m <- stream_stat_getall_append_payload_bytes s
+    Map.lookup "topic_1" m `shouldBe` Just 200
+    Map.lookup "topic_2" m `shouldBe` Just 100
+
+    stream_stat_get_append_requests_total s "/topic_1" `shouldReturn` 2
+    stream_stat_get_append_requests_total s "/topic_2" `shouldReturn` 1
 
   it "pre stream stats time series" $ do
     h <- newStatsHolder
@@ -54,6 +65,20 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
     Map.lookup "/topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
 
+  it "pre subscription stats counter" $ do
+    h <- newStatsHolder
+    subscription_stat_add_consumers h "subid_1" 1
+    subscription_stat_add_consumers h "subid_1" 2
+    subscription_stat_add_consumers h "subid_2" 1
+
+    s <- newAggregateStats h
+    subscription_stat_get_consumers s "subid_1" `shouldReturn` 3
+    subscription_stat_get_consumers s "subid_2" `shouldReturn` 1
+
+    m <- subscription_stat_getall_consumers s
+    Map.lookup "subid_1" m `shouldBe` Just 3
+    Map.lookup "subid_2" m `shouldBe` Just 1
+
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
   h <- runIO newStatsHolder
@@ -63,13 +88,23 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
       stream_stat_add_append_payload_bytes h "a_stream" 1
       stream_stat_add_append_payload_bytes h "b_stream" 1
 
+      stream_stat_add_append_requests_total h "a_stream" 1
+      stream_stat_add_append_requests_total h "b_stream" 1
+
     s <- newAggregateStats h
     stream_stat_get_append_payload_bytes s "a_stream" `shouldReturn` 10000
     stream_stat_get_append_payload_bytes s "b_stream" `shouldReturn` 10000
 
+    stream_stat_get_append_requests_total s "a_stream" `shouldReturn` 10000
+    stream_stat_get_append_requests_total s "b_stream" `shouldReturn` 10000
+
     m <- stream_stat_getall_append_payload_bytes s
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
+
+    m' <- stream_stat_getall_append_requests_total s
+    Map.lookup "a_stream" m' `shouldBe` Just 10000
+    Map.lookup "b_stream" m' `shouldBe` Just 10000
 
   it "pre stream stats time series (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
@@ -87,3 +122,16 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
     Just rate <- stream_time_series_get h "appends" "a_stream" max_intervals
     rate `shouldSatisfy` (\s -> head s > 0)
+
+  it "pre subscription stats counter (threaded)" $ do
+    runConc 10 $ runConc 1000 $ do
+      subscription_stat_add_consumers h "a_stream" 1
+      subscription_stat_add_consumers h "b_stream" 1
+
+    s <- newAggregateStats h
+    subscription_stat_get_consumers s "a_stream" `shouldReturn` 10000
+    subscription_stat_get_consumers s "b_stream" `shouldReturn` 10000
+
+    m <- subscription_stat_getall_consumers s
+    Map.lookup "a_stream" m `shouldBe` Just 10000
+    Map.lookup "b_stream" m `shouldBe` Just 10000

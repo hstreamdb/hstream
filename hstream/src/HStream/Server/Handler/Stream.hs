@@ -26,6 +26,7 @@ import           HStream.Server.Exception
 import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
+import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as Store
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -70,6 +71,7 @@ appendHandler
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
   Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
+  Stats.stream_stat_add_append_requests_total scStatsHolder (textToCBytes appendRequestStreamName) 1
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
@@ -85,6 +87,7 @@ append0Handler
   -> IO (ServerResponse 'Normal AppendResponse)
 append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
   Log.debug $ "Receive Append0 Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
+  Stats.stream_stat_add_append_requests_total scStatsHolder (textToCBytes appendRequestStreamName) 1
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   hashRing <- readMVar loadBalanceHashRing
   let identifier = appendRequestStreamName <> clientDefaultKey

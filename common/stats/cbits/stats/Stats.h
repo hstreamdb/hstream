@@ -12,6 +12,9 @@
 #include <logdevice/common/stats/Stats.h>
 #include <logdevice/common/stats/StatsCounter.h>
 
+#include <hs_common.h>
+#include <hs_cpp_lib.h>
+
 // ----------------------------------------------------------------------------
 
 using facebook::logdevice::FastUpdateableSharedPtr;
@@ -63,7 +66,6 @@ void MultiLevelTimeSeriesWrapper<VT, CT>::addValue(const ValueType& n) {
 using PerStreamTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
 
 struct PerStreamStats {
-
 #define STAT_DEFINE(name, _) StatsCounter name{};
 #include "per_stream_stats.inc"
   void aggregate(PerStreamStats const& other, StatsAggOptional agg_override);
@@ -81,6 +83,29 @@ struct PerStreamStats {
 };
 
 // ----------------------------------------------------------------------------
+// PerSubscriptionStats
+
+using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
+
+struct PerSubscriptionStats {
+#define STAT_DEFINE(name, _) StatsCounter name{};
+#include "per_subscription_stats.inc"
+  void aggregate(PerSubscriptionStats const& other,
+                 StatsAggOptional agg_override);
+  // Show all per_stream_stats to a json formatted string.
+  folly::dynamic toJsonObj();
+  std::string toJson();
+
+#define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
+  std::shared_ptr<PerSubscriptionTimeSeries> name;
+#include "per_subscription_time_series.inc"
+
+  // Mutex almost exclusively locked by one thread since PerSubscriptionStats
+  // objects are contained in thread-local stats
+  std::mutex mutex;
+};
+
+// ----------------------------------------------------------------------------
 // All Stats
 
 struct StatsParams {
@@ -90,7 +115,10 @@ struct StatsParams {
 #include "per_stream_time_series.inc"
 
   // Get MaxInterval of StreamStats by string(command) name
-  PerStreamTimeSeries::Duration maxInterval(std::string string_name);
+  PerStreamTimeSeries::Duration maxStreamStatsInterval(std::string string_name);
+
+  PerSubscriptionTimeSeries::Duration
+  maxSubscribptionStatsInterval(std::string string_name);
 };
 
 struct Stats {
@@ -170,6 +198,11 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerStreamStats>>>
       per_stream_stats;
+
+  // Per-subscription stats
+  folly::Synchronized<
+      std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>
+      per_subscription_stats;
 
   const FastUpdateableSharedPtr<StatsParams>* params;
 };
@@ -291,58 +324,229 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
 
 // ----------------------------------------------------------------------------
 
-#define STREAM_STAT_ADD(stats_struct, stream_name, stat_name, val)             \
+#define PER_X_STAT_ADD(stats_struct, x, x_ty, stat_name, key, val)             \
   do {                                                                         \
     if (stats_struct) {                                                        \
-      auto stats_ulock = (stats_struct)->per_stream_stats.ulock();             \
-      auto stats_it = stats_ulock->find((stream_name));                        \
+      auto stats_ulock = (stats_struct)->get().x.ulock();                      \
+      auto stats_it = stats_ulock->find((key));                                \
       if (stats_it != stats_ulock->end()) {                                    \
-        /* PerStreamStats for stream_name already exist (common case). */      \
+        /* x_ty for key already exist (common case). */                        \
         /* Just atomically increment the value.  */                            \
         stats_it->second->stat_name += (val);                                  \
       } else {                                                                 \
-        /* PerStreamStats for stream_name do not exist yet (rare case). */     \
-        /* Upgrade ulock to wlock and emplace new PerStreamStats. */           \
+        /* x_ty for key do not exist yet (rare case). */                       \
+        /* Upgrade ulock to wlock and emplace new x_ty. */                     \
         /* No risk of deadlock because we are the only writer thread. */       \
-        auto stats_ptr = std::make_shared<PerStreamStats>();                   \
+        auto stats_ptr = std::make_shared<x_ty>();                             \
         stats_ptr->stat_name += (val);                                         \
         stats_ulock.moveFromUpgradeToWrite()->emplace_hint(                    \
-            stats_it, (stream_name), std::move(stats_ptr));                    \
+            stats_it, (key), std::move(stats_ptr));                            \
       }                                                                        \
     }                                                                          \
   } while (0)
 
-#define STREAM_TIME_SERIES_ADD(stats_struct, stream_name, stat_name, val)      \
+#define PER_X_STAT_GET(stats_agg, x, stat_name, key)                           \
+  do {                                                                         \
+    if (stats_agg) {                                                           \
+      auto stats_rlock = stats_agg->x.rlock();                                 \
+      auto stats_it = stats_rlock->find(std::string(key));                     \
+      if (stats_it != stats_rlock->end()) {                                    \
+        auto r = stats_it->second->stat_name.load();                           \
+        if (UNLIKELY(r < 0)) {                                                 \
+          ld_error("PerStreamStats overflowed!");                              \
+        } else {                                                               \
+          return r;                                                            \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
+    return -1;                                                                 \
+  } while (0)
+
+#define PER_X_TIME_SERIES_ADD(stats_struct, x, x_ty, stat_name, stat_name_ty,  \
+                              key, val)                                        \
   do {                                                                         \
     if (stats_struct) {                                                        \
-      auto stats_ulock = (stats_struct)->per_stream_stats.ulock();             \
+      auto stats_ulock = (stats_struct)->get().x.ulock();                      \
       /* Unfortunately, the type of the lock after a downgrade from write to   \
        * upgrade isn't the same as the type of upgrade lock initially acquired \
        */                                                                      \
       folly::LockedPtr<decltype(stats_ulock)::Synchronized,                    \
                        folly::detail::SynchronizedLockPolicyUpgrade>           \
           stats_downgraded_ulock;                                              \
-      auto stats_it = stats_ulock->find((stream_name));                        \
+      auto stats_it = stats_ulock->find((key));                                \
       if (UNLIKELY(stats_it == stats_ulock->end())) {                          \
-        /* PerStreamStats for stream_name do not exist yet (rare case). */     \
-        /* Upgrade ulock to wlock and emplace new PerStreamStats. */           \
+        /* x_ty for key do not exist yet (rare case). */                       \
+        /* Upgrade ulock to wlock and emplace new x_ty. */                     \
         /* No risk of deadlock because we are the only writer thread. */       \
-        auto stats_ptr = std::make_shared<PerStreamStats>();                   \
+        auto stats_ptr = std::make_shared<x_ty>();                             \
         auto stats_wlock = stats_ulock.moveFromUpgradeToWrite();               \
-        stats_it =                                                             \
-            stats_wlock->emplace((stream_name), std::move(stats_ptr)).first;   \
+        stats_it = stats_wlock->emplace((key), std::move(stats_ptr)).first;    \
         stats_downgraded_ulock = stats_wlock.moveFromWriteToUpgrade();         \
       }                                                                        \
       {                                                                        \
         std::lock_guard<std::mutex> guard(stats_it->second->mutex);            \
         if (UNLIKELY(!stats_it->second->stat_name)) {                          \
-          stats_it->second->stat_name = std::make_shared<PerStreamTimeSeries>( \
-              (stats_struct)->params->get()->num_buckets_##stat_name,          \
-              (stats_struct)->params->get()->time_intervals_##stat_name);      \
+          stats_it->second->stat_name = std::make_shared<stat_name_ty>(        \
+              (stats_struct)->params_.get()->num_buckets_##stat_name,          \
+              (stats_struct)->params_.get()->time_intervals_##stat_name);      \
         }                                                                      \
         stats_it->second->stat_name->addValue(val);                            \
       }                                                                        \
     }                                                                          \
   } while (0)
+
+template <class PerXStats, class PerXTimeSeries, typename Map>
+int perXTimeSeriesGet(
+    StatsHolder* stats_holder, const char* stat_name, const char* key,
+    //
+    std::function<void(const char*,
+                       std::shared_ptr<PerXTimeSeries> PerXStats::*&)>
+        find_member,
+    folly::Synchronized<Map> Stats::*stats_member_map,
+    //
+    HsInt interval_size, HsInt* ms_intervals, HsDouble* aggregate_vals) {
+  using Duration = typename PerXTimeSeries::Duration;
+  using TimePoint = typename PerXTimeSeries::TimePoint;
+
+  std::shared_ptr<PerXTimeSeries> PerXStats::*member_ptr = nullptr;
+  find_member(stat_name, member_ptr);
+  // TODO: also return failure reasons
+  if (UNLIKELY(member_ptr == nullptr)) {
+    return -1;
+  }
+
+  bool has_found = false;
+  stats_holder->runForEach([&](Stats& s) {
+    // Use synchronizedCopy() so we do not have to hold a read lock on
+    // per_x_stats map while we iterate over individual entries.
+    for (auto& entry : s.synchronizedCopy(stats_member_map)) {
+      std::lock_guard<std::mutex> guard(entry.second->mutex);
+
+      std::string& key_ = entry.first;
+      auto time_series = entry.second.get()->*member_ptr;
+      if (!time_series) {
+        continue;
+      }
+
+      if (key_ == std::string(key)) {
+        // NOTE: It might be tempting to pull `now' out of the loops but
+        // folly::MultiLevelTimeSeries barfs if we ask it for data that is
+        // too old.  Keep it under the lock for now, optimize if necessary.
+        //
+        // TODO: Constructing the TimePoint is slightly awkward at the moment
+        // as the folly stats code is being cleaned up to better support real
+        // clock types.  appendBytesTimeSeries_ should simply be changed to
+        // use std::steady_clock as it's clock type.  I'll do that in a
+        // separate diff for now, though.
+        const TimePoint now{std::chrono::duration_cast<Duration>(
+            std::chrono::steady_clock::now().time_since_epoch())};
+        // Flush any cached updates and discard any stale data
+        time_series->update(now);
+
+        // For each query interval, make a MultiLevelTimeSeries::rate() call
+        // to find the approximate rate over that interval
+        for (int i = 0; i < interval_size; ++i) {
+          const Duration interval = std::chrono::duration_cast<Duration>(
+              std::chrono::milliseconds{ms_intervals[i]});
+
+          auto rate_per_time_type =
+              time_series->template rate<double>(now - interval, now);
+          // Duration may not be seconds, convert to seconds
+          aggregate_vals[i] += rate_per_time_type * Duration::period::den /
+                               Duration::period::num;
+        }
+
+        // We have aggregated the stat from this Stats, because stream name
+        // in Stats are unique(as keys of unordered_map), we can break the loop
+        // safely.
+        if (!has_found) {
+          has_found = true;
+        }
+        break;
+      }
+    }
+  });
+
+  return has_found ? 0 : -1;
+}
+
+template <class PerXStats, class PerXTimeSeries, typename Map>
+int perXTimeSeriesGetall(
+    StatsHolder* stats_holder, const char* stat_name,
+    //
+    std::function<void(const char*,
+                       std::shared_ptr<PerXTimeSeries> PerXStats::*&)>
+        find_member,
+    folly::Synchronized<Map> Stats::*stats_member_map,
+    //
+    HsInt interval_size, HsInt* ms_intervals,
+    //
+    HsInt* len, std::string** keys_ptr,
+    folly::small_vector<double, 4>** values_ptr,
+    std::vector<std::string>** keys_,
+    std::vector<folly::small_vector<double, 4>>** values_) {
+
+  using Duration = typename PerXTimeSeries::Duration;
+  using TimePoint = typename PerXTimeSeries::TimePoint;
+  using AggregateMap =
+      folly::StringKeyedUnorderedMap<folly::small_vector<double, 4>>;
+  AggregateMap output;
+
+  std::shared_ptr<PerXTimeSeries> PerXStats::*member_ptr = nullptr;
+  find_member(stat_name, member_ptr);
+  // TODO: also return failure reasons
+  if (UNLIKELY(member_ptr == nullptr)) {
+    return -1;
+  }
+
+  stats_holder->runForEach([&](Stats& s) {
+    // Use synchronizedCopy() so we do not have to hold a read lock on
+    // per_log_stats map while we iterate over individual entries.
+    for (auto& entry : s.synchronizedCopy(stats_member_map)) {
+      std::lock_guard<std::mutex> guard(entry.second->mutex);
+
+      std::string& key = entry.first;
+      auto time_series = entry.second.get()->*member_ptr;
+      if (!time_series) {
+        continue;
+      }
+
+      // NOTE: It might be tempting to pull `now' out of the loops but
+      // folly::MultiLevelTimeSeries barfs if we ask it for data that is
+      // too old.  Keep it under the lock for now, optimize if necessary.
+      //
+      // TODO: Constructing the TimePoint is slightly awkward at the moment
+      // as the folly stats code is being cleaned up to better support real
+      // clock types.  appendBytesTimeSeries_ should simply be changed to
+      // use std::steady_clock as it's clock type.  I'll do that in a
+      // separate diff for now, though.
+      const TimePoint now{std::chrono::duration_cast<Duration>(
+          std::chrono::steady_clock::now().time_since_epoch())};
+      // Flush any cached updates and discard any stale data
+      time_series->update(now);
+
+      auto& aggregate_vector = output[key];
+      aggregate_vector.resize(interval_size);
+      // For each query interval, make a MultiLevelTimeSeries::rate() call
+      // to find the approximate rate over that interval
+      for (int i = 0; i < interval_size; ++i) {
+        const Duration interval = std::chrono::duration_cast<Duration>(
+            std::chrono::milliseconds{ms_intervals[i]});
+
+        auto rate_per_time_type =
+            time_series->template rate<double>(now - interval, now);
+        // Duration may not be seconds, convert to seconds
+        aggregate_vector[i] +=
+            rate_per_time_type * Duration::period::den / Duration::period::num;
+      }
+    }
+  });
+
+  cppMapToHs<AggregateMap, std::string, folly::small_vector<double, 4>,
+             std::nullptr_t, std::nullptr_t>(
+      output, nullptr, nullptr, len, keys_ptr, values_ptr, keys_, values_);
+
+  return 0;
+}
 
 }} // namespace hstream::common

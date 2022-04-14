@@ -153,6 +153,7 @@ message Subscription {
 
 message DeleteSubscriptionRequest {
   string subscriptionId = 1;
+  bool force = 2;
 }
 
 message CheckSubscriptionExistRequest {
