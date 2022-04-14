@@ -12,6 +12,9 @@
 #include <logdevice/common/stats/Stats.h>
 #include <logdevice/common/stats/StatsCounter.h>
 
+#include <hs_common.h>
+#include <hs_cpp_lib.h>
+
 // ----------------------------------------------------------------------------
 
 using facebook::logdevice::FastUpdateableSharedPtr;
@@ -391,5 +394,159 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
       }                                                                        \
     }                                                                          \
   } while (0)
+
+template <class PerXStats, class PerXTimeSeries, typename Map>
+int perXTimeSeriesGet(
+    StatsHolder* stats_holder, const char* stat_name, const char* key,
+    //
+    std::function<void(const char*,
+                       std::shared_ptr<PerXTimeSeries> PerXStats::*&)>
+        find_member,
+    folly::Synchronized<Map> Stats::*stats_member_map,
+    //
+    HsInt interval_size, HsInt* ms_intervals, HsDouble* aggregate_vals) {
+  using Duration = typename PerXTimeSeries::Duration;
+  using TimePoint = typename PerXTimeSeries::TimePoint;
+
+  std::shared_ptr<PerXTimeSeries> PerXStats::*member_ptr = nullptr;
+  find_member(stat_name, member_ptr);
+  // TODO: also return failure reasons
+  if (UNLIKELY(member_ptr == nullptr)) {
+    return -1;
+  }
+
+  bool has_found = false;
+  stats_holder->runForEach([&](Stats& s) {
+    // Use synchronizedCopy() so we do not have to hold a read lock on
+    // per_x_stats map while we iterate over individual entries.
+    for (auto& entry : s.synchronizedCopy(stats_member_map)) {
+      std::lock_guard<std::mutex> guard(entry.second->mutex);
+
+      std::string& key_ = entry.first;
+      auto time_series = entry.second.get()->*member_ptr;
+      if (!time_series) {
+        continue;
+      }
+
+      if (key_ == std::string(key)) {
+        // NOTE: It might be tempting to pull `now' out of the loops but
+        // folly::MultiLevelTimeSeries barfs if we ask it for data that is
+        // too old.  Keep it under the lock for now, optimize if necessary.
+        //
+        // TODO: Constructing the TimePoint is slightly awkward at the moment
+        // as the folly stats code is being cleaned up to better support real
+        // clock types.  appendBytesTimeSeries_ should simply be changed to
+        // use std::steady_clock as it's clock type.  I'll do that in a
+        // separate diff for now, though.
+        const TimePoint now{std::chrono::duration_cast<Duration>(
+            std::chrono::steady_clock::now().time_since_epoch())};
+        // Flush any cached updates and discard any stale data
+        time_series->update(now);
+
+        // For each query interval, make a MultiLevelTimeSeries::rate() call
+        // to find the approximate rate over that interval
+        for (int i = 0; i < interval_size; ++i) {
+          const Duration interval = std::chrono::duration_cast<Duration>(
+              std::chrono::milliseconds{ms_intervals[i]});
+
+          auto rate_per_time_type =
+              time_series->template rate<double>(now - interval, now);
+          // Duration may not be seconds, convert to seconds
+          aggregate_vals[i] += rate_per_time_type * Duration::period::den /
+                               Duration::period::num;
+        }
+
+        // We have aggregated the stat from this Stats, because stream name
+        // in Stats are unique(as keys of unordered_map), we can break the loop
+        // safely.
+        if (!has_found) {
+          has_found = true;
+        }
+        break;
+      }
+    }
+  });
+
+  return has_found ? 0 : -1;
+}
+
+template <class PerXStats, class PerXTimeSeries, typename Map>
+int perXTimeSeriesGetall(
+    StatsHolder* stats_holder, const char* stat_name,
+    //
+    std::function<void(const char*,
+                       std::shared_ptr<PerXTimeSeries> PerXStats::*&)>
+        find_member,
+    folly::Synchronized<Map> Stats::*stats_member_map,
+    //
+    HsInt interval_size, HsInt* ms_intervals,
+    //
+    HsInt* len, std::string** keys_ptr,
+    folly::small_vector<double, 4>** values_ptr,
+    std::vector<std::string>** keys_,
+    std::vector<folly::small_vector<double, 4>>** values_) {
+
+  using Duration = typename PerXTimeSeries::Duration;
+  using TimePoint = typename PerXTimeSeries::TimePoint;
+  using AggregateMap =
+      folly::StringKeyedUnorderedMap<folly::small_vector<double, 4>>;
+  AggregateMap output;
+
+  std::shared_ptr<PerXTimeSeries> PerXStats::*member_ptr = nullptr;
+  find_member(stat_name, member_ptr);
+  // TODO: also return failure reasons
+  if (UNLIKELY(member_ptr == nullptr)) {
+    return -1;
+  }
+
+  stats_holder->runForEach([&](Stats& s) {
+    // Use synchronizedCopy() so we do not have to hold a read lock on
+    // per_log_stats map while we iterate over individual entries.
+    for (auto& entry : s.synchronizedCopy(stats_member_map)) {
+      std::lock_guard<std::mutex> guard(entry.second->mutex);
+
+      std::string& key = entry.first;
+      auto time_series = entry.second.get()->*member_ptr;
+      if (!time_series) {
+        continue;
+      }
+
+      // NOTE: It might be tempting to pull `now' out of the loops but
+      // folly::MultiLevelTimeSeries barfs if we ask it for data that is
+      // too old.  Keep it under the lock for now, optimize if necessary.
+      //
+      // TODO: Constructing the TimePoint is slightly awkward at the moment
+      // as the folly stats code is being cleaned up to better support real
+      // clock types.  appendBytesTimeSeries_ should simply be changed to
+      // use std::steady_clock as it's clock type.  I'll do that in a
+      // separate diff for now, though.
+      const TimePoint now{std::chrono::duration_cast<Duration>(
+          std::chrono::steady_clock::now().time_since_epoch())};
+      // Flush any cached updates and discard any stale data
+      time_series->update(now);
+
+      auto& aggregate_vector = output[key];
+      aggregate_vector.resize(interval_size);
+      // For each query interval, make a MultiLevelTimeSeries::rate() call
+      // to find the approximate rate over that interval
+      for (int i = 0; i < interval_size; ++i) {
+        const Duration interval = std::chrono::duration_cast<Duration>(
+            std::chrono::milliseconds{ms_intervals[i]});
+
+        auto rate_per_time_type =
+            time_series->template rate<double>(now - interval, now);
+        // Duration may not be seconds, convert to seconds
+        aggregate_vector[i] +=
+            rate_per_time_type * Duration::period::den / Duration::period::num;
+      }
+    }
+  });
+
+  cppMapToHs<AggregateMap, std::string, folly::small_vector<double, 4>,
+             std::nullptr_t, std::nullptr_t>(
+      output, nullptr, nullptr, len, keys_ptr, values_ptr, keys_, values_);
+
+  return 0;
+}
 
 }} // namespace hstream::common

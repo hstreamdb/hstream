@@ -21,6 +21,7 @@ import           Foreign.ForeignPtr
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
 
 import           HStream.Foreign
+import qualified HStream.Logger           as Log
 import qualified HStream.Stats.Internal   as I
 
 -------------------------------------------------------------------------------
@@ -58,7 +59,7 @@ PREFIX##get_##STATS_NAME (Stats stats) key =                                   \
 #define PER_X_STAT_GETALL(PREFIX, STATS_NAME)                                  \
 PREFIX##getall_##STATS_NAME :: Stats -> IO (Map.Map CBytes Int64);             \
 PREFIX##getall_##STATS_NAME (Stats stats) =                                    \
-  withForeignPtr stats $ \stats' ->                                            \
+  withForeignPtr stats $ \stats' -> snd <$>                                    \
     peekCppMap                                                                 \
       (I.PREFIX##getall_##STATS_NAME stats')                                   \
       peekStdStringToCBytesN c_delete_vector_of_string                         \
@@ -98,10 +99,14 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
     let interval_len = length intervals
     -- NOTE only for unsafe ffi
     let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
-    peekCppMap
-      (I.c_stream_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
-      peekStdStringToCBytesN c_delete_vector_of_string
-      peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
+    (ret, map) <-
+      peekCppMap
+        (I.c_stream_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
+        peekStdStringToCBytesN c_delete_vector_of_string
+        peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
+    if ret == 0 then pure map
+                else do Log.fatal "stream_time_series_getall failed!"
+                        pure Map.empty
 
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \

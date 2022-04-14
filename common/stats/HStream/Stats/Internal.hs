@@ -80,6 +80,6 @@ foreign import ccall unsafe "hs_stats.h stream_time_series_getall_by_name"
     -> MBA# (Ptr (FollySmallVector Double))
     -> MBA# (Ptr (StdVector StdString))
     -> MBA# (Ptr (StdVector (FollySmallVector Double)))
-    -> IO ()
+    -> IO CInt
 
 #undef PER_X_STAT_DEFINE
