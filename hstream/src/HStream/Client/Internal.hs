@@ -48,7 +48,7 @@ callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
     getRespApp API.HStreamApi{..} = do
       let req = API.DeleteSubscriptionRequest
                 { deleteSubscriptionRequestSubscriptionId = subId,
-                  deleteSubscriptionRequestForced = True
+                  deleteSubscriptionRequestForce = True
                 }
       hstreamApiDeleteSubscription (mkClientNormalRequest req)
     handleRespApp resp = case resp of
