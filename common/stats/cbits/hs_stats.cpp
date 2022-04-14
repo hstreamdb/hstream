@@ -1,5 +1,7 @@
 #include "hs_stats.h"
 
+// ----------------------------------------------------------------------------
+
 extern "C" {
 // ----------------------------------------------------------------------------
 
@@ -13,57 +15,45 @@ void delete_stats(Stats* s) { delete s; }
 
 void stats_holder_print(StatsHolder* s) { s->print(); }
 
+#define PER_X_STAT_DEFINE(prefix, x, x_ty, stat_name)                          \
+  void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
+                               int64_t val) {                                  \
+    PER_X_STAT_ADD(stats_holder, x, x_ty, stat_name, key, val);                \
+  }                                                                            \
+  int64_t prefix##get_##stat_name(Stats* stats, const char* key) {             \
+    PER_X_STAT_GET(stats, x, stat_name, key);                                  \
+  }                                                                            \
+  void prefix##getall_##stat_name(                                             \
+      Stats* stats, HsInt* len, std::string** keys_ptr, int64_t** values_ptr,  \
+      std::vector<std::string>** keys_, std::vector<int64_t>** values_) {      \
+    if (stats) {                                                               \
+      auto& stats_rlock = *(stats->x.rlock());                                 \
+      cppMapToHs<std::unordered_map<std::string, std::shared_ptr<x_ty>>,       \
+                 std::string, int64_t, std::nullptr_t,                         \
+                 std::function<int64_t(std::shared_ptr<x_ty>)>&&>(             \
+          stats_rlock, nullptr,                                                \
+          [](auto&& val) { return val->stat_name.load(); }, len, keys_ptr,     \
+          values_ptr, keys_, values_);                                         \
+    }                                                                          \
+  }
+
+#define PER_X_TIME_SERIES_DEFINE(prefix, x, x_ty, ts_ty, stat_name)            \
+  void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \
+                               int64_t val) {                                  \
+    PER_X_TIME_SERIES_ADD(stats_holder, x, x_ty, stat_name, ts_ty,             \
+                          std::string(key), val);                              \
+  }
+
 // ----------------------------------------------------------------------------
 // PerStreamStats
 
 #define STAT_DEFINE(name, _)                                                   \
-  void stream_stat_add_##name(StatsHolder* stats_holder,                       \
-                              const char* stream_name, int64_t val) {          \
-    if (stats_holder) {                                                        \
-      auto stats_struct = &(stats_holder->get());                              \
-      STREAM_STAT_ADD(stats_struct, stream_name, name, val);                   \
-    }                                                                          \
-  }                                                                            \
-  int64_t stream_stat_get_##name(Stats* stats, const char* stream_name) {      \
-    if (stats) {                                                               \
-      auto stats_rlock = stats->per_stream_stats.rlock();                      \
-      auto stats_it = stats_rlock->find(std::string(stream_name));             \
-      if (stats_it != stats_rlock->end()) {                                    \
-        auto r = stats_it->second->name.load();                                \
-        if (UNLIKELY(r < 0)) {                                                 \
-          ld_error("PerStreamStats overflowed!");                              \
-        } else {                                                               \
-          return r;                                                            \
-        }                                                                      \
-      }                                                                        \
-    }                                                                          \
-    return -1;                                                                 \
-  }                                                                            \
-  void stream_stat_getall_##name(                                              \
-      Stats* stats, HsInt* len, std::string** stream_names_ptr,                \
-      int64_t** values_ptr, std::vector<std::string>** keys_,                  \
-      std::vector<int64_t>** values_) {                                        \
-    if (stats) {                                                               \
-      auto& stats_rlock = *(stats->per_stream_stats.rlock());                  \
-      cppMapToHs<                                                              \
-          std::unordered_map<std::string, std::shared_ptr<PerStreamStats>>,    \
-          std::string, int64_t, std::nullptr_t,                                \
-          std::function<int64_t(std::shared_ptr<PerStreamStats>)>&&>(          \
-          stats_rlock, nullptr, [](auto&& val) { return val->name.load(); },   \
-          len, stream_names_ptr, values_ptr, keys_, values_);                  \
-    }                                                                          \
-  }
+  PER_X_STAT_DEFINE(stream_stat_, per_stream_stats, PerStreamStats, name)
 #include "per_stream_stats.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
-  void stream_time_series_add_##name(StatsHolder* stats_holder,                \
-                                     const char* stream_name, int64_t val) {   \
-    if (stats_holder) {                                                        \
-      auto stats_struct = &(stats_holder->get());                              \
-      STREAM_TIME_SERIES_ADD(stats_struct, std::string(stream_name), name,     \
-                             val);                                             \
-    }                                                                          \
-  }
+  PER_X_TIME_SERIES_DEFINE(stream_time_series_, per_stream_stats,              \
+                           PerStreamStats, PerStreamTimeSeries, name)
 #include "per_stream_time_series.inc"
 
 // For each thread, for each stream in the thread-local
@@ -226,24 +216,34 @@ int stream_time_series_get(StatsHolder* stats_holder, const char* string_name,
     return -1;
 }
 
-// TODO
-// bool verifyIntervals(StatsHolder* stats_holder, std::string string_name,
-//                     std::vector<Duration> query_intervals, std::string& err)
-//                     {
-//  Duration max_interval =
-//  stats_holder->params_.get()->maxInterval(string_name); using namespace
-//  std::chrono; for (auto interval : query_intervals) {
-//    if (interval > max_interval) {
-//      err = (boost::format("requested interval %s is larger than the max %s")
-//      %
-//             chrono_string(duration_cast<seconds>(interval)).c_str() %
-//             chrono_string(duration_cast<seconds>(max_interval)).c_str())
-//                .str();
-//      return false;
-//    }
-//  }
-//  return true;
-//}
+// ----------------------------------------------------------------------------
+// PerSubscriptionStats
+
+#define STAT_DEFINE(name, _)                                                   \
+  PER_X_STAT_DEFINE(subscription_stat_, per_subscription_stats,                \
+                    PerSubscriptionStats, name)
+#include "per_subscription_stats.inc"
+
+// ----------------------------------------------------------------------------
+
+/* TODO
+bool verifyIntervals(StatsHolder* stats_holder, std::string string_name,
+                     std::vector<Duration> query_intervals, std::string& err) {
+  Duration max_interval =
+      stats_holder->params_.get()->maxStreamStatsInterval(string_name);
+  using namespace std::chrono;
+  for (auto interval : query_intervals) {
+    if (interval > max_interval) {
+      err = (boost::format("requested interval %s is larger than the max %s") %
+             chrono_string(duration_cast<seconds>(interval)).c_str() %
+             chrono_string(duration_cast<seconds>(max_interval)).c_str())
+                .str();
+      return false;
+    }
+  }
+  return true;
+}
+*/
 
 // ----------------------------------------------------------------------------
 }

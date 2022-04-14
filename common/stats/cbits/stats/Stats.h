@@ -80,6 +80,29 @@ struct PerStreamStats {
 };
 
 // ----------------------------------------------------------------------------
+// PerSubscriptionStats
+
+using PerSubscriptionTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
+
+struct PerSubscriptionStats {
+#define STAT_DEFINE(name, _) StatsCounter name{};
+#include "per_subscription_stats.inc"
+  void aggregate(PerSubscriptionStats const& other,
+                 StatsAggOptional agg_override);
+  // Show all per_stream_stats to a json formatted string.
+  folly::dynamic toJsonObj();
+  std::string toJson();
+
+#define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
+  std::shared_ptr<PerSubscriptionTimeSeries> name;
+#include "per_subscription_time_series.inc"
+
+  // Mutex almost exclusively locked by one thread since PerSubscriptionStats
+  // objects are contained in thread-local stats
+  std::mutex mutex;
+};
+
+// ----------------------------------------------------------------------------
 // All Stats
 
 struct StatsParams {
@@ -89,7 +112,10 @@ struct StatsParams {
 #include "per_stream_time_series.inc"
 
   // Get MaxInterval of StreamStats by string(command) name
-  PerStreamTimeSeries::Duration maxInterval(std::string string_name);
+  PerStreamTimeSeries::Duration maxStreamStatsInterval(std::string string_name);
+
+  PerSubscriptionTimeSeries::Duration
+  maxSubscribptionStatsInterval(std::string string_name);
 };
 
 struct Stats {
@@ -169,6 +195,11 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerStreamStats>>>
       per_stream_stats;
+
+  // Per-subscription stats
+  folly::Synchronized<
+      std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>
+      per_subscription_stats;
 
   const FastUpdateableSharedPtr<StatsParams>* params;
 };
@@ -290,54 +321,71 @@ template <typename Func> void StatsHolder::runForEach(const Func& func) {
 
 // ----------------------------------------------------------------------------
 
-#define STREAM_STAT_ADD(stats_struct, stream_name, stat_name, val)             \
+#define PER_X_STAT_ADD(stats_struct, x, x_ty, stat_name, key, val)             \
   do {                                                                         \
     if (stats_struct) {                                                        \
-      auto stats_ulock = (stats_struct)->per_stream_stats.ulock();             \
-      auto stats_it = stats_ulock->find((stream_name));                        \
+      auto stats_ulock = (stats_struct)->get().x.ulock();                      \
+      auto stats_it = stats_ulock->find((key));                                \
       if (stats_it != stats_ulock->end()) {                                    \
-        /* PerStreamStats for stream_name already exist (common case). */      \
+        /* x_ty for key already exist (common case). */                        \
         /* Just atomically increment the value.  */                            \
         stats_it->second->stat_name += (val);                                  \
       } else {                                                                 \
-        /* PerStreamStats for stream_name do not exist yet (rare case). */     \
-        /* Upgrade ulock to wlock and emplace new PerStreamStats. */           \
+        /* x_ty for key do not exist yet (rare case). */                       \
+        /* Upgrade ulock to wlock and emplace new x_ty. */                     \
         /* No risk of deadlock because we are the only writer thread. */       \
-        auto stats_ptr = std::make_shared<PerStreamStats>();                   \
+        auto stats_ptr = std::make_shared<x_ty>();                             \
         stats_ptr->stat_name += (val);                                         \
         stats_ulock.moveFromUpgradeToWrite()->emplace_hint(                    \
-            stats_it, (stream_name), std::move(stats_ptr));                    \
+            stats_it, (key), std::move(stats_ptr));                            \
       }                                                                        \
     }                                                                          \
   } while (0)
 
-#define STREAM_TIME_SERIES_ADD(stats_struct, stream_name, stat_name, val)      \
+#define PER_X_STAT_GET(stats_agg, x, stat_name, key)                           \
+  do {                                                                         \
+    if (stats_agg) {                                                           \
+      auto stats_rlock = stats_agg->x.rlock();                                 \
+      auto stats_it = stats_rlock->find(std::string(key));                     \
+      if (stats_it != stats_rlock->end()) {                                    \
+        auto r = stats_it->second->stat_name.load();                           \
+        if (UNLIKELY(r < 0)) {                                                 \
+          ld_error("PerStreamStats overflowed!");                              \
+        } else {                                                               \
+          return r;                                                            \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
+    return -1;                                                                 \
+  } while (0)
+
+#define PER_X_TIME_SERIES_ADD(stats_struct, x, x_ty, stat_name, stat_name_ty,  \
+                              key, val)                                        \
   do {                                                                         \
     if (stats_struct) {                                                        \
-      auto stats_ulock = (stats_struct)->per_stream_stats.ulock();             \
+      auto stats_ulock = (stats_struct)->get().x.ulock();                      \
       /* Unfortunately, the type of the lock after a downgrade from write to   \
        * upgrade isn't the same as the type of upgrade lock initially acquired \
        */                                                                      \
       folly::LockedPtr<decltype(stats_ulock)::Synchronized,                    \
                        folly::detail::SynchronizedLockPolicyUpgrade>           \
           stats_downgraded_ulock;                                              \
-      auto stats_it = stats_ulock->find((stream_name));                        \
+      auto stats_it = stats_ulock->find((key));                                \
       if (UNLIKELY(stats_it == stats_ulock->end())) {                          \
-        /* PerStreamStats for stream_name do not exist yet (rare case). */     \
-        /* Upgrade ulock to wlock and emplace new PerStreamStats. */           \
+        /* x_ty for key do not exist yet (rare case). */                       \
+        /* Upgrade ulock to wlock and emplace new x_ty. */                     \
         /* No risk of deadlock because we are the only writer thread. */       \
-        auto stats_ptr = std::make_shared<PerStreamStats>();                   \
+        auto stats_ptr = std::make_shared<x_ty>();                             \
         auto stats_wlock = stats_ulock.moveFromUpgradeToWrite();               \
-        stats_it =                                                             \
-            stats_wlock->emplace((stream_name), std::move(stats_ptr)).first;   \
+        stats_it = stats_wlock->emplace((key), std::move(stats_ptr)).first;    \
         stats_downgraded_ulock = stats_wlock.moveFromWriteToUpgrade();         \
       }                                                                        \
       {                                                                        \
         std::lock_guard<std::mutex> guard(stats_it->second->mutex);            \
         if (UNLIKELY(!stats_it->second->stat_name)) {                          \
-          stats_it->second->stat_name = std::make_shared<PerStreamTimeSeries>( \
-              (stats_struct)->params->get()->num_buckets_##stat_name,          \
-              (stats_struct)->params->get()->time_intervals_##stat_name);      \
+          stats_it->second->stat_name = std::make_shared<stat_name_ty>(        \
+              (stats_struct)->params_.get()->num_buckets_##stat_name,          \
+              (stats_struct)->params_.get()->time_intervals_##stat_name);      \
         }                                                                      \
         stats_it->second->stat_name->addValue(val);                            \
       }                                                                        \
