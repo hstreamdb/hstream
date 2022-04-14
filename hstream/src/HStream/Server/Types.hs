@@ -78,15 +78,21 @@ data SubscribeContext = SubscribeContext
     subShardContexts     :: TVar (HM.HashMap HS.C_LogID SubscribeShardContext),
     subAssignment        :: Assignment,
     subCurrentTime ::  TVar Word64,
-    subWaitingCheckedRecordIds :: TVar [CheckedRecordIds]
+    subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
+    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds)
   }
 
 data CheckedRecordIds = CheckedRecordIds {
-  crDeadline  :: Word64,
-  crLogId     :: HS.C_LogID,
-  crBatchId   :: Word64,
-  crRecordIds :: V.Vector ShardRecordId
+  crDeadline     :: Word64,
+  crLogId        :: HS.C_LogID,
+  crBatchId      :: Word64,
+  crBatchIndexes :: TVar (Set.Set Word32)
 }
+
+data CheckedRecordIdsKey = CheckedRecordIdsKey {
+  crkLogId   :: HS.C_LogID,
+  crkBatchId :: Word64
+} deriving (Eq, Ord)
 
 data ConsumerContext = ConsumerContext
   { ccConsumerName :: ConsumerName,
