@@ -43,7 +43,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
 
 deleteSubscription :: ServerContext -> Subscription -> Bool -> IO ()
 deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = subId
-  , subscriptionStreamName = streamName} forced = do
+  , subscriptionStreamName = streamName} force = do
   (status, msub) <- atomically $ do
     res <- getSubState
     case res of
@@ -55,7 +55,7 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
           SubscribeStateRunning -> do
             isActive <- hasValidConsumers subCtx
             if isActive
-            then if forced
+            then if force
                  then do
                    writeTVar stateVar SubscribeStateStopping
                    pure (CanDelete, Just (subCtx, stateVar))

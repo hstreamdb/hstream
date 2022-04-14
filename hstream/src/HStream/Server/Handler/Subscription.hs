@@ -90,7 +90,7 @@ deleteSubscriptionHandler
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForced = forced}) = subExceptionHandle $ do
+  { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force}) = subExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
   hr <- readMVar loadBalanceHashRing
@@ -99,7 +99,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
 
   subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
-  Core.deleteSubscription ctx (fromJust subscription) forced
+  Core.deleteSubscription ctx (fromJust subscription) force
   Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
 -- --------------------------------------------------------------------------------
