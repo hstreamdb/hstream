@@ -114,9 +114,14 @@ struct StatsParams {
   size_t num_buckets_##name = buckets;
 #include "per_stream_time_series.inc"
 
+#define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
+  std::vector<std::chrono::milliseconds> time_intervals_##name = t;            \
+  size_t num_buckets_##name = buckets;
+#include "per_subscription_time_series.inc"
+
   // Get MaxInterval of StreamStats by string(command) name
   PerStreamTimeSeries::Duration maxStreamStatsInterval(std::string string_name);
-
+  // MaxInterval of SubscriptionStats
   PerSubscriptionTimeSeries::Duration
   maxSubscribptionStatsInterval(std::string string_name);
 };
