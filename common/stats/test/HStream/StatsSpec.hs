@@ -79,6 +79,30 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "subid_1" m `shouldBe` Just 3
     Map.lookup "subid_2" m `shouldBe` Just 1
 
+  it "pre subscription stats time series" $ do
+    h <- newStatsHolder
+    let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
+
+    subscription_time_series_add_bytes_out h "topic_1" 1000
+    subscription_time_series_add_bytes_out h "topic_2" 10000
+    threadDelay 1000000
+    subscription_time_series_add_bytes_out h "topic_1" 1000
+    subscription_time_series_add_bytes_out h "topic_2" 10000
+
+    subscription_time_series_get h "reads_out" "non-existed-stream-name" intervals
+      `shouldReturn` Nothing
+
+    Just [rate1_p5s, rate1_p10s] <- subscription_time_series_get h "reads_out" "topic_1" intervals
+    rate1_p5s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
+    rate1_p10s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
+    Just [rate2_p5s, rate2_p10s] <- subscription_time_series_get h "reads_out" "topic_2" intervals
+    rate2_p5s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
+    rate2_p10s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
+
+    m <- subscription_time_series_getall_by_name h "reads_out" intervals
+    Map.lookup "topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
+    Map.lookup "topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
+
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
   h <- runIO newStatsHolder
@@ -135,3 +159,20 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     m <- subscription_stat_getall_consumers s
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
+
+  it "pre subscription stats time series (threaded)" $ do
+    runConc 10 $ runConc 1000 $ do
+      subscription_time_series_add_bytes_out h "a_stream" 1000
+      subscription_time_series_add_bytes_out h "b_stream" 1000
+
+    let max_intervals = [60 * 1000]   -- 1min
+    m <- subscription_time_series_getall_by_name h "reads_out" max_intervals
+    Map.lookup "non-existed-stream-name" m `shouldBe` Nothing
+    subscription_time_series_get h "reads_out" "non-existed-stream-name" max_intervals
+      `shouldReturn` Nothing
+
+    -- FIXME: Unfortunately, there is no easy way to test with real speed. So we just
+    -- check the speed is positive.
+    Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
+    Just rate <- subscription_time_series_get h "reads_out" "a_stream" max_intervals
+    rate `shouldSatisfy` (\s -> head s > 0)

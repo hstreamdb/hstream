@@ -106,6 +106,58 @@ int stream_time_series_getall_by_name(
                     PerSubscriptionStats, name)
 #include "per_subscription_stats.inc"
 
+#define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
+  PER_X_TIME_SERIES_DEFINE(subscription_time_series_, per_subscription_stats,  \
+                           PerSubscriptionStats, PerSubscriptionTimeSeries,    \
+                           name)
+#include "per_subscription_time_series.inc"
+
+void setPerSubscriptionTimeSeriesMember(
+    const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
+                               PerSubscriptionStats::*& member_ptr) {
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == std::string(stat_name)) {                                       \
+      member_ptr = &PerSubscriptionStats::name;                                \
+      break;                                                                   \
+    }                                                                          \
+  }
+#include "per_subscription_time_series.inc"
+}
+
+int subscription_time_series_get(StatsHolder* stats_holder,
+                                 const char* stat_name, const char* subs_name,
+                                 HsInt interval_size, HsInt* ms_intervals,
+                                 HsDouble* aggregate_vals) {
+  return perXTimeSeriesGet<
+      PerSubscriptionStats, PerSubscriptionTimeSeries,
+      std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>(
+      stats_holder, stat_name, subs_name, setPerSubscriptionTimeSeriesMember,
+      &Stats::per_subscription_stats, interval_size, ms_intervals,
+      aggregate_vals);
+}
+
+// For each thread, for each stream in the thread-local
+// per_subscription_stats, for each query interval, calculate the rate in B/s
+// and aggregate.  Output is a map (subs name, query interval) -> (sum of
+// rates collected from different threads).
+int subscription_time_series_getall_by_name(
+    StatsHolder* stats_holder, const char* stat_name,
+    //
+    HsInt interval_size, HsInt* ms_intervals,
+    //
+    HsInt* len, std::string** keys_ptr,
+    folly::small_vector<double, 4>** values_ptr,
+    std::vector<std::string>** keys_,
+    std::vector<folly::small_vector<double, 4>>** values_) {
+  return perXTimeSeriesGetall<
+      PerSubscriptionStats, PerSubscriptionTimeSeries,
+      std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>(
+      stats_holder, stat_name, setPerSubscriptionTimeSeriesMember,
+      &Stats::per_subscription_stats, interval_size, ms_intervals, len,
+      keys_ptr, values_ptr, keys_, values_);
+}
+
 // ----------------------------------------------------------------------------
 
 /* TODO
