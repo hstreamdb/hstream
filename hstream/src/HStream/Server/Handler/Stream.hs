@@ -118,6 +118,9 @@ appendStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
         return (StatusUnavailable, mkStatusDetails err)),
       Handler (\(err :: Store.NOTINSERVERCONFIG) -> do
         Log.warning $ Log.buildString' err
+        return (StatusUnavailable, mkStatusDetails err)),
+      Handler (\(err :: Store.NOSEQUENCER) -> do
+        Log.warning $ Log.buildString' err
         return (StatusUnavailable, mkStatusDetails err))
       ]
 
