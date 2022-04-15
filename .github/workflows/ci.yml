@@ -56,12 +56,12 @@ jobs:
         with:
           submodules: "recursive"
 
-      - name: Set env
+      - name: set env
         run: |
           echo "CABAL=python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
           echo "SHELL=python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
 
-      - name: Start required services
+      - name: start required services
         run: python3 script/dev-tools start-services
 
       - name: cabal update
@@ -70,8 +70,8 @@ jobs:
       - name: cabal freeze
         run: ${{ env.CABAL }} freeze
 
-      - name: Cache
-        uses: actions/cache@v2
+      - name: cache
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/packages
@@ -154,9 +154,36 @@ jobs:
 
       - name: quick build new hstream image
         run: |
+          mkdir -p ~/data
+
           python3 script/dev-tools quick-build-dev-image \
             --builder-image docker.io/hstreamdb/haskell:${{ matrix.ghc }} \
             -t $NEW_HSTREAM_IMAGE
+
+          docker save -o ~/data/new_hstream_image.tar $NEW_HSTREAM_IMAGE
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data/new_hstream_image.tar
+          retention-days: 5
+
+  integration-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    name: integration-tests
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data
+
+      - name: docker load
+        run: docker load -i ~/data/new_hstream_image.tar
 
       - name: fetch integration tests source code
         uses: actions/checkout@v2
@@ -178,11 +205,12 @@ jobs:
           export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
           ./gradlew test --info --fail-fast -Dtag='basicTest'
 
-      - uses: actions/upload-artifact@v2
-        if: ${{ success() }} || ${{ failure() }}
+      - name: tar tests reports
+        run: tar -cvf ~/data/reports.tar integration-tests/.logs integration-tests/app/build/reports
+
+      - name: upload tests-reports
+        uses: actions/upload-artifact@v2
         with:
           name: integration-tests-reports
-          path: |
-            integration-tests/.logs
-            integration-tests/app/build/reports
+          path: ~/data/reports.tar
           retention-days: 7
