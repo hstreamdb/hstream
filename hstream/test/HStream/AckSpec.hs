@@ -1,6 +1,7 @@
 module HStream.AckSpec (spec) where
 
 import           Data.Map.Strict               as Map
+import           Data.Maybe                    (fromJust)
 import           HStream.Server.Handler.Common (getCommitRecordId,
                                                 insertAckedRecordId,
                                                 isSuccessor)
@@ -65,7 +66,7 @@ insertAckSpec =
       let r = ShardRecordId 1 1
       let batchNumMap = Map.singleton 1 3
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId r lowerBound oldRanges batchNumMap `shouldBe` Map.singleton r (ShardRecordIdRange r r)
+      fromJust (insertAckedRecordId r lowerBound oldRanges batchNumMap) `shouldBe` Map.singleton r (ShardRecordIdRange r r)
     it "no merge" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 0
@@ -78,7 +79,7 @@ insertAckSpec =
       let newRanges = Map.insert newR (ShardRecordIdRange newR newR) oldRanges
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "no merge 2" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 0
@@ -91,7 +92,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(range1L, ShardRecordIdRange range1L range1R), (range2L, ShardRecordIdRange range2L range2R), (newR, ShardRecordIdRange newR newR)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5), (4, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "no merge 3" $ do
       let range1L = ShardRecordId 1 2
       let range1R = ShardRecordId 2 0
@@ -104,7 +105,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(newR, ShardRecordIdRange newR newR), (range1L, ShardRecordIdRange range1L range1R), (range2L, ShardRecordIdRange range2L range2R)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5), (4, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge to left" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 0
@@ -117,7 +118,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(range1L, ShardRecordIdRange range1L newR), (range2L, ShardRecordIdRange range2L range2R)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge to left 1" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 0
@@ -127,7 +128,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(range1L, ShardRecordIdRange range1L newR)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge to right" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 0
@@ -140,7 +141,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(range1L, ShardRecordIdRange range1L range1R), (newR, ShardRecordIdRange newR range2R)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge to right 2" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 0
@@ -153,7 +154,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(range1L, ShardRecordIdRange range1L range1R), (range2L, ShardRecordIdRange range2L newR)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge to right 3" $ do
       let range2L = ShardRecordId 3 1
       let range2R = ShardRecordId 3 2
@@ -163,7 +164,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(newR, ShardRecordIdRange newR range2R)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge to left and right" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 4
@@ -176,7 +177,7 @@ insertAckSpec =
       let newRanges = Map.fromList [(range1L, ShardRecordIdRange range1L range2R)]
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId newR lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId newR lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "no merge out of lowerBound" $ do
       let range1L = ShardRecordId 2 0
       let range1R = ShardRecordId 3 4
@@ -185,7 +186,7 @@ insertAckSpec =
       let oldRanges = Map.fromList [(range1L, ShardRecordIdRange range1L range1R)]
       let newL = ShardRecordId 1 1
       let batchNumMap = Map.empty
-      insertAckedRecordId newL lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+      insertAckedRecordId newL lowerBound oldRanges batchNumMap `shouldBe` Nothing
     it "no merge invalid record" $ do
       let range1L = ShardRecordId 1 0
       let range1R = ShardRecordId 2 4
@@ -198,8 +199,8 @@ insertAckSpec =
       let invalidIdx = ShardRecordId 2 8
       let batchNumMap = Map.fromList [(1, 5), (2, 5), (3, 5)]
       let lowerBound = ShardRecordId minBound minBound
-      insertAckedRecordId invalidIdx lowerBound oldRanges batchNumMap `shouldBe` oldRanges
-      insertAckedRecordId invalidLSN lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+      insertAckedRecordId invalidIdx lowerBound oldRanges batchNumMap `shouldBe` Nothing
+      insertAckedRecordId invalidLSN lowerBound oldRanges batchNumMap `shouldBe` Nothing
     it "merge after gap record" $ do
       let recordInsert = ShardRecordId 10 0
       let lowerBound = ShardRecordId minBound minBound
@@ -210,7 +211,7 @@ insertAckSpec =
       let batchNumMap = Map.fromList [(9, 0), (10, 3)]
       let oldRanges = Map.fromList [(gapL, ShardRecordIdRange gapL gapR)]
       let newRanges = Map.fromList [(gapL, ShardRecordIdRange gapL recordInsert)]
-      insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge before gap record" $ do
       let recordInsert = ShardRecordId 4 3
       let lowerBound = ShardRecordId minBound minBound
@@ -221,7 +222,7 @@ insertAckSpec =
       let batchNumMap = Map.fromList [(4, 4), (5, 0)]
       let oldRanges = Map.fromList [(gapL, ShardRecordIdRange gapL gapR)]
       let newRanges = Map.fromList [(recordInsert, ShardRecordIdRange recordInsert gapR)]
-      insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "merge between gap record" $ do
       let recordInsert = ShardRecordId 5 0
       let lowerBound = ShardRecordId minBound minBound
@@ -234,7 +235,7 @@ insertAckSpec =
       let batchNumMap = Map.fromList [(4, 0), (5, 1), (6, 0)]
       let oldRanges = Map.fromList [(gapLL, ShardRecordIdRange gapLL gapLR), (gapRL, ShardRecordIdRange gapRL gapRR)]
       let newRanges = Map.fromList [(gapLL, ShardRecordIdRange gapLL gapRR)]
-      insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap `shouldBe` newRanges
+      fromJust (insertAckedRecordId recordInsert lowerBound oldRanges batchNumMap) `shouldBe` newRanges
     it "filter duplicate ack record" $ do
       let recordInsert1 = ShardRecordId 5 0
       let recordInsert2 = ShardRecordId 7 3
@@ -247,8 +248,8 @@ insertAckSpec =
 
       let batchNumMap = Map.fromList [(2, 5), (5, 10), (6, 7), (12, 9)]
       let oldRanges = Map.fromList [(rangeLL, ShardRecordIdRange rangeLL rangeLR), (rangeRL, ShardRecordIdRange rangeRL rangeRR)]
-      insertAckedRecordId recordInsert1 lowerBound oldRanges batchNumMap `shouldBe` oldRanges
-      insertAckedRecordId recordInsert2 lowerBound oldRanges batchNumMap `shouldBe` oldRanges
+      insertAckedRecordId recordInsert1 lowerBound oldRanges batchNumMap `shouldBe` Nothing
+      insertAckedRecordId recordInsert2 lowerBound oldRanges batchNumMap `shouldBe` Nothing
     it "test getCommitRecordId" $ do
         let ranges = Map.empty
         let batchNumMap = Map.empty
