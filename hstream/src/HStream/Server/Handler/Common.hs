@@ -70,6 +70,7 @@ insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
   --
   | not $ isValidRecordId recordId batchNumMap = Nothing
   | recordId < lowerBound = Nothing
+  | Map.member recordId ackedRanges = Nothing
   | otherwise =
       let leftRange = lookupLTWithDefault recordId ackedRanges
           rightRange = lookupGTWithDefault recordId ackedRanges

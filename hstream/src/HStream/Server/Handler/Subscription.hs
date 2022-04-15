@@ -825,7 +825,7 @@ doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
     bnm <- readTVar awBatchNumMap
     let shardRecordIds = recordIds2ShardRecordIds recordIds
     let (newAckedRanges, updated :: Word32) = V.foldl' (\(a, n) b -> maybe (a, n) (, n + 1) $ insertAckedRecordId b lb a bnm) (ars, 0) shardRecordIds
-    when (updated > 0) $ modifyTVar subUnackedRecords (`subtract` updated)
+    when (updated > 0) $ modifyTVar subUnackedRecords (subtract updated)
     let commitShardRecordId = getCommitRecordId newAckedRanges bnm
     case tryUpdateWindowLowerBound newAckedRanges lb bnm commitShardRecordId of
       Just (ranges, newLowerBound) -> do
