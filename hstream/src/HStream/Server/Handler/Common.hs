@@ -327,8 +327,12 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
     action hm x terminatedQids = do
       result <- try $ do
         case HM.lookup x hm of
-          Just tid -> killThread tid
-          _        -> pure ()
+          Just tid -> do
+            killThread tid
+            P.setQueryStatus x Terminated zkHandle
+            void $ swapMVar runningQueries (HM.delete x hm)
+          _        ->
+            Log.debug $ "query id " <> Log.buildString' x <> " not found"
       case result of
         Left (e ::SomeException) -> do
           Log.warning . Log.buildString
