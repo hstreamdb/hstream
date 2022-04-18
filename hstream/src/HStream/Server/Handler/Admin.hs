@@ -102,7 +102,7 @@ runStream ctx (AT.StreamCmdCreate stream) = do
   return $ plainResponse "OK"
 runStream ctx (AT.StreamCmdDelete stream force) = do
   HC.deleteStream ctx def { API.deleteStreamRequestStreamName = stream
-                          , API.deleteStreamRequestForce = True}
+                          , API.deleteStreamRequestForce = force}
   return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------
