@@ -2,6 +2,7 @@ module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import qualified Data.Aeson                as Aeson
+import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
@@ -112,12 +113,19 @@ adminCommandParser = O.hsubparser
 data StreamCommand
   = StreamCmdList
   | StreamCmdCreate API.Stream
+  | StreamCmdDelete Text Bool
   deriving (Show)
 
 streamCmdParser :: O.Parser StreamCommand
 streamCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure StreamCmdList) (O.progDesc "Get all streams"))
  <> O.command "create" (O.info (StreamCmdCreate <$> streamParser) (O.progDesc "Create a stream"))
+ <> O.command "delete" (O.info (StreamCmdDelete <$> O.strOption ( O.long "name" <> O.metavar "STRING"
+                                                               <> O.help "stream name")
+                                                <*> O.switch ( O.long "force"
+                                                            <> O.short 'f' ))
+                               (O.progDesc "delete a stream (Warning: incomplete implementation)")
+                        )
   )
 
 streamParser :: O.Parser API.Stream
@@ -148,7 +156,7 @@ streamParser = API.Stream
 data SubscriptionCommand
   = SubscriptionCmdList
   | SubscriptionCmdCreate API.Subscription
-  | SubscriptionCmdDelete API.Subscription
+  | SubscriptionCmdDelete API.Subscription Bool
   deriving (Show)
 
 subscriptionCmdParser :: O.Parser SubscriptionCommand
@@ -156,8 +164,10 @@ subscriptionCmdParser = O.hsubparser
   ( O.command "list" (O.info (pure SubscriptionCmdList) (O.progDesc "get all subscriptions"))
  <> O.command "create" (O.info (SubscriptionCmdCreate <$> subscriptionParser)
                                (O.progDesc "create a subscription"))
- <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser)
-                               (O.progDesc "delete a subscription (Warning: incomplete implementation)")
+ <> O.command "delete" (O.info (SubscriptionCmdDelete <$> subscriptionParser
+                                                      <*> O.switch ( O.long "force"
+                                                                  <> O.short 'f' ))
+                               (O.progDesc "delete a subscription")
                        )
   )
 
