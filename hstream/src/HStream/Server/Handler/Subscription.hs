@@ -34,7 +34,8 @@ import           Data.IORef                       (modifyIORef', newIORef,
                                                    readIORef, writeIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, isNothing)
+import           Data.Maybe                       (fromJust, fromMaybe,
+                                                   isNothing)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -754,7 +755,6 @@ doAcks
   -> IO ()
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
   atomically $ do
-    addUnackedRecords subCtx (- V.length ackRecordIds)
     removeAckedRecordIdsFromCheckList ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
   forM_ group (\(logId, recordIds) -> doAck ldclient subCtx logId recordIds)
@@ -815,7 +815,7 @@ doAck
   -> S.C_LogID
   -> V.Vector RecordId
   -> IO ()
-doAck ldclient SubscribeContext {..} logId recordIds= do
+doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
   res <- atomically $ do
     scs <- readTVar subShardContexts
     let SubscribeShardContext {sscAckWindow = AckWindow{..}} = scs HM.! logId
@@ -824,7 +824,8 @@ doAck ldclient SubscribeContext {..} logId recordIds= do
     ars <- readTVar awAckedRanges
     bnm <- readTVar awBatchNumMap
     let shardRecordIds = recordIds2ShardRecordIds recordIds
-    let newAckedRanges = V.foldl' (\a b -> insertAckedRecordId b lb a bnm) ars shardRecordIds
+    let (newAckedRanges, updated :: Word32) = V.foldl' (\(a, n) b -> maybe (a, n) (, n + 1) $ insertAckedRecordId b lb a bnm) (ars, 0) shardRecordIds
+    when (updated > 0) $ modifyTVar subUnackedRecords (subtract updated)
     let commitShardRecordId = getCommitRecordId newAckedRanges bnm
     case tryUpdateWindowLowerBound newAckedRanges lb bnm commitShardRecordId of
       Just (ranges, newLowerBound) -> do

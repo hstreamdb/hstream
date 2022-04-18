@@ -63,13 +63,14 @@ insertAckedRecordId
   -> ShardRecordId                        -- ^ lowerBound of current window
   -> Map.Map ShardRecordId ShardRecordIdRange  -- ^ ackedRanges
   -> Map.Map Word64 Word32           -- ^ batchNumMap
-  -> Map.Map ShardRecordId ShardRecordIdRange
+  -> Maybe (Map.Map ShardRecordId ShardRecordIdRange)
 insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
   -- [..., {leftStartRid, leftEndRid}, recordId, {rightStartRid, rightEndRid}, ... ]
   --       | ---- leftRange ----    |            |  ---- rightRange ----    |
   --
-  | not $ isValidRecordId recordId batchNumMap = ackedRanges
-  | recordId < lowerBound = ackedRanges
+  | not $ isValidRecordId recordId batchNumMap = Nothing
+  | recordId < lowerBound = Nothing
+  | Map.member recordId ackedRanges = Nothing
   | otherwise =
       let leftRange = lookupLTWithDefault recordId ackedRanges
           rightRange = lookupGTWithDefault recordId ackedRanges
@@ -80,14 +81,14 @@ insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
     f leftRange rightRange canMergeToLeft canMergeToRight
       | canMergeToLeft && canMergeToRight =
         let m1 = Map.delete (startRecordId rightRange) ackedRanges
-         in Map.adjust (const leftRange {endRecordId = endRecordId rightRange}) (startRecordId leftRange) m1
-      | canMergeToLeft = Map.adjust (const leftRange {endRecordId = recordId}) (startRecordId leftRange) ackedRanges
+         in Just $ Map.adjust (const leftRange {endRecordId = endRecordId rightRange}) (startRecordId leftRange) m1
+      | canMergeToLeft = Just $ Map.adjust (const leftRange {endRecordId = recordId}) (startRecordId leftRange) ackedRanges
       | canMergeToRight =
         let m1 = Map.delete (startRecordId rightRange) ackedRanges
-         in Map.insert recordId (rightRange {startRecordId = recordId}) m1
+         in Just $ Map.insert recordId (rightRange {startRecordId = recordId}) m1
       | otherwise = if checkDuplicat leftRange rightRange
-                      then ackedRanges
-                      else Map.insert recordId (ShardRecordIdRange recordId recordId) ackedRanges
+                      then Nothing
+                      else Just $ Map.insert recordId (ShardRecordIdRange recordId recordId) ackedRanges
 
     checkDuplicat leftRange rightRange =
          recordId >= startRecordId leftRange && recordId <= endRecordId leftRange
