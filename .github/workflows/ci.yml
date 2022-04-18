@@ -206,10 +206,15 @@ jobs:
           ./gradlew test --info --fail-fast -Dtag='basicTest'
 
       - name: tar tests reports
-        run: tar -cvf ~/data/reports.tar integration-tests/.logs integration-tests/app/build/reports
+        if: ${{ success() }} || ${{ failure() }}
+        run: |
+          mv integration-tests/.logs integration-tests/logs
+          mv integration-tests/app/build/reports integration-tests/reports
+          tar -cvf ~/data/reports.tar integration-tests/logs integration-tests/reports
 
       - name: upload tests-reports
         uses: actions/upload-artifact@v2
+        if: ${{ success() }} || ${{ failure() }}
         with:
           name: integration-tests-reports
           path: ~/data/reports.tar
