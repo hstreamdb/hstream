@@ -17,6 +17,7 @@ import qualified GHC.IO.Exception                 as E
 import           Network.GRPC.HighLevel.Generated
 import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
+import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 
 import qualified HStream.Admin.Server.Types       as AT
@@ -99,6 +100,10 @@ runStream ctx AT.StreamCmdList = do
 runStream ctx (AT.StreamCmdCreate stream) = do
   HC.createStream ctx stream
   return $ plainResponse "OK"
+runStream ctx (AT.StreamCmdDelete stream force) = do
+  HC.deleteStream ctx def { API.deleteStreamRequestStreamName = stream
+                          , API.deleteStreamRequestForce = force}
+  return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------
 -- Subscription Command
@@ -114,8 +119,8 @@ runSubscription ctx AT.SubscriptionCmdList = do
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
-runSubscription ctx (AT.SubscriptionCmdDelete subscription) = do
-  HC.deleteSubscription ctx subscription False
+runSubscription ctx (AT.SubscriptionCmdDelete subscription force) = do
+  HC.deleteSubscription ctx subscription force
   return $ plainResponse "OK"
 runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
   HC.createSubscription ctx sub
