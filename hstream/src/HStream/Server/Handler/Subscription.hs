@@ -25,29 +25,28 @@ import           Control.Concurrent.Async         (async, wait)
 import           Control.Concurrent.STM
 import           Control.Exception                (Exception, Handler (Handler),
                                                    catch, throwIO)
-import           Control.Monad                    (foldM, foldM_, forM_,
-                                                   forever, unless, when)
+import           Control.Monad                    (foldM, forM_, forever,
+                                                   unless, when)
 import qualified Data.ByteString                  as B
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (modifyIORef', newIORef,
-                                                   readIORef, writeIORef)
+import           Data.IORef                       (newIORef, readIORef,
+                                                   writeIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, fromMaybe,
                                                    isNothing)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
+import           Data.Text.Encoding               (encodeUtf8)
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
-import           Debug.Trace
 import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
+import qualified Z.Data.Vector                    as ZV
 import           Z.Data.Vector                    (Bytes)
-import           Z.IO.LowResTimer                 (registerLowResTimer)
 import           ZooKeeper.Types                  (ZHandle)
 
-import           Data.Text.Encoding               (encodeUtf8)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
@@ -66,6 +65,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (decodeBatch, mkServerErrResp,
@@ -315,7 +315,7 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
     return cc
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
-sendRecords ctx subState subCtx@SubscribeContext {..} = do
+sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
   threadDelay 10000
   isFirstSendRef <- newIORef True
   loop isFirstSendRef
@@ -339,7 +339,6 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
           addRead subLdCkpReader subAssignment
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
-          -- Log.debug $ "readBatches size " <> Log.buildInt (length recordBatches)
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
           isFirstSend <- readIORef isFirstSendRef
           if isFirstSend
@@ -350,7 +349,11 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
               updateClockAndDoResend
           else pure ()
           successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-          -- Log.debug "pass sendReceivedRecordsVecs"
+          let cSubscriptionId = textToCBytes subSubscriptionId
+              byteSize = fromIntegral $ sum $ map (ZV.length . S.recordPayload) recordBatches
+              recordSize = fromIntegral $ length recordBatches
+          Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
+          Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
           atomically $ addUnackedRecords subCtx successSendRecords
           loop isFirstSendRef
         else
@@ -372,7 +375,6 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
         buildShardRecordIds  CheckedRecordIds {..} = atomically $ do
           batchIndexes <- readTVar crBatchIndexes
           pure $ V.fromList $ fmap (\i -> ShardRecordId {sriBatchId = crBatchId, sriBatchIndex= i}) (Set.toList batchIndexes)
-
 
     checkAvailable :: TVar (HM.HashMap k v) -> STM()
     checkAvailable tv = readTVar tv >>= check . not . HM.null
@@ -434,24 +436,6 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
             writeTVar awBatchNumMap newBatchNumMap
           return []
         Right dataRecords -> return dataRecords
-
-    decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
-    decodeRecordBatch dataRecord =
-      let payload = S.recordPayload dataRecord
-          logId = S.recordLogID dataRecord
-          batchId = S.recordLSN dataRecord
-          recordBatch = decodeBatch payload
-          batch = hstreamRecordBatchBatch recordBatch
-          (shardRecordIds, receivedRecords) = mkReceivedRecords logId batchId batch
-      in
-          (logId, batchId, shardRecordIds, receivedRecords)
-
-    mkReceivedRecords :: S.C_LogID -> Word64 -> V.Vector B.ByteString -> (V.Vector ShardRecordId, V.Vector ReceivedRecord)
-    mkReceivedRecords logId batchId records =
-      let
-          shardRecordIds = V.imap (\ i _ -> ShardRecordId batchId (fromIntegral i)) records
-          receivedRecords = V.imap (\ i a -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) records
-      in  (shardRecordIds, receivedRecords)
 
     sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)] -> IO Int
     sendReceivedRecordsVecs vecs = do
@@ -584,6 +568,17 @@ sendRecords ctx subState subCtx@SubscribeContext {..} = do
     resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
     resetReadingOffset logId startOffset = do
       S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX
+
+decodeRecordBatch :: S.DataRecord Bytes -> (S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
+decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
+  where
+    payload = S.recordPayload dataRecord
+    logId = S.recordLogID dataRecord
+    batchId = S.recordLSN dataRecord
+    recordBatch = decodeBatch payload
+    indexedRecords = V.indexed $ hstreamRecordBatchBatch recordBatch
+    shardRecordIds = V.map (\(i, _) -> ShardRecordId batchId (fromIntegral i)) indexedRecords
+    receivedRecords = V.map (\(i, a) -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) indexedRecords
 
 assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do

@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP          #-}
 {-# LANGUAGE MagicHash    #-}
-{-# OPTIONS_GHC -pgmPcpphs -optP--cpp #-}
+{-# OPTIONS_GHC -pgmPcpphs -optP--cpp -Werror=unused-top-binds #-}
 
 -- To dump CPP output, do
 --
@@ -19,27 +19,32 @@ module HStream.Stats
 
     -- * PerStreamStats
   , stream_stat_add_append_payload_bytes
-  , stream_stat_add_append_requests_total
+  , stream_stat_add_append_total
+  , stream_stat_add_append_failed
   , stream_stat_add_record_payload_bytes
-  , stream_time_series_add_append_in_bytes
-  , stream_time_series_add_record_bytes
-    -- ** Time series
   , stream_stat_get_append_payload_bytes
-  , stream_stat_get_append_requests_total
+  , stream_stat_get_append_total
+  , stream_stat_get_append_failed
   , stream_stat_get_record_payload_bytes
   , stream_stat_getall_append_payload_bytes
-  , stream_stat_getall_append_requests_total
+  , stream_stat_getall_append_total
+  , stream_stat_getall_append_failed
   , stream_stat_getall_record_payload_bytes
+    -- ** Time series
+  , stream_time_series_add_append_in_bytes
+  , stream_time_series_add_append_in_records
+  , stream_time_series_add_append_in_requests
+  , stream_time_series_add_record_bytes
   , stream_time_series_get
   , stream_time_series_getall_by_name
 
     -- * PerSubscriptionStats
   , subscription_stat_add_consumers
-  , subscription_time_series_add_bytes_out
-  , subscription_time_series_add_record_bytes_out
-    -- ** Time series
   , subscription_stat_get_consumers
   , subscription_stat_getall_consumers
+    -- ** Time series
+  , subscription_time_series_add_send_out_bytes
+  , subscription_time_series_add_send_out_records
   , subscription_time_series_get
   , subscription_time_series_getall_by_name
   ) where

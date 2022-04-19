@@ -25,9 +25,9 @@ statsSpec = describe "HStream.Stats" $ do
     stream_stat_add_append_payload_bytes h "topic_1" 100
     stream_stat_add_append_payload_bytes h "topic_2" 100
 
-    stream_stat_add_append_requests_total h "/topic_1" 1
-    stream_stat_add_append_requests_total h "/topic_1" 1
-    stream_stat_add_append_requests_total h "/topic_2" 1
+    stream_stat_add_append_total h "/topic_1" 1
+    stream_stat_add_append_total h "/topic_1" 1
+    stream_stat_add_append_total h "/topic_2" 1
 
     s <- newAggregateStats h
     stream_stat_get_append_payload_bytes s "topic_1" `shouldReturn` 200
@@ -37,8 +37,8 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "topic_1" m `shouldBe` Just 200
     Map.lookup "topic_2" m `shouldBe` Just 100
 
-    stream_stat_get_append_requests_total s "/topic_1" `shouldReturn` 2
-    stream_stat_get_append_requests_total s "/topic_2" `shouldReturn` 1
+    stream_stat_get_append_total s "/topic_1" `shouldReturn` 2
+    stream_stat_get_append_total s "/topic_2" `shouldReturn` 1
 
   it "pre stream stats time series" $ do
     h <- newStatsHolder
@@ -83,23 +83,23 @@ statsSpec = describe "HStream.Stats" $ do
     h <- newStatsHolder
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
 
-    subscription_time_series_add_bytes_out h "topic_1" 1000
-    subscription_time_series_add_bytes_out h "topic_2" 10000
+    subscription_time_series_add_send_out_bytes h "topic_1" 1000
+    subscription_time_series_add_send_out_bytes h "topic_2" 10000
     threadDelay 1000000
-    subscription_time_series_add_bytes_out h "topic_1" 1000
-    subscription_time_series_add_bytes_out h "topic_2" 10000
+    subscription_time_series_add_send_out_bytes h "topic_1" 1000
+    subscription_time_series_add_send_out_bytes h "topic_2" 10000
 
-    subscription_time_series_get h "reads_out" "non-existed-stream-name" intervals
+    subscription_time_series_get h "send_out_bytes" "non-existed-stream-name" intervals
       `shouldReturn` Nothing
 
-    Just [rate1_p5s, rate1_p10s] <- subscription_time_series_get h "reads_out" "topic_1" intervals
+    Just [rate1_p5s, rate1_p10s] <- subscription_time_series_get h "send_out_bytes" "topic_1" intervals
     rate1_p5s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
     rate1_p10s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
-    Just [rate2_p5s, rate2_p10s] <- subscription_time_series_get h "reads_out" "topic_2" intervals
+    Just [rate2_p5s, rate2_p10s] <- subscription_time_series_get h "send_out_bytes" "topic_2" intervals
     rate2_p5s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
     rate2_p10s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
 
-    m <- subscription_time_series_getall_by_name h "reads_out" intervals
+    m <- subscription_time_series_getall_by_name h "send_out_bytes" intervals
     Map.lookup "topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
     Map.lookup "topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
 
@@ -112,21 +112,21 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
       stream_stat_add_append_payload_bytes h "a_stream" 1
       stream_stat_add_append_payload_bytes h "b_stream" 1
 
-      stream_stat_add_append_requests_total h "a_stream" 1
-      stream_stat_add_append_requests_total h "b_stream" 1
+      stream_stat_add_append_total h "a_stream" 1
+      stream_stat_add_append_total h "b_stream" 1
 
     s <- newAggregateStats h
     stream_stat_get_append_payload_bytes s "a_stream" `shouldReturn` 10000
     stream_stat_get_append_payload_bytes s "b_stream" `shouldReturn` 10000
 
-    stream_stat_get_append_requests_total s "a_stream" `shouldReturn` 10000
-    stream_stat_get_append_requests_total s "b_stream" `shouldReturn` 10000
+    stream_stat_get_append_total s "a_stream" `shouldReturn` 10000
+    stream_stat_get_append_total s "b_stream" `shouldReturn` 10000
 
     m <- stream_stat_getall_append_payload_bytes s
     Map.lookup "a_stream" m `shouldBe` Just 10000
     Map.lookup "b_stream" m `shouldBe` Just 10000
 
-    m' <- stream_stat_getall_append_requests_total s
+    m' <- stream_stat_getall_append_total s
     Map.lookup "a_stream" m' `shouldBe` Just 10000
     Map.lookup "b_stream" m' `shouldBe` Just 10000
 
@@ -162,17 +162,17 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
 
   it "pre subscription stats time series (threaded)" $ do
     runConc 10 $ runConc 1000 $ do
-      subscription_time_series_add_bytes_out h "a_stream" 1000
-      subscription_time_series_add_bytes_out h "b_stream" 1000
+      subscription_time_series_add_send_out_bytes h "a_stream" 1000
+      subscription_time_series_add_send_out_bytes h "b_stream" 1000
 
     let max_intervals = [60 * 1000]   -- 1min
-    m <- subscription_time_series_getall_by_name h "reads_out" max_intervals
+    m <- subscription_time_series_getall_by_name h "sends" max_intervals
     Map.lookup "non-existed-stream-name" m `shouldBe` Nothing
-    subscription_time_series_get h "reads_out" "non-existed-stream-name" max_intervals
+    subscription_time_series_get h "sends" "non-existed-stream-name" max_intervals
       `shouldReturn` Nothing
 
     -- FIXME: Unfortunately, there is no easy way to test with real speed. So we just
     -- check the speed is positive.
     Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
-    Just rate <- subscription_time_series_get h "reads_out" "a_stream" max_intervals
+    Just rate <- subscription_time_series_get h "sends" "a_stream" max_intervals
     rate `shouldSatisfy` (\s -> head s > 0)

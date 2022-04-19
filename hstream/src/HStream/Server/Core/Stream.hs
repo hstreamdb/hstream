@@ -126,10 +126,11 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
         encodeRecord . updateRecordTimestamp timestamp <$> records
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
   logId <- S.getUnderlyingLogId scLDClient streamID key
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient logId payload cmpStrategy Nothing
+  -- XXX: Should we add a server option to toggle Stats?
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
+  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length records)
   let rids = V.zipWith (API.RecordId logId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse sName rids
   where
@@ -146,11 +147,11 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
       streamID = S.mkStreamId S.StreamTypeStream streamName
       key = textToCBytes <$> partitionKey
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
-
   logId <- S.getUnderlyingLogId scLDClient streamID key
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
+  -- XXX: Should we add a server option to toggle Stats?
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
+  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length appendRequestRecords)
   let records = V.zipWith (\_ idx -> API.RecordId logId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records
 --------------------------------------------------------------------------------

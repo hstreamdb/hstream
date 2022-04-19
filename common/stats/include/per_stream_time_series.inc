@@ -5,7 +5,8 @@
 
 // Fields:
 // 1) name,
-// 2) string names for querying via admin command,
+// 2) string names for querying via admin command, should contain
+//    one same as the name at least.
 // 3) time intervals over which to accumulate the stats
 // 4) number of buckets for time series
 
@@ -21,16 +22,33 @@
 
 // Append payload bytes received
 TIME_SERIES_DEFINE(append_in_bytes,
-                   std::set<std::string>({"appends_in", "appends"}),
+                   std::set<std::string>({"append_in_bytes", "appends"}),
                    std::vector<std::chrono::milliseconds>({
                        std::chrono::seconds(60),
                        std::chrono::seconds(300),
                        std::chrono::seconds(600)}),
                    2)
 
+TIME_SERIES_DEFINE(append_in_records,
+                   std::set<std::string>({"append_in_record"}),
+                   std::vector<std::chrono::milliseconds>({
+                       std::chrono::seconds(60),
+                       std::chrono::seconds(300),
+                       std::chrono::seconds(600)}),
+                   2)
+
+TIME_SERIES_DEFINE(append_in_requests,
+                   std::set<std::string>({"append_in_requests"}),
+                   std::vector<std::chrono::milliseconds>({
+                       std::chrono::seconds(60),
+                       std::chrono::seconds(300),
+                       std::chrono::seconds(600)}),
+                   2)
+
+
 // Payload bytes sent out in records
 TIME_SERIES_DEFINE(record_bytes,
-                   std::set<std::string>({"reads"}),
+                   std::set<std::string>({"record_bytes", "reads"}),
                    std::vector<std::chrono::milliseconds>({
                        std::chrono::seconds(900),
                        std::chrono::seconds(1800),

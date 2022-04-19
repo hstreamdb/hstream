@@ -7,7 +7,8 @@
 
 // Fields:
 // 1) name,
-// 2) string names for querying via admin command,
+// 2) string names for querying via admin command, should contain
+//    one same as the name at least.
 // 3) time intervals over which to accumulate the stats
 // 4) number of buckets for time series
 
@@ -22,8 +23,8 @@
 
 
 // Payload bytes sent out
-TIME_SERIES_DEFINE(bytes_out,
-                   std::set<std::string>({"reads_out", "reads"}),
+TIME_SERIES_DEFINE(send_out_bytes,
+                   std::set<std::string>({"send_out_bytes", "sends"}),
                    std::vector<std::chrono::milliseconds>({
                        std::chrono::seconds(10),
                        std::chrono::seconds(60),
@@ -32,8 +33,8 @@ TIME_SERIES_DEFINE(bytes_out,
                    2)
 
 // Payload bytes sent out in records
-TIME_SERIES_DEFINE(record_bytes_out,
-                   std::set<std::string>({"reads_record"}),
+TIME_SERIES_DEFINE(send_out_records,
+                   std::set<std::string>({"send_out_records"}),
                    std::vector<std::chrono::milliseconds>({
                        std::chrono::seconds(10),
                        std::chrono::seconds(60),

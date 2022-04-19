@@ -9,7 +9,9 @@ STAT_DEFINE(append_payload_bytes, SUM)
 // Payload bytes sent to clients in RECORDs
 STAT_DEFINE(record_payload_bytes, SUM)
 
-// Number of requests sent by clients in APPENDs
-STAT_DEFINE(append_requests_total, SUM)
+// Total number of append requests
+STAT_DEFINE(append_total, SUM)
+// Failed append requests
+STAT_DEFINE(append_failed, SUM)
 
 #undef STAT_DEFINE
