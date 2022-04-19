@@ -785,10 +785,9 @@ doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
                       crkLogId = recordIdShardId,
                       crkBatchId = recordIdBatchId
                     }
-            let CheckedRecordIds {..}  = checkListIndex Map.! k
-            batchIndexes <- readTVar crBatchIndexes
-            let newBatchIndexes = Set.delete recordIdBatchIndex batchIndexes
-            writeTVar crBatchIndexes newBatchIndexes
+            case Map.lookup k checkListIndex of
+              Nothing -> pure ()
+              Just CheckedRecordIds {..} -> modifyTVar crBatchIndexes (Set.delete recordIdBatchIndex)
         )
         recordIds
       (newCheckList, newCheckListIndex) <- foldM
