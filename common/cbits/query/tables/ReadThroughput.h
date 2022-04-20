@@ -26,7 +26,7 @@ public:
   }
   std::string getCommandToSend(ldquery::QueryContext& /*ctx*/) const override {
     return std::string(
-        "server stats reads --intervals 15min --intervals 30min --intervals 60min");
+        "server stats stream reads --intervals 15min --intervals 30min --intervals 60min");
   }
 };
 
