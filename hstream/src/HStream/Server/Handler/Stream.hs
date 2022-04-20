@@ -14,11 +14,11 @@ module HStream.Server.Handler.Stream
     append0Handler)
 where
 
+import           Control.Concurrent               (readMVar)
+import           Control.Exception
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Concurrent               (readMVar)
-import           Control.Exception
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
@@ -69,9 +69,15 @@ appendHandler
   :: ServerContext
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
-appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
-  Log.debug $ "Receive Append Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
-  Stats.stream_stat_add_append_requests_total scStatsHolder (textToCBytes appendRequestStreamName) 1
+appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
+  appendStreamExceptionHandle inc_failed $ do
+
+  Log.debug $ "Receive Append Request: StreamName {"
+           <> Log.buildText appendRequestStreamName
+           <> "}, nums of records = "
+           <> Log.buildInt (V.length appendRequestRecords)
+  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
+  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
   hashRing <- readMVar loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   let identifier = case partitionKey of
@@ -80,20 +86,33 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
   if getAllocatedNodeId hashRing identifier == serverID
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+  where
+    inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+    cStreamName = textToCBytes appendRequestStreamName
+
 
 append0Handler
   :: ServerContext
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
-append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) = appendStreamExceptionHandle $ do
-  Log.debug $ "Receive Append0 Request: StreamName {" <> Log.buildText appendRequestStreamName <> "}, nums of records = " <> Log.buildInt (V.length appendRequestRecords)
-  Stats.stream_stat_add_append_requests_total scStatsHolder (textToCBytes appendRequestStreamName) 1
+append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
+  appendStreamExceptionHandle inc_failed $ do
+
+  Log.debug $ "Receive Append0 Request: StreamName {"
+           <> Log.buildText appendRequestStreamName
+           <> "}, nums of records = "
+           <> Log.buildInt (V.length appendRequestRecords)
+  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
+  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
   hashRing <- readMVar loadBalanceHashRing
   let identifier = appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.append0Stream sc request partitionKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+  where
+    inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+    cStreamName = textToCBytes appendRequestStreamName
 
 --------------------------------------------------------------------------------
 -- Exception Handlers
@@ -105,24 +124,22 @@ streamExistsHandlers = [
     return (StatusAlreadyExists, mkStatusDetails err))
   ]
 
-appendStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-appendStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  handlers ++ defaultHandlers
+appendStreamExceptionHandle :: IO () -> ExceptionHandle (ServerResponse 'Normal a)
+appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
   where
-    handlers = [
-      Handler (\(err :: C.RecordTooBig) -> do
-        Log.warning $ Log.buildString' err
-        return (StatusFailedPrecondition, "Record size exceeds the maximum size limit" )),
-      Handler (\(err :: Store.NOTFOUND) -> do
-        Log.warning $ Log.buildString' err
-        return (StatusUnavailable, mkStatusDetails err)),
-      Handler (\(err :: Store.NOTINSERVERCONFIG) -> do
-        Log.warning $ Log.buildString' err
-        return (StatusUnavailable, mkStatusDetails err)),
-      Handler (\(err :: Store.NOSEQUENCER) -> do
-        Log.warning $ Log.buildString' err
-        return (StatusUnavailable, mkStatusDetails err))
-      ]
+    whileEx :: forall e. Exception e => e -> IO ()
+    whileEx err = Log.warning (Log.buildString' err) >> f
+    handlers =
+      [ Handler (\(_ :: C.RecordTooBig) ->
+          return (StatusFailedPrecondition, "Record size exceeds the maximum size limit" ))
+      , Handler (\(err :: Store.NOTFOUND) ->
+          return (StatusUnavailable, mkStatusDetails err))
+      , Handler (\(err :: Store.NOTINSERVERCONFIG) ->
+          return (StatusUnavailable, mkStatusDetails err))
+      , Handler (\(err :: Store.NOSEQUENCER) -> do
+          return (StatusUnavailable, mkStatusDetails err))
+      ] ++ defaultHandlers
+    mkHandlers = setRespType mkServerErrResp handlers
 
 createStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
 createStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $

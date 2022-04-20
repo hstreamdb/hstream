@@ -138,8 +138,18 @@ defaultHandlers = serverExceptionHandlers
                ++ zooKeeperExceptionHandler
                ++ finalExceptionHandlers
 
-mkExceptionHandle :: Handlers (ServerResponse t a) -> ExceptionHandle (ServerResponse t a)
+mkExceptionHandle :: Handlers (ServerResponse t a)
+                  -> IO (ServerResponse t a)
+                  -> IO (ServerResponse t a)
 mkExceptionHandle = flip catches
+
+mkExceptionHandle' :: (forall e. Exception e => e -> IO ())
+                   -> Handlers (ServerResponse t a)
+                   -> IO (ServerResponse t a)
+                   -> IO (ServerResponse t a)
+mkExceptionHandle' whileEx handlers f =
+  let handlers' = map (\(Handler h) -> Handler (\e -> whileEx e >> h e)) handlers
+   in f `catches` handlers'
 
 mkStatusDetails :: Exception a => a -> StatusDetails
 mkStatusDetails = StatusDetails . BS.pack . displayException

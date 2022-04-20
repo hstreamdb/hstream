@@ -307,7 +307,7 @@ renameStream
   -- ^ The new stream name you are renaming to
   -> IO ()
 renameStream client streamType srcName destName =
-  _renameStrem_ client (mkStreamId streamType srcName) (mkStreamId streamType destName)
+  _renameStream_ client (mkStreamId streamType srcName) (mkStreamId streamType destName)
 
 renameStream'
   :: HasCallStack
@@ -318,10 +318,10 @@ renameStream'
   -- ^ The new stream name you are renaming to
   -> IO ()
 renameStream' client from destName =
-  _renameStrem_ client from (mkStreamId (streamType from) destName)
+  _renameStream_ client from (mkStreamId (streamType from) destName)
 
-_renameStrem_ :: HasCallStack => FFI.LDClient -> StreamId -> StreamId -> IO ()
-_renameStrem_ client from to = do
+_renameStream_ :: HasCallStack => FFI.LDClient -> StreamId -> StreamId -> IO ()
+_renameStream_ client from to = do
   from' <- getStreamDirPath from
   to'   <- getStreamDirPath to
   modifyMVar_ gloLogPathCache $ \cache -> do
@@ -330,7 +330,7 @@ _renameStrem_ client from to = do
             (Cache.delete cache from)
     forM_ m_v $ Cache.insert cache to
     pure cache
-{-# INLINABLE _renameStrem_ #-}
+{-# INLINABLE _renameStream_ #-}
 
 -- | Archive a stream, then you won't find it by 'findStreams'.
 -- Return the archived stream, so that you can unarchive or remove it.
