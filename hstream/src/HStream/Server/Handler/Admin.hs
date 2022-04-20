@@ -3,7 +3,7 @@
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
 
-import           Control.Monad                    (forM)
+import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.HashMap.Strict              as HM
@@ -78,11 +78,39 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 runStats :: ServerContext -> AT.StatsCommand -> IO Text
 runStats ServerContext{..} AT.StatsCommand{..} = do
   let intervals = map interval2ms statsIntervals
-  m <- Stats.stream_time_series_getall_by_name scStatsHolder statsType intervals
-  let headers = "stream_name" : (("throughput_" <>) . T.pack . show <$> statsIntervals)
-      rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
-      content = Aeson.object ["headers" .= headers, "rows" .= rows]
-  return $ tableResponse content
+  case statsCategory of
+    AT.PerStreamStats -> doPerStreamStats statsName
+    AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName intervals
+    AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
+    AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName intervals
+  where
+    doPerStreamStats name = do
+      m <- Stats.stream_stat_getall scStatsHolder name
+      let headers = ["stream_name", name]
+          rows = Map.foldMapWithKey (\k v -> [[CB.unpack k, show v]]) m
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+
+    doPerStreamTimeSeries name intervals = do
+      m <- Stats.stream_time_series_getall_by_name scStatsHolder name intervals
+      let headers = "stream_name" : (((name <> "_") <>) . CB.pack . show <$> statsIntervals)
+          rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+
+    doPerSubscriptionStats name = do
+      m <- Stats.subscription_stat_getall scStatsHolder name
+      let headers = ["subscription_id", name]
+          rows = Map.foldMapWithKey (\k v -> [[CB.unpack k, show v]]) m
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+
+    doPerSubscriptionTimeSeries name intervals = do
+      m <- Stats.subscription_time_series_getall_by_name scStatsHolder name intervals
+      let headers = "subscription_id" : (((name <> "_") <>) . CB.pack . show <$> statsIntervals)
+          rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command
@@ -98,11 +126,12 @@ runStream ctx AT.StreamCmdList = do
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
 runStream ctx (AT.StreamCmdCreate stream) = do
-  HC.createStream ctx stream
+  void $ HC.createStream ctx stream
   return $ plainResponse "OK"
 runStream ctx (AT.StreamCmdDelete stream force) = do
-  HC.deleteStream ctx def { API.deleteStreamRequestStreamName = stream
-                          , API.deleteStreamRequestForce = force}
+  void $ HC.deleteStream ctx def { API.deleteStreamRequestStreamName = stream
+                                 , API.deleteStreamRequestForce = force
+                                 }
   return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------

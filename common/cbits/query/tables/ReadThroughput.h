@@ -16,17 +16,17 @@ public:
   ldquery::TableColumns getFetchableColumns() const override {
     return {
         {"stream_name", ldquery::DataType::TEXT, "The name of the stream."},
-        {"throughput_15min", ldquery::DataType::BIGINT,
+        {"reads_15min", ldquery::DataType::BIGINT,
          "Throughput average in the past 15 minutes."},
-        {"throughput_30min", ldquery::DataType::BIGINT,
+        {"reads_30min", ldquery::DataType::BIGINT,
          "Throughput average in the past 30 minutes."},
-        {"throughput_60min", ldquery::DataType::BIGINT,
+        {"reads_60min", ldquery::DataType::BIGINT,
          "Throughput average in the past 60 minutes."},
     };
   }
   std::string getCommandToSend(ldquery::QueryContext& /*ctx*/) const override {
-    return std::string(
-        "server stats stream reads --intervals 15min --intervals 30min --intervals 60min");
+    return std::string("server stats stream reads --intervals 15min "
+                       "--intervals 30min --intervals 60min");
   }
 };
 
