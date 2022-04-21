@@ -17,10 +17,10 @@ import qualified HStream.Logger                    as Log
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
+import           HStream.Server.Persistence.Object (withSubscriptionsLock)
 import           HStream.Server.Types
 import qualified HStream.Store                     as S
-import           HStream.Server.Persistence.Object (withSubscriptionsLock)
-import HStream.Utils (textToCBytes)
+import           HStream.Utils                     (textToCBytes)
 
 --------------------------------------------------------------------------------
 
