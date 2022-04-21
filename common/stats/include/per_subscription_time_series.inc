@@ -26,7 +26,7 @@
 TIME_SERIES_DEFINE(send_out_bytes,
                    std::set<std::string>({"send_out_bytes", "sends"}),
                    std::vector<std::chrono::milliseconds>({
-                       std::chrono::seconds(10),
+                       std::chrono::seconds(4),
                        std::chrono::seconds(60),
                        std::chrono::seconds(300),
                        std::chrono::seconds(600)}),
@@ -36,7 +36,7 @@ TIME_SERIES_DEFINE(send_out_bytes,
 TIME_SERIES_DEFINE(send_out_records,
                    std::set<std::string>({"send_out_records"}),
                    std::vector<std::chrono::milliseconds>({
-                       std::chrono::seconds(10),
+                       std::chrono::seconds(4),
                        std::chrono::seconds(60),
                        std::chrono::seconds(300),
                        std::chrono::seconds(600)}),

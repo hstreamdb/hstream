@@ -35,15 +35,16 @@ module HStream.Stats
   , stream_time_series_add_append_in_bytes
   , stream_time_series_add_append_in_records
   , stream_time_series_add_append_in_requests
+  , stream_time_series_add_append_failed_requests
   , stream_time_series_add_record_bytes
   , stream_time_series_get
   , stream_time_series_getall_by_name
 
     -- * PerSubscriptionStats
-  , subscription_stat_add_consumers
-  , subscription_stat_get_consumers
+  , subscription_stat_add_resend_records
+  , subscription_stat_get_resend_records
   , subscription_stat_getall
-  , subscription_stat_getall_consumers
+  , subscription_stat_getall_resend_records
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records

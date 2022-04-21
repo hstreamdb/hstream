@@ -87,7 +87,9 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
     then C.appendStream sc request partitionKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
   where
-    inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+    inc_failed = do
+      Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+      Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
 

@@ -540,6 +540,9 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
       unless (V.null resendRecordIds) $ do
         Log.debug $ "There are " <> Log.buildInt (V.length resendRecordIds) <> " records need to resent"
                  <> ", batchId=" <> Log.buildInt batchId
+        Stats.subscription_stat_add_resend_records scStatsHolder
+                                                   (textToCBytes subSubscriptionId)
+                                                   (fromIntegral $ V.length resendRecordIds)
         dataRecord <- withMVar subLdReader $ \reader -> do
           S.readerStartReading reader logId batchId batchId
           S.readerRead reader 1

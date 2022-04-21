@@ -5,7 +5,7 @@
 #define STAT_DEFINE(...)
 #endif
 
-// Number of consumers 
-STAT_DEFINE(consumers, SUM)
+// Total number of all resend records
+STAT_DEFINE(resend_records, SUM)
 
 #undef STAT_DEFINE
