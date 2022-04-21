@@ -7,31 +7,32 @@ module HStream.Server.Core.Stream
   , listStreams
   , appendStream
   , append0Stream
-  , FoundActiveSubscription (..)
+  , FoundSubscription (..)
   , StreamExists (..)
   , RecordTooBig (..)
   ) where
 
-import           Control.Exception                (Exception (displayException),
-                                                   catch, throwIO)
-import           Control.Monad                    (unless, when)
-import qualified Data.ByteString                  as BS
-import           Data.Maybe                       (fromMaybe)
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
+import           Control.Exception                 (Exception (displayException),
+                                                    catch, throwIO)
+import           Control.Monad                     (unless, when)
+import qualified Data.ByteString                   as BS
+import           Data.Maybe                        (fromMaybe)
+import           Data.Text                         (Text)
+import qualified Data.Text                         as Text
+import qualified Data.Vector                       as V
+import           GHC.Stack                         (HasCallStack)
 import           Network.GRPC.HighLevel.Generated
 
-import           HStream.Connector.HStore         (transToStreamName)
-import           HStream.Server.Exception         (InvalidArgument (..),
-                                                   OperationNotSupported (..),
-                                                   StreamNotExist (..))
-import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Types             (ServerContext (..))
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
-import           HStream.ThirdParty.Protobuf      as PB
+import           HStream.Connector.HStore          (transToStreamName)
+import           HStream.Server.Exception          (InvalidArgument (..),
+                                                    StreamNotExist (..))
+import qualified HStream.Server.HStreamApi         as API
+import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
+                                                    updateSubscription)
+import           HStream.Server.Types              (ServerContext (..))
+import qualified HStream.Stats                     as Stats
+import qualified HStream.Store                     as S
+import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -53,17 +54,25 @@ createStream ServerContext{..} stream@API.Stream{
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
              -> IO (ServerResponse 'Normal Empty)
-deleteStream ServerContext{..} API.DeleteStreamRequest{..} = do
-  let streamId = transToStreamName deleteStreamRequestStreamName
+deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
+  deleteStreamRequestStreamName = sName, ..} = do
   storeExists <- S.doesStreamExist scLDClient streamId
-  -- TODO: delete the archived stream when the stream is no longer needed
-  if storeExists
-    then do
-      _archivedStream <- S.archiveStream scLDClient streamId
-      pure ()
-    else
-      unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
+  if storeExists then doDelete
+    else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
   returnResp Empty
+  where
+    streamId = transToStreamName sName
+    doDelete = do
+      subs <- getSubscriptionWithStream zkHandle sName
+      if null subs
+      then S.removeStream scLDClient streamId
+      else if force
+           then do
+             -- TODO: delete the archived stream when the stream is no longer needed
+             _archivedStream <- S.archiveStream scLDClient streamId
+             updateSubscription zkHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
+           else
+             throwIO FoundSubscription
 
 listStreams
   :: HasCallStack
@@ -119,9 +128,9 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
 
 --------------------------------------------------------------------------------
 
-data FoundActiveSubscription = FoundActiveSubscription
+data FoundSubscription = FoundSubscription
   deriving (Show)
-instance Exception FoundActiveSubscription
+instance Exception FoundSubscription
 
 data RecordTooBig = RecordTooBig
   deriving (Show)

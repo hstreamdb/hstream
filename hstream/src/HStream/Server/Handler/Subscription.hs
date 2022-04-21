@@ -316,7 +316,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
   loop isFirstSendRef
   where
     loop isFirstSendRef = do
-      Log.debug "enter sendRecords loop"
+      -- Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
         then do
@@ -386,7 +386,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
 
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
-      shards <- getShards ctx subStreamName
+      shards <- catch (getShards ctx subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
       if L.null shards
         then return []
         else do

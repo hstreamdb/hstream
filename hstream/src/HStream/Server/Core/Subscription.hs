@@ -3,28 +3,36 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent.STM
-import           Control.Exception          (Exception, throwIO)
-import           Control.Monad              (unless)
-import qualified Data.HashMap.Strict        as HM
-import qualified Data.Map.Strict            as Map
-import           Data.Maybe                 (fromJust)
-import           Data.Text                  (Text)
-import qualified Data.Vector                as V
-import           ZooKeeper.Types            (ZHandle)
+import           Control.Exception                 (Exception, throwIO)
+import           Control.Monad                     (unless)
+import qualified Data.HashMap.Strict               as HM
+import qualified Data.Map.Strict                   as Map
+import           Data.Maybe                        (fromJust)
+import           Data.Text                         (Text)
+import qualified Data.Vector                       as V
+import           ZooKeeper.Types                   (ZHandle)
 
-import           HStream.Connector.HStore   (transToStreamName)
-import qualified HStream.Logger             as Log
+import           HStream.Connector.HStore          (transToStreamName)
+import qualified HStream.Logger                    as Log
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence as P
+import qualified HStream.Server.Persistence        as P
 import           HStream.Server.Types
-import qualified HStream.Store              as S
+import qualified HStream.Store                     as S
+import           HStream.Server.Persistence.Object (withSubscriptionsLock)
+import HStream.Utils (textToCBytes)
 
 --------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
-listSubscriptions ServerContext{..} =
-  V.fromList . Map.elems <$> P.listObjects zkHandle
+listSubscriptions ServerContext{..} = do
+  subs <- P.listObjects zkHandle
+  mapM update $ V.fromList (Map.elems subs)
+  where
+    update sub@Subscription{..} = do
+      archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
+      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
+                  else return sub
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
@@ -73,7 +81,7 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
     Signaled     -> throwIO SubscriptionIsDeleting
   where
     doRemove :: IO ()
-    doRemove = do
+    doRemove = withSubscriptionsLock zkHandle $
       P.removeObject @ZHandle @'P.SubRep subId zkHandle
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))

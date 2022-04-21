@@ -7,7 +7,8 @@ module HStream.Store.Stream
   , updateGloStreamSettings
   , StreamType (..)
   , StreamId (streamType, streamName)
-  , ArchivedStream
+  , ArchivedStream (getArchivedStreamName)
+  , isArchiveStreamName
   , showStreamName
   , mkStreamId
   , mkStreamIdFromFullLogDir
@@ -211,7 +212,7 @@ updateGloLogPathCache streamid key logid =
       Nothing -> Cache.insert c streamid (Map.singleton key logid) >> pure c
       Just mp -> Cache.insert c streamid (Map.insert key logid mp) >> pure c
 
-newtype ArchivedStream = ArchivedStream CBytes
+newtype ArchivedStream = ArchivedStream { getArchivedStreamName :: CBytes}
 
 isArchiveStreamName :: StreamName -> IO Bool
 isArchiveStreamName name = do

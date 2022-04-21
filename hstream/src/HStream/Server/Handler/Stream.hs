@@ -52,10 +52,9 @@ deleteStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteStreamHandler sc (ServerNormalRequest _metadata request@DeleteStreamRequest{..}) = deleteStreamExceptionHandle $ do
+deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
-  if deleteStreamRequestForce then C.deleteStream sc request
-    else returnErrResp StatusUnimplemented "Currently only forced deletion is supported"
+  C.deleteStream sc request
 
 listStreamsHandler
   :: ServerContext
@@ -156,7 +155,7 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
   deleteExceptionHandler ++ defaultHandlers
   where
     deleteExceptionHandler = [
-      Handler (\(err :: C.FoundActiveSubscription) -> do
+      Handler (\(err :: C.FoundSubscription) -> do
        Log.warning $ Log.buildString' err
-       return (StatusFailedPrecondition, "Stream still has active consumers"))
+       return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
