@@ -6,6 +6,7 @@ import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
+import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
 import           Z.IO.Network.SocketAddr   (PortNumber)
@@ -196,20 +197,46 @@ viewCmdParser = O.subparser
 
 -------------------------------------------------------------------------------
 
+data StatsCategory
+  = PerStreamStats
+  | PerStreamTimeSeries
+  | PerSubscriptionStats
+  | PerSubscriptionTimeSeries
+  deriving (Show, Eq)
+
+instance Read StatsCategory where
+  readPrec = do
+    l <- Read.lexP
+    return $
+      case l of
+        Read.Ident "stream_counter" -> PerStreamStats
+        Read.Ident "stream" -> PerStreamTimeSeries
+        Read.Ident "subscription_counter" -> PerSubscriptionStats
+        Read.Ident "subscription" -> PerSubscriptionTimeSeries
+        x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
+
 data StatsCommand = StatsCommand
-  { statsType      :: CBytes
+  { statsCategory  :: StatsCategory
+  , statsName      :: CBytes
   , statsIntervals :: [U.Interval]
   } deriving (Show)
 
 statsCmdParser :: O.Parser StatsCommand
 statsCmdParser = StatsCommand
-  <$> O.strArgument ( O.metavar "STATS"
-                   <> O.help "the operations to be collected, e.g. appends,reads"
+  <$> O.argument O.auto ( O.metavar "STATS"
+                       <> O.help "the stats category, e.g. stream, subscription"
+                        )
+  <*> O.strArgument ( O.metavar "NAME"
+                   <> O.help "the stats name to be collected, e.g. appends,sends"
                     )
-  <*> O.many ( O.option ( O.eitherReader U.parserInterval)
-                        ( O.long "intervals" <> O.short 'i'
-                       <> O.help "the list of intervals to be collected" )
-             )
+  <*> ( O.some ( O.option ( O.eitherReader U.parserInterval )
+                          ( O.long "intervals" <> O.short 'i'
+                         <> O.help "the list of intervals to be collected, default is [1min, 5min, 10min]"
+                          )
+               )
+    -- https://github.com/pcapriotti/optparse-applicative/issues/53
+    <|> pure [U.Minutes 1, U.Minutes 5, U.Minutes 10]
+      )
 
 -------------------------------------------------------------------------------
 

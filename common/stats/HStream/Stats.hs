@@ -26,6 +26,7 @@ module HStream.Stats
   , stream_stat_get_append_total
   , stream_stat_get_append_failed
   , stream_stat_get_record_payload_bytes
+  , stream_stat_getall
   , stream_stat_getall_append_payload_bytes
   , stream_stat_getall_append_total
   , stream_stat_getall_append_failed
@@ -41,6 +42,7 @@ module HStream.Stats
     -- * PerSubscriptionStats
   , subscription_stat_add_consumers
   , subscription_stat_get_consumers
+  , subscription_stat_getall
   , subscription_stat_getall_consumers
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
@@ -94,7 +96,7 @@ PREFIX##get_##STATS_NAME (Stats stats) key =                                   \
   withCBytesUnsafe key $ \key' ->                                              \
     I.PREFIX##get_##STATS_NAME stats' (BA# key');
 
-#define PER_X_STAT_GETALL(PREFIX, STATS_NAME)                                  \
+#define PER_X_STAT_GETALL_SEP(PREFIX, STATS_NAME)                              \
 PREFIX##getall_##STATS_NAME :: Stats -> IO (Map.Map CBytes Int64);             \
 PREFIX##getall_##STATS_NAME (Stats stats) =                                    \
   withForeignPtr stats $ \stats' -> snd <$>                                    \
@@ -103,10 +105,27 @@ PREFIX##getall_##STATS_NAME (Stats stats) =                                    \
       peekStdStringToCBytesN c_delete_vector_of_string                         \
       peekN c_delete_vector_of_int64;
 
+#define PER_X_STAT_GETALL(PREFIX)                                              \
+PREFIX##getall :: StatsHolder -> CBytes -> IO (Map.Map CBytes Int64);          \
+PREFIX##getall (StatsHolder stats_holder) stat_name =                          \
+  withForeignPtr stats_holder $ \stats_holder' ->                              \
+  withCBytesUnsafe stat_name $ \stat_name' -> do                               \
+    (ret, statMap) <-                                                          \
+      peekCppMap                                                               \
+        (I.PREFIX##getall stats_holder' (BA# stat_name'))                      \
+        peekStdStringToCBytesN c_delete_vector_of_string                       \
+        peekN c_delete_vector_of_int64 ;                                       \
+    if ret == 0 then pure statMap                                              \
+                else do Log.fatal "stream_time_series_getall failed!";         \
+                        pure Map.empty
+
+PER_X_STAT_GETALL(stream_stat_)
+PER_X_STAT_GETALL(subscription_stat_)
+
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(stream_stat_, name)                                             \
 PER_X_STAT_GET(stream_stat_, name)                                             \
-PER_X_STAT_GETALL(stream_stat_, name)
+PER_X_STAT_GETALL_SEP(stream_stat_, name)
 #include "../include/per_stream_stats.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
@@ -149,7 +168,7 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
 #define STAT_DEFINE(name, _)                                                   \
 PER_X_STAT_ADD(subscription_stat_, name)                                       \
 PER_X_STAT_GET(subscription_stat_, name)                                       \
-PER_X_STAT_GETALL(subscription_stat_, name)
+PER_X_STAT_GETALL_SEP(subscription_stat_, name)
 #include "../include/per_subscription_stats.inc"
 
 #define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
@@ -191,4 +210,4 @@ subscription_time_series_getall_by_name (StatsHolder holder) name intervals =
 
 #undef PER_X_STAT_ADD
 #undef PER_X_STAT_GET
-#undef PER_X_STAT_GETALL
+#undef PER_X_STAT_GETALL_SEP

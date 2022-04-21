@@ -204,6 +204,22 @@ Stats* StatsHolder::aggregate() const {
   return result;
 }
 
+Stats StatsHolder::aggregate_nonew() const {
+  Stats result = Stats(&params_);
+
+  {
+    auto accessor = thread_stats_.accessAllThreads();
+    result.aggregate(dead_stats_);
+    for (const auto& x : accessor) {
+      result.aggregate(x.stats);
+    }
+  }
+
+  result.deriveStats();
+
+  return result;
+}
+
 void StatsHolder::reset() {
   auto accessor = thread_stats_.accessAllThreads();
   dead_stats_.reset();

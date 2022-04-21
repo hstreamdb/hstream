@@ -34,6 +34,20 @@ foreign import ccall unsafe "hs_stats.h stats_holder_print"
 foreign import ccall unsafe "hs_stats.h new_aggregate_stats"
   c_new_aggregate_stats :: Ptr CStatsHolder -> IO (Ptr CStats)
 
+#define PER_X_STAT_GETALL(prefix)                                              \
+foreign import ccall unsafe "hs_stats.h prefix##getall"                        \
+  prefix##getall                                                               \
+    :: Ptr CStatsHolder -> BA# Word8                                           \
+    -> MBA# Int                                                                \
+    -> MBA# (Ptr StdString)                                                    \
+    -> MBA# (Ptr Int64)                                                        \
+    -> MBA# (Ptr (StdVector StdString))                                        \
+    -> MBA# (Ptr (StdVector Int64))                                            \
+    -> IO CInt;
+
+PER_X_STAT_GETALL(stream_stat_)
+PER_X_STAT_GETALL(subscription_stat_)
+
 #define PER_X_STAT_DEFINE(prefix, name) \
 foreign import ccall unsafe "hs_stats.h prefix##add_##name"                    \
   prefix##add_##name                                                           \

@@ -54,6 +54,6 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
 adminCommandStatsReq :: HStreamApi ClientRequest ClientResult -> IO AdminCommandResponse
 adminCommandStatsReq HStreamApi{..} = do
   let requestTimeout = 10
-      statReq = AdminCommandRequest "server stats appends --intervals 1min --intervals 2min"
+      statReq = AdminCommandRequest "server stats stream appends --intervals 1min --intervals 2min"
       req = ClientNormalRequest statReq requestTimeout $ MetadataMap Map.empty
   getServerResp =<< hstreamApiSendAdminCommand req

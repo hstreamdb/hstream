@@ -227,6 +227,8 @@ public:
    */
   Stats* aggregate() const;
 
+  Stats aggregate_nonew() const;
+
   void aggregateStreamTimeSeries();
 
   /**
@@ -575,6 +577,41 @@ int perXTimeSeriesGetall(
           values_ptr, keys_, values_);                                         \
     }                                                                          \
   }
+
+template <class PerXStats>
+int perXStatsGetall(
+    StatsHolder* stats_holder,
+    //
+    folly::Synchronized<
+        std::unordered_map<std::string, std::shared_ptr<PerXStats>>>
+        Stats::*stats_member_map,
+    //
+    const char* stat_name,
+    std::function<void(const char*, StatsCounter PerXStats::*&)> find_member,
+    //
+    HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
+    std::vector<std::string>** keys_, std::vector<int64_t>** values_) {
+  if (!stats_holder) {
+    return -1;
+  }
+  Stats stats = stats_holder->aggregate_nonew();
+  StatsCounter PerXStats::*member_ptr = nullptr;
+  find_member(stat_name, member_ptr);
+  // TODO: also return failure reasons
+  if (UNLIKELY(member_ptr == nullptr)) {
+    return -1;
+  }
+
+  auto& stats_rlock = *((stats.*stats_member_map).rlock());
+  cppMapToHs<std::unordered_map<std::string, std::shared_ptr<PerXStats>>,
+             std::string, int64_t, std::nullptr_t,
+             std::function<int64_t(std::shared_ptr<PerXStats>)>&&>(
+      stats_rlock, nullptr,
+      [&member_ptr](auto&& val) { return (val.get()->*member_ptr).load(); },
+      len, keys_ptr, values_ptr, keys_, values_);
+
+  return 0;
+}
 
 #define PER_X_TIME_SERIES_DEFINE(prefix, x, x_ty, ts_ty, stat_name)            \
   void prefix##add_##stat_name(StatsHolder* stats_holder, const char* key,     \

@@ -3,19 +3,6 @@
 extern "C" {
 // ----------------------------------------------------------------------------
 
-StatsHolder* new_stats_holder() { return new StatsHolder(StatsParams()); }
-void delete_stats_holder(StatsHolder* s) { delete s; }
-
-// TODO: split into a specific aggregate function. e.g.
-// new_aggregate_stream_stats
-Stats* new_aggregate_stats(StatsHolder* s) { return s->aggregate(); }
-void delete_stats(Stats* s) { delete s; }
-
-void stats_holder_print(StatsHolder* s) { s->print(); }
-
-// ----------------------------------------------------------------------------
-// PerStreamStats
-
 void setPerStreamTimeSeriesMember(
     const char* stat_name,
     std::shared_ptr<PerStreamTimeSeries> PerStreamStats::*& member_ptr) {
@@ -29,6 +16,52 @@ void setPerStreamTimeSeriesMember(
 #include "per_stream_time_series.inc"
 }
 
+void setPerStreamStatsMember(const char* stat_name,
+                             StatsCounter PerStreamStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerStreamStats::name;                                        \
+  }
+#include "per_stream_stats.inc"
+}
+
+void setPerSubscriptionTimeSeriesMember(
+    const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
+                               PerSubscriptionStats::*& member_ptr) {
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == std::string(stat_name)) {                                       \
+      member_ptr = &PerSubscriptionStats::name;                                \
+      break;                                                                   \
+    }                                                                          \
+  }
+#include "per_subscription_time_series.inc"
+}
+
+void setPerSubscriptionStatsMember(
+    const char* stat_name, StatsCounter PerSubscriptionStats::*& member_ptr) {
+#define STAT_DEFINE(name, _)                                                   \
+  if (#name == std::string(stat_name)) {                                       \
+    member_ptr = &PerSubscriptionStats::name;                                  \
+  }
+#include "per_subscription_stats.inc"
+}
+
+// ----------------------------------------------------------------------------
+
+StatsHolder* new_stats_holder() { return new StatsHolder(StatsParams()); }
+void delete_stats_holder(StatsHolder* s) { delete s; }
+
+// TODO: split into a specific aggregate function. e.g.
+// new_aggregate_stream_stats
+Stats* new_aggregate_stats(StatsHolder* s) { return s->aggregate(); }
+void delete_stats(Stats* s) { delete s; }
+
+void stats_holder_print(StatsHolder* s) { s->print(); }
+
+// ----------------------------------------------------------------------------
+// PerStreamStats
+
 #define STAT_DEFINE(name, _)                                                   \
   PER_X_STAT_DEFINE(stream_stat_, per_stream_stats, PerStreamStats, name)
 #include "per_stream_stats.inc"
@@ -37,6 +70,15 @@ void setPerStreamTimeSeriesMember(
   PER_X_TIME_SERIES_DEFINE(stream_time_series_, per_stream_stats,              \
                            PerStreamStats, PerStreamTimeSeries, name)
 #include "per_stream_time_series.inc"
+
+int stream_stat_getall(StatsHolder* stats_holder, const char* stat_name,
+                       HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
+                       std::vector<std::string>** keys_,
+                       std::vector<int64_t>** values_) {
+  return perXStatsGetall<PerStreamStats>(
+      stats_holder, &Stats::per_stream_stats, stat_name,
+      setPerStreamStatsMember, len, keys_ptr, values_ptr, keys_, values_);
+}
 
 int stream_time_series_get(StatsHolder* stats_holder, const char* stat_name,
                            const char* stream_name, HsInt interval_size,
@@ -83,17 +125,14 @@ int stream_time_series_getall_by_name(
                            name)
 #include "per_subscription_time_series.inc"
 
-void setPerSubscriptionTimeSeriesMember(
-    const char* stat_name, std::shared_ptr<PerSubscriptionTimeSeries>
-                               PerSubscriptionStats::*& member_ptr) {
-#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
-  for (const std::string& str : strings) {                                     \
-    if (str == std::string(stat_name)) {                                       \
-      member_ptr = &PerSubscriptionStats::name;                                \
-      break;                                                                   \
-    }                                                                          \
-  }
-#include "per_subscription_time_series.inc"
+int subscription_stat_getall(StatsHolder* stats_holder, const char* stat_name,
+                             HsInt* len, std::string** keys_ptr,
+                             int64_t** values_ptr,
+                             std::vector<std::string>** keys_,
+                             std::vector<int64_t>** values_) {
+  return perXStatsGetall<PerSubscriptionStats>(
+      stats_holder, &Stats::per_subscription_stats, stat_name,
+      setPerSubscriptionStatsMember, len, keys_ptr, values_ptr, keys_, values_);
 }
 
 int subscription_time_series_get(StatsHolder* stats_holder,
