@@ -128,11 +128,11 @@ data Assignment = Assignment
 data ConsumerWorkload = ConsumerWorkload
   { cwConsumerName :: ConsumerName,
     cwShardCount   :: Int
-  }
+  } deriving (Show)
 instance Eq ConsumerWorkload where
   (==) w1 w2 = cwConsumerName w1 == cwConsumerName w2 && cwShardCount w1 == cwShardCount w2
 instance Ord ConsumerWorkload where
-  (<=) w1 w2 = w1 == w2 || cwShardCount w1 <= cwShardCount w2
+  (<=) w1 w2 = (cwShardCount w1, cwConsumerName w1) <= (cwShardCount w2, cwConsumerName w2)
 
 type SubscriptionId = T.Text
 type OrderingKey = T.Text
