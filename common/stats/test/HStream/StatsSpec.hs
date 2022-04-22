@@ -1,13 +1,14 @@
 module HStream.StatsSpec (spec) where
 
 import           Control.Concurrent
-import           Data.Bits          (shiftL)
-import qualified Data.Map.Strict    as Map
-import           Data.Maybe         (fromJust)
+import           Data.Bits              (shiftL)
+import qualified Data.Map.Strict        as Map
+import           Data.Maybe             (fromJust)
 import           Test.Hspec
 
 import           HStream.Stats
-import           HStream.Utils      (runConc, setupSigsegvHandler)
+import           HStream.StatsSpecUtils (mkSubTimeSeriesSpec)
+import           HStream.Utils          (runConc, setupSigsegvHandler)
 
 {-# ANN module ("HLint: ignore Use head" :: String) #-}
 
@@ -103,6 +104,9 @@ statsSpec = describe "HStream.Stats" $ do
     m <- subscription_time_series_getall_by_name h "send_out_bytes" intervals
     Map.lookup "topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
     Map.lookup "topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
+    mkSubTimeSeriesSpec h "acks" subscription_time_series_add_acks
+    mkSubTimeSeriesSpec h "request_messages" subscription_time_series_add_request_messages
+    mkSubTimeSeriesSpec h "response_messages" subscription_time_series_add_response_messages
 
   it "ServerHistogram" $ do
     h <- newStatsHolder True

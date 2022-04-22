@@ -27,15 +27,13 @@ import           Control.Exception                (Exception, Handler (Handler),
                                                    catch, throwIO)
 import           Control.Monad                    (foldM, forM_, forever,
                                                    unless, when)
-import qualified Data.ByteString                  as B
 import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (newIORef, readIORef,
                                                    writeIORef)
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, fromMaybe,
-                                                   isNothing)
+import           Data.Maybe                       (fromJust, isNothing)
 import qualified Data.Set                         as Set
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
@@ -157,7 +155,9 @@ streamingFetchInternal ctx (ServerBiDiRequest _ streamRecv streamSend) = do
       streamRecv >>= \case
         Left _                -> throwIO GRPCStreamRecvError
         Right Nothing         -> throwIO GRPCStreamRecvCloseError
-        Right (Just firstReq) -> return firstReq
+        Right (Just firstReq) -> do
+          Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
+          return firstReq
 
 initSub :: ServerContext -> SubscriptionId -> IO SubscribeContextWrapper
 initSub serverCtx@ServerContext {..} subId = do
@@ -486,7 +486,10 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
             resetReadingOffset logId batchId
           return False
         Just (consumerName, streamSend) ->
-          withMVar streamSend (\ss -> ss (StreamingFetchResponse records)) >>= \case
+          withMVar streamSend (\ss -> do
+            Stats.subscription_time_series_add_response_messages scStatsHolder (textToCBytes subSubscriptionId) 1
+            ss (StreamingFetchResponse records)
+            ) >>= \case
             Left err -> do
               Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
                        <> ", num of records=" <> Log.buildInt (V.length shardRecordIds) <> "\n"
@@ -725,7 +728,10 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
           atomically $ invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvCloseError
         Right (Just StreamingFetchRequest {..}) -> do
-          unless (V.null streamingFetchRequestAckIds) $
+          let cSubscriptionId = textToCBytes (subSubscriptionId subCtx)
+          Stats.subscription_time_series_add_request_messages scStatsHolder cSubscriptionId 1
+          unless (V.null streamingFetchRequestAckIds) $ do
+            Stats.subscription_time_series_add_acks scStatsHolder cSubscriptionId (fromIntegral $ V.length streamingFetchRequestAckIds)
             doAcks scLDClient subCtx streamingFetchRequestAckIds
           loop
 
