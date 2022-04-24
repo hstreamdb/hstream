@@ -71,27 +71,31 @@ appendHandler
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
-
-  Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.buildText appendRequestStreamName
-           <> "}, nums of records = "
-           <> Log.buildInt (V.length appendRequestRecords)
-  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-  hashRing <- readMVar loadBalanceHashRing
-  let partitionKey = getRecordKey . V.head $ appendRequestRecords
-  let identifier = case partitionKey of
-        Just key -> appendRequestStreamName <> key
-        Nothing  -> appendRequestStreamName <> clientDefaultKey
-  if getAllocatedNodeId hashRing identifier == serverID
-    then C.appendStream sc request partitionKey >>= returnResp
-    else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+    recv_time <- getPOSIXTime
+    Log.debug $ "Receive Append Request: StreamName {"
+             <> Log.buildText appendRequestStreamName
+             <> "}, nums of records = "
+             <> Log.buildInt (V.length appendRequestRecords)
+    Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
+    Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
+    hashRing <- readMVar loadBalanceHashRing
+    let partitionKey = getRecordKey . V.head $ appendRequestRecords
+    let identifier = case partitionKey of
+          Just key -> appendRequestStreamName <> key
+          Nothing  -> appendRequestStreamName <> clientDefaultKey
+    if getAllocatedNodeId hashRing identifier == serverID
+       then do
+         append_start <- getPOSIXTime
+         r <- C.appendStream sc request partitionKey
+         Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
+         Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
+         returnResp r
+       else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
   where
     inc_failed = do
       Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
       Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
-
 
 append0Handler
   :: ServerContext
