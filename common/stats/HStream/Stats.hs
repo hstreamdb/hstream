@@ -51,6 +51,9 @@ module HStream.Stats
     -- ** Time series
   , subscription_time_series_add_send_out_bytes
   , subscription_time_series_add_send_out_records
+  , subscription_time_series_add_acks
+  , subscription_time_series_add_request_messages
+  , subscription_time_series_add_response_messages
   , subscription_time_series_get
   , subscription_time_series_getall_by_name
 
