@@ -3,6 +3,7 @@
 #include <folly/String.h>
 #include <iostream>
 
+namespace hstream { namespace common {
 // ----------------------------------------------------------------------------
 
 static void aggregateStat(StatsAgg agg, StatsCounter& out, int64_t in) {
@@ -29,9 +30,30 @@ static void aggregateStat(StatsAgg agg, StatsAggOptional override,
   aggregateStat(override.has_value() ? override.value() : agg, out, in);
 }
 
-// ----------------------------------------------------------------------------
+template <typename H>
+static void aggregateHistogram(StatsAggOptional agg, H& out, const H& in) {
+  if (!agg.hasValue()) {
+    out.merge(in);
+    return;
+  }
+  switch (agg.value()) {
+  case StatsAgg::SUM:
+    out.merge(in);
+    break;
+  case StatsAgg::MAX:
+    // MAX doesn't make much sense for histograms. Let's just merge them.
+    out.merge(in);
+    break;
+  case StatsAgg::SUBTRACT:
+    out.subtract(in);
+    break;
+  case StatsAgg::ASSIGN:
+    out = in;
+    break;
+  }
+}
 
-namespace hstream { namespace common {
+// ----------------------------------------------------------------------------
 
 void PerStreamStats::aggregate(PerStreamStats const& other,
                                StatsAggOptional agg_override) {
@@ -105,7 +127,11 @@ StatsParams::maxSubscribptionStatsInterval(std::string string_name) {
 // All Stats
 
 Stats::Stats(const FastUpdateableSharedPtr<StatsParams>* params)
-    : params(params) {}
+    : params(params) {
+  if (params->get()->is_server) {
+    server_histograms = std::make_unique<ServerHistograms>();
+  }
+}
 
 Stats::~Stats() = default;
 
@@ -152,6 +178,12 @@ void Stats::aggregateCompoundStats(Stats const& other,
   _PER_STATS(per_stream_stats, PerStreamStats)
   _PER_STATS(per_subscription_stats, PerSubscriptionStats)
 #undef _PER_STATS
+
+  if (other.server_histograms) {
+    ld_check(server_histograms);
+    aggregateHistogram(agg_override, *server_histograms,
+                       *other.server_histograms);
+  }
 }
 
 void Stats::deriveStats() {}
@@ -159,6 +191,12 @@ void Stats::deriveStats() {}
 void Stats::reset() {
   per_stream_stats.wlock()->clear();
   per_subscription_stats.wlock()->clear();
+
+  if (params->get()->is_server) {
+    if (server_histograms) {
+      server_histograms->clear();
+    }
+  }
 }
 
 folly::dynamic Stats::toJsonObj() {

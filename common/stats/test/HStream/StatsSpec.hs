@@ -1,6 +1,7 @@
 module HStream.StatsSpec (spec) where
 
 import           Control.Concurrent
+import           Data.Bits          (shiftL)
 import qualified Data.Map.Strict    as Map
 import           Data.Maybe         (fromJust)
 import           Test.Hspec
@@ -20,7 +21,7 @@ spec = do
 statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats counter" $ do
-    h <- newStatsHolder
+    h <- newStatsHolder True
     stream_stat_add_append_payload_bytes h "topic_1" 100
     stream_stat_add_append_payload_bytes h "topic_1" 100
     stream_stat_add_append_payload_bytes h "topic_2" 100
@@ -41,7 +42,7 @@ statsSpec = describe "HStream.Stats" $ do
     stream_stat_get_append_total s "/topic_2" `shouldReturn` 1
 
   it "pre stream stats time series" $ do
-    h <- newStatsHolder
+    h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
     stream_time_series_add_append_in_bytes h "/topic_1" 1000
     stream_time_series_add_append_in_bytes h "/topic_2" 10000
@@ -66,7 +67,7 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "/topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
 
   it "pre subscription stats counter" $ do
-    h <- newStatsHolder
+    h <- newStatsHolder True
     subscription_stat_add_resend_records h "subid_1" 1
     subscription_stat_add_resend_records h "subid_1" 2
     subscription_stat_add_resend_records h "subid_2" 1
@@ -80,7 +81,7 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "subid_2" m `shouldBe` Just 1
 
   it "pre subscription stats time series" $ do
-    h <- newStatsHolder
+    h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
 
     subscription_time_series_add_send_out_bytes h "topic_1" 1000
@@ -103,9 +104,36 @@ statsSpec = describe "HStream.Stats" $ do
     Map.lookup "topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
     Map.lookup "topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
 
+  it "ServerHistogram" $ do
+    h <- newStatsHolder True
+
+    serverHistogramEstimatePercentile h SHL_AppendRequestLatency 0
+      `shouldReturn` 0
+
+    serverHistogramAdd h SHL_AppendRequestLatency 85
+    p50 <- serverHistogramEstimatePercentile h SHL_AppendRequestLatency 0.5
+    [p50_] <- serverHistogramEstimatePercentiles h SHL_AppendRequestLatency [0.5]
+    p50 `shouldBe` p50_
+    p50 `shouldSatisfy` (\p -> p >= 1`shiftL`6{- 64 -} && p <= 1`shiftL`7 {- 128 -})
+
+    serverHistogramAdd h SHL_AppendRequestLatency (5`shiftL`30 {- ~5000s -})
+    p99 <- serverHistogramEstimatePercentile h SHL_AppendRequestLatency 0.99
+    [p99_] <- serverHistogramEstimatePercentiles h SHL_AppendRequestLatency [0.99]
+    p99 `shouldBe` p99_
+    p99 `shouldSatisfy` (\p -> p >= 1`shiftL`32 && p <= 1`shiftL`33)
+
+    serverHistogramAdd h SHL_AppendRequestLatency (1`shiftL`50 {- ~5 years -})
+    p99' <- serverHistogramEstimatePercentile h SHL_AppendRequestLatency 0.99
+    p99' `shouldSatisfy` (\p -> p >= 1`shiftL`50 && p <= 1`shiftL`51)
+
+    pMin <- serverHistogramEstimatePercentile h SHL_AppendRequestLatency 0
+    pMin `shouldSatisfy` (\p -> p >= 1`shiftL`6{- 64 -} && p <= 1`shiftL`7 {- 128 -})
+    pMax <- serverHistogramEstimatePercentile h SHL_AppendRequestLatency 1
+    pMax `shouldSatisfy` (\p -> p >= 1`shiftL`50 && p <= 1`shiftL`51)
+
 threadedStatsSpec :: Spec
 threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
-  h <- runIO newStatsHolder
+  h <- runIO $ newStatsHolder True
 
   it "pre stream stats counter (threaded)" $ do
     runConc 10 $ runConc 1000 $ do

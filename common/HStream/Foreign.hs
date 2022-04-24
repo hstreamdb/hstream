@@ -20,7 +20,7 @@ module HStream.Foreign
   , withAllocMaybePrim
   , withAllocMaybePrim2
 
-  -- * Vector
+  -- * List
   , StdVector
   , FollySmallVector
   , peekFollySmallVectorDoubleN

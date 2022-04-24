@@ -49,7 +49,10 @@ void setPerSubscriptionStatsMember(
 
 // ----------------------------------------------------------------------------
 
-StatsHolder* new_stats_holder() { return new StatsHolder(StatsParams()); }
+StatsHolder* new_stats_holder(HsBool is_server) {
+  return new StatsHolder(StatsParams().setIsServer(is_server));
+}
+
 void delete_stats_holder(StatsHolder* s) { delete s; }
 
 // TODO: split into a specific aggregate function. e.g.
@@ -168,8 +171,6 @@ int subscription_time_series_getall_by_name(
       keys_ptr, values_ptr, keys_, values_);
 }
 
-// ----------------------------------------------------------------------------
-
 /* TODO
 bool verifyIntervals(StatsHolder* stats_holder, std::string string_name,
                      std::vector<Duration> query_intervals, std::string& err) {
@@ -188,6 +189,67 @@ bool verifyIntervals(StatsHolder* stats_holder, std::string string_name,
   return true;
 }
 */
+
+// ----------------------------------------------------------------------------
+
+// TODO: generic Histogram methods
+
+int server_histogram_add(StatsHolder* stats_holder, const char* stat_name,
+                         int64_t usecs) {
+  if (stats_holder && stats_holder->get().server_histograms) {
+    auto histogram =
+        stats_holder->get().server_histograms->find(std::string(stat_name));
+    if (histogram) {
+      histogram->add(usecs);
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
+int server_histogram_estimatePercentiles(
+    StatsHolder* stats_holder, const char* stat_name,
+    const HsDouble* percentiles, size_t npercentiles, int64_t* samples_out,
+    uint64_t* count_out, int64_t* sum_out) {
+  if (stats_holder && stats_holder->get().server_histograms) {
+    auto histogram =
+        stats_holder->get().server_histograms->find(std::string(stat_name));
+    if (histogram) {
+      histogram->estimatePercentiles(percentiles, npercentiles, samples_out,
+                                     count_out, sum_out);
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Computes a sample value at the given percentile (must be between 0 and 1).
+ * Because we don't keep individual samples but only counts in buckets,
+ * we'll know the right bucket but make a linear estimate within it.
+ * If histogram is empty, returns 0.
+ *
+ * Thread-safe.
+ *
+ * NOTE: This is a fairly expensive function. Prefer estimatePercentiles() to
+ *       estimate sample values for a whole batch of percentiles.
+ */
+// TODO: use param "int* ret_out" as returned code
+int64_t server_histogram_estimatePercentile(StatsHolder* stats_holder,
+                                            const char* stat_name,
+                                            double percentile) {
+  if (stats_holder && stats_holder->get().server_histograms) {
+    auto histogram =
+        stats_holder->get().server_histograms->find(std::string(stat_name));
+    if (histogram) {
+      return histogram->estimatePercentile(percentile);
+    }
+  }
+
+  return -1;
+}
 
 // ----------------------------------------------------------------------------
 }
