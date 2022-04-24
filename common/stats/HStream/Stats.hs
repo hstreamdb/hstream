@@ -14,10 +14,12 @@ module HStream.Stats
     Stats
   , StatsHolder
   , newStatsHolder
+  , newServerStatsHolder
   , newAggregateStats
   , printStatsHolder
 
     -- * PerStreamStats
+    -- ** Counters
   , stream_stat_add_append_payload_bytes
   , stream_stat_add_append_total
   , stream_stat_add_append_failed
@@ -41,6 +43,7 @@ module HStream.Stats
   , stream_time_series_getall_by_name
 
     -- * PerSubscriptionStats
+    -- ** Counters
   , subscription_stat_add_resend_records
   , subscription_stat_get_resend_records
   , subscription_stat_getall
@@ -50,15 +53,22 @@ module HStream.Stats
   , subscription_time_series_add_send_out_records
   , subscription_time_series_get
   , subscription_time_series_getall_by_name
+
+    -- * ServerHistogram
+  , ServerHistogramLabel (..)
+  , serverHistogramAdd
+  , serverHistogramEstimatePercentiles
+  , serverHistogramEstimatePercentile
   ) where
 
-import           Control.Monad            (forM_)
+import           Control.Monad            (forM_, when)
 import           Control.Monad.ST         (RealWorld)
 import           Data.Int
 import qualified Data.Map.Strict          as Map
 import           Data.Primitive.ByteArray
 import           Data.Primitive.PrimArray
 import           Foreign.ForeignPtr
+import           Foreign.Ptr
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
 
 import           HStream.Foreign
@@ -70,9 +80,12 @@ import qualified HStream.Stats.Internal   as I
 newtype Stats = Stats (ForeignPtr I.CStats)
 newtype StatsHolder = StatsHolder (ForeignPtr I.CStatsHolder)
 
-newStatsHolder :: IO StatsHolder
-newStatsHolder = StatsHolder <$>
-  (newForeignPtr I.c_delete_stats_holder_fun =<< I.c_new_stats_holder)
+newStatsHolder :: Bool -> IO StatsHolder
+newStatsHolder isServer = StatsHolder <$>
+  (newForeignPtr I.c_delete_stats_holder_fun =<< I.c_new_stats_holder isServer)
+
+newServerStatsHolder :: IO StatsHolder
+newServerStatsHolder = newStatsHolder True
 
 newAggregateStats :: StatsHolder -> IO Stats
 newAggregateStats (StatsHolder holder) = withForeignPtr holder $ \holder' ->
@@ -212,3 +225,43 @@ subscription_time_series_getall_by_name (StatsHolder holder) name intervals =
 #undef PER_X_STAT_ADD
 #undef PER_X_STAT_GET
 #undef PER_X_STAT_GETALL_SEP
+
+-- TODO: auto generate from "cbits/stats/ServerHistogram.h"
+data ServerHistogramLabel
+  = SHL_AppendRequestLatency
+  | SHL_AppendLatency
+
+packServerHistogramLabel :: ServerHistogramLabel -> CBytes
+packServerHistogramLabel SHL_AppendRequestLatency = "append_request_latency"
+packServerHistogramLabel SHL_AppendLatency        = "append_latency"
+
+serverHistogramAdd :: StatsHolder -> ServerHistogramLabel -> Int64 -> IO ()
+serverHistogramAdd (StatsHolder holder) label val =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
+    ret <- I.server_histogram_add holder' (BA# label') val
+    when (ret /= 0) $ error "serverHistogramAdd failed!"
+
+-- TODO: default percentiles: {.5, .75, .95, .99}
+serverHistogramEstimatePercentiles
+  :: StatsHolder -> ServerHistogramLabel -> [Double] -> IO [Int64]
+serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
+    let len = length ps
+    (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Int64) <- newPrimArray len
+    forM_ [0..len] $ \i -> writePrimArray mpa i 0
+    let !(ByteArray ps') = byteArrayFromListN len ps
+    !ret <- I.server_histogram_estimatePercentiles
+                holder' (BA# label') (BA# ps') len
+                (MBA# mba#) nullPtr nullPtr
+    !pa <- unsafeFreezePrimArray mpa
+    return $ if ret == 0 then primArrayToList pa
+                         else error "get serverHistogramEstimatePercentiles failed!"
+
+serverHistogramEstimatePercentile
+  :: StatsHolder -> ServerHistogramLabel -> Double -> IO Int64
+serverHistogramEstimatePercentile (StatsHolder holder) label p =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe (packServerHistogramLabel label) $ \label' -> do
+    I.server_histogram_estimatePercentile holder' (BA# label') p

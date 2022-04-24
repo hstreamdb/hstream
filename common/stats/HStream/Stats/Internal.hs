@@ -23,7 +23,7 @@ foreign import ccall unsafe "hs_stats.h &delete_stats"
   c_delete_stats_fun :: FunPtr (Ptr CStats -> IO ())
 
 foreign import ccall unsafe "hs_stats.h new_stats_holder"
-  c_new_stats_holder :: IO (Ptr CStatsHolder)
+  c_new_stats_holder :: Bool -> IO (Ptr CStatsHolder)
 
 foreign import ccall unsafe "hs_stats.h &delete_stats_holder"
   c_delete_stats_holder_fun :: FunPtr (Ptr CStatsHolder -> IO ())
@@ -120,3 +120,17 @@ foreign import ccall unsafe "hs_stats.h subscription_time_series_getall_by_name"
     -> IO CInt
 
 #undef PER_X_STAT_DEFINE
+
+foreign import ccall unsafe "hs_stats.h server_histogram_add"
+  server_histogram_add :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO CInt
+
+foreign import ccall unsafe "hs_stats.h server_histogram_estimatePercentiles"
+  server_histogram_estimatePercentiles
+    :: Ptr CStatsHolder -> BA# Word8
+    -> BA# Double -> Int
+    -> MBA# Int64 -> Ptr Word64 -> Ptr Int64
+    -> IO CInt
+
+foreign import ccall unsafe "hs_stats.h server_histogram_estimatePercentile"
+  server_histogram_estimatePercentile
+    :: Ptr CStatsHolder -> BA# Word8 -> Double -> IO Int64

@@ -6,7 +6,6 @@
 #include <folly/small_vector.h>
 #include <folly/stats/BucketedTimeSeries.h>
 #include <folly/stats/MultiLevelTimeSeries.h>
-
 #include <logdevice/common/UpdateableSharedPtr.h>
 #include <logdevice/common/checks.h>
 #include <logdevice/common/stats/Stats.h>
@@ -14,6 +13,8 @@
 
 #include <hs_common.h>
 #include <hs_cpp_lib.h>
+
+#include "ServerHistograms.h"
 
 // ----------------------------------------------------------------------------
 
@@ -109,6 +110,10 @@ struct PerSubscriptionStats {
 // All Stats
 
 struct StatsParams {
+  explicit StatsParams() = default;
+
+  bool is_server = false;
+
 #define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
   std::vector<std::chrono::milliseconds> time_intervals_##name = t;            \
   size_t num_buckets_##name = buckets;
@@ -124,6 +129,13 @@ struct StatsParams {
   // MaxInterval of SubscriptionStats
   PerSubscriptionTimeSeries::Duration
   maxSubscribptionStatsInterval(std::string string_name);
+
+  // Below here are the setters for the above member variables
+
+  StatsParams& setIsServer(bool is_server) {
+    this->is_server = is_server;
+    return *this;
+  }
 };
 
 struct Stats {
@@ -209,7 +221,15 @@ struct Stats {
       std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>
       per_subscription_stats;
 
+  // Server histograms.
+  std::unique_ptr<ServerHistograms> server_histograms;
+
   const FastUpdateableSharedPtr<StatsParams>* params;
+
+  /**
+   * Indicates whether we're representing server stats.
+   */
+  bool isServerStats() const { return params->get()->is_server; }
 };
 
 /**

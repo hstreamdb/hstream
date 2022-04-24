@@ -39,7 +39,7 @@ import           HStream.Server.Persistence       (NodeInfo (..),
                                                    serverRootLockPath,
                                                    serverRootPath)
 import           HStream.Server.Types
-import           HStream.Stats                    (newStatsHolder)
+import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
 import           HStream.Utils
 import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
@@ -100,7 +100,7 @@ initializeServer ServerOpts{..} zk serverState = do
              (\(_ :: S.EXISTS) -> return ())
   let headerConfig = AA.HeaderConfig _ldAdminHost _ldAdminPort _ldAdminProtocolId _ldAdminConnTimeout _ldAdminSendTimeout _ldAdminRecvTimeout
 
-  statsHolder <- newStatsHolder
+  statsHolder <- newServerStatsHolder
 
   runningQs <- newMVar HM.empty
   runningCs <- newMVar HM.empty

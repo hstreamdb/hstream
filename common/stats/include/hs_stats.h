@@ -11,7 +11,7 @@ using namespace hstream::common;
 extern "C" {
 // ----------------------------------------------------------------------------
 
-StatsHolder* new_stats_holder();
+StatsHolder* new_stats_holder(HsBool is_server);
 
 void delete_stats_holder(StatsHolder* s);
 
