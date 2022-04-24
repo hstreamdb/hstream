@@ -10,9 +10,7 @@
 
 ![hstream-db](https://cdn.jsdelivr.net/gh/hstreamdb/hstreamio-cdn@1.0.2/images/hstream-db.png)
 
-The database built for IoT streaming data storage and real-time stream
-processing.
-
+HStreamDB is an open-source, cloud-native streaming database for IoT and beyond. Modernize your data stack for real-time applications.
 ## Main Features
 
 - **Push real-time data to your apps**
