@@ -42,4 +42,34 @@ TIME_SERIES_DEFINE(send_out_records,
                        std::chrono::seconds(600)}),
                    2)
 
+// Acknowledgements received
+TIME_SERIES_DEFINE(acks,
+                   std::set<std::string>({"acks", "acknowledgements"}),
+                   std::vector<std::chrono::milliseconds>({
+                       std::chrono::seconds(4),
+                       std::chrono::seconds(60),
+                       std::chrono::seconds(300),
+                       std::chrono::seconds(600)}),
+                   2)
+
+// Number of request messages received
+TIME_SERIES_DEFINE(request_messages,
+                   std::set<std::string>({"request_messages"}),
+                   std::vector<std::chrono::milliseconds>({
+                       std::chrono::seconds(4),
+                       std::chrono::seconds(60),
+                       std::chrono::seconds(300),
+                       std::chrono::seconds(600)}),
+                   2)
+
+// Number of response messages sent
+TIME_SERIES_DEFINE(response_messages,
+                   std::set<std::string>({"response_messages"}),
+                   std::vector<std::chrono::milliseconds>({
+                       std::chrono::seconds(4),
+                       std::chrono::seconds(60),
+                       std::chrono::seconds(300),
+                       std::chrono::seconds(600)}),
+                   2)
+
 #undef TIME_SERIES_DEFINE

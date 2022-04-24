@@ -113,7 +113,9 @@ test-suite hstream-common-stats-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:      HStream.StatsSpec
+  other-modules:
+    HStream.StatsSpec
+    HStream.StatsSpecUtils
   build-depends:
     , base                  >=4.11 && <5
     , containers            ^>=0.6
