@@ -482,8 +482,9 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
                 else return Nothing
       case mres of
         Nothing -> do
-          unless isResent $
-            resetReadingOffset logId batchId
+          if isResent
+          then registerResend logId batchId shardRecordIds
+          else resetReadingOffset logId batchId
           return False
         Just (consumerName, streamSend) ->
           withMVar streamSend (\ss -> do
@@ -495,8 +496,9 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
                        <> ", num of records=" <> Log.buildInt (V.length shardRecordIds) <> "\n"
                        <> "will remove the consumer " <> Log.buildText consumerName <> ": " <> Log.buildString (show err)
               atomically $ invalidConsumer subCtx consumerName
-              unless isResent $ do
-                resetReadingOffset logId batchId
+              if isResent
+              then registerResend logId batchId shardRecordIds
+              else resetReadingOffset logId batchId
               return False
             Right _ -> do
               Log.debug $ "send records from " <> Log.buildInt logId <> " to consumer " <> Log.buildText consumerName
