@@ -72,6 +72,7 @@ import           Data.Primitive.ByteArray
 import           Data.Primitive.PrimArray
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
+import qualified Text.Read                as Read
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
 
 import           HStream.Foreign
@@ -238,6 +239,15 @@ packServerHistogramLabel :: ServerHistogramLabel -> CBytes
 packServerHistogramLabel SHL_AppendRequestLatency = "append_request_latency"
 packServerHistogramLabel SHL_AppendLatency        = "append_latency"
 
+instance Read ServerHistogramLabel where
+  readPrec = do
+    l <- Read.lexP
+    return $
+      case l of
+        Read.Ident "append_request_latency" -> SHL_AppendRequestLatency
+        Read.Ident "append_latency" -> SHL_AppendLatency
+        x -> errorWithoutStackTrace $ "cannot parse ServerHistogramLabel: " <> show x
+
 serverHistogramAdd :: StatsHolder -> ServerHistogramLabel -> Int64 -> IO ()
 serverHistogramAdd (StatsHolder holder) label val =
   withForeignPtr holder $ \holder' ->
@@ -245,7 +255,7 @@ serverHistogramAdd (StatsHolder holder) label val =
     ret <- I.server_histogram_add holder' (BA# label') val
     when (ret /= 0) $ error "serverHistogramAdd failed!"
 
--- TODO: default percentiles: {.5, .75, .95, .99}
+-- NOTE: Input percentiles must be sorted and in valid range [0.0, 1.0].
 serverHistogramEstimatePercentiles
   :: StatsHolder -> ServerHistogramLabel -> [Double] -> IO [Int64]
 serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
@@ -258,9 +268,9 @@ serverHistogramEstimatePercentiles (StatsHolder holder) label ps =
     !ret <- I.server_histogram_estimatePercentiles
                 holder' (BA# label') (BA# ps') len
                 (MBA# mba#) nullPtr nullPtr
-    !pa <- unsafeFreezePrimArray mpa
-    return $ if ret == 0 then primArrayToList pa
-                         else error "get serverHistogramEstimatePercentiles failed!"
+    if ret == 0 then do !pa <- unsafeFreezePrimArray mpa
+                        pure $ primArrayToList pa
+                else error "get serverHistogramEstimatePercentiles failed!"
 
 serverHistogramEstimatePercentile
   :: StatsHolder -> ServerHistogramLabel -> Double -> IO Int64

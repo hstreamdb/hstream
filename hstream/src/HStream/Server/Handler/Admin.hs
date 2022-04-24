@@ -83,6 +83,7 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
     AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName intervals
     AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName intervals
+    AT.ServerHistogram -> doServerHistogram statsName
   where
     doPerStreamStats name = do
       m <- Stats.stream_stat_getall scStatsHolder name
@@ -109,6 +110,17 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
       m <- Stats.subscription_time_series_getall_by_name scStatsHolder name intervals
       let headers = "subscription_id" : (((name <> "_") <>) . CB.pack . show <$> statsIntervals)
           rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+
+    doServerHistogram name = do
+      let defPercentiles = [0.5, 0.75, 0.95, 0.99]
+      ps <- Stats.serverHistogramEstimatePercentiles
+              scStatsHolder
+              (read $ CB.unpack name)
+              defPercentiles
+      let headers = ["p50", "p75", "p95", "p99" :: Text]
+          rows = [map show ps]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 

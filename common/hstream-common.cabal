@@ -72,7 +72,7 @@ library
     HStream.Utils.JSON
     HStream.Utils.RPC
     HStream.Utils.Table
-    HStream.Utils.TimeInterval
+    HStream.Utils.Time
 
   hs-source-dirs:     . gen-hs
   include-dirs:       . include gen-cpp /usr/local/include

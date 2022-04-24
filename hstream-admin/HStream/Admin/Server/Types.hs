@@ -197,11 +197,13 @@ viewCmdParser = O.subparser
 
 -------------------------------------------------------------------------------
 
+-- TODO
 data StatsCategory
   = PerStreamStats
   | PerStreamTimeSeries
   | PerSubscriptionStats
   | PerSubscriptionTimeSeries
+  | ServerHistogram
   deriving (Show, Eq)
 
 instance Read StatsCategory where
@@ -213,6 +215,7 @@ instance Read StatsCategory where
         Read.Ident "stream" -> PerStreamTimeSeries
         Read.Ident "subscription_counter" -> PerSubscriptionStats
         Read.Ident "subscription" -> PerSubscriptionTimeSeries
+        Read.Ident "server_histogram" -> ServerHistogram
         x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
 
 data StatsCommand = StatsCommand

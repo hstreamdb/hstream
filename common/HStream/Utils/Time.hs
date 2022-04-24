@@ -1,13 +1,24 @@
-module HStream.Utils.TimeInterval
+module HStream.Utils.Time
   ( Interval (..)
   , parserInterval
   , interval2ms
+
+  , diffTimeSince
+  , usecSince
+  , msecSince
+  , secSince
+
+    -- * Re-export
+  , getPOSIXTime
   ) where
 
-import           Control.Applicative  ((<|>))
-import           Data.Attoparsec.Text (Parser, choice, endOfInput, parseOnly,
-                                       rational, string)
-import qualified Data.Text            as T
+import           Control.Applicative   ((<|>))
+import           Data.Attoparsec.Text  (Parser, choice, endOfInput, parseOnly,
+                                        rational, string)
+import           Data.Int              (Int64)
+import qualified Data.Text             as T
+import           Data.Time.Clock       (NominalDiffTime)
+import           Data.Time.Clock.POSIX (getPOSIXTime)
 
 data Interval
   = Milliseconds Double
@@ -50,3 +61,21 @@ intervalConstructorParser =
 
 parserInterval :: String -> Either String Interval
 parserInterval = parseOnly intervalParser . T.pack
+
+diffTimeSince :: NominalDiffTime -> IO NominalDiffTime
+diffTimeSince start = do
+  now <- getPOSIXTime
+  return $ now - start
+{-# INLINE diffTimeSince #-}
+
+usecSince :: NominalDiffTime -> IO Int64
+usecSince start = floor . (* 1e6) <$> diffTimeSince start
+{-# INLINE usecSince #-}
+
+msecSince :: NominalDiffTime -> IO Int64
+msecSince start = floor . (* 1e3) <$> diffTimeSince start
+{-# INLINE msecSince #-}
+
+secSince :: NominalDiffTime -> IO Int64
+secSince start = floor <$> diffTimeSince start
+{-# INLINE secSince #-}

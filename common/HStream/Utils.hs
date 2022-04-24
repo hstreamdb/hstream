@@ -4,7 +4,7 @@ module HStream.Utils
   , module HStream.Utils.BuildRecord
   , module HStream.Utils.RPC
   , module HStream.Utils.Concurrent
-  , module HStream.Utils.TimeInterval
+  , module HStream.Utils.Time
   , module HStream.Utils.Table
   , module HStream.Utils.Common
   , module HStream.Utils.JSON
@@ -12,12 +12,12 @@ module HStream.Utils
   , genUnique
   ) where
 
-import           Control.Monad              (unless)
-import           Data.Bits                  (shiftL, shiftR, (.&.), (.|.))
-import           Data.Int                   (Int64)
-import           Data.Word                  (Word16, Word32, Word64)
-import           System.Random              (randomRIO)
-import           Z.IO.Time                  (SystemTime (..), getSystemTime')
+import           Control.Monad             (unless)
+import           Data.Bits                 (shiftL, shiftR, (.&.), (.|.))
+import           Data.Int                  (Int64)
+import           Data.Word                 (Word16, Word32, Word64)
+import           System.Random             (randomRIO)
+import           Z.IO.Time                 (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
 import           HStream.Utils.Common
@@ -27,7 +27,7 @@ import           HStream.Utils.Format
 import           HStream.Utils.JSON
 import           HStream.Utils.RPC
 import           HStream.Utils.Table
-import           HStream.Utils.TimeInterval
+import           HStream.Utils.Time
 
 -- | Generate a "unique" number through a modified version of snowflake algorithm.
 --
