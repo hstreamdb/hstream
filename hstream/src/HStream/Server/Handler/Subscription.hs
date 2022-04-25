@@ -755,6 +755,7 @@ doAcks
   -> V.Vector RecordId
   -> IO ()
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
+  Log.debug $ "received acks:" <> Log.buildInt (V.length ackRecordIds)
   atomically $ do
     removeAckedRecordIdsFromCheckList ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
