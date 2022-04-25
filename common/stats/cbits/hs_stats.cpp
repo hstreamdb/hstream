@@ -208,21 +208,31 @@ int server_histogram_add(StatsHolder* stats_holder, const char* stat_name,
   return -1;
 }
 
+// Computes aggregated sample values
 int server_histogram_estimatePercentiles(
     StatsHolder* stats_holder, const char* stat_name,
     const HsDouble* percentiles, size_t npercentiles, int64_t* samples_out,
     uint64_t* count_out, int64_t* sum_out) {
-  if (stats_holder && stats_holder->get().server_histograms) {
-    auto histogram =
-        stats_holder->get().server_histograms->find(std::string(stat_name));
-    if (histogram) {
-      histogram->estimatePercentiles(percentiles, npercentiles, samples_out,
-                                     count_out, sum_out);
-      return 0;
-    }
+  if (!stats_holder) {
+    // Without stats, there is nothing we can do.
+    return -1;
   }
 
-  return -1;
+  auto agg_hist = stats_holder->aggregate_nonew().server_histograms;
+  if (!agg_hist) {
+    ld_error("No such server_histograms!");
+    return -1;
+  }
+
+  auto histogram = agg_hist->find(std::string(stat_name));
+  if (!histogram) {
+    ld_error("No such server_histograms: %s!", stat_name);
+    return -1;
+  }
+
+  histogram->estimatePercentiles(percentiles, npercentiles, samples_out,
+                                 count_out, sum_out);
+  return 0;
 }
 
 /**
@@ -240,15 +250,24 @@ int server_histogram_estimatePercentiles(
 int64_t server_histogram_estimatePercentile(StatsHolder* stats_holder,
                                             const char* stat_name,
                                             double percentile) {
-  if (stats_holder && stats_holder->get().server_histograms) {
-    auto histogram =
-        stats_holder->get().server_histograms->find(std::string(stat_name));
-    if (histogram) {
-      return histogram->estimatePercentile(percentile);
-    }
+  if (!stats_holder) {
+    // Without stats, there is nothing we can do.
+    return -1;
   }
 
-  return -1;
+  auto agg_hist = stats_holder->aggregate_nonew().server_histograms;
+  if (!agg_hist) {
+    ld_error("No such server_histograms!");
+    return -1;
+  }
+
+  auto histogram = agg_hist->find(std::string(stat_name));
+  if (!histogram) {
+    ld_error("No such server_histograms: %s!", stat_name);
+    return -1;
+  }
+
+  return histogram->estimatePercentile(percentile);
 }
 
 // ----------------------------------------------------------------------------
