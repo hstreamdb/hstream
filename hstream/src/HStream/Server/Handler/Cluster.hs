@@ -22,6 +22,7 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
+import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common    (alignDefault,
@@ -32,8 +33,7 @@ import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (mkServerErrResp, returnResp,
-                                                   textToCBytes)
+import           HStream.Utils                    (mkServerErrResp, returnResp)
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
@@ -60,16 +60,15 @@ lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStrea
   let key      = alignDefault orderingKey
       storeKey = orderingKeyToStoreKey key
       theNode  = getAllocatedNode hashRing (stream <> key)
-      streamCB = textToCBytes stream
-      streamID = S.mkStreamId S.StreamTypeStream streamCB
-
+      streamID = transToStreamName stream
   keyExist <- S.doesStreamPartitionExist scLDClient streamID storeKey
   unless keyExist $ do
     Log.debug $ "createStreamingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildText key
     catches (void $ S.createStreamPartition scLDClient streamID storeKey)
-          [ Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist), -- Stream does not exist
-            Handler (\(_ :: S.EXISTS)     -> pure ()) -- Both stream and partition already exist
-          ]
+      [ Handler (\(_ :: S.NOTFOUND)   -> throwIO StreamNotExist)
+      , Handler (\(_ :: S.EXISTS)     -> pure ())                -- Both stream and partition already exist
+      , Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist) -- FIXME: should not throw StreamNotFound
+      ]
   returnResp LookupStreamResponse {
     lookupStreamResponseStreamName  = stream
   , lookupStreamResponseOrderingKey = orderingKey

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func TestQuery(t *testing.T) {
+func xTestQuery(t *testing.T) {
 	test_stream := randText(8)
 	test_query := randText(8)
 

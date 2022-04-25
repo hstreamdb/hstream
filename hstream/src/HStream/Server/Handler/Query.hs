@@ -303,6 +303,7 @@ sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
           let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
               structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
           streamSendMany structs
+        _ -> return (ServerWriterResponse [] StatusUnknown "")
   where
     streamSendMany = \case
       [] -> sendToClient zkHandle qid sc streamSend

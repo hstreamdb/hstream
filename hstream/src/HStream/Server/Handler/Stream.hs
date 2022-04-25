@@ -6,8 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Stream
-  (
-    createStreamHandler,
+  ( createStreamHandler,
     deleteStreamHandler,
     listStreamsHandler,
     appendHandler,
@@ -156,7 +155,7 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
   deleteExceptionHandler ++ defaultHandlers
   where
     deleteExceptionHandler = [
-      Handler (\(err :: C.FoundActiveSubscription) -> do
+      Handler (\(err :: C.FoundSubscription) -> do
        Log.warning $ Log.buildString' err
-       return (StatusFailedPrecondition, "Stream still has active consumers"))
+       return (StatusFailedPrecondition, "Stream still has subscription"))
       ]

@@ -7,40 +7,32 @@ module HStream.Server.Core.Stream
   , listStreams
   , appendStream
   , append0Stream
-  , FoundActiveSubscription (..)
+  , FoundSubscription (..)
   , StreamExists (..)
   , RecordTooBig (..)
   ) where
 
-import           Control.Exception                (Exception (displayException),
-                                                   catch, throwIO)
-import           Control.Monad                    (unless, void, when)
-import qualified Data.ByteString                  as BS
-import           Data.Maybe                       (fromMaybe, isJust)
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import qualified Data.Vector                      as V
-import           GHC.Stack                        (HasCallStack)
+import           Control.Exception                 (Exception (displayException),
+                                                    catch, throwIO)
+import           Control.Monad                     (unless, when)
+import qualified Data.ByteString                   as BS
+import           Data.Maybe                        (fromMaybe)
+import           Data.Text                         (Text)
+import qualified Data.Text                         as Text
+import qualified Data.Vector                       as V
+import           GHC.Stack                         (HasCallStack)
 import           Network.GRPC.HighLevel.Generated
-import           Z.Data.CBytes                    (CBytes)
-import           ZooKeeper                        (zooExists, zooMulti)
-import           ZooKeeper.Exception              (ZNODEEXISTS)
-import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Connector.HStore         (transToStreamName)
-import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (deleteStoreStream)
-import           HStream.Server.Exception         (InvalidArgument (..),
-                                                   StreamNotExist (..))
-import           HStream.Server.Handler.Common    (checkIfSubsOfStreamActive,
-                                                   removeStreamRelatedPath)
-import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Persistence       (streamRootPath)
-import qualified HStream.Server.Persistence       as P
-import           HStream.Server.Types             (ServerContext (..))
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
-import           HStream.ThirdParty.Protobuf      as PB
+import           HStream.Connector.HStore          (transToStreamName)
+import           HStream.Server.Exception          (InvalidArgument (..),
+                                                    StreamNotExist (..))
+import qualified HStream.Server.HStreamApi         as API
+import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
+                                                    updateSubscription)
+import           HStream.Server.Types              (ServerContext (..))
+import qualified HStream.Stats                     as Stats
+import qualified HStream.Store                     as S
+import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -52,58 +44,35 @@ createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerRespons
 createStream ServerContext{..} stream@API.Stream{
   streamBacklogDuration = backlogSec, ..} = do
   when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
-  let nameCB   = textToCBytes streamStreamName
-      streamId = transToStreamName streamStreamName
+  let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                    , S.logBacklogDuration   = S.defAttr1 $
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
-  zNodesExist <- catch (createStreamRelatedPath zkHandle nameCB >> return False)
-                       (\(_::ZNODEEXISTS) -> return True)
-  storeExists <- catch (S.createStream scLDClient streamId attrs
-                        >> return False)
-                       (\(_ :: S.EXISTS) -> return True)
-  when (storeExists || zNodesExist) $ do
-    Log.warning $ "Stream exists in" <> (if zNodesExist then " <zk path>" else "") <> (if storeExists then " <hstore>." else ".")
-    throwIO $ StreamExists zNodesExist storeExists
+  catch (S.createStream scLDClient streamId attrs) (\(_ :: S.EXISTS) -> throwIO StreamExists)
   returnResp stream
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
              -> IO (ServerResponse 'Normal Empty)
-deleteStream sc@ServerContext{..} API.DeleteStreamRequest{..} = do
-  zNodeExists <- isJust <$> zooExists zkHandle (streamRootPath <> "/" <> nameCB)
+deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
+  deleteStreamRequestStreamName = sName, ..} = do
   storeExists <- S.doesStreamExist scLDClient streamId
-  case (zNodeExists, storeExists) of
-    -- Normal path
-    (True, True) -> normalDelete
-    -- Deletion of a stream was incomplete, failed to clear zk path,
-    -- we will get here when client retry the delete request
-    (True, False) -> cleanZkNode
-    -- Abnormal Path: Since we always delete stream before clear zk path, get here may
-    -- means some unexpected error. Since it is a delete request and we just want to destroy the resource,
-    -- so it should be fine to just delete the stream instead of throw an exception
-    (False, True) -> storeDelete
-    -- Concurrency problem, or we finished delete request but client lose the
-    -- response and retry
-    (False, False) -> unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
+  if storeExists then doDelete
+    else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
   returnResp Empty
   where
-    normalDelete = do
-      isActive <- checkIfActive
-      if isActive
-        then do
-          unless deleteStreamRequestForce $ throwIO FoundActiveSubscription
-          -- TODO: delete the archived stream when the stream is no longer needed
-          _archivedStream <- S.archiveStream scLDClient streamId
-          pure ()
-        else storeDelete
-      cleanZkNode
-    storeDelete  = void $ deleteStoreStream sc streamId deleteStreamRequestIgnoreNonExist
-
-    streamId      = transToStreamName deleteStreamRequestStreamName
-    nameCB        = textToCBytes deleteStreamRequestStreamName
-    checkIfActive = checkIfSubsOfStreamActive zkHandle nameCB
-    cleanZkNode   = removeStreamRelatedPath zkHandle nameCB
+    streamId = transToStreamName sName
+    doDelete = do
+      subs <- getSubscriptionWithStream zkHandle sName
+      if null subs
+      then S.removeStream scLDClient streamId
+      else if force
+           then do
+             -- TODO: delete the archived stream when the stream is no longer needed
+             _archivedStream <- S.archiveStream scLDClient streamId
+             updateSubscription zkHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
+           else
+             throwIO FoundSubscription
 
 listStreams
   :: HasCallStack
@@ -137,7 +106,9 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
     streamName  = textToCBytes sName
     streamID    = S.mkStreamId S.StreamTypeStream streamName
     key         = textToCBytes <$> partitionKey
+
 --------------------------------------------------------------------------------
+
 append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
 append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
   timestamp <- getProtoTimestamp
@@ -154,35 +125,18 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
   Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length appendRequestRecords)
   let records = V.zipWith (\_ idx -> API.RecordId logId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records
+
 --------------------------------------------------------------------------------
 
-createStreamRelatedPath :: ZHandle -> CBytes -> IO ()
-createStreamRelatedPath zk streamName = do
-  -- rootPath/streams/{streamName}
-  -- rootPath/streams/{streamName}/keys
-  -- rootPath/streams/{streamName}/subscriptions
-  -- rootPath/lock/streams/{streamName}
-  -- rootPath/lock/streams/{streamName}/subscriptions
-  let streamPath = P.streamRootPath <> "/" <> streamName
-      subPath    = P.mkStreamSubsPath streamName
-      lockPath   = P.streamLockPath <> "/" <> streamName
-      streamSubLockPath = P.mkStreamSubsLockPath streamName
-  void $ zooMulti zk $ P.createPathOp <$> [streamPath, subPath, lockPath, streamSubLockPath]
-
-data FoundActiveSubscription = FoundActiveSubscription
+data FoundSubscription = FoundSubscription
   deriving (Show)
-instance Exception FoundActiveSubscription
+instance Exception FoundSubscription
 
 data RecordTooBig = RecordTooBig
   deriving (Show)
 instance Exception RecordTooBig
 
-data StreamExists = StreamExists Bool Bool
+data StreamExists = StreamExists
   deriving (Show)
 instance Exception StreamExists where
-  displayException (StreamExists zkExists storeExists)
-    | zkExists && storeExists = "StreamExists: Stream has been created"
-    | zkExists    = "StreamExists: Inconsistency found. The stream was created, but not persisted to disk"
-    | storeExists = "StreamExists: Inconsistency found. The stream was persisted to disk"
-                 <> ", but no record of creating the stream is found."
-    | otherwise   = "Impossible happened: Stream does not exist, but some how throw stream exist exception"
+  displayException StreamExists = "StreamExists: Stream has been created"

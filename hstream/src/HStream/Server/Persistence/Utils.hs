@@ -11,15 +11,11 @@ module HStream.Server.Persistence.Utils
   , subscriptionsPath
   , subscriptionsLockPath
   , paths
-  , streamRootPath
-  , streamLockPath
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
-  , mkStreamSubsLockPath
-  , mkStreamSubsPath
 
   , createInsert
   , createInsertOp
@@ -95,18 +91,6 @@ subscriptionsPath = rootPath <> "/subscriptions"
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
-streamRootPath :: CBytes
-streamRootPath = rootPath <> "/streams"
-
-streamLockPath :: CBytes
-streamLockPath = lockPath <> "/streams"
-
-mkStreamSubsLockPath :: CBytes -> CBytes
-mkStreamSubsLockPath streamName = streamLockPath <> "/" <> streamName <> "/subscriptions"
-
-mkStreamSubsPath :: CBytes -> CBytes
-mkStreamSubsPath streamName = streamRootPath <> "/" <> streamName <> "/subscriptions"
-
 paths :: [CBytes]
 paths = [ rootPath
         , serverRootPath
@@ -115,8 +99,6 @@ paths = [ rootPath
         , connectorsPath
         , subscriptionsPath
         , subscriptionsLockPath
-        , streamRootPath
-        , streamLockPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()

@@ -3,33 +3,36 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent.STM
-import           Control.Exception          (Exception, throwIO)
-import           Control.Monad              (unless)
-import qualified Data.HashMap.Strict        as HM
-import qualified Data.Map.Strict            as Map
-import           Data.Maybe                 (fromJust)
-import           Data.Text                  (Text)
-import           Data.Unique                (hashUnique, newUnique)
-import qualified Data.Vector                as V
-import qualified Z.Data.CBytes              as CB
-import           Z.Data.CBytes              (CBytes)
-import           ZooKeeper.Recipe           (withLock)
-import           ZooKeeper.Types            (ZHandle)
+import           Control.Exception                 (Exception, throwIO)
+import           Control.Monad                     (unless)
+import qualified Data.HashMap.Strict               as HM
+import qualified Data.Map.Strict                   as Map
+import           Data.Maybe                        (fromJust)
+import           Data.Text                         (Text)
+import qualified Data.Vector                       as V
+import           ZooKeeper.Types                   (ZHandle)
 
-import           HStream.Connector.HStore   (transToStreamName)
-import qualified HStream.Logger             as Log
+import           HStream.Connector.HStore          (transToStreamName)
+import qualified HStream.Logger                    as Log
 import           HStream.Server.Exception
-import           HStream.Server.HStreamApi  (Subscription (..))
-import qualified HStream.Server.Persistence as P
+import           HStream.Server.HStreamApi
+import qualified HStream.Server.Persistence        as P
+import           HStream.Server.Persistence.Object (withSubscriptionsLock)
 import           HStream.Server.Types
-import qualified HStream.Store              as S
-import           HStream.Utils              (textToCBytes)
+import qualified HStream.Store                     as S
+import           HStream.Utils                     (textToCBytes)
 
 --------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
-listSubscriptions ServerContext{..} =
-  V.fromList . Map.elems <$> P.listObjects zkHandle
+listSubscriptions ServerContext{..} = do
+  subs <- P.listObjects zkHandle
+  mapM update $ V.fromList (Map.elems subs)
+  where
+    update sub@Subscription{..} = do
+      archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
+      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
+                  else return sub
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
@@ -42,8 +45,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   P.storeObject subscriptionSubscriptionId sub zkHandle
 
 deleteSubscription :: ServerContext -> Subscription -> Bool -> IO ()
-deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = subId
-  , subscriptionStreamName = streamName} force = do
+deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = subId} force = do
   (status, msub) <- atomically $ do
     res <- getSubState
     case res of
@@ -79,11 +81,7 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
     Signaled     -> throwIO SubscriptionIsDeleting
   where
     doRemove :: IO ()
-    doRemove = do
-      -- FIXME: There are still inconsistencies here. If any failure occurs after removeSubFromStreamPath
-      -- and if the client doesn't retry, then we will find that the subscription still binds to the stream but we
-      -- can't get the related subscription's information
-      removeSubFromStreamPath zkHandle (textToCBytes streamName) (textToCBytes subId)
+    doRemove = withSubscriptionsLock zkHandle $
       P.removeObject @ZHandle @'P.SubRep subId zkHandle
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
@@ -119,14 +117,6 @@ deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = s
 
 data DeleteSubStatus = NotExist | CanDelete | CanNotDelete | Signaled
   deriving (Show)
-
-removeSubFromStreamPath :: ZHandle -> CBytes -> CBytes -> IO ()
-removeSubFromStreamPath zk streamName subName = do
-  let lockPath = P.mkStreamSubsLockPath streamName
-  let subscriptionPath = P.mkStreamSubsPath streamName <> "/" <> subName
-  uniq <- newUnique
-  withLock zk lockPath (CB.pack . show . hashUnique $ uniq) $ do
-    P.tryDeletePath zk subscriptionPath
 
 -- -------------------------------------------------------------------------- --
 -- Exceptions

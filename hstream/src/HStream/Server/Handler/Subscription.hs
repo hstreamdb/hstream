@@ -49,13 +49,11 @@ import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
-                                                   StreamNotExist (..),
                                                    SubscriptionIdNotFound (..),
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    setRespType)
-import           HStream.Server.Handler.Common    (bindSubToStreamPath,
-                                                   getCommitRecordId,
+import           HStream.Server.Handler.Common    (getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.HStreamApi
@@ -75,15 +73,11 @@ createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata sub@Subscription{..}) = subExceptionHandle $ do
+createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = subExceptionHandle $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
-  bindSubToStreamPath zkHandle streamName subName
-  catch (Core.createSubscription ctx sub) $
-    \(e :: StreamNotExist) -> Core.removeSubFromStreamPath zkHandle streamName subName >> throwIO e
+  Core.createSubscription ctx sub
   returnResp sub
-  where
-    streamName = textToCBytes subscriptionStreamName
-    subName = textToCBytes subscriptionSubscriptionId
+
 --------------------------------------------------------------------------------
 
 deleteSubscriptionHandler
@@ -103,7 +97,8 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   Core.deleteSubscription ctx (fromJust subscription) force
   Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
--- --------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------
 
 checkSubscriptionExistHandler
   :: ServerContext
@@ -321,7 +316,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
   loop isFirstSendRef
   where
     loop isFirstSendRef = do
-      Log.debug "enter sendRecords loop"
+      -- Log.debug "enter sendRecords loop"
       state <- readTVarIO subState
       if state == SubscribeStateRunning
         then do
@@ -391,7 +386,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
 
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
-      shards <- getShards ctx subStreamName
+      shards <- catch (getShards ctx subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
       if L.null shards
         then return []
         else do
