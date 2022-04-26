@@ -35,7 +35,6 @@ import           HStream.Client.Gadget
 import           HStream.Client.Internal
 import           HStream.Client.Type              (ClientContext (..))
 import           HStream.Client.Utils             (mkGRPCClientConf)
-import qualified HStream.Common.Query             as Query
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.SQL
@@ -91,10 +90,9 @@ main = do
 -- and this needs to be optimized. This could be done with a grpc client pool.
 app :: ClientContext -> IO ()
 app ctx@ClientContext{..} = do
-  query <- Query.newHStreamQuery (CB.pack $ cctxServerHost <> ":" <> show cctxServerPort)
   putStrLn helpInfo
   void $ forkIO maintainAvailableNodes
-  H.runInputT H.defaultSettings (loop query)
+  H.runInputT H.defaultSettings loop
   where
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
@@ -102,13 +100,13 @@ app ctx@ClientContext{..} = do
         node:_ -> void $ describeCluster ctx node
       threadDelay $ availableServersUpdateInterval * 1000 * 1000
 
-    loop :: Query.HStreamQuery -> H.InputT IO ()
-    loop query = H.withInterrupt . H.handleInterrupt (loop query) $ do
+    loop :: H.InputT IO ()
+    loop = H.withInterrupt . H.handleInterrupt loop $ do
       H.getInputLine "> " >>= \case
         Nothing -> pure ()
         Just str
           | take 1 (words str) == [":q"] -> pure ()
-          | otherwise -> liftIO (commandExec ctx str) >> loop query
+          | otherwise -> liftIO (commandExec ctx str) >> loop
 
 commandExec :: ClientContext -> String -> IO ()
 commandExec ctx@ClientContext{..} xs = case words xs of
