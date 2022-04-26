@@ -21,51 +21,53 @@ module HStream.Server.Handler.Subscription
 where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async         (async, wait)
+import           Control.Concurrent.Async             (async, wait)
 import           Control.Concurrent.STM
-import           Control.Exception                (Exception, Handler (Handler),
-                                                   catch, throwIO)
-import           Control.Monad                    (foldM, forM_, forever,
-                                                   unless, when)
-import qualified Data.ByteString                  as BS
+import           Control.Exception                    (Exception,
+                                                       Handler (Handler), catch,
+                                                       throwIO)
+import           Control.Monad                        (foldM, forM_, forever,
+                                                       unless, when)
+import qualified Data.ByteString                      as BS
 import           Data.Functor
-import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (newIORef, readIORef,
-                                                   writeIORef)
-import qualified Data.List                        as L
-import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (fromJust, isNothing)
-import qualified Data.Set                         as Set
-import qualified Data.Text                        as T
-import           Data.Text.Encoding               (encodeUtf8)
-import qualified Data.Vector                      as V
-import           Data.Word                        (Word32, Word64)
-import           Network.GRPC.HighLevel           (StreamRecv, StreamSend)
+import qualified Data.HashMap.Strict                  as HM
+import           Data.IORef                           (newIORef, readIORef,
+                                                       writeIORef)
+import qualified Data.List                            as L
+import qualified Data.Map.Strict                      as Map
+import           Data.Maybe                           (fromJust, isNothing)
+import qualified Data.Set                             as Set
+import qualified Data.Text                            as T
+import           Data.Text.Encoding                   (encodeUtf8)
+import qualified Data.Vector                          as V
+import           Data.Word                            (Word32, Word64)
+import           Network.GRPC.HighLevel               (StreamRecv, StreamSend)
 import           Network.GRPC.HighLevel.Generated
-import           ZooKeeper.Types                  (ZHandle)
+import           ZooKeeper.Types                      (ZHandle)
 
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
-import           HStream.Connector.HStore         (transToStreamName)
-import qualified HStream.Logger                   as Log
-import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (ExceptionHandle, Handlers,
-                                                   SubscriptionIdNotFound (..),
-                                                   defaultHandlers,
-                                                   mkExceptionHandle,
-                                                   setRespType)
-import           HStream.Server.Handler.Common    (getCommitRecordId,
-                                                   getSuccessor,
-                                                   insertAckedRecordId)
+import           HStream.Common.ConsistentHashing     (getAllocatedNodeId)
+import           HStream.Connector.HStore             (transToStreamName)
+import qualified HStream.Logger                       as Log
+import qualified HStream.Server.Core.Subscription     as Core
+import           HStream.Server.Exception             (ExceptionHandle,
+                                                       Handlers,
+                                                       SubscriptionIdNotFound (..),
+                                                       defaultHandlers,
+                                                       mkExceptionHandle,
+                                                       setRespType)
+import           HStream.Server.Handler.Common        (getCommitRecordId,
+                                                       getSuccessor,
+                                                       insertAckedRecordId)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (ObjRepType (..))
-import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.Persistence           as P
+import           HStream.Server.Persistence.Exception (FailedToGet (..))
 import           HStream.Server.Types
-import qualified HStream.Stats                    as Stats
-import qualified HStream.Store                    as S
-import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (decodeByteStringBatch,
-                                                   mkServerErrResp, returnResp,
-                                                   textToCBytes)
+import qualified HStream.Stats                        as Stats
+import qualified HStream.Store                        as S
+import           HStream.ThirdParty.Protobuf          as PB
+import           HStream.Utils                        (decodeByteStringBatch,
+                                                       mkServerErrResp,
+                                                       returnResp, textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -92,7 +94,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   unless (getAllocatedNodeId hr subId == serverID) $
     throwIO SubscriptionOnDifferentNode
 
-  subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
+  subscription <- P.getObject @ZHandle @'P.SubRep subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
   Core.deleteSubscription ctx (fromJust subscription) force
   Log.info " ----------- successfully deleted subscription  -----------"
@@ -107,7 +109,7 @@ checkSubscriptionExistHandler
 checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
   let sid = checkSubscriptionExistRequestSubscriptionId
-  res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
+  res <- P.checkIfExist @ZHandle @'P.SubRep sid zkHandle
   returnResp . CheckSubscriptionExistResponse $ res
 -- --------------------------------------------------------------------------------
 
@@ -383,10 +385,13 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
         retry
       else pure ()
 
-
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
-      shards <- catch (getShards ctx subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
+      mSubCtx <- P.getObject subSubscriptionId zkHandle
+      streamName <- case mSubCtx of
+        Nothing                -> throwIO FailedToGet
+        Just Subscription {..} -> pure subscriptionStreamName
+      shards <- catch (getShards ctx streamName) (\(_::S.NOTFOUND)-> pure mempty)
       if L.null shards
         then return []
         else do
