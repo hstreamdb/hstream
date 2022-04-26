@@ -219,9 +219,10 @@ instance Read StatsCategory where
         x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
 
 data StatsCommand = StatsCommand
-  { statsCategory  :: StatsCategory
-  , statsName      :: CBytes
-  , statsIntervals :: [U.Interval]
+  { statsCategory    :: StatsCategory
+  , statsName        :: CBytes
+  , statsIntervals   :: [U.Interval]
+  , statsPercentiles :: [Double]
   } deriving (Show)
 
 statsCmdParser :: O.Parser StatsCommand
@@ -234,11 +235,24 @@ statsCmdParser = StatsCommand
                     )
   <*> ( O.some ( O.option ( O.eitherReader U.parserInterval )
                           ( O.long "intervals" <> O.short 'i'
-                         <> O.help "the list of intervals to be collected, default is [1min, 5min, 10min]"
+                         <> O.help ( "the list of intervals to be collected, "
+                                  <> "default is [1min, 5min, 10min], "
+                                  <> "only needed for per time series stats"
+                                   )
                           )
                )
     -- https://github.com/pcapriotti/optparse-applicative/issues/53
     <|> pure [U.Minutes 1, U.Minutes 5, U.Minutes 10]
+      )
+  <*> ( O.some ( O.option O.auto
+                          ( O.long "percentiles" <> O.short 'p'
+                         <> O.help ( "the list of percentiles to be collected, "
+                                  <> "default is [0.5, 0.75, 0.95, 0.99], "
+                                  <> "only needed for server histogram stats"
+                                   )
+                          )
+               )
+    <|> pure [0.5, 0.75, 0.95, 0.99]
       )
 
 -------------------------------------------------------------------------------

@@ -114,12 +114,11 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
       return $ tableResponse content
 
     doServerHistogram name = do
-      let defPercentiles = [0.5, 0.75, 0.95, 0.99]
+      let strName = CB.unpack name
       ps <- Stats.serverHistogramEstimatePercentiles
-              scStatsHolder
-              (read $ CB.unpack name)
-              defPercentiles
-      let headers = ["p50", "p75", "p95", "p99" :: Text]
+              scStatsHolder (read strName) statsPercentiles
+      -- 0.5 -> p50
+      let headers = map (("p" ++) . show @Int . floor . (*100)) statsPercentiles
           rows = [map show ps]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
