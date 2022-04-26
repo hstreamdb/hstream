@@ -1,4 +1,4 @@
-cabal-version:      2.2
+cabal-version:      2.4
 name:               hstream-admin
 version:            0.1.0.0
 synopsis:
@@ -13,12 +13,18 @@ license-file:       LICENSE
 copyright:          Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:             lambda@emqx.io
 maintainer:         lambda@emqx.io
-tested-with:        GHC ==8.10.4
+tested-with:        GHC ==8.10.7
 category:           Database
 homepage:           https://github.com/hstreamdb/hstream
 bug-reports:        https://github.com/hstreamdb/hstream/issues
-build-type:         Simple
+build-type:         Custom
 extra-source-files: LICENSE
+extra-source-files: cbits/**/*.h
+
+custom-setup
+  setup-depends:
+    , base   >=4.5 && <5
+    , Cabal  >=2.4 && <4
 
 source-repository head
   type:     git
@@ -43,6 +49,10 @@ common shared-properties
 library
   import:             shared-properties
   hs-source-dirs:     . gen-hs2
+  cxx-sources:
+    cbits/hs_query.cpp
+    cbits/query/Query.cpp
+
   exposed-modules:
     HStream.Admin.Server.Command
     HStream.Admin.Server.Types
@@ -78,6 +88,7 @@ library
     Safety.Types
     Settings.Types
 
+  build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
     , aeson
     , aeson-pretty
@@ -111,9 +122,13 @@ library
     , Z-IO
     , zoovisitor            >=0.1.2    && <1
 
-  build-tool-depends: cpphs:cpphs >=1.20 && <1.21
-  include-dirs:       /usr/local/include
+  include-dirs:       . /usr/local/include
   extra-lib-dirs:     /usr/local/lib
+  extra-libraries:
+    stdc++
+    logdevice
+    ldquery
+
   default-language:   Haskell2010
   default-extensions:
     DeriveGeneric

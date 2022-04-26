@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AdminCommandTable.h"
+#include "cbits/query/tables/AdminCommandTable.h" // from hstream-common
 
 namespace hstream { namespace client { namespace query { namespace tables {
 
