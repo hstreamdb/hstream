@@ -2,6 +2,7 @@
 
 #include "cbits/query/tables/AppendThroughput.h"
 #include "cbits/query/tables/ReadThroughput.h"
+#include "cbits/query/tables/ServerAppendLatency.h"
 #include "cbits/query/tables/ServerAppendRequestLatency.h"
 #include "cbits/query/tables/Streams.h"
 
@@ -10,6 +11,7 @@ namespace hstream { namespace client { namespace query {
 void Query::registerTables() {
   table_registry_.registerTable<tables::AppendThroughput>(ctx_);
   table_registry_.registerTable<tables::ReadThroughput>(ctx_);
+  table_registry_.registerTable<tables::ServerAppendLatency>(ctx_);
   table_registry_.registerTable<tables::ServerAppendRequestLatency>(ctx_);
   table_registry_.registerTable<tables::Streams>(ctx_);
 
