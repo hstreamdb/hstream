@@ -134,7 +134,7 @@ PREFIX##getall (StatsHolder stats_holder) stat_name =                          \
         peekStdStringToCBytesN c_delete_vector_of_string                       \
         peekN c_delete_vector_of_int64 ;                                       \
     if ret == 0 then pure statMap                                              \
-                else do Log.fatal "stream_time_series_getall failed!";         \
+                else do Log.fatal "PREFIX##getall failed!";                    \
                         pure Map.empty
 
 PER_X_STAT_GETALL(stream_stat_)

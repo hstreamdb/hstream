@@ -1,5 +1,6 @@
 #pragma once
 
+#include <boost/core/demangle.hpp>
 #include <folly/dynamic.h>
 #include <folly/experimental/StringKeyedUnorderedMap.h>
 #include <folly/json.h>
@@ -598,6 +599,7 @@ int perXTimeSeriesGetall(
     }                                                                          \
   }
 
+// TODO: return errmsg
 template <class PerXStats>
 int perXStatsGetall(
     StatsHolder* stats_holder,
@@ -612,6 +614,7 @@ int perXStatsGetall(
     HsInt* len, std::string** keys_ptr, int64_t** values_ptr,
     std::vector<std::string>** keys_, std::vector<int64_t>** values_) {
   if (!stats_holder) {
+    ld_error("No such stasts_holder");
     return -1;
   }
   Stats stats = stats_holder->aggregate_nonew();
@@ -619,6 +622,9 @@ int perXStatsGetall(
   find_member(stat_name, member_ptr);
   // TODO: also return failure reasons
   if (UNLIKELY(member_ptr == nullptr)) {
+    ld_error("Can't find stats <%s> member: %s \n",
+             boost::core::demangle(typeid(PerXStats).name()).c_str(),
+             stat_name);
     return -1;
   }
 
