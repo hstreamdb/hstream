@@ -1,7 +1,6 @@
 #include "hs_common.h"
 
 #include "cbits/checks.h"
-#include "cbits/query/Query.h"
 #include "clients/cpp/AdminClient.h"
 
 #include <logdevice/ops/ldquery/Errors.h>
@@ -180,15 +179,6 @@ void queryResults__metadata_failures(
     *len = 0;
   }
 }
-
-// ----------------------------------------------------------------------------
-// Query
-
-query::Query* new_hstream_query(const char* addr) {
-  return new query::Query(std::string(addr));
-}
-
-void delete_hstream_query(query::Query* q) { delete q; }
 
 // ----------------------------------------------------------------------------
 } // End extern "C"
