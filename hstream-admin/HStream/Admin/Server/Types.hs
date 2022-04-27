@@ -97,8 +97,8 @@ data AdminCommand
 adminCommandParser :: O.Parser AdminCommand
 adminCommandParser = O.hsubparser
   ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser)
-                              (O.progDesc $ "Get the stats of an operation on a"
-                                         <> "stream for only one specific server"))
+                              (O.progDesc $ "Get the stats of an operation on a "
+                                         <> "stream(or other) for only one specific server"))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser)
                                (O.progDesc "Stream command"))
  <> O.command "sub" (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)

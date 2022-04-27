@@ -33,8 +33,9 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Persistence       (getClusterStatus)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
-import           HStream.Utils                    (formatStatus, interval2ms,
-                                                   returnResp, showNodeStatus)
+import           HStream.Utils                    (Interval, formatStatus,
+                                                   interval2ms, returnResp,
+                                                   showNodeStatus)
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -79,12 +80,11 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 
 runStats :: ServerContext -> AT.StatsCommand -> IO Text
 runStats ServerContext{..} AT.StatsCommand{..} = do
-  let intervals = map interval2ms statsIntervals
   case statsCategory of
     AT.PerStreamStats -> doPerStreamStats statsName
-    AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName intervals
+    AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
     AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
-    AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName intervals
+    AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
     AT.ServerHistogram -> doServerHistogram statsName
   where
     doPerStreamStats name = do
@@ -94,7 +94,7 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
-    doPerStreamTimeSeries :: CBytes -> [Int] -> IO Text
+    doPerStreamTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerStreamTimeSeries name intervals =
       let cfun = Stats.stream_time_series_getall_by_name' scStatsHolder
        in doTimeSeries name "stream_name" intervals cfun
@@ -106,7 +106,7 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
-    doPerSubscriptionTimeSeries :: CBytes -> [Int] -> IO Text
+    doPerSubscriptionTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerSubscriptionTimeSeries name intervals =
       let cfun = Stats.subscription_time_series_getall_by_name' scStatsHolder
        in doTimeSeries name "subscription_id" intervals cfun
@@ -123,11 +123,11 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
 
 doTimeSeries :: CBytes
              -> CBytes
-             -> [Int]
+             -> [Interval]
              -> (CBytes -> [Int] -> IO (Either String (Map CBytes [Double])))
              -> IO Text
 doTimeSeries stat_name x intervals f = do
-  m <- f stat_name intervals
+  m <- f stat_name (map interval2ms intervals)
   case m of
     Left errmsg -> return $ errorResponse $ Text.pack errmsg
     Right stats -> do
