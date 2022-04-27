@@ -2,6 +2,7 @@ module HStream.StatsSpec (spec) where
 
 import           Control.Concurrent
 import           Data.Bits              (shiftL)
+import           Data.Either
 import qualified Data.Map.Strict        as Map
 import           Data.Maybe             (fromJust)
 import           Test.Hspec
@@ -18,6 +19,8 @@ spec = do
 
   statsSpec
   threadedStatsSpec
+
+  miscSpec
 
 statsSpec :: Spec
 statsSpec = describe "HStream.Stats" $ do
@@ -208,3 +211,20 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
     Map.lookup "a_stream" m `shouldSatisfy` ((\s -> head s > 0) . fromJust)
     Just rate <- subscription_time_series_get h "sends" "a_stream" max_intervals
     rate `shouldSatisfy` (\s -> head s > 0)
+
+miscSpec :: Spec
+miscSpec = describe "HStream.Stats (misc)" $ do
+
+  it "get empty stream_time_series should return empty map" $ do
+    h <- newServerStatsHolder
+    stream_time_series_getall_by_name' h "appends" [1]
+      `shouldReturn` Right Map.empty
+
+  it ("intervals should not larger than MaxInterval defined in .inc file"
+   <> "(NOTE: not all functions are checking this)") $ do
+    h <- newServerStatsHolder
+
+    let tooBig = [24 * 60 * 60 * 1000] -- 24h
+    stream_time_series_add_append_in_bytes h "stream" 1000
+    m <- stream_time_series_getall_by_name' h "appends" tooBig
+    m `shouldSatisfy` isLeft

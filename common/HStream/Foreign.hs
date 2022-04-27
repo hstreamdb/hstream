@@ -15,6 +15,7 @@ module HStream.Foreign
   , Z.StdString
   , peekStdStringToCBytesN
   , peekStdStringToCBytesIdx
+  , withStdStringUnsafe
 
   -- * Optional
   , withAllocMaybePrim
@@ -57,6 +58,8 @@ import qualified Z.Data.Array       as Z
 import qualified Z.Data.CBytes      as CBytes
 import           Z.Data.CBytes      (CBytes)
 import qualified Z.Foreign          as Z
+import           Z.Foreign          (StdString)
+
 
 -------------------------------------------------------------------------------
 
@@ -101,6 +104,7 @@ withAllocMaybePrim2 _ Nothing f = f False nullPtr
 {-# INLINABLE withAllocMaybePrim2 #-}
 
 -------------------------------------------------------------------------------
+-- StdString
 
 peekStdStringToCBytesN :: Int -> Ptr Z.StdString -> IO [CBytes]
 peekStdStringToCBytesN len ptr
@@ -117,6 +121,14 @@ peekStdStringToCBytesIdx p offset = do
   Z.writePrimArray mpa siz 0
   CBytes.fromMutablePrimArray mpa
 {-# INLINE peekStdStringToCBytesIdx #-}
+
+withStdStringUnsafe :: (MBA# (Ptr StdString) -> IO a) -> IO (CBytes, a)
+withStdStringUnsafe f = do
+  (ptr', ret) <- Z.withPrimUnsafe nullPtr $ \ptr -> f (MBA# ptr)
+  if ptr' == nullPtr
+     then pure ("", ret)
+     else do str <- finally (peekStdStringToCBytesIdx ptr' 0) (c_delete_string ptr')
+             pure (str, ret)
 
 -------------------------------------------------------------------------------
 
@@ -213,8 +225,8 @@ withPrimListPairUnsafe pairs f = do
   foreign import ccall unsafe "hs_cpp_lib.h CFUN" \
     c_##CFUN :: Ptr HSOBJ -> IO ()
 
-HS_CPP_DELETE(delete_string, Z.StdString)
-HS_CPP_DELETE(delete_vector_of_string, (StdVector Z.StdString))
+HS_CPP_DELETE(delete_string, StdString)
+HS_CPP_DELETE(delete_vector_of_string, (StdVector StdString))
 HS_CPP_DELETE(delete_vector_of_int, (StdVector CInt))
 HS_CPP_DELETE(delete_vector_of_int64, (StdVector Int64))
 HS_CPP_DELETE(delete_std_vec_of_folly_small_vec_of_double, (StdVector (FollySmallVector Double)))
@@ -223,7 +235,7 @@ HS_CPP_DELETE(delete_std_vec_of_folly_small_vec_of_double, (StdVector (FollySmal
   foreign import ccall unsafe "hs_cpp_lib.h CFUN" \
     CFUN :: Ptr HSOBJ -> Int -> IO (Ptr HSOBJ)
 
-HS_CPP_CAL_OFFSET(cal_offset_std_string, Z.StdString)
+HS_CPP_CAL_OFFSET(cal_offset_std_string, StdString)
 
 bool2cbool :: Bool -> CBool
 bool2cbool True  = 1

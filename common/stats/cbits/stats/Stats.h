@@ -518,6 +518,7 @@ int perXTimeSeriesGetall(
   using TimePoint = typename PerXTimeSeries::TimePoint;
   using AggregateMap =
       folly::StringKeyedUnorderedMap<folly::small_vector<double, 4>>;
+
   AggregateMap output;
 
   std::shared_ptr<PerXTimeSeries> PerXStats::*member_ptr = nullptr;

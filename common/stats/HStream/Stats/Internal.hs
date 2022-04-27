@@ -12,7 +12,6 @@ import           Foreign.Ptr
 
 import           HStream.Foreign
 
-
 -------------------------------------------------------------------------------
 -- Considering as internal functions
 
@@ -119,7 +118,22 @@ foreign import ccall unsafe "hs_stats.h subscription_time_series_getall_by_name"
     -> MBA# (Ptr (StdVector (FollySmallVector Double)))
     -> IO CInt
 
-#undef PER_X_STAT_DEFINE
+-------------------------------------------------------------------------------
+
+#define VERIFY_INTERVALS(perfix)                                               \
+foreign import ccall unsafe "hs_stats.h perfix##verify_intervals"              \
+  perfix##verify_intervals                                                     \
+    :: Ptr CStatsHolder                                                        \
+    -> BA# Word8                                                               \
+    -> Int -> BA# Int                                                          \
+    -> MBA# (Ptr StdString)                                                    \
+    -> IO Bool;
+
+VERIFY_INTERVALS(per_stream_)
+VERIFY_INTERVALS(per_subscription_)
+#undef VERIFY_INTERVALS
+
+-------------------------------------------------------------------------------
 
 foreign import ccall unsafe "hs_stats.h server_histogram_add"
   server_histogram_add :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO CInt
@@ -134,3 +148,5 @@ foreign import ccall unsafe "hs_stats.h server_histogram_estimatePercentiles"
 foreign import ccall unsafe "hs_stats.h server_histogram_estimatePercentile"
   server_histogram_estimatePercentile
     :: Ptr CStatsHolder -> BA# Word8 -> Double -> IO Int64
+
+#undef PER_X_STAT_DEFINE
