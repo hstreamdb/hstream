@@ -81,14 +81,18 @@ library
     hs_cpp_lib.h
 
   install-includes:
+    cbits/query/Table.h
+    cbits/query/tables/AdminCommandTable.h
+    clients/cpp/AdminClient.h
     hs_common.h
     hs_cpp_lib.h
+    HStream/Server/HStreamApi.grpc.pb.h
+    HStream/Server/HStreamApi.pb.h
 
   cxx-sources:
     cbits/hash.cpp
     cbits/hs_struct.cpp
     cbits/hs_utils.cpp
-    cbits/query/Query.cpp
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
     clients/cpp/AdminClient.cpp

@@ -13,9 +13,6 @@ module HStream.Common.Query
   , showTableColumns, getTableColumns, formatTableColumns
     -- * Run queries
   , runQuery, execStatement, formatQueryResults
-    -- * HStreamQuery
-  , HStreamQuery
-  , newHStreamQuery
   ) where
 
 import           Control.Exception
@@ -318,22 +315,3 @@ foreign import ccall unsafe "hs_common.h queryResults__metadata_failures"
     -> MBA# (Ptr Z.StdString) -> MBA# (Ptr (StdVector Z.StdString))
     -> MBA# (Ptr Z.StdString) -> MBA# (Ptr (StdVector Z.StdString))
     -> IO ()
-
--------------------------------------------------------------------------------
-
-data C_HStreamQuery
-type HStreamQuery = ForeignPtr C_HStreamQuery
-
-instance QueryBaseRep HStreamQuery where
-  eqQueryBaseRep = castForeignPtr
-
-newHStreamQuery :: CBytes -> IO HStreamQuery
-newHStreamQuery addr = CBytes.withCBytes addr $ \addr' -> do
-   ldq_ptr <- new_hstream_query addr'
-   newForeignPtr delete_hstream_query_fun ldq_ptr
-
-foreign import ccall safe "new_hstream_query"
-  new_hstream_query :: Ptr Word8 -> IO (Ptr C_HStreamQuery)
-
-foreign import ccall unsafe "&delete_hstream_query"
-  delete_hstream_query_fun :: FunPtr (Ptr C_HStreamQuery -> IO ())

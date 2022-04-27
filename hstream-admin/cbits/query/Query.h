@@ -2,7 +2,7 @@
 
 #include <logdevice/ops/ldquery/QueryBase.h>
 
-#include "cbits/query/Table.h"
+#include "cbits/query/Table.h" // from hstream-common
 
 namespace ldquery = facebook::logdevice::ldquery;
 
