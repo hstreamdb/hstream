@@ -9,7 +9,6 @@ module HStream.Server.Handler.Cluster
   ( describeClusterHandler
   , lookupStreamHandler
   , lookupSubscriptionHandler
-  , lookupSubscriptionWithOrderingKeyHandler
   ) where
 
 import           Control.Concurrent               (readMVar)
@@ -87,22 +86,6 @@ lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@Looku
   returnResp LookupSubscriptionResponse {
     lookupSubscriptionResponseSubscriptionId = subId
   , lookupSubscriptionResponseServerNode     = Just theNode
-  }
-
-lookupSubscriptionWithOrderingKeyHandler
-  :: ServerContext
-  -> ServerRequest 'Normal LookupSubscriptionWithOrderingKeyRequest LookupSubscriptionWithOrderingKeyResponse
-  -> IO (ServerResponse 'Normal LookupSubscriptionWithOrderingKeyResponse)
-lookupSubscriptionWithOrderingKeyHandler ServerContext{..} (ServerNormalRequest _meta LookupSubscriptionWithOrderingKeyRequest {
-    lookupSubscriptionWithOrderingKeyRequestSubscriptionId = subId
-  , lookupSubscriptionWithOrderingKeyRequestOrderingKey    = key
-  }) = defaultExceptionHandle $ do
-  hashRing <- readMVar loadBalanceHashRing
-  let theNode = getAllocatedNode hashRing (subId <> alignDefault key)
-  returnResp LookupSubscriptionWithOrderingKeyResponse {
-    lookupSubscriptionWithOrderingKeyResponseSubscriptionId = subId
-  , lookupSubscriptionWithOrderingKeyResponseOrderingKey    = key
-  , lookupSubscriptionWithOrderingKeyResponseServerNode     = Just theNode
   }
 
 --------------------------------------------------------------------------------
