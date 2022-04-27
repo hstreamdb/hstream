@@ -82,9 +82,8 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDescribeCluster = describeClusterHandler serverContext,
         hstreamApiLookupStream = lookupStreamHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
-        hstreamApiLookupSubscriptionWithOrderingKey = lookupSubscriptionWithOrderingKeyHandler serverContext
         -- Admin
-      , hstreamApiSendAdminCommand = adminCommandHandler serverContext
+        hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }
 
 -------------------------------------------------------------------------------

@@ -38,7 +38,6 @@ service HStreamApi {
   rpc CheckSubscriptionExist(CheckSubscriptionExistRequest) returns (CheckSubscriptionExistResponse) {}
   rpc DeleteSubscription(DeleteSubscriptionRequest) returns (google.protobuf.Empty) {}
   rpc LookupSubscription(LookupSubscriptionRequest) returns (LookupSubscriptionResponse) {}
-  rpc LookupSubscriptionWithOrderingKey(LookupSubscriptionWithOrderingKeyRequest) returns (LookupSubscriptionWithOrderingKeyResponse) {}
   rpc WatchSubscription(WatchSubscriptionRequest)  returns (stream WatchSubscriptionResponse) {}
   rpc StreamingFetch(stream StreamingFetchRequest) returns (stream StreamingFetchResponse) {}
 
@@ -491,17 +490,6 @@ message LookupSubscriptionRequest {
 message LookupSubscriptionResponse {
   string subscriptionId = 1;
   ServerNode serverNode = 2;
-}
-
-message LookupSubscriptionWithOrderingKeyRequest {
-  string subscriptionId = 1;
-  string orderingKey = 2;
-}
-
-message LookupSubscriptionWithOrderingKeyResponse {
-  string subscriptionId = 1;
-  string orderingKey = 2;
-  ServerNode serverNode = 3;
 }
 
 message WatchSubscriptionRequest {
