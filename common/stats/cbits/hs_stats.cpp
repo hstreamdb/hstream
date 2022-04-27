@@ -1,5 +1,10 @@
 #include "hs_stats.h"
 
+#include <boost/format.hpp>
+#include <logdevice/common/commandline_util_chrono.h>
+
+using facebook::logdevice::chrono_string;
+
 extern "C" {
 // ----------------------------------------------------------------------------
 
@@ -171,24 +176,33 @@ int subscription_time_series_getall_by_name(
       keys_ptr, values_ptr, keys_, values_);
 }
 
-/* TODO
-bool verifyIntervals(StatsHolder* stats_holder, std::string string_name,
-                     std::vector<Duration> query_intervals, std::string& err) {
-  Duration max_interval =
-      stats_holder->params_.get()->maxStreamStatsInterval(string_name);
-  using namespace std::chrono;
-  for (auto interval : query_intervals) {
-    if (interval > max_interval) {
-      err = (boost::format("requested interval %s is larger than the max %s") %
-             chrono_string(duration_cast<seconds>(interval)).c_str() %
-             chrono_string(duration_cast<seconds>(max_interval)).c_str())
-                .str();
-      return false;
-    }
+// checks that no requested intervals are higher than getMaxInterval
+#define VerifyIntervals(perfix, TsCls, getMaxInterval)                         \
+  HsBool perfix##verify_intervals(                                             \
+      StatsHolder* stats_holder, const char* time_series, HsInt interval_size, \
+      HsInt* ms_intervals, std::string** err) {                                \
+    auto max_interval =                                                        \
+        stats_holder->params_.get()->getMaxInterval(std::string(time_series)); \
+    using namespace std::chrono;                                               \
+    for (int i = 0; i < interval_size; i++) {                                  \
+      auto interval = std::chrono::duration_cast<TsCls::Duration>(             \
+          std::chrono::milliseconds{ms_intervals[i]});                         \
+      if (interval > max_interval) {                                           \
+        *err = /* free on haskell side */                                      \
+            new std::string(                                                   \
+                (boost::format(                                                \
+                     "requested interval %s is larger than the max %s") %      \
+                 chrono_string(duration_cast<seconds>(interval)).c_str() %     \
+                 chrono_string(duration_cast<seconds>(max_interval)).c_str())  \
+                    .str());                                                   \
+        return false;                                                          \
+      }                                                                        \
+    }                                                                          \
+    return true;                                                               \
   }
-  return true;
-}
-*/
+VerifyIntervals(per_stream_, PerStreamTimeSeries, maxStreamStatsInterval);
+VerifyIntervals(per_subscription_, PerSubscriptionTimeSeries,
+                maxSubscribptionStatsInterval);
 
 // ----------------------------------------------------------------------------
 

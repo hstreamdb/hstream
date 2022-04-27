@@ -7,9 +7,10 @@ import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
 import qualified Data.HashMap.Strict              as HM
+import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
-import qualified Data.Text                        as T
+import qualified Data.Text                        as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Text.Lazy.Encoding          as TL
 import qualified Data.Vector                      as V
@@ -19,6 +20,7 @@ import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
 import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
+import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
@@ -54,7 +56,7 @@ adminCommandHandler sc req = defaultExceptionHandle $ do
   let (ServerNormalRequest _ (API.AdminCommandRequest cmd)) = req
   Log.info $ "Receive amdin command: " <> Log.buildText cmd
 
-  let args = words (T.unpack cmd)
+  let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
   result <- case adminCommand of
               AT.AdminStatsCommand c        -> runStats sc c
@@ -92,12 +94,10 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
-    doPerStreamTimeSeries name intervals = do
-      m <- Stats.stream_time_series_getall_by_name scStatsHolder name intervals
-      let headers = "stream_name" : (((name <> "_") <>) . CB.pack . show <$> statsIntervals)
-          rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
-          content = Aeson.object ["headers" .= headers, "rows" .= rows]
-      return $ tableResponse content
+    doPerStreamTimeSeries :: CBytes -> [Int] -> IO Text
+    doPerStreamTimeSeries name intervals =
+      let cfun = Stats.stream_time_series_getall_by_name' scStatsHolder
+       in doTimeSeries name "stream_name" intervals cfun
 
     doPerSubscriptionStats name = do
       m <- Stats.subscription_stat_getall scStatsHolder name
@@ -106,12 +106,10 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
-    doPerSubscriptionTimeSeries name intervals = do
-      m <- Stats.subscription_time_series_getall_by_name scStatsHolder name intervals
-      let headers = "subscription_id" : (((name <> "_") <>) . CB.pack . show <$> statsIntervals)
-          rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) m
-          content = Aeson.object ["headers" .= headers, "rows" .= rows]
-      return $ tableResponse content
+    doPerSubscriptionTimeSeries :: CBytes -> [Int] -> IO Text
+    doPerSubscriptionTimeSeries name intervals =
+      let cfun = Stats.subscription_time_series_getall_by_name' scStatsHolder
+       in doTimeSeries name "subscription_id" intervals cfun
 
     doServerHistogram name = do
       let strName = CB.unpack name
@@ -120,6 +118,21 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
       -- 0.5 -> p50
       let headers = map (("p" ++) . show @Int . floor . (*100)) statsPercentiles
           rows = [map show ps]
+          content = Aeson.object ["headers" .= headers, "rows" .= rows]
+      return $ tableResponse content
+
+doTimeSeries :: CBytes
+             -> CBytes
+             -> [Int]
+             -> (CBytes -> [Int] -> IO (Either String (Map CBytes [Double])))
+             -> IO Text
+doTimeSeries stat_name x intervals f = do
+  m <- f stat_name intervals
+  case m of
+    Left errmsg -> return $ errorResponse $ Text.pack errmsg
+    Right stats -> do
+      let headers = x : (((stat_name <> "_") <>) . CB.pack . show <$> intervals)
+          rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) stats
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
 
@@ -132,7 +145,7 @@ runStream ctx AT.StreamCmdList = do
   streams <- HC.listStreams ctx API.ListStreamsRequest
   rows <- V.forM streams $ \stream -> do
     return [ API.streamStreamName stream
-           , "node:" <> T.pack (show $ API.streamReplicationFactor stream)
+           , "node:" <> Text.pack (show $ API.streamReplicationFactor stream)
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -155,7 +168,7 @@ runSubscription ctx AT.SubscriptionCmdList = do
   rows <- V.forM subs $ \sub -> do
     return [ API.subscriptionSubscriptionId sub
            , API.subscriptionStreamName sub
-           , T.pack . show $ API.subscriptionAckTimeoutSeconds sub
+           , Text.pack . show $ API.subscriptionAckTimeoutSeconds sub
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -175,8 +188,8 @@ runView serverContext AT.ViewCmdList = do
   views <- HC.listViews serverContext
   rows <- forM views $ \view -> do
     return [ API.viewViewId view
-           , T.pack . formatStatus . API.viewStatus $ view
-           , T.pack . show . API.viewCreatedTime $ view
+           , Text.pack . formatStatus . API.viewStatus $ view
+           , Text.pack . show . API.viewCreatedTime $ view
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
@@ -184,15 +197,15 @@ runView serverContext AT.ViewCmdList = do
 -------------------------------------------------------------------------------
 -- Admin Status Command
 
-runStatus :: ServerContext -> IO T.Text
+runStatus :: ServerContext -> IO Text.Text
 runStatus ServerContext{..} = do
   values <- HM.elems <$> getClusterStatus zkHandle
-  let headers = ["node_id" :: T.Text, "state", "address"]
+  let headers = ["node_id" :: Text.Text, "state", "address"]
       rows = map consRow values
       content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
   where
-    show' = T.pack . show
+    show' = Text.pack . show
     consRow API.ServerNodeStatus{..} =
       let nodeID = maybe "UNKNOWN" (show' . API.serverNodeId) serverNodeStatusNode
           nodeHost = maybe "UNKNOWN" API.serverNodeHost serverNodeStatusNode
@@ -210,6 +223,9 @@ tableResponse = jsonEncode' . AT.AdminCommandResponse AT.CommandResponseTypeTabl
 
 plainResponse :: Text -> Text
 plainResponse = jsonEncode' . AT.AdminCommandResponse AT.CommandResponseTypePlain
+
+errorResponse :: Text -> Text
+errorResponse = jsonEncode' . AT.AdminCommandResponse AT.CommandResponseTypeError
 
 throwParsingErr :: String -> IO a
 throwParsingErr = err' "Parsing admin command error"

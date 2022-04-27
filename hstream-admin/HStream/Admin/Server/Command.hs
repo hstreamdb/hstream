@@ -39,6 +39,7 @@ formatCommandResponse resp =
       case m_type of
         Just (Aeson.String "table") -> extractJsonTable m_content
         Just (Aeson.String "plain") -> pure $ U.fillWithJsonString' "content" obj
+        Just (Aeson.String "error") -> pure $ "Error: " <> U.fillWithJsonString' "content" obj
         _                           -> pure "No such \"type\""
     parseVal x  = pure $ "Expecting obj value, but got " <> show x
 
