@@ -260,6 +260,7 @@ statsCmdParser = StatsCommand
 data CommandResponseType
   = CommandResponseTypeTable
   | CommandResponseTypePlain
+  | CommandResponseTypeError
   deriving (Show, Generic)
 
 instance ToJSON CommandResponseType where
