@@ -53,12 +53,14 @@ newLDSyncCkpReader
   :: CBytes
   -> LDReader
   -> LDCheckpointStore
-  -> Word32
   -> IO LDSyncCkpReader
-newLDSyncCkpReader name reader store retries =
+newLDSyncCkpReader name reader store =
   ZC.withCBytesUnsafe name $ \name' ->
   withForeignPtr reader $ \reader' ->
   withForeignPtr store $ \store' -> do
+    -- FIXME: The number of retries when synchronously writing checkpoints.
+    -- We only use the async cpp function, so this option has no means currently
+    let retries = 10
     i <- c_new_logdevice_sync_checkpointed_reader name' reader' store' retries
     newForeignPtr c_free_sync_checkpointed_reader_fun i
 
@@ -257,12 +259,10 @@ ckpReaderSetWaitOnlyWhenNoData reader = withForeignPtr reader c_ld_ckp_reader_wa
 
 -------------------------------------------------------------------------------
 
-writeCheckpoints :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> IO ()
-writeCheckpoints reader sns = writeCheckpoints' reader sns (-1)
-
-writeCheckpoints'
-  :: HasCallStack => LDSyncCkpReader -> Map C_LogID LSN -> Int -> IO ()
-writeCheckpoints' reader sns retries =
+writeCheckpoints
+  :: HasCallStack
+  => LDSyncCkpReader -> Map C_LogID LSN -> Int -> IO ()
+writeCheckpoints reader sns retries =
   withForeignPtr reader $ \reader' -> do
     let xs = Map.toList sns
     let ka = Z.primArrayFromList $ map fst xs
@@ -271,19 +271,16 @@ writeCheckpoints' reader sns retries =
       Z.withPrimArrayUnsafe va $ \vs' _ -> do
         let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ crb_write_checkpoints reader' ks' vs' (fromIntegral len)
         retryWhileAgain f retries
-{-# INLINABLE writeCheckpoints' #-}
+{-# INLINABLE writeCheckpoints #-}
 
-writeLastCheckpoints :: LDSyncCkpReader -> [C_LogID] -> IO ()
-writeLastCheckpoints reader xs = writeLastCheckpoints' reader xs (-1)
-
-writeLastCheckpoints' :: LDSyncCkpReader -> [C_LogID] -> Int -> IO ()
-writeLastCheckpoints' reader xs retries =
+writeLastCheckpoints :: LDSyncCkpReader -> [C_LogID] -> Int -> IO ()
+writeLastCheckpoints reader xs retries =
   withForeignPtr reader $ \reader' -> do
     let topicIDs = Z.primArrayFromList xs
     Z.withPrimArrayUnsafe topicIDs $ \id' len -> do
       let f = withAsyncPrimUnsafe (0 :: ErrorCode) $ crb_write_last_read_checkpoints reader' id' (fromIntegral len)
       retryWhileAgain f retries
-{-# INLINABLE writeLastCheckpoints' #-}
+{-# INLINABLE writeLastCheckpoints #-}
 
 removeCheckpoints :: HasCallStack => LDSyncCkpReader -> [C_LogID] -> IO ()
 removeCheckpoints reader xs = withForeignPtr reader $ \reader' -> do

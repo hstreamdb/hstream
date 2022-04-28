@@ -151,7 +151,7 @@ runTaskWrapper sourceType sinkType taskBuilder ldclient = do
   -- create a new ckpReader from ldclient
   let readerName = textToCBytes (getTaskName taskBuilder)
   -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
-  ldreader <- HS.newLDRsmCkpReader ldclient readerName HS.checkpointStoreLogID 5000 1000 Nothing 10
+  ldreader <- HS.newLDRsmCkpReader ldclient readerName HS.checkpointStoreLogID 5000 1000 Nothing
   -- create a new sourceConnector
   let sourceConnector = HCS.hstoreSourceConnector ldclient ldreader sourceType
   -- create a new sinkConnector
