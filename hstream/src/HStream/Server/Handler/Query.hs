@@ -272,7 +272,6 @@ executePushQueryHandler
                 5000
                 1
                 Nothing
-                10
             let sc = hstoreSourceConnector scLDClient ldreader' S.StreamTypeTemp
             subscribeToStream sc sink Latest
             sendToClient zkHandle qid sc streamSend
@@ -396,7 +395,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
           createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
         ldreader' <- HS.newLDRsmCkpReader scLDClient
           (textToCBytes (T.append (getTaskName taskBuilder') "-result"))
-          HS.checkpointStoreLogID 5000 1 Nothing 10
+          HS.checkpointStoreLogID 5000 1 Nothing
         let sc = HCH.hstoreSourceConnector scLDClient ldreader' HS.StreamTypeTemp -- FIXME: view or temp?
         subscribeToStream sc sink Latest
         returnResp $

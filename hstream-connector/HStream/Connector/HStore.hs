@@ -147,7 +147,7 @@ commitCheckpointToHStore ldclient reader streamId offset = do
   case offset of
     Earlist    -> error "expect normal offset, but get Earlist"
     Latest     -> error "expect normal offset, but get Latest"
-    Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn)
+    Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn) 10{-retries-}
 
 writeRecordToHStore :: S.LDClient -> S.StreamType -> SinkRecord -> IO ()
 writeRecordToHStore ldclient streamType SinkRecord{..} = do

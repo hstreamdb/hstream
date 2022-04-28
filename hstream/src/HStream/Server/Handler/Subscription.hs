@@ -202,7 +202,7 @@ doSubInit ctx@ServerContext{..} subId = do
       let ldReaderBufferSize = 10
       -- create a ldCkpReader for reading new records
       ldCkpReader <-
-        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize) 5
+        S.newLDRsmCkpReader scLDClient readerName S.checkpointStoreLogID 5000 maxReadLogs (Just ldReaderBufferSize)
       S.ckpReaderSetTimeout ldCkpReader 10  -- 10 milliseconds
       -- create a ldReader for rereading unacked records
       ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
@@ -847,7 +847,7 @@ doAck ldclient subCtx@SubscribeContext {..} logId recordIds= do
   case res of
     Just lsn -> do
         Log.info $ "[stream " <> Log.buildInt logId <> "] commit checkpoint = " <> Log.buildString (show lsn)
-        S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn)
+        S.writeCheckpoints subLdCkpReader (Map.singleton logId lsn) 10{-retries-}
     Nothing  -> return ()
 
 invalidConsumer :: SubscribeContext -> ConsumerName -> STM ()

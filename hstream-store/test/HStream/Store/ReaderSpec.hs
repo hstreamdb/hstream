@@ -31,13 +31,13 @@ readerSpec readerName logid new_reader new_ckp_store = do
   it "the checkpoint of writing/reading should be equal" $ do
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
-    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
+    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)]) 10
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
 
   it "read a removed checkpoint should throw NOTFOUND" $ do
     _ <- S.append client logid "hello" Nothing
     until_lsn <- S.getTailLSN client logid
-    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)])
+    S.writeCheckpoints ckpReader (Map.fromList [(logid, until_lsn)]) 10
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldReturn` until_lsn
     S.removeCheckpoints ckpReader [logid]
     S.ckpStoreGetLSN checkpointStore readerName logid `shouldThrow` S.isNOTFOUND
@@ -53,7 +53,7 @@ readerSpec readerName logid new_reader new_ckp_store = do
     S.recordLSN record_1 `shouldBe` start_lsn
 
     -- last read checkpoint: start_lsn
-    S.writeLastCheckpoints ckpReader [logid]
+    S.writeLastCheckpoints ckpReader [logid] 10
 
     [recordbs_2] <- S.ckpReaderRead ckpReader 1
     S.recordPayload recordbs_2 `shouldBe` ("2" :: ByteString)
@@ -84,7 +84,7 @@ readerSpec readerName logid new_reader new_ckp_store = do
     S.recordPayload record_1 `shouldBe` ("1" :: Bytes)
     S.recordLSN record_1 `shouldBe` lsn1
 
-    S.writeCheckpoints ckpReader $ Map.singleton logid lsn2
+    S.writeCheckpoints ckpReader (Map.singleton logid lsn2) 10
     S.startReadingFromCheckpointOrStart ckpReader logid (Just lsn1) S.LSN_MAX
     [record_3] <- S.ckpReaderRead ckpReader 1
     S.recordPayload record_3 `shouldBe` ("3" :: Bytes)
@@ -98,13 +98,13 @@ fileBased = context "FileBasedCheckpointedReader" $ do
 
   readerSpec readerName
              logid
-             (S.newLDFileCkpReader client readerName ckpPath 1 Nothing 10)
+             (S.newLDFileCkpReader client readerName ckpPath 1 Nothing)
              (S.newFileBasedCheckpointStore ckpPath)
 
   it "read from checkpoint without writing checkpoint should read from LSN_OLDEST" $ do
     S.trim client logid =<< S.getTailLSN client logid
     start_lsn <- S.appendCompLSN <$> S.append client logid "1" Nothing
-    ckpReader' <- S.newLDFileCkpReader client "some_reader_name" "/tmp/some_ckp_path" 1 Nothing 10
+    ckpReader' <- S.newLDFileCkpReader client "some_reader_name" "/tmp/some_ckp_path" 1 Nothing
     _ <- S.append client logid "2" Nothing
     end_lsn <- S.appendCompLSN <$> S.append client logid "3" Nothing
     S.startReadingFromCheckpoint ckpReader' logid end_lsn
@@ -125,7 +125,7 @@ rsmBased = context "RSMBasedCheckpointedReader" $ do
 
   readerSpec readerName
              logid
-             (S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing 10)
+             (S.newLDRsmCkpReader client readerName S.checkpointStoreLogID 5000 1 Nothing)
              (S.newRSMBasedCheckpointStore client S.checkpointStoreLogID 5000)
 
 misc :: Spec

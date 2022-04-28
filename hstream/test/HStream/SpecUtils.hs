@@ -339,7 +339,7 @@ readBatchPayload name = do
   let nameCB = textToCBytes name
   client <- S.newLDClient "/data/store/logdevice.conf"
   logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream nameCB) Nothing
-  reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing 10
+  reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing
   S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
   x <- S.ckpReaderRead reader 1000
   return $ hstreamRecordBatchBatch . decodeBatch . S.recordPayload $ head x
