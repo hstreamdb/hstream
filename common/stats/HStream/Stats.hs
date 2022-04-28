@@ -17,6 +17,7 @@ module HStream.Stats
   , newServerStatsHolder
   , newAggregateStats
   , printStatsHolder
+  , resetStatsHolder
 
     -- * PerStreamStats
     -- ** Counters
@@ -101,6 +102,9 @@ newAggregateStats (StatsHolder holder) = withForeignPtr holder $ \holder' ->
 -- TODO: add Show instance for StatsHolder
 printStatsHolder :: StatsHolder -> IO ()
 printStatsHolder (StatsHolder holder) = withForeignPtr holder I.c_stats_holder_print
+
+resetStatsHolder :: StatsHolder -> IO ()
+resetStatsHolder (StatsHolder holder) = withForeignPtr holder I.stats_holder_reset
 
 #define PER_X_STAT_ADD(PREFIX, STATS_NAME)                                     \
 PREFIX##add_##STATS_NAME :: StatsHolder -> CBytes -> Int64 -> IO ();           \

@@ -67,6 +67,8 @@ void delete_stats(Stats* s) { delete s; }
 
 void stats_holder_print(StatsHolder* s) { s->print(); }
 
+void stats_holder_reset(StatsHolder* s) { s->reset(); }
+
 // ----------------------------------------------------------------------------
 // PerStreamStats
 

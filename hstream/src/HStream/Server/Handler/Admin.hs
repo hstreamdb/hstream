@@ -53,14 +53,15 @@ adminCommandHandler
   :: ServerContext
   -> ServerRequest 'Normal API.AdminCommandRequest API.AdminCommandResponse
   -> IO (ServerResponse 'Normal API.AdminCommandResponse)
-adminCommandHandler sc req = defaultExceptionHandle $ do
+adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
   let (ServerNormalRequest _ (API.AdminCommandRequest cmd)) = req
   Log.info $ "Receive amdin command: " <> Log.buildText cmd
 
   let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
   result <- case adminCommand of
-              AT.AdminStatsCommand c        -> runStats sc c
+              AT.AdminStatsCommand c        -> runStats scStatsHolder c
+              AT.AdminResetStatsCommand     -> runResetStats scStatsHolder
               AT.AdminStreamCommand c       -> runStream sc c
               AT.AdminSubscriptionCommand c -> runSubscription sc c
               AT.AdminViewCommand c         -> runView sc c
@@ -78,8 +79,8 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 -------------------------------------------------------------------------------
 -- Admin Stats Command
 
-runStats :: ServerContext -> AT.StatsCommand -> IO Text
-runStats ServerContext{..} AT.StatsCommand{..} = do
+runStats :: Stats.StatsHolder -> AT.StatsCommand -> IO Text
+runStats statsHolder AT.StatsCommand{..} = do
   case statsCategory of
     AT.PerStreamStats -> doPerStreamStats statsName
     AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
@@ -88,7 +89,7 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
     AT.ServerHistogram -> doServerHistogram statsName
   where
     doPerStreamStats name = do
-      m <- Stats.stream_stat_getall scStatsHolder name
+      m <- Stats.stream_stat_getall statsHolder name
       let headers = ["stream_name", name]
           rows = Map.foldMapWithKey (\k v -> [[CB.unpack k, show v]]) m
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
@@ -96,11 +97,11 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
 
     doPerStreamTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerStreamTimeSeries name intervals =
-      let cfun = Stats.stream_time_series_getall_by_name' scStatsHolder
+      let cfun = Stats.stream_time_series_getall_by_name' statsHolder
        in doTimeSeries name "stream_name" intervals cfun
 
     doPerSubscriptionStats name = do
-      m <- Stats.subscription_stat_getall scStatsHolder name
+      m <- Stats.subscription_stat_getall statsHolder name
       let headers = ["subscription_id", name]
           rows = Map.foldMapWithKey (\k v -> [[CB.unpack k, show v]]) m
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
@@ -108,13 +109,13 @@ runStats ServerContext{..} AT.StatsCommand{..} = do
 
     doPerSubscriptionTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerSubscriptionTimeSeries name intervals =
-      let cfun = Stats.subscription_time_series_getall_by_name' scStatsHolder
+      let cfun = Stats.subscription_time_series_getall_by_name' statsHolder
        in doTimeSeries name "subscription_id" intervals cfun
 
     doServerHistogram name = do
       let strName = CB.unpack name
       ps <- Stats.serverHistogramEstimatePercentiles
-              scStatsHolder (read strName) statsPercentiles
+              statsHolder (read strName) statsPercentiles
       -- 0.5 -> p50
       let headers = map (("p" ++) . show @Int . floor . (*100)) statsPercentiles
           rows = [map show ps]
@@ -135,6 +136,11 @@ doTimeSeries stat_name x intervals f = do
           rows = Map.foldMapWithKey (\k vs -> [CB.unpack k : (show @Int . floor <$> vs)]) stats
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
+
+runResetStats :: Stats.StatsHolder -> IO Text
+runResetStats stats_holder = do
+  Stats.resetStatsHolder stats_holder
+  return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------
 -- Admin Stream Command

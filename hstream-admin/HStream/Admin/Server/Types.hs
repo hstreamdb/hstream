@@ -88,6 +88,7 @@ logLevelParser =
 
 data AdminCommand
   = AdminStatsCommand StatsCommand
+  | AdminResetStatsCommand
   | AdminStreamCommand StreamCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
@@ -99,6 +100,8 @@ adminCommandParser = O.hsubparser
   ( O.command "stats" (O.info (AdminStatsCommand <$> statsCmdParser)
                               (O.progDesc $ "Get the stats of an operation on a "
                                          <> "stream(or other) for only one specific server"))
+ <> O.command "reset-stats" (O.info (pure AdminResetStatsCommand)
+                                    (O.progDesc "Reset all counters to their initial values."))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser)
                                (O.progDesc "Stream command"))
  <> O.command "sub" (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)
