@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   hserver0:
-    image: hstreamdb/hstream:v0.7.0
+    image: hstreamdb/hstream:v0.8.0
     depends_on:
       - zookeeper
       - hstore
@@ -30,7 +30,7 @@ services:
         --store-admin-host hstore --store-admin-port 6440
 
   hserver1:
-    image: hstreamdb/hstream:v0.7.0
+    image: hstreamdb/hstream:v0.8.0
     depends_on:
       - zookeeper
       - hstore
@@ -58,7 +58,7 @@ services:
         --store-admin-host hstore --store-admin-port 6440
 
   hstream-http-server:
-    image: hstreamdb/hstream:v0.7.0
+    image: hstreamdb/hstream:v0.8.0
     depends_on:
       - hserver0
       - hserver1
@@ -79,7 +79,7 @@ services:
           -gRPCServerPort 6570
 
   hstore:
-    image: hstreamdb/hstream:v0.7.0
+    image: hstreamdb/hstream:v0.8.0
     networks:
       - hstream-quickstart
     volumes:
