@@ -30,6 +30,9 @@ foreign import ccall unsafe "hs_stats.h &delete_stats_holder"
 foreign import ccall unsafe "hs_stats.h stats_holder_print"
   c_stats_holder_print :: Ptr CStatsHolder -> IO ()
 
+foreign import ccall unsafe "hs_stats.h stats_holder_reset"
+  stats_holder_reset :: Ptr CStatsHolder -> IO ()
+
 foreign import ccall unsafe "hs_stats.h new_aggregate_stats"
   c_new_aggregate_stats :: Ptr CStatsHolder -> IO (Ptr CStats)
 
