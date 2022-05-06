@@ -725,6 +725,8 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
           atomically $ invalidConsumer subCtx ccConsumerName
           throwIO GRPCStreamRecvCloseError
         Right (Just StreamingFetchRequest {..}) -> do
+          Log.debug $ "received acks:" <> Log.buildInt (V.length streamingFetchRequestAckIds)
+            <> " from consumer:" <> Log.buildText ccConsumerName
           let cSubscriptionId = textToCBytes (subSubscriptionId subCtx)
           Stats.subscription_time_series_add_request_messages scStatsHolder cSubscriptionId 1
           unless (V.null streamingFetchRequestAckIds) $ do
@@ -755,7 +757,6 @@ doAcks
   -> V.Vector RecordId
   -> IO ()
 doAcks ldclient subCtx@SubscribeContext{..} ackRecordIds = do
-  Log.debug $ "received acks:" <> Log.buildInt (V.length ackRecordIds)
   atomically $ do
     removeAckedRecordIdsFromCheckList ackRecordIds
   let group = HM.toList $ groupRecordIds ackRecordIds
