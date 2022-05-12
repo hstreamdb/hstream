@@ -67,7 +67,7 @@ import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
-import           HStream.SQL.ExecPlan             (genExecutionPlan)
+-- import           HStream.SQL.ExecPlan             (genExecutionPlan)
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
@@ -83,20 +83,20 @@ createQueryStreamHandler ::
 createQueryStreamHandler
   sc@ServerContext {..}
   (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = queryExceptionHandle $ do
-    RQSelect select <- parseAndRefine createQueryStreamRequestQueryStatements
-    tName <- genTaskName
+    plan@(SelectPlan tName inNodesWithStreams outNodeWithStream builder)
+      <- streamCodegen createQueryStreamRequestQueryStatements
+    let source = snd <$> inNodesWithStreams
+        sink   = snd outNodeWithStream
     let sName = streamStreamName <$> createQueryStreamRequestQueryStream
         rFac  = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
         logDuration = streamBacklogDuration <$> createQueryStreamRequestQueryStream
         shardCount = streamShardCount <$> createQueryStreamRequestQueryStream
-    (builder, source, sink, _) <-
-      genStreamBuilderWithStream tName sName select
     createStreamWithShard scLDClient (transToStreamName sink) "query" rFac
     let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
     void $
       handleCreateAsSelect
         sc
-        (PS.build builder)
+        plan
         createQueryStreamRequestQueryStatements
         query
         S.StreamTypeStream
@@ -117,16 +117,18 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   case plan' of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     -- execute plans that can be executed with this method
-    CreateViewPlan schema sources sink taskBuilder _repFactor materialized ->
+    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder ->
       do
+        let sources = snd <$> inNodesWithStreams
+            sink    = snd outNodeWithStream
         create (transToStreamName sink)
-        >> handleCreateAsSelect
+        handleCreateAsSelect
           sc
-          taskBuilder
+          plan'
           commandQueryStmtText
           (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
           S.StreamTypeView
-        >> atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
+        -- >> atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
         >> returnCommandQueryEmptyResp
     CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
@@ -206,6 +208,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                 TimestampedKVStateStore _ ->
                   returnErrResp StatusInternal "Impossible happened"
     ExplainPlan sql -> do
+      undefined
+      {-
       execPlan <- genExecutionPlan sql
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
@@ -213,6 +217,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
     StopPlan (StopObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False >> returnCommandQueryEmptyResp
+      -}
     _ -> discard
   where
     create sName = do
@@ -237,7 +242,9 @@ executePushQueryHandler
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan' <- streamCodegen commandPushQueryQueryText
     case plan' of
-      SelectPlan sources sink taskBuilder -> do
+      SelectPlan tName inNodesWithStreams outNodeWithStream builder -> do
+        let sources = snd <$> inNodesWithStreams
+            sink    = snd outNodeWithStream
         exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
         if (not . and) exists
           then do
@@ -250,7 +257,7 @@ executePushQueryHandler
             -- create persistent query
             (qid, _) <-
               P.createInsertPersistentQuery
-                (getTaskName taskBuilder)
+                tName
                 commandPushQueryQueryText
                 (P.PlainQuery $ textToCBytes <$> sources)
                 serverID
@@ -258,7 +265,8 @@ executePushQueryHandler
             -- run task
             -- FIXME: take care of the life cycle of the thread and global state
             P.setQueryStatus qid Running zkHandle
-            tid <- forkIO $ runTaskWrapper ctx taskBuilder scLDClient
+            tid <- forkIO $ runTaskWrapper tName inNodesWithStreams outNodeWithStream S.StreamTypeStream S.StreamTypeTemp builder scLDClient
+
             takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
             -- sub from sink stream and push to client
             consumerName <- newRandomText 20
@@ -388,9 +396,10 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
     <> "Query Command: " <> Log.buildText createQueryRequestQueryText
   plan <- HSC.streamCodegen createQueryRequestQueryText
   case plan of
-    HSC.SelectPlan sources sink taskBuilder -> do
-      let taskBuilder' = taskBuilderWithName taskBuilder createQueryRequestId
-      exists <- mapM (HS.doesStreamExist scLDClient . transToStreamName) sources
+    HSC.SelectPlan tName inNodesWithStreams outNodeWithStream builder -> do
+      let sources = snd <$> inNodesWithStreams
+          sink    = snd outNodeWithStream
+      exists <- mapM (HS.doesStreamExist scLDClient . HCH.transToStreamName) sources
       if (not . and) exists
       then do
         Log.warning $ "At least one of the streams do not exist: "
@@ -398,7 +407,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
         throwIO StreamNotExist
       else do
         createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-        (qid, timestamp) <- handleCreateAsSelect ctx taskBuilder'
+        (qid, timestamp) <- handleCreateAsSelect ctx plan
           createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
 
         consumerName <- newRandomText 20

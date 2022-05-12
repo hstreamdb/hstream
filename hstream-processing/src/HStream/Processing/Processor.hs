@@ -13,6 +13,7 @@ module HStream.Processing.Processor
     addSink,
     addStateStore,
     runTask,
+    runTask',
     forward,
     getKVStateStore,
     getSessionStateStore,
@@ -27,7 +28,9 @@ module HStream.Processing.Processor
 where
 
 import           Control.Concurrent
+import qualified Data.Aeson as Aeson
 import           Control.Exception                     (throw)
+import           Control.Concurrent (forkIO)
 import           Data.Maybe
 import           Data.Typeable
 import qualified Prelude                               as Prelude
@@ -48,6 +51,11 @@ import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified HStream.Server.HStreamApi             as API
+
+import Types
+import Graph
+import Shard
+import Weird
 
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =
@@ -146,6 +154,63 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
     loop task ctx (sourceStreamName:xs) asyncs = do
       withAsync (runOnePath task ctx sourceStreamName) $ \a -> do
         loop task ctx xs (asyncs ++ [a])
+
+
+runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> Shard HStream.Processing.Type.Timestamp -> IO ()
+runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector shard@Shard{..} = do
+
+  -- subscribe to all source streams
+  forM_ (sourceConnectors `zip` inNodesWithStreams)
+    (\(SourceConnector{..}, (_, sourceStreamName)) ->
+        subscribeToStream sourceStreamName Latest
+    )
+
+  -- the task itself
+  forkIO $ run shard
+
+  -- main loop: push input to INPUT nodes
+  forkIO . forever $ do
+    forM_ (sourceConnectors `zip` inNodesWithStreams)
+      (\(SourceConnector{..}, (inNode, _)) -> do
+          sourceRecords <- readRecords
+          forM_ sourceRecords $ \SourceRecord{..} -> do
+            let dataChange
+                  = DataChange
+                  { dcRow = fromJust . Aeson.decode $ srcValue
+                  , dcTimestamp = Timestamp srcTimestamp []
+                  , dcDiff = 1
+                  }
+            Prelude.print $ "### Get input: " <> show dataChange
+            pushInput shard inNode dataChange
+          flushInput shard inNode
+      )
+
+  -- second loop: advance input after an interval
+  forkIO . forever $ do
+    forM_ inNodesWithStreams $ \(inNode, _) -> do
+      ts <- getCurrentTimestamp
+      Prelude.print $ "### Advance time to " <> show ts
+      advanceInput shard inNode (Timestamp ts [])
+    threadDelay 5000000
+
+  -- third loop: push output from OUTPUT node to output stream
+  accumulatedOutput <- newMVar emptyDataChangeBatch
+  forever $ do
+    let (outNode, outStream) = outNodeWithStream
+    popOutput shard outNode $ \dcb@DataChangeBatch{..} -> do
+      Prelude.print $ "~~~~~~~ POPOUT: " <> show dcb
+      forM_ dcbChanges $ \change -> do
+        Prelude.print $ "<<< this change: " <> show change
+        modifyMVar_ accumulatedOutput
+          (\dcb -> return $ updateDataChangeBatch' dcb (\xs -> xs ++ [change]))
+        when (dcDiff change > 0) $ do
+          let sinkRecord = SinkRecord
+                { snkStream = outStream
+                , snkKey = Nothing
+                , snkValue = Aeson.encode (dcRow change)
+                , snkTimestamp = timestampTime (dcTimestamp change)
+                }
+          replicateM_ (dcDiff change) $ writeRecord sinkConnector sinkRecord
 
 validateTopology :: TaskTopologyConfig -> ()
 validateTopology TaskTopologyConfig {..} =

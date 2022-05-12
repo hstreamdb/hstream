@@ -40,10 +40,11 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   Log.debug $ "Receive Create View Request: " <> Log.buildString (T.unpack createViewRequestSql)
   plan <- HSC.streamCodegen createViewRequestSql
   case plan of
-    HSC.CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
-      create (transToStreamName sink)
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
-      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
+    HSC.CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder -> do
+      let sources = snd <$> inNodesWithStreams
+          sink    = snd outNodeWithStream
+      create (HCH.transToStreamName sink)
+      (qid, timestamp) <- handleCreateAsSelect sc plan createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
       returnResp $ View { viewViewId = cBytesToText qid
                         , viewStatus = getPBStatus Running
                         , viewCreatedTime = timestamp

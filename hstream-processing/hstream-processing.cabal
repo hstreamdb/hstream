@@ -74,6 +74,7 @@ library
     , template-haskell
     , time
     , unordered-containers
+    , diff-flow
 
   -- hstream-store
   default-language: Haskell2010

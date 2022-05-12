@@ -108,7 +108,7 @@ genExecutionPlan sql = do
       , execPlanSink     = NormalSink sink
       , execPlanTopology = genExecTopology (build builder)
       }
-    CreateViewPlan _ sources sink builder _ _ ->
+    CreateViewPlan _ sources sink builder ->
       return $ ExecutionPlan
       { execPlanSql      = sql
       , execPlanSources  = sources

@@ -7,11 +7,13 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent
+import           Data.Hashable           (Hashable)
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    onException)
 import           Control.Exception.Base           (AsyncException (..))
-import           Control.Monad                    (forever, void, when)
+import           Control.Monad                    (forever, void, when, mapM, forM)
+import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import           Data.Text                        (Text)
@@ -31,8 +33,8 @@ import           HStream.Connector.MySQL
 import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
-                                                   runTask)
-import           HStream.Processing.Type          (SinkRecord (..),
+                                                   runTask, runTask')
+import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
@@ -43,20 +45,35 @@ import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
                                                    cBytesToText,
                                                    clientDefaultKey,
-                                                   newRandomText, textToCBytes)
+                                                   newRandomText, runWithAddr,
+                                                   textToCBytes)
+
+import Types
+import Shard
+import Graph
 
 --------------------------------------------------------------------------------
 
-runTaskWrapper :: ServerContext -> TaskBuilder -> HS.LDClient -> IO ()
-runTaskWrapper ctx@ServerContext{..} taskBuilder ldclient = do
-  let consumerName = textToCBytes (getTaskName taskBuilder)
+runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> GraphBuilder -> HS.LDClient -> IO ()
+runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType graphBuilder ldclient =
+  runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+    let consumerName = textToCBytes (getTaskName taskBuilder)
 
-  -- create a new sourceConnector
-  let sourceConnector = HStore.hstoreSourceConnectorWithoutCkp ctx (cBytesToText consumerName)
-  -- create a new sinkConnector
-  let sinkConnector = HStore.hstoreSinkConnector ctx
-  -- RUN TASK
-  runTask sourceConnector sinkConnector taskBuilder
+    sourceConnectors <- forM inNodesWithStreams
+      (\(inNode,_) -> do
+        -- create a new sourceConnector
+        return $ HCS.hstoreSourceConnectorWithoutCkp api (cBytesToText consumerName)
+      )
+
+    -- create a new sinkConnector
+    let sinkConnector = HCS.hstoreSinkConnector api
+
+    -- build graph then shard
+    let graph = buildGraph graphBuilder
+    shard <- buildShard graph
+
+    -- RUN TASK
+    runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector shard
 
 runSinkConnector
   :: ServerContext
@@ -142,24 +159,32 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
-                     -> TaskBuilder
+                     -> HStreamPlan
                      -> Text
                      -> P.QueryType
                      -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ctx@ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
+handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
-    (getTaskName taskBuilder) commandQueryStmtText queryType serverID zkHandle
+    tName commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
   where
+    (tName,inNodesWithStreams,outNodeWithStream,builder) = case plan of
+        SelectPlan tName inNodesWithStreams outNodeWithStream builder ->
+          (tName,inNodesWithStreams,outNodeWithStream,builder)
+        CreateBySelectPlan tName inNodesWithStreams outNodeWithStream builder _ ->
+          (tName,inNodesWithStreams,outNodeWithStream,builder)
+        CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder ->
+          (tName,inNodesWithStreams,outNodeWithStream,builder)
+        _ -> undefined
     action qid = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper ctx taskBuilder scLDClient
+      runTaskWrapper tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType builder scLDClient
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

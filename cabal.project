@@ -19,6 +19,8 @@ packages:
   external/hsthrift/lib/thrift-lib.cabal
   external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
 
+  external/diff-flow/diff-flow.cabal
+
 -- https://github.com/haskell/cabal/issues/4271
 package thrift-lib
   flags: +use_sys_thrift_compiler

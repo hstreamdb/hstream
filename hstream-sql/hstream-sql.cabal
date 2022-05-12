@@ -50,7 +50,7 @@ library
     HStream.SQL.AST
     HStream.SQL.Codegen
     HStream.SQL.Exception
-    HStream.SQL.ExecPlan
+    -- HStream.SQL.ExecPlan
     HStream.SQL.Internal.Codegen
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
@@ -58,7 +58,7 @@ library
   other-modules:
     HStream.SQL.Codegen.Boilerplate
     HStream.SQL.ErrM
-    HStream.SQL.ExecPlan.Utils
+    -- HStream.SQL.ExecPlan.Utils
     HStream.SQL.Extra
     HStream.SQL.Lex
     HStream.SQL.Par
@@ -89,6 +89,7 @@ library
     , vector
     , Z-Data
     , Z-IO
+    , diff-flow
 
   -- Note: build on osx may require this
   -- alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197

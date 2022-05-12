@@ -132,6 +132,9 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
+    , cryptonite
+    , memory
+    , diff-flow
 
   default-language:   Haskell2010
   default-extensions:

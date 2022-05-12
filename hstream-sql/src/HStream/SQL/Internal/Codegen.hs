@@ -43,7 +43,7 @@ getFieldByName o k =
   case HM.lookup k o of
     Nothing -> throw
       SomeRuntimeException
-      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o
+      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o <> "  " <> show callStack
       , runtimeExceptionCallStack = callStack
       }
     Just v  -> v
