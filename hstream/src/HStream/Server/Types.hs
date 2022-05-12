@@ -27,7 +27,7 @@ protocolVersion :: T.Text
 protocolVersion = "0.1.0"
 
 serverVersion :: T.Text
-serverVersion = "0.7.0"
+serverVersion = "0.8.0"
 
 type Timestamp = Int64
 type ServerID = Word32
