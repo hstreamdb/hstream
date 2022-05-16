@@ -1,0 +1,78 @@
+# This is the spec defining the standalone admin server and its service.
+# Standalone admin server is a stateless sidecar service and requires only
+# a single instance running at a time (in the normal mode of operations).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hstream.fullname" . }}-logdevice-admin-server
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+  - name: admin
+    protocol: TCP
+    port: {{ .Values.logdevice.admin.service.port }}
+  selector:
+    app: logdevice-admin-server
+    {{- include "hstream.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hstream.fullname" . }}-logdevice-admin-server
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logdevice-admin-server
+      {{- include "hstream.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app: logdevice-admin-server
+        {{- include "hstream.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: logdevice-admin-server
+        image: "{{ .Values.logdevice.image.repository }}:{{ .Values.logdevice.image.tag | default .Chart.AppVersion }}"
+        command:
+        - "/usr/local/bin/ld-admin-server"
+        - "--config-path"
+        - "/etc/logdevice/config.json"
+        - "--enable-maintenance-manager"
+        - "--maintenance-log-snapshotting"
+        - "--enable-safety-check-periodic-metadata-update"
+        ports:
+        - containerPort: 6440
+        resources:
+          {{- toYaml .Values.logdevice.resources | nindent 10 }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/logdevice
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "hstream.fullname" . }}-logdevice-config
+          items:
+            - key: config.json
+              path: config.json
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

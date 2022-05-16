@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hstream.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hstream.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: server
+      targetPort: server 
+      port: {{ .Values.service.port }}
+      protocol: TCP
+  selector:
+    app: hstream
+    {{- include "hstream.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hstream.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hstream.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "hstream.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: hstream
+      {{- include "hstream.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app: hstream
+        {{- include "hstream.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - bash
+        - "-c"
+        - |
+          set -ex
+          # Generate server-id from pod ordinal index.
+          [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
+          ordinal=${BASH_REMATCH[1]}
+          /usr/local/bin/hstream-server \
+            --config-path /etc/hstream/config.yaml \
+            --host 0.0.0.0 --port 6570 \
+            --address $(POD_IP) \
+            --server-id $((100 + $ordinal)) \
+            --zkuri {{ include "hstream.zookeeper.uri" . }} \
+            --store-config /etc/logdevice/config.json \
+            --store-admin-host {{ include "hstream.fullname" . }}-logdevice-admin-server
+        ports:
+          - name: server
+            containerPort: 6570
+            protocol: TCP
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+          - name: config
+            mountPath: /etc/logdevice
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "hstream.fullname" . }}-logdevice-config
+            items:
+              - key: config.json
+                path: config.json
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -38,3 +38,6 @@ gen-src/
 .DS_Store
 swagger.json
 /script/dev_deploy_conf.json
+
+## helm chart dependencies
+deploy/chart/hstream/charts/*
