@@ -145,7 +145,6 @@ import           Data.IORef                       (IORef, atomicModifyIORef',
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
-import           Data.Word                        (Word32)
 import           Foreign.C                        (CSize)
 import           Foreign.ForeignPtr               (withForeignPtr)
 import           GHC.Generics                     (Generic)
