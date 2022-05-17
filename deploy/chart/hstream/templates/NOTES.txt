@@ -1,0 +1,6 @@
+1. Wait for all {{ include "hstream.fullname" . }} pods to run, this will take some time (some pods might fail during the process, which is normal, and they will be Running eventually).
+  watch kubectl --namespace {{ .Release.Namespace }} get pod --selector "app.kubernetes.io/instance={{ include "hstream.fullname" . }}"
+2. Check the state of the HStream store cluster.
+  kubectl exec -it {{ include "hstream.fullname" . }}-0 -- bash -c "hadmin store --host {{ include "hstream.fullname" . }}-logdevice-admin-server status"
+3. Check the state of the HStream server cluster
+  kubectl exec -it {{ include "hstream.fullname" . }}-0 -- bash -c "hadmin server status"

@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "hstream.fullname" . }}-bootstrap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hstream.labels" . | nindent 4 }}
+spec:
+  template:
+    spec:
+      containers:
+      - name: bootstrap
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        command:
+        - bash
+        - -c
+        - |
+          hadmin store --host {{ include "hstream.fullname" . }}-logdevice-admin-server \
+          nodes-config \
+          bootstrap --metadata-replicate-across "node:{{ .Values.logdevice.replicateAcross }}"
+      restartPolicy: Never
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 0

@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hstream.fullname" . }}-nshards
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hstream.labels" . | nindent 4 }}
+data:
+  NSHARDS: {{ .Values.logdevice.nshards | quote }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hstream.fullname" . }}-logdevice-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logdevice
+    {{- include "hstream.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: logdevice
+    {{- include "hstream.selectorLabels" . | nindent 4 }}
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hstream.fullname" . }}-logdevice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hstream.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "hstream.fullname" . }}-logdevice-headless
+  # Change this to increase the number of nodes in the cluster.
+  replicas: {{ .Values.logdevice.replicaCount }}
+  selector:
+    matchLabels:
+      app: logdevice
+      {{- include "hstream.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app: logdevice
+        {{- include "hstream.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: logdevice
+        securityContext:
+          {{- toYaml .Values.logdevice.securityContext | nindent 10 }}
+        image: "{{ .Values.logdevice.image.repository }}:{{ .Values.logdevice.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - "/usr/local/bin/logdeviced"
+        - "--config-path"
+        - "/etc/logdevice/config.json"
+        - "--address"
+        - "$(POD_IP)"
+        - "--name"
+        - "$(POD_NAME)"
+        - "--local-log-store-path"
+        - "/data/logdevice"
+        ports:
+        # Plain text data port
+        - containerPort: 4440
+        # Gossip port
+        - containerPort: 4441
+        # Admin Port
+        - containerPort: 6440
+        env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+        volumeMounts:
+        - name: shard0
+          mountPath: /data/logdevice/shard0
+        - name: config
+          mountPath: /etc/logdevice
+        - name: nshards
+          mountPath: /data/logdevice
+        resources:
+          {{- toYaml .Values.logdevice.resources | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "hstream.fullname" . }}-logdevice-config
+          items:
+            - key: config.json
+              path: config.json
+      - name: nshards
+        configMap:
+          name: {{ include "hstream.fullname" . }}-nshards
+          items:
+            - key: NSHARDS
+              path: NSHARDS
+  volumeClaimTemplates:
+  - metadata:
+      name: shard0
+    spec:
+      accessModes:
+      - {{ .Values.logdevice.persistence.accessMode | quote }}
+      resources:
+        requests:
+          storage: {{ .Values.logdevice.persistence.size | quote }}
+      # change this to fit your storageClass
+      storageClassName: {{ .Values.logdevice.persistence.storageClass | quote }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
