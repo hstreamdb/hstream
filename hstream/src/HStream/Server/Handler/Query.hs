@@ -14,7 +14,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (Exception, Handler (..),
                                                    handle)
-import           Control.Monad                    (join)
+import           Control.Monad                    (join, forM)
 import qualified Data.Aeson                       as Aeson
 import           Data.Bifunctor
 import qualified Data.ByteString.Char8            as BS
@@ -73,6 +73,8 @@ import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
+import Types
+
 -------------------------------------------------------------------------------
 -- Stream with Select Query
 
@@ -117,7 +119,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   case plan' of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     -- execute plans that can be executed with this method
-    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder ->
+    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder accumulation ->
       do
         let sources = snd <$> inNodesWithStreams
             sink    = snd outNodeWithStream
@@ -134,79 +136,19 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
       queries   <- P.getQueries zkHandle
-      condNameM <- getGrpByFieldName queries rSelectViewFrom
-      let neqCond = not case condNameM of
-            Nothing       -> True
-            Just condName -> fst rSelectViewWhere == condName
-      if neqCond
-        then returnErrResp StatusAborted $ StatusDetails . TE.encodeUtf8 . T.pack $
-          "VIEW is grouped by " ++ show (fromJust condNameM) ++ ", not " ++ show (fst rSelectViewWhere)
-        else do
-          hm <- readIORef P.groupbyStores
-          case HM.lookup rSelectViewFrom hm of
-            Nothing -> returnErrResp StatusNotFound "VIEW not found"
-            Just materialized -> do
-              let (keyName, keyExpr) = rSelectViewWhere
-                  (_, keyValue) = genRExprValue keyExpr (HM.fromList [])
-              let keySerde = PS.mKeySerde materialized
-                  valueSerde = PS.mValueSerde materialized
-              let key = runSer (serializer keySerde) (HM.fromList [(keyName, keyValue)])
-              case PS.mStateStore materialized of
-                KVStateStore store -> do
-                  sizeM <-
-                    getFixedWinSize queries rSelectViewFrom
-                      <&> fmap diffTimeToScientific
-                  if isJust sizeM
-                    then do
-                      let size = fromJust sizeM & fromJust . toBoundedInteger @Int64
-                      subset <-
-                        ksDump store
-                          <&> Map.filterWithKey
-                            (\k _ -> all (`elem` HM.toList k) (HM.toList key))
-                          <&> Map.toList
-                      let winStarts =
-                            subset
-                              <&> (lookup "winStart" . HM.toList) . fst
-                                & L.sort . L.nub . catMaybes
-                          singlWinStart =
-                            subset
-                              <&> first (filter (\(k, _) -> k == "winStart") . HM.toList)
-                              <&> first HM.fromList
-                          grped =
-                            winStarts <&> \winStart ->
-                              let Aeson.Number winStart'' = winStart
-                                  winStart' = fromJust . toBoundedInteger @Int64 $ winStart''
-                              in ( "winStart = "
-                                      <> (T.pack . show) winStart'
-                                      <> " ,winEnd = "
-                                      <> (T.pack . show) (winStart' + size),
-                                    lookup (HM.fromList [("winStart", winStart)]) singlWinStart
-                                      & fromJust
-                                      & mapAlias rSelectViewSelect
-                                  )
-                          notEmpty = filter (\x -> snd x /= HM.empty) grped
-                            <&> second Aeson.Object
-                      sendResp (Just $ HM.fromList notEmpty) valueSerde
-                    else do
-                      resp <- ksGet key store
-                      sendResp (mapAlias rSelectViewSelect <$> resp) valueSerde
-                SessionStateStore store -> do
-                  dropSurfaceTimeStamp <- ssDump store <&> Map.elems
-                  let subset =
-                        dropSurfaceTimeStamp
-                          <&> Map.elems
-                            . Map.filterWithKey \k _ -> all (`elem` HM.toList k) (HM.toList key)
-                  let res =
-                        subset
-                          & filter (not . null) . join
-                          <&> Map.toList
-                            & L.sortBy (compare `on` fst) . filter (not . null) . join
-                      grped = res <&> \(k, v) -> ("winStart = " <> (T.pack . show) k, mapAlias rSelectViewSelect v)
-                      notEmpty = filter (\x -> snd x /= HM.empty) grped <&> second Aeson.Object
-                  flip sendResp valueSerde $
-                    Just . HM.fromList $ notEmpty
-                TimestampedKVStateStore _ ->
-                  returnErrResp StatusInternal "Impossible happened"
+      hm <- readIORef P.groupbyStores
+      case HM.lookup rSelectViewFrom hm of
+        Nothing -> returnErrResp StatusNotFound "VIEW not found"
+        Just accumulation -> do
+          dcb@DataChangeBatch{..} <- readMVar accumulation
+          results <- case dcbChanges of
+                       [] -> do
+                         x <- sendResp mempty
+                         return [x]
+                       _  -> do
+                         forM dcbChanges $ \change -> do
+                           sendResp (dcRow change)
+          return $ L.last results
     ExplainPlan sql -> do
       undefined
       {-
@@ -223,13 +165,9 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     create sName = do
       Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
       createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
-    sendResp ma valueSerde = do
-      case ma of
-        Nothing -> returnCommandQueryResp V.empty
-        Just x -> do
-          let result = runDeser (deserializer valueSerde) x
-          returnCommandQueryResp
-            (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
+    sendResp result =
+      returnCommandQueryResp
+        (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
     discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
 
 executePushQueryHandler ::
@@ -265,7 +203,7 @@ executePushQueryHandler
             -- run task
             -- FIXME: take care of the life cycle of the thread and global state
             P.setQueryStatus qid Running zkHandle
-            tid <- forkIO $ runTaskWrapper tName inNodesWithStreams outNodeWithStream S.StreamTypeStream S.StreamTypeTemp builder scLDClient
+            tid <- forkIO $ runTaskWrapper tName inNodesWithStreams outNodeWithStream S.StreamTypeStream S.StreamTypeTemp builder Nothing scLDClient
 
             takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
             -- sub from sink stream and push to client

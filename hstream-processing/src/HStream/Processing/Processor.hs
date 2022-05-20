@@ -156,8 +156,8 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
         loop task ctx xs (asyncs ++ [a])
 
 
-runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> Shard HStream.Processing.Type.Timestamp -> IO ()
-runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector shard@Shard{..} = do
+runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp))-> Shard HStream.Processing.Type.Timestamp -> IO ()
+runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector accumulation shard@Shard{..} = do
 
   -- subscribe to all source streams
   forM_ (sourceConnectors `zip` inNodesWithStreams)
@@ -194,7 +194,9 @@ runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector sha
     threadDelay 5000000
 
   -- third loop: push output from OUTPUT node to output stream
-  accumulatedOutput <- newMVar emptyDataChangeBatch
+  accumulatedOutput <- case accumulation of
+                         Nothing -> newMVar emptyDataChangeBatch
+                         Just m  -> return m
   forever $ do
     let (outNode, outStream) = outNodeWithStream
     popOutput shard outNode $ \dcb@DataChangeBatch{..} -> do

@@ -35,9 +35,10 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask, runTask')
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
-                                                   SourceRecord (..))
+                                                   SourceRecord (..), Timestamp)
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
+import           HStream.Server.Config
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
@@ -54,8 +55,8 @@ import Graph
 
 --------------------------------------------------------------------------------
 
-runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> GraphBuilder -> HS.LDClient -> IO ()
-runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType graphBuilder ldclient =
+runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> GraphBuilder -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp)) -> IO ()
+runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType graphBuilder accumulation = do
   runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
     let consumerName = textToCBytes (getTaskName taskBuilder)
 
@@ -73,7 +74,7 @@ runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType
     shard <- buildShard graph
 
     -- RUN TASK
-    runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector shard
+    runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector accumulation shard
 
 runSinkConnector
   :: ServerContext
@@ -172,19 +173,19 @@ handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkT
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
   where
-    (tName,inNodesWithStreams,outNodeWithStream,builder) = case plan of
+    (tName,inNodesWithStreams,outNodeWithStream,builder,accumulation) = case plan of
         SelectPlan tName inNodesWithStreams outNodeWithStream builder ->
-          (tName,inNodesWithStreams,outNodeWithStream,builder)
+          (tName,inNodesWithStreams,outNodeWithStream,builder, Nothing)
         CreateBySelectPlan tName inNodesWithStreams outNodeWithStream builder _ ->
-          (tName,inNodesWithStreams,outNodeWithStream,builder)
-        CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder ->
-          (tName,inNodesWithStreams,outNodeWithStream,builder)
+          (tName,inNodesWithStreams,outNodeWithStream,builder, Nothing)
+        CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder accumulation ->
+          (tName,inNodesWithStreams,outNodeWithStream,builder, Just accumulation)
         _ -> undefined
     action qid = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType builder scLDClient
+      runTaskWrapper tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType builder accumulation
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

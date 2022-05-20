@@ -104,7 +104,7 @@ data ConnectorConfig
 data HStreamPlan
   = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) GraphBuilder
   | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) GraphBuilder Int
-  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) GraphBuilder
+  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) GraphBuilder (MVar (DataChangeBatch HPT.Timestamp))
   | CreatePlan          StreamName Int
   | CreateConnectorPlan ConnectorType ConnectorName Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
@@ -134,10 +134,11 @@ hstreamCodegen = \case
   RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
     tName <- genTaskName
     (builder, inNodesWithStreams, outNodeWithStream) <- genGraphBuilder (Just view) select
+    accumulation <- newMVar emptyDataChangeBatch
     let schema = case sel of
           RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
           RSelList fields -> map snd fields
-    return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder
+    return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder accumulation
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
   RQCreate (RCreateConnector cType cName ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName ifNotExist cOptions
