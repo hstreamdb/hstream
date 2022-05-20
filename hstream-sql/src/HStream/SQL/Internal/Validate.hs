@@ -646,8 +646,9 @@ instance Validate SelectView where
       validateRef ref@(TableRefSimple _ _) = return ref
       validateRef ref = Left $ buildSQLException ParseException (getPos ref) "Only a view name is allowed in FROM clause when selecting from a VIEW"
 
-      validateWhr (DWhereEmpty pos) = Left $ buildSQLException ParseException pos "There has to be a nonempty WHERE clause when selecting from a VIEW"
-      validateWhr (DWhere _ cond) = validateCond cond
+      --validateWhr (DWhereEmpty pos) = Left $ buildSQLException ParseException pos "There has to be a nonempty WHERE clause when selecting from a VIEW"
+      validateWhr whr@(DWhereEmpty pos) = return whr
+      validateWhr whr@(DWhere _ cond) = validateCond cond >> return whr
 
       validateCond cond@(CondOp _ (ExprColName _ (ColNameSimple _ _)) (CompOpEQ _) vexpr2) = return cond
       validateCond cond = Left $ buildSQLException ParseException (getPos cond) "Only forms like COLUMN = VALUE is allowed in WHERE clause when selecting from a VIEW"
