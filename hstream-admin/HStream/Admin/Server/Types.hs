@@ -152,6 +152,13 @@ streamParser = API.Stream
                      <> O.value 0
                      <> O.help "Backlog duration in seconds"
                       )
+  <*> O.option O.auto ( O.long "shards"
+                     <> O.short 's'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 1
+                     <> O.help "shard numbers of the stream"
+                      )
 
 -------------------------------------------------------------------------------
 

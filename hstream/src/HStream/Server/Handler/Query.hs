@@ -26,7 +26,7 @@ import           Data.IORef                       (atomicModifyIORef',
 import           Data.List                        (find, (\\))
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (catMaybes, fromJust, isJust)
+import           Data.Maybe                       (catMaybes, fromJust, isJust, fromMaybe)
 import           Data.Scientific
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
@@ -82,6 +82,8 @@ createQueryStreamHandler
     tName <- genTaskName
     let sName = streamStreamName <$> createQueryStreamRequestQueryStream
         rFac  = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
+        logDuration = streamBacklogDuration <$> createQueryStreamRequestQueryStream 
+        shardCount = streamShardCount <$> createQueryStreamRequestQueryStream
     (builder, source, sink, _) <-
       genStreamBuilderWithStream tName sName select
     let attrs = S.def{ S.logReplicationFactor = S.defAttr1 rFac }
@@ -94,7 +96,7 @@ createQueryStreamHandler
         createQueryStreamRequestQueryStatements
         query
         S.StreamTypeStream
-    let streamResp = Stream sink (fromIntegral rFac) 0
+    let streamResp = Stream sink (fromIntegral rFac) (fromMaybe 0 logDuration) (fromMaybe 1 shardCount)
         -- FIXME: The value query returned should have been fully assigned
         queryResp = def { queryId = tName }
     returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)

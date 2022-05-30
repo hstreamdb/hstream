@@ -21,6 +21,7 @@ import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
+import Data.Word (Word32)
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Connector.HStore          (transToStreamName)
@@ -42,16 +43,17 @@ import           HStream.Utils
 -- but return failure response
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerResponse 'Normal API.Stream)
 createStream ServerContext{..} stream@API.Stream{
-  streamBacklogDuration = backlogSec, ..} = do
+  streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
   when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                    , S.logBacklogDuration   = S.defAttr1 $
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   catch (S.createStream scLDClient streamId attrs) (\(_ :: S.EXISTS) -> throwIO StreamExists)
-  let partions :: [Int] = [0..3]
+  let shards = if shardCount <= 0 then 1 else shardCount
+  let partions :: [Word32] = [0..shards]
   forM_ partions $ \idx -> do
-    S.createStreamPartition scLDClient streamId (Just . getShardName $ idx)
+    S.createStreamPartition scLDClient streamId (Just . getShardName $ fromIntegral idx)
   returnResp stream
 
 deleteStream :: ServerContext
@@ -85,10 +87,12 @@ listStreams
 listStreams ServerContext{..} API.ListStreamsRequest = do
   streams <- S.findStreams scLDClient S.StreamTypeStream
   V.forM (V.fromList streams) $ \stream -> do
+    attrs <- S.getStreamLogAttrs scLDClient stream
     -- FIXME: should the default value be 0?
-    r <- fromMaybe 0 . S.attrValue . S.logReplicationFactor <$> S.getStreamLogAttrs scLDClient stream
-    b <- fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration <$> S.getStreamLogAttrs scLDClient stream
-    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b)
+    let r = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
+        b = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
+    shardCnt <- length <$> S.listStreamPartitions scLDClient stream
+    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
 
 appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,

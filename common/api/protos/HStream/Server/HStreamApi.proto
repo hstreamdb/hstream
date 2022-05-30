@@ -213,6 +213,7 @@ message Stream {
   string streamName = 1;
   uint32 replicationFactor = 2;
   uint32 backlogDuration = 3;
+  uint32 shardCount = 4;
 }
 
 message CreateQueryStreamRequest {
