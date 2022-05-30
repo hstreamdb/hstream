@@ -14,14 +14,14 @@ module HStream.Server.Core.Stream
 
 import           Control.Exception                 (Exception (displayException),
                                                     catch, throwIO)
-import           Control.Monad                     (unless, when, forM_)
+import           Control.Monad                     (forM_, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Maybe                        (fromMaybe)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
+import           Data.Word                         (Word32)
 import           GHC.Stack                         (HasCallStack)
-import Data.Word (Word32)
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Connector.HStore          (transToStreamName)
@@ -30,7 +30,8 @@ import           HStream.Server.Exception          (InvalidArgument (..),
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
-import           HStream.Server.Types              (ServerContext (..), getShardName, getShard)
+import           HStream.Server.Types              (ServerContext (..),
+                                                    getShard, getShardName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.ThirdParty.Protobuf       as PB

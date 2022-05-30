@@ -26,7 +26,8 @@ import           Data.IORef                       (atomicModifyIORef',
 import           Data.List                        (find, (\\))
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (catMaybes, fromJust, isJust, fromMaybe)
+import           Data.Maybe                       (catMaybes, fromJust,
+                                                   fromMaybe, isJust)
 import           Data.Scientific
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
@@ -82,7 +83,7 @@ createQueryStreamHandler
     tName <- genTaskName
     let sName = streamStreamName <$> createQueryStreamRequestQueryStream
         rFac  = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
-        logDuration = streamBacklogDuration <$> createQueryStreamRequestQueryStream 
+        logDuration = streamBacklogDuration <$> createQueryStreamRequestQueryStream
         shardCount = streamShardCount <$> createQueryStreamRequestQueryStream
     (builder, source, sink, _) <-
       genStreamBuilderWithStream tName sName select

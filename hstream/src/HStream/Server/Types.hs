@@ -4,13 +4,13 @@ module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
+import           Data.Hashable                    (hash)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
-import Data.Hashable (hash)
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
@@ -21,13 +21,14 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
+import           HStream.Connector.HStore         (transToStreamName)
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import HStream.Connector.HStore (transToStreamName)
-import HStream.Utils (textToCBytes)
-import qualified HStream.Logger as Log
+import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
