@@ -10,6 +10,8 @@ import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import Data.Hashable (hash)
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
@@ -23,6 +25,9 @@ import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
+import HStream.Connector.HStore (transToStreamName)
+import HStream.Utils (textToCBytes)
+import qualified HStream.Logger as Log
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -158,3 +163,22 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+--------------------------------------------------------------------------------
+-- shard
+
+getShardName :: Int -> CB.CBytes
+getShardName idx = textToCBytes $ "shard" <> T.pack (show idx)
+
+getShard :: HS.LDClient -> HS.StreamId -> Maybe T.Text -> IO HS.C_LogID
+getShard client streamId key = do
+  partitions <- HS.listStreamPartitions client streamId
+  let size = length partitions - 1
+  let shard = getShardName . getShardIdx size <$> key
+  Log.debug $ "assign key " <> Log.buildString' (show key) <> " to shard " <> Log.buildString' (getShardIdx size <$> key)
+  HS.getUnderlyingLogId client streamId shard
+
+getShardIdx :: Int -> T.Text -> Int
+getShardIdx size key = let hashValue = hash key
+                        in hashValue `mod` size
+

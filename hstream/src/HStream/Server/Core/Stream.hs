@@ -14,7 +14,7 @@ module HStream.Server.Core.Stream
 
 import           Control.Exception                 (Exception (displayException),
                                                     catch, throwIO)
-import           Control.Monad                     (unless, when)
+import           Control.Monad                     (unless, when, forM_)
 import qualified Data.ByteString                   as BS
 import           Data.Maybe                        (fromMaybe)
 import           Data.Text                         (Text)
@@ -29,7 +29,7 @@ import           HStream.Server.Exception          (InvalidArgument (..),
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
-import           HStream.Server.Types              (ServerContext (..))
+import           HStream.Server.Types              (ServerContext (..), getShardName, getShard)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.ThirdParty.Protobuf       as PB
@@ -49,6 +49,9 @@ createStream ServerContext{..} stream@API.Stream{
                    , S.logBacklogDuration   = S.defAttr1 $
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   catch (S.createStream scLDClient streamId attrs) (\(_ :: S.EXISTS) -> throwIO StreamExists)
+  let partions :: [Int] = [0..3]
+  forM_ partions $ \idx -> do
+    S.createStreamPartition scLDClient streamId (Just . getShardName $ idx)
   returnResp stream
 
 deleteStream :: ServerContext
@@ -95,7 +98,7 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
         encodeRecord . updateRecordTimestamp timestamp <$> records
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  logId <- S.getUnderlyingLogId scLDClient streamID key
+  logId <- getShard scLDClient streamID partitionKey
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient logId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
@@ -105,7 +108,6 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   where
     streamName  = textToCBytes sName
     streamID    = S.mkStreamId S.StreamTypeStream streamName
-    key         = textToCBytes <$> partitionKey
 
 --------------------------------------------------------------------------------
 
@@ -116,9 +118,8 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
       streamName = textToCBytes appendRequestStreamName
       streamID = S.mkStreamId S.StreamTypeStream streamName
-      key = textToCBytes <$> partitionKey
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  logId <- S.getUnderlyingLogId scLDClient streamID key
+  logId <- getShard scLDClient streamID partitionKey
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
