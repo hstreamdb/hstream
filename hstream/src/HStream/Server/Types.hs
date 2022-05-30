@@ -4,12 +4,14 @@ module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
+import           Data.Hashable                    (hash)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
@@ -18,13 +20,16 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
+import qualified HStream.Logger                   as Log
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
+import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -163,3 +168,20 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+--------------------------------------------------------------------------------
+-- shard
+
+getShardName :: Int -> CB.CBytes
+getShardName idx = textToCBytes $ "shard" <> T.pack (show idx)
+
+getShard :: HS.LDClient -> HS.StreamId -> Maybe T.Text -> IO HS.C_LogID
+getShard client streamId key = do
+  partitions <- HS.listStreamPartitions client streamId
+  let size = length partitions - 1
+  let shard = getShardName . getShardIdx size <$> key
+  HS.getUnderlyingLogId client streamId shard
+
+getShardIdx :: Int -> T.Text -> Int
+getShardIdx size key = let hashValue = hash key
+                        in hashValue `mod` size

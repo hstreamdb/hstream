@@ -12,9 +12,9 @@ module HStream.Server.Handler.Cluster
   ) where
 
 import           Control.Concurrent.STM           (readTVarIO)
-import           Control.Exception                (Exception (..), Handler (..),
-                                                   catches, throwIO)
-import           Control.Monad                    (unless, void)
+import           Control.Concurrent               (readMVar)
+import           Control.Exception                (Exception (..), Handler (..))
+import           Data.Functor                     ((<&>))
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
@@ -25,9 +25,9 @@ import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common    (alignDefault,
-                                                   orderingKeyToStoreKey)
+import           HStream.Server.Handler.Common    (alignDefault)
 import           HStream.Server.HStreamApi
+import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
@@ -58,17 +58,7 @@ lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStrea
   Log.info $ "receive lookupStream request: " <> Log.buildString' req
   hashRing <- readTVarIO loadBalanceHashRing
   let key      = alignDefault orderingKey
-      storeKey = orderingKeyToStoreKey key
-      streamID = transToStreamName stream
   theNode <- getResNode hashRing (stream <> key) scAdvertisedListenersKey
-  keyExist <- S.doesStreamPartitionExist scLDClient streamID storeKey
-  unless keyExist $ do
-    Log.debug $ "createStreamingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildText key
-    catches (void $ S.createStreamPartition scLDClient streamID storeKey)
-      [ Handler (\(_ :: S.NOTFOUND)   -> throwIO StreamNotExist)
-      , Handler (\(_ :: S.EXISTS)     -> pure ())                -- Both stream and partition already exist
-      , Handler (\(_ :: S.StoreError) -> throwIO StreamNotExist) -- FIXME: should not throw StreamNotFound
-      ]
   returnResp LookupStreamResponse {
     lookupStreamResponseStreamName  = stream
   , lookupStreamResponseOrderingKey = orderingKey

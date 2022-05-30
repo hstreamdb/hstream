@@ -198,7 +198,7 @@ withRandomStream :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi ->
 withRandomStream = provideRunTest setup clean
   where
     setup api = do name <- newRandomText 20
-                   _ <- createStreamReq api (mkStream name 1)
+                   _ <- createStreamReq api (mkStream name 1 1)
                    threadDelay 1000000
                    return name
     clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
@@ -207,7 +207,7 @@ withRandomStreams :: Int -> ActionWith (HStreamClientApi, [T.Text]) -> HStreamCl
 withRandomStreams n = provideRunTest setup clean
   where
     setup api = replicateM n $ do name <- newRandomText 20
-                                  _ <- createStreamReq api (mkStream name 1)
+                                  _ <- createStreamReq api (mkStream name 1 1)
                                   threadDelay 1000000
                                   return name
     clean api names = forM_ names $ \name -> do
@@ -216,8 +216,12 @@ withRandomStreams n = provideRunTest setup clean
 mkStreamWithName :: T.Text -> Stream
 mkStreamWithName name = def { streamStreamName = name, streamReplicationFactor = 1}
 
-mkStream :: T.Text -> Word32 -> Stream
-mkStream name repFac = def { streamStreamName = name, streamReplicationFactor = repFac}
+mkStream :: T.Text -> Word32 -> Word32 -> Stream
+mkStream name repFac shardCnt = def { streamStreamName = name, streamReplicationFactor = repFac, streamShardCount = shardCnt}
+
+mkStreamWithDefaultShards :: T.Text -> Word32 -> Stream
+mkStreamWithDefaultShards name repFac = mkStream name repFac 1
+
 
 createStreamReq :: HStreamClientApi -> Stream -> IO Stream
 createStreamReq HStreamApi{..} stream =
