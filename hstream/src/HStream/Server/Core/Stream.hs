@@ -7,6 +7,7 @@ module HStream.Server.Core.Stream
   , listStreams
   , appendStream
   , append0Stream
+  , readShard
   , FoundSubscription (..)
   , StreamExists (..)
   , RecordTooBig (..)
@@ -14,9 +15,10 @@ module HStream.Server.Core.Stream
 
 import           Control.Exception                 (Exception (displayException),
                                                     catch, throwIO)
-import           Control.Monad                     (forM_, unless, when)
+import           Control.Monad                     (forM_, unless, void, when)
 import qualified Data.ByteString                   as BS
-import           Data.Maybe                        (fromMaybe)
+import           Data.Foldable                     (foldl')
+import           Data.Maybe                        (fromJust, fromMaybe)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
@@ -27,6 +29,8 @@ import           Network.GRPC.HighLevel.Generated
 import           HStream.Connector.HStore          (transToStreamName)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
+import           HStream.Server.Handler.Common     (decodeRecordBatch)
+import           HStream.Server.HStreamApi         (ReadShardRequest (readShardRequestShardId))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -36,6 +40,7 @@ import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
+import           Proto3.Suite                      (Enumerated (Enumerated))
 
 -------------------------------------------------------------------------------
 
@@ -113,6 +118,34 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   where
     streamName  = textToCBytes sName
     streamID    = S.mkStreamId S.StreamTypeStream streamName
+
+readShard
+  :: HasCallStack
+  => ServerContext
+  -> API.ReadShardRequest
+  -> IO (V.Vector API.ReceivedRecord)
+readShard ServerContext{..} API.ReadShardRequest{..} = do
+  logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
+  let ldReaderBufferSize = 10
+  ldReader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
+  startLSN <- getStartLSN logId
+  void $ S.readerStartReading ldReader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
+  S.readerSetTimeout ldReader (fromIntegral readShardRequestReadTimeout)
+  records <- S.readerRead ldReader (fromIntegral readShardRequestMaxRead)
+  let receivedRecordsVecs = decodeRecordBatch <$> records
+  let receivedRecords = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+  return receivedRecords
+  where
+    streamId = transToStreamName readShardRequestStreamName
+    shard = textToCBytes readShardRequestShardId
+
+    getStartLSN :: S.C_LogID -> IO S.LSN
+    getStartLSN logId =
+      case fromJust . API.shardOffsetOffset . fromJust $ readShardRequestOffset of
+        API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetEARLIEST)) -> return S.LSN_MIN
+        API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
+        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                        -> return recordIdBatchId
+        _ -> error "wrong shard offset"
 
 --------------------------------------------------------------------------------
 

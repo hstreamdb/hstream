@@ -10,7 +10,9 @@ module HStream.Server.Handler.Stream
     deleteStreamHandler,
     listStreamsHandler,
     appendHandler,
-    append0Handler)
+    append0Handler,
+    readShardHandler
+  )
 where
 
 import           Control.Exception
@@ -120,6 +122,14 @@ append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@Appen
     inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
+readShardHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
+  -> IO (ServerResponse 'Normal ReadShardResponse)
+readShardHandler sc (ServerNormalRequest _metadata request) = readShardExceptionHandle $ do
+  Log.debug $ "Receive read shard Request: " <> Log.buildString (show request)
+  C.readShard sc request >>= returnResp . ReadShardResponse
+
 --------------------------------------------------------------------------------
 -- Exception Handlers
 
@@ -160,3 +170,10 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
        Log.warning $ Log.buildString' err
        return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
+
+readShardExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+readShardExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  [ Handler (\(err :: Store.NOTFOUND) ->
+      return (StatusUnavailable, mkStatusDetails err))
+  ] ++ defaultHandlers
+

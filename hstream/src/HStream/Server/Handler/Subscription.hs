@@ -53,7 +53,8 @@ import           HStream.Server.Exception         (ExceptionHandle, Handlers,
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    setRespType)
-import           HStream.Server.Handler.Common    (getCommitRecordId,
+import           HStream.Server.Handler.Common    (decodeRecordBatch,
+                                                   getCommitRecordId,
                                                    getSuccessor,
                                                    insertAckedRecordId)
 import           HStream.Server.HStreamApi
@@ -63,8 +64,7 @@ import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils                    (decodeByteStringBatch,
-                                                   mkServerErrResp, returnResp,
+import           HStream.Utils                    (mkServerErrResp, returnResp,
                                                    textToCBytes)
 
 --------------------------------------------------------------------------------
@@ -383,7 +383,6 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
         retry
       else pure ()
 
-
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
       shards <- catch (getShards ctx subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
@@ -571,17 +570,6 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
     resetReadingOffset :: S.C_LogID -> S.LSN -> IO ()
     resetReadingOffset logId startOffset = do
       S.ckpReaderStartReading subLdCkpReader logId startOffset S.LSN_MAX
-
-decodeRecordBatch :: S.DataRecord BS.ByteString -> (S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
-decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
-  where
-    payload = S.recordPayload dataRecord
-    logId = S.recordLogID dataRecord
-    batchId = S.recordLSN dataRecord
-    recordBatch = decodeByteStringBatch payload
-    indexedRecords = V.indexed $ hstreamRecordBatchBatch recordBatch
-    shardRecordIds = V.map (\(i, _) -> ShardRecordId batchId (fromIntegral i)) indexedRecords
-    receivedRecords = V.map (\(i, a) -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) indexedRecords
 
 assignShards :: Assignment -> STM ()
 assignShards assignment@Assignment {..} = do

@@ -51,6 +51,8 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
 
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
+
+        hstreamApiReadShard = readShardHandler serverContext,
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
