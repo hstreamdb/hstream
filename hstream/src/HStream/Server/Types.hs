@@ -176,7 +176,6 @@ getShard client streamId key = do
   partitions <- HS.listStreamPartitions client streamId
   let size = length partitions - 1
   let shard = getShardName . getShardIdx size <$> key
-  Log.debug $ "assign key " <> Log.buildString' (show key) <> " to shard " <> Log.buildString' (getShardIdx size <$> key)
   HS.getUnderlyingLogId client streamId shard
 
 getShardIdx :: Int -> T.Text -> Int

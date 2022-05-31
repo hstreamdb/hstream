@@ -52,7 +52,7 @@ createStream ServerContext{..} stream@API.Stream{
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   catch (S.createStream scLDClient streamId attrs) (\(_ :: S.EXISTS) -> throwIO StreamExists)
   let shards = if shardCount <= 0 then 1 else shardCount
-  let partions :: [Word32] = [0..shards]
+  let partions :: [Word32] = [0..shards - 1]
   forM_ partions $ \idx -> do
     S.createStreamPartition scLDClient streamId (Just . getShardName $ fromIntegral idx)
   returnResp stream
