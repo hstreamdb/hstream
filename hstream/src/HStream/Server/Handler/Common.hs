@@ -18,6 +18,8 @@ import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import qualified Data.Time                        as Time
+import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
 import qualified Database.MySQL.Base              as MySQL
@@ -28,6 +30,7 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
+import           HStream.SQL.AST (RWindow (..))
 import           HStream.Connector.ClickHouse
 import           HStream.Connector.MySQL
 import qualified HStream.Logger                   as Log
@@ -35,7 +38,8 @@ import           HStream.Processing.Connector
 import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask, runTask')
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
-                                                   SourceRecord (..), Timestamp)
+                                                   SourceRecord (..), Timestamp,
+                                                   TemporalFilter (..))
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import           HStream.Server.Config
@@ -53,10 +57,8 @@ import Types
 import Shard
 import Graph
 
---------------------------------------------------------------------------------
-
-runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> GraphBuilder -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp)) -> IO ()
-runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType graphBuilder accumulation = do
+runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> Maybe RWindow -> GraphBuilder -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp)) -> IO ()
+runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType window graphBuilder accumulation = do
   runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
     let consumerName = textToCBytes (getTaskName taskBuilder)
 
@@ -73,8 +75,19 @@ runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType
     let graph = buildGraph graphBuilder
     shard <- buildShard graph
 
+    let temporalFilter = case window of
+          Nothing -> NoFilter
+          Just (RTumblingWindow interval) ->
+            let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
+             in Tumbling (fromIntegral interval_ms)
+          Just (RHoppingWIndow len hop) ->
+            let len_ms = (Time.diffTimeToPicoseconds len) `div` (1000 * 1000 * 1000)
+                hop_ms = (Time.diffTimeToPicoseconds hop) `div` (1000 * 1000 * 1000)
+             in Hopping (fromIntegral len_ms) (fromIntegral hop_ms)
+          _ -> error "not supported"
+
     -- RUN TASK
-    runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector accumulation shard
+    runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
 
 runSinkConnector
   :: ServerContext
@@ -173,19 +186,19 @@ handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkT
   takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
   return (qid, timestamp)
   where
-    (tName,inNodesWithStreams,outNodeWithStream,builder,accumulation) = case plan of
-        SelectPlan tName inNodesWithStreams outNodeWithStream builder ->
-          (tName,inNodesWithStreams,outNodeWithStream,builder, Nothing)
-        CreateBySelectPlan tName inNodesWithStreams outNodeWithStream builder _ ->
-          (tName,inNodesWithStreams,outNodeWithStream,builder, Nothing)
-        CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder accumulation ->
-          (tName,inNodesWithStreams,outNodeWithStream,builder, Just accumulation)
+    (tName,inNodesWithStreams,outNodeWithStream,win,builder,accumulation) = case plan of
+        SelectPlan tName inNodesWithStreams outNodeWithStream win builder ->
+          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+        CreateBySelectPlan tName inNodesWithStreams outNodeWithStream win builder _ ->
+          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+        CreateViewPlan tName schema inNodesWithStreams outNodeWithStream win builder accumulation ->
+          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
         _ -> undefined
     action qid = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType builder accumulation
+      runTaskWrapper tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType win builder accumulation
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

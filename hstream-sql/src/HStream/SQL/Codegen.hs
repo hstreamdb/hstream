@@ -102,9 +102,9 @@ data ConnectorConfig
   deriving Show
 
 data HStreamPlan
-  = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) GraphBuilder
-  | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) GraphBuilder Int
-  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) GraphBuilder (MVar (DataChangeBatch HPT.Timestamp))
+  = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder
+  | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder Int
+  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder (MVar (DataChangeBatch HPT.Timestamp))
   | CreatePlan          StreamName Int
   | CreateConnectorPlan ConnectorType ConnectorName Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
@@ -125,20 +125,20 @@ hstreamCodegen :: HasCallStack => RSQL -> IO HStreamPlan
 hstreamCodegen = \case
   RQSelect select -> do
     tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream) <- genGraphBuilder Nothing select
-    return $ SelectPlan tName inNodesWithStreams outNodeWithStream builder
+    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilder Nothing select
+    return $ SelectPlan tName inNodesWithStreams outNodeWithStream window builder
   RQCreate (RCreateAs stream select rOptions) -> do
     tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream) <- genGraphBuilder (Just stream) select
-    return $ CreateBySelectPlan tName inNodesWithStreams outNodeWithStream builder (rRepFactor rOptions)
+    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilder (Just stream) select
+    return $ CreateBySelectPlan tName inNodesWithStreams outNodeWithStream window builder (rRepFactor rOptions)
   RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
     tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream) <- genGraphBuilder (Just view) select
+    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilder (Just view) select
     accumulation <- newMVar emptyDataChangeBatch
     let schema = case sel of
           RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
           RSelList fields -> map snd fields
-    return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder accumulation
+    return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream window builder accumulation
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
   RQCreate (RCreateConnector cType cName ifNotExist (RConnectorOptions cOptions)) ->
     return $ CreateConnectorPlan cType cName ifNotExist cOptions
@@ -402,7 +402,7 @@ genFilterNodeFromHaving hav prevNode = FilterSpec prevNode filter'
 genGraphBuilder :: HasCallStack
                 => Maybe StreamName
                 -> RSelect
-                -> IO (GraphBuilder, [(Node, StreamName)], (Node, StreamName))
+                -> IO (GraphBuilder, [(Node, StreamName)], (Node, StreamName), (Maybe RWindow))
 genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
   (baseBuilder, sources, inNodes, thenNode) <- genSourceGraphBuilder frm
   sink <- maybe genRandomSinkStream return sinkStream'
@@ -422,12 +422,16 @@ genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
           let (builder', nodeIndex) = addNode builder_2 baseSubgraph (IndexSpec nodeFilter)
           return $ addNode builder' baseSubgraph (ReduceSpec nodeIndex (aggregateInit agg) groupbyKeygen (Reducer $ aggregateF agg))
 
+  let window = case grp of
+        RGroupByEmpty    -> Nothing
+        RGroupBy _ _ win -> win
+
   let havingNode = genFilterNodeFromHaving hav nextNode
       (builder_3, nodeHav) = addNode nextBuilder baseSubgraph havingNode
 
   let (builder_4, nodeOutput) = addNode builder_3 baseSubgraph (OutputSpec nodeHav)
 
-  return (builder_4, inNodes `zip` sources, (nodeOutput,sink))
+  return (builder_4, inNodes `zip` sources, (nodeOutput,sink), window)
 
 --------------------------------------------------------------------------------
 

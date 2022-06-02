@@ -40,7 +40,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   Log.debug $ "Receive Create View Request: " <> Log.buildString (T.unpack createViewRequestSql)
   plan <- HSC.streamCodegen createViewRequestSql
   case plan of
-    HSC.CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder _ -> do
+    HSC.CreateViewPlan tName schema inNodesWithStreams outNodeWithStream _ builder _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
       create (HCH.transToStreamName sink)

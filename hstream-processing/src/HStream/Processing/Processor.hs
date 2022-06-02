@@ -41,6 +41,8 @@ import           RIO.HashMap.Partial                   as HM'
 import qualified RIO.HashSet                           as HS
 import qualified RIO.List                              as L
 import qualified RIO.Text                              as T
+import qualified Data.Time                             as Time
+
 
 import qualified HStream.Logger                        as Log
 import           HStream.Processing.Connector
@@ -156,17 +158,17 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
         loop task ctx xs (asyncs ++ [a])
 
 
-runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp))-> Shard HStream.Processing.Type.Timestamp -> IO ()
-runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector accumulation shard@Shard{..} = do
+runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> TemporalFilter -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp))-> Shard HStream.Processing.Type.Timestamp -> IO ()
+runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard@Shard{..} = do
+
+  -- the task itself
+  forkIO $ run shard
 
   -- subscribe to all source streams
   forM_ (sourceConnectors `zip` inNodesWithStreams)
     (\(SourceConnector{..}, (_, sourceStreamName)) ->
         subscribeToStream sourceStreamName Latest
     )
-
-  -- the task itself
-  forkIO $ run shard
 
   -- main loop: push input to INPUT nodes
   forkIO . forever $ do
@@ -176,12 +178,23 @@ runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector acc
           forM_ sourceRecords $ \SourceRecord{..} -> do
             let dataChange
                   = DataChange
-                  { dcRow = fromJust . Aeson.decode $ srcValue
+                  { dcRow = (fromJust . Aeson.decode $ srcValue)
                   , dcTimestamp = Timestamp srcTimestamp []
                   , dcDiff = 1
                   }
             Prelude.print $ "### Get input: " <> show dataChange
-            pushInput shard inNode dataChange
+            pushInput shard inNode dataChange -- original update
+
+            -- insert new negated updates to limit the valid range of this update
+            case temporalFilter of
+              NoFilter -> return ()
+              Tumbling interval_ms -> do
+                let insert_ms = timestampTime (dcTimestamp dataChange)
+                let start_ms = interval_ms * (insert_ms `div` interval_ms)
+                    end_ms   = interval_ms * (1 + insert_ms `div` interval_ms)
+                let negatedDataChange = dataChange { dcTimestamp = Timestamp end_ms [], dcDiff = -1 }
+                pushInput shard inNode negatedDataChange -- negated update
+              _ -> return ()
           flushInput shard inNode
       )
 

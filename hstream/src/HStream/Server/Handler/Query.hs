@@ -85,7 +85,7 @@ createQueryStreamHandler ::
 createQueryStreamHandler
   sc@ServerContext {..}
   (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = queryExceptionHandle $ do
-    plan@(SelectPlan tName inNodesWithStreams outNodeWithStream builder)
+    plan@(SelectPlan tName inNodesWithStreams outNodeWithStream _ builder)
       <- streamCodegen createQueryStreamRequestQueryStatements
     let source = snd <$> inNodesWithStreams
         sink   = snd outNodeWithStream
@@ -119,7 +119,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   case plan' of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     -- execute plans that can be executed with this method
-    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream builder accumulation ->
+    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream _ builder accumulation ->
       do
         let sources = snd <$> inNodesWithStreams
             sink    = snd outNodeWithStream
@@ -180,7 +180,7 @@ executePushQueryHandler
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan' <- streamCodegen commandPushQueryQueryText
     case plan' of
-      SelectPlan tName inNodesWithStreams outNodeWithStream builder -> do
+      SelectPlan tName inNodesWithStreams outNodeWithStream win builder -> do
         let sources = snd <$> inNodesWithStreams
             sink    = snd outNodeWithStream
         exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
@@ -203,7 +203,7 @@ executePushQueryHandler
             -- run task
             -- FIXME: take care of the life cycle of the thread and global state
             P.setQueryStatus qid Running zkHandle
-            tid <- forkIO $ runTaskWrapper tName inNodesWithStreams outNodeWithStream S.StreamTypeStream S.StreamTypeTemp builder Nothing scLDClient
+            tid <- forkIO $ runTaskWrapper tName inNodesWithStreams outNodeWithStream S.StreamTypeStream S.StreamTypeTemp win builder Nothing scLDClient
 
             takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
             -- sub from sink stream and push to client
@@ -334,7 +334,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
     <> "Query Command: " <> Log.buildText createQueryRequestQueryText
   plan <- HSC.streamCodegen createQueryRequestQueryText
   case plan of
-    HSC.SelectPlan tName inNodesWithStreams outNodeWithStream builder -> do
+    HSC.SelectPlan tName inNodesWithStreams outNodeWithStream _ builder -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
       exists <- mapM (HS.doesStreamExist scLDClient . HCH.transToStreamName) sources
