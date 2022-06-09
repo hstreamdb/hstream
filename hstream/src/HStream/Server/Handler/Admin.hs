@@ -22,7 +22,6 @@ import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
-import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
@@ -36,6 +35,9 @@ import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval, formatStatus,
                                                    interval2ms, returnResp,
                                                    showNodeStatus)
+import qualified HStream.Admin.Server.Types as AT
+import qualified HStream.IO.Worker as IO
+import qualified Data.Aeson.Text as Aeson
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -66,6 +68,7 @@ adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
               AT.AdminSubscriptionCommand c -> runSubscription sc c
               AT.AdminViewCommand c         -> runView sc c
               AT.AdminStatusCommand         -> runStatus sc
+              AT.AdminIOCommand c           -> runIO sc c
   returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
@@ -199,6 +202,28 @@ runView serverContext AT.ViewCmdList = do
            ]
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
+
+-------------------------------------------------------------------------------
+-- Admin IO Command
+runIO :: ServerContext -> AT.IOCommand -> IO Text
+runIO ServerContext{..} (AT.IOCmdCreate dir) = do
+  plainResponse <$> IO.createIOTaskFromDir scIOWorker dir
+runIO ServerContext{..} (AT.IOCmdStart taskId) = do
+  IO.startIOTask scIOWorker taskId
+  return $ plainResponse "OK"
+runIO ServerContext{..} (AT.IOCmdStop taskId) = do
+  IO.stopIOTask scIOWorker taskId
+  return $ plainResponse "OK"
+runIO ServerContext {..} AT.IOCmdList = do
+  let headers = ["id" :: Text, "status", "latest_state"]
+  items <- IO.listIOTasks scIOWorker
+  rows <- forM items $ \IO.IOTaskItem {..} ->
+    return
+      [ taskId,
+        Text.pack $ show status,
+        TL.toStrict $ Aeson.encodeToLazyText latestState
+      ]
+  return . tableResponse $ Aeson.object ["headers" .= headers, "rows" .= rows]
 
 -------------------------------------------------------------------------------
 -- Admin Status Command

@@ -22,6 +22,7 @@ import           HStream.Server.HStreamApi        (NodeState,
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified Proto3.Suite                     as PB
+import qualified HStream.IO.Worker                as IO
 
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"
@@ -47,6 +48,7 @@ data ServerContext = ServerContext {
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: MVar HashRing
   , scServerState            :: MVar ServerState
+  , scIOWorker               :: IO.Worker
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

@@ -49,6 +49,7 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProc
                                                    SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
                                                    StatusCode (StatusOk),
                                                    getAuthProperties)
+import qualified HStream.IO.Worker as IO
 
 {-
   Starting hservers will no longer be happening in parallel.
@@ -108,6 +109,8 @@ initializeServer ServerOpts{..} zk serverState = do
 
   hashRing <- initializeHashRing zk
 
+  ioWorker <- IO.newWorker
+
   return
     ServerContext
       { zkHandle                 = zk
@@ -123,6 +126,7 @@ initializeServer ServerOpts{..} zk serverState = do
       , scStatsHolder            = statsHolder
       , loadBalanceHashRing      = hashRing
       , scServerState            = serverState
+      , scIOWorker               = ioWorker
       }
 
 --------------------------------------------------------------------------------
