@@ -75,6 +75,7 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
              <> Log.buildText appendRequestStreamName
              <> "}, nums of records = "
              <> Log.buildInt (V.length appendRequestRecords)
+    Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
     Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
     Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
     hashRing <- readMVar loadBalanceHashRing

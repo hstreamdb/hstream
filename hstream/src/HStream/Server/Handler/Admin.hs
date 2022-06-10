@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs     #-}
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
 
@@ -86,6 +87,7 @@ runStats statsHolder AT.StatsCommand{..} = do
     AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
     AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
+    AT.PerHandleTimeSeries -> doPerHandleTimeSeries statsName statsIntervals
     AT.ServerHistogram -> doServerHistogram statsName
   where
     doPerStreamStats name = do
@@ -111,6 +113,11 @@ runStats statsHolder AT.StatsCommand{..} = do
     doPerSubscriptionTimeSeries name intervals =
       let cfun = Stats.subscription_time_series_getall_by_name' statsHolder
        in doTimeSeries name "subscription_id" intervals cfun
+
+    doPerHandleTimeSeries :: CBytes -> [Interval] -> IO Text
+    doPerHandleTimeSeries name intervals =
+      let cfun = Stats.handle_time_series_getall statsHolder
+       in doTimeSeries name "handle_name" intervals cfun
 
     doServerHistogram name = do
       let strName = CB.unpack name
