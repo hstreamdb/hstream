@@ -21,7 +21,7 @@ build-type:         Custom
 extra-source-files:
   cbits/**/*.h
   clients/**/*.h
-  gen-cpp/**/*.h
+  api/gen-cpp/**/*.h
   include/**/*.h
 
 custom-setup
@@ -74,8 +74,8 @@ library
     HStream.Utils.Table
     HStream.Utils.Time
 
-  hs-source-dirs:     . gen-hs
-  include-dirs:       . include gen-cpp /usr/local/include
+  hs-source-dirs:     . api/gen-hs
+  include-dirs:       . include api/gen-cpp /usr/local/include
   includes:
     hs_common.h
     hs_cpp_lib.h
@@ -96,8 +96,8 @@ library
     cbits/query/tables/AdminCommandTable.cpp
     cbits/query.cpp
     clients/cpp/AdminClient.cpp
-    gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
-    gen-cpp/HStream/Server/HStreamApi.pb.cc
+    api/gen-cpp/HStream/Server/HStreamApi.grpc.pb.cc
+    api/gen-cpp/HStream/Server/HStreamApi.pb.cc
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
