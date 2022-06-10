@@ -8,7 +8,7 @@ import           Data.Maybe             (fromJust)
 import           Test.Hspec
 
 import           HStream.Stats
-import           HStream.StatsSpecUtils (mkSubTimeSeriesSpec)
+import           HStream.StatsSpecUtils (mkTimeSeriesTest)
 import           HStream.Utils          (runConc, setupSigsegvHandler)
 
 {-# ANN module ("HLint: ignore Use head" :: String) #-}
@@ -48,27 +48,9 @@ statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats time series" $ do
     h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
-    stream_time_series_add_append_in_bytes h "/topic_1" 1000
-    stream_time_series_add_append_in_bytes h "/topic_2" 10000
-    -- NOTE: we choose to sleep 1sec so that we can assume the speed of topic_1
-    -- won't be faster than 2000B/s
-    threadDelay 1000000
-    stream_time_series_add_append_in_bytes h "/topic_1" 1000
-    stream_time_series_add_append_in_bytes h "/topic_2" 10000
+    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add stream_time_series_get stream_time_series_getall_by_name'
 
-    stream_time_series_get h "appends" "non-existed-stream-name" intervals
-      `shouldReturn` Nothing
-
-    Just [rate1_p5s, rate1_p10s] <- stream_time_series_get h "appends" "/topic_1" intervals
-    rate1_p5s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
-    rate1_p10s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
-    Just [rate2_p5s, rate2_p10s] <- stream_time_series_get h "appends" "/topic_2" intervals
-    rate2_p5s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
-    rate2_p10s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
-
-    m <- stream_time_series_getall_by_name h "appends" intervals
-    Map.lookup "/topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
-    Map.lookup "/topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
+    mkTest "appends" stream_time_series_add_append_in_bytes
 
   it "pre subscription stats counter" $ do
     h <- newStatsHolder True
@@ -87,29 +69,19 @@ statsSpec = describe "HStream.Stats" $ do
   it "pre subscription stats time series" $ do
     h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
+    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add subscription_time_series_get subscription_time_series_getall_by_name'
 
-    subscription_time_series_add_send_out_bytes h "topic_1" 1000
-    subscription_time_series_add_send_out_bytes h "topic_2" 10000
-    threadDelay 1000000
-    subscription_time_series_add_send_out_bytes h "topic_1" 1000
-    subscription_time_series_add_send_out_bytes h "topic_2" 10000
+    mkTest "send_out_bytes" subscription_time_series_add_send_out_bytes
+    mkTest "acks" subscription_time_series_add_acks
+    mkTest "request_messages" subscription_time_series_add_request_messages
+    mkTest "response_messages" subscription_time_series_add_response_messages
 
-    subscription_time_series_get h "send_out_bytes" "non-existed-stream-name" intervals
-      `shouldReturn` Nothing
+  it "per handle stats time series" $ do
+    h <- newStatsHolder True
+    let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
+    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add handle_time_series_get handle_time_series_getall
 
-    Just [rate1_p5s, rate1_p10s] <- subscription_time_series_get h "send_out_bytes" "topic_1" intervals
-    rate1_p5s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
-    rate1_p10s `shouldSatisfy` (\s -> s > 0 && s <= 2000)
-    Just [rate2_p5s, rate2_p10s] <- subscription_time_series_get h "send_out_bytes" "topic_2" intervals
-    rate2_p5s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
-    rate2_p10s `shouldSatisfy` (\s -> s > 2000 && s <= 20000)
-
-    m <- subscription_time_series_getall_by_name h "send_out_bytes" intervals
-    Map.lookup "topic_1" m `shouldSatisfy` ((\s -> s!!0 > 0 && s!!0 <= 2000) . fromJust)
-    Map.lookup "topic_2" m `shouldSatisfy` ((\s -> s!!1 > 2000 && s!!1 <= 20000) . fromJust)
-    mkSubTimeSeriesSpec h "acks" subscription_time_series_add_acks
-    mkSubTimeSeriesSpec h "request_messages" subscription_time_series_add_request_messages
-    mkSubTimeSeriesSpec h "response_messages" subscription_time_series_add_response_messages
+    mkTest "queries" handle_time_series_add_queries_in
 
   it "ServerHistogram" $ do
     h <- newStatsHolder True
