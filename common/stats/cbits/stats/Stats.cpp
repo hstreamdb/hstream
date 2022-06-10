@@ -123,6 +123,19 @@ StatsParams::maxSubscribptionStatsInterval(std::string string_name) {
   return PerStreamTimeSeries::Duration{};
 }
 
+PerHandleTimeSeries::Duration
+StatsParams::maxHandleStatsInterval(std::string string_name) {
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == string_name) {                                                  \
+      return this->time_intervals_##name.back();                               \
+    }                                                                          \
+  }
+#include "per_handle_time_series.inc"
+  ld_check(false);
+  return PerStreamTimeSeries::Duration{};
+}
+
 // ----------------------------------------------------------------------------
 // All Stats
 
@@ -191,6 +204,7 @@ void Stats::deriveStats() {}
 void Stats::reset() {
   per_stream_stats.wlock()->clear();
   per_subscription_stats.wlock()->clear();
+  per_handle_stats.wlock()->clear();
 
   if (params->get()->is_server) {
     if (server_histograms) {

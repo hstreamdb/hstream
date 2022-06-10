@@ -121,6 +121,29 @@ foreign import ccall unsafe "hs_stats.h subscription_time_series_getall_by_name"
     -> MBA# (Ptr (StdVector (FollySmallVector Double)))
     -> IO CInt
 
+#define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
+foreign import ccall unsafe "hs_stats.h handle_time_series_add_##name"         \
+  handle_time_series_add_##name                                                \
+    :: Ptr CStatsHolder -> BA# Word8 -> Int64 -> IO ();
+#include "../include/per_handle_time_series.inc"
+
+foreign import ccall unsafe "hs_stats.h handle_time_series_get"
+  handle_time_series_get
+    :: Ptr CStatsHolder -> BA# Word8 -> BA# Word8
+    -> Int -> BA# Int -> MBA# Double
+    -> IO CInt
+
+foreign import ccall unsafe "hs_stats.h handle_time_series_getall_by_name"
+  handle_time_series_getall_by_name
+    :: Ptr CStatsHolder -> BA# Word8
+    -> Int -> BA# Int
+    -> MBA# Int
+    -> MBA# (Ptr StdString)
+    -> MBA# (Ptr (FollySmallVector Double))
+    -> MBA# (Ptr (StdVector StdString))
+    -> MBA# (Ptr (StdVector (FollySmallVector Double)))
+    -> IO CInt
+
 -------------------------------------------------------------------------------
 
 #define VERIFY_INTERVALS(perfix)                                               \
@@ -134,6 +157,7 @@ foreign import ccall unsafe "hs_stats.h perfix##verify_intervals"              \
 
 VERIFY_INTERVALS(per_stream_)
 VERIFY_INTERVALS(per_subscription_)
+VERIFY_INTERVALS(per_handle_)
 #undef VERIFY_INTERVALS
 
 -------------------------------------------------------------------------------

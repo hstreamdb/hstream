@@ -108,6 +108,21 @@ struct PerSubscriptionStats {
 };
 
 // ----------------------------------------------------------------------------
+// PerHandleStats
+
+using PerHandleTimeSeries = MultiLevelTimeSeriesWrapper<int64_t>;
+
+struct PerHandleStats {
+#define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
+  std::shared_ptr<PerHandleTimeSeries> name;
+#include "per_handle_time_series.inc"
+
+  // Mutex almost exclusively locked by one thread since PerHandleStats
+  // objects are contained in thread-local stats
+  std::mutex mutex;
+};
+
+// ----------------------------------------------------------------------------
 // All Stats
 
 struct StatsParams {
@@ -125,11 +140,18 @@ struct StatsParams {
   size_t num_buckets_##name = buckets;
 #include "per_subscription_time_series.inc"
 
+#define TIME_SERIES_DEFINE(name, _, t, buckets)                                \
+  std::vector<std::chrono::milliseconds> time_intervals_##name = t;            \
+  size_t num_buckets_##name = buckets;
+#include "per_handle_time_series.inc"
+
   // Get MaxInterval of StreamStats by string(command) name
   PerStreamTimeSeries::Duration maxStreamStatsInterval(std::string string_name);
   // MaxInterval of SubscriptionStats
   PerSubscriptionTimeSeries::Duration
   maxSubscribptionStatsInterval(std::string string_name);
+  // MaxInterval of HandleStats(PerHandleTimeSeries)
+  PerStreamTimeSeries::Duration maxHandleStatsInterval(std::string string_name);
 
   // Below here are the setters for the above member variables
 
@@ -221,6 +243,11 @@ struct Stats {
   folly::Synchronized<
       std::unordered_map<std::string, std::shared_ptr<PerSubscriptionStats>>>
       per_subscription_stats;
+
+  // Per-handle stats
+  folly::Synchronized<
+      std::unordered_map<std::string, std::shared_ptr<PerHandleStats>>>
+      per_handle_stats;
 
   // Server histograms.
   std::unique_ptr<ServerHistograms> server_histograms;
