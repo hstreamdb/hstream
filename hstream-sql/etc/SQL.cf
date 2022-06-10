@@ -125,16 +125,9 @@ DerivedColAs.    DerivedCol ::= ValueExpr "AS" Ident ;
 DFrom. From ::= "FROM" [TableRef] ;
 separator TableRef "," ;
 
-TableRefSimple. TableRef ::= Ident ;
-TableRefAs.     TableRef ::= TableRef "AS" Ident ;
-TableRefJoin.   TableRef ::= TableRef JoinType "JOIN" TableRef JoinWindow JoinCond ;
-
-JoinInner.  JoinType ::= "INNER" ;
-JoinLeft.   JoinType ::= "LEFT" ;
-JoinOuter.  JoinType ::= "OUTER" ;
-
-DJoinWindow. JoinWindow ::= "WITHIN" "(" Interval ")" ;
-DJoinCond. JoinCond ::= "ON" SearchCond ;
+TableRefSimple.   TableRef ::= Ident ;
+TableRefSubquery. TableRef ::= Select ;
+TableRefAs.       TableRef ::= TableRef "AS" Ident ;
 
 -- Where
 DWhereEmpty. Where ::= "" ;

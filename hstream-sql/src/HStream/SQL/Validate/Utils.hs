@@ -159,8 +159,8 @@ instance HavePos SearchCond where
 instance HavePos TableRef where
   getPos ref = case ref of
     TableRefSimple pos _         -> pos
+    TableRefSubquery pos _       -> pos
     TableRefAs     pos _ _       -> pos
-    TableRefJoin   pos _ _ _ _ _ -> pos
 
 --------------------------------------------------------------------------------
 -- mask

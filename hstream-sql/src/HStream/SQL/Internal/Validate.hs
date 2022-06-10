@@ -23,7 +23,7 @@ import           GHC.Stack                  (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
-import           HStream.SQL.Extra          (anyJoin, extractCondRefNames,
+import           HStream.SQL.Extra          (extractCondRefNames,
                                              extractPNInteger, extractRefNames,
                                              extractSelRefNames)
 import           HStream.SQL.Validate.Utils
@@ -439,90 +439,16 @@ instance Validate DerivedCol where
   validate dcol@(DerivedColAs _ e _)  = validate e >> return dcol
 
 -- From
--- 1. FROM only supports:
---    - a single stream
---    - joining of two single streams
--- 2. If joining extsts, every column name in join condition has to be like "s.x" instead of a single "x"
--- 3. Stream names in join condition have to match the ones specified before
--- 4. Stream alias is legal, but it is not supported by Codegen
 instance Validate From where
   validate (DFrom pos []) = Left $ buildSQLException ParseException pos "FROM clause should specify at least one stream"
-  validate from@(DFrom pos refs@[ref]) = do
-    void $ validate ref
-    when (anyJoin refs && anySimpleRef)
-      (Left $ buildSQLException ParseException pos "Stream name of column in JOIN ON clause has to be explicitly specified when joining exists")
-    unless (all (`L.elem` refNames) condRefNames)
-      (Left $ buildSQLException ParseException pos "One or more stream name in joining condition is not specified in FROM clause")
+  validate from@(DFrom pos refs) = do
+    mapM_ validate refs
     return from
-    where refNames = extractRefNames refs -- Stream names and aliases
-          ext :: TableRef -> (Bool, [Text])
-          ext (TableRefJoin _ _ _ _ _ (DJoinCond _ cond)) = extractCondRefNames cond
-          ext _ = (False, [])
-          -- Stream names in joining conditions
-          (anySimpleRef, condRefNames) = ext ref
-  validate (DFrom pos _) = Left $ buildSQLException ParseException pos "FROM clause does not support many streams seperated by ',' yet"
 
--- 1. Joining of more than 2 streams is illegal
--- 2. JoinWindow and JoinCond should be legal
--- 3. Stream names in FROM and JOIN ON should match
--- 4. Stream alias is legal, but it is not supported by Codegen
 instance Validate TableRef where
   validate r@(TableRefSimple _ _) = Right r
+  validate r@(TableRefSubquery _ select) = validate select >> return r
   validate r@(TableRefAs _ ref _) = validate ref >> return r
-  validate   (TableRefJoin pos TableRefJoin{} _ _ _ _) = Left $ buildSQLException ParseException pos "Joining more than 2 streams is not supported"
-  validate   (TableRefJoin pos _ _ TableRefJoin{} _ _) = Left $ buildSQLException ParseException pos "Joining more than 2 streams is not supported"
-  validate r@(TableRefJoin pos ref1 _ ref2 win joinCond) = do
-    stream1 <- streamName ref1
-    stream2 <- streamName ref2
-    when (stream1 == stream2)
-      (Left $ buildSQLException ParseException pos "Streams to be joined can not have the same name")
-    void $ validate ref1 >> validate ref2 >> validate win >> validate joinCond
-    case joinCondStreamNames joinCond of
-      Left err     -> Left err
-      Right sNames -> do
-        unless (sNames == (stream1, stream2) || sNames == (stream2, stream1))
-          (Left $ buildSQLException ParseException pos "Stream names in FROM and JOIN ON clauses do not match")
-        return r
-    where
-      -- Note: Due to the max-2-join condition, `streamName TableRefJoin` is marked as impossible
-      streamName (TableRefSimple _ (Ident t)) = return t
-      streamName (TableRefAs   _ _ (Ident t)) = return t
-      streamName _ = Left $ buildSQLException ParseException Nothing "Impossible happened"
-      -- Note: Due to `Validate JoinCond`, only forms like "s1.x == s2.y" are legal
-      joinCondStreamNames (DJoinCond _
-                           (CondOp _
-                             (ExprColName _ (ColNameStream _ (Ident s1) (Ident _)))
-                             _
-                             (ExprColName _ (ColNameStream _ (Ident s2) (Ident _)))
-                           )
-                          ) = return (s1, s2)
-      joinCondStreamNames (DJoinCond _ _) = Left $ buildSQLException ParseException pos "Impossible happened"
-
--- 1. Interval in the window should be legal
-instance Validate JoinWindow where
-  validate win@(DJoinWindow _ interval) = validate interval >> return win
-
--- 1. SearchCond in it should be legal
--- 2. Only "=" Conds is allowed
--- 3. Exprs between "=" should be column name with stream name, like "s1.x == s2.y". And s1 should not be the same as s2
-instance Validate JoinCond where
-  validate joinCond@(DJoinCond pos
-                     cond@(CondOp _
-                           (ExprColName _ (ColNameStream _ (Ident s1) (Ident _)))
-                           op
-                           (ExprColName _ (ColNameStream _ (Ident s2) (Ident _)))
-                          )
-                    ) = do
-    when (s1 == s2)
-      (Left $ buildSQLException ParseException pos "Stream name conflicted in JOIN ON clause")
-    case op of
-      CompOpEQ _ -> validate cond >> return joinCond
-      _          -> Left $ buildSQLException ParseException pos "JOIN ON clause does not support operator other than ="
-  validate (DJoinCond pos CondOp{})      = Left $ buildSQLException ParseException pos "JOIN ON clause only supports forms such as 's1.x = s2.y'"
-  validate (DJoinCond pos CondBetween{}) = Left $ buildSQLException ParseException pos "JOIN ON clause does not support BETWEEN condition"
-  validate (DJoinCond pos CondOr{})      = Left $ buildSQLException ParseException pos "JOIN ON clause does not support OR condition"
-  validate (DJoinCond pos CondAnd{})     = Left $ buildSQLException ParseException pos "JOIN ON clause does not support OR condition"
-  validate (DJoinCond pos CondNot{})     = Left $ buildSQLException ParseException pos "JOIN ON clause does not support NOT condition"
 
 -- 1. Exprs should be legal
 -- 2. No aggregate Expr
@@ -600,8 +526,6 @@ instance Validate Select where
           SelListSublist pos' cols -> do
             let (anySimpleRef, selRefNames) = extractSelRefNames cols
                 refNames                    = extractRefNames refs
-            when (anySimpleRef && anyJoin refs)
-              (Left $ buildSQLException ParseException pos' "Stream name of column in SELECT clause has to be explicitly specified when joining exists")
             unless (all (`L.elem` refNames) selRefNames)
               (Left $ buildSQLException ParseException pos' "All stream names in SELECT clause have to be explicitly specified in FROM clause")
             return ()
@@ -611,8 +535,6 @@ instance Validate Select where
           DWhere pos' cond -> do
             let (anySimpleRef, whrRefNames) = extractCondRefNames cond
                 refNames                    = extractRefNames refs
-            when (anySimpleRef && anyJoin refs)
-              (Left $ buildSQLException ParseException pos' "Stream name of column in WHERE clause has to be explicitly specified when joining exists")
             unless (all (`L.elem` refNames) whrRefNames)
               (Left $ buildSQLException ParseException pos' "All stream names in WHERE clause have to be explicitly specified in FROM clause")
             return ()

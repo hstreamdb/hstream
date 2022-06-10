@@ -125,15 +125,15 @@ hstreamCodegen :: HasCallStack => RSQL -> IO HStreamPlan
 hstreamCodegen = \case
   RQSelect select -> do
     tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilder Nothing select
+    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput Nothing select
     return $ SelectPlan tName inNodesWithStreams outNodeWithStream window builder
   RQCreate (RCreateAs stream select rOptions) -> do
     tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilder (Just stream) select
+    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput (Just stream) select
     return $ CreateBySelectPlan tName inNodesWithStreams outNodeWithStream window builder (rRepFactor rOptions)
   RQCreate (RCreateView view select@(RSelect sel _ _ _ _)) -> do
     tName <- genTaskName
-    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilder (Just view) select
+    (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput (Just view) select
     accumulation <- newMVar emptyDataChangeBatch
     let schema = case sel of
           RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
@@ -181,28 +181,45 @@ extractInt errPrefix = \case
 ----
 
 type TaskName = Text
-genSourceGraphBuilder :: HasCallStack => RFrom -> IO (GraphBuilder, [StreamName], [Node], Node)
-genSourceGraphBuilder frm = do
+genSourceGraphBuilder :: HasCallStack => RFrom -> GraphBuilder -> IO (GraphBuilder, [(Node, StreamName)], Node)
+genSourceGraphBuilder (RFrom tableRefs) baseBuilder = do
   let baseSubgraph = Subgraph 0
-      (baseBuilder, _) = addSubgraph emptyGraphBuilder baseSubgraph
-  case frm of
-    RFromSingle s -> do
-      let (builder, nodeIn) = addNode baseBuilder baseSubgraph InputSpec
-      return (builder, [s], [nodeIn], nodeIn)
-    RFromJoin (s1,f1) (s2,f2) typ win ->
-      case typ of
-        RJoinInner -> do
-          let keygen_1 = \o -> HM.fromList [("key", getFieldByName o f1)]
-              keygen_2 = \o -> HM.fromList [("key", getFieldByName o f2)]
-              joiner = Joiner (\o1 o2 -> o1 <> o2)
-          let (builder_1, nodeIn_1) = addNode baseBuilder baseSubgraph InputSpec
-              (builder_2, nodeIn_2) = addNode builder_1 baseSubgraph InputSpec
-              (builder_3, nodeIndex_1) = addNode builder_2 baseSubgraph (IndexSpec nodeIn_1)
-              (builder_4, nodeIndex_2) = addNode builder_3 baseSubgraph (IndexSpec nodeIn_2)
-              (builder_5, nodeJoin) = addNode builder_4 baseSubgraph (JoinSpec nodeIndex_1 nodeIndex_2 keygen_1 keygen_2 joiner)
-          return (builder_5, [s1, s2], [nodeIn_1, nodeIn_2], nodeJoin)
-        _          ->
-          throwSQLException CodegenException Nothing "Impossible happened"
+  go baseBuilder baseSubgraph tableRefs
+  where
+    go :: GraphBuilder -> Subgraph -> [RTableRef] -> IO (GraphBuilder, [(Node, StreamName)], Node)
+    go startBuilder subgraph [] = throwSQLException CodegenException Nothing "Impossible happened"
+    go startBuilder subgraph [ref] = case ref of
+      RTableRefSimple s alias -> do
+        let (builder, nodeIn) = addNode startBuilder subgraph InputSpec
+        return (builder, [(nodeIn, s)], nodeIn)
+      RTableRefSubquery select alias -> do
+        (builder, inNodesWithStreams, outNodeWithStream, win) <- genGraphBuilder alias select
+        return (builder, inNodesWithStreams, fst outNodeWithStream)
+    go startBuilder subgraph [ref1, ref2] = do
+      (builder_1, inNodesWithStreams_1, outNode_1) <- go startBuilder subgraph [ref1]
+      (builder_2, inNodesWithStreams_2, outNode_2) <- go builder_1    subgraph [ref2]
+      let (builder_3, nodeIndex_1) = addNode builder_2 subgraph (IndexSpec outNode_1)
+          (builder_4, nodeIndex_2) = addNode builder_3 subgraph (IndexSpec outNode_2)
+      let keygen_1 = \o -> HM.fromList [("key", String "__constant_key__")]
+          keygen_2 = \o -> HM.fromList [("key", String "__constant_key__")]
+          joiner = Joiner (\o1 o2 -> o1 <> o2)
+          (builder_5, nodeJoin) = addNode builder_4 subgraph (JoinSpec nodeIndex_1 nodeIndex_2 keygen_1 keygen_2 joiner)
+      return (builder_5, inNodesWithStreams_1 <> inNodesWithStreams_2, nodeJoin)
+    go startBuilder subgraph refs = do
+      (builder_1, inNodesWithStreams_1, outNode_1) <- go startBuilder subgraph (L.take 2 refs)
+      let (builder_2, outNode_2) = addNode builder_1 subgraph (IndexSpec outNode_1)
+      foldM (\acc ref -> do
+                let (curBuilder, curInNodesWithStreams, curOutNode) = acc
+                (newBuilder_1, newInNodesWithStreams, newOutNode) <-
+                  go curBuilder subgraph [ref]
+                let (newBuilder_2, nodeIndex) = addNode newBuilder_1 subgraph (IndexSpec newOutNode)
+                let keygen_1 = \o -> HM.fromList [("key", String "__constant_key__")]
+                    keygen_2 = \o -> HM.fromList [("key", String "__constant_key__")]
+                    joiner = Joiner (\o1 o2 -> o1 <> o2)
+                    (newBuilder_3, nodeJoin) = addNode newBuilder_2 subgraph (JoinSpec curOutNode nodeIndex keygen_1 keygen_2 joiner)
+                return (newBuilder_3, curInNodesWithStreams <> newInNodesWithStreams, nodeJoin)
+            ) (builder_2, inNodesWithStreams_1, outNode_2) (L.drop 2 refs)
+
 
 genTaskName :: IO Text
 -- Please do not encode the this id to other forms,
@@ -404,9 +421,10 @@ genGraphBuilder :: HasCallStack
                 -> RSelect
                 -> IO (GraphBuilder, [(Node, StreamName)], (Node, StreamName), (Maybe RWindow))
 genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
-  (baseBuilder, sources, inNodes, thenNode) <- genSourceGraphBuilder frm
-  sink <- maybe genRandomSinkStream return sinkStream'
   let baseSubgraph = Subgraph 0
+  let (startBuilder,_) = addSubgraph emptyGraphBuilder baseSubgraph
+
+  (baseBuilder, inNodesWithStreams, thenNode) <- genSourceGraphBuilder frm startBuilder
 
   let mapNode = genMapNode sel thenNode
       (builder_1, nodeMap) = addNode baseBuilder baseSubgraph mapNode
@@ -429,9 +447,19 @@ genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
   let havingNode = genFilterNodeFromHaving hav nextNode
       (builder_3, nodeHav) = addNode nextBuilder baseSubgraph havingNode
 
-  let (builder_4, nodeOutput) = addNode builder_3 baseSubgraph (OutputSpec nodeHav)
+  sink <- maybe genRandomSinkStream return sinkStream'
+  return (builder_3, inNodesWithStreams, (nodeHav,sink), window)
 
-  return (builder_4, inNodes `zip` sources, (nodeOutput,sink), window)
+genGraphBuilderWithOutput :: HasCallStack
+                          => Maybe StreamName
+                          -> RSelect
+                          -> IO (GraphBuilder, [(Node, StreamName)], (Node, StreamName), (Maybe RWindow))
+genGraphBuilderWithOutput sinkStream' select = do
+  let baseSubgraph = Subgraph 0
+  (builder_1, inNodesWithStreams, (lastNode,sink), window) <-
+    genGraphBuilder sinkStream' select
+  let (builder_2, nodeOutput) = addNode builder_1 baseSubgraph (OutputSpec lastNode)
+  return (builder_2, inNodesWithStreams, (nodeOutput,sink), window)
 
 --------------------------------------------------------------------------------
 
