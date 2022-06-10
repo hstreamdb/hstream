@@ -1,4 +1,4 @@
-module github.com/hstreamdb/hstream/common
+module github.com/hstreamdb/hstream/common/api
 
 go 1.14
 

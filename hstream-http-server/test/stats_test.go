@@ -2,7 +2,7 @@ package hstream_http_server_test
 
 import (
 	"bytes"
-	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
 	"google.golang.org/protobuf/encoding/protojson"
 	"net/http"
 	"testing"

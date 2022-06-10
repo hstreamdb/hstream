@@ -3,7 +3,7 @@ package hstream_http_server_test
 import (
 	"bytes"
 	"fmt"
-	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
