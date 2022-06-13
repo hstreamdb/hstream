@@ -1,0 +1,37 @@
+name: Publish latest
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'common/api/protos/HStream/Server/HStreamApi.proto'
+
+jobs:
+  build-python-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+
+      - name: install deps
+        run: |
+          virtualenv -p python3 ./venv
+          source venv/bin/activate
+          pip install -U grpcio-tools build twine
+
+      - name: build
+        run: |
+          source venv/bin/activate
+          cd common/api
+          python3 -m grpc_tools.protoc -I ./protos \
+            --python_out=python/src \
+            --grpc_python_out=python/src \
+            ./protos/HStream/Server/HStreamApi.proto
+          cd python
+          python3 setup.py sdist
+
+      - name: upload
+        run: |
+          cd common/api/python
+          twine upload -u __token__ -p ${{ secrets.PYPI_API_TOKEN }} dist/*
