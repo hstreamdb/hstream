@@ -257,13 +257,16 @@ instance Refine Sel where
 ---- Frm
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefSubquery RSelect (Maybe StreamName)
+               | RTableRefUnion RTableRef RTableRef (Maybe StreamName)
                deriving (Eq, Show)
 type instance RefinedType TableRef = RTableRef
 instance Refine TableRef where
   refine (TableRefSimple _ (Ident t)) = RTableRefSimple t Nothing
   refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
+  refine (TableRefUnion _ ref1 ref2) = RTableRefUnion (refine ref1) (refine ref2) Nothing
   refine (TableRefAs _ (TableRefSimple _ (Ident t)) (Ident alias)) = RTableRefSimple t (Just alias)
   refine (TableRefAs _ (TableRefSubquery _ select) (Ident alias)) = RTableRefSubquery (refine select) (Just alias)
+  refine (TableRefAs _ (TableRefUnion _ ref1 ref2) (Ident alias)) = RTableRefUnion (refine ref1) (refine ref2) (Just alias)
 
 data RFrom = RFrom [RTableRef] deriving (Eq, Show)
 type instance RefinedType From = RFrom

@@ -448,6 +448,7 @@ instance Validate From where
 instance Validate TableRef where
   validate r@(TableRefSimple _ _) = Right r
   validate r@(TableRefSubquery _ select) = validate select >> return r
+  validate r@(TableRefUnion _ ref1 ref2) = validate ref1 >> validate ref2 >> return r
   validate r@(TableRefAs _ ref _) = validate ref >> return r
 
 -- 1. Exprs should be legal

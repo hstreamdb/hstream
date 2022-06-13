@@ -195,6 +195,11 @@ genSourceGraphBuilder (RFrom tableRefs) baseBuilder = do
       RTableRefSubquery select alias -> do
         (builder, inNodesWithStreams, outNodeWithStream, win) <- genGraphBuilder alias select
         return (builder, inNodesWithStreams, fst outNodeWithStream)
+      RTableRefUnion ref1 ref2 alias -> do
+        (builder_1, inNodesWithStreams_1, outNode_1) <- go startBuilder subgraph [ref1]
+        (builder_2, inNodesWithStreams_2, outNode_2) <- go builder_1    subgraph [ref2]
+        let (builder_3, nodeUnion) = addNode builder_2 subgraph (UnionSpec outNode_1 outNode_2)
+        return (builder_3, inNodesWithStreams_1 <> inNodesWithStreams_2, nodeUnion)
     go startBuilder subgraph [ref1, ref2] = do
       (builder_1, inNodesWithStreams_1, outNode_1) <- go startBuilder subgraph [ref1]
       (builder_2, inNodesWithStreams_2, outNode_2) <- go builder_1    subgraph [ref2]
