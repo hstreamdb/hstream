@@ -485,6 +485,7 @@ parseLogExtraAttr = eitherReader $ parse . V.packASCII
       P.skipSpaces
       return (fromBytes n, fromBytes s)
 
+-- TODO: consider moving this function to 'HStream.Store.Internal.LogDevice.LogAttributes'
 logAttrsParser :: Parser S.LogAttributes
 logAttrsParser = do
   logReplicationFactor <- S.defAttr1 <$> option auto
@@ -493,14 +494,21 @@ logAttrsParser = do
      <> showDefault
      <> value 3
      -- TODO: fix here if `replicate_across` field added
-     <> help "Number of nodes on which to persist a record. Default number is 3"
+     <> help "Number of nodes on which to persist a record."
       )
-  logAttrsExtras <- Map.fromList <$> (many (option parseLogExtraAttr
+  logBacklogDuration <- maybe S.def (S.defAttr1 . Just) <$> optional (option auto
+      ( long "backlog"
+     <> metavar "INT"
+     <> help ( "Duration that a record can exist in the log before it expires and "
+            <> "gets deleted (in senconds). Valid value must be at least 1 second."
+             )
+      ))
+  logAttrsExtras <- Map.fromList <$> many (option parseLogExtraAttr
       ( long "extra-attributes"
      <> metavar "STRING:STRING"
      <> help "Arbitrary fields that logdevice does not recognize."
-      )))
-  pure S.def{logReplicationFactor, logAttrsExtras}
+      ))
+  pure S.def{logReplicationFactor, logBacklogDuration, logAttrsExtras}
 
 data CreateLogsOpts = CreateLogsOpts
   { path                :: CBytes
