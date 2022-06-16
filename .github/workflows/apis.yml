@@ -1,0 +1,63 @@
+name: client apis
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "common/api/protos/HStream/Server/HStreamApi.proto"
+      - "common/api/python/**"
+
+  pull_request:
+
+jobs:
+  pre-build:
+    runs-on: ubuntu-latest
+    name: prepare pre-build environment
+    outputs:
+      PACKAGE_VERSION: ${{ steps.parser.outputs.PACKAGE_VERSION }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+
+      - id: parser
+        run: |
+          proto_file="common/api/protos/HStream/Server/HStreamApi.proto"
+          VERSION="$(cat ${proto_file} | gawk 'match($0, /^\/\/\s*__VERSION__\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/, xs) {print xs[1]}')"
+          echo "Set package versions: $VERSION..."
+          echo "::set-output name=PACKAGE_VERSION::$VERSION"
+
+  python:
+    runs-on: ubuntu-latest
+    needs: pre-build
+    env:
+      PACKAGE_VERSION: ${{ needs.pre-build.outputs.PACKAGE_VERSION }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.7'
+
+      - name: install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -U grpcio-tools build twine
+
+      - name: build
+        run: |
+          cd common/api
+          python3 -m grpc_tools.protoc -I ./protos \
+            --python_out=python/src \
+            --grpc_python_out=python/src \
+            ./protos/HStream/Server/HStreamApi.proto
+          cd python
+          python3 setup.py sdist
+
+      - name: upload
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          cd common/api/python
+          twine upload -u __token__ -p "${{ secrets.PYPI_API_TOKEN }}" dist/*
