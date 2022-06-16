@@ -32,33 +32,6 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    cBytesToText, returnErrResp,
                                                    returnResp, textToCBytes)
 
-createViewHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CreateViewRequest View
-  -> IO (ServerResponse 'Normal View)
-createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Create View Request: " <> Log.buildString (T.unpack createViewRequestSql)
-  plan <- HSC.streamCodegen createViewRequestSql
-  case plan of
-    HSC.CreateViewPlan tName schema inNodesWithStreams outNodeWithStream _ builder _ -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-      create (HCH.transToStreamName sink)
-      (qid, timestamp) <- handleCreateAsSelect sc plan createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
-      returnResp $ View { viewViewId = cBytesToText qid
-                        , viewStatus = getPBStatus Running
-                        , viewCreatedTime = timestamp
-                        , viewSql = createViewRequestSql
-                        , viewSchema = V.fromList $ T.pack <$> schema
-                        }
-    _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
-  where
-    attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
-    create sName = do
-      S.createStream scLDClient sName attrs
-      let extrAttr = Map.fromList [(SD.shardStartKey, SD.keyToCBytes minBound), (SD.shardEndKey, SD.keyToCBytes maxBound), (SD.shardEpoch, "1")]
-      void $ S.createStreamPartitionWithExtrAttr scLDClient sName (Just "view") extrAttr
-
 listViewsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListViewsRequest ListViewsResponse

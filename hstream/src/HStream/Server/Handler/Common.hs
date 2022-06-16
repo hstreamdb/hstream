@@ -13,6 +13,7 @@ import           Control.Exception                (Handler (Handler),
                                                    onException)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when, mapM, forM)
+import           Control.Concurrent
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
@@ -183,7 +184,7 @@ handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkT
     tName commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
-  takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+  modifyMVar_ runningQueries (return . HM.insert qid tid)
   return (qid, timestamp)
   where
     (tName,inNodesWithStreams,outNodeWithStream,win,builder,accumulation) = case plan of
@@ -213,9 +214,7 @@ handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkT
                     P.setQueryStatus qid ConnectionAbort zkHandle
                     void $ releasePid qid)
       ]
-    releasePid qid = do
-      hmapC <- readMVar runningQueries
-      swapMVar runningQueries $ HM.delete qid hmapC
+    releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
 
 --------------------------------------------------------------------------------
 

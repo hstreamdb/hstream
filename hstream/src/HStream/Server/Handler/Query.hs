@@ -55,9 +55,12 @@ import           HStream.Server.Config
 import qualified HStream.Server.Core.Common       as Core
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
+import           HStream.Server.Handler.View
 import           HStream.Server.HStreamApi
+import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
@@ -75,79 +78,123 @@ import           HStream.Utils
 
 import Types
 
--------------------------------------------------------------------------------
--- Stream with Select Query
-
-createQueryStreamHandler ::
-  ServerContext ->
-  ServerRequest 'Normal CreateQueryStreamRequest CreateQueryStreamResponse ->
-  IO (ServerResponse 'Normal CreateQueryStreamResponse)
-createQueryStreamHandler
-  sc@ServerContext {..}
-  (ServerNormalRequest _metadata CreateQueryStreamRequest {..}) = queryExceptionHandle $ do
-    plan@(SelectPlan tName inNodesWithStreams outNodeWithStream _ builder)
-      <- streamCodegen createQueryStreamRequestQueryStatements
-    let source = snd <$> inNodesWithStreams
-        sink   = snd outNodeWithStream
-    let sName = streamStreamName <$> createQueryStreamRequestQueryStream
-        rFac  = maybe 1 (fromIntegral . streamReplicationFactor) createQueryStreamRequestQueryStream
-        logDuration = streamBacklogDuration <$> createQueryStreamRequestQueryStream
-        shardCount = streamShardCount <$> createQueryStreamRequestQueryStream
-    createStreamWithShard scLDClient (transToStreamName sink) "query" rFac
-    let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
-    void $
-      handleCreateAsSelect
-        sc
-        plan
-        createQueryStreamRequestQueryStatements
-        query
-        S.StreamTypeStream
-    let streamResp = Stream sink (fromIntegral rFac) (fromMaybe 0 logDuration) (fromMaybe 1 shardCount)
-        -- FIXME: The value query returned should have been fully assigned
-        queryResp = def { queryId = tName }
-    returnResp $ CreateQueryStreamResponse (Just streamResp) (Just queryResp)
-
---------------------------------------------------------------------------------
-
-executeQueryHandler ::
-  ServerContext ->
-  ServerRequest 'Normal CommandQuery CommandQueryResponse ->
-  IO (ServerResponse 'Normal CommandQueryResponse)
+-- Other sqls, called in 'sqlAction'
+executeQueryHandler :: ServerContext
+                    -> ServerRequest 'Normal CommandQuery CommandQueryResponse
+                    -> IO (ServerResponse 'Normal CommandQueryResponse)
 executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata CommandQuery {..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
-  plan' <- streamCodegen commandQueryStmtText
-  case plan' of
+  plan <- streamCodegen commandQueryStmtText
+  case plan of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
-    -- execute plans that can be executed with this method
-    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream _ builder accumulation ->
-      do
-        let sources = snd <$> inNodesWithStreams
-            sink    = snd outNodeWithStream
-        create (transToStreamName sink)
-        handleCreateAsSelect
-          sc
-          plan'
-          commandQueryStmtText
-          (P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema)
-          S.StreamTypeView
-        -- >> atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
-        >> returnCommandQueryEmptyResp
     CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
+    CreateBySelectPlan tName inNodesWithStreams outNodeWithStream _ _ fac -> do
+      let sources = snd <$> inNodesWithStreams
+          sink    = snd outNodeWithStream
+          query   = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
+      create (transToStreamName sink)
+      handleCreateAsSelect sc plan commandQueryStmtText query S.StreamTypeStream
+      returnCommandQueryEmptyResp
+    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
+      let sources = snd <$> inNodesWithStreams
+          sink    = snd outNodeWithStream
+          query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
+      create (transToStreamName sink)
+      handleCreateAsSelect sc plan commandQueryStmtText query S.StreamTypeView
+      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
+      returnCommandQueryEmptyResp
+    CreatePlan stream fac -> do
+      let s = API.Stream
+            { streamStreamName = stream
+            , streamReplicationFactor = fromIntegral fac
+            , streamBacklogDuration = 0
+            }
+      _ <- createStreamHandler sc (ServerNormalRequest _metadata s)
+      returnCommandQueryEmptyResp
+    InsertPlan stream insertType payload -> do
+      timestamp <- getProtoTimestamp
+      let header = case insertType of
+            JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
+            RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
+      let record = buildRecord header payload
+      let request = AppendRequest
+                  { appendRequestStreamName = stream
+                  , appendRequestRecords = V.singleton record
+                  }
+      _ <- append0Handler sc (ServerNormalRequest _metadata request)
+      returnCommandQueryEmptyResp
+    DropPlan checkIfExist dropObject -> case dropObject of
+      DStream stream -> do
+        let request = DeleteStreamRequest
+                    { deleteStreamRequestStreamName = stream
+                    , deleteStreamRequestIgnoreNonExist = not checkIfExist
+                    , deleteStreamRequestForce = False
+                    }
+        _ <- deleteStreamHandler sc (ServerNormalRequest _metadata request)
+        returnCommandQueryEmptyResp
+      DView view -> do
+        let request = DeleteViewRequest
+                    { deleteViewRequestViewId = view
+                    , deleteViewRequestIgnoreNonExist = not checkIfExist
+                    }
+        _ <- deleteViewHandler sc (ServerNormalRequest _metadata request)
+        returnCommandQueryEmptyResp
+      DConnector conn -> do
+        let request = DeleteConnectorRequest
+                    { deleteConnectorRequestId = conn
+                    }
+        _ <- deleteConnectorHandler sc (ServerNormalRequest _metadata request)
+        returnCommandQueryEmptyResp
+    ShowPlan showObject -> case showObject of
+      SStreams -> do
+        _ <- listStreamsHandler sc (ServerNormalRequest _metadata ListStreamsRequest)
+        returnCommandQueryEmptyResp
+      SQueries -> do
+        _ <- listQueriesHandler sc (ServerNormalRequest _metadata ListQueriesRequest)
+        returnCommandQueryEmptyResp
+      SConnectors -> do
+        _ <- listConnectorsHandler sc (ServerNormalRequest _metadata ListConnectorsRequest)
+        returnCommandQueryEmptyResp
+      SViews -> do
+        _ <- listViewsHandler sc (ServerNormalRequest _metadata ListViewsRequest)
+        returnCommandQueryEmptyResp
+    TerminatePlan sel -> case sel of
+      AllQueries -> do
+        let request = TerminateQueriesRequest
+                    { terminateQueriesRequestQueryId = V.empty
+                    , terminateQueriesRequestAll = True
+                    }
+        _ <- terminateQueriesHandler sc (ServerNormalRequest _metadata request)
+        returnCommandQueryEmptyResp
+      OneQuery qid -> do
+        let request = TerminateQueriesRequest
+                    { terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid
+                    , terminateQueriesRequestAll = False
+                    }
+        _ <- terminateQueriesHandler sc (ServerNormalRequest _metadata request)
+        returnCommandQueryEmptyResp
+      ManyQueries qids -> do
+        let request = TerminateQueriesRequest
+                    { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
+                    , terminateQueriesRequestAll = False
+                    }
+        _ <- terminateQueriesHandler sc (ServerNormalRequest _metadata request)
+        returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
-      queries   <- P.getQueries zkHandle
+      queries <- P.getQueries zkHandle
       hm <- readIORef P.groupbyStores
       case HM.lookup rSelectViewFrom hm of
         Nothing -> returnErrResp StatusNotFound "VIEW not found"
         Just accumulation -> do
           dcb@DataChangeBatch{..} <- readMVar accumulation
           results <- case dcbChanges of
-                       [] -> do
-                         x <- sendResp mempty
-                         return [x]
-                       _  -> do
-                         forM dcbChanges $ \change -> do
-                           sendResp (dcRow change)
+            [] -> do
+              x <- sendResp mempty
+              return [x]
+            _  -> do
+              forM dcbChanges $ \change -> do
+                sendResp (dcRow change)
           return $ L.last results
     ExplainPlan sql -> do
       undefined
@@ -178,34 +225,26 @@ executePushQueryHandler
   ctx@ServerContext {..}
   (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
-    plan' <- streamCodegen commandPushQueryQueryText
-    case plan' of
+    plan <- streamCodegen commandPushQueryQueryText
+    case plan of
       SelectPlan tName inNodesWithStreams outNodeWithStream win builder -> do
         let sources = snd <$> inNodesWithStreams
             sink    = snd outNodeWithStream
+            rFac    = scDefaultStreamRepFactor
+            attrs   = S.def{ S.logReplicationFactor = S.defAttr1 rFac }
         exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
-        if (not . and) exists
-          then do
-            Log.warning $
-              "At least one of the streams do not exist: "
-                <> Log.buildString (show sources)
+        case and exists of
+          False -> do
+            Log.warning $ "At least one of the streams do not exist: "
+              <> Log.buildString (show sources)
             throwIO StreamNotExist
-          else do
+          True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-            -- create persistent query
-            (qid, _) <-
-              P.createInsertPersistentQuery
-                tName
-                commandPushQueryQueryText
-                (P.PlainQuery $ textToCBytes <$> sources)
-                serverID
-                zkHandle
+            let query = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
             -- run task
-            -- FIXME: take care of the life cycle of the thread and global state
-            P.setQueryStatus qid Running zkHandle
-            tid <- forkIO $ runTaskWrapper tName inNodesWithStreams outNodeWithStream S.StreamTypeStream S.StreamTypeTemp win builder Nothing scLDClient
+            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query S.StreamTypeTemp
+            tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
 
-            takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
             -- sub from sink stream and push to client
             consumerName <- newRandomText 20
             let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
@@ -269,52 +308,6 @@ sendToClient zkHandle qid streamName sc@SourceConnectorWithoutCkp {..} streamSen
 
 --------------------------------------------------------------------------------
 
-getFixedWinSize :: [P.PersistentQuery] -> T.Text -> IO (Maybe Time.DiffTime)
-getFixedWinSize [] _ = pure Nothing
-getFixedWinSize queries viewNameRaw = do
-  sizes <-
-    queries <&> P.queryBindedSql
-      <&> parseAndRefine
-        & sequence
-      <&> filter \case
-        RQCreate (RCreateView viewNameSQL (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
-          viewNameRaw == viewNameSQL && isFixedWin rWin
-        _ -> False
-      <&> map \case
-        RQCreate (RCreateView _ (RSelect _ _ _ (RGroupBy _ _ (Just rWin)) _)) ->
-          coeRWindowToDiffTime rWin
-        _ -> error "Impossible happened..."
-  pure case sizes of
-    []       -> Nothing
-    size : _ -> Just size
-  where
-    isFixedWin :: RWindow -> Bool = \case
-      RTumblingWindow _  -> True
-      RHoppingWIndow _ _ -> True
-      RSessionWindow _   -> False
-    coeRWindowToDiffTime :: RWindow -> Time.DiffTime = \case
-      RTumblingWindow size  -> size
-      RHoppingWIndow size _ -> size
-      RSessionWindow _      -> error "Impossible happened..."
-
-getGrpByFieldName :: [P.PersistentQuery] -> T.Text -> IO (Maybe T.Text)
-getGrpByFieldName [] _ = pure Nothing
-getGrpByFieldName queries viewNameRaw = do
-  rSQL <- queries <&> parseAndRefine . P.queryBindedSql & sequence
-  let filtered = flip filter rSQL \case
-        RQCreate (RCreateView viewNameSQL (RSelect _ _ _ RGroupBy {} _))
-          -> viewNameRaw == viewNameSQL
-        _ -> False
-  pure case filtered <&> pickCondName of
-    []    -> Nothing
-    x : _ -> pure x
-  where
-    pickCondName = \case
-      RQCreate (RCreateView _ (RSelect _ _ _ (RGroupBy _ condName _) _)) -> condName
-      _ -> error "Impossible happened..."
-
-diffTimeToScientific :: Time.DiffTime -> Scientific
-diffTimeToScientific = flip scientific (-9) . Time.diffTimeToPicoseconds
 hstreamQueryToQuery :: P.PersistentQuery -> Query
 hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _ _) =
   Query
@@ -323,44 +316,6 @@ hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status
   , queryCreatedTime = createdTime
   , queryQueryText   = sqlStatement
   }
-
-createQueryHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CreateQueryRequest Query
-  -> IO (ServerResponse 'Normal Query)
-createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryRequest{..}) = queryExceptionHandle $ do
-  Log.debug $ "Receive Create Query Request."
-    <> "Query ID: "      <> Log.buildText createQueryRequestId
-    <> "Query Command: " <> Log.buildText createQueryRequestQueryText
-  plan <- HSC.streamCodegen createQueryRequestQueryText
-  case plan of
-    HSC.SelectPlan tName inNodesWithStreams outNodeWithStream _ builder -> do
-      let sources = snd <$> inNodesWithStreams
-          sink    = snd outNodeWithStream
-      exists <- mapM (HS.doesStreamExist scLDClient . HCH.transToStreamName) sources
-      if (not . and) exists
-      then do
-        Log.warning $ "At least one of the streams do not exist: "
-          <> Log.buildString (show sources)
-        throwIO StreamNotExist
-      else do
-        createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-        (qid, timestamp) <- handleCreateAsSelect ctx plan
-          createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
-
-        consumerName <- newRandomText 20
-        let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
-        subscribeToStreamWithoutCkp sc sink SpecialOffsetLATEST
-        returnResp $
-          Query
-          { queryId          = cBytesToText qid
-          , queryStatus      = getPBStatus Running
-          , queryCreatedTime = timestamp
-          , queryQueryText   = createQueryRequestQueryText
-          }
-    _ -> do
-      Log.fatal "Push Query: Inconsistent Method Called"
-      returnErrResp StatusInvalidArgument "inconsistent method called"
 
 listQueriesHandler
   :: ServerContext

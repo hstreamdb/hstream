@@ -192,7 +192,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
     (parseAndRefine . T.pack) xs >>= \case
       RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
       RQCreate (RCreateAs stream _ rOptions) ->
-        execute ctx $ createStreamBySelect stream (rRepFactor rOptions) xs'
+        execute ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
       rSql' -> hstreamCodegen rSql' >>= \case
         CreatePlan sName rFac
           -> execute ctx $ createStream sName rFac
