@@ -1,11 +1,14 @@
+import os
 import setuptools
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+verison = os.getenv("PACKAGE_VERSION", "0.0.3")
+
 setuptools.setup(
     name="hstreamdb-api",
-    version="0.0.3",
+    version=verison,
     author="lambda",
     author_email="lambda@emqx.io",
     description="HStreamDB api for Python",
