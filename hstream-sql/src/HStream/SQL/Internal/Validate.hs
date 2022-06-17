@@ -574,7 +574,7 @@ instance Validate SelectView where
 
       --validateWhr (DWhereEmpty pos) = Left $ buildSQLException ParseException pos "There has to be a nonempty WHERE clause when selecting from a VIEW"
       validateWhr whr@(DWhereEmpty pos) = return whr
-      validateWhr whr@(DWhere _ cond) = validateCond cond >> return whr
+      validateWhr whr@(DWhere _ cond)   = validateCond cond >> return whr
 
       validateCond cond@(CondOp _ (ExprColName _ (ColNameSimple _ _)) (CompOpEQ _) vexpr2) = return cond
       validateCond cond = Left $ buildSQLException ParseException (getPos cond) "Only forms like COLUMN = VALUE is allowed in WHERE clause when selecting from a VIEW"

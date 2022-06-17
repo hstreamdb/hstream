@@ -12,78 +12,45 @@ import           Data.Aeson                                      (Object,
                                                                   Value (Bool, Null, Number, String))
 import qualified Data.Aeson                                      as Aeson
 import           Data.Bifunctor
-import qualified Data.ByteString.Char8                           as BSC
+import qualified Data.ByteString.Char8           as BSC
 import           Data.Function
 import           Data.Functor
-import qualified Data.HashMap.Strict                             as HM
-import qualified Data.List                                       as L
+import qualified Data.HashMap.Strict             as HM
+import qualified Data.List                       as L
 import           Data.Maybe
-import           Data.Scientific                                 (fromFloatDigits,
-                                                                  scientific)
-import           Data.Text                                       (pack)
-import qualified Data.Text                                       as T
-import           Data.Time                                       (diffTimeToPicoseconds,
-                                                                  showGregorian)
-import qualified Database.ClickHouseDriver.Types                 as Clickhouse
-import qualified Database.MySQL.Base                             as MySQL
-import qualified Proto3.Suite                                    as PB
+import           Data.Scientific                 (fromFloatDigits, scientific)
+import           Data.Text                       (pack)
+import qualified Data.Text                       as T
+import           Data.Time                       (diffTimeToPicoseconds,
+                                                  showGregorian)
+import qualified Database.ClickHouseDriver.Types as Clickhouse
+import qualified Database.MySQL.Base             as MySQL
+import qualified Proto3.Suite                    as PB
 import           RIO
-import qualified RIO.ByteString.Lazy                             as BL
-import qualified Z.Data.CBytes                                   as CB
+import qualified RIO.ByteString.Lazy             as BL
+import qualified Z.Data.CBytes                   as CB
 
-import           HStream.Processing.Processor                    (Record (..),
-                                                                  TaskBuilder)
-import           HStream.Processing.Store                        (mkInMemoryStateKVStore,
-                                                                  mkInMemoryStateSessionStore,
-                                                                  mkInMemoryStateTimestampedKVStore)
-import           HStream.Processing.Stream                       (Materialized (..),
-                                                                  Stream,
-                                                                  StreamBuilder,
-                                                                  StreamJoined (..),
-                                                                  StreamSinkConfig (..),
-                                                                  StreamSourceConfig (..))
-import qualified HStream.Processing.Stream                       as HS
-import qualified HStream.Processing.Stream.GroupedStream         as HG
-import           HStream.Processing.Stream.JoinWindows           (JoinWindows (..))
-import qualified HStream.Processing.Stream.SessionWindowedStream as HSW
-import           HStream.Processing.Stream.SessionWindows        (mkSessionWindows)
-import qualified HStream.Processing.Stream.TimeWindowedStream    as HTW
-import           HStream.Processing.Stream.TimeWindows           (TimeWindowKey (..),
-                                                                  mkHoppingWindow,
-                                                                  mkTumblingWindow,
-                                                                  timeWindowKeySerde)
-import qualified HStream.Processing.Table                        as HT
-import qualified HStream.Processing.Type                         as HPT
-import           HStream.SQL.AST                                 hiding
-                                                                 (StreamName)
-import           HStream.SQL.Codegen.Boilerplate                 (objectObjectSerde,
-                                                                  objectSerde,
-                                                                  sessionWindowSerde,
-                                                                  timeWindowObjectSerde,
-                                                                  timeWindowSerde)
-import           HStream.SQL.Exception                           (SomeSQLException (..),
-                                                                  throwSQLException)
-import           HStream.SQL.Internal.Codegen                    (binOpOnValue,
-                                                                  compareValue,
-                                                                  composeColName,
-                                                                  diffTimeToMs,
-                                                                  genJoiner,
-                                                                  genRandomSinkStream,
-                                                                  getFieldByName,
-                                                                  unaryOpOnValue)
-import           HStream.SQL.Parse                               (parseAndRefine)
-import           HStream.Utils                                   (genUnique,
-                                                                  jsonObjectToStruct)
+import qualified HStream.Connector.Type          as HCT
+import           HStream.SQL.AST                 hiding (StreamName)
+import           HStream.SQL.Exception           (SomeSQLException (..),
+                                                  throwSQLException)
+import           HStream.SQL.Internal.Codegen    (binOpOnValue, compareValue,
+                                                  composeColName, diffTimeToMs,
+                                                  genJoiner,
+                                                  genRandomSinkStream,
+                                                  getFieldByName,
+                                                  unaryOpOnValue)
+import           HStream.SQL.Parse               (parseAndRefine)
+import           HStream.Utils                   (genUnique)
 
-
-import Types
-import Graph
+import           Graph
+import           Types
 --------------------------------------------------------------------------------
 
 type SerMat  = Object
 type SerPipe = BL.ByteString
 
-type StreamName     = HPT.StreamName
+type StreamName     = HCT.StreamName
 type ViewName = T.Text
 type ConnectorName  = T.Text
 type CheckIfExist  = Bool
@@ -104,7 +71,7 @@ data ConnectorConfig
 data HStreamPlan
   = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder
   | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder Int
-  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder (MVar (DataChangeBatch HPT.Timestamp))
+  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder (MVar (DataChangeBatch HCT.Timestamp))
   | CreatePlan          StreamName Int
   | CreateConnectorPlan ConnectorType ConnectorName Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
@@ -258,9 +225,9 @@ genRExprValue (RExprUnaryOp name op expr) o =
   in (pack name, unaryOpOnValue op v)
 genRExprValue (RExprAggregate name agg) o =
   case agg of
-    Nullary _ -> (pack name, Null)
+    Nullary _     -> (pack name, Null)
     Unary _ rexpr -> genRExprValue rexpr o
-    Binary _ _ _ -> undefined
+    Binary _ _ _  -> undefined
   --throwSQLException CodegenException Nothing "Impossible happened"
 
 genFilterR :: RWhere -> Object -> Bool
@@ -327,8 +294,8 @@ genMapNode sel prevNode = MapSpec prevNode mapper
 
 ----
 data AggregateComponents = AggregateComponents
-  { aggregateInit   :: Object
-  , aggregateF      :: Object -> Object -> Object
+  { aggregateInit :: Object
+  , aggregateF    :: Object -> Object -> Object
   }
 
 genAggregateComponents :: HasCallStack => RSel -> AggregateComponents

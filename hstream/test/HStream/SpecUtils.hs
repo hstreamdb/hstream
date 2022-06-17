@@ -368,11 +368,8 @@ runInsertSql api sql = do
 runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateWithSelectSql api sql = do
   RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine sql
-  resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (words $ T.unpack sql) api
-  createQueryStreamResponseQueryStream resp `shouldBe`
-    Just def { streamStreamName        = stream
-             , streamReplicationFactor = fromIntegral $ rRepFactor rOptions
-             , streamShardCount        = 1}
+  resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (T.unpack sql) api
+  commandQueryResponseResultSet resp `shouldBe` V.empty
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do

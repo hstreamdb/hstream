@@ -22,21 +22,6 @@ import           HStream.Utils                    (TaskStatus (..),
 getQueryResponseIdIs :: T.Text -> Query -> Bool
 getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
 
-createQuery :: T.Text -> T.Text -> IO (Maybe Query)
-createQuery qid sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let createQueryRequest = CreateQueryRequest { createQueryRequestId        = qid
-                                              , createQueryRequestQueryText = sql
-                                              }
-  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@Query{} _meta1 _meta2 StatusOk _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Create Query Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
-
-
 listQueries :: IO (Maybe ListQueriesResponse)
 listQueries = withGRPCClient clientConfig $ \client -> do
   HStreamApi{..} <- hstreamApiClient client
@@ -114,14 +99,6 @@ spec = aroundAll provideHstreamApi $
 
   it "create streams" $ \api ->
     runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
-
-  it "create query" $ \_ ->
-    ( do
-        res <- createQuery queryname1 ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
-        case res of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
 
   it "list queries" $ \_ ->
     ( do

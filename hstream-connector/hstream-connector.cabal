@@ -43,7 +43,10 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Connector.ClickHouse
+    HStream.Connector.Common
     HStream.Connector.MySQL
+    HStream.Connector.Type
+    HStream.Connector.Util
     HStream.IO.IOTask
     HStream.IO.Worker
     HStream.IO.Storage
@@ -52,24 +55,18 @@ library
 
   build-depends:
     , aeson
-    , aeson-pretty
-    , ansi-terminal
     , base
     , bytestring
     , clickhouse-haskell
     , containers
-    , deepseq
     , grpc-haskell
     , grpc-haskell-core
     , haxl
     , hstream-common
-    , hstream-processing
-    , hstream-sql
     , hstream-store
     , mysql-haskell
     , proto3-suite
     , proto3-wire
-    , random
     , rio
     , scientific
     , text

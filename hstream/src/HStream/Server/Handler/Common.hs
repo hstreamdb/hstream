@@ -12,11 +12,15 @@ import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    onException)
 import           Control.Exception.Base           (AsyncException (..))
-import           Control.Monad                    (forever, void, when, mapM, forM)
-import           Control.Concurrent
+import           Control.Monad
+import qualified Data.Aeson                       as Aeson
 import           Data.Foldable                    (foldrM)
+import           Data.Hashable                    (Hashable)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
+import           Data.List                        (find)
+import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromJust)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Time                        as Time
@@ -31,21 +35,22 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
-import           HStream.SQL.AST (RWindow (..))
 import           HStream.Connector.ClickHouse
+import           HStream.Connector.Common
 import           HStream.Connector.MySQL
+import           HStream.Connector.Type           (Offset (..), SinkRecord (..),
+                                                   SourceRecord (..),
+                                                   TemporalFilter (..),
+                                                   Timestamp)
+import qualified HStream.Connector.Type           as HCT
+import           HStream.Connector.Util           (getCurrentTimestamp)
 import qualified HStream.Logger                   as Log
-import           HStream.Processing.Connector
-import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
-                                                   runTask, runTask')
-import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
-                                                   SourceRecord (..), Timestamp,
-                                                   TemporalFilter (..))
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import           HStream.Server.Config
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import           HStream.SQL.AST                  (RWindow (..))
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
@@ -54,11 +59,12 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    newRandomText, runWithAddr,
                                                    textToCBytes)
 
-import Types
-import Shard
-import Graph
+import           Graph
+import           Shard
+import           Types
+import           Weird
 
-runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> Maybe RWindow -> GraphBuilder -> Maybe (MVar (DataChangeBatch HStream.Processing.Type.Timestamp)) -> IO ()
+runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> Maybe RWindow -> GraphBuilder -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> IO ()
 runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType window graphBuilder accumulation = do
   runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
     let consumerName = textToCBytes (getTaskName taskBuilder)
@@ -89,6 +95,79 @@ runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType
 
     -- RUN TASK
     runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
+
+--------------------------------------------------------------------------------
+runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> TemporalFilter -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> Shard HStream.Connector.Type.Timestamp -> IO ()
+runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard@Shard{..} = do
+
+  -- the task itself
+  forkIO $ run shard
+
+  -- subscribe to all source streams
+  forM_ (sourceConnectors `zip` inNodesWithStreams)
+    (\(SourceConnector{..}, (_, sourceStreamName)) ->
+        subscribeToStream sourceStreamName Latest
+    )
+
+  -- main loop: push input to INPUT nodes
+  forkIO . forever $ do
+    forM_ (sourceConnectors `zip` inNodesWithStreams)
+      (\(SourceConnector{..}, (inNode, _)) -> do
+          sourceRecords <- readRecords
+          forM_ sourceRecords $ \SourceRecord{..} -> do
+            let dataChange
+                  = DataChange
+                  { dcRow = (fromJust . Aeson.decode $ srcValue)
+                  , dcTimestamp = Timestamp srcTimestamp []
+                  , dcDiff = 1
+                  }
+            Prelude.print $ "### Get input: " <> show dataChange
+            pushInput shard inNode dataChange -- original update
+
+            -- insert new negated updates to limit the valid range of this update
+            case temporalFilter of
+              NoFilter -> return ()
+              Tumbling interval_ms -> do
+                let insert_ms = timestampTime (dcTimestamp dataChange)
+                let start_ms = interval_ms * (insert_ms `div` interval_ms)
+                    end_ms   = interval_ms * (1 + insert_ms `div` interval_ms)
+                let negatedDataChange = dataChange { dcTimestamp = Timestamp end_ms [], dcDiff = -1 }
+                pushInput shard inNode negatedDataChange -- negated update
+              _ -> return ()
+          flushInput shard inNode
+      )
+
+  -- second loop: advance input after an interval
+  forkIO . forever $ do
+    forM_ inNodesWithStreams $ \(inNode, _) -> do
+      ts <- getCurrentTimestamp
+      Prelude.print $ "### Advance time to " <> show ts
+      advanceInput shard inNode (Timestamp ts [])
+    threadDelay 5000000
+
+  -- third loop: push output from OUTPUT node to output stream
+  accumulatedOutput <- case accumulation of
+                         Nothing -> newMVar emptyDataChangeBatch
+                         Just m  -> return m
+  forever $ do
+    let (outNode, outStream) = outNodeWithStream
+    popOutput shard outNode $ \dcb@DataChangeBatch{..} -> do
+      Prelude.print $ "~~~~~~~ POPOUT: " <> show dcb
+      forM_ dcbChanges $ \change -> do
+        Prelude.print $ "<<< this change: " <> show change
+        modifyMVar_ accumulatedOutput
+          (\dcb -> return $ updateDataChangeBatch' dcb (\xs -> xs ++ [change]))
+        when (dcDiff change > 0) $ do
+          let sinkRecord = SinkRecord
+                { snkStream = outStream
+                , snkKey = Nothing
+                , snkValue = Aeson.encode (dcRow change)
+                , snkTimestamp = timestampTime (dcTimestamp change)
+                }
+          replicateM_ (dcDiff change) $ writeRecord sinkConnector sinkRecord
+
+
+--------------------------------------------------------------------------------
 
 runSinkConnector
   :: ServerContext

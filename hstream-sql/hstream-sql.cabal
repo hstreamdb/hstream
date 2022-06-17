@@ -50,15 +50,12 @@ library
     HStream.SQL.AST
     HStream.SQL.Codegen
     HStream.SQL.Exception
-    -- HStream.SQL.ExecPlan
     HStream.SQL.Internal.Codegen
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
 
   other-modules:
-    HStream.SQL.Codegen.Boilerplate
     HStream.SQL.ErrM
-    -- HStream.SQL.ExecPlan.Utils
     HStream.SQL.Extra
     HStream.SQL.Lex
     HStream.SQL.Par
@@ -74,9 +71,10 @@ library
     , binary
     , bytestring            ^>=0.10
     , clickhouse-haskell
+    , diff-flow
     , extra
     , hstream-common
-    , hstream-processing
+    , hstream-connector
     , mysql-haskell
     , proto3-suite
     , rio
@@ -89,7 +87,6 @@ library
     , vector
     , Z-Data
     , Z-IO
-    , diff-flow
 
   -- Note: build on osx may require this
   -- alex == 3.2.7 will fail to build language-c, see: https://github.com/simonmar/alex/issues/197
@@ -131,7 +128,7 @@ test-suite hstream-sql-test
     , containers
     , hspec
     , hstream-common
-    , hstream-processing
+    , hstream-connector
     , hstream-sql
     , HUnit
     , random                ^>=1.2

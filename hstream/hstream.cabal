@@ -95,6 +95,7 @@ library
     , containers
     , cryptonite
     , deepseq
+    , diff-flow
     , directory
     , grpc-haskell
     , grpc-haskell-core
@@ -105,7 +106,6 @@ library
     , hstream-common-stats
     , hstream-connector
     , hstream-gossip
-    , hstream-processing
     , hstream-sql
     , hstream-store
     , memory

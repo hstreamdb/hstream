@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE StrictData        #-}
 
-module HStream.Processing.Type
+module HStream.Connector.Type
   ( Timestamp,
     StreamName,
     Offset (..),

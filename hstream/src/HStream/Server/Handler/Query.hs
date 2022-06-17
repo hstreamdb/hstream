@@ -14,7 +14,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (Exception, Handler (..),
                                                    handle)
-import           Control.Monad                    (join, forM)
+import           Control.Monad                    (forM, join)
 import qualified Data.Aeson                       as Aeson
 import           Data.Bifunctor
 import qualified Data.ByteString.Char8            as BS
@@ -41,26 +41,20 @@ import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
+import           HStream.Connector.Common         (SourceConnector (..))
 import qualified HStream.IO.Worker                as IO
+import           HStream.Connector.Type           hiding (StreamName, Timestamp)
 import qualified HStream.Logger                   as Log
-import           HStream.Processing.Connector     (SourceConnectorWithoutCkp (..))
-import           HStream.Processing.Encoding      (Deserializer (..),
-                                                   Serde (..), Serializer (..))
-import           HStream.Processing.Processor     (getTaskName,
-                                                   taskBuilderWithName)
-import           HStream.Processing.Store
-import qualified HStream.Processing.Stream        as PS
-import           HStream.Processing.Type          hiding (StreamName, Timestamp)
 import           HStream.Server.Config
 import qualified HStream.Server.Core.Common       as Core
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
+import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.View
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamApi as API
+import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
@@ -70,13 +64,12 @@ import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
--- import           HStream.SQL.ExecPlan             (genExecutionPlan)
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
-import Types
+import           Types
 
 -- Other sqls, called in 'sqlAction'
 executeQueryHandler :: ServerContext
@@ -146,6 +139,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                     }
         _ <- deleteConnectorHandler sc (ServerNormalRequest _metadata request)
         returnCommandQueryEmptyResp
+    -- FIXME: Return non-empty results
     ShowPlan showObject -> case showObject of
       SStreams -> do
         _ <- listStreamsHandler sc (ServerNormalRequest _metadata ListStreamsRequest)
