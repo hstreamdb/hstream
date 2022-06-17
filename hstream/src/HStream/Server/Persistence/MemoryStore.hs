@@ -23,7 +23,7 @@ import           HStream.Server.Persistence.Utils
 import           HStream.SQL.Codegen                  (SerMat)
 import           HStream.Utils                        (TaskStatus (..))
 
-import           Types
+import           DiffFlow.Types
 
 type PStoreMem   = (QueriesM, ConnectorsM)
 type ConnectorsM = IORef (HM.HashMap CBytes PersistentConnector)

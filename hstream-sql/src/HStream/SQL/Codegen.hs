@@ -43,8 +43,8 @@ import           HStream.SQL.Internal.Codegen    (binOpOnValue, compareValue,
 import           HStream.SQL.Parse               (parseAndRefine)
 import           HStream.Utils                   (genUnique)
 
-import           Graph
-import           Types
+import           DiffFlow.Graph
+import           DiffFlow.Types
 --------------------------------------------------------------------------------
 
 type SerMat  = Object

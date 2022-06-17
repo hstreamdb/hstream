@@ -59,10 +59,10 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    newRandomText, runWithAddr,
                                                    textToCBytes)
 
-import           Graph
-import           Shard
-import           Types
-import           Weird
+import           DiffFlow.Graph
+import           DiffFlow.Shard
+import           DiffFlow.Types
+import           DiffFlow.Weird
 
 runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> Maybe RWindow -> GraphBuilder -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> IO ()
 runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType window graphBuilder accumulation = do

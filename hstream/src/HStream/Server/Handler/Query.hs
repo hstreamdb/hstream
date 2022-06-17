@@ -69,7 +69,7 @@ import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
-import           Types
+import           DiffFlow.Types
 
 -- Other sqls, called in 'sqlAction'
 executeQueryHandler :: ServerContext
