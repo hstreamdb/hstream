@@ -37,7 +37,6 @@ import           HStream.Utils                    (Interval, formatStatus,
                                                    showNodeStatus)
 import qualified HStream.Admin.Server.Types as AT
 import qualified HStream.IO.Worker as IO
-import qualified Data.Aeson.Text as Aeson
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -215,13 +214,12 @@ runIO ServerContext{..} (AT.IOCmdStop taskId) = do
   IO.stopIOTask scIOWorker taskId
   return $ plainResponse "OK"
 runIO ServerContext {..} AT.IOCmdList = do
-  let headers = ["id" :: Text, "status", "latest_state"]
+  let headers = ["id" :: Text, "status"]
   items <- IO.listIOTasks scIOWorker
   rows <- forM items $ \IO.IOTaskItem {..} ->
     return
       [ taskId,
-        Text.pack $ show status,
-        TL.toStrict $ Aeson.encodeToLazyText latestState
+        Text.pack $ show status
       ]
   return . tableResponse $ Aeson.object ["headers" .= headers, "rows" .= rows]
 

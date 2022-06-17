@@ -48,6 +48,7 @@ library
     HStream.IO.IOTask
     HStream.IO.Worker
     HStream.IO.KvStorage
+    HStream.IO.Types
 
   build-depends:
     , aeson
