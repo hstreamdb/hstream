@@ -66,6 +66,7 @@ import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (mkServerErrResp, returnResp,
                                                    textToCBytes)
+import           Proto3.Suite                     (Enumerated (Enumerated))
 
 --------------------------------------------------------------------------------
 
@@ -208,6 +209,11 @@ doSubInit ctx@ServerContext{..} subId = do
       ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
+      startOffset <- case subscriptionOffset of
+        (Enumerated (Right FixOffsetEARLIEST)) -> return EarlistOffset
+        (Enumerated (Right FixOffsetLATEST))   -> return LatestOffset
+        _                                      -> throwIO InvalidSubscriptionOffset
+
       unackedRecords <- newTVarIO 0
       consumerContexts <- newTVarIO HM.empty
       shardContexts <- newTVarIO HM.empty
@@ -229,7 +235,8 @@ doSubInit ctx@ServerContext{..} subId = do
                 subAssignment = assignment,
                 subCurrentTime = curTime,
                 subWaitingCheckedRecordIds = checkList,
-                subWaitingCheckedRecordIdsIndex = checkListIndex
+                subWaitingCheckedRecordIdsIndex = checkListIndex,
+                subStartOffset = startOffset
               }
       shards <- getShards ctx subscriptionStreamName
       Log.debug $ "get shards: " <> Log.buildString (show shards)
@@ -331,7 +338,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
           atomically $ do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
-          addRead subLdCkpReader subAssignment
+          addRead scLDClient subLdCkpReader subAssignment subStartOffset
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
@@ -401,12 +408,15 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
               []
               shards
 
-    addRead :: S.LDSyncCkpReader -> Assignment -> IO ()
-    addRead ldCkpReader Assignment {..} = do
+    addRead :: S.LDClient -> S.LDSyncCkpReader -> Assignment -> SubStartOffset -> IO ()
+    addRead client ldCkpReader Assignment {..} startOffsest = do
       shards <- atomically $ swapTVar waitingReadShards []
       forM_ shards $ \shard -> do
         Log.debug $ "start reading " <> Log.buildString (show shard)
-        S.startReadingFromCheckpointOrStart ldCkpReader shard (Just S.LSN_MIN) S.LSN_MAX
+        offset <- case startOffsest of
+          EarlistOffset -> return S.LSN_MIN
+          LatestOffset  -> (+1) <$> S.getTailLSN client shard
+        S.startReadingFromCheckpointOrStart ldCkpReader shard (Just offset) S.LSN_MAX
 
     readRecordBatches :: IO [S.DataRecord BS.ByteString]
     readRecordBatches = do
@@ -918,6 +928,10 @@ data SubscriptionOnDifferentNode = SubscriptionOnDifferentNode
   deriving (Show)
 instance Exception SubscriptionOnDifferentNode
 
+data InvalidSubscriptionOffset = InvalidSubscriptionOffset
+  deriving (Show)
+instance Exception InvalidSubscriptionOffset
+
 subscriptionExceptionHandler :: Handlers (StatusCode, StatusDetails)
 subscriptionExceptionHandler = [
   Handler (\(err :: SubscriptionOnDifferentNode) -> do
@@ -931,7 +945,10 @@ subscriptionExceptionHandler = [
     return (StatusInvalidArgument, StatusDetails ("Consumer " <> encodeUtf8 name <> " exist"))),
   Handler (\(err :: Core.SubscriptionIsDeleting) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAborted, "Subscription is being deleted, please wait a while"))
+    return (StatusAborted, "Subscription is being deleted, please wait a while")),
+  Handler (\(err :: InvalidSubscriptionOffset) -> do
+    Log.warning $ Log.buildString' err
+    return (StatusInvalidArgument, "subscriptionOffset is invalid."))
   ]
 
 subExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
