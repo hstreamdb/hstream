@@ -99,7 +99,7 @@ runStats statsHolder AT.StatsCommand{..} = do
 
     doPerStreamTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerStreamTimeSeries name intervals =
-      let cfun = Stats.stream_time_series_getall_by_name' statsHolder
+      let cfun = Stats.stream_time_series_getall statsHolder
        in doTimeSeries name "stream_name" intervals cfun
 
     doPerSubscriptionStats name = do
@@ -111,7 +111,7 @@ runStats statsHolder AT.StatsCommand{..} = do
 
     doPerSubscriptionTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerSubscriptionTimeSeries name intervals =
-      let cfun = Stats.subscription_time_series_getall_by_name' statsHolder
+      let cfun = Stats.subscription_time_series_getall statsHolder
        in doTimeSeries name "subscription_id" intervals cfun
 
     doPerHandleTimeSeries :: CBytes -> [Interval] -> IO Text
