@@ -55,10 +55,10 @@ import           Foreign.Ptr
 import           Foreign.Storable
 import           GHC.Prim
 import qualified Z.Data.Array       as Z
-import qualified Z.Data.CBytes      as CBytes
 import           Z.Data.CBytes      (CBytes)
-import qualified Z.Foreign          as Z
+import qualified Z.Data.CBytes      as CBytes
 import           Z.Foreign          (StdString)
+import qualified Z.Foreign          as Z
 
 
 -------------------------------------------------------------------------------

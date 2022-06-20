@@ -135,9 +135,9 @@ import           Data.Bits                        (bit)
 import           Data.Default                     (def)
 import           Data.Foldable                    (foldrM)
 import           Data.Hashable                    (Hashable)
-import           Data.Int                         (Int64)
 import           Data.IORef                       (IORef, atomicModifyIORef',
                                                    newIORef, readIORef)
+import           Data.Int                         (Int64)
 import           Data.Map.Strict                  (Map)
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
@@ -147,8 +147,8 @@ import           GHC.Generics                     (Generic)
 import           GHC.Stack                        (HasCallStack, callStack)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import qualified Z.Data.Builder                   as ZB
-import qualified Z.Data.CBytes                    as CBytes
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.CBytes                    as CBytes
 import qualified Z.Data.Text                      as ZT
 import qualified Z.Data.Vector                    as ZV
 import qualified Z.IO.FileSystem                  as FS

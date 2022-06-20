@@ -31,11 +31,11 @@ import           Proto3.Suite.Class               (def)
 import           Z.IO.Network                     (SocketAddr)
 
 import           HStream.Client.Utils
-import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamApi        as API
 import           HStream.SQL.Codegen              (DropObject (..),
                                                    InsertType (..), StreamName,
                                                    TerminationSelection (..))
+import           HStream.Server.HStreamApi
+import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
 

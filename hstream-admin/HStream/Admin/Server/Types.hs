@@ -7,8 +7,8 @@ import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
 import qualified Text.Read                 as Read
-import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
+import qualified Z.Data.CBytes             as CB
 import           Z.IO.Network.SocketAddr   (PortNumber)
 
 import qualified HStream.Logger            as Log
@@ -208,6 +208,7 @@ data StatsCategory
   | PerSubscriptionTimeSeries
   | PerHandleTimeSeries
   | ServerHistogram
+  | StatsTable
   deriving (Show, Eq)
 
 instance Read StatsCategory where
@@ -215,12 +216,13 @@ instance Read StatsCategory where
     l <- Read.lexP
     return $
       case l of
-        Read.Ident "stream_counter" -> PerStreamStats
-        Read.Ident "stream" -> PerStreamTimeSeries
+        Read.Ident "stream_counter"       -> PerStreamStats
+        Read.Ident "stream"               -> PerStreamTimeSeries
         Read.Ident "subscription_counter" -> PerSubscriptionStats
-        Read.Ident "subscription" -> PerSubscriptionTimeSeries
-        Read.Ident "handle" -> PerHandleTimeSeries
-        Read.Ident "server_histogram" -> ServerHistogram
+        Read.Ident "subscription"         -> PerSubscriptionTimeSeries
+        Read.Ident "handle"               -> PerHandleTimeSeries
+        Read.Ident "server_histogram"     -> ServerHistogram
+        Read.Ident "table"                -> StatsTable
         x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
 
 data StatsCommand = StatsCommand

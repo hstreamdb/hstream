@@ -15,8 +15,9 @@ import           Foreign.ForeignPtr
 import           Foreign.Ptr                (FunPtr, Ptr)
 import qualified System.Console.Haskeline   as H
 import qualified Z.Data.Builder             as ZBuilder
-import qualified Z.Data.CBytes              as CB
 import           Z.Data.CBytes              (CBytes)
+import qualified Z.Data.CBytes              as CB
+import           Z.IO.Network               (PortNumber)
 
 import           HStream.Admin.Server.Types
 import qualified HStream.Common.Query       as Query
@@ -24,9 +25,7 @@ import qualified HStream.Common.Query       as Query
 
 serverSqlRepl :: CliOpts -> ServerSqlCmdOpts -> IO ()
 serverSqlRepl CliOpts{..} ServerSqlCmdOpts{..} = do
-  query <- newHStreamQuery $ optServerHost
-                          <> ":"
-                          <> CB.buildCBytes (ZBuilder.int optServerPort)
+  query <- newHStreamQuery optServerHost optServerPort
   case serverSqlCmdRepl of
     Just sql -> runSql query sql
     Nothing  -> runRepl query
@@ -84,10 +83,13 @@ type HStreamQuery = ForeignPtr C_HStreamQuery
 instance Query.QueryBaseRep HStreamQuery where
   eqQueryBaseRep = castForeignPtr
 
-newHStreamQuery :: CBytes -> IO HStreamQuery
-newHStreamQuery addr = CB.withCBytes addr $ \addr' -> do
+newHStreamQuery' :: CBytes -> IO HStreamQuery
+newHStreamQuery' addr = CB.withCBytes addr $ \addr' -> do
    ldq_ptr <- new_hstream_query addr'
    newForeignPtr delete_hstream_query_fun ldq_ptr
+
+newHStreamQuery :: CBytes -> PortNumber -> IO HStreamQuery
+newHStreamQuery host port = newHStreamQuery' (host <> ":" <> CB.buildCBytes (ZBuilder.int port))
 
 foreign import ccall safe "new_hstream_query"
   new_hstream_query :: Ptr Word8 -> IO (Ptr C_HStreamQuery)

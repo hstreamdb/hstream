@@ -13,10 +13,10 @@ import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Stack                      (HasCallStack)
-import qualified Z.Data.CBytes                  as ZC
 import           Z.Data.CBytes                  (CBytes)
-import qualified Z.Foreign                      as Z
+import qualified Z.Data.CBytes                  as ZC
 import           Z.Foreign                      (BA#, MBA#)
+import qualified Z.Foreign                      as Z
 
 import qualified HStream.Store.Exception        as E
 import qualified HStream.Store.Internal.Foreign as FFI

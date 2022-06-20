@@ -1,5 +1,7 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs     #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE GADTs            #-}
+{-# LANGUAGE TypeApplications #-}
+
 {-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
@@ -20,11 +22,15 @@ import           Network.GRPC.HighLevel.Generated
 import qualified Options.Applicative              as O
 import qualified Options.Applicative.Help         as O
 import           Proto3.Suite                     (HasDefault (def))
-import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.CBytes                    as CB
+import           Z.IO.Network                     (PortNumber)
 
+
+import           HStream.Admin.Server.Command     (newHStreamQuery)
 import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
+import qualified HStream.Common.Query             as Query
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -37,6 +43,7 @@ import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval, formatStatus,
                                                    interval2ms, returnResp,
                                                    showNodeStatus)
+
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -61,7 +68,7 @@ adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
   let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
   result <- case adminCommand of
-              AT.AdminStatsCommand c        -> runStats scStatsHolder c
+              AT.AdminStatsCommand c        -> runStats sc scStatsHolder c
               AT.AdminResetStatsCommand     -> runResetStats scStatsHolder
               AT.AdminStreamCommand c       -> runStream sc c
               AT.AdminSubscriptionCommand c -> runSubscription sc c
@@ -80,15 +87,16 @@ handleParseResult (O.CompletionInvoked compl) = throwParsingErr =<< O.execComple
 -------------------------------------------------------------------------------
 -- Admin Stats Command
 
-runStats :: Stats.StatsHolder -> AT.StatsCommand -> IO Text
-runStats statsHolder AT.StatsCommand{..} = do
+runStats :: ServerContext -> Stats.StatsHolder -> AT.StatsCommand -> IO Text
+runStats ServerContext{..} statsHolder AT.StatsCommand{..} = do
   case statsCategory of
-    AT.PerStreamStats -> doPerStreamStats statsName
-    AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
-    AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
+    AT.PerStreamStats            -> doPerStreamStats            statsName
+    AT.PerStreamTimeSeries       -> doPerStreamTimeSeries       statsName statsIntervals
+    AT.PerSubscriptionStats      -> doPerSubscriptionStats      statsName
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
-    AT.PerHandleTimeSeries -> doPerHandleTimeSeries statsName statsIntervals
-    AT.ServerHistogram -> doServerHistogram statsName
+    AT.PerHandleTimeSeries       -> doPerHandleTimeSeries       statsName statsIntervals
+    AT.ServerHistogram           -> doServerHistogram           statsName
+    AT.StatsTable                -> doStatsTable                statsName gRPCServerHost gRPCServerPort
   where
     doPerStreamStats name = do
       m <- Stats.stream_stat_getall statsHolder name
@@ -128,6 +136,13 @@ runStats statsHolder AT.StatsCommand{..} = do
           rows = [map show ps]
           content = Aeson.object ["headers" .= headers, "rows" .= rows]
       return $ tableResponse content
+
+    doStatsTable :: CBytes -> CBytes -> PortNumber -> IO Text
+    doStatsTable name host port = do
+      hsq <- newHStreamQuery host port
+      let sql = "select * from " <> name <> ";"
+      xs <- Query.runQuery hsq sql
+      pure $ either Text.pack (mconcat . map Text.pack) xs
 
 doTimeSeries :: CBytes
              -> CBytes

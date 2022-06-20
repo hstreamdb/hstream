@@ -42,8 +42,8 @@ import           Test.Hspec
 
 import           HStream.Client.Action
 import           HStream.Client.Utils
-import           HStream.Server.HStreamApi
 import           HStream.SQL
+import           HStream.Server.HStreamApi
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),

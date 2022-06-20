@@ -28,8 +28,8 @@ import           Foreign.ForeignPtr
 import           Foreign.Marshal.Alloc (free)
 import           Foreign.Ptr
 import qualified Text.Layout.Table     as Table
-import qualified Z.Data.CBytes         as CBytes
 import           Z.Data.CBytes         (CBytes)
+import qualified Z.Data.CBytes         as CBytes
 import qualified Z.Foreign             as Z
 
 import           HStream.Foreign

@@ -23,6 +23,8 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified Proto3.Suite                     as PB
 
+import           Z.IO.Network                     (PortNumber)
+
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"
 
@@ -36,6 +38,8 @@ type ServerState = PB.Enumerated NodeState
 data ServerContext = ServerContext {
     scLDClient               :: HS.LDClient
   , serverID                 :: Word32
+  , gRPCServerHost           :: CB.CBytes
+  , gRPCServerPort           :: PortNumber
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
   , zkHandle                 :: ZHandle

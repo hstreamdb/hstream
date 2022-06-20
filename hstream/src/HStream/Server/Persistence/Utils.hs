@@ -51,8 +51,8 @@ import           Data.ByteString.Lazy.Char8           (unpack)
 import           Data.Functor                         ((<&>))
 import qualified Data.Text                            as T
 import           GHC.Stack                            (HasCallStack)
-import qualified Z.Data.CBytes                        as CB
 import           Z.Data.CBytes                        (CBytes)
+import qualified Z.Data.CBytes                        as CB
 import           Z.Data.Vector                        (Bytes)
 import qualified Z.Foreign                            as ZF
 import           ZooKeeper                            (zooCreate,

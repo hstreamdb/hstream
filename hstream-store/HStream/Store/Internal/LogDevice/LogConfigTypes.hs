@@ -27,11 +27,11 @@ import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Stack                                      (HasCallStack,
                                                                  callStack)
-import qualified Z.Data.CBytes                                  as CBytes
 import           Z.Data.CBytes                                  (CBytes)
-import qualified Z.Foreign                                      as Z
+import qualified Z.Data.CBytes                                  as CBytes
 import           Z.Foreign                                      (BA#, BAArray#,
                                                                  MBA#)
+import qualified Z.Foreign                                      as Z
 
 import           HStream.Foreign                                hiding (BA#,
                                                                  BAArray#, MBA#)

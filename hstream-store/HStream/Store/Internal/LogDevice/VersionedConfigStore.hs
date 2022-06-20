@@ -10,11 +10,11 @@ import           Foreign.Ptr
 import           Foreign.StablePtr
 import           GHC.Conc
 import           GHC.Stack
-import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.CBytes                  (CBytes)
+import qualified Z.Data.CBytes                  as CBytes
 import           Z.Data.Vector                  (Bytes)
-import qualified Z.Foreign                      as Z
 import           Z.Foreign                      (BA#)
+import qualified Z.Foreign                      as Z
 
 import qualified HStream.Logger                 as Log
 import qualified HStream.Store.Exception        as E

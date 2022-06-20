@@ -30,8 +30,8 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.Data.CBytes                    as CB
 
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
@@ -42,9 +42,9 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
+import           HStream.SQL.Codegen
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
                                                    textToCBytes)

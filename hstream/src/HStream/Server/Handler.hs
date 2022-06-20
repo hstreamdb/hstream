@@ -15,6 +15,7 @@ where
 
 import           Network.GRPC.HighLevel.Generated
 
+import           HStream.Server.HStreamApi
 import           HStream.Server.Handler.Admin
 import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
@@ -24,7 +25,6 @@ import           HStream.Server.Handler.StoreAdmin
 import           HStream.Server.Handler.Stream
 import           HStream.Server.Handler.Subscription
 import           HStream.Server.Handler.View
-import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 
 --------------------------------------------------------------------------------

@@ -82,8 +82,8 @@ import           Data.Primitive.PrimArray
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import qualified Text.Read                as Read
-import qualified Z.Data.CBytes            as CBytes
 import           Z.Data.CBytes            (CBytes, withCBytesUnsafe)
+import qualified Z.Data.CBytes            as CBytes
 
 import           HStream.Foreign
 import qualified HStream.Logger           as Log
