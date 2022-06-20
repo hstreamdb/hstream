@@ -75,6 +75,9 @@ data SubscribeState
   | SubscribeStateStopped
   deriving (Eq, Show)
 
+data SubStartOffset = EarlistOffset | LatestOffset
+  deriving (Eq, Show)
+
 data SubscribeContext = SubscribeContext
   { subSubscriptionId    :: T.Text,
     subStreamName        :: T.Text,
@@ -88,7 +91,8 @@ data SubscribeContext = SubscribeContext
     subAssignment        :: Assignment,
     subCurrentTime ::  TVar Word64,
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
-    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds)
+    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
+    subStartOffset       :: SubStartOffset
   }
 
 data CheckedRecordIds = CheckedRecordIds {

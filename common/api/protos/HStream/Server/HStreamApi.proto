@@ -181,6 +181,7 @@ message Subscription {
   string streamName = 2;
   int32 ackTimeoutSeconds = 3;
   int32 maxUnackedRecords = 4;
+  FixOffset offset = 5;
 }
 
 message DeleteSubscriptionRequest {

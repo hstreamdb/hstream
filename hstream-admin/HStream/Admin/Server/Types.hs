@@ -14,6 +14,7 @@ import           Z.IO.Network.SocketAddr   (PortNumber)
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Utils             as U
+import           Proto3.Suite              (Enumerated (Enumerated))
 
 -------------------------------------------------------------------------------
 
@@ -182,6 +183,14 @@ subscriptionCmdParser = O.hsubparser
                        )
   )
 
+instance Read API.FixOffset where
+  readPrec = do
+    i <- Read.lexP
+    case i of
+        Read.Ident "earlist" -> return API.FixOffsetEARLIEST
+        Read.Ident "latest"  -> return API.FixOffsetLATEST
+        x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
+
 subscriptionParser :: O.Parser API.Subscription
 subscriptionParser = API.Subscription
   <$> O.strOption ( O.long "id" <> O.metavar "SubID"
@@ -193,6 +202,12 @@ subscriptionParser = API.Subscription
   <*> O.option O.auto ( O.long "max-unacked-records" <> O.metavar "INT"
                      <> O.value 10000
                      <> O.help "maximum count of unacked records")
+  <*> (Enumerated <$> O.option O.auto ( O.long "subscription offset"
+                                     <> O.metavar "[earlist|lastest]"
+                                     <> O.value (Right API.FixOffsetLATEST)
+                                     <> O.help "maximum count of unacked records"
+                                      )
+    )
 
 -------------------------------------------------------------------------------
 
