@@ -4,7 +4,7 @@
 
 // N.B. This value is used as a version number of multi language api packages.
 //
-// __VERSION__ = 0.1.1
+// __VERSION__ = 0.1.2
 
 syntax = "proto3";
 
@@ -104,14 +104,14 @@ service HStreamApi {
   rpc ReadShard(ReadShardRequest) returns (ReadShardResponse) {}
 }
 
-enum FixOffset {
+enum SpecialOffset {
   EARLIEST = 0;
   LATEST = 1;
 }
 
 message ShardOffset {
   oneof offset {
-    FixOffset fixOffset = 1;
+    SpecialOffset SpecialOffset = 1;
     RecordId recordOffset = 2;
   }
 }
@@ -121,7 +121,6 @@ message ReadShardRequest {
   string shardId = 2;
   ShardOffset offset = 3;
   uint32 maxRead = 4;
-  uint32 readTimeout = 5;
 }
 
 message ReadShardResponse {
@@ -181,7 +180,7 @@ message Subscription {
   string streamName = 2;
   int32 ackTimeoutSeconds = 3;
   int32 maxUnackedRecords = 4;
-  FixOffset offset = 5;
+  SpecialOffset offset = 5;
 }
 
 message DeleteSubscriptionRequest {

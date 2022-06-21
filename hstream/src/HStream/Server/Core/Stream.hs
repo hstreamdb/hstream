@@ -129,7 +129,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} ldReader = do
   logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
   startLSN <- getStartLSN logId
   void $ S.readerStartReading ldReader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
-  S.readerSetTimeout ldReader (fromIntegral readShardRequestReadTimeout)
+  S.readerSetTimeout ldReader 0
   records <- S.readerRead ldReader (fromIntegral readShardRequestMaxRead)
   let receivedRecordsVecs = decodeRecordBatch <$> records
   let receivedRecords = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
@@ -141,10 +141,10 @@ readShard ServerContext{..} API.ReadShardRequest{..} ldReader = do
     getStartLSN :: S.C_LogID -> IO S.LSN
     getStartLSN logId =
       case fromJust . API.shardOffsetOffset . fromJust $ readShardRequestOffset of
-        API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetEARLIEST)) -> return S.LSN_MIN
-        API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
-        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                        -> return recordIdBatchId
-        _                                                                         -> error "wrong shard offset"
+        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
+        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
+        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
+        _                                                                                 -> error "wrong shard offset"
 
 --------------------------------------------------------------------------------
 

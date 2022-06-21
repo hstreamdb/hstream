@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
@@ -183,12 +185,12 @@ subscriptionCmdParser = O.hsubparser
                        )
   )
 
-instance Read API.FixOffset where
+instance Read API.SpecialOffset where
   readPrec = do
     i <- Read.lexP
     case i of
-        Read.Ident "earlist" -> return API.FixOffsetEARLIEST
-        Read.Ident "latest"  -> return API.FixOffsetLATEST
+        Read.Ident "earlist" -> return API.SpecialOffsetEARLIEST
+        Read.Ident "latest"  -> return API.SpecialOffsetLATEST
         x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
 
 subscriptionParser :: O.Parser API.Subscription
@@ -204,7 +206,7 @@ subscriptionParser = API.Subscription
                      <> O.help "maximum count of unacked records")
   <*> (Enumerated <$> O.option O.auto ( O.long "subscription offset"
                                      <> O.metavar "[earlist|lastest]"
-                                     <> O.value (Right API.FixOffsetLATEST)
+                                     <> O.value (Right API.SpecialOffsetLATEST)
                                      <> O.help "maximum count of unacked records"
                                       )
     )
