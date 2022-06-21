@@ -210,8 +210,8 @@ doSubInit ctx@ServerContext{..} subId = do
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
 
       startOffset <- case subscriptionOffset of
-        (Enumerated (Right FixOffsetEARLIEST)) -> return EarlistOffset
-        (Enumerated (Right FixOffsetLATEST))   -> return LatestOffset
+        (Enumerated (Right SpecialOffsetEARLIEST)) -> return EarlistOffset
+        (Enumerated (Right SpecialOffsetLATEST))   -> return LatestOffset
         _                                      -> throwIO InvalidSubscriptionOffset
 
       unackedRecords <- newTVarIO 0

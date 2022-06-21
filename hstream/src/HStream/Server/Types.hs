@@ -11,7 +11,6 @@ import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
@@ -27,6 +26,7 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
+import           HStream.Server.ReaderPool        (ReaderPool)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (textToCBytes)
@@ -58,8 +58,8 @@ data ServerContext = ServerContext
   , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
-
   , serverOpts               :: ServerOpts
+  , readerPool               :: ReaderPool
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

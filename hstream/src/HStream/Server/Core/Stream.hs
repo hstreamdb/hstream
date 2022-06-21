@@ -14,7 +14,7 @@ module HStream.Server.Core.Stream
   ) where
 
 import           Control.Exception                 (Exception (displayException),
-                                                    catch, throwIO)
+                                                    bracket, catch, throwIO)
 import           Control.Monad                     (forM_, unless, void, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
@@ -34,6 +34,7 @@ import           HStream.Server.HStreamApi         (ReadShardRequest (readShardR
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
+import           HStream.Server.ReaderPool         (getReader, putReader)
 import           HStream.Server.Types              (ServerContext (..),
                                                     getShard, getShardName)
 import qualified HStream.Stats                     as Stats
@@ -56,8 +57,8 @@ createStream ServerContext{..} stream@API.Stream{
                    , S.logBacklogDuration   = S.defAttr1 $
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
   catch (S.createStream scLDClient streamId attrs) (\(_ :: S.EXISTS) -> throwIO StreamExists)
-  let shards = if shardCount <= 0 then 1 else shardCount
-  let partions :: [Word32] = [0..shards - 1]
+  when (shardCount <= 0) $ throwIO (InvalidArgument "ShardCount should be a positive number")
+  let partions :: [Word32] = [0..shardCount - 1]
   forM_ partions $ \idx -> do
     S.createStreamPartition scLDClient streamId (Just . getShardName $ fromIntegral idx)
   returnResp stream
@@ -126,15 +127,12 @@ readShard
   -> IO (V.Vector API.ReceivedRecord)
 readShard ServerContext{..} API.ReadShardRequest{..} = do
   logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
-  let ldReaderBufferSize = 10
-  ldReader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
   startLSN <- getStartLSN logId
-  void $ S.readerStartReading ldReader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
-  S.readerSetTimeout ldReader (fromIntegral readShardRequestReadTimeout)
-  records <- S.readerRead ldReader (fromIntegral readShardRequestMaxRead)
-  let receivedRecordsVecs = decodeRecordBatch <$> records
-  let receivedRecords = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
-  return receivedRecords
+
+  bracket
+    (getReader readerPool)
+    (flip S.readerStopReading logId >> putReader readerPool)
+    (\reader -> readData reader logId startLSN)
   where
     streamId = transToStreamName readShardRequestStreamName
     shard = textToCBytes readShardRequestShardId
@@ -142,10 +140,18 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
     getStartLSN :: S.C_LogID -> IO S.LSN
     getStartLSN logId =
       case fromJust . API.shardOffsetOffset . fromJust $ readShardRequestOffset of
-        API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetEARLIEST)) -> return S.LSN_MIN
-        API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
-        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                        -> return recordIdBatchId
-        _ -> error "wrong shard offset"
+        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
+        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
+        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
+        _                                                                                 -> error "wrong shard offset"
+
+    readData :: S.LDReader -> S.C_LogID -> S.LSN -> IO (V.Vector API.ReceivedRecord)
+    readData reader logId startLSN = do
+      void $ S.readerStartReading reader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
+      S.readerSetTimeout reader 0
+      records <- S.readerRead reader (fromIntegral readShardRequestMaxRead)
+      let receivedRecordsVecs = decodeRecordBatch <$> records
+      return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
 
 --------------------------------------------------------------------------------
 
