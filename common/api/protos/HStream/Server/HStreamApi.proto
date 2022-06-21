@@ -51,6 +51,9 @@ service HStreamApi {
   // Cluster APIs
   rpc DescribeCluster(google.protobuf.Empty) returns (DescribeClusterResponse) {}
 
+  // Admin Command
+  rpc SendAdminCommand(AdminCommandRequest) returns (AdminCommandResponse);
+
   // ---------------------------------------------------------------------------
   // Developing APIs
   // ---------------------------------------------------------------------------
@@ -60,9 +63,6 @@ service HStreamApi {
     returns (PerStreamTimeSeriesStatsResponse);
   rpc PerStreamTimeSeriesStatsAll(PerStreamTimeSeriesStatsAllRequest)
     returns (PerStreamTimeSeriesStatsAllResponse);
-
-  // Admin Command
-  rpc SendAdminCommand(AdminCommandRequest) returns (AdminCommandResponse);
 
   // only for push query
   // e.g., select (with emit changes)

@@ -48,7 +48,7 @@ statsSpec = describe "HStream.Stats" $ do
   it "pre stream stats time series" $ do
     h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
-    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add stream_time_series_get stream_time_series_getall_by_name'
+    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add stream_time_series_get stream_time_series_getall
 
     mkTest "appends" stream_time_series_add_append_in_bytes
 
@@ -69,7 +69,7 @@ statsSpec = describe "HStream.Stats" $ do
   it "pre subscription stats time series" $ do
     h <- newStatsHolder True
     let intervals = [5 * 1000, 10 * 1000] -- 5, 10 sec
-    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add subscription_time_series_get subscription_time_series_getall_by_name'
+    let mkTest name stats_add = mkTimeSeriesTest h intervals name stats_add subscription_time_series_get subscription_time_series_getall
 
     mkTest "send_out_bytes" subscription_time_series_add_send_out_bytes
     mkTest "acks" subscription_time_series_add_acks
@@ -173,7 +173,7 @@ threadedStatsSpec = describe "HStream.Stats (threaded)" $ do
       subscription_time_series_add_send_out_bytes h "b_stream" 1000
 
     let max_intervals = [60 * 1000]   -- 1min
-    m <- subscription_time_series_getall_by_name h "sends" max_intervals
+    Right m <- subscription_time_series_getall h "sends" max_intervals
     Map.lookup "non-existed-stream-name" m `shouldBe` Nothing
     subscription_time_series_get h "sends" "non-existed-stream-name" max_intervals
       `shouldReturn` Nothing
@@ -189,7 +189,7 @@ miscSpec = describe "HStream.Stats (misc)" $ do
 
   it "get empty stream_time_series should return empty map" $ do
     h <- newServerStatsHolder
-    stream_time_series_getall_by_name' h "appends" [1]
+    stream_time_series_getall h "appends" [1]
       `shouldReturn` Right Map.empty
 
   it ("intervals should not larger than MaxInterval defined in .inc file"
@@ -198,5 +198,5 @@ miscSpec = describe "HStream.Stats (misc)" $ do
 
     let tooBig = [24 * 60 * 60 * 1000] -- 24h
     stream_time_series_add_append_in_bytes h "stream" 1000
-    m <- stream_time_series_getall_by_name' h "appends" tooBig
+    m <- stream_time_series_getall h "appends" tooBig
     m `shouldSatisfy` isLeft

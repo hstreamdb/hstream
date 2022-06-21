@@ -41,8 +41,8 @@ module HStream.Stats
   , stream_time_series_add_append_failed_requests
   , stream_time_series_add_record_bytes
   , stream_time_series_get
+  , stream_time_series_getall
   , stream_time_series_getall_by_name
-  , stream_time_series_getall_by_name'
 
     -- * PerSubscriptionStats
     -- ** Counters
@@ -57,8 +57,7 @@ module HStream.Stats
   , subscription_time_series_add_request_messages
   , subscription_time_series_add_response_messages
   , subscription_time_series_get
-  , subscription_time_series_getall_by_name
-  , subscription_time_series_getall_by_name'
+  , subscription_time_series_getall
 
     -- * PerHandleStats
     -- ** Time series
@@ -179,6 +178,7 @@ stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
     !pa <- unsafeFreezePrimArray mpa
     return $ if ret == 0 then Just (primArrayToList pa) else Nothing
 
+{-# DEPRECATED stream_time_series_getall_by_name "Don't use this, use stream_time_series_getall instead" #-}
 stream_time_series_getall_by_name
   :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])
 stream_time_series_getall_by_name (StatsHolder holder) name intervals =
@@ -199,12 +199,12 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
 -- TODO: make intervals checking by default
 --
 -- | the same as 'stream_time_series_getall_by_name', but check intervals first.
-stream_time_series_getall_by_name'
+stream_time_series_getall
   :: StatsHolder
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-stream_time_series_getall_by_name' (StatsHolder holder) name intervals =
+stream_time_series_getall (StatsHolder holder) name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
@@ -253,29 +253,12 @@ subscription_time_series_get (StatsHolder holder) method_name stream_name interv
     !pa <- unsafeFreezePrimArray mpa
     return $ if ret == 0 then Just (primArrayToList pa) else Nothing
 
-subscription_time_series_getall_by_name
-  :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])
-subscription_time_series_getall_by_name (StatsHolder holder) name intervals =
-  withForeignPtr holder $ \holder' ->
-  withCBytesUnsafe name $ \name' -> do
-    let interval_len = length intervals
-    -- NOTE only for unsafe ffi
-    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
-    (ret, statMap) <-
-      peekCppMap
-        (I.subscription_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
-        peekStdStringToCBytesN c_delete_vector_of_string
-        peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
-    if ret == 0 then pure statMap
-                else do Log.fatal "subscription_time_series_getall failed!"
-                        pure Map.empty
-
-subscription_time_series_getall_by_name'
+subscription_time_series_getall
   :: StatsHolder
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-subscription_time_series_getall_by_name' (StatsHolder holder) name intervals =
+subscription_time_series_getall (StatsHolder holder) name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
