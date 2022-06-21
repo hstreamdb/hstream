@@ -1,10 +1,11 @@
-import os
+# sed "s/__VERSION__/your_pkg_version/g" setup_temp.py > setup.py
+
 import setuptools
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-verison = os.getenv("PACKAGE_VERSION", "0.0.3")
+verison = "__VERSION__"
 
 setuptools.setup(
     name="hstreamdb-api",
