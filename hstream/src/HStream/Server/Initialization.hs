@@ -32,9 +32,25 @@ import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
+import           HStream.Server.HStreamApi
+import           HStream.Server.Persistence       (NodeInfo (..),
+                                                   decodeZNodeValue,
+                                                   encodeValueToBytes,
+                                                   getServerNode',
+                                                   serverRootLockPath,
+                                                   serverRootPath)
+import           HStream.Server.ReaderPool        (mkReaderPool)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
+import           HStream.Utils
+import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
+                                                   AuthProperty (authPropName),
+                                                   ProcessMeta,
+                                                   ServerSSLConfig (ServerSSLConfig),
+                                                   SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
+                                                   StatusCode (StatusOk),
+                                                   getAuthProperties)
 
 initializeServer
   :: ServerOpts
@@ -57,6 +73,9 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
 
   hashRing <- initializeHashRing gossipContext
 
+  let readerNums = 8
+  readerPool <- mkReaderPool ldclient readerNums
+
   return
     ServerContext
       { zkHandle                 = zk
@@ -74,6 +93,7 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
       , loadBalanceHashRing      = hashRing
       , scServerState            = serverState
       , gossipContext            = gossipContext
+      , readerPool               = readerPool
       }
 
 --------------------------------------------------------------------------------

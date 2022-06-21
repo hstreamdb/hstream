@@ -25,6 +25,7 @@ import           HStream.Connector.HStore         (transToStreamName)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
+import           HStream.Server.ReaderPool        (ReaderPool)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import HStream.Connector.HStore (transToStreamName)
@@ -56,6 +57,7 @@ data ServerContext = ServerContext
   , loadBalanceHashRing      :: TVar HashRing
   , scServerState            :: MVar ServerState
   , gossipContext            :: GossipContext
+  , readerPool               :: ReaderPool
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

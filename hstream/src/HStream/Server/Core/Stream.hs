@@ -123,11 +123,10 @@ readShard
   :: HasCallStack
   => ServerContext
   -> API.ReadShardRequest
+  -> S.LDReader
   -> IO (V.Vector API.ReceivedRecord)
-readShard ServerContext{..} API.ReadShardRequest{..} = do
+readShard ServerContext{..} API.ReadShardRequest{..} ldReader = do
   logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
-  let ldReaderBufferSize = 10
-  ldReader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
   startLSN <- getStartLSN logId
   void $ S.readerStartReading ldReader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
   S.readerSetTimeout ldReader (fromIntegral readShardRequestReadTimeout)
@@ -145,7 +144,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
         API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetEARLIEST)) -> return S.LSN_MIN
         API.ShardOffsetOffsetFixOffset (Enumerated (Right API.FixOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
         API.ShardOffsetOffsetRecordOffset API.RecordId{..}                        -> return recordIdBatchId
-        _ -> error "wrong shard offset"
+        _                                                                         -> error "wrong shard offset"
 
 --------------------------------------------------------------------------------
 

@@ -57,6 +57,7 @@ library
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
     HStream.Server.Types
+    HStream.Server.ReaderPool
 
   other-modules:
     HStream.Server.Core.Common
