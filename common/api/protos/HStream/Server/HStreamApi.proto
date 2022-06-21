@@ -4,7 +4,7 @@
 
 // N.B. This value is used as a version number of multi language api packages.
 //
-// __VERSION__ = 0.1.0
+// __VERSION__ = 0.1.1
 
 syntax = "proto3";
 

@@ -54,6 +54,7 @@ jobs:
             --grpc_python_out=python/src \
             ./protos/HStream/Server/HStreamApi.proto
           cd python
+          sed "s/__VERSION__/${PACKAGE_VERSION}/g" setup_temp.py > setup.py
           python3 setup.py sdist
 
       - name: upload
