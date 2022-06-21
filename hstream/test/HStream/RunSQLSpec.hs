@@ -92,7 +92,7 @@ viewSpecAround = provideRunTest setup clean
                                 <> " AS SELECT a, 1 AS b FROM " <> source1
                                 <> " EMIT CHANGES;"
       runQuerySimple_ api $ "CREATE VIEW " <> viewName
-                         <> " AS SELECT SUM(a) FROM " <> source2
+                         <> " AS SELECT SUM(a), b FROM " <> source2
                          <> " GROUP BY b EMIT CHANGES;"
       -- FIXME: wait the SELECT task to be initialized.
       threadDelay 5000000
@@ -124,12 +124,16 @@ viewSpec =
   it "select from view" $ \(api, (source1, _source2, viewName)) -> do
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (1);"
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
-    threadDelay 4000000
+    threadDelay 10000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 3)])
+      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
+                                                  , ("b", Aeson.Number 1)
+                                                  ])
 
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (3);"
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
-    threadDelay 4000000
+    threadDelay 10000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 10)])
+      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
+                                                  , ("b", Aeson.Number 1)
+                                                  ])

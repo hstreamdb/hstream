@@ -62,6 +62,7 @@ import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
+import qualified HStream.SQL.Internal.Codegen     as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import qualified HStream.Store                    as HS
@@ -187,8 +188,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
               x <- sendResp mempty
               return [x]
             _  -> do
-              forM dcbChanges $ \change -> do
-                sendResp (dcRow change)
+              forM (filterView rSelectViewWhere dcbChanges) $ \change -> do
+                sendResp (dcRow $ mapView rSelectViewSelect change)
           return $ L.last results
     ExplainPlan sql -> do
       undefined
@@ -210,6 +211,23 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       returnCommandQueryResp
         (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
     discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
+
+mapView :: SelectViewSelect -> DataChange a -> DataChange a
+mapView SVSelectAll change = change
+mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
+  let newRow = HM.fromList $
+               L.map (\(field,alias) ->
+                         (T.pack alias, HSC.getFieldByName dcRow field)
+                     ) fieldsWithAlias
+  in DataChange {dcRow = newRow}
+
+filterView :: SelectViewCond -> [DataChange a] -> [DataChange a]
+filterView (field, rexpr) changes =
+  L.filter (\change@DataChange{..} ->
+              let column       = HSC.getFieldByName dcRow field
+                  (_,expected) = HSC.genRExprValue rexpr dcRow
+               in column == expected
+           ) changes
 
 executePushQueryHandler ::
   ServerContext ->
