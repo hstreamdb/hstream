@@ -225,10 +225,9 @@ genRExprValue (RExprUnaryOp name op expr) o =
   in (pack name, unaryOpOnValue op v)
 genRExprValue (RExprAggregate name agg) o =
   case agg of
-    Nullary _     -> (pack name, Null)
+    Nullary _     -> (pack name, Null) -- FIXME: should return nothing
     Unary _ rexpr -> genRExprValue rexpr o
-    Binary _ _ _  -> undefined
-  --throwSQLException CodegenException Nothing "Impossible happened"
+    Binary _ rexpr1 rexpr2 -> genRExprValue rexpr1 o -- FIXME: different binary aggs?
 
 genFilterR :: RWhere -> Object -> Bool
 genFilterR RWhereEmpty _ = True
@@ -275,22 +274,33 @@ genFilterNode whr prevNode = FilterSpec prevNode filter'
   where filter' = Filter (genFilterR whr)
 
 ----
-genMapR :: RSel -> Object -> Object
-genMapR RSelAsterisk recordValue = recordValue
-genMapR (RSelList exprsWithAlias) recordValue = recordValue --HM.fromList scalarValues
+genPreMapR :: RSel -> Object -> Object
+genPreMapR RSelAsterisk recordValue = recordValue
+genPreMapR (RSelList exprsWithAlias) recordValue = HM.fromList fields <> recordValue
   where
-    --scalars      = L.filter (\(e,_) -> isLeft e) exprsWithAlias
-    scalarValues = (\(e,alias) ->
-                      case e of
-                        Left expr ->
-                          let (_,v) = genRExprValue expr recordValue in (pack alias,v)
-                        Right agg ->
-                          let (internalName,v) = genRExprValue (RExprAggregate alias agg) recordValue in (internalName, v)
-                   ) <$> exprsWithAlias
+    fields = (\(e,alias) ->
+                 case e of
+                   Left expr -> let (_,v) = genRExprValue expr recordValue
+                                in (pack alias,v)
+                   Right agg -> let (_,v) = genRExprValue (RExprAggregate alias agg) recordValue
+                                in (pack alias,v)
+             ) <$> exprsWithAlias
 
-genMapNode :: RSel -> Node -> NodeSpec
-genMapNode sel prevNode = MapSpec prevNode mapper
-  where mapper = Mapper (genMapR sel)
+genPreMapNode :: RSel -> Node -> NodeSpec
+genPreMapNode sel prevNode = MapSpec prevNode mapper
+  where mapper = Mapper (genPreMapR sel)
+
+genPostMapR :: RSel -> Object -> Object
+genPostMapR RSelAsterisk recordValue = recordValue
+genPostMapR (RSelList exprsWithAlias) recordValue = HM.fromList fields
+  where
+    fields = (\(_,alias) ->
+                (pack alias, getFieldByName recordValue (pack alias))
+             ) <$> exprsWithAlias
+
+genPostMapNode :: RSel -> Node -> NodeSpec
+genPostMapNode sel prevNode = MapSpec prevNode mapper
+  where mapper = Mapper (genPostMapR sel)
 
 ----
 data AggregateComponents = AggregateComponents
@@ -398,10 +408,10 @@ genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
 
   (baseBuilder, inNodesWithStreams, thenNode) <- genSourceGraphBuilder frm startBuilder
 
-  let mapNode = genMapNode sel thenNode
-      (builder_1, nodeMap) = addNode baseBuilder baseSubgraph mapNode
+  let preMapNode = genPreMapNode sel thenNode
+      (builder_1, nodePreMap) = addNode baseBuilder baseSubgraph preMapNode
 
-  let filterNode = genFilterNode whr nodeMap
+  let filterNode = genFilterNode whr nodePreMap
       (builder_2, nodeFilter) = addNode builder_1 baseSubgraph filterNode
 
   (nextBuilder, nextNode) <- case grp of
@@ -412,15 +422,18 @@ genGraphBuilder sinkStream' select@(RSelect sel frm whr grp hav) = do
           let (builder', nodeIndex) = addNode builder_2 baseSubgraph (IndexSpec nodeFilter)
           return $ addNode builder' baseSubgraph (ReduceSpec nodeIndex (aggregateInit agg) groupbyKeygen (Reducer $ aggregateF agg))
 
+  let postMapNode = genPostMapNode sel nextNode
+      (builder_3, nodePostMap) = addNode nextBuilder baseSubgraph postMapNode
+
   let window = case grp of
         RGroupByEmpty    -> Nothing
         RGroupBy _ _ win -> win
 
-  let havingNode = genFilterNodeFromHaving hav nextNode
-      (builder_3, nodeHav) = addNode nextBuilder baseSubgraph havingNode
+  let havingNode = genFilterNodeFromHaving hav nodePostMap
+      (builder_4, nodeHav) = addNode builder_3 baseSubgraph havingNode
 
   sink <- maybe genRandomSinkStream return sinkStream'
-  return (builder_3, inNodesWithStreams, (nodeHav,sink), window)
+  return (builder_4, inNodesWithStreams, (nodeHav,sink), window)
 
 genGraphBuilderWithOutput :: HasCallStack
                           => Maybe StreamName
