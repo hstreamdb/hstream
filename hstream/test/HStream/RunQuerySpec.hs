@@ -11,6 +11,7 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
+import           Control.Concurrent
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils
@@ -92,7 +93,7 @@ spec = aroundAll provideHstreamApi $
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   source1 <- runIO $ newRandomText 20
-  let queryname1 = "testquery1"
+  source2 <- runIO $ newRandomText 20
 
   it "clean streams" $ \api -> do
     runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
@@ -100,18 +101,20 @@ spec = aroundAll provideHstreamApi $
   it "create streams" $ \api ->
     runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
 
+  it "run a query" $ \api ->
+    runCreateWithSelectSql api $ "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
+
   it "list queries" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let record = V.find (getQueryResponseIdIs queryname1) queries
-        case record of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+        return $ V.null queries
+    ) `shouldReturn` False
 
   it "get query" $ \_ ->
     ( do
-        query <- getQuery queryname1
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
+        let queryName = queryId $ V.head queries
+        query <- getQuery queryName
         case query of
           Just _ -> return True
           _      -> return False
@@ -119,8 +122,10 @@ spec = aroundAll provideHstreamApi $
 
   it "terminate query" $ \_ ->
     ( do
-        _ <- terminateQuery queryname1
-        query <- getQuery queryname1
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
+        let queryName = queryId $ V.head queries
+        _ <- terminateQuery queryName
+        query <- getQuery queryName
         let terminated = getPBStatus Terminated
         case query of
           Just (Query _ status _ _ ) -> return (status == terminated)
@@ -138,9 +143,11 @@ spec = aroundAll provideHstreamApi $
 
   it "delete query" $ \_ ->
     ( do
-        _ <- terminateQuery queryname1
-        _ <- deleteQuery queryname1
-        query <- getQuery queryname1
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
+        let queryName = queryId $ V.head queries
+        _ <- terminateQuery queryName
+        _ <- deleteQuery queryName
+        query <- getQuery queryName
         case query of
           Just Query{} -> return True
           _            -> return False
