@@ -25,13 +25,13 @@ import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
+import           HStream.Gossip                   (getClusterStatus)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Persistence       (getClusterStatus)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval, formatStatus,
@@ -212,7 +212,7 @@ runView serverContext AT.ViewCmdList = do
 
 runStatus :: ServerContext -> IO Text.Text
 runStatus ServerContext{..} = do
-  values <- HM.elems <$> getClusterStatus zkHandle
+  values <- HM.elems <$> getClusterStatus gossipContext
   let headers = ["node_id" :: Text.Text, "state", "address"]
       rows = map consRow values
       content = Aeson.object ["headers" .= headers, "rows" .= rows]

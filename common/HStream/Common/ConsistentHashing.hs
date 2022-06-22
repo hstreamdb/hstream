@@ -22,7 +22,7 @@ import           HStream.Server.HStreamApi (ServerNode (..))
 getAllocatedNodeId :: ServerMap -> T.Text -> ServerNodeId
 getAllocatedNodeId = (serverNodeId .) . getAllocatedNode
 
-getAllocatedNode :: ServerMap -> T.Text  -> ServerNode
+getAllocatedNode :: ServerMap -> T.Text -> ServerNode
 getAllocatedNode nodes k =
   snd $ M.elemAt serverNum nodes
   where

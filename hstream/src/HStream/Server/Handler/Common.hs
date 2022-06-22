@@ -11,7 +11,6 @@ import           Control.Concurrent               (ThreadId, forkIO, killThread,
                                                    takeMVar)
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   displayException,
                                                    onException, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
