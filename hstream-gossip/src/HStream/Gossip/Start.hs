@@ -35,6 +35,7 @@ import           HStream.Gossip.Types             (EventHandlers,
                                                    StateMessage (..))
 import           HStream.Gossip.Utils             (mkClientNormalRequest,
                                                    mkGRPCClientConf')
+import qualified HStream.Utils                    as U
 
 initGossipContext :: GossipOpts -> EventHandlers -> API.ServerNodeInternal -> IO GossipContext
 initGossipContext gossipOpts eventHandlers serverSelf = do
@@ -109,7 +110,8 @@ joinCluster sNode (joinHost, joinPort) =
       GRPC.ClientNormalResponse (API.JoinResp xs) _ _ _ _ -> do
         Log.info . Log.buildString $ "Successfully joined cluster with " <> show xs
         return $ V.toList xs \\ [sNode]
-      GRPC.ClientErrorResponse _          -> error "failed to join"
+      GRPC.ClientErrorResponse _ -> error $ "failed to join "
+                                         <> U.bs2str joinHost <> ":" <> show joinPort
 
 initGossip :: GossipContext -> [API.ServerNodeInternal] -> IO ()
 initGossip gc = mapM_ (\x -> addToServerList gc x (Join x) OK)

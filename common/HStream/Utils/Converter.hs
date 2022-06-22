@@ -11,6 +11,7 @@ module HStream.Utils.Converter
   , zJsonObjectToStruct
   , zJsonValueToValue
     --
+  , bs2str
   , cBytesToText
   , cbytes2bs
   , cBytesToLazyText
@@ -42,6 +43,8 @@ import qualified Data.Map               as M
 import qualified Data.Map.Strict        as Map
 import           Data.Scientific        (toRealFloat)
 import qualified Data.Text              as T
+import qualified Data.Text              as Text
+import qualified Data.Text.Encoding     as Text
 import qualified Data.Text.Lazy         as TL
 import qualified Data.Vector            as V
 import qualified Google.Protobuf.Struct as PB
@@ -128,6 +131,9 @@ cBytesToText = T.pack . ZCB.unpack
 
 cbytes2bs :: ZCB.CBytes -> BS.ByteString
 cbytes2bs = ZF.toByteString . ZCB.toBytes
+
+bs2str :: BS.ByteString -> String
+bs2str = Text.unpack . Text.decodeUtf8
 
 cBytesToLazyText :: ZCB.CBytes -> TL.Text
 cBytesToLazyText = TL.fromStrict . cBytesToText
