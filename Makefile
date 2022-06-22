@@ -35,6 +35,11 @@ grpc-hs: grpc-cpp
 		--includeDir . \
 		--proto HStream/Server/HStreamInternal.proto \
 		--out ../gen-hs)
+	(cd hstream-gossip/proto && $(PROTO_COMPILE_HS) \
+		--includeDir . \
+		--includeDir ../../common/api/protos \
+		--proto HStream/Gossip/HStreamGossip.proto \
+		--out ../gen-hs)
 
 grpc-cpp:
 	(cd common/api && mkdir -p gen-cpp && \

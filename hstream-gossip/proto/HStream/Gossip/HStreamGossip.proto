@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package hstream.gossip;
+
+import "HStream/Server/HStreamApi.proto";
+
+service HStreamGossip {
+  rpc BootstrapPing(Empty) returns (ServerNodeInternal);
+  rpc Ping(Ping) returns (Ack);
+  rpc PingReq(PingReq) returns (Ack);
+  rpc Join(JoinReq) returns (JoinResp);
+  rpc Gossip(Gossip) returns (Empty);
+
+  // For CLI use only
+  rpc CliJoin(CliJoinReq) returns (JoinResp);
+  rpc CliCluster(Empty) returns (Cluster);
+  rpc CliUserEvent(UserEvent) returns (Empty);
+  rpc CliGetSeenEvents(Empty) returns (SeenEvents);
+}
+
+message Empty {};
+
+message Ping { bytes msg = 1; }
+
+message Ack { bytes msg = 1; }
+
+message PingReq {
+  ServerNodeInternal target = 1;
+  bytes msg = 2;
+}
+
+message Gossip { bytes msg = 1; }
+
+message JoinReq { ServerNodeInternal new = 1; }
+message JoinResp { repeated ServerNodeInternal members = 1; }
+
+message CliJoinReq {
+  bytes host = 1;
+  uint32 port = 2;
+}
+
+message UserEvent {
+  bytes name = 1;
+  bytes payload = 2;
+}
+
+message Cluster { repeated ServerNode members = 1; }
+message SeenEvents { repeated UserEvent events = 1; }
+
+message ServerNodeInternal {
+  uint32 id = 1;
+  bytes  host = 2;
+  uint32 port = 3;
+  uint32 gossipPort = 4;
+}
