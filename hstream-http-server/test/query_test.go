@@ -3,14 +3,15 @@ package hstream_http_server_test
 import (
 	"bytes"
 	"fmt"
-	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net/http"
 	"testing"
 	"time"
+
+	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func xTestQuery(t *testing.T) {
@@ -20,6 +21,7 @@ func xTestQuery(t *testing.T) {
 	stream := hstreamApi.Stream{
 		StreamName:        test_stream,
 		ReplicationFactor: 3,
+		ShardCount:        1,
 	}
 	streamByte, err := protojson.Marshal(&stream)
 	if err != nil {

@@ -2,13 +2,14 @@ package hstream_http_server_test
 
 import (
 	"bytes"
+	"net/http"
+	"strings"
+	"testing"
+
 	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"net/http"
-	"strings"
-	"testing"
 )
 
 func TestView(t *testing.T) {
@@ -21,6 +22,7 @@ func TestView(t *testing.T) {
 	stream := hstreamApi.Stream{
 		StreamName:        test_stream,
 		ReplicationFactor: 3,
+		ShardCount:        1,
 	}
 	streamByte, err := protojson.Marshal(&stream)
 	if err != nil {

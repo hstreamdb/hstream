@@ -94,7 +94,7 @@ jobs:
           ${{ env.SHELL }} make
           ${{ env.CABAL }} -- build --enable-tests --enable-benchmarks all
           ${{ env.CABAL }} -- install hstream
-          ${{ env.SHELL }} "'cd hstream-http-server && go build -v -o ../dist-newstyle/hstream-http-server main.go'"
+          # ${{ env.SHELL }} "'cd hstream-http-server && go build -v -o ../dist-newstyle/hstream-http-server main.go'"
 
       - name: start hstream server
         run: |
@@ -107,23 +107,23 @@ jobs:
           sleep 5
           docker logs --tail 100 $CONTAINER_NAME
 
-      - name: start hstream http server
-        run: |
-          HTTP_PORT=$(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2)
-          SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
-          NAME="test-http-server"
-          EXE=$(find dist-newstyle -maxdepth 1 -name "hstream-http-server" -type f)
+      # - name: start hstream http server
+      #   run: |
+      #     HTTP_PORT=$(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2)
+      #     SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
+      #     NAME="test-http-server"
+      #     EXE=$(find dist-newstyle -maxdepth 1 -name "hstream-http-server" -type f)
 
-          python3 script/dev-tools shell --check --no-interactive --command "" --detach \
-              --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-              $EXE -httpServerPort $HTTP_PORT -gRPCServerPort $SERVER_PORT
-          sleep 5
-          docker logs --tail 100 $NAME
+      #     python3 script/dev-tools shell --check --no-interactive --command "" --detach \
+      #         --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
+      #         $EXE -httpServerPort $HTTP_PORT -gRPCServerPort $SERVER_PORT
+      #     sleep 5
+      #     docker logs --tail 100 $NAME
 
       - name: test
         run: |
           ${{ env.CABAL }} -- test --test-show-details=direct all
-          ${{ env.SHELL }} "'cd hstream-http-server && go test -v ./test/...'"
+      #     ${{ env.SHELL }} "'cd hstream-http-server && go test -v ./test/...'"
 
       # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
       # `cabal check` will emit a warning even if the `-O2` option is just
