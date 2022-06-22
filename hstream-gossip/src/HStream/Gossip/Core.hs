@@ -8,16 +8,18 @@
 module HStream.Gossip.Core where
 
 import           Control.Concurrent.Async         (async, cancel, linkOnly,
-                                                   wait, withAsync)
+                                                   withAsync)
 import           Control.Concurrent.STM           (atomically, dupTChan,
                                                    flushTQueue, modifyTVar,
                                                    modifyTVar', newTVarIO,
-                                                   readTVar, readTVarIO,
-                                                   stateTVar, tryPutTMVar,
-                                                   writeTQueue, writeTVar)
+                                                   peekTQueue, readTVar,
+                                                   readTVarIO, stateTVar,
+                                                   tryPutTMVar, writeTQueue,
+                                                   writeTVar)
 import           Control.Concurrent.STM.TChan     (readTChan)
 import           Control.Exception                (SomeException, handle)
-import           Control.Monad                    (join, unless, void, when)
+import           Control.Monad                    (forever, join, unless, void,
+                                                   when)
 import qualified Data.IntMap.Strict               as IM
 import qualified Data.Map.Strict                  as Map
 import qualified HStream.Logger                   as Log
@@ -56,7 +58,7 @@ addToServerList gc@GossipContext{..} node@ServerNodeInternal{..} msg state = unl
   newAsync <- async (joinWorkers gc status)
   atomically $ do
     modifyTVar' serverList (Map.insert serverNodeInternalId status)
-    modifyTVar' workers  (Map.insert serverNodeInternalId newAsync)
+    modifyTVar' workers (Map.insert serverNodeInternalId newAsync)
 
 joinWorkers :: GossipContext -> ServerStatus -> IO ()
 joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeInternal{..}, ..} =
@@ -73,9 +75,10 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeIn
   where
     loop client myChan = do
       action <- atomically (readTChan myChan)
-      withAsync (doAction client action) (\a -> loop client myChan >> wait a)
+      withAsync (doAction client action) (\_ -> loop client myChan)
     doAction client action = case action of
-      DoPing sid msg -> when (sid == serverNodeInternalId) $ doPing client gc ss sid msg
+      DoPing sid msg -> when (sid == serverNodeInternalId) $
+        doPing client gc ss sid msg
       DoPingReq sids ServerStatus{serverInfo = sInfo} isAcked msg -> when (serverNodeInternalId `elem` sids) $ do
         Log.info . Log.buildString $ "Sending ping Req to " <> show serverNodeInternalId <> " asking for " <> show (API.serverNodeInternalId sInfo)
         ack <- pingReq sInfo msg client
@@ -97,11 +100,12 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeIn
 -- Messages
 
 runStateHandler :: GossipContext -> IO ()
-runStateHandler gc@GossipContext{..} = do
-  newMsgs <- atomically $ flushTQueue statePool
+runStateHandler gc@GossipContext{..} = forever $ do
+  newMsgs <- atomically $ do
+    void $ peekTQueue statePool
+    flushTQueue statePool
   unless (null newMsgs) $ do
     handleStateMessages gc $ cleanStateMessages newMsgs
-  runStateHandler gc
 
 handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
@@ -156,11 +160,12 @@ handleStateMessage gc@GossipContext{..} msg@(Alive _inc node@ServerNodeInternal{
       Nothing -> addToServerList gc node msg OK
 
 runEventHandler :: GossipContext -> IO ()
-runEventHandler gc@GossipContext{..} = do
-  newMsgs <- atomically $ flushTQueue eventPool
+runEventHandler gc@GossipContext{..} = forever $ do
+  newMsgs <- atomically $ do
+    void $ peekTQueue eventPool
+    flushTQueue eventPool
   unless (null newMsgs) $ do
     handleEventMessages gc newMsgs
-  runEventHandler gc
 
 handleEventMessages :: GossipContext -> [EventMessage] -> IO ()
 handleEventMessages = mapM_ . handleEventMessage

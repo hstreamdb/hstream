@@ -4,12 +4,13 @@
 
 module HStream.Gossip.Start where
 
+import           Control.Concurrent               (threadDelay)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (atomically, modifyTVar,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO)
-import           Control.Monad                    (join, when)
+import           Control.Monad                    (when)
 import           Data.ByteString                  (ByteString)
 import           Data.List                        ((\\))
 import qualified Data.Map.Strict                  as Map
@@ -18,7 +19,6 @@ import qualified HStream.Logger                   as Log
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Proto3.Suite                     (def)
 import           System.Random                    (initStdGen)
-import           System.Timeout                   (timeout)
 
 import           HStream.Gossip.Core              (addToServerList,
                                                    runEventHandler,
