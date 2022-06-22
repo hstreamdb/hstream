@@ -356,6 +356,7 @@ runCreateStreamSql api sql = do
   createStream sName rFac api`grpcShouldReturn`
     def { streamStreamName        = sName
         , streamReplicationFactor = fromIntegral rFac
+        , streamShardCount        = 1
         }
 
 runInsertSql :: HStreamClientApi -> T.Text -> Expectation
@@ -370,7 +371,8 @@ runCreateWithSelectSql api sql = do
   resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (words $ T.unpack sql) api
   createQueryStreamResponseQueryStream resp `shouldBe`
     Just def { streamStreamName        = stream
-             , streamReplicationFactor = fromIntegral $ rRepFactor rOptions}
+             , streamReplicationFactor = fromIntegral $ rRepFactor rOptions
+             , streamShardCount        = 1}
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do

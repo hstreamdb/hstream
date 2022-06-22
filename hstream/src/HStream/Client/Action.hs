@@ -44,7 +44,8 @@ createStream :: StreamName -> Int
 createStream sName rFac API.HStreamApi{..} =
   hstreamApiCreateStream (mkClientNormalRequest def
     { API.streamStreamName        = sName
-    , API.streamReplicationFactor = fromIntegral rFac})
+    , API.streamReplicationFactor = fromIntegral rFac
+    , API.streamShardCount        = 1})
 
 listStreams :: Action API.ListStreamsResponse
 listStreams    API.HStreamApi{..} = hstreamApiListStreams clientDefaultRequest
@@ -108,7 +109,8 @@ createStreamBySelect sName rFac sql API.HStreamApi{..} =
     { API.createQueryStreamRequestQueryStream
         = Just def
         { API.streamStreamName        = sName
-        , API.streamReplicationFactor = fromIntegral rFac}
+        , API.streamReplicationFactor = fromIntegral rFac
+        , API.streamShardCount        = 1}
     , API.createQueryStreamRequestQueryStatements = extractSelect sql})
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
