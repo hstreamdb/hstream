@@ -14,7 +14,7 @@ module HStream.Server.Core.Stream
   ) where
 
 import           Control.Exception                 (Exception (displayException),
-                                                    catch, throwIO)
+                                                    bracket, catch, throwIO)
 import           Control.Monad                     (forM_, unless, void, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
@@ -34,6 +34,7 @@ import           HStream.Server.HStreamApi         (ReadShardRequest (readShardR
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
+import           HStream.Server.ReaderPool         (getReader, putReader)
 import           HStream.Server.Types              (ServerContext (..),
                                                     getShard, getShardName)
 import qualified HStream.Stats                     as Stats
@@ -123,17 +124,15 @@ readShard
   :: HasCallStack
   => ServerContext
   -> API.ReadShardRequest
-  -> S.LDReader
   -> IO (V.Vector API.ReceivedRecord)
-readShard ServerContext{..} API.ReadShardRequest{..} ldReader = do
+readShard ServerContext{..} API.ReadShardRequest{..} = do
   logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
   startLSN <- getStartLSN logId
-  void $ S.readerStartReading ldReader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
-  S.readerSetTimeout ldReader 0
-  records <- S.readerRead ldReader (fromIntegral readShardRequestMaxRead)
-  let receivedRecordsVecs = decodeRecordBatch <$> records
-  let receivedRecords = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
-  return receivedRecords
+
+  bracket
+    (getReader readerPool)
+    (flip S.readerStopReading logId >> putReader readerPool)
+    (\reader -> readData reader logId startLSN)
   where
     streamId = transToStreamName readShardRequestStreamName
     shard = textToCBytes readShardRequestShardId
@@ -145,6 +144,14 @@ readShard ServerContext{..} API.ReadShardRequest{..} ldReader = do
         API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
         API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
         _                                                                                 -> error "wrong shard offset"
+
+    readData :: S.LDReader -> S.C_LogID -> S.LSN -> IO (V.Vector API.ReceivedRecord)
+    readData reader logId startLSN = do
+      void $ S.readerStartReading reader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
+      S.readerSetTimeout reader 0
+      records <- S.readerRead reader (fromIntegral readShardRequestMaxRead)
+      let receivedRecordsVecs = decodeRecordBatch <$> records
+      return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
 
 --------------------------------------------------------------------------------
 

@@ -1,7 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -17,7 +16,6 @@ module HStream.Server.Handler.Stream
 where
 
 import           Control.Exception
-import           Control.Monad                    ((>=>))
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
@@ -28,7 +26,6 @@ import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import           HStream.Server.ReaderPool        (getReader, putReader)
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as Store
@@ -129,12 +126,9 @@ readShardHandler
   :: ServerContext
   -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
   -> IO (ServerResponse 'Normal ReadShardResponse)
-readShardHandler sc@ServerContext{readerPool} (ServerNormalRequest _metadata request) = readShardExceptionHandle $ do
+readShardHandler sc (ServerNormalRequest _metadata request) = readShardExceptionHandle $ do
   Log.debug $ "Receive read shard Request: " <> Log.buildString (show request)
-  bracket
-    (getReader readerPool)
-    (putReader readerPool)
-    (C.readShard sc request >=> returnResp . ReadShardResponse)
+  C.readShard sc request >>= returnResp . ReadShardResponse
 
 --------------------------------------------------------------------------------
 -- Exception Handlers
