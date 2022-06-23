@@ -1214,6 +1214,7 @@ class GrafanaService(Service):
                 cmds.append(
                     f"ssh {host} '"
                     f"{container_bin} run -d "
+                    f"--network host "
                     f"{docker_opts} "
                     f"--name {container_name} "
                     f"{image}'"
