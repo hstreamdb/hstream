@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,8 +25,7 @@ import qualified HStream.Logger                   as Log
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
 import           HStream.Gossip.Gossip            (gossip)
-import           HStream.Gossip.HStreamGossip     as API (Ack (..),
-                                                          ServerNodeInternal (..))
+import           HStream.Gossip.HStreamGossip     as API (Ack (..))
 import           HStream.Gossip.Probe             (doPing, pingReq, pingReqPing)
 import           HStream.Gossip.Types             (EventMessage (Event),
                                                    GossipContext (..),
@@ -42,12 +40,13 @@ import           HStream.Gossip.Utils             (broadcastMessage,
                                                    getMsgInc, mkGRPCClientConf,
                                                    updateLamportTime,
                                                    updateStatus)
+import qualified HStream.Server.HStreamInternal   as I
 
 --------------------------------------------------------------------------------
 -- Add a new member to the server list
 
-addToServerList :: GossipContext -> ServerNodeInternal -> StateMessage -> ServerState -> IO ()
-addToServerList gc@GossipContext{..} node@ServerNodeInternal{..} msg state = unless (node == serverSelf) $ do
+addToServerList :: GossipContext -> I.ServerNode -> StateMessage -> ServerState -> IO ()
+addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state = unless (node == serverSelf) $ do
   initMsg <- newTVarIO msg
   initState <- newTVarIO state
   let status = ServerStatus {
@@ -57,17 +56,17 @@ addToServerList gc@GossipContext{..} node@ServerNodeInternal{..} msg state = unl
   }
   newAsync <- async (joinWorkers gc status)
   atomically $ do
-    modifyTVar' serverList (Map.insert serverNodeInternalId status)
-    modifyTVar' workers (Map.insert serverNodeInternalId newAsync)
+    modifyTVar' serverList (Map.insert serverNodeId status)
+    modifyTVar' workers (Map.insert serverNodeId newAsync)
 
 joinWorkers :: GossipContext -> ServerStatus -> IO ()
-joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeInternal{..}, ..} =
+joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} =
   handle (\(e ::SomeException) -> print e) $ unless (sNode == serverSelf) $ do
   workersMap <- readTVarIO workers
-  case Map.lookup (API.serverNodeInternalId serverSelf) workersMap of
+  case Map.lookup (I.serverNodeId serverSelf) workersMap of
     Just a  -> linkOnly (const True) a
     Nothing -> error "Impossible happened"
-  Log.info . Log.buildString $ "Setting up workers for: " <> show serverNodeInternalId
+  Log.info . Log.buildString $ "Setting up workers for: " <> show serverNodeId
   withGRPCClient (mkGRPCClientConf sNode) $ \client -> do
     myChan <- atomically $ dupTChan actionChan
     -- FIXME: This could be problematic when we have too many nodes in cluster.
@@ -77,10 +76,10 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeIn
       action <- atomically (readTChan myChan)
       withAsync (doAction client action) (\_ -> loop client myChan)
     doAction client action = case action of
-      DoPing sid msg -> when (sid == serverNodeInternalId) $
+      DoPing sid msg -> when (sid == serverNodeId) $
         doPing client gc ss sid msg
-      DoPingReq sids ServerStatus{serverInfo = sInfo} isAcked msg -> when (serverNodeInternalId `elem` sids) $ do
-        Log.info . Log.buildString $ "Sending ping Req to " <> show serverNodeInternalId <> " asking for " <> show (API.serverNodeInternalId sInfo)
+      DoPingReq sids ServerStatus{serverInfo = sInfo} isAcked msg -> when (serverNodeId `elem` sids) $ do
+        Log.info . Log.buildString $ "Sending ping Req to " <> show serverNodeId <> " asking for " <> show (I.serverNodeId sInfo)
         ack <- pingReq sInfo msg client
         atomically $ case ack of
           Right (Ack msgsBS) -> do
@@ -90,10 +89,10 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeIn
             void $ tryPutTMVar isAcked ()
           Left (Just msgsBS) -> decodeThenBroadCast msgsBS statePool eventPool
           Left Nothing       -> pure ()
-      DoPingReqPing sid isAcked msg -> when (sid == serverNodeInternalId) $ do
-        Log.info . Log.buildString $ "Sending PingReqPing to: " <> show serverNodeInternalId
+      DoPingReqPing sid isAcked msg -> when (sid == serverNodeId) $ do
+        Log.info . Log.buildString $ "Sending PingReqPing to: " <> show serverNodeId
         pingReqPing msg isAcked client
-      DoGossip sids msg -> when (serverNodeInternalId `elem` sids) $ do
+      DoGossip sids msg -> when (serverNodeId `elem` sids) $ do
         gossip msg client
 
 --------------------------------------------------------------------------------
@@ -111,49 +110,49 @@ handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
-handleStateMessage gc@GossipContext{..} msg@(Join node@ServerNodeInternal{..}) = unless (node == serverSelf) $ do
-  Log.info . Log.buildString $ "[" <> show (API.serverNodeInternalId serverSelf) <> "] Handling" <> show msg
+handleStateMessage gc@GossipContext{..} msg@(Join node@I.ServerNode{..}) = unless (node == serverSelf) $ do
+  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   sMap <- readTVarIO serverList
-  case Map.lookup serverNodeInternalId sMap of
+  case Map.lookup serverNodeId sMap of
     Nothing -> do
       addToServerList gc node msg OK
       atomically $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
     Just ServerStatus{..} -> unless (serverInfo == node) $
       -- TODO: vote to resolve conflict
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
-handleStateMessage GossipContext{..} msg@(Confirm _inc ServerNodeInternal{..} _node)= do
-  Log.info . Log.buildString $ "[" <> show (API.serverNodeInternalId serverSelf) <> "] Handling" <> show msg
+handleStateMessage GossipContext{..} msg@(Confirm _inc I.ServerNode{..} _node)= do
+  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   sMap <- readTVarIO serverList
-  case Map.lookup serverNodeInternalId sMap of
+  case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
     Just ServerStatus{..} -> join $ atomically $ do
       modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
       writeTVar latestMessage msg
-      modifyTVar' serverList (Map.delete serverNodeInternalId)
-      mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeInternalId)
+      modifyTVar' serverList (Map.delete serverNodeId)
+      mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
       case mWorker of
         Nothing -> return (pure ())
         Just  a -> return $ do
-          Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeInternalId
+          Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
           cancel a
-handleStateMessage GossipContext{..} msg@(Suspect inc node@ServerNodeInternal{..} _node) = do
-  Log.info . Log.buildString $ "[" <> show (API.serverNodeInternalId serverSelf) <> "] Handling" <> show msg
+handleStateMessage GossipContext{..} msg@(Suspect inc node@I.ServerNode{..} _node) = do
+  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   join . atomically $ if node == serverSelf
     then writeTQueue statePool (Alive (succ inc) node serverSelf) >> return (pure ())
     else do
       sMap <- readTVar serverList
-      case Map.lookup serverNodeInternalId sMap of
+      case Map.lookup serverNodeId sMap of
         Just ss -> do
           updated <- updateStatus ss msg Suspicious
           when updated $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
           return (pure ())
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
-handleStateMessage gc@GossipContext{..} msg@(Alive _inc node@ServerNodeInternal{..} _node) = do
-  Log.info . Log.buildString $ "[" <> show (API.serverNodeInternalId serverSelf) <> "] Handling" <> show msg
+handleStateMessage gc@GossipContext{..} msg@(Alive _inc node@I.ServerNode{..} _node) = do
+  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   unless (node == serverSelf) $ do
     sMap <- readTVarIO serverList
-    case Map.lookup serverNodeInternalId sMap of
+    case Map.lookup serverNodeId sMap of
       Just ss -> atomically $ do
         updated <- updateStatus ss msg OK
         when updated $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)

@@ -41,8 +41,7 @@ import           Data.Bifunctor             (second)
 import qualified Data.Text                  as T
 import           Data.Text.Encoding         (encodeUtf8)
 import qualified HStream.Admin.Store.API    as AA
-import           HStream.Gossip.Types       (GossipOpts (..))
-import           HStream.Gossip.Utils       (defaultGossipOpts)
+import           HStream.Gossip.Types       (GossipOpts (..), defaultGossipOpts)
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
 import           HStream.Store              (Compression (..))
@@ -75,9 +74,8 @@ data ServerOpts = ServerOpts
   , _gossipOpts         :: !GossipOpts
   } deriving (Show)
 
-data TlsConfig
-  = TlsConfig {
-    keyPath  :: String
+data TlsConfig = TlsConfig
+  { keyPath  :: String
   , certPath :: String
   , caPath   :: Maybe String
   } deriving (Show)

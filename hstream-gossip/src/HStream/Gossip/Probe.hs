@@ -34,7 +34,6 @@ import           HStream.Gossip.HStreamGossip     as API (Ack (..), Empty (..),
                                                           HStreamGossip (..),
                                                           Ping (..),
                                                           PingReq (..),
-                                                          ServerNodeInternal (..),
                                                           hstreamGossipClient)
 import           HStream.Gossip.Types             (GossipContext (..),
                                                    GossipOpts (..), Message,
@@ -45,8 +44,9 @@ import           HStream.Gossip.Types             (GossipContext (..),
 import           HStream.Gossip.Utils             (decodeThenBroadCast,
                                                    getMessagesToSend, getMsgInc,
                                                    mkClientNormalRequest)
+import qualified HStream.Server.HStreamInternal   as I
 
-bootstrapPing :: GRPC.Client -> IO (Maybe ServerNodeInternal)
+bootstrapPing :: GRPC.Client -> IO (Maybe I.ServerNode)
 bootstrapPing client = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipBootstrapPing (mkClientNormalRequest Empty) >>= \case
@@ -62,7 +62,7 @@ ping msg client = do
       return (Just ack)
     ClientErrorResponse _            -> Log.info "failed to ping" >> return Nothing
 
-pingReq :: ServerNodeInternal -> ByteString -> GRPC.Client -> IO (Either (Maybe ByteString) Ack)
+pingReq :: I.ServerNode -> ByteString -> GRPC.Client -> IO (Either (Maybe ByteString) Ack)
 pingReq sNode msg client = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipPingReq (mkClientNormalRequest $ PingReq (Just sNode) msg) >>= \case
@@ -84,9 +84,10 @@ doPing
   :: GRPC.Client -> GossipContext -> ServerStatus
   -> Word32 -> ByteString
   -> IO ()
-doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeInternal{..}, ..} sid msg = do
+doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} sid msg = do
   maybeAck <- timeout (probeInterval gossipOpts) $ do
-    Log.debug . Log.buildString $ show (API.serverNodeInternalId serverSelf) <> "Sending ping >>> " <> show serverNodeInternalId
+    Log.debug . Log.buildString $ show (I.serverNodeId serverSelf)
+                               <> "Sending ping >>> " <> show serverNodeId
     isAcked  <- newEmptyTMVarIO
     maybeAck <- timeout (roundtripTimeout gossipOpts) (ping msg client)
     acked    <- join . atomically . handleAck isAcked . join $ maybeAck
@@ -97,7 +98,7 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeInt
       atomically $ takeTMVar isAcked
   case maybeAck of
     Nothing -> do
-      Log.info $ "[" <> Log.buildString (show (API.serverNodeInternalId serverSelf)) <> "]Ping and PingReq exceeds timeout"
+      Log.info $ "[" <> Log.buildString (show (I.serverNodeId serverSelf)) <> "]Ping and PingReq exceeds timeout"
       atomically $ do
         inc     <- getMsgInc <$> readTVar latestMessage
         state   <- readTVar serverState
@@ -110,7 +111,7 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeInt
       return $ pure True
     handleAck isAcked Nothing = do
       inc     <- getMsgInc <$> readTVar latestMessage
-      members <- L.delete serverNodeInternalId . Map.keys <$> readTVar serverList
+      members <- L.delete serverNodeId . Map.keys <$> readTVar serverList
       case members of
         [] -> return $ pure False
         _  -> do
