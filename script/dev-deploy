@@ -1193,7 +1193,7 @@ class GrafanaService(Service):
         docker_opts += set_resource_constraints(memory_cpus)
         docker_opts += set_restart(restart)
 
-        docker_opts += self.NO_LOGIN_ENV_OPTS if disable_login else []
+        docker_opts += self.NO_LOGIN_ENV_OPTS if disable_login else ""
         docker_opts += (
             set_config_path(config_path, "/etc/grafana/grafana.ini")
             if config_path is not None
