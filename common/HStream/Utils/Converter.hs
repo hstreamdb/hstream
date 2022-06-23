@@ -21,7 +21,9 @@ module HStream.Utils.Converter
   , lazyTextToCBytes
   , lazyByteStringToCBytes
   , cBytesToLazyByteString
+  , byteStringToBytes
   , lazyByteStringToBytes
+  , bytesToByteString
   , bytesToLazyByteString
     --
   , cBytesToValue
@@ -173,8 +175,14 @@ stringToValue = PB.Value . Just . PB.ValueKindStringValue . T.pack
 lazyByteStringToBytes :: BL.ByteString -> ZV.Bytes
 lazyByteStringToBytes = ZV.pack . BL.unpack
 
+byteStringToBytes :: BS.ByteString -> ZV.Bytes
+byteStringToBytes = ZF.fromByteString
+
 bytesToLazyByteString :: ZV.Bytes -> BL.ByteString
 bytesToLazyByteString = BL.pack . ZV.unpack
+
+bytesToByteString :: ZV.Bytes -> BS.ByteString
+bytesToByteString = ZF.toByteString
 
 valueToBytes :: (Aeson.ToJSON a) => a -> ZV.Bytes
 valueToBytes = lazyByteStringToBytes . Aeson.encode

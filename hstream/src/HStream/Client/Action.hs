@@ -93,10 +93,10 @@ insertIntoStream
 insertIntoStream sName insertType payload API.HStreamApi{..} = do
   timestamp <- getProtoTimestamp
   let header = case insertType of
-        JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
-        RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
+        JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
+        RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp clientDefaultKey
       record = buildRecord header payload
-  hstreamApiAppend0 (mkClientNormalRequest def
+  hstreamApiAppend (mkClientNormalRequest def
     { API.appendRequestStreamName = sName
     , API.appendRequestRecords    = V.singleton record
     })

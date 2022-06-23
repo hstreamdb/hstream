@@ -78,6 +78,7 @@ library
     , hstream-common
     , hstream-processing
     , mysql-haskell
+    , proto3-suite
     , rio
     , scientific
     , string-random
