@@ -1249,7 +1249,7 @@ class SimpleService(Service):
         self.PROMETHEUS_SVC = super().get_service(PrometheusService)
         self.NODE_EXPORTER_SVC = super().get_service(NodeExporterService)
         self.CADVISOR_SVC = super().get_service(CadvisorService)
-        self.GRAFANA_SVC= super().get_service(GrafanaService)
+        self.GRAFANA_SVC = super().get_service(GrafanaService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
