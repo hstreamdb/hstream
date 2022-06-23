@@ -11,7 +11,7 @@ module HStream.Server.Handler.Cluster
   , lookupSubscriptionHandler
   ) where
 
-import           Control.Concurrent               (readMVar)
+import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception                (Exception (..), Handler (..),
                                                    catches, throwIO)
 import           Control.Monad                    (unless, void)
@@ -22,6 +22,7 @@ import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (getAllocatedNode)
 import           HStream.Connector.HStore         (transToStreamName)
+import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common    (alignDefault,
@@ -40,11 +41,11 @@ describeClusterHandler :: ServerContext
 describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
   let protocolVer = Types.protocolVersion
       serverVer   = Types.serverVersion
-  nodes <- P.getServerNodes zkHandle <&> V.fromList
+  nodes <- getMemberList gossipContext
   let resp = DescribeClusterResponse {
       describeClusterResponseProtocolVersion = protocolVer
     , describeClusterResponseServerVersion   = serverVer
-    , describeClusterResponseServerNodes     = nodes
+    , describeClusterResponseServerNodes     = V.fromList nodes
     }
   returnResp resp
 
@@ -55,7 +56,7 @@ lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStrea
   lookupStreamRequestStreamName  = stream,
   lookupStreamRequestOrderingKey = orderingKey}) = lookupStreamExceptionHandle $ do
   Log.info $ "receive lookupStream request: " <> Log.buildString' req
-  hashRing <- readMVar loadBalanceHashRing
+  hashRing <- readTVarIO loadBalanceHashRing
   let key      = alignDefault orderingKey
       storeKey = orderingKeyToStoreKey key
       theNode  = getAllocatedNode hashRing (stream <> key)
@@ -81,7 +82,7 @@ lookupSubscriptionHandler
 lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@LookupSubscriptionRequest{
   lookupSubscriptionRequestSubscriptionId = subId}) = defaultExceptionHandle $ do
   Log.info $ "receive lookupSubscription request: " <> Log.buildString (show req)
-  hashRing <- readMVar loadBalanceHashRing
+  hashRing <- readTVarIO loadBalanceHashRing
   let theNode = getAllocatedNode hashRing subId
   returnResp LookupSubscriptionResponse {
     lookupSubscriptionResponseSubscriptionId = subId

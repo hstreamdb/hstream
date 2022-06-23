@@ -12,7 +12,7 @@ import           Control.Concurrent.STM           (TMVar, atomically, check,
                                                    readTVarIO, stateTVar,
                                                    takeTMVar, writeTChan,
                                                    writeTQueue)
-import           Control.Monad                    (join, when)
+import           Control.Monad                    (forever, join, when)
 import           Data.ByteString                  (ByteString)
 import           Data.List                        ((\\))
 import qualified Data.List                        as L
@@ -125,7 +125,7 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@ServerNodeInt
               Just _  -> pure True
 
 scheduleProbe :: GossipContext -> IO ()
-scheduleProbe gc@GossipContext{..} = do
+scheduleProbe gc@GossipContext{..} = forever $ do
   memberMap <- atomically $ do
     memberMap <- readTVar serverList
     check (not $ Map.null memberMap)
@@ -133,7 +133,6 @@ scheduleProbe gc@GossipContext{..} = do
   let members = Map.keys memberMap
   let pingOrder = shuffle' members (length members) randomGen
   runProbe gc randomGen pingOrder members
-  scheduleProbe gc
 
 -- TODO: When a new server join in the cluster, add it randomly
 runProbe :: RandomGen gen => GossipContext -> gen -> [ServerId] -> [ServerId] -> IO ()
@@ -143,5 +142,6 @@ runProbe gc@GossipContext{..} gen (x:xs) members = do
     writeTChan actionChan (DoPing x (encode msgs))
   threadDelay $ probeInterval gossipOpts
   members' <- Map.keys <$> readTVarIO serverList
-  runProbe gc gen (xs ++ (members' \\ members)) members'
+  let xs' = if members' == members then xs else (xs \\ (members \\ members')) ++ (members' \\ members)
+  runProbe gc gen xs' members'
 runProbe _sc _gen [] _ids = pure ()

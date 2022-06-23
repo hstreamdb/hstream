@@ -113,7 +113,7 @@ insertStateMessage msg@(x, _) = Map.insertLookupWithKey f (serverNodeInternalId 
     f _key (v', p') (v, p) = if v' > v then (v', p') else (v, p)
 
 cleanStateMessages :: [StateMessage] -> [StateMessage]
-cleanStateMessages = Map.elems . foldr insertMsg mempty
+cleanStateMessages = Map.elems . foldl' (flip insertMsg) mempty
   where
     insertMsg x = Map.insertWith max (serverNodeInternalId $ getMsgNode x) x
 
@@ -171,7 +171,7 @@ defaultGossipOpts :: GossipOpts
 defaultGossipOpts = GossipOpts {
     gossipFanout     = 3
   , retransmitMult   = 4
-  , gossipInterval   = 500 * 1000
-  , probeInterval    = 1 * 1000 * 1000
+  , gossipInterval   = 1 * 1000 * 1000
+  , probeInterval    = 2 * 1000 * 1000
   , roundtripTimeout = 500 * 1000
   }

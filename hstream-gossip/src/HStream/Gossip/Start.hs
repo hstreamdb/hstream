@@ -4,12 +4,13 @@
 
 module HStream.Gossip.Start where
 
+import           Control.Concurrent               (threadDelay)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (atomically, modifyTVar,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO)
-import           Control.Monad                    (join, when)
+import           Control.Monad                    (when)
 import           Data.ByteString                  (ByteString)
 import           Data.List                        ((\\))
 import qualified Data.Map.Strict                  as Map
@@ -18,8 +19,8 @@ import qualified HStream.Logger                   as Log
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Proto3.Suite                     (def)
 import           System.Random                    (initStdGen)
-import           System.Timeout                   (timeout)
 
+import           Control.Concurrent               (threadDelay)
 import           HStream.Gossip.Core              (addToServerList,
                                                    runEventHandler,
                                                    runStateHandler)
@@ -54,6 +55,7 @@ initGossipContext gossipOpts eventHandlers serverSelf = do
 startGossip :: ByteString -> [(ByteString, Int)] -> GossipContext -> IO (Async ())
 startGossip grpcHost joins gc@GossipContext {..} = do
   when (null joins) $ error " Please specify at least one node to start with"
+  Log.info . Log.buildString $ "Bootstrap cluster with server nodes: " <> show joins
   a <- startListeners grpcHost gc
   atomically $ modifyTVar workers (Map.insert (API.serverNodeInternalId serverSelf) a)
   let current = (API.serverNodeInternalHost serverSelf, fromIntegral $ API.serverNodeInternalGossipPort serverSelf)
@@ -92,9 +94,11 @@ waitForServersToStart = mapConcurrently (uncurry wait)
   where
     wait joinHost joinPort = GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) loop
     loop client = do
-      started <- join <$> timeout 1000 (bootstrapPing client)
+      started <- bootstrapPing client
       case started of
-        Nothing   -> loop client
+        Nothing   -> do
+          threadDelay $ 1000 * 1000
+          loop client
         Just node -> return node
 
 joinCluster :: API.ServerNodeInternal -> (ByteString, Int) -> IO [API.ServerNodeInternal]
