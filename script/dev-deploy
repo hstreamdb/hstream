@@ -1134,7 +1134,6 @@ class GrafanaService(Service):
     )
 
     def __init__(self, cmdparsers):
-        super().__init__(cmdparsers)
         self._cmdparsers = cmdparsers
 
         self.cmd = self._cmdparsers.add_parser(
@@ -1162,7 +1161,7 @@ class GrafanaService(Service):
         stop_parser.add_argument(
             "--force", "-f", default=False, action="store_true"
         )
-        action_subparser = self.cmd.add_subpers(
+        action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
         )
         action_subparser.add_parser(
@@ -1250,6 +1249,7 @@ class SimpleService(Service):
         self.PROMETHEUS_SVC = super().get_service(PrometheusService)
         self.NODE_EXPORTER_SVC = super().get_service(NodeExporterService)
         self.CADVISOR_SVC = super().get_service(CadvisorService)
+        self.GRAFANA_SVC= super().get_service(GrafanaService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -1700,7 +1700,7 @@ class SimpleService(Service):
         )
         cmds.extend(
             synchronize_configs(
-                self.node_exporter_local_conf,
+                self.grafana_local_provisioning_path,
                 self.grafana_remote_provisioning_path,
                 self.grafana_hosts,
             )
