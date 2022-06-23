@@ -5,34 +5,40 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-
-import           Control.Concurrent               (MVar, forkIO, modifyMVar_,
-                                                   newMVar, swapMVar)
-import           Control.Monad                    (void)
-import           Data.List                        (sort)
+import           Control.Concurrent               (MVar, forkIO, newMVar,
+                                                   swapMVar)
+import           Control.Concurrent.STM           (TVar, atomically, retry,
+                                                   writeTVar)
+import           Control.Monad                    (void, when)
 import qualified Data.Text                        as T
+import           Data.Text.Encoding               (encodeUtf8)
 import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Text.RawString.QQ                (r)
 import           Z.Data.CBytes                    (CBytes)
 import           ZooKeeper                        (withResource,
-                                                   zooWatchGetChildren,
                                                    zookeeperResInit)
-import           ZooKeeper.Types
+import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
+                                                   pattern ZooConnectedState,
+                                                   pattern ZooConnectingState,
+                                                   pattern ZooSessionEvent)
 
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Gossip                   (getMemberListSTM,
+                                                   initGossipContext,
+                                                   startGossip)
+import           HStream.Gossip.HStreamGossip     (ServerNodeInternal (..))
+import           HStream.Gossip.Types             (GossipContext (..))
+import           HStream.Gossip.Utils             (defaultGossipOpts)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..), getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
-import           HStream.Server.Initialization    (initNodePath,
-                                                   initializeServer,
+import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig)
-import           HStream.Server.Persistence       (getServerNode',
-                                                   initializeAncestors,
-                                                   serverRootPath)
+import           HStream.Server.Persistence       (initializeAncestors)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log
@@ -50,9 +56,7 @@ app config@ServerOpts{..} = do
   serverState <- newMVar (EnumPB NodeStateStarting)
   let zkRes = zookeeperResInit _zkUri (Just $ globalWatcherFn serverState) 5000 Nothing 0
   withResource zkRes $ \zk -> do
-    let serverOnStarted = do
-          initNodePath zk _serverID (T.pack _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort)
-          Log.i $ "Server is started on port " <> Log.buildInt _serverPort
+    let serverOnStarted = Log.i $ "Server is started on port " <> Log.buildInt _serverPort
     let grpcOpts =
           GRPC.defaultServiceOptions
           { GRPC.serverHost = GRPC.Host . cbytes2bs $ _serverHost
@@ -61,12 +65,14 @@ app config@ServerOpts{..} = do
           , GRPC.sslConfig = fmap initializeTlsConfig _tlsConfig
           }
     initializeAncestors zk
-    serverContext <- initializeServer config zk serverState
+    gossipContext <- initGossipContext defaultGossipOpts mempty (ServerNodeInternal _serverID (encodeUtf8 . T.pack $ _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort))
+    serverContext <- initializeServer config gossipContext zk serverState
+    void $ startGossip (cbytes2bs _serverHost) _seedNodes gossipContext
     serve grpcOpts serverContext
 
 serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
 serve options sc@ServerContext{..} = do
-  void . forkIO $ updateHashRing zkHandle loadBalanceHashRing
+  void . forkIO $ updateHashRing gossipContext loadBalanceHashRing
   -- GRPC service
   Log.i "************************"
   putStrLn [r|
@@ -96,13 +102,14 @@ globalWatcherFn _ _ event stateZ _ = Log.debug $ "Event " <> Log.buildString' ev
 
 -- However, reconstruct hashRing every time can be expensive
 -- when we have a large number of nodes in the cluster.
--- TODO: Instead of reconstruction, we should use the operation insert/delete.
-updateHashRing :: ZHandle -> MVar HashRing -> IO ()
-updateHashRing zk mhr = zooWatchGetChildren zk serverRootPath callback action
+updateHashRing :: GossipContext -> TVar HashRing -> IO ()
+updateHashRing gc hashRing = loop []
   where
-    callback HsWatcherCtx{..} = updateHashRing watcherCtxZHandle mhr
-
-    action (StringsCompletion (StringVector children)) = do
-      modifyMVar_ mhr $ \_ -> do
-        serverNodes <- mapM (getServerNode' zk) children
-        pure $ constructServerMap . sort $ serverNodes
+    loop list =
+      loop =<< atomically
+        ( do
+            list' <- getMemberListSTM gc
+            when (list == list') retry
+            writeTVar hashRing $ constructServerMap list'
+            return list'
+        )

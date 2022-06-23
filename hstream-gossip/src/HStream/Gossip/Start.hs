@@ -4,12 +4,13 @@
 
 module HStream.Gossip.Start where
 
+import           Control.Concurrent               (threadDelay)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (atomically, modifyTVar,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO)
-import           Control.Monad                    (join, when)
+import           Control.Monad                    (when)
 import           Data.ByteString                  (ByteString)
 import           Data.List                        ((\\))
 import qualified Data.Map.Strict                  as Map
@@ -18,8 +19,8 @@ import qualified HStream.Logger                   as Log
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Proto3.Suite                     (def)
 import           System.Random                    (initStdGen)
-import           System.Timeout                   (timeout)
 
+import           Control.Concurrent               (threadDelay)
 import           HStream.Gossip.Core              (addToServerList,
                                                    runEventHandler,
                                                    runStateHandler)
@@ -34,6 +35,7 @@ import           HStream.Gossip.Types             (EventHandlers,
                                                    StateMessage (..))
 import           HStream.Gossip.Utils             (mkClientNormalRequest,
                                                    mkGRPCClientConf')
+import qualified HStream.Utils                    as U
 
 initGossipContext :: GossipOpts -> EventHandlers -> API.ServerNodeInternal -> IO GossipContext
 initGossipContext gossipOpts eventHandlers serverSelf = do
@@ -54,6 +56,7 @@ initGossipContext gossipOpts eventHandlers serverSelf = do
 startGossip :: ByteString -> [(ByteString, Int)] -> GossipContext -> IO (Async ())
 startGossip grpcHost joins gc@GossipContext {..} = do
   when (null joins) $ error " Please specify at least one node to start with"
+  Log.info . Log.buildString $ "Bootstrap cluster with server nodes: " <> show joins
   a <- startListeners grpcHost gc
   atomically $ modifyTVar workers (Map.insert (API.serverNodeInternalId serverSelf) a)
   let current = (API.serverNodeInternalHost serverSelf, fromIntegral $ API.serverNodeInternalGossipPort serverSelf)
@@ -92,9 +95,11 @@ waitForServersToStart = mapConcurrently (uncurry wait)
   where
     wait joinHost joinPort = GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) loop
     loop client = do
-      started <- join <$> timeout 1000 (bootstrapPing client)
+      started <- bootstrapPing client
       case started of
-        Nothing   -> loop client
+        Nothing   -> do
+          threadDelay $ 1000 * 1000
+          loop client
         Just node -> return node
 
 joinCluster :: API.ServerNodeInternal -> (ByteString, Int) -> IO [API.ServerNodeInternal]
@@ -105,7 +110,8 @@ joinCluster sNode (joinHost, joinPort) =
       GRPC.ClientNormalResponse (API.JoinResp xs) _ _ _ _ -> do
         Log.info . Log.buildString $ "Successfully joined cluster with " <> show xs
         return $ V.toList xs \\ [sNode]
-      GRPC.ClientErrorResponse _          -> error "failed to join"
+      GRPC.ClientErrorResponse _ -> error $ "failed to join "
+                                         <> U.bs2str joinHost <> ":" <> show joinPort
 
 initGossip :: GossipContext -> [API.ServerNodeInternal] -> IO ()
 initGossip gc = mapM_ (\x -> addToServerList gc x (Join x) OK)

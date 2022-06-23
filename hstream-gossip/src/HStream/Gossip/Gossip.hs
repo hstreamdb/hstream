@@ -8,6 +8,7 @@ module HStream.Gossip.Gossip where
 import           Control.Concurrent            (threadDelay)
 import           Control.Concurrent.STM        (atomically, check, readTVar,
                                                 stateTVar, writeTChan)
+import           Control.Monad                 (forever)
 import           Data.ByteString               (ByteString)
 import qualified Data.Map.Strict               as Map
 import           Data.Serialize                (encode)
@@ -32,10 +33,9 @@ gossip msg client = do
     ClientErrorResponse  {} -> Log.debug "Failed to send gossip"
 
 scheduleGossip :: GossipContext -> IO ()
-scheduleGossip gc@GossipContext{..} = do
+scheduleGossip gc@GossipContext{..} = forever $ do
   atomically doGossip
   threadDelay $ gossipInterval gossipOpts
-  scheduleGossip gc
   where
     doGossip = do
       memberMap <- readTVar serverList
@@ -43,5 +43,5 @@ scheduleGossip gc@GossipContext{..} = do
       msgs <- stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
       check (not $ null msgs)
       let members = Map.keys memberMap
-      let selected = take 3 $ shuffle' members (length members) randomGen
+      let selected = take (gossipFanout gossipOpts) $ shuffle' members (length members) randomGen
       writeTChan actionChan (DoGossip selected (encode msgs))

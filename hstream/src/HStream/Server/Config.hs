@@ -11,18 +11,38 @@ import           Control.Exception          (throwIO)
 import           Control.Monad              (when)
 import           Data.ByteString            (ByteString)
 import qualified Data.ByteString.Char8      as BSC
-import           Data.Maybe                 (fromMaybe, isJust)
+import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text                  as Text
 import           Data.Word                  (Word32)
-import           Data.Yaml                  as Y
-import           Options.Applicative        as O
+import           Data.Yaml                  as Y (Object, ParseException (..),
+                                                  Parser, decodeFileThrow,
+                                                  parseEither, (.!=), (.:),
+                                                  (.:?))
+import           Options.Applicative        as O (Alternative ((<|>)),
+                                                  CompletionResult (execCompletion),
+                                                  Parser,
+                                                  ParserResult (CompletionInvoked, Failure, Success),
+                                                  auto, defaultPrefs,
+                                                  execParserPure, flag,
+                                                  fullDesc, help, helper, info,
+                                                  long, metavar, option,
+                                                  optional, progDesc,
+                                                  renderFailure, short,
+                                                  showDefault, strOption, value,
+                                                  (<**>))
 import           System.Directory           (makeAbsolute)
 import           System.Environment         (getArgs, getProgName)
 import           System.Exit                (exitSuccess)
 import           Z.Data.CBytes              (CBytes)
 import           Z.IO.Network               (PortNumber (PortNumber))
 
+import qualified Data.Attoparsec.Text       as AP
+import           Data.Bifunctor             (second)
+import qualified Data.Text                  as T
+import           Data.Text.Encoding         (encodeUtf8)
 import qualified HStream.Admin.Store.API    as AA
+import           HStream.Gossip.Types       (GossipOpts (..))
+import           HStream.Gossip.Utils       (defaultGossipOpts)
 import qualified HStream.Logger             as Log
 import           HStream.Server.Persistence ()
 import           HStream.Store              (Compression (..))
@@ -43,7 +63,7 @@ data ServerOpts = ServerOpts
   , _tlsConfig          :: !(Maybe TlsConfig)
   , _serverLogLevel     :: !Log.Level
   , _serverLogWithColor :: !Bool
-
+  , _seedNodes          :: ![(ByteString, Int)]
   , _ldAdminHost        :: !ByteString
   , _ldAdminPort        :: !Int
   , _ldAdminProtocolId  :: !AA.ProtocolId
@@ -51,6 +71,8 @@ data ServerOpts = ServerOpts
   , _ldAdminSendTimeout :: !Int
   , _ldAdminRecvTimeout :: !Int
   , _ldLogLevel         :: !Log.LDLogLevel
+
+  , _gossipOpts         :: !GossipOpts
   } deriving (Show)
 
 data TlsConfig
@@ -71,6 +93,7 @@ data CliOptions = CliOptions
   , _serverLogWithColor_ :: !Bool
   , _compression_        :: !(Maybe Compression)
   , _zkUri_              :: !(Maybe CBytes)
+  , _seedNodes_          :: !(Maybe T.Text)
 
   , _enableTls_          :: !Bool
   , _tlsKeyPath_         :: !(Maybe String)
@@ -120,6 +143,12 @@ serverID = option auto
   $ long "server-id"
   <> metavar "UINT32"
   <> help "ID of the hstream server node"
+
+seedNodes :: O.Parser T.Text
+seedNodes = strOption
+  $  long "seed-nodes"
+  <> metavar "ADDRESS"
+  <> help "host:port pairs of seed nodes, separated by commas (,)"
 
 compression :: O.Parser Compression
 compression = option auto
@@ -197,9 +226,10 @@ parseWithFile :: O.Parser CliOptions
 parseWithFile = do
   _configPath          <- configPath
   _serverHost_         <- optional serverHost
-  _serverPort_         <- optional serverPort
   _serverAddress_      <- optional serverAddress
+  _serverPort_         <- optional serverPort
   _serverInternalPort_ <- optional serverInternalPort
+  _seedNodes_          <- optional seedNodes
   _serverID_           <- optional serverID
   _ldAdminPort_        <- optional ldAdminPort
   _ldAdminHost_        <- optional ldAdminHost
@@ -221,9 +251,9 @@ parseFileToJSON = decodeFileThrow
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
 parseJSONToOptions CliOptions {..} obj = do
   nodeCfgObj  <- obj .: "hserver"
-  nodeId      <- nodeCfgObj .:  "id"
-  nodeAddress <- nodeCfgObj .:  "address"
-  nodePort    <- nodeCfgObj .:? "port" .!= 6570
+  nodeId            <- nodeCfgObj .:  "id"
+  nodeAddress       <- nodeCfgObj .:  "address"
+  nodePort          <- nodeCfgObj .:? "port" .!= 6570
   nodeInternalPort  <- nodeCfgObj .:? "internal-port" .!= 6571
   zkuri             <- nodeCfgObj .:  "zkuri"
   serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
@@ -233,8 +263,9 @@ parseJSONToOptions CliOptions {..} obj = do
   _maxRecordSize    <- nodeCfgObj .:? "max-record-size" .!= 1048576
   when (_maxRecordSize < 0 && _maxRecordSize > 104876)
     $ error "max-record-size has to be a positive number less than 1MB"
-  let _serverPort    = fromMaybe (PortNumber nodePort) _serverPort_
-  let _serverID      = fromMaybe nodeId _serverID_
+
+  let _serverPort         = fromMaybe (PortNumber nodePort) _serverPort_
+  let _serverID           = fromMaybe nodeId _serverID_
   let _serverInternalPort = fromMaybe (PortNumber nodeInternalPort) _serverInternalPort_
   let _zkUri              = fromMaybe zkuri _zkUri_
   let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
@@ -242,9 +273,24 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverAddress      = fromMaybe nodeAddress _serverAddress_
   let _compression        = fromMaybe serverCompression _compression_
 
-  storeCfgObj  <- obj .:? "hstore" .!= mempty
-  storeLogLevel <- read <$> storeCfgObj .:? "log-level" .!= "info"
-  sAdminCfgObj <- storeCfgObj .:? "store-admin" .!= mempty
+  -- Cluster Option
+  seeds <- flip fromMaybe _seedNodes_ <$> (nodeCfgObj .: "seed-nodes")
+  let !_seedNodes = case parseHostPorts seeds of
+        Left err -> error err
+        Right hps -> map (second . fromMaybe $ fromIntegral _serverInternalPort) hps
+
+  clusterCfgObj <- nodeCfgObj .:? "gossip" .!= mempty
+  gossipFanout     <- clusterCfgObj .:? "gossip-fanout"     .!= gossipFanout defaultGossipOpts
+  retransmitMult   <- clusterCfgObj .:? "retransmit-mult"   .!= retransmitMult defaultGossipOpts
+  gossipInterval   <- clusterCfgObj .:? "gossip-interval"   .!= gossipInterval defaultGossipOpts
+  probeInterval    <- clusterCfgObj .:? "probe-interval"    .!= probeInterval defaultGossipOpts
+  roundtripTimeout <- clusterCfgObj .:? "roundtrip-timeout" .!= roundtripTimeout defaultGossipOpts
+  let _gossipOpts = GossipOpts {..}
+
+  -- Store Config
+  storeCfgObj         <- obj .:? "hstore" .!= mempty
+  storeLogLevel       <- read <$> storeCfgObj .:? "log-level" .!= "info"
+  sAdminCfgObj        <- storeCfgObj .:? "store-admin" .!= mempty
   storeAdminHost      <- BSC.pack <$> sAdminCfgObj .:? "host" .!= "127.0.0.1"
   storeAdminPort      <- sAdminCfgObj .:? "port" .!= 6440
   _ldAdminProtocolId  <- readProtocol <$> sAdminCfgObj .:? "protocol-id" .!= "binary"
@@ -262,21 +308,20 @@ parseJSONToOptions CliOptions {..} obj = do
   let _ldConfigPath   = _storeConfigPath
 
   -- TLS config
-  nodeEnableTls <- nodeCfgObj .:? "enable-tls" .!= False
-  nodeTlsKeyPath <- nodeCfgObj .:? "tls-key-path"
+  nodeEnableTls   <- nodeCfgObj .:? "enable-tls" .!= False
+  nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
   nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
-  nodeTlsCaPath <- nodeCfgObj .:? "tls-ca-path"
+  nodeTlsCaPath   <- nodeCfgObj .:? "tls-ca-path"
 
-  let _enableTls = _enableTls_ || nodeEnableTls
-  let _firstJust x y = if isJust x then x else y
-  let _tlsKeyPath = _firstJust _tlsKeyPath_ nodeTlsKeyPath
-  let _tlsCertPath = _firstJust _tlsCertPath_ nodeTlsCertPath
-  let _tlsCaPath = _firstJust _tlsCaPath_ nodeTlsCaPath
-  let !_tlsConfig = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
-                    (False, _, _) -> Nothing
-                    (_, Nothing, _) -> error "enable-tls=true, but tls-key-path is empty"
-                    (_, _, Nothing) -> error "enable-tls=true, but tls-cert-path is empty"
-                    (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
+  let _enableTls   = _enableTls_ || nodeEnableTls
+  let _tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath
+  let _tlsCertPath = _tlsCertPath_ <|> nodeTlsCertPath
+  let _tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
+  let !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
+        (False, _, _) -> Nothing
+        (_, Nothing, _) -> error "enable-tls=true, but tls-key-path is empty"
+        (_, _, Nothing) -> error "enable-tls=true, but tls-cert-path is empty"
+        (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
 
   return ServerOpts {..}
 
@@ -310,3 +355,12 @@ readProtocol x = case (Text.strip . Text.toUpper) x of
   "binary"  -> AA.binaryProtocolId
   "compact" -> AA.compactProtocolId
   _         -> AA.binaryProtocolId
+
+parseHostPorts :: T.Text -> Either String [(ByteString, Maybe Int)]
+parseHostPorts = AP.parseOnly (hostPortParser `AP.sepBy` AP.char ',')
+  where
+    hostPortParser = do
+      AP.skipSpace
+      host <- encodeUtf8 <$> AP.takeTill (`elem` [':', ','])
+      port <- optional (AP.char ':' *> AP.decimal)
+      return (host, port)

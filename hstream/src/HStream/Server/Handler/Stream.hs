@@ -13,12 +13,13 @@ module HStream.Server.Handler.Stream
     append0Handler)
 where
 
-import           Control.Concurrent               (readMVar)
 import           Control.Exception
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Concurrent.STM           (readTVarIO)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
+import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
@@ -78,7 +79,7 @@ appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@Append
     Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
     Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
     Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-    hashRing <- readMVar loadBalanceHashRing
+    hashRing <- readTVarIO loadBalanceHashRing
     let partitionKey = getRecordKey . V.head $ appendRequestRecords
     let identifier = case partitionKey of
           Just key -> appendRequestStreamName <> key
@@ -111,7 +112,7 @@ append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@Appen
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
-  hashRing <- readMVar loadBalanceHashRing
+  hashRing <- readTVarIO loadBalanceHashRing
   let identifier = appendRequestStreamName <> clientDefaultKey
   if getAllocatedNodeId hashRing identifier == serverID
     then C.append0Stream sc request partitionKey >>= returnResp
