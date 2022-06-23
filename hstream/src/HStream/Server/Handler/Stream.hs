@@ -23,7 +23,6 @@ import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common    (clientDefaultKey)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Stats                    as Stats

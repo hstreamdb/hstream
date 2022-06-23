@@ -9,8 +9,8 @@
 module HStream.SQL.Codegen where
 
 import           Data.Aeson                                      (Object,
-                                                                  Value (Bool, Null, Number, String),
-                                                                  encode)
+                                                                  Value (Bool, Null, Number, String))
+import qualified Data.Aeson                                      as Aeson
 import           Data.Bifunctor
 import qualified Data.ByteString.Char8                           as BSC
 import           Data.Function
@@ -26,6 +26,7 @@ import           Data.Time                                       (diffTimeToPico
                                                                   showGregorian)
 import qualified Database.ClickHouseDriver.Types                 as Clickhouse
 import qualified Database.MySQL.Base                             as MySQL
+import qualified Proto3.Suite                                    as PB
 import           RIO
 import qualified RIO.ByteString.Lazy                             as BL
 import qualified Z.Data.CBytes                                   as CB
@@ -71,7 +72,8 @@ import           HStream.SQL.Internal.Codegen                    (binOpOnValue,
                                                                   getFieldByName,
                                                                   unaryOpOnValue)
 import           HStream.SQL.Parse                               (parseAndRefine)
-import           HStream.Utils                                   (genUnique)
+import           HStream.Utils                                   (genUnique,
+                                                                  jsonObjectToStruct)
 
 --------------------------------------------------------------------------------
 
@@ -134,9 +136,9 @@ hstreamCodegen = \case
     return $ CreateViewPlan schema source sink (HS.build builder) 1 mat
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
   RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
-  RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . encode . HM.fromList $ second constantToValue <$> tuples)
+  RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . HM.fromList $ second constantToValue <$> tuples)
   RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
-  RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat bs
+  RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode (BL.fromStrict bs))
   RQShow (RShow RShowStreams)        -> return $ ShowPlan SStreams
   RQShow (RShow RShowQueries)        -> return $ ShowPlan SQueries
   RQShow (RShow RShowConnectors)     -> return $ ShowPlan SConnectors
