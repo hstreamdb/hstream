@@ -178,7 +178,7 @@
         "x": 12,
         "y": 0
       },
-      "id": 6,
+      "id": 16,
       "options": {
         "legend": {
           "calcs": [],
@@ -196,16 +196,14 @@
             "type": "prometheus",
             "uid": "TNX2D3rnk"
           },
-          "editorMode": "code",
-          "expr": "sum by (group, instance, job) (100 - ((rate(node_cpu_seconds_total{mode=\"idle\"}[30s])) * 100))",
-          "hide": false,
+          "editorMode": "builder",
+          "expr": "subscription_acks{instance=\"localhost:9270\", job=\"hstream\"}",
           "legendFormat": "__auto",
           "range": true,
-          "rawQuery": true,
           "refId": "A"
         }
       ],
-      "title": "CPU used percent",
+      "title": "Subscription Acks",
       "type": "timeseries"
     },
     {
@@ -358,7 +356,7 @@
         "x": 12,
         "y": 8
       },
-      "id": 8,
+      "id": 14,
       "options": {
         "legend": {
           "calcs": [],
@@ -376,11 +374,14 @@
             "type": "prometheus",
             "uid": "TNX2D3rnk"
           },
-          "expr": "((node_memory_MemTotal_bytes - node_memory_MemFree_bytes - node_memory_Buffers_bytes - node_memory_Cached_bytes) / node_memory_MemTotal_bytes) * 100",
+          "editorMode": "builder",
+          "expr": "stream_counter_append_failed{instance=\"localhost:9270\", job=\"hstream\", type=\"append_failed\"}",
+          "legendFormat": "__auto",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Memory used percent",
+      "title": "Append Failed Num",
       "type": "timeseries"
     },
     {
@@ -560,9 +561,186 @@
       ],
       "title": "Append Request Latency",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "TNX2D3rnk"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "TNX2D3rnk"
+          },
+          "editorMode": "code",
+          "expr": "sum by (group, instance, job) (100 - ((rate(node_cpu_seconds_total{mode=\"idle\"}[30s])) * 100))",
+          "hide": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "rawQuery": true,
+          "refId": "A"
+        }
+      ],
+      "title": "CPU used percent",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "TNX2D3rnk"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "TNX2D3rnk"
+          },
+          "expr": "((node_memory_MemTotal_bytes - node_memory_MemFree_bytes - node_memory_Buffers_bytes - node_memory_Cached_bytes) / node_memory_MemTotal_bytes) * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Memory used percent",
+      "type": "timeseries"
     }
   ],
-  "refresh": "",
+  "refresh": "5s",
   "schemaVersion": 36,
   "style": "dark",
   "tags": [],
@@ -577,6 +755,6 @@
   "timezone": "",
   "title": "HStream Dashboard",
   "uid": "G9MED397k",
-  "version": 4,
+  "version": 1,
   "weekStart": ""
 }
