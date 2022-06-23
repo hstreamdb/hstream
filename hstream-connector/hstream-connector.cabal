@@ -47,8 +47,9 @@ library
     HStream.Connector.MySQL
     HStream.IO.IOTask
     HStream.IO.Worker
-    HStream.IO.KvStorage
+    HStream.IO.Storage
     HStream.IO.Types
+    HStream.IO.ZkKv
 
   build-depends:
     , aeson

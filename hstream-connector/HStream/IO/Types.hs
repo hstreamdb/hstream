@@ -2,99 +2,67 @@
 
 module HStream.IO.Types where
 
-import qualified Data.Text as T
-import qualified Data.Aeson as J
+import qualified Data.Aeson                 as J
+import qualified Data.Text                  as T
 
-import qualified Data.Aeson.TH as JT
-import Data.Char (toLower)
+import qualified Data.Aeson.TH              as JT
+import qualified Data.ByteString.Lazy       as BSL
+import qualified Data.ByteString.Lazy.Char8 as BSLC
 
-data ConfiguratedCatalogStream
-  = ConfiguratedCatalogStream {
-      ccsStream :: J.Object,
-      ccsSync_Mode :: T.Text,
-      ccsDestination_Sync_Mode :: T.Text
+data IOTaskType = Source | Sink
+  deriving (Show, Eq)
+
+$(JT.deriveJSON JT.defaultOptions ''IOTaskType)
+
+data HStreamConfig
+  = HStreamConfig
+    { taskId     :: T.Text
+    , serviceUrl :: T.Text
+    , zkUrl      :: T.Text
+    , zkKvPath   :: T.Text
     }
-JT.deriveJSON 
-    JT.defaultOptions { JT.fieldLabelModifier = map toLower . drop 3 } 
-    ''ConfiguratedCatalogStream
 
+$(JT.deriveJSON JT.defaultOptions ''HStreamConfig)
 
-newtype ConfiguratedCatalog
-  = ConfiguratedCatalog
-    { ccStreams :: [ConfiguratedCatalogStream]
+data TaskConfig
+  = TaskConfig
+    { hstreamConfig   :: HStreamConfig
+    , connectorConfig :: J.Value
     }
-JT.deriveJSON 
-    JT.defaultOptions { JT.fieldLabelModifier = map toLower . drop 2 } 
-    ''ConfiguratedCatalog
 
-makeConfiguratedCatalog :: AirbyteCatalogMessage -> T.Text -> T.Text -> ConfiguratedCatalog
-makeConfiguratedCatalog AirbyteCatalogMessage{..} read_mode write_mode 
-  = ConfiguratedCatalog { ccStreams = ns }
-  where
-    ns = map (\v -> ConfiguratedCatalogStream v read_mode write_mode) streams
+$(JT.deriveJSON JT.defaultOptions ''TaskConfig)
 
-newtype AirbyteCatalogMessage
-  = AirbyteCatalogMessage {
-      streams :: [J.Object]
-    }
-JT.deriveJSON JT.defaultOptions ''AirbyteCatalogMessage
+data TaskInfo = TaskInfo
+  { taskImage  :: T.Text
+  , taskType   :: IOTaskType
+  , taskConfig :: TaskConfig
+  }
 
-newtype AirbyteStateMessage
-  = AirbyteStateMessage { asmData :: J.Value }
-JT.deriveJSON 
-    JT.defaultOptions { JT.fieldLabelModifier = map toLower . drop 3 } 
-    ''AirbyteStateMessage
+$(JT.deriveJSON JT.defaultOptions ''TaskInfo)
 
 
-data AirbyteRecordMessage
-  = AirbyteRecordMessage { 
-      armStream :: T.Text,
-      armData :: J.Object,
-      armEmitted_at :: Int
-    }
-JT.deriveJSON 
-    JT.defaultOptions 
-      { JT.fieldLabelModifier = map toLower . drop 3
-      , JT.omitNothingFields = True
-      } 
-    ''AirbyteRecordMessage
+data IOTaskStatus
+  = NEW
+  | STARTED
+  | RUNNING
+  | COMPLETED
+  | FAILED
+  | STOPPED
+  deriving (Show, Eq)
 
-data AirbyteLogMessage
-  = AirbyteLogMessage { 
-      almLevel :: T.Text,
-      almMessage :: T.Text
-    }
-JT.deriveJSON 
-    JT.defaultOptions 
-      { JT.fieldLabelModifier = map toLower . drop 3
-      , JT.omitNothingFields = True
-      } 
-    ''AirbyteLogMessage
+ioTaskStatusToBS :: IOTaskStatus -> BSL.ByteString
+ioTaskStatusToBS = BSLC.pack . show
 
-data AirbyteMessage
-  = AMLog AirbyteLogMessage
-  | AMState AirbyteStateMessage
-  | AMCatalog AirbyteCatalogMessage
-  | AMRecord AirbyteRecordMessage
+$(JT.deriveJSON JT.defaultOptions ''IOTaskStatus)
 
-instance J.FromJSON AirbyteMessage where
-  parseJSON = J.withObject "airbyteMessage" $ \v ->
-    v J..: "type"
-      >>= \case ("LOG" :: String) -> AMLog <$> v J..: "log"
-                "STATE" -> AMState <$> v J..: "state"
-                "CATALOG" -> AMCatalog <$> v J..: "catalog"
-                "RECORD" -> AMRecord <$> v J..: "record"
-                _ -> fail "invalid type messages"
+data IOTaskItem
+  = IOTaskItem
+      { iiTaskId :: T.Text
+      , iiStatus :: T.Text
+      -- , latestState :: J.Value
+      } deriving (Show)
 
-instance J.ToJSON AirbyteMessage where
-  toJSON (AMLog m) = J.object ["type" J..= ("LOG" :: T.Text), "log" J..= m]
-  toJSON (AMState m) = J.object ["type" J..= ("STATE"::T.Text), "state" J..= m]
-  toJSON (AMCatalog m) = J.object ["type" J..= ("CATALOG"::T.Text), "catalog" J..= m]
-  toJSON (AMRecord m) = J.object ["type" J..= ("RECORD"::T.Text), "record" J..= m]
-
--- hstream-io state messages
-newtype IOStateMessage
-  = IOStateMessage { ismHStreamIOStateType :: T.Text }
-JT.deriveJSON 
-    JT.defaultOptions { JT.fieldLabelModifier = drop 3 } 
-    ''IOStateMessage
+class Kv kv where
+  get :: kv -> T.Text -> IO BSL.ByteString
+  set :: kv -> T.Text -> BSL.ByteString -> IO ()
+  keys :: kv -> IO [T.Text]

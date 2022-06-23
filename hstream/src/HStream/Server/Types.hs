@@ -17,12 +17,12 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
+import qualified HStream.IO.Worker                as IO
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified Proto3.Suite                     as PB
-import qualified HStream.IO.Worker                as IO
 
 protocolVersion :: T.Text
 protocolVersion = "0.1.0"

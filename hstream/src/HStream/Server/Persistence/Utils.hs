@@ -91,6 +91,18 @@ subscriptionsPath = rootPath <> "/subscriptions"
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
+ioPath :: CBytes
+ioPath = rootPath <> "/io"
+
+ioTasksPath :: CBytes
+ioTasksPath = ioPath <> "/tasks"
+
+ioTasksStatusPath :: CBytes
+ioTasksStatusPath = ioPath <> "/tasksStatus"
+
+ioTasksKvPath :: CBytes
+ioTasksKvPath = ioPath <> "/tasksKv"
+
 paths :: [CBytes]
 paths = [ rootPath
         , serverRootPath
@@ -99,6 +111,10 @@ paths = [ rootPath
         , connectorsPath
         , subscriptionsPath
         , subscriptionsLockPath
+        , ioPath
+        , ioTasksPath
+        , ioTasksStatusPath
+        , ioTasksKvPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()

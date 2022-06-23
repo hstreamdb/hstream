@@ -22,7 +22,10 @@ import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 
+import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
+import qualified HStream.IO.Types                 as IO
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -35,8 +38,6 @@ import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval, formatStatus,
                                                    interval2ms, returnResp,
                                                    showNodeStatus)
-import qualified HStream.Admin.Server.Types as AT
-import qualified HStream.IO.Worker as IO
 
 -------------------------------------------------------------------------------
 -- All command line data types are defined in 'HStream.Admin.Types'
@@ -218,8 +219,8 @@ runIO ServerContext {..} AT.IOCmdList = do
   items <- IO.listIOTasks scIOWorker
   rows <- forM items $ \IO.IOTaskItem {..} ->
     return
-      [ taskId,
-        Text.pack $ show status
+      [ iiTaskId,
+        Text.pack $ show iiStatus
       ]
   return . tableResponse $ Aeson.object ["headers" .= headers, "rows" .= rows]
 

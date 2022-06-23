@@ -28,6 +28,7 @@ import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
@@ -49,7 +50,6 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProc
                                                    SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
                                                    StatusCode (StatusOk),
                                                    getAuthProperties)
-import qualified HStream.IO.Worker as IO
 
 {-
   Starting hservers will no longer be happening in parallel.
@@ -109,7 +109,7 @@ initializeServer ServerOpts{..} zk serverState = do
 
   hashRing <- initializeHashRing zk
 
-  ioWorker <- IO.newWorker
+  ioWorker <- IO.newWorker zk
 
   return
     ServerContext

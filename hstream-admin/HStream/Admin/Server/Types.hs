@@ -212,19 +212,19 @@ data IOCommand
 ioCmdParser :: O.Parser IOCommand
 ioCmdParser = O.hsubparser
   ( O.command "create" (O.info
-                        (IOCmdCreate <$> O.strOption (O.long "dir" 
-                                                      <> O.metavar "SRRING" 
+                        (IOCmdCreate <$> O.strOption (O.long "dir"
+                                                      <> O.metavar "SRRING"
                                                       <> O.help "config dir"))
                         (O.progDesc "create IOTask"))
   <> O.command "list" (O.info (pure IOCmdList) (O.progDesc "list IOTasks"))
   <> O.command "start" (O.info
-                        (IOCmdStart <$> O.strOption (O.long "taskId" 
-                                                      <> O.metavar "SRRING" 
+                        (IOCmdStart <$> O.strOption (O.long "taskId"
+                                                      <> O.metavar "SRRING"
                                                       <> O.help "task id"))
                         (O.progDesc "star a IOTask"))
   <> O.command "stop" (O.info
-                        (IOCmdStop <$> O.strOption (O.long "taskId" 
-                                                      <> O.metavar "SRRING" 
+                        (IOCmdStop <$> O.strOption (O.long "taskId"
+                                                      <> O.metavar "SRRING"
                                                       <> O.help "task id"))
                         (O.progDesc "stop a IOTask"))
   )
