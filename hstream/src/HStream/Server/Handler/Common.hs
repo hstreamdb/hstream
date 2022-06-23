@@ -46,6 +46,7 @@ import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
+                                                   clientDefaultKey,
                                                    textToCBytes)
 
 --------------------------------------------------------------------------------
@@ -350,9 +351,3 @@ orderingKeyToStoreKey key
   | key == clientDefaultKey = Nothing
   | T.null key = Nothing
   | otherwise  = Just $ textToCBytes key
-
-clientDefaultKey :: Text
-clientDefaultKey = "__default__"
-
-clientDefaultKey' :: CBytes
-clientDefaultKey' = textToCBytes clientDefaultKey
