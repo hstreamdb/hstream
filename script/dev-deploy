@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 from typing import List, Optional, Tuple
+from unittest.mock import DEFAULT
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
@@ -84,6 +85,14 @@ def is_container_running(remote, container_name, container_bin="docker"):
         if container_name.strip() in rs:
             return True
     return False
+
+
+def is_program_running(remote, prog_name):
+    result = run_sh(
+        f"ssh {remote} \"ps -ef | grep {prog_name} | grep -v grep | awk '{{print $2}}'\"",
+        stdout=subprocess.PIPE,
+    )
+    return (not result) and result.stdout
 
 
 def scp_command(local_file, remote, remote_file) -> str:
@@ -958,6 +967,7 @@ class NodeExporterService(Service):
     KEYS = ["node-exporter"]
     DEFAULT_CONTAINER_NAME = "deploy_node_exporter"
     DEFAULT_IMAGE_TAG = "docker.io/prom/node-exporter"
+    # FIXME: use binary
 
     def __init__(self, cmdparsers):
         self._cmdparsers = cmdparsers
@@ -1117,6 +1127,84 @@ class CadvisorService(Service):
                     f"{image}"
                     f"'"
                 )
+        return cmds
+
+
+class HStreamHTTPService(Service):
+    DEFAULT_ARCH = "amd64"
+    DEFAULT_VSN = "v0.1.0"
+    DEFAULT_BIN = "http-server"
+    get_bin_url = (
+        lambda vsn, arch: f"https://github.com/hstreamdb/http-services/releases/download/{vsn}/http-services-{vsn}-linux-{arch}.tar.gz"
+    )
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+        self.cmd = self._cmdparsers.add_parser(
+            "hstream-http",
+            aliases=["hstream-http"],
+            help="Manage hstream-http service",
+        )
+
+    def init_parser(self):
+        start_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start sevices", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        memory_cpus,
+        rm=False,
+        restart=True,
+        vsn=DEFAULT_VSN,
+        arch=DEFAULT_ARCH,
+        bin_path="$HOME/.local/bin/dev-deploy",
+        **args,
+    ):
+        bin_url = self.get_bin_url(vsn, arch)
+
+        cmds = []
+
+        for (host, _) in remotes:
+            if is_program_running(host, self.DEFAULT_BIN):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"cd {bin_path} && "
+                    f"curl --remote-name {bin_url} && "
+                    f"tar -xvf {self.DEFAULT_BIN} && "
+                    f"mv bin/http-server . && "
+                    f"mv bin/adminCtl    . && "
+                    f"chmod +x http-server && "
+                    f"chmod +x adminCtl    && "
+                    f"rmdir bin && "
+                    f'http-server -services-url "localhost:6570" -address "localhost:9290" &'
+                )
+
+        return cmds
+
+    def stop_cmd(self, container_bin, container_name, remotes, **args):
+        cmds = []
+
+        for (host, _) in remotes:
+            if is_program_running(host, self.DEFAULT_BIN):
+                cmds.append(f"ssh {host} 'killall {self.DEFAULT_BIN}'")
+
         return cmds
 
 
@@ -1403,6 +1491,12 @@ class SimpleService(Service):
             self.cadvisor_memory_cpus = get_memory_cpus("cadvisor")
             self.grafana_memory_cpus = get_memory_cpus("grafana")
 
+            self.hstream_http_vsn = deploy_cfg["hstream_http"].get("vsn")
+            self.hstream_http_arch = deploy_cfg["hstream_http"].get("arch")
+            self.hstream_http_bin_path = deploy_cfg["hstream_http"].get(
+                "bin-path"
+            )
+
     def start_cmd(self, config: str, disable_restart, **kargs) -> List[str]:
         self.parse_config(config)
         cmds = self.pre_start()
@@ -1537,6 +1631,19 @@ class SimpleService(Service):
         }
         cmds.extend(self.CADVISOR_SVC.start_cmd(**cadvisor_args))
 
+        # start HStream HTTP Server
+        hstream_http_args = {
+            "container_bin": None,
+            "container_name": None,
+            "image": None,
+            "memory_cpus": None,
+            "remotes": None,
+            "restart": None,
+            "vsn": self.hstream_http_vsn,
+            "arch": self.hstream_http_arch,
+            "bin_path": self.hstream_http_bin_path,
+        }
+
         # start grafana
         grafana_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
@@ -1619,6 +1726,15 @@ class SimpleService(Service):
             "force": True,
         }
         cmds.extend(self.CADVISOR_SVC.stop_cmd(**cadvisor_args))
+
+        # stop HStream HTTP Server
+        hstream_http_args = {
+            "container_bin": None,
+            "container_name": None,
+            "remotes": None,
+            "force": None,
+        }
+        cmds.extend(self.HSTREAM_HTTP_SVC.stop_cmd(**hstream_http_args))
 
         # stop grafana
         grafana_args = {
@@ -1725,6 +1841,7 @@ if __name__ == "__main__":
     s.register(PrometheusService)
     s.register(NodeExporterService)
     s.register(CadvisorService)
+    s.register(HStreamHTTPService)
     s.register(GrafanaService)
     s.register(SimpleService)
     s.run()
