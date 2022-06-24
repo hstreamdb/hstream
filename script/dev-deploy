@@ -106,8 +106,11 @@ def set_config_path(custom: str, origin: str) -> str:
 def set_resource_constraints(memory_cpus: Tuple[str, str]) -> str:
     memory, cpus = memory_cpus
     return (
-        f" --memory={memory} " if memory else ""
-        f" --cpus={cpus} " if cpus else ""
+        f" --memory={memory} "
+        if memory
+        else "" f" --cpus={cpus} "
+        if cpus
+        else ""
     )
 
 
@@ -1117,6 +1120,109 @@ class CadvisorService(Service):
         return cmds
 
 
+class GrafanaService(Service):
+    KEYS = ["grafana"]
+    DEFAULT_CONTAINER_NAME = "deploy_grafana"
+    DEFAULT_IMAGE_TAG = "docker.io/grafana/grafana-oss:main"
+
+    NO_LOGIN_ENV_OPTS = "".join(
+        [
+            " -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin ",
+            " -e GF_AUTH_ANONYMOUS_ENABLED=true ",
+            " -e GF_AUTH_DISABLE_LOGIN_FORM=true ",
+        ]
+    )
+
+    def __init__(self, cmdparsers):
+        self._cmdparsers = cmdparsers
+
+        self.cmd = self._cmdparsers.add_parser(
+            self.KEYS[0],
+            aliases=self.KEYS[1:],
+            help="Manage grafana service",
+        )
+
+    def init_parser(self):
+        self.cmd.add_argument(
+            "--container-name", default=self.DEFAULT_CONTAINER_NAME
+        )
+        self.cmd.add_argument(
+            "--extra-container-options",
+            required=False,
+            default="",
+            type=str,
+        )
+        start_parser = argparse.ArgumentParser(add_help=False)
+        start_parser.add_argument(
+            "--image", default=GrafanaService.DEFAULT_IMAGE_TAG
+        )
+        start_parser.add_argument("--rm", action="store_true")
+        stop_parser = argparse.ArgumentParser(add_help=False)
+        stop_parser.add_argument(
+            "--force", "-f", default=False, action="store_true"
+        )
+        action_subparser = self.cmd.add_subparsers(
+            title="action", dest="action_command"
+        )
+        action_subparser.add_parser(
+            "start", help="start services", parents=[start_parser]
+        )
+        action_subparser.add_parser(
+            "stop", help="stop services", parents=[stop_parser]
+        )
+
+    def print_help(self):
+        return self.cmd.print_help()
+
+    def start_cmd(
+        self,
+        container_bin,
+        container_name,
+        remotes,
+        image,
+        memory_cpus,
+        rm=False,
+        restart=True,
+        disable_login=True,
+        config_path=None,
+        provisioning_path=None,
+        **args,
+    ):
+        docker_opts = ""
+        docker_opts += set_rm_intermediate(rm)
+        docker_opts += set_resource_constraints(memory_cpus)
+        docker_opts += set_restart(restart)
+
+        docker_opts += self.NO_LOGIN_ENV_OPTS if disable_login else ""
+        docker_opts += (
+            set_config_path(config_path, "/etc/grafana/grafana.ini")
+            if config_path is not None
+            else ""
+        )
+        docker_opts += (
+            set_config_path(provisioning_path, "/etc/grafana/provisioning")
+            if provisioning_path is not None
+            else ""
+        )
+
+        cmds = []
+
+        for (host, _) in remotes:
+            if is_container_running(host, container_name, container_bin):
+                logwarn(f"Service {self.KEYS[0]} already running.")
+            else:
+                cmds.append(
+                    f"ssh {host} '"
+                    f"{container_bin} run -d "
+                    f"--network host "
+                    f"{docker_opts} "
+                    f"--name {container_name} "
+                    f"{image}'"
+                )
+
+        return cmds
+
+
 class SimpleService(Service):
     KEYS = ["simple"]
     DEFAULT_CONTAINER_BIN = "docker"
@@ -1144,6 +1250,7 @@ class SimpleService(Service):
         self.PROMETHEUS_SVC = super().get_service(PrometheusService)
         self.NODE_EXPORTER_SVC = super().get_service(NodeExporterService)
         self.CADVISOR_SVC = super().get_service(CadvisorService)
+        self.GRAFANA_SVC = super().get_service(GrafanaService)
 
     def init_parser(self):
         self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
@@ -1205,6 +1312,10 @@ class SimpleService(Service):
                 (host, deploy_cfg["hosts"][host])
                 for host in (deploy_cfg["cadvisor"])["hosts"]
             ]
+            self.grafana_hosts = [
+                (host, deploy_cfg["hosts"][host])
+                for host in (deploy_cfg["grafana"])["hosts"]
+            ]
 
             self.zk_enable_metrics_provider = deploy_cfg["zookeeper"].get(
                 "enable-metrics-provider"
@@ -1225,6 +1336,12 @@ class SimpleService(Service):
                 "local_config_path"
             )
             self.prometheus_remote_conf = deploy_cfg["prometheus"].get(
+                "remote_config_path"
+            )
+            self.grafana_local_conf = deploy_cfg["grafana"].get(
+                "local_config_path"
+            )
+            self.grafana_remote_conf = deploy_cfg["grafana"].get(
                 "remote_config_path"
             )
 
@@ -1249,8 +1366,21 @@ class SimpleService(Service):
             self.cadvisor_image = deploy_cfg["cadvisor"].get(
                 "image", CadvisorService.DEFAULT_IMAGE_TAG
             )
+            self.grafana_image = deploy_cfg["grafana"].get(
+                "image", GrafanaService.DEFAULT_IMAGE_TAG
+            )
+
             self.cadvisor_port = deploy_cfg["cadvisor"].get(
                 "port", CadvisorService.DEFAULT_METRICS_PORT
+            )
+            self.grafana_disable_login = deploy_cfg["grafana"].get(
+                "disable-login"
+            )
+            self.grafana_local_provisioning_path = deploy_cfg["grafana"].get(
+                "local-provisioning-path"
+            )
+            self.grafana_remote_provisioning_path = deploy_cfg["grafana"].get(
+                "remote-provisioning-path"
             )
 
             self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
@@ -1271,6 +1401,7 @@ class SimpleService(Service):
             self.prometheus_memory_cpus = get_memory_cpus("prometheus")
             self.node_exporter_memory_cpus = get_memory_cpus("node-exporter")
             self.cadvisor_memory_cpus = get_memory_cpus("cadvisor")
+            self.grafana_memory_cpus = get_memory_cpus("grafana")
 
     def start_cmd(self, config: str, disable_restart, **kargs) -> List[str]:
         self.parse_config(config)
@@ -1406,6 +1537,20 @@ class SimpleService(Service):
         }
         cmds.extend(self.CADVISOR_SVC.start_cmd(**cadvisor_args))
 
+        # start grafana
+        grafana_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": GrafanaService.DEFAULT_CONTAINER_NAME,
+            "image": self.grafana_image,
+            "memory_cpus": self.grafana_memory_cpus,
+            "remotes": self.grafana_hosts,
+            "restart": False if "grafana" in disable_restarted else True,
+            "disable_login": self.grafana_disable_login,
+            "config_path": self.grafana_remote_conf,
+            "provisioning_path": self.grafana_remote_provisioning_path,
+        }
+        cmds.extend(self.GRAFANA_SVC.start_cmd(**grafana_args))
+
         return cmds
 
     def stop_cmd(self, config: str, **kargs) -> List[str]:
@@ -1475,6 +1620,15 @@ class SimpleService(Service):
         }
         cmds.extend(self.CADVISOR_SVC.stop_cmd(**cadvisor_args))
 
+        # stop grafana
+        grafana_args = {
+            "container_bin": self.DEFAULT_CONTAINER_BIN,
+            "container_name": GrafanaService.DEFAULT_CONTAINER_NAME,
+            "remotes": self.grafana_hosts,
+            "force": True,
+        }
+        cmds.extend(self.GRAFANA_SVC.stop_cmd(**grafana_args))
+
         return cmds
 
     def remove_cmd(self, config: str, **kargs) -> List[str]:
@@ -1538,6 +1692,20 @@ class SimpleService(Service):
                 self.prometheus_hosts,
             )
         )
+        cmds.extend(
+            synchronize_configs(
+                self.grafana_local_conf,
+                self.grafana_remote_conf,
+                self.grafana_hosts,
+            )
+        )
+        cmds.extend(
+            synchronize_configs(
+                self.grafana_local_provisioning_path,
+                self.grafana_remote_provisioning_path,
+                self.grafana_hosts,
+            )
+        )
         return cmds
 
 
@@ -1557,5 +1725,6 @@ if __name__ == "__main__":
     s.register(PrometheusService)
     s.register(NodeExporterService)
     s.register(CadvisorService)
+    s.register(GrafanaService)
     s.register(SimpleService)
     s.run()
