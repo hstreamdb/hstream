@@ -67,5 +67,14 @@
             "remote_ssh_host3",
             "remote_ssh_host4"
         ]
+    },
+    "grafana": {
+        "image": "grafana/grafana-oss:main",
+        "disable-login": true,
+        "local-provisioning-path": "$PWD/configs/grafana-provisioning",
+        "remote-provisioning-path": "/root/.config/dev-deploy/grafana/configs/provisioning",
+        "hosts": [
+            "remote_ssh_host1"
+        ]
     }
 }
