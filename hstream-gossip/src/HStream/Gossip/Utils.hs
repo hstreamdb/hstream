@@ -12,23 +12,10 @@ import           Control.Concurrent.STM           (STM, TQueue, TVar, readTVar,
 import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString                  as BS
+import           Data.Foldable                    (foldl')
 import qualified Data.Map                         as Map
 import           Data.Serialize                   (decode)
-import           Data.Text.Encoding               (decodeUtf8)
 import           Data.Word                        (Word32)
-import qualified Text.Layout.Table                as Table
-
-import           Data.Foldable                    (foldl')
-import           HStream.Gossip.HStreamGossip     (ServerNodeInternal (..))
-import           HStream.Gossip.Types             (BroadcastPool,
-                                                   EventMessage (..),
-                                                   GossipOpts (..), LamportTime,
-                                                   Message (..), ServerState,
-                                                   ServerStatus (..),
-                                                   StateDelta,
-                                                   StateMessage (..),
-                                                   getMsgNode)
-import           HStream.Server.HStreamApi        (ServerNode (..))
 import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
                                                    ClientRequest (..),
                                                    GRPCMethodType (..),
@@ -36,7 +23,18 @@ import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
                                                    ServerResponse (..),
                                                    StatusCode (..),
                                                    StatusDetails (..))
+import qualified Text.Layout.Table                as Table
 import           Text.Layout.Table                (def)
+
+import           HStream.Gossip.Types             (BroadcastPool,
+                                                   EventMessage (..),
+                                                   LamportTime, Message (..),
+                                                   ServerState,
+                                                   ServerStatus (..),
+                                                   StateDelta,
+                                                   StateMessage (..),
+                                                   getMsgNode)
+import qualified HStream.Server.HStreamInternal   as I
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
 returnResp resp = return (ServerNormalResponse (Just resp) mempty StatusOk "")
@@ -48,8 +46,9 @@ returnErrResp :: Monad m
   => StatusCode -> StatusDetails -> m (ServerResponse 'Normal a)
 returnErrResp = (return .) . mkServerErrResp
 
-mkGRPCClientConf :: ServerNodeInternal -> ClientConfig
-mkGRPCClientConf ServerNodeInternal {..} = mkGRPCClientConf' serverNodeInternalHost (fromIntegral serverNodeInternalGossipPort)
+mkGRPCClientConf :: I.ServerNode -> ClientConfig
+mkGRPCClientConf I.ServerNode{..} =
+  mkGRPCClientConf' serverNodeHost (fromIntegral serverNodeGossipPort)
 
 mkGRPCClientConf' :: ByteString -> Int -> ClientConfig
 mkGRPCClientConf' host port =
@@ -72,13 +71,6 @@ getMsgInc (Join _)          = 0
 getMsgInc (Suspect inc _ _) = inc
 getMsgInc (Alive   inc _ _) = inc
 getMsgInc (Confirm inc _ _) = inc
-
-fromServerNodeInternal :: ServerNodeInternal -> ServerNode
-fromServerNodeInternal ServerNodeInternal {..} = ServerNode {
-    serverNodeId   = serverNodeInternalId
-  , serverNodeHost = decodeUtf8 serverNodeInternalHost
-  , serverNodePort = serverNodeInternalPort
-  }
 
 decodeThenBroadCast :: ByteString -> TQueue StateMessage -> TQueue EventMessage ->  STM ()
 decodeThenBroadCast msgBS statePool eventPool = unless (BS.null msgBS) $
@@ -108,14 +100,14 @@ getStateMessagesToHandle = Map.mapAccum f []
     f xs (msg, handled) = (if handled then xs else msg:xs, (msg, True))
 
 insertStateMessage :: (StateMessage, Bool) -> StateDelta -> (Maybe (StateMessage, Bool), StateDelta)
-insertStateMessage msg@(x, _) = Map.insertLookupWithKey f (serverNodeInternalId $ getMsgNode x) msg
+insertStateMessage msg@(x, _) = Map.insertLookupWithKey f (I.serverNodeId $ getMsgNode x) msg
   where
     f _key (v', p') (v, p) = if v' > v then (v', p') else (v, p)
 
 cleanStateMessages :: [StateMessage] -> [StateMessage]
 cleanStateMessages = Map.elems . foldl' (flip insertMsg) mempty
   where
-    insertMsg x = Map.insertWith max (serverNodeInternalId $ getMsgNode x) x
+    insertMsg x = Map.insertWith max (I.serverNodeId $ getMsgNode x) x
 
 broadcastMessage :: Message -> BroadcastPool -> BroadcastPool
 broadcastMessage msg xs = (msg, 0) : xs
@@ -145,7 +137,7 @@ updateLamportTime localClock eventTime = do
 incrementTVar :: Enum a => TVar a -> STM a
 incrementTVar localClock = stateTVar localClock (\x -> let y = succ x in (y, y))
 
-showNodesTable :: [ServerNode] -> String
+showNodesTable :: [I.ServerNode] -> String
 showNodesTable nodes =
   Table.tableString colSpec Table.asciiS
     (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
@@ -155,7 +147,7 @@ showNodesTable nodes =
              , "Server Host"
              , "Server Port"
              ]
-    formatRow ServerNode {..} =
+    formatRow I.ServerNode{..} =
       [ [show serverNodeId]
       , [show serverNodeHost]
       , [show serverNodePort]
@@ -166,12 +158,3 @@ showNodesTable nodes =
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               ]
-
-defaultGossipOpts :: GossipOpts
-defaultGossipOpts = GossipOpts {
-    gossipFanout     = 3
-  , retransmitMult   = 4
-  , gossipInterval   = 1 * 1000 * 1000
-  , probeInterval    = 2 * 1000 * 1000
-  , roundtripTimeout = 500 * 1000
-  }

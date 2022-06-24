@@ -81,11 +81,11 @@ hserver:
   # Cluster Gossip Options
   #
   #gossip:
-    #gossip-fanout: 3
-    #retransmit-mult: 4
-    #gossip-interval: 500000   # 0.5 sec
-    #probe-interval: 1000000   # 1 sec
-    #roundtrip-timeout: 500000 # 0.5 sec
+  #  gossip-fanout: 3
+  #  retransmit-mult: 4
+  #  gossip-interval: 500000   # 0.5 sec
+  #  probe-interval: 1000000   # 1 sec
+  #  roundtrip-timeout: 500000 # 0.5 sec
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,
@@ -93,12 +93,12 @@ hserver:
 hstore:
   #log-level: info
 
-  # Store admin section specify the client config when connecting to the storage admin server
-  #
+  ## Store admin section specify the client config when connecting to the storage admin server
+  ##
   #store-admin:
-    #host: "127.0.0.1"
-    #port: 6440
-    #protocol-id: binary
-    #conn-timeout: 5000
-    #send-timeout: 5000
-    #recv-timeout: 5000
+  #  host: "127.0.0.1"
+  #  port: 6440
+  #  protocol-id: binary
+  #  conn-timeout: 5000
+  #  send-timeout: 5000
+  #  recv-timeout: 5000

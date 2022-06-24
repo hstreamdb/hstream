@@ -34,31 +34,38 @@ module HStream.Utils.Converter
 
   , cBytesToIntegral
   , integralToCBytes
+
+    --
+  , fromInternalServerNode
   ) where
 
-import qualified Data.Aeson             as Aeson
-import           Data.Bifunctor         (Bifunctor (second))
-import qualified Data.ByteString        as BS
-import qualified Data.ByteString.Lazy   as BL
-import qualified Data.HashMap.Strict    as HM
-import qualified Data.Map               as M
-import qualified Data.Map.Strict        as Map
-import           Data.Scientific        (toRealFloat)
-import qualified Data.Text              as T
-import qualified Data.Text              as Text
-import qualified Data.Text.Encoding     as Text
-import qualified Data.Text.Lazy         as TL
-import qualified Data.Vector            as V
-import qualified Google.Protobuf.Struct as PB
-import           Proto3.Suite           (Enumerated (Enumerated))
-import qualified Z.Data.Builder         as Build
-import qualified Z.Data.Builder         as Builder
-import qualified Z.Data.CBytes          as ZCB
-import qualified Z.Data.JSON            as Z
-import qualified Z.Data.Parser          as Parser
-import qualified Z.Data.Text            as ZT
-import qualified Z.Data.Vector          as ZV
-import qualified Z.Foreign              as ZF
+import qualified Data.Aeson                     as Aeson
+import           Data.Bifunctor                 (Bifunctor (second))
+import qualified Data.ByteString                as BS
+import qualified Data.ByteString.Lazy           as BL
+import qualified Data.HashMap.Strict            as HM
+import qualified Data.Map                       as M
+import qualified Data.Map.Strict                as Map
+import           Data.Scientific                (toRealFloat)
+import qualified Data.Text                      as T
+import qualified Data.Text                      as Text
+import           Data.Text.Encoding             (decodeUtf8)
+import qualified Data.Text.Encoding             as Text
+import qualified Data.Text.Lazy                 as TL
+import qualified Data.Vector                    as V
+import qualified Google.Protobuf.Struct         as PB
+import           Proto3.Suite                   (Enumerated (Enumerated))
+import qualified Z.Data.Builder                 as Build
+import qualified Z.Data.Builder                 as Builder
+import qualified Z.Data.CBytes                  as ZCB
+import qualified Z.Data.JSON                    as Z
+import qualified Z.Data.Parser                  as Parser
+import qualified Z.Data.Text                    as ZT
+import qualified Z.Data.Vector                  as ZV
+import qualified Z.Foreign                      as ZF
+
+import qualified HStream.Server.HStreamApi      as A
+import qualified HStream.Server.HStreamInternal as I
 
 pattern V :: PB.ValueKind -> PB.Value
 pattern V x = PB.Value (Just x)
@@ -194,3 +201,10 @@ cBytesToIntegral cbytes = case Parser.parse' Parser.int . ZCB.toBytes $ cbytes o
 
 integralToCBytes :: (Integral a, Bounded a) => a -> ZCB.CBytes
 integralToCBytes = ZCB.buildCBytes . Build.int
+
+fromInternalServerNode :: I.ServerNode -> A.ServerNode
+fromInternalServerNode I.ServerNode{..} =
+  A.ServerNode { serverNodeId   = serverNodeId
+               , serverNodeHost = decodeUtf8 serverNodeHost
+               , serverNodePort = serverNodePort
+               }

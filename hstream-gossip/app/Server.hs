@@ -3,25 +3,24 @@
 
 module Main where
 
-import           Control.Concurrent.Async     (wait)
-import qualified Options.Applicative          as O
+import           Control.Concurrent.Async       (wait)
+import qualified Options.Applicative            as O
 
-import qualified HStream.Gossip.HStreamGossip as API
-import           HStream.Gossip.Start         (initGossipContext, startGossip)
-import           HStream.Gossip.Types         (CliOptions (..), cliOpts)
-import           HStream.Gossip.Utils         (defaultGossipOpts)
-import qualified HStream.Logger               as Log
+import           HStream.Gossip.Start           (initGossipContext, startGossip)
+import           HStream.Gossip.Types           (CliOptions (..), cliOpts,
+                                                 defaultGossipOpts)
+import qualified HStream.Logger                 as Log
+import qualified HStream.Server.HStreamInternal as I
 
 main :: IO ()
 main = do
   Log.setLogLevel (Log.Level Log.INFO) True
   CliOptions{..} <- O.execParser $ O.info (cliOpts O.<**> O.helper) O.fullDesc
-  let serverSelf = API.ServerNodeInternal {
-        serverNodeInternalId   = _serverId
-      , serverNodeInternalHost = _serverHost
-      , serverNodeInternalPort = _serverPort
-      , serverNodeInternalGossipPort = _serverGossipPort
-      }
+  let serverSelf = I.ServerNode { serverNodeId   = _serverId
+                                , serverNodeHost = _serverHost
+                                , serverNodePort = _serverPort
+                                , serverNodeGossipPort = _serverGossipPort
+                                }
   gc <- initGossipContext defaultGossipOpts mempty serverSelf
   let target = case (_joinHost, _joinPort) of
         (Just host, Just port) -> [(host, port)]

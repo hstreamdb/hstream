@@ -33,7 +33,6 @@ import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
                                                    JoinReq (..), JoinResp (..),
                                                    Ping (..), PingReq (..),
                                                    SeenEvents (SeenEvents),
-                                                   ServerNodeInternal (..),
                                                    UserEvent (..),
                                                    hstreamGossipClient)
 import           HStream.Gossip.Types             (EventMessage (..),
@@ -44,12 +43,12 @@ import           HStream.Gossip.Types             (EventMessage (..),
                                                    ServerStatus (..),
                                                    StateMessage (..))
 import           HStream.Gossip.Utils             (decodeThenBroadCast,
-                                                   fromServerNodeInternal,
                                                    getMessagesToSend,
                                                    incrementTVar,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf',
                                                    returnErrResp, returnResp)
+import qualified HStream.Server.HStreamInternal   as I
 
 handlers :: GossipContext
   -> HStreamGossip ServerRequest ServerResponse
@@ -67,8 +66,8 @@ handlers gc = HStreamGossip {
   }
 
 bootstrapPingHandler :: GossipContext
-  -> ServerRequest 'Normal Empty ServerNodeInternal
-  -> IO (ServerResponse 'Normal ServerNodeInternal)
+  -> ServerRequest 'Normal Empty I.ServerNode
+  -> IO (ServerResponse 'Normal I.ServerNode)
 bootstrapPingHandler GossipContext{..} _req = returnResp serverSelf
 
 pingHandler :: GossipContext
@@ -94,7 +93,7 @@ pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = 
     Just x  -> do
       isAcked <- newEmptyTMVarIO
       atomically $ do
-        writeTChan actionChan (DoPingReqPing (serverNodeInternalId x) isAcked (encode msgs))
+        writeTChan actionChan (DoPingReqPing (I.serverNodeId x) isAcked (encode msgs))
       timeout (roundtripTimeout gossipOpts) (atomically $ readTMVar isAcked) >>= \case
         Just msg -> do
           newMsgs <- atomically $ do
@@ -133,7 +132,7 @@ cliJoinHandler gc@GossipContext{..} (ServerNormalRequest _metadata CliJoinReq {.
 
 cliClusterHandler :: GossipContext -> ServerRequest 'Normal Empty Cluster -> IO (ServerResponse 'Normal Cluster)
 cliClusterHandler GossipContext{..} _serverReq = do
-  members <- V.fromList . map fromServerNodeInternal . (:) serverSelf . map serverInfo . Map.elems <$> readTVarIO serverList
+  members <- V.fromList . (:) serverSelf . map serverInfo . Map.elems <$> readTVarIO serverList
   returnResp Cluster {clusterMembers = members}
 
 cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)

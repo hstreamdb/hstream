@@ -14,23 +14,25 @@ module HStream.Gossip
   , getClusterStatus
   ) where
 
-import           Control.Concurrent.STM    (STM, atomically, readTVar,
-                                            readTVarIO, writeTQueue)
-import           Data.Functor              ((<&>))
-import qualified Data.HashMap.Strict       as HM
-import qualified Data.Map.Strict           as Map
-import           Data.Word                 (Word32)
+import           Control.Concurrent.STM         (STM, atomically, readTVar,
+                                                 readTVarIO, writeTQueue)
+import           Data.Functor                   ((<&>))
+import qualified Data.HashMap.Strict            as HM
+import qualified Data.Map.Strict                as Map
+import           Data.Word                      (Word32)
 
-import           HStream.Gossip.Start      (bootstrap, initGossipContext,
-                                            startGossip)
-import           HStream.Gossip.Types      (EventHandler, EventMessage,
-                                            EventName, GossipContext (..),
-                                            SeenEvents,
-                                            ServerStatus (serverInfo))
-import           HStream.Gossip.Utils      (fromServerNodeInternal)
-import           HStream.Server.HStreamApi (NodeState (..), ServerNode (..),
-                                            ServerNodeStatus (..))
-import           HStream.Utils             (pattern EnumPB)
+import           HStream.Gossip.Start           (bootstrap, initGossipContext,
+                                                 startGossip)
+import           HStream.Gossip.Types           (EventHandler, EventMessage,
+                                                 EventName, GossipContext (..),
+                                                 SeenEvents,
+                                                 ServerStatus (serverInfo))
+import           HStream.Server.HStreamApi      (NodeState (..),
+                                                 ServerNode (..),
+                                                 ServerNodeStatus (..))
+import qualified HStream.Server.HStreamInternal as I
+import           HStream.Utils                  (fromInternalServerNode,
+                                                 pattern EnumPB)
 
 broadcastEvent :: GossipContext -> EventMessage -> IO ()
 broadcastEvent GossipContext {..} = atomically . writeTQueue eventPool
@@ -41,17 +43,17 @@ createEventHandlers = Map.fromList
 getSeenEvents :: GossipContext -> IO SeenEvents
 getSeenEvents GossipContext {..} = readTVarIO seenEvents
 
-getMemberList :: GossipContext -> IO [ServerNode]
+getMemberList :: GossipContext -> IO [I.ServerNode]
 getMemberList GossipContext {..} =
-  readTVarIO serverList <&> ((:) (fromServerNodeInternal serverSelf) . map (fromServerNodeInternal . serverInfo) . Map.elems)
+  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems)
 
-getMemberListSTM :: GossipContext -> STM [ServerNode]
+getMemberListSTM :: GossipContext -> STM [I.ServerNode]
 getMemberListSTM GossipContext {..} =
-  readTVar serverList <&> ((:) (fromServerNodeInternal serverSelf) . map (fromServerNodeInternal . serverInfo) . Map.elems)
+  readTVar serverList <&> ((:) serverSelf . map serverInfo . Map.elems)
 
 getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
-getClusterStatus gc = do
-  getMemberList gc <&> HM.fromList . map helper
+getClusterStatus gc =
+  getMemberList gc <&> HM.fromList . map (helper . fromInternalServerNode)
   where
     helper node@ServerNode{..} =
       (serverNodeId, ServerNodeStatus { serverNodeStatusNode  = Just node

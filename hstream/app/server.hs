@@ -28,21 +28,23 @@ import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Gossip                   (getMemberListSTM,
                                                    initGossipContext,
                                                    startGossip)
-import           HStream.Gossip.HStreamGossip     (ServerNodeInternal (..))
-import           HStream.Gossip.Types             (GossipContext (..))
-import           HStream.Gossip.Utils             (defaultGossipOpts)
+import           HStream.Gossip.Types             (GossipContext (..),
+                                                   defaultGossipOpts)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..), getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
+import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig)
 import           HStream.Server.Persistence       (initializeAncestors)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log
-import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
+import           HStream.Utils                    (cbytes2bs,
+                                                   fromInternalServerNode,
+                                                   pattern EnumPB,
                                                    setupSigsegvHandler)
 
 main :: IO ()
@@ -65,7 +67,11 @@ app config@ServerOpts{..} = do
           , GRPC.sslConfig = fmap initializeTlsConfig _tlsConfig
           }
     initializeAncestors zk
-    gossipContext <- initGossipContext defaultGossipOpts mempty (ServerNodeInternal _serverID (encodeUtf8 . T.pack $ _serverAddress) (fromIntegral _serverPort) (fromIntegral _serverInternalPort))
+    let serverNode = I.ServerNode _serverID
+                                  (encodeUtf8 . T.pack $ _serverAddress)
+                                  (fromIntegral _serverPort)
+                                  (fromIntegral _serverInternalPort)
+    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode
     serverContext <- initializeServer config gossipContext zk serverState
     void $ startGossip (cbytes2bs _serverHost) _seedNodes gossipContext
     serve grpcOpts serverContext
@@ -108,7 +114,7 @@ updateHashRing gc hashRing = loop []
     loop list =
       loop =<< atomically
         ( do
-            list' <- getMemberListSTM gc
+            list' <- map fromInternalServerNode <$> getMemberListSTM gc
             when (list == list') retry
             writeTVar hashRing $ constructServerMap list'
             return list'

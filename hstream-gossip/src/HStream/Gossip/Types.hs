@@ -5,28 +5,29 @@
 module HStream.Gossip.Types where
 
 
-import           Control.Concurrent.Async     (Async)
-import           Control.Concurrent.STM       (TChan, TMVar, TQueue, TVar)
-import           Data.ByteString              (ByteString)
-import qualified Data.IntMap.Strict           as IM
-import qualified Data.Map                     as Map
-import           Data.Map.Strict              (Map)
-import           Data.Serialize               (Serialize, decode)
-import           Data.Word                    (Word32, Word64)
-import           GHC.Generics                 (Generic)
-import qualified Options.Applicative          as O
-import           Options.Applicative.Builder  (auto, help, long, metavar,
-                                               option, short, showDefault,
-                                               strOption)
-import           System.Random                (StdGen)
+import           Control.Concurrent.Async       (Async)
+import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
+import           Data.ByteString                (ByteString)
+import qualified Data.IntMap.Strict             as IM
+import qualified Data.Map                       as Map
+import           Data.Map.Strict                (Map)
+import           Data.Serialize                 (Serialize, decode)
+import           Data.Text                      (Text)
+import           Data.Word                      (Word32, Word64)
+import           GHC.Generics                   (Generic)
+import qualified Options.Applicative            as O
+import           Options.Applicative.Builder    (auto, help, long, metavar,
+                                                 option, short, showDefault,
+                                                 strOption)
+import           System.Random                  (StdGen)
 
-import           Data.Text                    (Text)
-import           HStream.Gossip.HStreamGossip (ServerNodeInternal)
+import qualified HStream.Server.HStreamInternal as I
 
 type ServerId  = Word32
 type ServerUrl = Text
-data ServerStatus = ServerStatus {
-    serverInfo    :: ServerNodeInternal
+
+data ServerStatus = ServerStatus
+  { serverInfo    :: I.ServerNode
   , serverState   :: TVar ServerState
   , latestMessage :: TVar StateMessage
   }
@@ -38,19 +39,28 @@ type StateDelta    = Map ServerId (StateMessage, Bool)
 type EventHandlers = Map.Map EventName EventHandler
 type SeenEvents    = IM.IntMap [(ByteString, ByteString)]
 
-data GossipOpts = GossipOpts {
-    gossipFanout     :: Int -- default: 3
-  , retransmitMult   :: Int -- default: 4
-  , gossipInterval   :: Int -- default: 500 * 1000
-  , probeInterval    :: Int -- default: 1 * 1000 * 1000
-  , roundtripTimeout :: Int -- default: 500 * 1000
+data GossipOpts = GossipOpts
+  { gossipFanout     :: Int
+  , retransmitMult   :: Int
+  , gossipInterval   :: Int
+  , probeInterval    :: Int
+  , roundtripTimeout :: Int
   } deriving (Show, Eq)
+
+defaultGossipOpts :: GossipOpts
+defaultGossipOpts = GossipOpts
+  { gossipFanout     = 3
+  , retransmitMult   = 4
+  , gossipInterval   = 1 * 1000 * 1000
+  , probeInterval    = 2 * 1000 * 1000
+  , roundtripTimeout = 500 * 1000
+  }
 
 data ServerState = OK | Suspicious
   deriving (Show, Eq)
 
-data GossipContext = GossipContext {
-    serverSelf    :: ServerNodeInternal
+data GossipContext = GossipContext
+  { serverSelf    :: I.ServerNode
   , eventHandlers :: EventHandlers
   , serverList    :: TVar ServerList
   , actionChan    :: TChan RequestAction
@@ -93,7 +103,7 @@ instance Show RequestAction where
 --   put = put . encodeUtf8
 --   get = fmap decodeUtf8 get
 
-deriving instance Serialize ServerNodeInternal
+deriving instance Serialize I.ServerNode
 
 data Message
   = EventMessage { eventMessage :: EventMessage }
@@ -109,10 +119,10 @@ data EventMessage = Event EventName LamportTime EventPayload
   deriving (Show, Eq, Generic, Serialize)
 
 data StateMessage
-  = Suspect Word32 ServerNodeInternal ServerNodeInternal
-  | Alive   Word32 ServerNodeInternal ServerNodeInternal
-  | Confirm Word32 ServerNodeInternal ServerNodeInternal
-  | Join    ServerNodeInternal
+  = Suspect Word32 I.ServerNode I.ServerNode
+  | Alive   Word32 I.ServerNode I.ServerNode
+  | Confirm Word32 I.ServerNode I.ServerNode
+  | Join    I.ServerNode
   deriving (Show, Generic, Serialize)
 
 instance Eq StateMessage where
@@ -135,7 +145,7 @@ instance Ord StateMessage where
       (Suspect i1 _ _, Alive   i2 _ _)   -> if i1 >= i2 then GT else LT
       (_, _)                             -> case compare y x of GT -> LT; LT -> GT; EQ -> EQ
 
-getMsgNode :: StateMessage -> ServerNodeInternal
+getMsgNode :: StateMessage -> I.ServerNode
 getMsgNode (Join node)        = node
 getMsgNode (Suspect _ node _) = node
 getMsgNode (Alive   _ node _) = node

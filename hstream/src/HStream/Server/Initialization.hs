@@ -34,6 +34,7 @@ import           HStream.Server.Config            (ServerOpts (..),
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
+import           HStream.Utils                    (fromInternalServerNode)
 
 initializeServer :: ServerOpts -> GossipContext -> ZHandle -> MVar ServerState -> IO ServerContext
 initializeServer ServerOpts{..} gossipContext zk serverState = do
@@ -74,7 +75,7 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
 initializeHashRing :: GossipContext -> IO (TVar HashRing)
 initializeHashRing gc = do
   serverNodes <- getMemberList gc
-  newTVarIO . constructServerMap . sort $ serverNodes
+  newTVarIO . constructServerMap . sort $ map fromInternalServerNode serverNodes
 
 initializeTlsConfig :: TlsConfig -> ServerSSLConfig
 initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler

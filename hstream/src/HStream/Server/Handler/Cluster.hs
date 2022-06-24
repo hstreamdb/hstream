@@ -15,7 +15,6 @@ import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception                (Exception (..), Handler (..),
                                                    catches, throwIO)
 import           Control.Monad                    (unless, void)
-import           Data.Functor                     ((<&>))
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
@@ -28,12 +27,12 @@ import           HStream.Server.Exception
 import           HStream.Server.Handler.Common    (alignDefault,
                                                    orderingKeyToStoreKey)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (mkServerErrResp, returnResp)
+import           HStream.Utils                    (fromInternalServerNode,
+                                                   mkServerErrResp, returnResp)
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
@@ -45,7 +44,7 @@ describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = default
   let resp = DescribeClusterResponse {
       describeClusterResponseProtocolVersion = protocolVer
     , describeClusterResponseServerVersion   = serverVer
-    , describeClusterResponseServerNodes     = V.fromList nodes
+    , describeClusterResponseServerNodes     = V.fromList $ map fromInternalServerNode nodes
     }
   returnResp resp
 
