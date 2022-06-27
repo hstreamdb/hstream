@@ -127,6 +127,8 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
+    , cryptonite
+    , memory
 
   default-language:   Haskell2010
   default-extensions:
@@ -170,6 +172,8 @@ executable hstream-server
     , Z-Data
     , Z-IO
     , zoovisitor
+    , cryptonite
+    , memory
 
   default-language: Haskell2010
   ghc-options:
