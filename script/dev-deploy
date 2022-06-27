@@ -1026,7 +1026,10 @@ class NodeExporterService(Service):
                     f"{docker_opts} "
                     f"--name {container_name} "
                     f"--network host "
-                    f"{image}"
+                    f"--pid=host "
+                    f'-v "/:/host:ro,rslave" '
+                    f"{image} "
+                    f"--path.rootfs=/host"
                     f"'"
                 )
         return cmds
