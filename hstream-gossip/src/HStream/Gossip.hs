@@ -21,6 +21,7 @@ import qualified Data.HashMap.Strict            as HM
 import qualified Data.Map.Strict                as Map
 import           Data.Word                      (Word32)
 
+import           HStream.Common.Types           (fromInternalServerNode)
 import           HStream.Gossip.Start           (bootstrap, initGossipContext,
                                                  startGossip)
 import           HStream.Gossip.Types           (EventHandler, EventMessage,
@@ -31,8 +32,7 @@ import           HStream.Server.HStreamApi      (NodeState (..),
                                                  ServerNode (..),
                                                  ServerNodeStatus (..))
 import qualified HStream.Server.HStreamInternal as I
-import           HStream.Utils                  (fromInternalServerNode,
-                                                 pattern EnumPB)
+import           HStream.Utils                  (pattern EnumPB)
 
 broadcastEvent :: GossipContext -> EventMessage -> IO ()
 broadcastEvent GossipContext {..} = atomically . writeTQueue eventPool

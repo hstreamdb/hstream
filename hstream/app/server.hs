@@ -5,13 +5,17 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+
 import           Control.Concurrent               (MVar, forkIO, newMVar,
                                                    swapMVar)
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
-import           Control.Monad                    (void, when)
+import           Control.Monad                    (forM_, void, when)
+import           Data.ByteString                  (ByteString)
+import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
+import           Data.Word                        (Word16)
 import qualified Network.GRPC.HighLevel           as GRPC
 import qualified Network.GRPC.HighLevel.Client    as GRPC
 import qualified Network.GRPC.HighLevel.Generated as GRPC
@@ -31,7 +35,10 @@ import           HStream.Gossip                   (getMemberListSTM,
 import           HStream.Gossip.Types             (GossipContext (..),
                                                    defaultGossipOpts)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Config            (ServerOpts (..), getConfig)
+import           HStream.Server.Config            (AdvertisedListeners,
+                                                   ServerOpts (..), TlsConfig,
+                                                   advertisedListenersToPB,
+                                                   getConfig)
 import           HStream.Server.Handler           (handlers)
 import           HStream.Server.HStreamApi        (NodeState (..),
                                                    hstreamApiServer)
@@ -42,9 +49,7 @@ import           HStream.Server.Persistence       (initializeAncestors)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log
-import           HStream.Utils                    (cbytes2bs,
-                                                   fromInternalServerNode,
-                                                   pattern EnumPB,
+import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
                                                    setupSigsegvHandler)
 
 main :: IO ()
@@ -55,31 +60,37 @@ app config@ServerOpts{..} = do
   setupSigsegvHandler
   Log.setLogLevel _serverLogLevel _serverLogWithColor
   Log.setLogDeviceDbgLevel' _ldLogLevel
-  serverState <- newMVar (EnumPB NodeStateStarting)
-  let zkRes = zookeeperResInit _zkUri (Just $ globalWatcherFn serverState) 5000 Nothing 0
-  withResource zkRes $ \zk -> do
-    let serverOnStarted = Log.i $ "Server is started on port " <> Log.buildInt _serverPort
-    let grpcOpts =
-          GRPC.defaultServiceOptions
-          { GRPC.serverHost = GRPC.Host . cbytes2bs $ _serverHost
-          , GRPC.serverPort = GRPC.Port . fromIntegral $ _serverPort
-          , GRPC.serverOnStarted = Just serverOnStarted
-          , GRPC.sslConfig = fmap initializeTlsConfig _tlsConfig
-          }
-    initializeAncestors zk
-    let serverNode = I.ServerNode _serverID
-                                  (encodeUtf8 . T.pack $ _serverAddress)
-                                  (fromIntegral _serverPort)
-                                  (fromIntegral _serverInternalPort)
-    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode
-    serverContext <- initializeServer config gossipContext zk serverState
-    void $ startGossip (cbytes2bs _serverHost) _seedNodes gossipContext
-    serve grpcOpts serverContext
 
-serve :: GRPC.ServiceOptions -> ServerContext -> IO ()
-serve options sc@ServerContext{..} = do
-  void . forkIO $ updateHashRing gossipContext loadBalanceHashRing
-  -- GRPC service
+  -- TODO: remove me
+  serverState <- newMVar (EnumPB NodeStateStarting)
+
+  let zkRes = zookeeperResInit _zkUri (Just $ globalWatcherFn serverState) 5000 Nothing 0
+      serverHostBS = cbytes2bs _serverHost
+  withResource zkRes $ \zk -> do
+    initializeAncestors zk
+
+    let serverNode =
+          I.ServerNode { serverNodeId = _serverID
+                       , serverNodeHost = encodeUtf8 . T.pack $ _serverAddress
+                       , serverNodePort = fromIntegral _serverPort
+                       , serverNodeGossipPort = fromIntegral _serverInternalPort
+                       , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
+                       }
+    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode
+    void $ startGossip serverHostBS _seedNodes gossipContext
+
+    serverContext <- initializeServer config gossipContext zk serverState
+    void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
+
+    serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners
+
+serve :: ByteString
+      -> Word16
+      -> Maybe TlsConfig
+      -> ServerContext
+      -> AdvertisedListeners
+      -> IO ()
+serve host port tlsConfig sc listeners = do
   Log.i "************************"
   putStrLn [r|
    _  _   __ _____ ___ ___  __  __ __
@@ -89,8 +100,33 @@ serve options sc@ServerContext{..} = do
 
   |]
   Log.i "*************************"
+
+  let serverOnStarted = Log.info $ "Server is started on port " <> Log.buildInt port
+  let grpcOpts =
+        GRPC.defaultServiceOptions
+        { GRPC.serverHost = GRPC.Host host
+        , GRPC.serverPort = GRPC.Port $ fromIntegral port
+        , GRPC.serverOnStarted = Just serverOnStarted
+        , GRPC.sslConfig = fmap initializeTlsConfig tlsConfig
+        }
+
+  forM_ (Map.toList listeners) $ \(key, vs) ->
+    forM_ vs $ \I.Listener{..} -> do
+      Log.debug $ "Starting advertised listener, "
+               <> "key: " <> Log.buildText key <> ", "
+               <> "address: " <> Log.buildText listenerAddress <> ", "
+               <> "port: " <> Log.buildInt listenerPort
+      forkIO $ do
+        let listenerOnStarted = Log.info $ "Extra listener is started on port "
+                                        <> Log.buildInt listenerPort
+        let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
+                                 , GRPC.serverOnStarted = Just listenerOnStarted
+                                 }
+        api <- handlers sc{scAdvertisedListenersKey = Just key}
+        hstreamApiServer api grpcOpts'
+
   api <- handlers sc
-  hstreamApiServer api options
+  hstreamApiServer api grpcOpts
 
 --------------------------------------------------------------------------------
 
@@ -113,9 +149,8 @@ updateHashRing gc hashRing = loop []
   where
     loop list =
       loop =<< atomically
-        ( do
-            list' <- map fromInternalServerNode <$> getMemberListSTM gc
-            when (list == list') retry
-            writeTVar hashRing $ constructServerMap list'
-            return list'
+        ( do list' <- getMemberListSTM gc
+             when (list == list') retry
+             writeTVar hashRing $ constructServerMap list'
+             return list'
         )

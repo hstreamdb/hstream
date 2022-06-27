@@ -12,15 +12,19 @@ import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
 import qualified Data.Map                       as Map
 import           Data.Map.Strict                (Map)
+import           Data.Serialize                 (Serialize (..), decode)
 import           Data.Text                      (Text)
-import           Data.Word                      (Word32)
+import qualified Data.Text                      as Text
+import qualified Data.Text.Encoding             as Text
+import qualified Data.Vector                    as V
+import           Data.Word                      (Word32, Word64)
+import           GHC.Generics                   (Generic)
 import qualified Options.Applicative            as O
 import           Options.Applicative.Builder    (auto, help, long, metavar,
                                                  option, short, showDefault,
                                                  strOption)
 import           System.Random                  (StdGen)
 
-import qualified Data.Vector                    as V
 import           HStream.Gossip.HStreamGossip   as G (EventMessage (..),
                                                       Message (..),
                                                       MessageContent (..),
@@ -106,24 +110,9 @@ instance Show RequestAction where
   show (DoGossip      x y)       = "Received gossip request to " <> show x
                                  <> " with message: " <> show y
 
--- data Message
---   = EventMessage { eventMessage :: EventMessage }
---   | StateMessage { stateMessage :: StateMessage }
---   deriving (Show, Eq)
-
-
 type EventName = Text
--- data EventMessage = Event EventName LamportTime EventPayload
---   deriving (Show, Eq)
 type EventPayload = ByteString
 type EventHandler = EventPayload -> IO ()
-
--- data StateMessage
---   = Suspect Word32 I.ServerNode I.ServerNode
---   | Alive   Word32 I.ServerNode I.ServerNode
---   | Confirm Word32 I.ServerNode I.ServerNode
---   | Join    I.ServerNode
---   deriving (Show, Generic)
 
 newtype TempCompare = TC {unTC :: G.StateMessage}
 instance Eq TempCompare where
@@ -173,7 +162,6 @@ pattern GSM x y z = G.StateReport
   , stateReportReporter = Just y
   , stateReportReportee = Just z
   }
-
 
 -------------------------------------------------------------------------------
 

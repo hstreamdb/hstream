@@ -5,8 +5,10 @@
 
 module HStream.ConsistentHashingSpec where
 
+import qualified Data.ByteString.Char8            as BSC
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
+import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32)
 import           Test.Hspec                       (SpecWith, describe, shouldBe,
@@ -25,15 +27,17 @@ import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
                                                    getAllocatedNode)
 import qualified HStream.Common.ConsistentHashing as CH
-import           HStream.Server.HStreamApi        (ServerNode (..))
+import           HStream.Server.HStreamInternal   (ServerNode (..))
 
 instance Arbitrary ServerNode where
   arbitrary = do
     serverNodeId <- arbitrarySizedNatural
     serverNodePort <- arbitrarySizedNatural
-    xs <- fmap (map (T.pack . show)) . vectorOf 4 $ chooseInt (0,255)
+    serverNodeGossipPort <- arbitrarySizedNatural
+    xs <- fmap (map (BSC.pack . show)) . vectorOf 4 $ chooseInt (0,255)
     let [a,b,c,d] = xs
     let serverNodeHost = a <> "." <> b <> "." <> c <> "." <> d
+        serverNodeAdvertisedListeners = Map.empty
     return ServerNode {..}
 
 newtype N = N ServerMap deriving (Show, Eq)

@@ -8,6 +8,7 @@ import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
+import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
@@ -23,19 +24,20 @@ import           HStream.Server.HStreamApi        (NodeState,
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 
-protocolVersion :: T.Text
+protocolVersion :: Text
 protocolVersion = "0.1.0"
 
-serverVersion :: T.Text
+serverVersion :: Text
 serverVersion = "0.8.0"
 
 type Timestamp = Int64
 type ServerID = Word32
 type ServerState = PB.Enumerated NodeState
 
-data ServerContext = ServerContext {
-    scLDClient               :: HS.LDClient
+data ServerContext = ServerContext
+  { scLDClient               :: HS.LDClient
   , serverID                 :: Word32
+  , scAdvertisedListenersKey :: Maybe Text
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
   , zkHandle                 :: ZHandle
