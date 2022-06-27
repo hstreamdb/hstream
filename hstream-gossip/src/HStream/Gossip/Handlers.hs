@@ -14,13 +14,11 @@ import           Control.Concurrent.STM           (atomically, newEmptyTMVarIO,
 import qualified Data.IntMap.Strict               as IM
 import           Data.List                        ((\\))
 import qualified Data.Map.Strict                  as Map
-import           Data.Serialize                   (encode)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (GRPCMethodType (..),
                                                    ServerRequest (..),
                                                    ServerResponse,
-                                                   StatusCode (..),
-                                                   StatusDetails (..))
+                                                   StatusCode (..))
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           System.Timeout                   (timeout)
 
@@ -41,8 +39,7 @@ import           HStream.Gossip.Types             (EventMessage (..),
                                                    GossipOpts (..),
                                                    RequestAction (..),
                                                    ServerState (OK),
-                                                   ServerStatus (..),
-                                                   StateMessage (..))
+                                                   ServerStatus (..))
 import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (broadcast, getMessagesToSend,
                                                    incrementTVar,
@@ -77,7 +74,7 @@ pingHandler :: GossipContext
 pingHandler GossipContext{..} (ServerNormalRequest _metadata Ping {..}) = do
   msgs <- atomically $ do
     broadcast (V.toList pingMsg) statePool eventPool
-    memberMap <- readTVar serverList
+    memberMap <- snd <$> readTVar serverList
     stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
   returnResp (Ack $ V.fromList msgs)
 
@@ -87,7 +84,7 @@ pingReqHandler :: GossipContext
 pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = do
   msgs <- atomically $ do
     broadcast (V.toList pingReqMsg) statePool eventPool
-    memberMap <- readTVar serverList
+    memberMap <- snd <$> readTVar serverList
     stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
   case pingReqTarget of
     Nothing -> returnErrResp StatusInternal "Received empty pingReq request"
@@ -99,7 +96,7 @@ pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = 
         Just msg -> do
           newMsgs <- atomically $ do
             broadcast msg statePool eventPool
-            memberMap <- readTVar serverList
+            memberMap <- snd <$> readTVar serverList
             stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
           returnResp (PingReqResp True (V.fromList newMsgs))
         Nothing  -> returnResp (PingReqResp False (V.fromList msgs))
@@ -112,7 +109,7 @@ joinHandler GossipContext{..} (ServerNormalRequest _metadata JoinReq {..}) = do
     Nothing -> error "no node info in join request"
     Just node -> do
       atomically $ writeTQueue statePool $ T.GJoin node
-      sMap' <- readTVarIO serverList
+      sMap' <- snd <$> readTVarIO serverList
       returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
 
 gossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
@@ -126,14 +123,14 @@ cliJoinHandler gc@GossipContext{..} (ServerNormalRequest _metadata CliJoinReq {.
     HStreamGossip{..} <- hstreamGossipClient client
     hstreamGossipJoin (mkClientNormalRequest JoinReq { joinReqNew = Just serverSelf}) >>= \case
       GRPC.ClientNormalResponse resp@(JoinResp members) _ _ _ _ -> do
-        membersOld <- map serverInfo . Map.elems <$> readTVarIO serverList
+        membersOld <- (map serverInfo . Map.elems) . snd <$> readTVarIO serverList
         mapM_ (\x -> addToServerList gc x (T.GJoin x) OK) $ V.toList members \\ membersOld
         returnResp resp
       GRPC.ClientErrorResponse _             -> error "failed to join"
 
 cliClusterHandler :: GossipContext -> ServerRequest 'Normal Empty Cluster -> IO (ServerResponse 'Normal Cluster)
 cliClusterHandler GossipContext{..} _serverReq = do
-  members <- V.fromList . (:) serverSelf . map serverInfo . Map.elems <$> readTVarIO serverList
+  members <- V.fromList . (:) serverSelf . map serverInfo . Map.elems . snd <$> readTVarIO serverList
   returnResp Cluster {clusterMembers = members}
 
 cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)

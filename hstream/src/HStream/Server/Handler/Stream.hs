@@ -19,7 +19,6 @@ import           Network.GRPC.HighLevel.Generated
 
 import           Control.Concurrent.STM           (readTVarIO)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
-import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception

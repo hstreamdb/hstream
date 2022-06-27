@@ -11,9 +11,10 @@ import qualified Data.Map                       as Map
 import           Data.Streaming.Network         (getUnassignedPort)
 import           Data.Word                      (Word32)
 
-import           HStream.Gossip.Start           (initGossipContext, startGossip)
-import           HStream.Gossip.Types           (GossipContext (..), ServerId,
-                                                 defaultGossipOpts)
+import           HStream.Gossip                 (GossipContext (..), ServerId,
+                                                 defaultGossipOpts,
+                                                 initGossipContext, startGossip)
+import qualified HStream.Gossip.HStreamGossip   as API
 import qualified HStream.Server.HStreamInternal as I
 
 type MemInfo = (GossipContext, Async ())

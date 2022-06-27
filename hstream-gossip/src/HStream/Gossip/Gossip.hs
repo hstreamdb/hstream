@@ -11,7 +11,6 @@ import           Control.Concurrent.STM        (atomically, check, readTVar,
 import           Control.Monad                 (forever)
 import qualified Data.Map.Strict               as Map
 import qualified Data.Vector                   as V
-import qualified HStream.Logger                as Log
 import           Network.GRPC.HighLevel.Client (ClientResult (..))
 import qualified Network.GRPC.HighLevel.Client as GRPC
 import           System.Random.Shuffle         (shuffle')
@@ -24,6 +23,7 @@ import           HStream.Gossip.Types          (GossipContext (..),
                                                 RequestAction (..))
 import           HStream.Gossip.Utils          (getMessagesToSend,
                                                 mkClientNormalRequest)
+import qualified HStream.Logger                as Log
 
 gossip :: [G.Message] -> GRPC.Client -> IO ()
 gossip msg client = do
@@ -38,7 +38,7 @@ scheduleGossip gc@GossipContext{..} = forever $ do
   threadDelay $ gossipInterval gossipOpts
   where
     doGossip = do
-      memberMap <- readTVar serverList
+      memberMap <- snd <$> readTVar serverList
       check (not $ Map.null memberMap)
       msgs <- stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
       check (not $ null msgs)

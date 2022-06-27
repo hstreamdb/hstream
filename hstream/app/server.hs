@@ -29,11 +29,11 @@ import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
                                                    pattern ZooSessionEvent)
 
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
-import           HStream.Gossip                   (getMemberListSTM,
+import           HStream.Gossip                   (GossipContext (..),
+                                                   defaultGossipOpts,
+                                                   getMemberListSTM,
                                                    initGossipContext,
                                                    startGossip)
-import           HStream.Gossip.Types             (GossipContext (..),
-                                                   defaultGossipOpts)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (AdvertisedListeners,
                                                    ServerOpts (..), TlsConfig,

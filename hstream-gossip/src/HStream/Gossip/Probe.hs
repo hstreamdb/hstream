@@ -107,7 +107,7 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{
       return $ pure True
     handleAck isAcked Nothing = do
       inc     <- getMsgInc <$> readTVar latestMessage
-      members <- L.delete serverNodeId . Map.keys <$> readTVar serverList
+      members <- L.delete serverNodeId . Map.keys . snd <$> readTVar serverList
       case members of
         [] -> return $ pure False
         _  -> do
@@ -124,7 +124,7 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{
 scheduleProbe :: GossipContext -> IO ()
 scheduleProbe gc@GossipContext{..} = forever $ do
   memberMap <- atomically $ do
-    memberMap <- readTVar serverList
+    memberMap <- snd <$> readTVar serverList
     check (not $ Map.null memberMap)
     return memberMap
   let members = Map.keys memberMap
@@ -138,7 +138,7 @@ runProbe gc@GossipContext{..} gen (x:xs) members = do
     msgs <- stateTVar broadcastPool $ getMessagesToSend (fromIntegral (length members))
     writeTChan actionChan (DoPing x msgs)
   threadDelay $ probeInterval gossipOpts
-  members' <- Map.keys <$> readTVarIO serverList
+  members' <- Map.keys . snd <$> readTVarIO serverList
   let xs' = if members' == members then xs else (xs \\ (members \\ members')) ++ (members' \\ members)
   runProbe gc gen xs' members'
 runProbe _sc _gen [] _ids = pure ()
