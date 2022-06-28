@@ -9,6 +9,7 @@
 module HStream.Utils.RPC
   ( HStreamClientApi
 
+  , mkClientNormalRequest
   , mkServerErrResp
   , returnErrResp
   , returnResp
@@ -39,6 +40,9 @@ import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf   (Struct, Timestamp (..))
 
 type HStreamClientApi = HStreamApi ClientRequest ClientResult
+
+mkClientNormalRequest :: Int -> a -> ClientRequest 'Normal a b
+mkClientNormalRequest requestTimeout x = ClientNormalRequest x requestTimeout (MetadataMap mempty)
 
 mkServerErrResp :: StatusCode -> StatusDetails -> ServerResponse 'Normal a
 mkServerErrResp = ServerNormalResponse Nothing mempty

@@ -49,7 +49,7 @@ import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),
                                                    ValueKind (ValueKindStructValue))
 import qualified HStream.ThirdParty.Protobuf      as PB
-import           HStream.Utils
+import           HStream.Utils                    hiding (newRandomText)
 
 clientConfig :: ClientConfig
 clientConfig = unsafePerformIO $ do

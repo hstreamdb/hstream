@@ -8,6 +8,8 @@
 module HStream.Server.Handler.View where
 
 import qualified Data.ByteString.Char8            as BSC
+import qualified Data.HashMap.Strict              as HM
+import           Data.IORef                       (atomicModifyIORef')
 import           Data.List                        (find)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -36,9 +38,10 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   Log.debug $ "Receive Create View Request: " <> Log.buildString (T.unpack createViewRequestSql)
   plan <- HSC.streamCodegen createViewRequestSql
   case plan of
-    HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _ -> do
-      create sink
+    HSC.CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
+      create (HCH.transToStreamName sink)
       (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
+      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       returnResp $ View { viewViewId = cBytesToText qid
                         , viewStatus = getPBStatus Running
                         , viewCreatedTime = timestamp
@@ -48,7 +51,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
     _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
   where
     attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
-    create sName = S.createStream scLDClient (HCH.transToViewStreamName sName) attrs
+    create sName = S.createStream scLDClient sName attrs
 
 listViewsHandler
   :: ServerContext

@@ -29,9 +29,9 @@ data SourceConnector = SourceConnector
   }
 
 data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
-  { subscribeToStreamWithoutCkp :: StreamName -> Offset -> IO (),
+  { subscribeToStreamWithoutCkp :: StreamName -> IO (),
     unSubscribeToStreamWithoutCkp :: StreamName -> IO (),
-    readRecordsWithoutCkp :: IO [SourceRecord]
+    readRecordsWithoutCkp :: StreamName -> IO [SourceRecord]
   }
 
 data SinkConnector = SinkConnector

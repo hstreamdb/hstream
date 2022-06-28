@@ -35,15 +35,6 @@ import           HStream.Utils             (TaskStatus (..), cBytesToText,
 
 --------------------------------------------------------------------------------
 
-instance FromJSON CBytes where
-  parseJSON v = let pText = parseJSON v in textToCBytes <$> pText
-
-instance ToJSON CBytes where
-  toJSON cb = toJSON (cBytesToText cb)
-
-instance FromJSONKey CBytes
-instance ToJSONKey CBytes
-
 type ViewSchema     = [String]
 type RelatedStreams = [CBytes]
 

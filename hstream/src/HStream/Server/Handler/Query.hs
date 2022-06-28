@@ -36,14 +36,16 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
+import qualified Z.IO.Network                     as ZNet
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
+import           HStream.Client.Action            (runWithAddr)
 import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
-import           HStream.Processing.Connector     (SourceConnector (..))
+import           HStream.Processing.Connector     (SourceConnectorWithoutCkp (..))
 import           HStream.Processing.Encoding      (Deserializer (..),
                                                    Serde (..), Serializer (..))
 import           HStream.Processing.Processor     (getTaskName,
@@ -51,6 +53,7 @@ import           HStream.Processing.Processor     (getTaskName,
 import           HStream.Processing.Store
 import qualified HStream.Processing.Stream        as PS
 import           HStream.Processing.Type          hiding (StreamName, Timestamp)
+import           HStream.Server.Config
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
@@ -114,7 +117,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     -- execute plans that can be executed with this method
     CreateViewPlan schema sources sink taskBuilder _repFactor materialized ->
       do
-        create (transToViewStreamName sink)
+        create (transToStreamName sink)
         >> handleCreateAsSelect
           sc
           taskBuilder
@@ -231,7 +234,7 @@ executePushQueryHandler ::
   ServerRequest 'ServerStreaming CommandPushQuery Struct ->
   IO (ServerResponse 'ServerStreaming Struct)
 executePushQueryHandler
-  ServerContext {..}
+  ctx@ServerContext {..}
   (ServerWriterRequest meta CommandPushQuery {..} streamSend) = defaultServerStreamExceptionHandle $ do
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan' <- streamCodegen commandPushQueryQueryText
@@ -247,7 +250,7 @@ executePushQueryHandler
           else do
             S.createStream
               scLDClient
-              (transToTempStreamName sink)
+              (transToStreamName sink)
               (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
             -- create persistent query
             (qid, _) <-
@@ -262,24 +265,20 @@ executePushQueryHandler
             tid <-
               forkIO $
                 P.setQueryStatus qid Running zkHandle
-                  >> runTaskWrapper S.StreamTypeStream S.StreamTypeTemp taskBuilder scLDClient
+                  >> runTaskWrapper ctx taskBuilder scLDClient
             takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
-            _ <-
-              forkIO $
-                handlePushQueryCanceled
-                  meta
-                  (killThread tid >> P.setQueryStatus qid Terminated zkHandle)
-            ldreader' <-
-              S.newLDRsmCkpReader
-                scLDClient
-                (textToCBytes (T.append (getTaskName taskBuilder) "-result"))
-                S.checkpointStoreLogID
-                5000
-                1
-                Nothing
-            let sc = hstoreSourceConnector scLDClient ldreader' S.StreamTypeTemp
-            subscribeToStream sc sink Latest
-            sendToClient zkHandle qid sc streamSend
+            -- sub from sink stream and push to client
+            runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+              consumerName <- newRandomText 20
+              let sc = hstoreSourceConnectorWithoutCkp api consumerName
+              subscribeToStreamWithoutCkp sc sink
+
+              forkIO $ handlePushQueryCanceled meta $ do
+                killThread tid
+                P.setQueryStatus qid Terminated zkHandle
+                unSubscribeToStreamWithoutCkp sc sink
+
+              sendToClient zkHandle qid sink sc streamSend
       _ -> do
         Log.fatal "Push Query: Inconsistent Method Called"
         returnServerStreamingResp StatusInternal "inconsistent method called"
@@ -289,10 +288,11 @@ executePushQueryHandler
 sendToClient ::
   ZHandle ->
   CB.CBytes ->
-  SourceConnector ->
+  T.Text ->
+  SourceConnectorWithoutCkp ->
   (Struct -> IO (Either GRPCIOError ())) ->
   IO (ServerResponse 'ServerStreaming Struct)
-sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
+sendToClient zkHandle qid streamName sc@SourceConnectorWithoutCkp {..} streamSend = do
   let f (e :: ZooException) = do
         Log.fatal $ "ZooKeeper Exception: " <> Log.buildString (show e)
         return $ ServerWriterResponse [] StatusAborted "failed to get status"
@@ -303,14 +303,14 @@ sendToClient zkHandle qid sc@SourceConnector {..} streamSend = do
         Terminated -> return (ServerWriterResponse [] StatusAborted "")
         Created -> return (ServerWriterResponse [] StatusAlreadyExists "")
         Running -> do
-          sourceRecords <- readRecords
+          sourceRecords <- readRecordsWithoutCkp streamName
           let (objects' :: [Maybe Aeson.Object]) = Aeson.decode' . srcValue <$> sourceRecords
               structs = jsonObjectToStruct . fromJust <$> filter isJust objects'
           streamSendMany structs
         _ -> return (ServerWriterResponse [] StatusUnknown "")
   where
     streamSendMany = \case
-      [] -> sendToClient zkHandle qid sc streamSend
+      [] -> sendToClient zkHandle qid streamName sc streamSend
       (x : xs') ->
         streamSend (structToStruct "SELECT" x) >>= \case
           Left err -> do
@@ -394,22 +394,21 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
           <> Log.buildString (show sources)
         throwIO StreamNotExist
       else do
-        HS.createStream scLDClient (HCH.transToTempStreamName sink)
+        HS.createStream scLDClient (HCH.transToStreamName sink)
           (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
         (qid, timestamp) <- handleCreateAsSelect ctx taskBuilder'
           createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
-        ldreader' <- HS.newLDRsmCkpReader scLDClient
-          (textToCBytes (T.append (getTaskName taskBuilder') "-result"))
-          HS.checkpointStoreLogID 5000 1 Nothing
-        let sc = HCH.hstoreSourceConnector scLDClient ldreader' HS.StreamTypeTemp -- FIXME: view or temp?
-        subscribeToStream sc sink Latest
-        returnResp $
-          Query
-          { queryId          = cBytesToText qid
-          , queryStatus      = getPBStatus Running
-          , queryCreatedTime = timestamp
-          , queryQueryText   = createQueryRequestQueryText
-          }
+        runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+          consumerName <- newRandomText 20
+          let sc = HCH.hstoreSourceConnectorWithoutCkp api consumerName
+          subscribeToStreamWithoutCkp sc sink
+          returnResp $
+            Query
+            { queryId          = cBytesToText qid
+            , queryStatus      = getPBStatus Running
+            , queryCreatedTime = timestamp
+            , queryQueryText   = createQueryRequestQueryText
+            }
     _ -> do
       Log.fatal "Push Query: Inconsistent Method Called"
       returnErrResp StatusInvalidArgument "inconsistent method called"

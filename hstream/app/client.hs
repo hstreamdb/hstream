@@ -116,6 +116,7 @@ commandExec ctx@ClientContext{..} xs = case words xs of
   -- {
   ":sub":subId:stream:_ -> callSubscription ctx (T.pack subId) (T.pack stream)
   ":delSub":subId:_     -> callDeleteSubscription ctx (T.pack subId)
+  ":delAllSubs":_       -> callDeleteSubscriptionAll ctx
   ":fetch":subId:_      -> callStreamingFetch ctx V.empty (T.pack subId) (T.pack clientId)
   ":listSubs":_         -> callListSubscriptions ctx
   -- }

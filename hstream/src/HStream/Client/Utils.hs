@@ -7,7 +7,7 @@
 
 module HStream.Client.Utils
   ( clientDefaultRequest
-  , mkClientNormalRequest
+  , mkClientNormalRequest'
   , requestTimeout
   , extractSelect
   , mkGRPCClientConf
@@ -25,16 +25,17 @@ import           Z.IO.Network.SocketAddr       (SocketAddr (..), ipv4)
 
 import           HStream.Server.HStreamApi     (ServerNode (..))
 import           HStream.Utils                 (Format (formatResult),
+                                                mkClientNormalRequest,
                                                 textToCBytes)
 
 clientDefaultRequest :: HasDefault a => ClientRequest 'Normal a b
-clientDefaultRequest = mkClientNormalRequest def
+clientDefaultRequest = mkClientNormalRequest' def
 
 requestTimeout :: Int
 requestTimeout = 1000
 
-mkClientNormalRequest :: a -> ClientRequest 'Normal a b
-mkClientNormalRequest x = ClientNormalRequest x requestTimeout (MetadataMap Map.empty)
+mkClientNormalRequest' :: a -> ClientRequest 'Normal a b
+mkClientNormalRequest' = mkClientNormalRequest requestTimeout
 
 extractSelect :: [String] -> T.Text
 extractSelect = T.pack .

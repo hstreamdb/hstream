@@ -65,7 +65,7 @@ initializeServer
   -> ZHandle
   -> MVar ServerState
   -> IO ServerContext
-initializeServer ServerOpts{..} gossipContext zk serverState = do
+initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
@@ -103,6 +103,8 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
       , scServerState            = serverState
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
+
+      , serverOpts               = opts
       }
 
 --------------------------------------------------------------------------------
