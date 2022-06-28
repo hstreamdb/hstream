@@ -32,6 +32,7 @@ import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
                                                    HStreamGossip (..),
                                                    JoinReq (..), JoinResp (..),
                                                    Ping (..), PingReq (..),
+                                                   PingReqResp (PingReqResp),
                                                    SeenEvents (SeenEvents),
                                                    UserEvent (..),
                                                    hstreamGossipClient)
@@ -42,8 +43,8 @@ import           HStream.Gossip.Types             (EventMessage (..),
                                                    ServerState (OK),
                                                    ServerStatus (..),
                                                    StateMessage (..))
-import           HStream.Gossip.Utils             (decodeThenBroadCast,
-                                                   getMessagesToSend,
+import qualified HStream.Gossip.Types             as T
+import           HStream.Gossip.Utils             (broadcast, getMessagesToSend,
                                                    incrementTVar,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf',
@@ -75,17 +76,17 @@ pingHandler :: GossipContext
   -> IO (ServerResponse 'Normal Ack)
 pingHandler GossipContext{..} (ServerNormalRequest _metadata Ping {..}) = do
   msgs <- atomically $ do
-    decodeThenBroadCast pingMsg statePool eventPool
+    broadcast (V.toList pingMsg) statePool eventPool
     memberMap <- readTVar serverList
     stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-  returnResp (Ack (encode msgs))
+  returnResp (Ack $ V.fromList msgs)
 
 pingReqHandler :: GossipContext
-  -> ServerRequest 'Normal PingReq Ack
-  -> IO (ServerResponse 'Normal Ack)
+  -> ServerRequest 'Normal PingReq PingReqResp
+  -> IO (ServerResponse 'Normal PingReqResp)
 pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = do
   msgs <- atomically $ do
-    decodeThenBroadCast pingReqMsg statePool eventPool
+    broadcast (V.toList pingReqMsg) statePool eventPool
     memberMap <- readTVar serverList
     stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
   case pingReqTarget of
@@ -93,15 +94,15 @@ pingReqHandler GossipContext{..} (ServerNormalRequest _metadata PingReq {..}) = 
     Just x  -> do
       isAcked <- newEmptyTMVarIO
       atomically $ do
-        writeTChan actionChan (DoPingReqPing (I.serverNodeId x) isAcked (encode msgs))
+        writeTChan actionChan (DoPingReqPing (I.serverNodeId x) isAcked msgs)
       timeout (roundtripTimeout gossipOpts) (atomically $ readTMVar isAcked) >>= \case
         Just msg -> do
           newMsgs <- atomically $ do
-            decodeThenBroadCast msg statePool eventPool
+            broadcast msg statePool eventPool
             memberMap <- readTVar serverList
             stateTVar broadcastPool $ getMessagesToSend (fromIntegral (Map.size memberMap))
-          returnResp (Ack (encode newMsgs))
-        Nothing  -> returnErrResp StatusInternal (StatusDetails $ encode msgs)
+          returnResp (PingReqResp True (V.fromList newMsgs))
+        Nothing  -> returnResp (PingReqResp False (V.fromList msgs))
 
 joinHandler :: GossipContext
   -> ServerRequest 'Normal JoinReq JoinResp
@@ -110,13 +111,13 @@ joinHandler GossipContext{..} (ServerNormalRequest _metadata JoinReq {..}) = do
   case joinReqNew of
     Nothing -> error "no node info in join request"
     Just node -> do
-      atomically $ writeTQueue statePool $ Join node
+      atomically $ writeTQueue statePool $ T.GJoin node
       sMap' <- readTVarIO serverList
       returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
 
 gossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
 gossipHandler GossipContext{..} (ServerNormalRequest _metadata Gossip {..}) = do
-  atomically $ decodeThenBroadCast gossipMsg statePool eventPool
+  atomically $ broadcast (V.toList gossipMsg) statePool eventPool
   returnResp Empty
 
 cliJoinHandler :: GossipContext -> ServerRequest 'Normal CliJoinReq JoinResp -> IO (ServerResponse 'Normal JoinResp)
@@ -126,7 +127,7 @@ cliJoinHandler gc@GossipContext{..} (ServerNormalRequest _metadata CliJoinReq {.
     hstreamGossipJoin (mkClientNormalRequest JoinReq { joinReqNew = Just serverSelf}) >>= \case
       GRPC.ClientNormalResponse resp@(JoinResp members) _ _ _ _ -> do
         membersOld <- map serverInfo . Map.elems <$> readTVarIO serverList
-        mapM_ (\x -> addToServerList gc x (Join x) OK) $ V.toList members \\ membersOld
+        mapM_ (\x -> addToServerList gc x (T.GJoin x) OK) $ V.toList members \\ membersOld
         returnResp resp
       GRPC.ClientErrorResponse _             -> error "failed to join"
 
@@ -138,7 +139,7 @@ cliClusterHandler GossipContext{..} _serverReq = do
 cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)
 cliUserEventHandler gc@GossipContext{..} (ServerNormalRequest _metadata UserEvent {..}) = do
   lpTime <- atomically $ incrementTVar eventLpTime
-  let eventMessage = Event userEventName lpTime userEventPayload
+  let eventMessage = EventMessage userEventName lpTime userEventPayload
   handleEventMessage gc eventMessage
   returnResp Empty
 
