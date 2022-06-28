@@ -30,8 +30,8 @@ import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
 import           HStream.Gossip.Types             (EventHandlers,
                                                    GossipContext (..),
                                                    GossipOpts (..),
-                                                   ServerState (..),
-                                                   StateMessage (..))
+                                                   ServerState (..))
+import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (mkClientNormalRequest,
                                                    mkGRPCClientConf')
 import qualified HStream.Server.HStreamInternal   as I
@@ -114,4 +114,4 @@ joinCluster sNode (joinHost, joinPort) =
                                          <> U.bs2str joinHost <> ":" <> show joinPort
 
 initGossip :: GossipContext -> [I.ServerNode] -> IO ()
-initGossip gc = mapM_ (\x -> addToServerList gc x (Join x) OK)
+initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK)

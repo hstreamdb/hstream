@@ -1,9 +1,10 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
 
-module HStream.Gossip.Types where
-
+module HStream.Gossip.Types
+  ( module HStream.Gossip.Types
+  , module G
+  ) where
 
 import           Control.Concurrent.Async       (Async)
 import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
@@ -11,33 +12,39 @@ import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
 import qualified Data.Map                       as Map
 import           Data.Map.Strict                (Map)
-import           Data.Serialize                 (Serialize, decode)
 import           Data.Text                      (Text)
-import           Data.Word                      (Word32, Word64)
-import           GHC.Generics                   (Generic)
+import           Data.Word                      (Word32)
 import qualified Options.Applicative            as O
 import           Options.Applicative.Builder    (auto, help, long, metavar,
                                                  option, short, showDefault,
                                                  strOption)
 import           System.Random                  (StdGen)
 
+import qualified Data.Vector                    as V
+import           HStream.Gossip.HStreamGossip   as G (EventMessage (..),
+                                                      Message (..),
+                                                      MessageContent (..),
+                                                      StateMessage (..),
+                                                      StateMessageContent (..),
+                                                      StateReport (..),
+                                                      UserEvent (..))
 import qualified HStream.Server.HStreamInternal as I
 
 type ServerId  = Word32
 type ServerUrl = Text
-
+type Messages = [G.Message]
 data ServerStatus = ServerStatus
   { serverInfo    :: I.ServerNode
   , serverState   :: TVar ServerState
-  , latestMessage :: TVar StateMessage
+  , latestMessage :: TVar G.StateMessage
   }
 
 type ServerList    = Map ServerId ServerStatus
 type Workers       = Map ServerId (Async ())
-type BroadcastPool = [(Message, Word32)]
-type StateDelta    = Map ServerId (StateMessage, Bool)
-type EventHandlers = Map.Map EventName EventHandler
-type SeenEvents    = IM.IntMap [(ByteString, ByteString)]
+type BroadcastPool = [(G.Message, Word32)]
+type StateDelta    = Map ServerId (G.StateMessage, Bool)
+type EventHandlers = Map.Map Text EventHandler
+type SeenEvents    = IM.IntMap [(EventName, EventPayload)]
 
 data GossipOpts = GossipOpts
   { gossipFanout     :: Int
@@ -64,13 +71,13 @@ data GossipContext = GossipContext
   , eventHandlers :: EventHandlers
   , serverList    :: TVar ServerList
   , actionChan    :: TChan RequestAction
-  , statePool     :: TQueue StateMessage
-  , eventPool     :: TQueue EventMessage
+  , statePool     :: TQueue G.StateMessage
+  , eventPool     :: TQueue G.EventMessage
   , seenEvents    :: TVar SeenEvents
   , broadcastPool :: TVar BroadcastPool
   , workers       :: TVar Workers
   , incarnation   :: TVar Word32
-  , eventLpTime   :: TVar LamportTime
+  , eventLpTime   :: TVar Word32
   , randomGen     :: StdGen
   , gossipOpts    :: GossipOpts
   }
@@ -86,70 +93,87 @@ data CliOptions = CliOptions {
   deriving Show
 
 data RequestAction
-  = DoPing ServerId ByteString
-  | DoPingReq [ServerId] ServerStatus (TMVar ()) ByteString
-  | DoPingReqPing ServerId  (TMVar ByteString) ByteString
-  | DoGossip [ServerId] ByteString
+  = DoPing ServerId Messages
+  | DoPingReq [ServerId] ServerStatus (TMVar ()) Messages
+  | DoPingReqPing ServerId  (TMVar Messages) Messages
+  | DoGossip [ServerId] Messages
 instance Show RequestAction where
-  show (DoPing        x y)       = "Send ping to"     <> show x <> " with message: " <> show (decode y :: Either String Message)
+  show (DoPing        x y)       = "Send ping to"     <> show x <> " with message: " <> show y
   show (DoPingReq     ids x _ y) = "Send PingReq to " <> show ids <> " for " <> show (serverInfo x)
-                                 <> " with message: " <> show (decode y :: Either String Message)
+                                 <> " with message: " <> show y
   show (DoPingReqPing x _ y)     = "Received PingReq request to " <> show x
-                                 <> " with message: " <> show (decode y :: Either String Message)
+                                 <> " with message: " <> show y
   show (DoGossip      x y)       = "Received gossip request to " <> show x
-                                 <> " with message: " <> show (decode y :: Either String Message)
+                                 <> " with message: " <> show y
 
--- instance Serialize Text where
---   put = put . encodeUtf8
---   get = fmap decodeUtf8 get
+-- data Message
+--   = EventMessage { eventMessage :: EventMessage }
+--   | StateMessage { stateMessage :: StateMessage }
+--   deriving (Show, Eq)
 
-deriving instance Serialize I.ServerNode
 
-data Message
-  = EventMessage { eventMessage :: EventMessage }
-  | StateMessage { stateMessage :: StateMessage }
-  deriving (Show, Eq, Generic, Serialize)
-
-type LamportTime = Word64
-
-type EventName = ByteString
+type EventName = Text
+-- data EventMessage = Event EventName LamportTime EventPayload
+--   deriving (Show, Eq)
 type EventPayload = ByteString
 type EventHandler = EventPayload -> IO ()
-data EventMessage = Event EventName LamportTime EventPayload
-  deriving (Show, Eq, Generic, Serialize)
 
-data StateMessage
-  = Suspect Word32 I.ServerNode I.ServerNode
-  | Alive   Word32 I.ServerNode I.ServerNode
-  | Confirm Word32 I.ServerNode I.ServerNode
-  | Join    I.ServerNode
-  deriving (Show, Generic, Serialize)
+-- data StateMessage
+--   = Suspect Word32 I.ServerNode I.ServerNode
+--   | Alive   Word32 I.ServerNode I.ServerNode
+--   | Confirm Word32 I.ServerNode I.ServerNode
+--   | Join    I.ServerNode
+--   deriving (Show, Generic)
 
-instance Eq StateMessage where
-  Join node1         == Join node2         = node1 == node2
-  Suspect i1 node1 _ == Suspect i2 node2 _ = i1 == i2 && node1 == node2
-  Alive   i1 node1 _ == Alive   i2 node2 _ = i1 == i2 && node1 == node2
-  Confirm i1 node1 _ == Confirm i2 node2 _ = i1 == i2 && node1 == node2
-  _ == _                                   = False
+newtype TempCompare = TC {unTC :: G.StateMessage}
+instance Eq TempCompare where
+  TC (GJoin node1        ) == TC (GJoin node2        ) = node1 == node2
+  TC (GSuspect i1 node1 _) == TC (GSuspect i2 node2 _) = i1 == i2 && node1 == node2
+  TC (GAlive   i1 node1 _) == TC (GAlive   i2 node2 _) = i1 == i2 && node1 == node2
+  TC (GConfirm i1 node1 _) == TC (GConfirm i2 node2 _) = i1 == i2 && node1 == node2
+  _ == _                                     = False
 
-instance Ord StateMessage where
-  compare x y =
+instance Ord TempCompare where
+  compare (TC x) (TC y) =
     if getMsgNode x /= getMsgNode y
     then error "You cannot compare two different node state"
     else case (x, y) of
-      (Join    _, _)                     -> LT
-      (Confirm i1 _ _ , Confirm i2 _ _ ) -> compare i1 i2
-      (Confirm{}, _)                     -> GT
-      (Suspect i1 _ _, Suspect i2 _ _)   -> if i1 >  i2 then GT else LT
-      (Alive   i1 _ _, Alive   i2 _ _)   -> if i1 >  i2 then GT else LT
-      (Suspect i1 _ _, Alive   i2 _ _)   -> if i1 >= i2 then GT else LT
-      (_, _)                             -> case compare y x of GT -> LT; LT -> GT; EQ -> EQ
+      (GJoin    _, _)                     -> LT
+      (GConfirm i1 _ _ , GConfirm i2 _ _ ) -> compare i1 i2
+      (GConfirm{}, _)                     -> GT
+      (GSuspect i1 _ _, GSuspect i2 _ _)   -> if i1 >  i2 then GT else LT
+      (GAlive   i1 _ _, GAlive   i2 _ _)   -> if i1 >  i2 then GT else LT
+      (GSuspect i1 _ _, GAlive   i2 _ _)   -> if i1 >= i2 then GT else LT
+      (_, _)                             -> case compare (TC y) (TC x) of GT -> LT; LT -> GT; EQ -> EQ
 
-getMsgNode :: StateMessage -> I.ServerNode
-getMsgNode (Join node)        = node
-getMsgNode (Suspect _ node _) = node
-getMsgNode (Alive   _ node _) = node
-getMsgNode (Confirm _ node _) = node
+getMsgNode :: G.StateMessage -> I.ServerNode
+getMsgNode (GJoin node)        = node
+getMsgNode (GSuspect _ node _) = node
+getMsgNode (GAlive   _ node _) = node
+getMsgNode (GConfirm _ node _) = node
+getMsgNode _                   = error "illegal state message"
+
+pattern GEvent :: G.EventMessage -> G.Message
+pattern GEvent x = G.Message (Just (G.MessageContentEvent x))
+
+pattern GState :: G.StateMessage -> G.Message
+pattern GState x = G.Message (Just (G.MessageContentState x))
+
+pattern GSuspect, GAlive, GConfirm :: Word32 -> I.ServerNode -> I.ServerNode -> G.StateMessage
+pattern GSuspect x y z = G.StateMessage (Just (G.StateMessageContentSuspect (GSM x y z)))
+pattern GAlive   x y z = G.StateMessage (Just (G.StateMessageContentAlive   (GSM x y z)))
+pattern GConfirm x y z = G.StateMessage (Just (G.StateMessageContentConfirm (GSM x y z)))
+
+pattern GJoin :: I.ServerNode -> G.StateMessage
+pattern GJoin    x = G.StateMessage (Just (G.StateMessageContentJoin x))
+
+pattern GSM :: Word32 -> I.ServerNode -> I.ServerNode -> G.StateReport
+pattern GSM x y z = G.StateReport
+  { stateReportIncarnation = x
+  , stateReportReporter = Just y
+  , stateReportReportee = Just z
+  }
+
 
 -------------------------------------------------------------------------------
 

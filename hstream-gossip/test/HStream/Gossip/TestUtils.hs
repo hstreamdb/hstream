@@ -4,17 +4,17 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module HStream.Gossip.TestUtils where
 
-import           Control.Concurrent.Async     (Async, mapConcurrently)
-import           Control.Monad                (replicateM, zipWithM)
-import           Data.Map                     (Map)
-import qualified Data.Map                     as Map
-import           Data.Streaming.Network       (getUnassignedPort)
-import           Data.Word                    (Word32)
+import           Control.Concurrent.Async       (Async, mapConcurrently)
+import           Control.Monad                  (replicateM, zipWithM)
+import           Data.Map                       (Map)
+import qualified Data.Map                       as Map
+import           Data.Streaming.Network         (getUnassignedPort)
+import           Data.Word                      (Word32)
 
-import qualified HStream.Gossip.HStreamGossip as API
-import           HStream.Gossip.Start         (initGossipContext, startGossip)
-import           HStream.Gossip.Types         (GossipContext (..), ServerId)
-import           HStream.Gossip.Utils         (defaultGossipOpts)
+import           HStream.Gossip.Start           (initGossipContext, startGossip)
+import           HStream.Gossip.Types           (GossipContext (..), ServerId,
+                                                 defaultGossipOpts)
+import qualified HStream.Server.HStreamInternal as I
 
 type MemInfo = (GossipContext, Async ())
 
@@ -26,11 +26,11 @@ startCluster n = do
   !port <- fromIntegral <$> getUnassignedPort
   !ports <- replicateM (fromIntegral n) $ fromIntegral <$> getUnassignedPort
   !gcs   <- zipWithM (\x y -> initGossipContext defaultGossipOpts mempty
-                           $ API.ServerNodeInternal x host port y)
+                           $ I.ServerNode x host port y)
                      [1 .. n]
                      ports
   asyncs <- mapConcurrently (startGossip host (zip (repeat host) (fromIntegral <$> ports))) gcs
   return $ foldr (\x@(GossipContext{..}, _)
-                    -> Map.insert (API.serverNodeInternalId serverSelf) x)
+                    -> Map.insert (I.serverNodeId serverSelf) x)
                  mempty
          $ zip gcs asyncs

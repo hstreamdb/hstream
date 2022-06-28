@@ -24,19 +24,19 @@ import qualified Data.Map.Strict                  as Map
 import qualified HStream.Logger                   as Log
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
+import qualified Data.Vector                      as V
 import           HStream.Gossip.Gossip            (gossip)
 import           HStream.Gossip.HStreamGossip     as API (Ack (..))
 import           HStream.Gossip.Probe             (doPing, pingReq, pingReqPing)
-import           HStream.Gossip.Types             (EventMessage (Event),
+import           HStream.Gossip.Types             (EventMessage (EventMessage),
                                                    GossipContext (..),
-                                                   Message (..),
                                                    RequestAction (..),
                                                    ServerState (OK, Suspicious),
                                                    ServerStatus (..),
                                                    StateMessage (..))
-import           HStream.Gossip.Utils             (broadcastMessage,
+import qualified HStream.Gossip.Types             as T
+import           HStream.Gossip.Utils             (broadcast, broadcastMessage,
                                                    cleanStateMessages,
-                                                   decodeThenBroadCast,
                                                    getMsgInc, mkGRPCClientConf,
                                                    updateLamportTime,
                                                    updateStatus)
@@ -82,12 +82,12 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode
         Log.info . Log.buildString $ "Sending ping Req to " <> show serverNodeId <> " asking for " <> show (I.serverNodeId sInfo)
         ack <- pingReq sInfo msg client
         atomically $ case ack of
-          Right (Ack msgsBS) -> do
-            decodeThenBroadCast msgsBS  statePool eventPool
+          Right msgs -> do
+            broadcast msgs statePool eventPool
             inc <- getMsgInc <$> readTVar latestMessage
-            writeTQueue statePool $ Alive inc sNode serverSelf
+            writeTQueue statePool $ T.GAlive inc sNode serverSelf
             void $ tryPutTMVar isAcked ()
-          Left (Just msgsBS) -> decodeThenBroadCast msgsBS statePool eventPool
+          Left (Just msgs)   -> broadcast msgs statePool eventPool
           Left Nothing       -> pure ()
       DoPingReqPing sid isAcked msg -> when (sid == serverNodeId) $ do
         Log.info . Log.buildString $ "Sending PingReqPing to: " <> show serverNodeId
@@ -110,23 +110,23 @@ handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
-handleStateMessage gc@GossipContext{..} msg@(Join node@I.ServerNode{..}) = unless (node == serverSelf) $ do
+handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = unless (node == serverSelf) $ do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   sMap <- readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing -> do
       addToServerList gc node msg OK
-      atomically $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+      atomically $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
     Just ServerStatus{..} -> unless (serverInfo == node) $
       -- TODO: vote to resolve conflict
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
-handleStateMessage GossipContext{..} msg@(Confirm _inc I.ServerNode{..} _node)= do
+handleStateMessage GossipContext{..} msg@(T.GConfirm _inc I.ServerNode{..} _node)= do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   sMap <- readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
     Just ServerStatus{..} -> join $ atomically $ do
-      modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+      modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
       writeTVar latestMessage msg
       modifyTVar' serverList (Map.delete serverNodeId)
       mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
@@ -135,28 +135,29 @@ handleStateMessage GossipContext{..} msg@(Confirm _inc I.ServerNode{..} _node)= 
         Just  a -> return $ do
           Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
           cancel a
-handleStateMessage GossipContext{..} msg@(Suspect inc node@I.ServerNode{..} _node) = do
+handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   join . atomically $ if node == serverSelf
-    then writeTQueue statePool (Alive (succ inc) node serverSelf) >> return (pure ())
+    then writeTQueue statePool (T.GAlive (succ inc) node serverSelf) >> return (pure ())
     else do
       sMap <- readTVar serverList
       case Map.lookup serverNodeId sMap of
         Just ss -> do
           updated <- updateStatus ss msg Suspicious
-          when updated $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+          when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
           return (pure ())
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
-handleStateMessage gc@GossipContext{..} msg@(Alive _inc node@I.ServerNode{..} _node) = do
+handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..} _node) = do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   unless (node == serverSelf) $ do
     sMap <- readTVarIO serverList
     case Map.lookup serverNodeId sMap of
       Just ss -> atomically $ do
         updated <- updateStatus ss msg OK
-        when updated $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+        when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
       Nothing -> addToServerList gc node msg OK
+handleStateMessage _ _ = error "illegal state message"
 
 runEventHandler :: GossipContext -> IO ()
 runEventHandler gc@GossipContext{..} = forever $ do
@@ -171,7 +172,7 @@ handleEventMessages = mapM_ . handleEventMessage
 
 -- handleEventMessage :: GossipContext -> EventMessage -> IO Bool
 handleEventMessage :: GossipContext -> EventMessage -> IO ()
-handleEventMessage GossipContext{..} msg@(Event eName lpTime bs) = join . atomically $ do
+handleEventMessage GossipContext{..} msg@(EventMessage eName lpTime bs) = join . atomically $ do
   let event = (eName, bs)
   currentTime <- updateLamportTime eventLpTime lpTime
   seen <- readTVar seenEvents
@@ -181,11 +182,11 @@ handleEventMessage GossipContext{..} msg@(Event eName lpTime bs) = join . atomic
     else case IM.lookup (fromIntegral lpTime) seen of
       Nothing -> do
         modifyTVar seenEvents $ IM.insert lpInt [event]
-        modifyTVar broadcastPool $ broadcastMessage (EventMessage msg)
+        modifyTVar broadcastPool $ broadcastMessage (T.GEvent msg)
         return $ Log.info . Log.buildString $ "Event handled:" <> show msg
       Just events -> if event `elem` events
         then return $ pure ()
         else do
           modifyTVar seenEvents $ IM.insertWith (++) lpInt [event]
-          modifyTVar broadcastPool $ broadcastMessage (EventMessage msg)
+          modifyTVar broadcastPool $ broadcastMessage (T.GEvent msg)
           return $ Log.info . Log.buildString $ "Event handled:" <> show msg

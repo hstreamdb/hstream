@@ -33,7 +33,7 @@ spec =
     let GossipContext{..} = fst $ servers Map.! y
     _msg <- atomically $ do
       lpTime <- incrementTVar eventLpTime
-      let eventMessage = Event "Greeting" lpTime "Hello from Test"
+      let eventMessage = EventMessage "Greeting" lpTime "Hello from Test"
       writeTQueue eventPool eventMessage
       return eventMessage
     threadDelay $ 5 * 1000 * 1000

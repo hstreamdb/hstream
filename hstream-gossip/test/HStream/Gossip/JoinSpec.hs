@@ -3,18 +3,18 @@
 
 module HStream.Gossip.JoinSpec where
 
-import           Control.Concurrent.STM       (readTVarIO)
-import qualified Data.Map.Strict              as Map
-import           Data.Streaming.Network       (getUnassignedPort)
-import           Test.Hspec                   (SpecWith, describe, it, runIO,
-                                               shouldBe)
+import           Control.Concurrent.STM         (readTVarIO)
+import qualified Data.Map.Strict                as Map
+import           Data.Streaming.Network         (getUnassignedPort)
+import           Test.Hspec                     (SpecWith, describe, it, runIO,
+                                                 shouldBe)
 
-import qualified HStream.Gossip.HStreamGossip as API
-import           HStream.Gossip.Start         (initGossipContext, startGossip)
-import           HStream.Gossip.Types         (GossipContext (..),
-                                               ServerStatus (..))
-import           HStream.Gossip.Utils         (defaultGossipOpts)
-import qualified HStream.Logger               as Log
+import           HStream.Gossip.Start           (initGossipContext, startGossip)
+import           HStream.Gossip.Types           (GossipContext (..),
+                                                 ServerStatus (..),
+                                                 defaultGossipOpts)
+import qualified HStream.Logger                 as Log
+import qualified HStream.Server.HStreamInternal as I
 
 spec :: SpecWith ()
 spec = describe "JoinSpec" $ do
@@ -29,8 +29,8 @@ runSingleJoinSpec = describe "runSingleJoinSpec" $ do
     port <- fromIntegral <$> getUnassignedPort
     port1 <- getUnassignedPort
     port2 <- fromIntegral <$> getUnassignedPort
-    let node1 = API.ServerNodeInternal 1 host port (fromIntegral port1)
-    let node2 = API.ServerNodeInternal 2 host port port2
+    let node1 = I.ServerNode 1 host port (fromIntegral port1)
+    let node2 = I.ServerNode 2 host port port2
     gc <- initGossipContext defaultGossipOpts mempty node1
     _ <- startGossip host [(host, port1)] gc
     gc2 <- initGossipContext defaultGossipOpts mempty node2
