@@ -19,7 +19,8 @@ import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           HStream.Common.ConsistentHashing (getAllocatedNode)
+import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
+import           HStream.Common.Types             (fromInternalServerNodeWithKey)
 import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
@@ -31,8 +32,7 @@ import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (fromInternalServerNode,
-                                                   mkServerErrResp, returnResp)
+import           HStream.Utils                    (mkServerErrResp, returnResp)
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
@@ -41,12 +41,13 @@ describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = default
   let protocolVer = Types.protocolVersion
       serverVer   = Types.serverVersion
   nodes <- getMemberList gossipContext
-  let resp = DescribeClusterResponse {
-      describeClusterResponseProtocolVersion = protocolVer
+  nodes' <- mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) nodes
+
+  returnResp $ DescribeClusterResponse
+    { describeClusterResponseProtocolVersion = protocolVer
     , describeClusterResponseServerVersion   = serverVer
-    , describeClusterResponseServerNodes     = V.fromList $ map fromInternalServerNode nodes
+    , describeClusterResponseServerNodes     = V.concat nodes'
     }
-  returnResp resp
 
 lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
@@ -58,8 +59,8 @@ lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStrea
   hashRing <- readTVarIO loadBalanceHashRing
   let key      = alignDefault orderingKey
       storeKey = orderingKeyToStoreKey key
-      theNode  = getAllocatedNode hashRing (stream <> key)
       streamID = transToStreamName stream
+  theNode <- getResNode hashRing (stream <> key) scAdvertisedListenersKey
   keyExist <- S.doesStreamPartitionExist scLDClient streamID storeKey
   unless keyExist $ do
     Log.debug $ "createStreamingPartition, stream: " <> Log.buildText stream <> ", key: " <> Log.buildText key
@@ -82,7 +83,7 @@ lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@Looku
   lookupSubscriptionRequestSubscriptionId = subId}) = defaultExceptionHandle $ do
   Log.info $ "receive lookupSubscription request: " <> Log.buildString (show req)
   hashRing <- readTVarIO loadBalanceHashRing
-  let theNode = getAllocatedNode hashRing subId
+  theNode <- getResNode hashRing subId scAdvertisedListenersKey
   returnResp LookupSubscriptionResponse {
     lookupSubscriptionResponseSubscriptionId = subId
   , lookupSubscriptionResponseServerNode     = Just theNode
@@ -106,3 +107,10 @@ lookupStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
       Handler (\(err :: DataInconsistency) ->
         return (StatusAborted, mkStatusDetails err))
       ]
+
+getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
+getResNode hashRing hashKey listenerKey = do
+  let serverNode = getAllocatedNode hashRing hashKey
+  theNodes <- fromInternalServerNodeWithKey listenerKey serverNode
+  if V.null theNodes then throwIO ObjectNotExist
+                     else pure $ V.head theNodes

@@ -7,4 +7,14 @@ message ServerNode {
   bytes  host = 2;
   uint32 port = 3;
   uint32 gossipPort = 4;
+  map<string, ListOfListener> advertisedListeners = 5;
+}
+
+message Listener {
+  string address = 1;
+  int32 port = 2;
+}
+
+message ListOfListener {
+  repeated Listener listeners = 2;
 }

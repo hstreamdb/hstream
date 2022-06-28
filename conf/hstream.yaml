@@ -6,13 +6,6 @@ hserver:
   # the value must be given and can be overwritten by cli option `--server-id`
   id: 1
 
-  # Server listener address value, the value must be given.
-  # It should not be "127.0.0.1", if you intend to start a cluster or trying to connect to the
-  # server from a different network.
-  #
-  # This value can be overwritten by cli option `--address`
-  address: "127.0.0.1"
-
   # Server port value, the value must be given and can be overwritten by cli
   # option `--port`
   port: 6570
@@ -20,6 +13,18 @@ hserver:
   # Server port value for internal communications between server nodes,
   # the value must be given and can be overwritten by cli option `--internal-port`
   internal-port: 6571
+
+  # Server listener address value, the value must be given.
+  # It should NOT be "127.0.0.1", if you intend to start a cluster or trying to connect to the
+  # server from a different network.
+  #
+  # This value can be overwritten by cli option `--address`
+  address: "127.0.0.1"
+
+  #advertised-listeners:
+  #  private:
+  #    - address: "127.0.0.1"
+  #      port: 6580
 
   # The server nodes in the same cluster shares a zookeeper server, this is
   # essential for a server to start.

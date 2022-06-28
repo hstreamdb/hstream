@@ -26,6 +26,7 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Common.Types             (fromInternalServerNode)
 import           HStream.Gossip                   (getMemberList)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.Logger                   as Log
@@ -34,9 +35,13 @@ import           HStream.Server.Config            (ServerOpts (..),
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (fromInternalServerNode)
 
-initializeServer :: ServerOpts -> GossipContext -> ZHandle -> MVar ServerState -> IO ServerContext
+initializeServer
+  :: ServerOpts
+  -> GossipContext
+  -> ZHandle
+  -> MVar ServerState
+  -> IO ServerContext
 initializeServer ServerOpts{..} gossipContext zk serverState = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
@@ -57,6 +62,7 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
       { zkHandle                 = zk
       , scLDClient               = ldclient
       , serverID                 = _serverID
+      , scAdvertisedListenersKey = Nothing
       , scDefaultStreamRepFactor = _topicRepFactor
       , scMaxRecordSize          = _maxRecordSize
       , runningQueries           = runningQs
@@ -75,7 +81,7 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
 initializeHashRing :: GossipContext -> IO (TVar HashRing)
 initializeHashRing gc = do
   serverNodes <- getMemberList gc
-  newTVarIO . constructServerMap . sort $ map fromInternalServerNode serverNodes
+  newTVarIO . constructServerMap . sort $ serverNodes
 
 initializeTlsConfig :: TlsConfig -> ServerSSLConfig
 initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler
