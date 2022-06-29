@@ -266,12 +266,7 @@ createStreamPartition
   -> Maybe CBytes
   -> IO FFI.C_LogID
 createStreamPartition client streamid m_key = do
-  stream_exist <- doesStreamExist client streamid
-  if stream_exist
-     then do (log_path, _key) <- getStreamLogPath streamid m_key
-             createRandomLogGroup client log_path def
-     else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
-                            callStack
+  createStreamPartitionWithExtrAttr client streamid m_key Map.empty
 
 createStreamPartitionWithExtrAttr
   :: HasCallStack
