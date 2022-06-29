@@ -83,7 +83,7 @@ dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
                       })
 
     DConnector txt -> hstreamApiDeleteConnector (mkClientNormalRequest def
-                      { API.deleteConnectorRequestId = txt
+                      { API.deleteConnectorRequestName = txt
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
 

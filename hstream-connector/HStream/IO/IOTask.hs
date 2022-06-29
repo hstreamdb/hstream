@@ -11,6 +11,7 @@ import           Control.Concurrent   (MVar, ThreadId, forkIO, killThread,
                                        modifyMVar_, newMVar, readMVar,
                                        threadDelay)
 import           Control.Exception    (SomeException, bracket, catch)
+import           Control.Monad        (unless, when)
 import qualified Data.Aeson           as J
 import qualified Data.ByteString.Lazy as BSL
 import           Data.IORef           (IORef, newIORef, readIORef, writeIORef)
@@ -35,7 +36,7 @@ newIOTask taskId storage info@TaskInfo{..} = do
       configPath = taskPath ++ "/config.json"
   -- create task files
   createDirectoryIfMissing True taskPath
-  BSL.writeFile configPath (J.encode taskConfig)
+  BSL.writeFile configPath (J.encode connectorConfig)
   IOTask taskId info storage <$> newIORef Nothing <*> newMVar NEW
 
 getStatus :: IOTask -> IO IOTaskStatus
@@ -49,22 +50,20 @@ getDockerName = ("IOTASK_" <>)
 
 runIOTask :: IOTask -> IO ()
 runIOTask IOTask{..} = do
-  -- TODO: offset, update state
-  -- getLatestState ioTask >>= BSL.writeFile srcStatePath . Aeson.encode
-
-  putStrLn $ "taskCmd: " ++ taskCmd
+  Log.info $ "taskCmd: " <> Log.buildString taskCmd
   bracket (TP.startProcess taskProcessConfig) TP.stopProcess $ \tp -> do
     exitCode <- TP.waitExitCode tp
     Log.info $ "task:" <> Log.buildText taskId <> " exited with " <> Log.buildString (show exitCode)
     return ()
   where
     TaskInfo {..} = taskInfo
+    TaskConfig {..} = taskConfig
     taskPath = getTaskPath taskId
     taskCmd = concat [
         "docker run --rm -i --network=host",
         " --name ", T.unpack (getDockerName taskId),
         " -v " , taskPath, ":/data",
-        " " , T.unpack taskImage,
+        " " , T.unpack tcImage,
         " >> ", taskPath, "/log", " 2>&1"
       ]
     taskProcessConfig = TP.setStdin TP.closed
@@ -96,15 +95,16 @@ startIOTask task@IOTask{..} = do
       return RUNNING
     _ -> fail "invalid status"
 
-stopIOTask :: IOTask -> IO ()
-stopIOTask task@IOTask{..} = do
-  putStrLn "--------------------------XX"
+stopIOTask :: IOTask -> Bool -> IO ()
+stopIOTask task@IOTask{..} ifIsRunning = do
   updateStatus task $ \case
     RUNNING -> do
       _ <- TP.runProcess killProcessConfig
       readIORef tidM >>= maybe (pure ()) killThread
       return STOPPED
-    _ -> fail "TODO: status error"
+    s -> do
+      unless ifIsRunning $ fail "task is not RUNNING"
+      return s
   where
     killDockerCmd = "docker kill " ++ T.unpack (getDockerName taskId)
     killProcessConfig = TP.shell killDockerCmd
@@ -112,10 +112,9 @@ stopIOTask task@IOTask{..} = do
 printException :: IO () -> IO ()
 printException action = catch action (\(e :: SomeException) -> print e)
 
-
 updateStatus :: IOTask -> (IOTaskStatus -> IO IOTaskStatus) -> IO ()
 updateStatus IOTask{..} action = do
   modifyMVar_ statusM $ \status -> do
     ts <- action status
-    S.updateStatus storage taskId ts
+    when (ts /= status) $ S.updateStatus storage taskId ts
     return ts

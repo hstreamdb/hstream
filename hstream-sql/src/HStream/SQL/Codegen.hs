@@ -85,12 +85,13 @@ type SourceStream   = [StreamName]
 type SinkStream     = StreamName
 type CheckIfExist  = Bool
 type ViewSchema = [String]
-type OtherOptions = [(Text,Constant)]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text | DConnector Text
 data TerminationSelection = AllQueries | OneQuery CB.CBytes | ManyQueries [CB.CBytes]
 data InsertType = JsonFormat | RawFormat
+data StartObject = StartObjectConnector Text
+data StopObject = StopObjectConnector Text
 
 data ConnectorConfig
   = ClickhouseConnector Clickhouse.ConnParams
@@ -102,13 +103,15 @@ data HStreamPlan
   | CreateBySelectPlan  SourceStream SinkStream TaskBuilder Int
   | CreateViewPlan      ViewSchema SourceStream SinkStream TaskBuilder Int (Materialized Object Object SerMat)
   | CreatePlan          StreamName Int
-  | CreateSinkConnectorPlan ConnectorName Bool StreamName ConnectorConfig OtherOptions
+  | CreateConnectorPlan ConnectorType ConnectorName Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
   | SelectViewPlan      RSelectView
   | ExplainPlan         Text
+  | StartPlan StartObject
+  | StopPlan StopObject
 
 --------------------------------------------------------------------------------
 
@@ -133,7 +136,8 @@ hstreamCodegen = \case
           RSelList fields -> map snd fields
     return $ CreateViewPlan schema source sink (HS.build builder) 1 mat
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
-  RQCreate rCreateSinkConnector -> return $ genCreateSinkConnectorPlan rCreateSinkConnector
+  RQCreate (RCreateConnector cType cName ifNotExist (RConnectorOptions cOptions)) ->
+    return $ CreateConnectorPlan cType cName ifNotExist cOptions
   RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . encode . HM.fromList $ second constantToValue <$> tuples)
   RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
   RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat bs
@@ -151,36 +155,19 @@ hstreamCodegen = \case
   RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
   RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
   RQExplain rexplain                 -> return $ ExplainPlan rexplain
+  RQStart (RStartConnector name)     -> return $ StartPlan (StartObjectConnector name)
+  RQStop (RStopConnector name)       -> return $ StopPlan (StopObjectConnector name)
 
 --------------------------------------------------------------------------------
 
-genCreateSinkConnectorPlan :: RCreate -> HStreamPlan
-genCreateSinkConnectorPlan (RCreateSinkConnector cName ifNotExist sName connectorType (RConnectorOptions cOptions)) =
-  case connectorType of
-    "clickhouse" -> CreateSinkConnectorPlan cName ifNotExist sName (ClickhouseConnector createClickhouseSinkConnector) []
-    "mysql" -> CreateSinkConnectorPlan cName ifNotExist sName (MySqlConnector tableName createMysqlSinkConnector) []
-    _ -> throwSQLException CodegenException Nothing "Connector type not supported"
-  where
-    extractString = \case Just (ConstantString s) -> Just s; _ -> Nothing
-    getStringValue field value = fromMaybe value $ extractString (lookup field cOptions)
-    getByteStringValue = (BSC.pack .) . getStringValue
-    createClickhouseSinkConnector = Clickhouse.ConnParams
-      (getByteStringValue "username" "default")
-      (getByteStringValue "host" "127.0.0.1")
-      (BSC.pack . show . extractInt "port: " $ lookup "port" cOptions)
-      (getByteStringValue "password" "")
-      False (getByteStringValue "database" "default")
-    createMysqlSinkConnector = MySQL.ConnectInfo
-      (getStringValue "host" "127.0.0.1")
-      (fromIntegral . extractInt "port: " $ lookup "port" cOptions)
-      (getByteStringValue "database" "mysql")
-      (getByteStringValue "username" "root")
-      (getByteStringValue "password" "password") 33
-    -- The table name is the same as the source stream name if not provided
-    tableName = maybe sName T.pack (extractString (lookup "table" cOptions))
-
-genCreateSinkConnectorPlan _ =
+genCreateConnectorPlan :: RCreate -> HStreamPlan
+genCreateConnectorPlan (RCreateConnector cType cName ifNotExist (RConnectorOptions cOptions)) =
+  CreateConnectorPlan cType cName ifNotExist cOptions
+genCreateConnectorPlan _ =
   throwSQLException CodegenException Nothing "Implementation: Wrong function called"
+
+
+
 
 extractInt :: String -> Maybe Constant -> Int
 extractInt errPrefix = \case

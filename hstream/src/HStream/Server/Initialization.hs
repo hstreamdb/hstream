@@ -28,6 +28,7 @@ import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
@@ -36,7 +37,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (NodeInfo (..),
                                                    decodeZNodeValue,
                                                    encodeValueToBytes,
-                                                   getServerNode',
+                                                   getServerNode', ioPath,
                                                    serverRootLockPath,
                                                    serverRootPath)
 import           HStream.Server.Types
@@ -109,7 +110,10 @@ initializeServer ServerOpts{..} zk serverState = do
 
   hashRing <- initializeHashRing zk
 
-  ioWorker <- IO.newWorker zk
+  ioWorker <-
+    IO.newWorker
+      (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
+      (IO.HStreamConfig (cBytesToText (_serverHost <> ":" <> CB.pack (show _serverPort))))
 
   return
     ServerContext

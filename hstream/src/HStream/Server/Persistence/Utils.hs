@@ -36,6 +36,7 @@ module HStream.Server.Persistence.Utils
   , encodeValueToBytes
 
   , ifThrow
+  , ioPath
   ) where
 
 --------------------------------------------------------------------------------
@@ -97,11 +98,14 @@ ioPath = rootPath <> "/io"
 ioTasksPath :: CBytes
 ioTasksPath = ioPath <> "/tasks"
 
-ioTasksStatusPath :: CBytes
-ioTasksStatusPath = ioPath <> "/tasksStatus"
+ioStatusPath :: CBytes
+ioStatusPath = ioPath <> "/status"
 
-ioTasksKvPath :: CBytes
-ioTasksKvPath = ioPath <> "/tasksKv"
+ioKvPath :: CBytes
+ioKvPath = ioPath <> "/kv"
+
+ioNamesPath :: CBytes
+ioNamesPath = ioPath <> "/names"
 
 paths :: [CBytes]
 paths = [ rootPath
@@ -113,8 +117,9 @@ paths = [ rootPath
         , subscriptionsLockPath
         , ioPath
         , ioTasksPath
-        , ioTasksStatusPath
-        , ioTasksKvPath
+        , ioStatusPath
+        , ioKvPath
+        , ioNamesPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()

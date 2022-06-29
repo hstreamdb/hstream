@@ -14,9 +14,9 @@ internalHandlers _ = pure HStreamInternal {
     hstreamInternalCreateQueryStream   = unimplemented
   , hstreamInternalRestartQuery        = unimplemented
   , hstreamInternalTerminateQueries    = unimplemented
-  , hstreamInternalCreateSinkConnector = unimplemented
-  , hstreamInternalRestartConnector    = unimplemented
-  , hstreamInternalTerminateConnector  = unimplemented
+  , hstreamInternalCreateConnector     = unimplemented
+  , hstreamInternalStartConnector    = unimplemented
+  , hstreamInternalStopConnector  = unimplemented
 
   }
   where

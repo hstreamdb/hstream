@@ -10,7 +10,7 @@ service HStreamInternal {
   rpc RestartQuery(RestartQueryRequest) returns (google.protobuf.Empty) {}
   rpc TerminateQueries(TerminateQueriesRequest) returns (TerminateQueriesResponse) {}
 
-  rpc CreateSinkConnector(CreateSinkConnectorRequest) returns (Connector) {}
-  rpc RestartConnector(CreateSinkConnectorRequest) returns (Connector) {}
-  rpc TerminateConnector(TerminateConnectorRequest) returns (google.protobuf.Empty) {}
+  rpc CreateConnector(CreateConnectorRequest) returns (Connector) {}
+  rpc StartConnector(StartConnectorRequest) returns (Connector) {}
+  rpc StopConnector(StopConnectorRequest) returns (google.protobuf.Empty) {}
 }

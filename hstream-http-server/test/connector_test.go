@@ -26,7 +26,7 @@ func TestConnector(t *testing.T) {
 	var createResp_ hstreamApi.Stream
 	execResp(t, resp, err, &createResp_)
 
-	createReq := hstreamApi.CreateSinkConnectorRequest{
+	createReq := hstreamApi.CreateConnectorRequest{
 		Sql: "CREATE SINK CONNECTOR " + test_connector + " WITH (type=mysql, host=\"127.0.0.1\", port=" + mysqlPort + ", username=\"root\", password=\"\", database=\"mysql\", stream=" + test_stream + ");",
 	}
 	connectorByte, err := protojson.Marshal(&createReq)
