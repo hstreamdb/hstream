@@ -243,7 +243,7 @@ showStreamName = CBytes.unpack . streamName
 
 -- | Create stream
 --
--- Currently a Stream is a loggroup which only contains one random logid.
+-- Currently a Stream is a logidr.
 createStream :: HasCallStack
              => FFI.LDClient -> StreamId -> LD.LogAttributes -> IO ()
 createStream client streamid attrs = do
@@ -253,6 +253,11 @@ createStream client streamid attrs = do
   (log_path, _key) <- getStreamLogPath streamid Nothing
   void $ createRandomLogGroup client log_path def
 
+-- | Create a partition of a stream. If the stream doesn't exist, throw
+-- StoreError.
+--
+-- Currently a stream partition is a loggroup which only contains one random
+-- logid.
 createStreamPartition
   :: HasCallStack
   => FFI.LDClient

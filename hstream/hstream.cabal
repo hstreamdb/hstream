@@ -74,7 +74,6 @@ library
     HStream.Server.Handler.View
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.MemoryStore
-    HStream.Server.Persistence.Nodes
     HStream.Server.Persistence.Object
     HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.Utils
@@ -85,6 +84,7 @@ library
     , aeson-pretty
     , ansi-terminal
     , async
+    , attoparsec
     , base
     , bytestring
     , clickhouse-haskell
@@ -99,6 +99,7 @@ library
     , hstream-common
     , hstream-common-stats
     , hstream-connector
+    , hstream-gossip
     , hstream-processing
     , hstream-sql
     , hstream-store
@@ -154,6 +155,7 @@ executable hstream-server
     , hstream-admin
     , hstream-common
     , hstream-common-stats
+    , hstream-gossip
     , hstream-store
     , optparse-applicative
     , proto3-suite

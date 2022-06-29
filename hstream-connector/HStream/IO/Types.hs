@@ -75,7 +75,7 @@ instance TaskJson KvConfig where
     J.object
       [ "type" J..= ("zk" :: T.Text)
       , "url" J..= zkUrl
-      , "rootPath" J..= (rootPath <> "/tasksKv/" <> taskId)
+      , "rootPath" J..= (rootPath <> "/kv/" <> taskId)
       ]
   toTaskJson (FileKvConfig filePath) _ =
     J.object

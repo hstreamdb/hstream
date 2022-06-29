@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -13,7 +13,7 @@ env:
 jobs:
   pre-build:
     runs-on: ubuntu-latest
-    name: Prepare pre-build environment for tests
+    name: prepare pre-build environment for tests
     outputs:
       ghc: ${{ steps.parser.outputs.ghc }}
     steps:
@@ -28,7 +28,7 @@ jobs:
           echo "Set ghc versions: $GHCS..."
           echo "::set-output name=ghc::$GHCS"
 
-      - name: Run stylish-haskell
+      - name: run stylish-haskell
         run: |
           # install stylish-haskell
           PACKAGE=stylish-haskell

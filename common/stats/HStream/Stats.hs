@@ -41,8 +41,8 @@ module HStream.Stats
   , stream_time_series_add_append_failed_requests
   , stream_time_series_add_record_bytes
   , stream_time_series_get
+  , stream_time_series_getall
   , stream_time_series_getall_by_name
-  , stream_time_series_getall_by_name'
 
     -- * PerSubscriptionStats
     -- ** Counters
@@ -57,8 +57,13 @@ module HStream.Stats
   , subscription_time_series_add_request_messages
   , subscription_time_series_add_response_messages
   , subscription_time_series_get
-  , subscription_time_series_getall_by_name
-  , subscription_time_series_getall_by_name'
+  , subscription_time_series_getall
+
+    -- * PerHandleStats
+    -- ** Time series
+  , handle_time_series_add_queries_in
+  , handle_time_series_get
+  , handle_time_series_getall
 
     -- * ServerHistogram
   , ServerHistogramLabel (..)
@@ -173,6 +178,7 @@ stream_time_series_get (StatsHolder holder) method_name stream_name intervals =
     !pa <- unsafeFreezePrimArray mpa
     return $ if ret == 0 then Just (primArrayToList pa) else Nothing
 
+{-# DEPRECATED stream_time_series_getall_by_name "Don't use this, use stream_time_series_getall instead" #-}
 stream_time_series_getall_by_name
   :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])
 stream_time_series_getall_by_name (StatsHolder holder) name intervals =
@@ -193,12 +199,12 @@ stream_time_series_getall_by_name (StatsHolder holder) name intervals =
 -- TODO: make intervals checking by default
 --
 -- | the same as 'stream_time_series_getall_by_name', but check intervals first.
-stream_time_series_getall_by_name'
+stream_time_series_getall
   :: StatsHolder
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-stream_time_series_getall_by_name' (StatsHolder holder) name intervals =
+stream_time_series_getall (StatsHolder holder) name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
@@ -247,29 +253,12 @@ subscription_time_series_get (StatsHolder holder) method_name stream_name interv
     !pa <- unsafeFreezePrimArray mpa
     return $ if ret == 0 then Just (primArrayToList pa) else Nothing
 
-subscription_time_series_getall_by_name
-  :: StatsHolder -> CBytes -> [Int] -> IO (Map.Map CBytes [Double])
-subscription_time_series_getall_by_name (StatsHolder holder) name intervals =
-  withForeignPtr holder $ \holder' ->
-  withCBytesUnsafe name $ \name' -> do
-    let interval_len = length intervals
-    -- NOTE only for unsafe ffi
-    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
-    (ret, statMap) <-
-      peekCppMap
-        (I.subscription_time_series_getall_by_name holder' (BA# name') interval_len (BA# intervals'))
-        peekStdStringToCBytesN c_delete_vector_of_string
-        peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
-    if ret == 0 then pure statMap
-                else do Log.fatal "subscription_time_series_getall failed!"
-                        pure Map.empty
-
-subscription_time_series_getall_by_name'
+subscription_time_series_getall
   :: StatsHolder
   -> CBytes
   -> [Int]
   -> IO (Either String (Map.Map CBytes [Double]))
-subscription_time_series_getall_by_name' (StatsHolder holder) name intervals =
+subscription_time_series_getall (StatsHolder holder) name intervals =
   withForeignPtr holder $ \holder' ->
   withCBytesUnsafe name $ \name' -> do
     let interval_len = length intervals
@@ -292,9 +281,59 @@ subscription_time_series_getall_by_name' (StatsHolder holder) name intervals =
                           pure Map.empty
     cfun = I.subscription_time_series_getall_by_name
 
+#define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
+PER_X_STAT_ADD(handle_time_series_, name)
+#include "../include/per_handle_time_series.inc"
+
+handle_time_series_get
+  :: StatsHolder -> CBytes -> CBytes -> [Int] -> IO (Maybe [Double])
+handle_time_series_get (StatsHolder holder) method_name key_name intervals =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe method_name $ \method_name' ->
+  withCBytesUnsafe key_name $ \key_name' -> do
+    let interval_len = length intervals
+    (mpa@(MutablePrimArray mba#) :: MutablePrimArray RealWorld Double) <- newPrimArray interval_len
+    forM_ [0..interval_len] $ \i -> writePrimArray mpa i 0
+    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
+    !ret <- I.handle_time_series_get
+              holder' (BA# method_name') (BA# key_name')
+              interval_len (BA# intervals') (MBA# mba#)
+    !pa <- unsafeFreezePrimArray mpa
+    return $ if ret == 0 then Just (primArrayToList pa) else Nothing
+
+handle_time_series_getall
+  :: StatsHolder
+  -> CBytes
+  -> [Int]
+  -> IO (Either String (Map.Map CBytes [Double]))
+handle_time_series_getall (StatsHolder holder) name intervals =
+  withForeignPtr holder $ \holder' ->
+  withCBytesUnsafe name $ \name' -> do
+    let interval_len = length intervals
+    -- NOTE only for unsafe ffi
+    let !(ByteArray intervals') = byteArrayFromListN interval_len intervals
+    (errmsg, pass) <- withStdStringUnsafe $ I.per_handle_verify_intervals
+                                            holder' (BA# name')
+                                            interval_len (BA# intervals')
+    if pass then Right <$> get holder' name' interval_len intervals'
+            else pure $ Left (CBytes.unpack errmsg)
+  where
+    get holder' name' interval_len intervals' = do
+      (ret, statMap) <-
+        peekCppMap
+          (cfun holder' (BA# name') interval_len (BA# intervals'))
+          peekStdStringToCBytesN c_delete_vector_of_string
+          peekFollySmallVectorDoubleN c_delete_std_vec_of_folly_small_vec_of_double
+      if ret == 0 then pure statMap
+                  else do Log.fatal "handle_time_series_getall failed!"
+                          pure Map.empty
+    cfun = I.handle_time_series_getall_by_name
+
 #undef PER_X_STAT_ADD
 #undef PER_X_STAT_GET
 #undef PER_X_STAT_GETALL_SEP
+
+-------------------------------------------------------------------------------
 
 -- TODO: auto generate from "cbits/stats/ServerHistogram.h"
 data ServerHistogramLabel

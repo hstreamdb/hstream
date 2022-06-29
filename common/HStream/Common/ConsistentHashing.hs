@@ -11,18 +11,20 @@ module HStream.Common.ConsistentHashing
   , getAllocatedNodeId
   ) where
 
-import           Data.Hashable             (hash)
-import qualified Data.Map.Strict           as M
-import qualified Data.Text                 as T
-import           Data.Word                 (Word32, Word64)
-import           Prelude                   hiding (lookup, null)
+import           Data.Hashable                  (hash)
+import qualified Data.Map.Strict                as M
+import qualified Data.Text                      as T
+import           Data.Word                      (Word32, Word64)
+import           Prelude                        hiding (lookup, null)
 
-import           HStream.Server.HStreamApi (ServerNode (..))
+import           HStream.Server.HStreamInternal (ServerNode (..))
+
+--------------------------------------------------------------------------------
 
 getAllocatedNodeId :: ServerMap -> T.Text -> ServerNodeId
 getAllocatedNodeId = (serverNodeId .) . getAllocatedNode
 
-getAllocatedNode :: ServerMap -> T.Text  -> ServerNode
+getAllocatedNode :: ServerMap -> T.Text -> ServerNode
 getAllocatedNode nodes k =
   snd $ M.elemAt serverNum nodes
   where

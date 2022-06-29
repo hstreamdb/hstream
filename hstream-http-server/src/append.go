@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
 	"net"
 	"strconv"
 

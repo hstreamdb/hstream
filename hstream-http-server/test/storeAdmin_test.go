@@ -1,7 +1,7 @@
 package hstream_http_server_test
 
 import (
-	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
 	"net/http"
 	"testing"
 )

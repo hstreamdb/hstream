@@ -8,7 +8,7 @@ import (
 	"log"
 	"net/http"
 
-	hstreamApi "github.com/hstreamdb/hstream/common/gen-go/HStream/Server"
+	hstreamApi "github.com/hstreamdb/hstream/common/api/gen-go/HStream/Server"
 	hstreamHttpServer "github.com/hstreamdb/hstream/hstream-http-server/src"
 )
 

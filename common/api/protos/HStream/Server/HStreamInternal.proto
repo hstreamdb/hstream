@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package hstream.server.internal;
+
+message ServerNode {
+  uint32 id = 1;
+  bytes  host = 2;
+  uint32 port = 3;
+  uint32 gossipPort = 4;
+  map<string, ListOfListener> advertisedListeners = 5;
+}
+
+message Listener {
+  string address = 1;
+  int32 port = 2;
+}
+
+message ListOfListener {
+  repeated Listener listeners = 2;
+}

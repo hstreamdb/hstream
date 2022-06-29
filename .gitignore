@@ -41,3 +41,7 @@ swagger.json
 
 ## helm chart dependencies
 deploy/chart/hstream/charts/*
+
+# python
+/venv
+*.egg-info/

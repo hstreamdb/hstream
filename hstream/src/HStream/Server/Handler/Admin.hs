@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs     #-}
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
 
@@ -24,13 +25,13 @@ import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
+import           HStream.Gossip                   (getClusterStatus)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
 import qualified HStream.Server.Core.View         as HC
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Persistence       (getClusterStatus)
 import           HStream.Server.Types
 import qualified HStream.Stats                    as Stats
 import           HStream.Utils                    (Interval, formatStatus,
@@ -86,6 +87,7 @@ runStats statsHolder AT.StatsCommand{..} = do
     AT.PerStreamTimeSeries -> doPerStreamTimeSeries statsName statsIntervals
     AT.PerSubscriptionStats -> doPerSubscriptionStats statsName
     AT.PerSubscriptionTimeSeries -> doPerSubscriptionTimeSeries statsName statsIntervals
+    AT.PerHandleTimeSeries -> doPerHandleTimeSeries statsName statsIntervals
     AT.ServerHistogram -> doServerHistogram statsName
   where
     doPerStreamStats name = do
@@ -97,7 +99,7 @@ runStats statsHolder AT.StatsCommand{..} = do
 
     doPerStreamTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerStreamTimeSeries name intervals =
-      let cfun = Stats.stream_time_series_getall_by_name' statsHolder
+      let cfun = Stats.stream_time_series_getall statsHolder
        in doTimeSeries name "stream_name" intervals cfun
 
     doPerSubscriptionStats name = do
@@ -109,8 +111,13 @@ runStats statsHolder AT.StatsCommand{..} = do
 
     doPerSubscriptionTimeSeries :: CBytes -> [Interval] -> IO Text
     doPerSubscriptionTimeSeries name intervals =
-      let cfun = Stats.subscription_time_series_getall_by_name' statsHolder
+      let cfun = Stats.subscription_time_series_getall statsHolder
        in doTimeSeries name "subscription_id" intervals cfun
+
+    doPerHandleTimeSeries :: CBytes -> [Interval] -> IO Text
+    doPerHandleTimeSeries name intervals =
+      let cfun = Stats.handle_time_series_getall statsHolder
+       in doTimeSeries name "handle_name" intervals cfun
 
     doServerHistogram name = do
       let strName = CB.unpack name
@@ -205,7 +212,7 @@ runView serverContext AT.ViewCmdList = do
 
 runStatus :: ServerContext -> IO Text.Text
 runStatus ServerContext{..} = do
-  values <- HM.elems <$> getClusterStatus zkHandle
+  values <- HM.elems <$> getClusterStatus gossipContext
   let headers = ["node_id" :: Text.Text, "state", "address"]
       rows = map consRow values
       content = Aeson.object ["headers" .= headers, "rows" .= rows]

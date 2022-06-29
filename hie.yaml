@@ -314,3 +314,15 @@ cradle:
 
     - path: "hstream-store/app/writeBench.hs"
       component: "hstream-store:exe:hstore-bench-writter"
+
+    - path: "hstream-gossip/src"
+      component: "lib:hstream-gossip"
+
+    - path: "hstream-gossip/test"
+      component: "hstream-gossip:test:hstream-gossip-test"
+
+    - path: "hstream-gossip/app/Server.hs"
+      component: "hstream-gossip:exe:hstream-gossip-server"
+
+    - path: "hstream-gossip/app/Client.hs"
+      component: "hstream-gossip:exe:hstream-gossip-client"

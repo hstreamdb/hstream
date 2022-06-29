@@ -8,35 +8,37 @@ import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
+import           Data.Text                        (Text)
 import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
+import qualified Proto3.Suite                     as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
-import qualified Proto3.Suite                     as PB
 
-protocolVersion :: T.Text
+protocolVersion :: Text
 protocolVersion = "0.1.0"
 
-serverVersion :: T.Text
+serverVersion :: Text
 serverVersion = "0.8.0"
 
 type Timestamp = Int64
 type ServerID = Word32
 type ServerState = PB.Enumerated NodeState
 
-data ServerContext = ServerContext {
-    scLDClient               :: HS.LDClient
+data ServerContext = ServerContext
+  { scLDClient               :: HS.LDClient
   , serverID                 :: Word32
+  , scAdvertisedListenersKey :: Maybe Text
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
   , zkHandle                 :: ZHandle
@@ -46,9 +48,10 @@ data ServerContext = ServerContext {
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
   , scStatsHolder            :: Stats.StatsHolder
-  , loadBalanceHashRing      :: MVar HashRing
+  , loadBalanceHashRing      :: TVar HashRing
   , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
+  , gossipContext            :: GossipContext
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

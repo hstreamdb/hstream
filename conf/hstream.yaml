@@ -6,13 +6,6 @@ hserver:
   # the value must be given and can be overwritten by cli option `--server-id`
   id: 1
 
-  # Server listen address value, the value must be given and shouldn't be
-  # "0.0.0.0", if you intend to start a cluster or trying to connect to the
-  # server from a different network.
-  #
-  # This value can be overwritten by cli option `--address`
-  address: "0.0.0.0"
-
   # Server port value, the value must be given and can be overwritten by cli
   # option `--port`
   port: 6570
@@ -21,6 +14,18 @@ hserver:
   # the value must be given and can be overwritten by cli option `--internal-port`
   internal-port: 6571
 
+  # Server listener address value, the value must be given.
+  # It should NOT be "127.0.0.1", if you intend to start a cluster or trying to connect to the
+  # server from a different network.
+  #
+  # This value can be overwritten by cli option `--address`
+  address: "127.0.0.1"
+
+  #advertised-listeners:
+  #  private:
+  #    - address: "127.0.0.1"
+  #      port: 6580
+
   # The server nodes in the same cluster shares a zookeeper server, this is
   # essential for a server to start.
   #
@@ -28,6 +33,12 @@ hserver:
   # e.g. 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
   # the value must be given and can be overwritten by cli option `--zkuri`
   zkuri: "127.0.0.1:2181"
+
+  # To start a cluster, a list of host (and port) pairs must be provided, if the port is not specified,
+  # the server will use `internal-port` value specified above.
+  # as a string of comma separated host:internal-port pairs, each corresponding to server gossip listener.
+  # the value must be given and can be overwritten by cli option `--seed-nodes`
+  seed-nodes: "127.0.0.1:6571"
 
   # The option which compression should the server use when writing record to store,
   # which can be one of "none", "lz4", "lz4hc" or "zstd:1"(the next number "1" is for
@@ -72,18 +83,27 @@ hserver:
   #
   #tls-ca-path: /path/to/the/ca.cert.pem
 
+  # Cluster Gossip Options
+  #
+  #gossip:
+  #  gossip-fanout: 3
+  #  retransmit-mult: 4
+  #  gossip-interval: 500000   # 0.5 sec
+  #  probe-interval: 1000000   # 1 sec
+  #  roundtrip-timeout: 500000 # 0.5 sec
+
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,
 # hstreamdb will use the following configuration as the default configuration.
 hstore:
   #log-level: info
 
-  # Store admin section specify the client config when connecting to the storage admin server
-  #
+  ## Store admin section specify the client config when connecting to the storage admin server
+  ##
   #store-admin:
-    #host: "127.0.0.1"
-    #port: 6440
-    #protocol-id: binary
-    #conn-timeout: 5000
-    #send-timeout: 5000
-    #recv-timeout: 5000
+  #  host: "127.0.0.1"
+  #  port: 6440
+  #  protocol-id: binary
+  #  conn-timeout: 5000
+  #  send-timeout: 5000
+  #  recv-timeout: 5000

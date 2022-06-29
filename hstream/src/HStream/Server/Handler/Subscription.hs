@@ -88,7 +88,7 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force}) = subExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
-  hr <- readMVar loadBalanceHashRing
+  hr <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hr subId == serverID) $
     throwIO SubscriptionOnDifferentNode
 

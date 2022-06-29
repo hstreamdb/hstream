@@ -52,6 +52,19 @@ void setPerSubscriptionStatsMember(
 #include "per_subscription_stats.inc"
 }
 
+void setPerHandleTimeSeriesMember(
+    const char* stat_name,
+    std::shared_ptr<PerHandleTimeSeries> PerHandleStats::*& member_ptr) {
+#define TIME_SERIES_DEFINE(name, strings, _, __)                               \
+  for (const std::string& str : strings) {                                     \
+    if (str == std::string(stat_name)) {                                       \
+      member_ptr = &PerHandleStats::name;                                      \
+      break;                                                                   \
+    }                                                                          \
+  }
+#include "per_handle_time_series.inc"
+}
+
 // ----------------------------------------------------------------------------
 
 StatsHolder* new_stats_holder(HsBool is_server) {
@@ -178,6 +191,43 @@ int subscription_time_series_getall_by_name(
       keys_ptr, values_ptr, keys_, values_);
 }
 
+// ----------------------------------------------------------------------------
+// PerHandleStats
+
+#define TIME_SERIES_DEFINE(name, _, __, ___)                                   \
+  PER_X_TIME_SERIES_DEFINE(handle_time_series_, per_handle_stats,              \
+                           PerHandleStats, PerHandleTimeSeries, name)
+#include "per_handle_time_series.inc"
+
+int handle_time_series_get(StatsHolder* stats_holder, const char* stat_name,
+                           const char* key_name, HsInt interval_size,
+                           HsInt* ms_intervals, HsDouble* aggregate_vals) {
+  return perXTimeSeriesGet<
+      PerHandleStats, PerHandleTimeSeries,
+      std::unordered_map<std::string, std::shared_ptr<PerHandleStats>>>(
+      stats_holder, stat_name, key_name, setPerHandleTimeSeriesMember,
+      &Stats::per_handle_stats, interval_size, ms_intervals, aggregate_vals);
+}
+
+int handle_time_series_getall_by_name(
+    StatsHolder* stats_holder, const char* stat_name,
+    //
+    HsInt interval_size, HsInt* ms_intervals,
+    //
+    HsInt* len, std::string** keys_ptr,
+    folly::small_vector<double, 4>** values_ptr,
+    std::vector<std::string>** keys_,
+    std::vector<folly::small_vector<double, 4>>** values_) {
+  return perXTimeSeriesGetall<
+      PerHandleStats, PerHandleTimeSeries,
+      std::unordered_map<std::string, std::shared_ptr<PerHandleStats>>>(
+      stats_holder, stat_name, setPerHandleTimeSeriesMember,
+      &Stats::per_handle_stats, interval_size, ms_intervals, len, keys_ptr,
+      values_ptr, keys_, values_);
+}
+
+// ----------------------------------------------------------------------------
+
 // checks that no requested intervals are higher than getMaxInterval
 #define VerifyIntervals(perfix, TsCls, getMaxInterval)                         \
   HsBool perfix##verify_intervals(                                             \
@@ -205,6 +255,7 @@ int subscription_time_series_getall_by_name(
 VerifyIntervals(per_stream_, PerStreamTimeSeries, maxStreamStatsInterval);
 VerifyIntervals(per_subscription_, PerSubscriptionTimeSeries,
                 maxSubscribptionStatsInterval);
+VerifyIntervals(per_handle_, PerHandleTimeSeries, maxHandleStatsInterval);
 
 // ----------------------------------------------------------------------------
 

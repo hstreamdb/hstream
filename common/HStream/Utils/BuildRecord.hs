@@ -13,11 +13,13 @@ import           Data.Map.Strict           (Map)
 import           Data.Maybe                (fromJust)
 import           Data.Text                 (Text)
 import qualified Proto3.Suite              as PT
+import           Z.Data.CBytes             (CBytes)
 import           Z.Data.Vector             (Bytes)
 import           Z.Foreign                 (fromByteString, toByteString)
 
 import           Google.Protobuf.Timestamp
 import           HStream.Server.HStreamApi
+import           HStream.Utils.Converter   (textToCBytes)
 
 buildRecordHeader
   :: HStreamRecordHeader_Flag
@@ -87,3 +89,9 @@ updateRecordTimestamp timestamp HStreamRecord{..} =
   let oldHeader = fromJust hstreamRecordHeader
       newHeader = oldHeader { hstreamRecordHeaderPublishTime = Just timestamp }
    in HStreamRecord (Just newHeader) hstreamRecordPayload
+
+clientDefaultKey :: Text
+clientDefaultKey = "__default__"
+
+clientDefaultKey' :: CBytes
+clientDefaultKey' = textToCBytes clientDefaultKey

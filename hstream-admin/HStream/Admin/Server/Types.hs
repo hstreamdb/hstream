@@ -206,6 +206,7 @@ data StatsCategory
   | PerStreamTimeSeries
   | PerSubscriptionStats
   | PerSubscriptionTimeSeries
+  | PerHandleTimeSeries
   | ServerHistogram
   deriving (Show, Eq)
 
@@ -218,6 +219,7 @@ instance Read StatsCategory where
         Read.Ident "stream" -> PerStreamTimeSeries
         Read.Ident "subscription_counter" -> PerSubscriptionStats
         Read.Ident "subscription" -> PerSubscriptionTimeSeries
+        Read.Ident "handle" -> PerHandleTimeSeries
         Read.Ident "server_histogram" -> ServerHistogram
         x -> errorWithoutStackTrace $ "cannot parse StatsCategory: " <> show x
 
