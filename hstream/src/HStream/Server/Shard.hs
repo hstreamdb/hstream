@@ -2,22 +2,7 @@
 {-# LANGUAGE NamedFieldPuns            #-}
 {-# LANGUAGE OverloadedStrings         #-}
 
-module HStream.Server.Shard (
-    ShardKey,
-    hashShardKey,
-    Shard,
-    mkShard,
-    SharedShardMap,
-    getShardMap,
-    putShardMap,
-    splitByKey,
-    splitHalf,
-    mergeTwoShard,
-    createShard,
-    mkSharedShardMap,
-    ShardException
-)
-where
+module HStream.Server.Shard where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically,
                                          newEmptyTMVarIO, putTMVar, swapTMVar,
@@ -99,8 +84,14 @@ mergeShard shard1@Shard{logId=logId1, streamId=streamId1, startKey=startKey1, en
 
 type ShardMap = Map ShardKey Shard
 
+mkEmptyShardMap :: ShardMap
+mkEmptyShardMap = M.empty
+
+mkShardMap :: [(ShardKey, Shard)] -> ShardMap
+mkShardMap = M.fromList
+
 getShard :: ShardMap -> ShardKey -> Maybe Shard
-getShard mp key = snd <$> M.lookupLT key mp
+getShard mp key = snd <$> M.lookupLE key mp
 
 getShard' :: ShardMap -> ShardKey -> Either ShardException Shard
 getShard' info key = let res = getShard info key
@@ -128,7 +119,7 @@ kNumShards :: Int
 kNumShards = 1 `shiftL` kNumShardBits
 
 -- | A SharedShardMap is a vector with `kNumShards` slots. Each slot stores a ShardMap. for each Shard,
---   first use `calHash key` to find which slot the ShardMap managing that Shard is stored in, then
+--   first use `getShardMapIdx key` to find which slot the ShardMap managing that Shard is stored in, then
 --   you can safely manipulate that ShardMap under the protection of TMVar.
 newtype SharedShardMap = SharedShardMap
   { shardMaps :: Vector (TMVar ShardMap) }
@@ -137,8 +128,8 @@ mkSharedShardMap :: IO SharedShardMap
 mkSharedShardMap = do shardMaps <- V.replicateM kNumShards newEmptyTMVarIO
                       return SharedShardMap {shardMaps}
 
-calHash :: ShardKey -> Word32
-calHash key = fromIntegral (hash key) `shiftR` (32 - kNumShardBits)
+getShardMapIdx :: ShardKey -> Word32
+getShardMapIdx key = fromIntegral (hash key) `shiftR` (32 - kNumShardBits)
 
 getShardMap :: SharedShardMap -> Word32 -> STM ShardMap
 getShardMap SharedShardMap{..} hashValue = takeTMVar $ (V.!) shardMaps (fromIntegral hashValue)
@@ -161,7 +152,7 @@ splitHalf = splitShardInternal getHalfSplitedShard
 
 splitShardInternal :: SplitStrategies -> S.LDClient -> SharedShardMap -> ShardKey -> IO ()
 splitShardInternal stratege client sharedMp key = do
-  let hash1 = calHash key
+  let hash1 = getShardMapIdx key
   bracket
     (atomically $ getShardMap sharedMp hash1)
     (\originShardMp -> atomically $ putShardMap sharedMp originShardMp hash1)
@@ -175,8 +166,8 @@ splitShardInternal stratege client sharedMp key = do
                     <> Log.buildString' (show s1') <> " and "
                     <> Log.buildString' (show s2')
 
-            let hash1' = calHash key1
-            let hash2' = calHash key2
+            let hash1' = getShardMapIdx key1
+            let hash2' = getShardMapIdx key2
             if hash2' == hash1'
               then do
                 -- After split, two new shard are still managed by same shardMap,
@@ -200,8 +191,8 @@ splitShardInternal stratege client sharedMp key = do
 
 mergeTwoShard :: S.LDClient -> SharedShardMap -> ShardKey -> ShardKey -> IO ()
 mergeTwoShard client mp key1 key2 = do
-  let hash1 = calHash key1
-  let hash2 = calHash key2
+  let hash1 = getShardMapIdx key1
+  let hash2 = getShardMapIdx key2
 
   bracket
     (getShards hash1 hash2)
@@ -219,8 +210,8 @@ mergeTwoShard client mp key1 key2 = do
                    <> " removedShardMp=" <> Log.buildString' (show removedShardMp)
                    <> " newShardMp=" <> Log.buildString' (show updateShardMp)
           atomically $ do
-            putShardMap mp removedShardMp (calHash removedKey)
-            putShardMap mp updateShardMp (calHash startKey)
+            putShardMap mp removedShardMp (getShardMapIdx removedKey)
+            putShardMap mp updateShardMp (getShardMapIdx startKey)
     )
  where
    getShards hash1 hash2
