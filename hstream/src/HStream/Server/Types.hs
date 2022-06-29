@@ -11,7 +11,6 @@ import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
-import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
@@ -21,14 +20,11 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
-import           HStream.Connector.HStore         (transToStreamName)
-import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import           HStream.Server.ReaderPool        (ReaderPool)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
-import HStream.Connector.HStore (transToStreamName)
 import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text

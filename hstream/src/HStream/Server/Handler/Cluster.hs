@@ -12,22 +12,22 @@ module HStream.Server.Handler.Cluster
   ) where
 
 import           Control.Concurrent.STM           (readTVarIO)
-import           Control.Concurrent               (readMVar)
-import           Control.Exception                (Exception (..), Handler (..))
-import           Data.Functor                     ((<&>))
+import           Control.Exception                (Exception (..), Handler (..),
+                                                   catches, throwIO)
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Monad                    (unless, void)
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
 import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common    (alignDefault)
+import           HStream.Server.Handler.Common    (alignDefault,
+                                                   orderingKeyToStoreKey)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S

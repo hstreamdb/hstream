@@ -14,6 +14,7 @@ import           Control.Exception                (catch)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find, sort)
+
 import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
                                                    AuthProperty (authPropName),
                                                    ProcessMeta,
@@ -26,31 +27,15 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
-import           HStream.Common.Types             (fromInternalServerNode)
 import           HStream.Gossip                   (getMemberList)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
-import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (NodeInfo (..),
-                                                   decodeZNodeValue,
-                                                   encodeValueToBytes,
-                                                   getServerNode',
-                                                   serverRootLockPath,
-                                                   serverRootPath)
 import           HStream.Server.ReaderPool        (mkReaderPool)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
-import           HStream.Utils
-import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
-                                                   AuthProperty (authPropName),
-                                                   ProcessMeta,
-                                                   ServerSSLConfig (ServerSSLConfig),
-                                                   SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
-                                                   StatusCode (StatusOk),
-                                                   getAuthProperties)
 
 initializeServer
   :: ServerOpts
