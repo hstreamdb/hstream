@@ -5,7 +5,7 @@
 
 module HStream.Gossip.Gossip where
 
-import           Control.Concurrent            (threadDelay)
+import           Control.Concurrent            (readMVar, threadDelay)
 import           Control.Concurrent.STM        (atomically, check, readTVar,
                                                 stateTVar, writeTChan)
 import           Control.Monad                 (forever)
@@ -33,9 +33,11 @@ gossip msg client = do
     ClientErrorResponse  {} -> Log.debug "Failed to send gossip"
 
 scheduleGossip :: GossipContext -> IO ()
-scheduleGossip gc@GossipContext{..} = forever $ do
-  atomically doGossip
-  threadDelay $ gossipInterval gossipOpts
+scheduleGossip GossipContext{..} = do
+  _ <- readMVar clusterInited
+  forever $ do
+    atomically doGossip
+    threadDelay $ gossipInterval gossipOpts
   where
     doGossip = do
       memberMap <- snd <$> readTVar serverList

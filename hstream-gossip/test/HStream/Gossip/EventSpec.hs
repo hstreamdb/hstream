@@ -3,7 +3,7 @@
 
 module HStream.Gossip.EventSpec where
 
-import           Control.Concurrent       (threadDelay)
+import           Control.Concurrent       (putMVar, threadDelay)
 import           Control.Concurrent.STM   (atomically, readTVarIO, writeTQueue)
 import qualified Data.IntMap              as IM
 import qualified Data.Map.Strict          as Map
@@ -12,7 +12,7 @@ import           Test.Hspec               (SpecWith, describe, it, runIO,
 
 import           HStream.Gossip.TestUtils (startCluster)
 import           HStream.Gossip.Types     (EventMessage (..),
-                                           GossipContext (..))
+                                           GossipContext (..), InitType (User))
 import qualified HStream.Gossip.Types     as T
 import           HStream.Gossip.Utils     (incrementTVar)
 import qualified HStream.Logger           as Log
@@ -20,11 +20,12 @@ import qualified HStream.Logger           as Log
 spec :: SpecWith ()
 spec =
   describe "EventSpec" $ do
-  runIO $ Log.setLogLevel (Log.Level Log.FATAL) True
+  runIO $ Log.setLogLevel (Log.Level Log.DEBUG) True
 
   it "Send one single event to the cluster" $ do
     let x = 3
     servers <- startCluster (fromIntegral x)
+    -- putMVar (clusterInited . fst . head . Map.elems $ servers) User
     threadDelay $ 5 * 1000 *1000
     lists <- mapM (readTVarIO . serverList . fst) (Map.elems servers)
     Map.size <$> lists `shouldBe` replicate x (x - 1)

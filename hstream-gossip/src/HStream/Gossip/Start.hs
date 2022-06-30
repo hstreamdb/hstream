@@ -1,44 +1,59 @@
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Gossip.Start where
 
-import           Control.Concurrent               (threadDelay)
+import           Control.Concurrent               (newEmptyMVar, readMVar,
+                                                   threadDelay, tryPutMVar)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
-import           Control.Concurrent.STM           (atomically, modifyTVar,
+import           Control.Concurrent.STM           (TVar, atomically, check,
+                                                   modifyTVar,
                                                    newBroadcastTChanIO,
-                                                   newTQueueIO, newTVarIO)
-import           Control.Monad                    (when)
+                                                   newTQueueIO, newTVarIO,
+                                                   readTVar, stateTVar)
+import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
+import qualified Data.ByteString.Lazy             as BL
 import           Data.List                        ((\\))
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Vector                      as V
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Proto3.Suite                     (def)
+import qualified Proto3.Suite                     as PT
 import           System.Random                    (initStdGen)
 
 import           HStream.Gossip.Core              (addToServerList,
+                                                   broadCastUserEvent,
                                                    runEventHandler,
                                                    runStateHandler)
 import           HStream.Gossip.Gossip            (scheduleGossip)
 import           HStream.Gossip.Handlers          (handlers)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
-import           HStream.Gossip.Types             (EventHandlers,
+import           HStream.Gossip.Types             (EventHandlers, EventPayload,
                                                    GossipContext (..),
                                                    GossipOpts (..),
+                                                   InitType (..),
                                                    ServerState (..))
 import qualified HStream.Gossip.Types             as T
-import           HStream.Gossip.Utils             (mkClientNormalRequest,
+import           HStream.Gossip.Utils             (eventNameINIT,
+                                                   eventNameINITED,
+                                                   mkClientNormalRequest,
                                                    mkGRPCClientConf')
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U
 
-initGossipContext :: GossipOpts -> EventHandlers -> I.ServerNode -> IO GossipContext
-initGossipContext gossipOpts eventHandlers serverSelf = do
+initGossipContext :: GossipOpts -> EventHandlers -> I.ServerNode -> [(ByteString, Int)] -> IO GossipContext
+initGossipContext gossipOpts _eventHandlers serverSelf seeds' = do
+  when (null seeds') $ error " Please specify at least one node to start with"
+  let current = (I.serverNodeHost serverSelf, fromIntegral $ I.serverNodeGossipPort serverSelf)
+      seeds = seeds' \\ [current]
+  numInited     <- if current `elem` seeds' then Just <$> newTVarIO 0 else return Nothing
   actionChan    <- newBroadcastTChanIO
   statePool     <- newTQueueIO
   eventPool     <- newTQueueIO
@@ -50,37 +65,64 @@ initGossipContext gossipOpts eventHandlers serverSelf = do
   deadServers   <- newTVarIO mempty
   incarnation   <- newTVarIO 0
   randomGen     <- initStdGen
-  return GossipContext {..}
+  clusterInited <- newEmptyMVar
+  let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds')) _eventHandlers
+  let gc = GossipContext {..}
+  return gc { eventHandlers = Map.insert eventNameINIT (handleINITEvent gc) eventHandlers}
 
 --------------------------------------------------------------------------------
 
-startGossip :: ByteString -> [(ByteString, Int)] -> GossipContext -> IO (Async ())
-startGossip grpcHost joins gc@GossipContext {..} = do
-  when (null joins) $ error " Please specify at least one node to start with"
-  Log.info . Log.buildString $ "Bootstrap cluster with server nodes: " <> show joins
+startGossip :: ByteString -> GossipContext -> IO (Async ())
+startGossip grpcHost gc@GossipContext {..} = do
   a <- startListeners grpcHost gc
   atomically $ modifyTVar workers (Map.insert (I.serverNodeId serverSelf) a)
-  let current = (I.serverNodeHost serverSelf, fromIntegral $ I.serverNodeGossipPort serverSelf)
-  if current `elem` joins
-    then bootstrap (joins \\ [current]) gc
-    else do
+  case numInited of
+    Just _ -> bootstrap seeds gc
+    -- FIXME: add join command instead of the following
+    Nothing -> do
       members <- do
-        Log.info . Log.buildString $ "Try to join server on " <> show (head joins)
-        joinCluster serverSelf (head joins)
+        Log.info . Log.buildString $ "Try to join server on " <> show (head seeds)
+        joinCluster serverSelf (head seeds)
       initGossip gc members
   return a
 
 bootstrap :: [(ByteString, Int)] -> GossipContext -> IO ()
-bootstrap initialServers gc = do
-  members <- waitForServersToStart initialServers
-  initGossip gc members
+bootstrap initialServers gc@GossipContext{..} = do
+  readMVar clusterInited >>= \case
+    User ->  do
+      members <- waitForServersToStart initialServers
+      broadCastUserEvent gc eventNameINIT (BL.toStrict $ PT.toLazyByteString (API.ServerList $ V.fromList (serverSelf : members)))
+    _ -> return ()
+
+handleINITEvent :: GossipContext -> EventPayload -> IO ()
+handleINITEvent gc@GossipContext{..} payload = do
+  case PT.fromByteString payload of
+    Left err -> Log.warning $ Log.buildString' err
+    Right API.ServerList{..} -> do
+      initGossip gc $ V.toList serverListNodes
+      -- atomically $ maybe (pure () ) (`modifyTVar'` (+ 1)) numInited
+      void $ tryPutMVar clusterInited Gossip
+      atomically $ do
+        mWorkers <- readTVar workers
+        check $ Map.size mWorkers == (length seeds + 1)
+      broadCastUserEvent gc eventNameINITED (BL.toStrict $ PT.toLazyByteString serverSelf)
+
+handleINITEDEvent :: Maybe (TVar Int) -> Int -> EventPayload -> IO ()
+handleINITEDEvent (Just inited) l payload = case PT.fromByteString payload of
+  Left err -> Log.warning $ Log.buildString' err
+  Right (node :: I.ServerNode) -> do
+    Log.debug $ Log.buildString' node <> " has been initialized"
+    x <- atomically $ stateTVar inited (\x -> (x + 1, x + 1))
+    if x == l then Log.info "All servers have been initialized"
+      else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
+handleINITEDEvent Nothing _ _ = pure ()
 
 startListeners ::  ByteString -> GossipContext -> IO (Async ())
 startListeners grpcHost gc@GossipContext {..} = do
   let grpcOpts = GRPC.defaultServiceOptions {
       GRPC.serverHost = GRPC.Host grpcHost
     , GRPC.serverPort = GRPC.Port $ fromIntegral $ I.serverNodeGossipPort serverSelf
-    , GRPC.serverOnStarted = Just (Log.info . Log.buildString $ "Server node " <> show serverSelf <> " started")
+    , GRPC.serverOnStarted = Just (Log.debug . Log.buildString $ "Server node " <> show serverSelf <> " started")
     }
   let api = handlers gc
   aynscs@(a1:_) <- mapM async ( API.hstreamGossipServer api grpcOpts
@@ -92,15 +134,15 @@ startListeners grpcHost gc@GossipContext {..} = do
   return a1
 
 waitForServersToStart :: [(ByteString, Int)] -> IO [I.ServerNode]
-waitForServersToStart = mapConcurrently (uncurry wait)
+waitForServersToStart = mapConcurrently wait
   where
-    wait joinHost joinPort = GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) loop
-    loop client = do
-      started <- bootstrapPing client
+    wait join@(joinHost,joinPort) = GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) (loop join)
+    loop join client = do
+      started <- bootstrapPing join client
       case started of
         Nothing   -> do
           threadDelay $ 1000 * 1000
-          loop client
+          loop join client
         Just node -> return node
 
 joinCluster :: I.ServerNode -> (ByteString, Int) -> IO [I.ServerNode]

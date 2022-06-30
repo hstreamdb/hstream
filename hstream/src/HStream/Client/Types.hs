@@ -16,6 +16,7 @@ data HStreamCommand = HStreamCommand
 data Command
   = HStreamSql HStreamSqlOpts
   | HStreamNodes HStreamNodes
+  | HStreamInit
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
@@ -23,6 +24,7 @@ commandParser = HStreamCommand
   <*> O.hsubparser
     (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
     <> O.command "nodes" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
+    <> O.command "init"  (O.info (pure HStreamInit)                    (O.progDesc "Init HStream Server Cluster"))
     )
 
 data HStreamSqlContext = HStreamSqlContext

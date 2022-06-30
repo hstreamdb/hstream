@@ -27,6 +27,7 @@ import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           HStream.Gossip.Gossip            (gossip)
 import           HStream.Gossip.Probe             (doPing, pingReq, pingReqPing)
 import           HStream.Gossip.Types             (EventMessage (EventMessage),
+                                                   EventName, EventPayload,
                                                    GossipContext (..),
                                                    RequestAction (..),
                                                    ServerState (OK, Suspicious),
@@ -35,7 +36,8 @@ import           HStream.Gossip.Types             (EventMessage (EventMessage),
 import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (broadcast, broadcastMessage,
                                                    cleanStateMessages,
-                                                   getMsgInc, mkGRPCClientConf,
+                                                   getMsgInc, incrementTVar,
+                                                   mkGRPCClientConf,
                                                    updateLamportTime,
                                                    updateStatus)
 import qualified HStream.Logger                   as Log
@@ -110,7 +112,7 @@ handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
 handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = unless (node == serverSelf) $ do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+  Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " joining cluster"
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing -> do
@@ -121,8 +123,8 @@ handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = un
     Just ServerStatus{..} -> unless (serverInfo == node) $
       -- TODO: vote to resolve conflict
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
-handleStateMessage GossipContext{..} msg@(T.GConfirm _inc I.ServerNode{..} _node)= do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} _node)= do
+  Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " leaving cluster"
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
@@ -138,7 +140,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm _inc I.ServerNode{..} _node
           Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
           cancel a
 handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   join . atomically $ if node == serverSelf
     then writeTQueue statePool (T.GAlive (succ inc) node serverSelf) >> return (pure ())
     else do
@@ -151,7 +153,7 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
 handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..} _node) = do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   unless (node == serverSelf) $ do
     sMap <- snd <$> readTVarIO serverList
     case Map.lookup serverNodeId sMap of
@@ -172,23 +174,36 @@ runEventHandler gc@GossipContext{..} = forever $ do
 handleEventMessages :: GossipContext -> [EventMessage] -> IO ()
 handleEventMessages = mapM_ . handleEventMessage
 
--- handleEventMessage :: GossipContext -> EventMessage -> IO Bool
 handleEventMessage :: GossipContext -> EventMessage -> IO ()
-handleEventMessage GossipContext{..} msg@(EventMessage eName lpTime bs) = join . atomically $ do
-  let event = (eName, bs)
-  currentTime <- updateLamportTime eventLpTime lpTime
-  seen <- readTVar seenEvents
-  let len = fromIntegral $ max 10 (IM.size seen)
-      lpInt = fromIntegral lpTime
-  if currentTime > len && lpTime < currentTime - len then return $ pure ()
-    else case IM.lookup (fromIntegral lpTime) seen of
-      Nothing -> do
-        modifyTVar seenEvents $ IM.insert lpInt [event]
+handleEventMessage GossipContext{..} msg@(EventMessage eName lpTime bs) = do
+  Log.debug . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                            <> "] Received Custom Event" <> show eName <> " with lamport " <> show lpTime
+  join . atomically $ do
+    currentTime <- fromIntegral <$> updateLamportTime eventLpTime lpTime
+    seen <- readTVar seenEvents
+    -- FIXME: max length should be a setting for seen buffer
+    let len = max 10 (IM.size seen)
+        lpInt = fromIntegral lpTime
+    if currentTime > len && lpInt < currentTime - len then return $ pure ()
+      else case IM.lookup lpInt seen of
+        Nothing -> handleNewEvent lpInt
+        Just events -> if event `elem` events
+          then return $ pure ()
+          else handleNewEvent lpInt >> return (Log.fatal (Log.buildString' currentTime))
+   where
+     event = (eName, bs)
+     handleNewEvent lpInt = do
+        modifyTVar seenEvents $ IM.insertWith (++) lpInt [event]
         modifyTVar broadcastPool $ broadcastMessage (T.GEvent msg)
-        return $ Log.info . Log.buildString $ "Event handled:" <> show msg
-      Just events -> if event `elem` events
-        then return $ pure ()
-        else do
-          modifyTVar seenEvents $ IM.insertWith (++) lpInt [event]
-          modifyTVar broadcastPool $ broadcastMessage (T.GEvent msg)
-          return $ Log.info . Log.buildString $ "Event handled:" <> show msg
+        return $ case Map.lookup eName eventHandlers of
+          Nothing     -> Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
+          Just action -> do
+            Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                                      <> "] Handling Custom Event" <> show eName <> " with lamport " <> show lpInt
+            action bs
+
+broadCastUserEvent :: GossipContext -> EventName -> EventPayload -> IO ()
+broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
+  lpTime <- atomically $ incrementTVar eventLpTime
+  let eventMessage = EventMessage userEventName lpTime userEventPayload
+  handleEventMessage gc eventMessage

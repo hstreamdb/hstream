@@ -1,5 +1,7 @@
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms   #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module HStream.Gossip
   ( GossipContext(..)
@@ -9,6 +11,7 @@ module HStream.Gossip
   , initGossipContext
   , bootstrap
   , startGossip
+  , initCluster
 
   , broadcastEvent
   , createEventHandlers
@@ -20,6 +23,7 @@ module HStream.Gossip
   , getEpochSTM
   , getFailedNodes
   , getFailedNodesSTM
+
   ) where
 
 import           Control.Concurrent.STM         (STM, atomically, readTVar,
@@ -29,19 +33,27 @@ import qualified Data.HashMap.Strict            as HM
 import qualified Data.Map.Strict                as Map
 import           Data.Word                      (Word32)
 
+import           Control.Concurrent             (tryPutMVar)
 import           HStream.Common.Types           (fromInternalServerNode)
 import           HStream.Gossip.Start           (bootstrap, initGossipContext,
                                                  startGossip)
 import           HStream.Gossip.Types           (EventHandler, EventMessage,
                                                  EventName, GossipContext (..),
-                                                 GossipOpts (..), SeenEvents,
+                                                 GossipOpts (..),
+                                                 InitType (User), SeenEvents,
                                                  ServerStatus (..),
                                                  defaultGossipOpts)
+import qualified HStream.Logger                 as Log
 import           HStream.Server.HStreamApi      (NodeState (..),
                                                  ServerNode (..),
                                                  ServerNodeStatus (..))
 import qualified HStream.Server.HStreamInternal as I
 import           HStream.Utils                  (pattern EnumPB)
+
+initCluster :: GossipContext -> IO ()
+initCluster GossipContext{..} = tryPutMVar clusterInited User >>= \case
+  True  -> return ()
+  False -> Log.warning "The server has already received an init signal"
 
 broadcastEvent :: GossipContext -> EventMessage -> IO ()
 broadcastEvent GossipContext {..} = atomically . writeTQueue eventPool

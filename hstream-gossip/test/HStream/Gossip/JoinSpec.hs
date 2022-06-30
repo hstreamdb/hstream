@@ -14,12 +14,13 @@ import           HStream.Gossip                 (GossipContext (..),
                                                  defaultGossipOpts,
                                                  initGossipContext, startGossip)
 import qualified HStream.Gossip.HStreamGossip   as API
+import           HStream.Gossip.TestUtils       (mkServerNode)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
 spec :: SpecWith ()
 spec = describe "JoinSpec" $ do
-  runIO $ Log.setLogLevel (Log.Level Log.FATAL) True
+  runIO $ Log.setLogLevel (Log.Level Log.DEBUG) True
 
   runSingleJoinSpec
 
@@ -30,8 +31,8 @@ runSingleJoinSpec = describe "runSingleJoinSpec" $ do
     port <- fromIntegral <$> getUnassignedPort
     port1 <- getUnassignedPort
     port2 <- fromIntegral <$> getUnassignedPort
-    let node1 = I.ServerNode 1 host port (fromIntegral port1)
-    let node2 = I.ServerNode 2 host port port2
+    let node1 = mkServerNode 1 host port (fromIntegral port1)
+    let node2 = mkServerNode 2 host port port2
     gc <- initGossipContext defaultGossipOpts mempty node1
     _ <- startGossip host [(host, port1)] gc
     gc2 <- initGossipContext defaultGossipOpts mempty node2

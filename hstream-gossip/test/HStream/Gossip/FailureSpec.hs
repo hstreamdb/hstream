@@ -15,7 +15,7 @@ import qualified HStream.Logger           as Log
 spec :: SpecWith ()
 spec =
   describe "FailureSpec" $ do
-  runIO $ Log.setLogLevel (Log.Level Log.FATAL) True
+  runIO $ Log.setLogLevel (Log.Level Log.DEBUG) True
 
   it "Stop one server in a cluster" $ do
     let x = 3

@@ -6,6 +6,7 @@ module HStream.Gossip.TestUtils where
 
 import           Control.Concurrent.Async       (Async, mapConcurrently)
 import           Control.Monad                  (replicateM, zipWithM)
+import           Data.ByteString                (ByteString)
 import           Data.Map                       (Map)
 import qualified Data.Map                       as Map
 import           Data.Streaming.Network         (getUnassignedPort)
@@ -27,7 +28,7 @@ startCluster n = do
   !port <- fromIntegral <$> getUnassignedPort
   !ports <- replicateM (fromIntegral n) $ fromIntegral <$> getUnassignedPort
   !gcs   <- zipWithM (\x y -> initGossipContext defaultGossipOpts mempty
-                           $ I.ServerNode x host port y)
+                           $ mkServerNode x host port y)
                      [1 .. n]
                      ports
   asyncs <- mapConcurrently (startGossip host (zip (repeat host) (fromIntegral <$> ports))) gcs
@@ -35,3 +36,13 @@ startCluster n = do
                     -> Map.insert (I.serverNodeId serverSelf) x)
                  mempty
          $ zip gcs asyncs
+
+mkServerNode :: Word32 -> ByteString -> Word32 -> Word32
+  -> I.ServerNode
+mkServerNode sid host port iPort = I.ServerNode
+  { serverNodeId = sid
+  , serverNodeHost = host
+  , serverNodePort = port
+  , serverNodeGossipPort = iPort
+  , serverNodeAdvertisedListeners = mempty
+  }
