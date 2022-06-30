@@ -32,7 +32,7 @@ type ServerId  = Word32
 type ServerUrl = Text
 type Messages = [G.Message]
 type Epoch = Word32
-
+type DeadServers = Map ServerId I.ServerNode
 data ServerStatus = ServerStatus
   { serverInfo    :: I.ServerNode
   , serverState   :: TVar ServerState
@@ -78,6 +78,7 @@ data GossipContext = GossipContext
   , workers       :: TVar Workers
   , incarnation   :: TVar Word32
   , eventLpTime   :: TVar Word32
+  , deadServers   :: TVar DeadServers
   , randomGen     :: StdGen
   , gossipOpts    :: GossipOpts
   }

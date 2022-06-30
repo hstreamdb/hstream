@@ -47,6 +47,7 @@ initGossipContext gossipOpts eventHandlers serverSelf = do
   broadcastPool <- newTVarIO mempty
   serverList    <- newTVarIO (0, mempty)
   workers       <- newTVarIO mempty
+  deadServers   <- newTVarIO mempty
   incarnation   <- newTVarIO 0
   randomGen     <- initStdGen
   return GossipContext {..}

@@ -18,6 +18,10 @@ module HStream.Gossip
   , getClusterStatus
   , getEpoch
   , getEpochSTM
+  , getFailedNodes
+  , getFailedNodesSTM
+  , getNodeHistory
+  , getNodeHistorySTM
   ) where
 
 import           Control.Concurrent.STM         (STM, atomically, readTVar,
@@ -52,7 +56,7 @@ getSeenEvents GossipContext {..} = readTVarIO seenEvents
 
 getMemberList :: GossipContext -> IO [I.ServerNode]
 getMemberList GossipContext {..} =
-  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems. snd)
+  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
 
 getMemberListSTM :: GossipContext -> STM [I.ServerNode]
 getMemberListSTM GossipContext {..} =
@@ -66,10 +70,25 @@ getEpochSTM :: GossipContext -> STM Word32
 getEpochSTM GossipContext {..} =
   readTVar serverList <&> fst
 
+getFailedNodes :: GossipContext -> IO [I.ServerNode]
+getFailedNodes GossipContext {..} = readTVarIO deadServers <&> Map.elems
+
+getFailedNodesSTM :: GossipContext -> STM [I.ServerNode]
+getFailedNodesSTM GossipContext {..} = readTVar deadServers <&> Map.elems
+
+getNodeHistory :: GossipContext -> IO ([I.ServerNode], [I.ServerNode])
+getNodeHistory gc = atomically $ (,) <$> getMemberListSTM gc <*> getFailedNodesSTM gc
+
+getNodeHistorySTM :: GossipContext -> STM ([I.ServerNode], [I.ServerNode])
+getNodeHistorySTM gc = (,) <$> getMemberListSTM gc <*> getFailedNodesSTM gc
+
 getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
-getClusterStatus gc =
-  getMemberList gc <&> HM.fromList . map (helper . fromInternalServerNode)
+getClusterStatus gc = do
+  (alives, deads) <- getNodeHistory gc
+  return $ HM.fromList $
+       map (helper NodeStateRunning . fromInternalServerNode) alives
+    ++ map (helper NodeStateDead    . fromInternalServerNode) deads
   where
-    helper node@ServerNode{..} =
+    helper state node@ServerNode{..} =
       (serverNodeId, ServerNodeStatus { serverNodeStatusNode  = Just node
-                                      , serverNodeStatusState = EnumPB NodeStateRunning})
+                                      , serverNodeStatusState = EnumPB state})
