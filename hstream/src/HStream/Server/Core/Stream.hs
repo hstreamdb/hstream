@@ -8,6 +8,7 @@ module HStream.Server.Core.Stream
   , appendStream
   , append0Stream
   , readShard
+  , listShards
   , FoundSubscription (..)
   , StreamExists (..)
   , RecordTooBig (..)
@@ -19,18 +20,20 @@ import           Control.Monad                     (forM_, unless, void, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
 import           Data.Maybe                        (fromJust, fromMaybe)
+import qualified Data.Map.Strict                   as M
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           Data.Word                         (Word32)
 import           GHC.Stack                         (HasCallStack)
 import           Network.GRPC.HighLevel.Generated
+import qualified Z.Data.CBytes                     as CB
 
 import           HStream.Connector.HStore          (transToStreamName)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
 import           HStream.Server.Handler.Common     (decodeRecordBatch)
-import           HStream.Server.HStreamApi         (ReadShardRequest (readShardRequestShardId))
+import           HStream.Server.HStreamApi         (Shard (Shard), ReadShardRequest (readShardRequestShardId))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -170,6 +173,43 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
   Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length appendRequestRecords)
   let records = V.zipWith (\_ idx -> API.RecordId logId appendCompLSN idx) appendRequestRecords [0..]
   return $ API.AppendResponse appendRequestStreamName records
+
+--------------------------------------------------------------------------------
+
+listShards
+  :: HasCallStack
+  => ServerContext
+  -> API.ListShardsRequest
+  -> IO (V.Vector API.Shard)
+listShards ServerContext{..} API.ListShardsRequest{..} = do
+  shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
+  V.foldM' getShardInfo V.empty $ V.fromList shards
+ where
+   streamId = transToStreamName listShardsRequestStreamName
+   startKey = CB.pack "startKey"
+   endKey = CB.pack "endKey"
+
+   getShardInfo shards logId = do
+     attr <- S.getStreamPartitionExtraAttrs scLDClient logId
+     case getInfo attr of
+       Nothing -> return . V.snoc shards $
+         Shard { shardStreamName = listShardsRequestStreamName
+               , shardShardId    = logId
+               , shardIsActive = True
+               }
+       Just(sKey, eKey) -> return . V.snoc shards $
+         Shard { shardStreamName = listShardsRequestStreamName
+               , shardShardId    = logId
+               , shardStartHashRangeKey = sKey
+               , shardEndHashRangeKey = eKey
+               -- FIXME: neet a way to find if this shard is active
+               , shardIsActive = True
+               }
+
+   getInfo mp = do
+     startHashRangeKey <- cBytesToText <$> M.lookup startKey mp
+     endHashRangeKey <- cBytesToText <$> M.lookup endKey mp
+     return (startHashRangeKey, endHashRangeKey)
 
 --------------------------------------------------------------------------------
 
