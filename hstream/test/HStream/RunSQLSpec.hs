@@ -26,7 +26,6 @@ spec = describe "HStream.RunSQLSpec" $ do
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   baseSpec
-  connectorSpec
   viewSpec
 
 -------------------------------------------------------------------------------
@@ -78,57 +77,6 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
                      , mkStruct [("result", Aeson.Number 3)]
                      , mkStruct [("result", Aeson.Number 6)]
                      , mkStruct [("result", Aeson.Number 4)]
-                     ]
-
--------------------------------------------------------------------------------
--- ConnectorSpec
-
-connectorSpecAround :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi -> IO ()
-connectorSpecAround = provideRunTest setup clean
-  where
-    setup api = do
-      source <- newRandomText 20
-      runCreateStreamSql api $ "CREATE STREAM " <> source <> ";"
-      createMysqlTable      source
-      createClickHouseTable source
-      return source
-    clean api source = do
-      runDropSql api $ "DROP STREAM " <> source <> " IF EXISTS;"
-      dropMysqlTable      source
-      dropClickHouseTable source
-      -- TODO: drop connector
-
-connectorSpec :: Spec
-connectorSpec = aroundAll provideHstreamApi $ aroundWith connectorSpecAround $
-  describe "ConnectorSpec" $ parallel $ do
-
-  it "mysql connector" $ \(api, source) -> do
-    runQuerySimple_ api (createMySqlConnectorSql ("mysql_" <> source) source)
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (12, 84);")
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 83);")
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (32, 82);")
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (42, 81);")
-    threadDelay 5000000
-    fetchMysql source `shouldReturn` [ [MySQLInt32 12, MySQLInt32 84]
-                                     , [MySQLInt32 22, MySQLInt32 83]
-                                     , [MySQLInt32 32, MySQLInt32 82]
-                                     , [MySQLInt32 42, MySQLInt32 81]
-                                     ]
-
-  it "clickhouse connector" $ \(api, source) -> do
-    runQuerySimple_ api (createClickHouseConnectorSql ("clickhouse_" <> source) source)
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (12, 84);")
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (22, 83);")
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (32, 82);")
-    runInsertSql api ("INSERT INTO " <> source <> " (temperature, humidity) VALUES (42, 81);")
-    threadDelay 5000000
-    -- Note: ClickHouse does not return data in deterministic order by default,
-    --       see [this answer](https://stackoverflow.com/questions/54786494/clickhouse-query-row-order-behaviour).
-    fetchClickHouse source
-      `shouldReturn` V.fromList [ V.fromList [ClickHouse.CKInt64 12, ClickHouse.CKInt64 84]
-                                , V.fromList [ClickHouse.CKInt64 22, ClickHouse.CKInt64 83]
-                                , V.fromList [ClickHouse.CKInt64 32, ClickHouse.CKInt64 82]
-                                , V.fromList [ClickHouse.CKInt64 42, ClickHouse.CKInt64 81]
                      ]
 
 -------------------------------------------------------------------------------
