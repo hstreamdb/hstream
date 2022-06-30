@@ -2,12 +2,12 @@
 
 module HStream.SQL.ParseRefineSpec where
 
+import qualified Data.Aeson          as J
+import qualified Data.HashMap.Strict as HM
+import qualified Data.Text           as T
 import           HStream.SQL.AST
 import           HStream.SQL.Parse
 import           Test.Hspec
-import qualified Data.HashMap.Strict as HM
-import qualified Data.Aeson as J
-import qualified Data.Text as T
 
 spec :: Spec
 spec = describe "Create" $ do
