@@ -10,8 +10,6 @@ module HStream.Client.Utils
   , mkClientNormalRequest'
   , requestTimeout
   , extractSelect
-  , mkGRPCClientConf
-  , serverNodeToSocketAddr
   , printResult
   ) where
 
@@ -43,30 +41,6 @@ extractSelect = T.pack .
   dropWhile ((/= "EMIT") . map toUpper) .
   reverse .
   dropWhile ((/= "SELECT") . map toUpper)
-
-mkGRPCClientConf :: SocketAddr -> ClientConfig
-mkGRPCClientConf = \case
-  SocketAddrIPv4 v4 port ->
-    ClientConfig
-    { clientServerHost = Host . BSC.pack . show $ v4
-    , clientServerPort = Port $ fromIntegral port
-    , clientArgs = []
-    , clientSSLConfig = Nothing
-    , clientAuthority = Nothing
-    }
-  SocketAddrIPv6 v6 port _flow _scope ->
-    ClientConfig
-    { clientServerHost = Host . BSC.pack . show $ v6
-    , clientServerPort = Port $ fromIntegral port
-    , clientArgs = []
-    , clientSSLConfig = Nothing
-    , clientAuthority = Nothing
-    }
-
--- FIXME: It only supports IPv4 addresses and can throw 'InvalidArgument' exception.
-serverNodeToSocketAddr :: ServerNode -> SocketAddr
-serverNodeToSocketAddr ServerNode{..} = do
-  ipv4 (textToCBytes serverNodeHost) (fromIntegral serverNodePort)
 
 --------------------------------------------------------------------------------
 

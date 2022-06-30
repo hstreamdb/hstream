@@ -23,7 +23,9 @@ import           HStream.Client.Gadget
 import           HStream.Client.Type
 import           HStream.Client.Utils
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Utils                    (HStreamClientApi)
+import           HStream.Utils                    (HStreamClientApi,
+                                                   mkGRPCClientConf,
+                                                   serverNodeToSocketAddr)
 
 callSubscription :: ClientContext -> T.Text -> T.Text -> IO ()
 callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp

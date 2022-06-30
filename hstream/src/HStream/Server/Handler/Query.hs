@@ -40,7 +40,6 @@ import qualified Z.IO.Network                     as ZNet
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Client.Action            (runWithAddr)
 import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.IO.Worker                as IO

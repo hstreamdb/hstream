@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs              #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
 {-# LANGUAGE StrictData         #-}
@@ -34,6 +35,7 @@ import qualified Z.Data.Builder.Base           as ZBuilder
 import           Z.Data.Vector                 (Bytes)
 import           Z.Foreign                     (toByteString)
 import qualified Z.IO.Logger                   as Log
+import qualified Z.IO.Network                  as ZNet
 
 import           HStream.Processing.Connector
 import           HStream.Processing.Type       as HPT
@@ -153,40 +155,52 @@ readRecordsFromHStore ldclient reader maxlen = do
   mapM (dataRecordToSourceRecord ldclient) payloads
 
 readRecordsFromHStore' :: HStreamClientApi -> T.Text -> Int -> HPT.StreamName -> IO [SourceRecord]
-readRecordsFromHStore' API.HStreamApi{..} consumerName maxlen streamName = do
-  receivedRecords_m <- newMVar []
-  void $ hstreamApiStreamingFetch (ClientBiDiRequest 1 mempty (action receivedRecords_m))
-  receivedRecords <- readMVar receivedRecords_m
-  return $ receivedRecordToSourceRecord streamName <$> receivedRecords
-  where
-    action recv_m _clientCall _meta streamRecv streamSend _writeDone = do
-      let initReq = API.StreamingFetchRequest
-                    { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
-                    , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
-                    , API.streamingFetchRequestAckIds = V.empty
-                    }
-      streamSend initReq
-      recving maxlen
-      where
-        recving leftNums
-          | leftNums <= 0 = clientCallCancel _clientCall
-          | otherwise = do
-              m_recv <- streamRecv
-              case m_recv of
-                Left err -> return ()--Log.withDefaultLogger . Log.warning . ZBuilder.stringUTF8 $ show err
-                Right Nothing -> do
-                  threadDelay 100000
-                  recving leftNums
-                Right (Just resp@API.StreamingFetchResponse{..}) -> do
-                  let recIds = V.take leftNums $ V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
-                  let ackReq = API.StreamingFetchRequest
-                               { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
-                               , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
-                               , API.streamingFetchRequestAckIds = recIds
-                               }
-                  streamSend ackReq
-                  modifyMVar_ recv_m (\xs -> return $ xs ++ (V.toList . V.take leftNums $ streamingFetchResponseReceivedRecords))
-                  recving (leftNums - (V.length recIds))
+readRecordsFromHStore' api consumerName maxlen streamName = do
+  let lookupSubReq = API.LookupSubscriptionRequest
+                     { API.lookupSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+                     }
+  resp <- (API.hstreamApiLookupSubscription api) (mkClientNormalRequest 1000 lookupSubReq)
+  case resp of
+    ClientErrorResponse clientError -> do
+      Log.withDefaultLogger . Log.warning . ZBuilder.stringUTF8 $ show clientError
+      return []
+    ClientNormalResponse API.LookupSubscriptionResponse{..} _meta1 _meta2 _status _details -> do
+      -- FIXME: Nothing
+      let (Just node) = lookupSubscriptionResponseServerNode
+      runWithAddr (serverNodeToSocketAddr node) $ \API.HStreamApi{..} -> do
+        receivedRecords_m <- newMVar []
+        void $ hstreamApiStreamingFetch (ClientBiDiRequest 1 mempty (action receivedRecords_m))
+        receivedRecords <- readMVar receivedRecords_m
+        return $ receivedRecordToSourceRecord streamName <$> receivedRecords
+        where
+          action recv_m _clientCall _meta streamRecv streamSend _writeDone = do
+            let initReq = API.StreamingFetchRequest
+                          { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+                          , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
+                          , API.streamingFetchRequestAckIds = V.empty
+                          }
+            streamSend initReq
+            recving maxlen
+              where
+                recving leftNums
+                  | leftNums <= 0 = clientCallCancel _clientCall
+                  | otherwise = do
+                      m_recv <- streamRecv
+                      case m_recv of
+                        Left err -> return ()
+                        Right Nothing -> do
+                          threadDelay 100000
+                          recving leftNums
+                        Right (Just resp@API.StreamingFetchResponse{..}) -> do
+                          let recIds = V.take leftNums $ V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
+                          let ackReq = API.StreamingFetchRequest
+                                       { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+                                       , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
+                                       , API.streamingFetchRequestAckIds = recIds
+                                       }
+                          streamSend ackReq
+                          modifyMVar_ recv_m (\xs -> return $ xs ++ (V.toList . V.take leftNums $ streamingFetchResponseReceivedRecords))
+                          recving (leftNums - (V.length recIds))
 
 -- Note: It actually gets 'Payload'(defined in this file)s of all JSON format DataRecords.
 getJsonFormatRecords :: S.DataRecord Bytes -> [Payload]
@@ -210,17 +224,32 @@ commitCheckpointToHStore ldclient reader streamId offset = do
     Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn) 10{-retries-}
 
 writeRecordToHStore :: HStreamClientApi -> SinkRecord -> IO ()
-writeRecordToHStore API.HStreamApi{..} SinkRecord{..} = do
+writeRecordToHStore api SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
-  timestamp <- getProtoTimestamp
-  let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
-      payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode snkValue
-  let record = buildRecord header payload
-  let req = API.AppendRequest
-            { appendRequestStreamName = snkStream
-            , appendRequestRecords = V.singleton record
-            }
-  void $ hstreamApiAppend (mkClientNormalRequest 1000 req)
+  let lookupReq = API.LookupStreamRequest
+                  { lookupStreamRequestStreamName = snkStream
+                  , lookupStreamRequestOrderingKey = case snkKey of
+                                                       Nothing -> ""
+                                                       Just k  -> T.decodeUtf8 . BL.toStrict $ k
+                  }
+  resp <- (API.hstreamApiLookupStream api) (mkClientNormalRequest 1000 lookupReq)
+  case resp of
+    ClientErrorResponse clientError -> do
+      Log.withDefaultLogger . Log.warning . ZBuilder.stringUTF8 $ show clientError
+      return ()
+    ClientNormalResponse API.LookupStreamResponse{..} _meta1 _meta2 _status _details -> do
+      -- FIXME: Nothing
+      let (Just node) = lookupStreamResponseServerNode
+      runWithAddr (serverNodeToSocketAddr node) $ \API.HStreamApi{..} -> do
+        timestamp <- getProtoTimestamp
+        let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
+            payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode snkValue
+        let record = buildRecord header payload
+        let req = API.AppendRequest
+                  { appendRequestStreamName = snkStream
+                  , appendRequestRecords = V.singleton record
+                  }
+        void $ hstreamApiAppend (mkClientNormalRequest 1000 req)
 
 data Payload = Payload
   { pLogID     :: S.C_LogID

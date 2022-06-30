@@ -16,7 +16,6 @@ module HStream.Client.Action
   , insertIntoStream
   , createStreamBySelect
   , runActionWithAddr
-  , runWithAddr
   , Action
   ) where
 
@@ -117,8 +116,4 @@ type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
 
 runActionWithAddr :: SocketAddr -> Action a -> IO (ClientResult 'Normal a)
 runActionWithAddr addr action =
-  withGRPCClient (mkGRPCClientConf addr) (hstreamApiClient >=> action)
-
-runWithAddr :: SocketAddr -> (HStreamClientApi -> IO a) -> IO a
-runWithAddr addr action =
   withGRPCClient (mkGRPCClientConf addr) (hstreamApiClient >=> action)

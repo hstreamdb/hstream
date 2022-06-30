@@ -34,7 +34,6 @@ import           HStream.Client.Execute           (execute, executeInsert,
 import           HStream.Client.Gadget
 import           HStream.Client.Internal
 import           HStream.Client.Type              (ClientContext (..))
-import           HStream.Client.Utils             (mkGRPCClientConf)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.SQL
@@ -43,6 +42,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
 import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
+                                                   mkGRPCClientConf,
                                                    setupSigsegvHandler)
 
 data UserConfig = UserConfig

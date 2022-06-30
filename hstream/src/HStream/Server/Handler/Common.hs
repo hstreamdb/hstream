@@ -31,7 +31,6 @@ import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
 import qualified Z.IO.Network                     as ZNet
 
-import           HStream.Client.Action            (runWithAddr)
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
 import           HStream.Connector.MySQL
@@ -49,7 +48,8 @@ import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
                                                    cBytesToText,
                                                    clientDefaultKey,
-                                                   newRandomText, textToCBytes)
+                                                   newRandomText, runWithAddr,
+                                                   textToCBytes)
 
 --------------------------------------------------------------------------------
 
