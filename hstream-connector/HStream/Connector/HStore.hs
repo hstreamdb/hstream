@@ -59,8 +59,8 @@ hstoreSourceConnector ldclient reader streamType = SourceConnector {
 
 hstoreSourceConnectorWithoutCkp :: HStreamClientApi -> T.Text -> SourceConnectorWithoutCkp
 hstoreSourceConnectorWithoutCkp api consumerName = SourceConnectorWithoutCkp {
-  subscribeToStreamWithoutCkp = subscribeToHStoreStream' api,
-  unSubscribeToStreamWithoutCkp = unSubscribeToHStoreStream' api,
+  subscribeToStreamWithoutCkp = subscribeToHStoreStream' api consumerName,
+  unSubscribeToStreamWithoutCkp = unSubscribeToHStoreStream' api consumerName,
   readRecordsWithoutCkp = readRecordsFromHStore' api consumerName 100
 }
 
@@ -91,10 +91,10 @@ subscribeToHStoreStream ldclient reader streamId startOffset = do
     Offset lsn -> return lsn
   S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
 
-subscribeToHStoreStream' :: HStreamClientApi -> HPT.StreamName -> IO ()
-subscribeToHStoreStream' API.HStreamApi{..} stream = do
+subscribeToHStoreStream' :: HStreamClientApi -> T.Text -> HPT.StreamName -> IO ()
+subscribeToHStoreStream' API.HStreamApi{..} consumerName stream = do
   let req = API.Subscription
-            { subscriptionSubscriptionId = hstoreSubscriptionPrefix <> stream
+            { subscriptionSubscriptionId = hstoreSubscriptionPrefix <> stream <> "_" <> consumerName
             , subscriptionStreamName = stream
             , subscriptionAckTimeoutSeconds = hstoreSubscriptionAckTimeoutSeconds
             , subscriptionMaxUnackedRecords = hstoreSubscriptionMaxUnackedRecords
@@ -106,10 +106,10 @@ unSubscribeToHStoreStream ldclient reader streamId = do
   logId <- S.getUnderlyingLogId ldclient streamId Nothing
   S.ckpReaderStopReading reader logId
 
-unSubscribeToHStoreStream' :: HStreamClientApi -> HPT.StreamName -> IO ()
-unSubscribeToHStoreStream' API.HStreamApi{..} streamName = do
+unSubscribeToHStoreStream' :: HStreamClientApi -> T.Text -> HPT.StreamName -> IO ()
+unSubscribeToHStoreStream' API.HStreamApi{..} consumerName streamName = do
   let req = API.DeleteSubscriptionRequest
-            { deleteSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+            { deleteSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
             , deleteSubscriptionRequestForce = True
             }
   void $ hstreamApiDeleteSubscription (mkClientNormalRequest 1000 req)
@@ -157,7 +157,7 @@ readRecordsFromHStore ldclient reader maxlen = do
 readRecordsFromHStore' :: HStreamClientApi -> T.Text -> Int -> HPT.StreamName -> IO [SourceRecord]
 readRecordsFromHStore' api consumerName maxlen streamName = do
   let lookupSubReq = API.LookupSubscriptionRequest
-                     { API.lookupSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+                     { API.lookupSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
                      }
   resp <- (API.hstreamApiLookupSubscription api) (mkClientNormalRequest 1000 lookupSubReq)
   case resp of
@@ -175,7 +175,7 @@ readRecordsFromHStore' api consumerName maxlen streamName = do
         where
           action recv_m _clientCall _meta streamRecv streamSend _writeDone = do
             let initReq = API.StreamingFetchRequest
-                          { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+                          { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
                           , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
                           , API.streamingFetchRequestAckIds = V.empty
                           }
@@ -194,7 +194,7 @@ readRecordsFromHStore' api consumerName maxlen streamName = do
                         Right (Just resp@API.StreamingFetchResponse{..}) -> do
                           let recIds = V.take leftNums $ V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
                           let ackReq = API.StreamingFetchRequest
-                                       { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName
+                                       { API.streamingFetchRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
                                        , API.streamingFetchRequestConsumerName = hstoreConsumerPrefix <> consumerName
                                        , API.streamingFetchRequestAckIds = recIds
                                        }
