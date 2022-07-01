@@ -140,9 +140,7 @@ receivedRecordToSourceRecord streamName API.ReceivedRecord{..} =
       { srcStream = streamName
       , srcOffset = recordIdBatchId
       , srcTimestamp = getTimeStamp hsr
-      , srcKey = case getRecordKey hsr of
-                   Nothing -> Just "{}"
-                   Just k  -> Just (BL.fromStrict . T.encodeUtf8 $ k)
+      , srcKey = Just "{}"
       , srcValue = let Right struct = PB.fromByteString pbPayload
                     in Aeson.encode . structToJsonObject $ struct
       }
@@ -228,9 +226,7 @@ writeRecordToHStore api SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
   let lookupReq = API.LookupStreamRequest
                   { lookupStreamRequestStreamName = snkStream
-                  , lookupStreamRequestOrderingKey = case snkKey of
-                                                       Nothing -> ""
-                                                       Just k  -> T.decodeUtf8 . BL.toStrict $ k
+                  , lookupStreamRequestOrderingKey = ""
                   }
   resp <- (API.hstreamApiLookupStream api) (mkClientNormalRequest 1000 lookupReq)
   case resp of
