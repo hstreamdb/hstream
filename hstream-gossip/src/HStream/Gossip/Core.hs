@@ -19,14 +19,12 @@ import           Control.Concurrent.STM.TChan     (readTChan)
 import           Control.Exception                (SomeException, handle)
 import           Control.Monad                    (forever, join, unless, void,
                                                    when)
+import           Data.Bifunctor                   (bimap)
 import qualified Data.IntMap.Strict               as IM
 import qualified Data.Map.Strict                  as Map
-import qualified HStream.Logger                   as Log
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
-import qualified Data.Vector                      as V
 import           HStream.Gossip.Gossip            (gossip)
-import           HStream.Gossip.HStreamGossip     as API (Ack (..))
 import           HStream.Gossip.Probe             (doPing, pingReq, pingReqPing)
 import           HStream.Gossip.Types             (EventMessage (EventMessage),
                                                    GossipContext (..),
@@ -40,6 +38,7 @@ import           HStream.Gossip.Utils             (broadcast, broadcastMessage,
                                                    getMsgInc, mkGRPCClientConf,
                                                    updateLamportTime,
                                                    updateStatus)
+import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 
 --------------------------------------------------------------------------------
@@ -56,7 +55,7 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state = unless (n
   }
   newAsync <- async (joinWorkers gc status)
   atomically $ do
-    modifyTVar' serverList (Map.insert serverNodeId status)
+    modifyTVar' serverList $ bimap succ (Map.insert serverNodeId status)
     modifyTVar' workers (Map.insert serverNodeId newAsync)
 
 joinWorkers :: GossipContext -> ServerStatus -> IO ()
@@ -112,7 +111,7 @@ handleStateMessages = mapM_ . handleStateMessage
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
 handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = unless (node == serverSelf) $ do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
-  sMap <- readTVarIO serverList
+  sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing -> do
       addToServerList gc node msg OK
@@ -122,13 +121,13 @@ handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = un
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
 handleStateMessage GossipContext{..} msg@(T.GConfirm _inc I.ServerNode{..} _node)= do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
-  sMap <- readTVarIO serverList
+  sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
     Just ServerStatus{..} -> join $ atomically $ do
       modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
       writeTVar latestMessage msg
-      modifyTVar' serverList (Map.delete serverNodeId)
+      modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
       mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
       case mWorker of
         Nothing -> return (pure ())
@@ -140,7 +139,7 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
   join . atomically $ if node == serverSelf
     then writeTQueue statePool (T.GAlive (succ inc) node serverSelf) >> return (pure ())
     else do
-      sMap <- readTVar serverList
+      sMap <- snd <$> readTVar serverList
       case Map.lookup serverNodeId sMap of
         Just ss -> do
           updated <- updateStatus ss msg Suspicious
@@ -151,7 +150,7 @@ handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _
 handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..} _node) = do
   Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   unless (node == serverSelf) $ do
-    sMap <- readTVarIO serverList
+    sMap <- snd <$> readTVarIO serverList
     case Map.lookup serverNodeId sMap of
       Just ss -> atomically $ do
         updated <- updateStatus ss msg OK

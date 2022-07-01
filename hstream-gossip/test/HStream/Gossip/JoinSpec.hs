@@ -9,10 +9,11 @@ import           Data.Streaming.Network         (getUnassignedPort)
 import           Test.Hspec                     (SpecWith, describe, it, runIO,
                                                  shouldBe)
 
-import           HStream.Gossip.Start           (initGossipContext, startGossip)
-import           HStream.Gossip.Types           (GossipContext (..),
+import           HStream.Gossip                 (GossipContext (..),
                                                  ServerStatus (..),
-                                                 defaultGossipOpts)
+                                                 defaultGossipOpts,
+                                                 initGossipContext, startGossip)
+import qualified HStream.Gossip.HStreamGossip   as API
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 

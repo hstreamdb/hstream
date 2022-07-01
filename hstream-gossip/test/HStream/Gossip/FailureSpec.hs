@@ -8,8 +8,8 @@ import qualified Data.Map.Strict          as Map
 import           Test.Hspec               (SpecWith, describe, it, runIO,
                                            shouldBe)
 
+import           HStream.Gossip           (GossipContext (serverList))
 import           HStream.Gossip.TestUtils (startCluster)
-import           HStream.Gossip.Types     (GossipContext (serverList))
 import qualified HStream.Logger           as Log
 
 spec :: SpecWith ()
