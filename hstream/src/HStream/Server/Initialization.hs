@@ -51,9 +51,7 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
-import           HStream.Common.Types             (fromInternalServerNode)
-import           HStream.Gossip                   (getMemberList)
-import           HStream.Gossip.Types             (GossipContext)
+import           HStream.Gossip                   (GossipContext, getMemberList)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))

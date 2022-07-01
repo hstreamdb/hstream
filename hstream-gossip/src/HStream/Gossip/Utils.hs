@@ -25,7 +25,6 @@ import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
 import qualified Text.Layout.Table                as Table
 import           Text.Layout.Table                (def)
 
-import qualified Data.Vector                      as V
 import           HStream.Gossip.Types             (BroadcastPool,
                                                    EventMessage (..),
                                                    Message (..), Messages,

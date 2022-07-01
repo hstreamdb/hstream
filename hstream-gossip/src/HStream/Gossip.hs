@@ -2,7 +2,11 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module HStream.Gossip
-  ( initGossipContext
+  ( GossipContext(..)
+  , GossipOpts(..)
+  , defaultGossipOpts
+
+  , initGossipContext
   , bootstrap
   , startGossip
 
@@ -12,6 +16,8 @@ module HStream.Gossip
   , getMemberList
   , getMemberListSTM
   , getClusterStatus
+  , getEpoch
+  , getEpochSTM
   ) where
 
 import           Control.Concurrent.STM         (STM, atomically, readTVar,
@@ -26,8 +32,9 @@ import           HStream.Gossip.Start           (bootstrap, initGossipContext,
                                                  startGossip)
 import           HStream.Gossip.Types           (EventHandler, EventMessage,
                                                  EventName, GossipContext (..),
-                                                 SeenEvents,
-                                                 ServerStatus (serverInfo))
+                                                 GossipOpts (..), SeenEvents,
+                                                 ServerStatus (..),
+                                                 defaultGossipOpts)
 import           HStream.Server.HStreamApi      (NodeState (..),
                                                  ServerNode (..),
                                                  ServerNodeStatus (..))
@@ -45,11 +52,19 @@ getSeenEvents GossipContext {..} = readTVarIO seenEvents
 
 getMemberList :: GossipContext -> IO [I.ServerNode]
 getMemberList GossipContext {..} =
-  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems)
+  readTVarIO serverList <&> ((:) serverSelf . map serverInfo . Map.elems. snd)
 
 getMemberListSTM :: GossipContext -> STM [I.ServerNode]
 getMemberListSTM GossipContext {..} =
-  readTVar serverList <&> ((:) serverSelf . map serverInfo . Map.elems)
+  readTVar serverList <&> ((:) serverSelf . map serverInfo . Map.elems . snd)
+
+getEpoch :: GossipContext -> IO Word32
+getEpoch GossipContext {..} =
+  readTVarIO serverList <&> fst
+
+getEpochSTM :: GossipContext -> STM Word32
+getEpochSTM GossipContext {..} =
+  readTVar serverList <&> fst
 
 getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
 getClusterStatus gc =

@@ -49,7 +49,7 @@ import           System.Exit                    (exitSuccess)
 import           Z.Data.CBytes                  (CBytes)
 
 import qualified HStream.Admin.Store.API        as AA
-import           HStream.Gossip.Types           (GossipOpts (..),
+import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI

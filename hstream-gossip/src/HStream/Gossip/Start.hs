@@ -15,7 +15,6 @@ import           Data.ByteString                  (ByteString)
 import           Data.List                        ((\\))
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Vector                      as V
-import qualified HStream.Logger                   as Log
 import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           Proto3.Suite                     (def)
 import           System.Random                    (initStdGen)
@@ -34,6 +33,7 @@ import           HStream.Gossip.Types             (EventHandlers,
 import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (mkClientNormalRequest,
                                                    mkGRPCClientConf')
+import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
 import qualified HStream.Utils                    as U
 
@@ -45,7 +45,7 @@ initGossipContext gossipOpts eventHandlers serverSelf = do
   eventLpTime   <- newTVarIO 0
   seenEvents    <- newTVarIO mempty
   broadcastPool <- newTVarIO mempty
-  serverList    <- newTVarIO mempty
+  serverList    <- newTVarIO (0, mempty)
   workers       <- newTVarIO mempty
   incarnation   <- newTVarIO 0
   randomGen     <- initStdGen

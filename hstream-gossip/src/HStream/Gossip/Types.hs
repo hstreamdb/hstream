@@ -1,5 +1,4 @@
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module HStream.Gossip.Types
   ( module HStream.Gossip.Types
@@ -12,13 +11,8 @@ import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
 import qualified Data.Map                       as Map
 import           Data.Map.Strict                (Map)
-import           Data.Serialize                 (Serialize (..), decode)
 import           Data.Text                      (Text)
-import qualified Data.Text                      as Text
-import qualified Data.Text.Encoding             as Text
-import qualified Data.Vector                    as V
-import           Data.Word                      (Word32, Word64)
-import           GHC.Generics                   (Generic)
+import           Data.Word                      (Word32)
 import qualified Options.Applicative            as O
 import           Options.Applicative.Builder    (auto, help, long, metavar,
                                                  option, short, showDefault,
@@ -37,13 +31,15 @@ import qualified HStream.Server.HStreamInternal as I
 type ServerId  = Word32
 type ServerUrl = Text
 type Messages = [G.Message]
+type Epoch = Word32
+
 data ServerStatus = ServerStatus
   { serverInfo    :: I.ServerNode
   , serverState   :: TVar ServerState
   , latestMessage :: TVar G.StateMessage
   }
 
-type ServerList    = Map ServerId ServerStatus
+type ServerList    = (Epoch, Map ServerId ServerStatus)
 type Workers       = Map ServerId (Async ())
 type BroadcastPool = [(G.Message, Word32)]
 type StateDelta    = Map ServerId (G.StateMessage, Bool)
