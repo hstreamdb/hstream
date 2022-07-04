@@ -674,6 +674,8 @@ instance Validate Create where
   validate create@(CreateAs _ _ select) = validate select >> return create
   validate create@(CreateAsOp _ _ select options) =
     validate select >> validate (StreamOptions options) >> return create
+  validate create@(CreateSourceConnector _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSourceConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateSinkConnector _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateSinkConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = case grp of
@@ -699,13 +701,13 @@ instance Validate StreamOptions where
 newtype ConnectorOptions = ConnectorOptions [ConnectorOption]
 
 instance Validate ConnectorOptions where
-  validate ops@(ConnectorOptions options) = do
-    if any (\case PropertyConnector _ _ -> True; _ -> False) options && any (\case PropertyStreamName _ _ -> True; _ -> False) options
-    then mapM_ validate options >> return ops
-    else Left $ buildSQLException ParseException Nothing "Options STREAM (name) or TYPE (of Connector) missing"
+  validate ops@(ConnectorOptions options) = return ops
+  --   if any (\case PropertyConnector _ _ -> True; _ -> False) options && any (\case PropertyStreamName _ _ -> True; _ -> False) options
+  --   then mapM_ validate options >> return ops
+  --   else Left $ buildSQLException ParseException Nothing "Options STREAM (name) or TYPE (of Connector) missing"
 
 instance Validate ConnectorOption where
-  validate op@(PropertyAny _ _ expr) = isConstExpr expr >> return op
+  -- validate op@(PropertyAny _ _ expr) = isConstExpr expr >> return op
   validate op                        = return op
 
 ------------------------------------- INSERT -----------------------------------
@@ -745,3 +747,5 @@ instance Validate SQL where
   validate sql@(QDrop        _    drop_) = validate drop_    >> return sql
   validate sql@(QTerminate   _     term) = validate term     >> return sql
   validate sql@(QExplain     _  explain) = validate explain  >> return sql
+  validate sql@(QStart _ _)              = return sql
+  validate sql@(QStop _ _)               = return sql

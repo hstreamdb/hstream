@@ -197,7 +197,7 @@ helpInfos :: M.Map String String
 helpInfos = M.fromList [
   ("CREATE",[r|
   CREATE STREAM <stream_name> [AS <select_query>] [ WITH ( {stream_options} ) ];
-  CREATE {SOURCE|SINK} CONNECTOR <stream_name> [IF NOT EXIST] WITH ( {connector_options} ) ;
+  CREATE {SOURCE|SINK} CONNECTOR <connector_name> [IF NOT EXIST] WITH ( {connector_options} ) ;
   CREATE VIEW <stream_name> AS <select_query> ;
   |]),
   ("INSERT",[r|

@@ -41,6 +41,7 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Connector.HStore
 import qualified HStream.Connector.HStore         as HCH
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Processing.Connector     (SourceConnector (..))
 import           HStream.Processing.Encoding      (Deserializer (..),
@@ -122,8 +123,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           S.StreamTypeView
         >> atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
         >> returnCommandQueryEmptyResp
-    CreateSinkConnectorPlan _cName _ifNotExist _sName _cConfig _ -> do
-      createConnector sc commandQueryStmtText >> returnCommandQueryEmptyResp
+    CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
+      IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
       queries   <- P.getQueries zkHandle
       condNameM <- getGrpByFieldName queries rSelectViewFrom
@@ -203,6 +204,10 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       execPlan <- genExecutionPlan sql
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
+    StartPlan (StartObjectConnector name) -> do
+      IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
+    StopPlan (StopObjectConnector name) -> do
+      IO.stopIOTask scIOWorker name False >> returnCommandQueryEmptyResp
     _ -> discard
   where
     create sName = do

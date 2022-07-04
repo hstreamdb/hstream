@@ -63,19 +63,19 @@ http:
     - selector: hstream.server.HStreamApi.RestartQuery
       post: "/queries/{id}:restart"
 
-    - selector: hstream.server.HStreamApi.CreateSinkConnector
+    - selector: hstream.server.HStreamApi.CreateConnector
       post: "/connectors"
       body: "*"
     - selector: hstream.server.HStreamApi.ListConnectors
       get: "/connectors"
     - selector: hstream.server.HStreamApi.GetConnector
-      get: "/connectors/{id}"
+      get: "/connectors/{name}"
     - selector: hstream.server.HStreamApi.DeleteConnector
-      delete: "/connectors/{id}"
-    - selector: hstream.server.HStreamApi.RestartConnector
-      post: "/connectors/{id}:restart"
-    - selector: hstream.server.HStreamApi.TerminateConnector
-      post: "/connectors/{connectorId}:terminate"
+      delete: "/connectors/{name}"
+    - selector: hstream.server.HStreamApi.StartConnector
+      post: "/connectors/{name}:Start"
+    - selector: hstream.server.HStreamApi.StopConnector
+      post: "/connectors/{name}:stop"
 
     - selector: hstream.server.HStreamApi.CreateView
       post: "/views"

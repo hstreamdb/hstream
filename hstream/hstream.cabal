@@ -212,7 +212,6 @@ test-suite hstream-test
     HStream.AdminCommandSpec
     HStream.HandlerSpec
     HStream.RegressionSpec
-    HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunStoreAdminSpec
