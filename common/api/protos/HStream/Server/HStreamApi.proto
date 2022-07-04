@@ -81,12 +81,12 @@ service HStreamApi {
   rpc RestartQuery(RestartQueryRequest) returns (google.protobuf.Empty) {}
 
   // connector related apis
-  rpc CreateSinkConnector(CreateSinkConnectorRequest) returns (Connector) {}
+  rpc CreateConnector(CreateConnectorRequest) returns (Connector) {}
   rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse) {}
   rpc GetConnector(GetConnectorRequest) returns (Connector) {}
   rpc DeleteConnector(DeleteConnectorRequest) returns (google.protobuf.Empty) {}
-  rpc RestartConnector(RestartConnectorRequest) returns (google.protobuf.Empty) {}
-  rpc TerminateConnector(TerminateConnectorRequest) returns (google.protobuf.Empty) {}
+  rpc StartConnector(StartConnectorRequest) returns (google.protobuf.Empty) {}
+  rpc StopConnector(StopConnectorRequest) returns (google.protobuf.Empty) {}
 
   // view related apis
   rpc CreateView(CreateViewRequest) returns (View) {}
@@ -327,7 +327,7 @@ message RestartQueryResponse {
 }
 
 // Connector Related Request and Response
-message CreateSinkConnectorRequest {
+message CreateConnectorRequest {
   string sql = 1;
 }
 
@@ -338,34 +338,35 @@ message ListConnectorsResponse {
 }
 
 message GetConnectorRequest {
-  string id = 1;
+  string name = 1;
 }
 
 message Connector {
-  string id = 1;
-  TaskStatusPB status = 2;
-  int64 createdTime = 3;
-  string sql = 4;
+  string name = 1;
+  string status = 2;
+  // TODO:
+  // string connectorType = 3;
+  // TaskStatusPB status = 2;
+  // int64 createdTime = 3;
+  // string sql = 4;
+  // connector metrics(e.g.: offset)
+
+  // enum ConnectorType {
+  //   SOURCE = 0,
+  //   SINK = 1
+  // }
 }
 
 message DeleteConnectorRequest {
-  string id = 1;
+  string name = 1;
 }
 
-message DeleteConnectorResponse {
-  bool success = 1;
+message StartConnectorRequest {
+  string name = 1;
 }
 
-message RestartConnectorRequest {
-  string id = 1;
-}
-
-message RestartConnectorResponse {
-  bool success = 1;
-}
-
-message TerminateConnectorRequest {
-  string connectorId = 1;
+message StopConnectorRequest {
+  string name = 1;
 }
 
 // View related Request and Response

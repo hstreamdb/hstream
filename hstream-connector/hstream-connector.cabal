@@ -45,6 +45,11 @@ library
     HStream.Connector.ClickHouse
     HStream.Connector.HStore
     HStream.Connector.MySQL
+    HStream.IO.IOTask
+    HStream.IO.Worker
+    HStream.IO.Storage
+    HStream.IO.Types
+    HStream.IO.ZkKv
 
   build-depends:
     , aeson
@@ -72,9 +77,12 @@ library
     , time
     , unordered-containers
     , vector
+    , uuid
     , Z-Data
     , Z-IO
     , zoovisitor
+    , typed-process
+    , stm
 
   default-extensions:
     DeriveGeneric

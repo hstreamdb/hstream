@@ -46,6 +46,8 @@ QShow.        SQL ::= ShowQ       ";" ;
 QDrop.        SQL ::= Drop        ";" ;
 QTerminate.   SQL ::= Terminate   ";" ;
 QExplain.     SQL ::= Explain     ";" ;
+QStart.       SQL ::= Start       ";" ;
+QStop.        SQL ::= Stop        ";" ;
 
 ---- Create Query
 DCreate.  Create ::= "CREATE" "STREAM" Ident ;
@@ -58,15 +60,21 @@ CreateAsOp. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOpt
 -- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
+CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" Ident "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 CreateSinkConnector. Create ::= "CREATE" "SINK" "CONNECTOR" Ident "WITH" "(" [ConnectorOption] ")" ;
 CreateSinkConnectorIf. Create ::= "CREATE" "SINK" "CONNECTOR" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 separator ConnectorOption "," ;
 
 CreateView. Create ::= "CREATE" "VIEW" Ident "AS" Select ;
 
-PropertyAny. ConnectorOption ::= Ident "=" ValueExpr ;
-PropertyStreamName. ConnectorOption ::= "STREAM" "=" Ident ;
-PropertyConnector. ConnectorOption ::= "TYPE" "=" Ident ;
+ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
+
+---- Start Query
+StartConnector. Start ::= "START" "CONNECTOR" Ident ;
+
+--- Stop Query
+StopConnector. Stop ::= "STOP" "CONNECTOR" Ident ;
 
 ---- Insert Query
 DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;

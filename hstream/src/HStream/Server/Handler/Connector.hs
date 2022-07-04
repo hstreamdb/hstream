@@ -22,6 +22,8 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
 
 import qualified Data.HashMap.Strict              as HM
 import           HStream.Connector.HStore         (transToStreamName)
+import qualified HStream.IO.Types                 as IO
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
                                                    StreamNotExist (..),
@@ -40,15 +42,14 @@ import           HStream.Utils                    (TaskStatus (..),
                                                    mkServerErrResp, returnResp,
                                                    textToCBytes)
 
-createSinkConnectorHandler
+createConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal CreateSinkConnectorRequest Connector
+  -> ServerRequest 'Normal CreateConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
-createSinkConnectorHandler sc
-  (ServerNormalRequest _ CreateSinkConnectorRequest{..}) = connectorExceptionHandle $ do
+createConnectorHandler sc
+  (ServerNormalRequest _ CreateConnectorRequest{..}) = connectorExceptionHandle $ do
     Log.debug "Receive Create Sink Connector Request"
-    connector <- createConnector sc createSinkConnectorRequestSql
-    returnResp connector
+    IO.createIOTaskFromSql (scIOWorker sc) createConnectorRequestSql >>= returnResp
 
 listConnectorsHandler
   :: ServerContext
@@ -57,9 +58,8 @@ listConnectorsHandler
 listConnectorsHandler ServerContext{..}
   (ServerNormalRequest _metadata _) = connectorExceptionHandle $ do
   Log.debug "Receive List Connector Request"
-  connectors <- P.getConnectors zkHandle
-  returnResp $ ListConnectorsResponse .
-    V.fromList . map hstreamConnectorToConnector $ connectors
+  cs <- IO.listIOTasks scIOWorker
+  returnResp . ListConnectorsResponse . V.fromList $ cs
 
 getConnectorHandler
   :: ServerContext
@@ -68,9 +68,10 @@ getConnectorHandler
 getConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata GetConnectorRequest{..}) = connectorExceptionHandle $ do
   Log.debug $ "Receive Get Connector Request. "
-    <> "Connector ID: " <> Log.buildString (T.unpack getConnectorRequestId)
-  connector <- P.getConnector (textToCBytes getConnectorRequestId) zkHandle
-  returnResp $ hstreamConnectorToConnector connector
+    <> "Connector Name: " <> Log.buildString (T.unpack getConnectorRequestName)
+  IO.showIOTask scIOWorker getConnectorRequestName >>= \case
+    Nothing -> throwIO ConnectorNotFound
+    Just c  -> returnResp c
 
 deleteConnectorHandler
   :: ServerContext
@@ -79,87 +80,32 @@ deleteConnectorHandler
 deleteConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = connectorExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
-    <> "Connector ID: " <> Log.buildText deleteConnectorRequestId
-  let cName = textToCBytes deleteConnectorRequestId
-  P.removeConnector cName zkHandle
+    <> "Connector Name: " <> Log.buildText deleteConnectorRequestName
+  IO.deleteIOTask scIOWorker deleteConnectorRequestName
   returnResp Empty
 
-restartConnectorHandler
+startConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal RestartConnectorRequest Empty
+  -> ServerRequest 'Normal StartConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-restartConnectorHandler sc@ServerContext{..}
-  (ServerNormalRequest _metadata RestartConnectorRequest{..}) = connectorExceptionHandle $ do
-  Log.debug $ "Receive Restart Connector Request. "
-    <> "Connector ID: " <> Log.buildText restartConnectorRequestId
-  let cid = textToCBytes restartConnectorRequestId
-  cStatus <- P.getConnectorStatus cid zkHandle
-  when (cStatus `elem` [Created, Creating, Running]) $ do
-    Log.warning . Log.buildString $ "The connector " <> show cid
-      <> "cannot be restarted because it has state " <> show cStatus
-    throwIO (ConnectorRestartErr cStatus)
-  restartConnector sc cid >> returnResp Empty
+startConnectorHandler sc@ServerContext{..}
+  (ServerNormalRequest _metadata StartConnectorRequest{..}) = connectorExceptionHandle $ do
+  Log.debug $ "Receive Start Connector Request. "
+    <> "Connector ID: " <> Log.buildText startConnectorRequestName
+  IO.startIOTask scIOWorker startConnectorRequestName
+  returnResp Empty
 
-terminateConnectorHandler
+stopConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal TerminateConnectorRequest Empty
+  -> ServerRequest 'Normal StopConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-terminateConnectorHandler sc
-  (ServerNormalRequest _metadata TerminateConnectorRequest{..}) = connectorExceptionHandle $ do
+stopConnectorHandler ServerContext{..}
+  (ServerNormalRequest _metadata StopConnectorRequest{..}) = connectorExceptionHandle $ do
   Log.debug $ "Receive Terminate Connector Request. "
-    <> "Connector ID: " <> Log.buildText terminateConnectorRequestConnectorId
-  let cid = textToCBytes terminateConnectorRequestConnectorId
-  terminateConnector sc cid
+    <> "Connector ID: " <> Log.buildText stopConnectorRequestName
+  IO.stopIOTask scIOWorker stopConnectorRequestName False
   returnResp Empty
 
---------------------------------------------------------------------------------
-
-hstreamConnectorToConnector :: P.PersistentConnector -> Connector
-hstreamConnectorToConnector P.PersistentConnector{..} =
-  Connector (cBytesToText connectorId)
-    (getPBStatus connectorStatus) connectorCreatedTime
-    connectorBindedSql
-
-createConnector :: ServerContext -> T.Text -> IO Connector
-createConnector sc@ServerContext{..} sql = do
-  (CodeGen.CreateSinkConnectorPlan cName ifNotExist sName cConfig _) <- CodeGen.streamCodegen sql
-  Log.debug $ "CreateConnector CodeGen"
-           <> ", connector name: " <> Log.buildText cName
-           <> ", stream name: "    <> Log.buildText sName
-           <> ", config: "         <> Log.buildString (show cConfig)
-  streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)
-  connectorIds <- P.getConnectorIds zkHandle
-  let cid = CB.pack $ T.unpack cName
-      connectorExists = cid `elem` connectorIds
-  unless streamExists $ throwIO StreamNotExist
-  when (connectorExists && not ifNotExist) $ do
-    cStatus <- P.getConnectorStatus cid zkHandle
-    throwIO (ConnectorAlreadyExists cStatus)
-  if connectorExists then do
-    connector <- P.getConnector cid zkHandle
-    return $ hstreamConnectorToConnector connector
-  else do
-    MkSystemTime timestamp _ <- getSystemTime'
-    P.insertConnector cid sql timestamp serverID zkHandle
-    handleCreateSinkConnector sc cid sName cConfig <&> hstreamConnectorToConnector
-
-restartConnector :: ServerContext -> CB.CBytes -> IO ()
-restartConnector sc@ServerContext{..} cid = do
-  P.PersistentConnector _ sql _ _ _ _ <- P.getConnector cid zkHandle
-  (CodeGen.CreateSinkConnectorPlan _ _ sName cConfig _)
-    <- CodeGen.streamCodegen sql
-  streamExists <- S.doesStreamExist scLDClient (transToStreamName sName)
-  unless streamExists $ throwIO StreamNotExist
-  void $ handleCreateSinkConnector sc cid sName cConfig
-
-terminateConnector :: ServerContext -> CB.CBytes -> IO ()
-terminateConnector ServerContext{..} cid = do
-  hmapC <- readMVar runningConnectors
-  case HM.lookup cid hmapC of
-    Just tid -> do
-      void $ killThread tid
-      Log.debug . Log.buildString $ "TERMINATE: terminated connector: " <> show cid
-    _        -> throwIO ConnectorTerminatedOrNotExist
 --------------------------------------------------------------------------------
 -- Exception and Exception Handlers
 
@@ -170,6 +116,10 @@ instance Exception ConnectorAlreadyExists
 newtype ConnectorRestartErr = ConnectorRestartErr TaskStatus
   deriving (Show)
 instance Exception ConnectorRestartErr
+
+data ConnectorNotFound = ConnectorNotFound
+  deriving (Show)
+instance Exception ConnectorNotFound
 
 data ConnectorTerminatedOrNotExist = ConnectorTerminatedOrNotExist
   deriving (Show)

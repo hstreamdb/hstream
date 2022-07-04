@@ -2,6 +2,9 @@
 
 module HStream.SQL.ParseRefineSpec where
 
+import qualified Data.Aeson          as J
+import qualified Data.HashMap.Strict as HM
+import qualified Data.Text           as T
 import           HStream.SQL.AST
 import           HStream.SQL.Parse
 import           Test.Hspec
@@ -41,8 +44,8 @@ spec = describe "Create" $ do
       `shouldReturn` RQCreate (RCreateView "foo" (RSelect (RSelList [(Left (RExprCol "a" Nothing "a"),"a"),(Right (Unary AggSum (RExprCol "a" Nothing "a")),"SUM(a)"),(Right (Nullary AggCountAll),"COUNT(*)")]) (RFromSingle "bar") RWhereEmpty (RGroupBy Nothing "b" Nothing) RHavingEmpty))
 
   it "CREATE CONNECTOR" $ do
-    parseAndRefine "CREATE SINK CONNECTOR mysql_conn WITH (TYPE = mysql, STREAM = foo, host = \"127.0.0.1\");"
-      `shouldReturn` RQCreate (RCreateSinkConnector "mysql_conn" False "foo" "mysql" (RConnectorOptions [("host",ConstantString "127.0.0.1")]))
+    parseAndRefine "CREATE SOURCE CONNECTOR mysql_conn WITH (\"task.image\" = \"hstream/source-debezium\");"
+      `shouldReturn` RQCreate (RCreateConnector "SOURCE" "mysql_conn" False (RConnectorOptions (HM.fromList [("task.image", J.toJSON ("hstream/source-debezium" :: T.Text))])))
 
   it "SELECT (Stream)" $ do
     parseAndRefine "SELECT * FROM my_stream EMIT CHANGES;"

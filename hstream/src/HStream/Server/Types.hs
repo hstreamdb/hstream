@@ -19,6 +19,7 @@ import           ZooKeeper.Types                  (ZHandle)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
+import qualified HStream.IO.Worker                as IO
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
@@ -49,6 +50,7 @@ data ServerContext = ServerContext
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: TVar HashRing
   , scServerState            :: MVar ServerState
+  , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
 }
 

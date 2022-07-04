@@ -5,9 +5,11 @@
 
 module HStream.SQL.AST where
 
+import qualified Data.Aeson            as Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Functor
+import qualified Data.HashMap.Strict   as HM
 import           Data.Kind             (Type)
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
@@ -85,6 +87,13 @@ data Constant = ConstantNull
               | ConstantInterval  RInterval
               -- TODO: Support Map and Arr
               deriving (Eq, Show)
+
+instance Aeson.ToJSON Constant where
+  toJSON ConstantNull       = Aeson.Null
+  toJSON (ConstantInt v)    = Aeson.toJSON v
+  toJSON (ConstantNum v)    = Aeson.toJSON v
+  toJSON (ConstantString v) = Aeson.toJSON v
+  toJSON (ConstantBool v)   = Aeson.toJSON v
 
 data BinaryOp = OpAdd | OpSub | OpMul
               | OpAnd | OpOr
@@ -422,12 +431,13 @@ data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
   } deriving (Eq, Show)
 
-data RConnectorOptions = RConnectorOptions [(Text, Constant)]
+newtype RConnectorOptions = RConnectorOptions (HM.HashMap Text Aeson.Value)
   deriving (Eq, Show)
 
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
-             | RCreateSinkConnector Text Bool Text Text RConnectorOptions
+             -- RCreateConnector <SOURCE|SINK> <ConnectorName> <EXISTS> <OPTIONS>
+             | RCreateConnector Text Text Bool RConnectorOptions
              | RCreateView Text RSelect
              deriving (Eq, Show)
 
@@ -437,25 +447,13 @@ instance Refine [StreamOption] where
   refine [] = RStreamOptions 3
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
-type instance RefinedType [ConnectorOption] = (StreamName, ConnectorType, RConnectorOptions)
+type instance RefinedType [ConnectorOption] = RConnectorOptions
 instance Refine [ConnectorOption] where
-  refine = refineConnectorOps ("", "", RConnectorOptions [])
-
--- Extract StreamName and ConnectorType from ConnectorOptions
--- | Input: ("","",R []) [("STREAM", "demo"),("host","127.0.0.1"),("TYPE","mysql)"]
--- | Result: ("demo","mysql", R [("host","127.0.0.1")])
--- | Stream name and connector type's existence are ensured by validate
-refineConnectorOps :: (StreamName, ConnectorType, RConnectorOptions) -> [ConnectorOption] -> (StreamName, ConnectorType, RConnectorOptions)
-refineConnectorOps tuple (op : ops) =
-  case op of
-    PropertyAny _ (Ident x) expr ->
-      let RExprConst _ constant = refine expr in
-        (sName, cType, RConnectorOptions ((x, constant) : xs))
-    PropertyStreamName _ (Ident x) -> (x, cType, ops')
-    PropertyConnector  _ (Ident x) -> (sName, x, ops')
-  where
-    (sName, cType, ops'@(RConnectorOptions xs)) = refineConnectorOps tuple ops
-refineConnectorOps tuple [] = tuple
+  refine ps = RConnectorOptions $ foldr (insert . toPair) HM.empty ps
+    where insert (k, v) = HM.insert k v
+          toPair :: ConnectorOption -> (Text, Aeson.Value)
+          toPair (ConnectorProperty _ key expr) = (Text.pack key, toValue (refine expr))
+          toValue (RExprConst _ c) = Aeson.toJSON c
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
@@ -463,10 +461,10 @@ instance Refine Create where
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateSinkConnector _ (Ident s) options) =
-    let (sName, cType, ops) = refine options in RCreateSinkConnector s False sName cType ops
-  refine (CreateSinkConnectorIf _ (Ident s) options) =
-    let (sName, cType, ops) = refine options in RCreateSinkConnector s True sName cType ops
+  refine (CreateSourceConnector _ (Ident s) options) = RCreateConnector "SOURCE" s False (refine options)
+  refine (CreateSourceConnectorIf _ (Ident s) options) = RCreateConnector "SOURCE" s True (refine options)
+  refine (CreateSinkConnector _ (Ident s) options) = RCreateConnector "SINK" s False (refine options)
+  refine (CreateSinkConnectorIf _ (Ident s) options) = RCreateConnector "SINK" s True (refine options)
   refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT
@@ -539,6 +537,24 @@ instance Refine Terminate where
   refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
+---- Start
+newtype RStart = RStartConnector Text
+  deriving (Eq, Show)
+
+type instance RefinedType Start = RStart
+
+instance Refine Start where
+  refine (StartConnector _ (Ident name)) = RStartConnector name
+
+---- Stop
+newtype RStop = RStopConnector Text
+  deriving (Eq, Show)
+
+type instance RefinedType Stop = RStop
+
+instance Refine Stop where
+  refine (StopConnector _ (Ident name)) = RStopConnector name
+
 ---- SQL
 data RSQL = RQSelect      RSelect
           | RQCreate      RCreate
@@ -548,17 +564,21 @@ data RSQL = RQSelect      RSelect
           | RQTerminate   RTerminate
           | RQSelectView  RSelectView
           | RQExplain     RExplain
+          | RQStart       RStart
+          | RQStop        RStop
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
-  refine (QSelect      _   select) = RQSelect      (refine   select)
-  refine (QCreate      _   create) = RQCreate      (refine   create)
-  refine (QInsert      _   insert) = RQInsert      (refine   insert)
-  refine (QShow        _    show_) = RQShow        (refine    show_)
-  refine (QDrop        _    drop_) = RQDrop        (refine    drop_)
-  refine (QTerminate   _     term) = RQTerminate   (refine     term)
-  refine (QSelectView  _  selView) = RQSelectView  (refine  selView)
-  refine (QExplain     _  explain) = RQExplain     (refine  explain)
+  refine (QSelect     _ select)  =  RQSelect      (refine   select)
+  refine (QCreate     _ create)  =  RQCreate      (refine   create)
+  refine (QInsert     _ insert)  =  RQInsert      (refine   insert)
+  refine (QShow       _ show_)   =  RQShow        (refine    show_)
+  refine (QDrop       _ drop_)   =  RQDrop        (refine    drop_)
+  refine (QTerminate  _ term)    =  RQTerminate   (refine     term)
+  refine (QSelectView _ selView) =  RQSelectView  (refine  selView)
+  refine (QExplain    _ explain) =  RQExplain     (refine  explain)
+  refine (QStart      _ start)   =  RQStart       (refine  start)
+  refine (QStop       _ stop)    =  RQStop        (refine  stop)
 
 --------------------------------------------------------------------------------
 
