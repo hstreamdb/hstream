@@ -30,6 +30,7 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
 
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils.Converter          (valueToJsonValue)
+import           HStream.Utils.RPC                (showNodeStatus)
 
 --------------------------------------------------------------------------------
 
@@ -56,6 +57,12 @@ instance Format [API.Query] where
 
 instance Format [API.Connector] where
   formatResult = emptyNotice . renderConnectorsToTable
+
+instance Format [API.ServerNode] where
+  formatResult = emptyNotice . renderServerNodesToTable
+
+instance Format [API.ServerNodeStatus] where
+  formatResult = emptyNotice . renderServerNodesStatusToTable
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
@@ -145,6 +152,30 @@ renderConnectorsToTable connectors =
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               ]
+
+renderServerNodesToTable :: [API.ServerNode] -> String
+renderServerNodesToTable values =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = ["Server Id"]
+    formatRow API.ServerNode {..} = [[show serverNodeId]]
+    rows = map formatRow values
+    colSpec = [ Table.column Table.expand Table.left def def]
+
+renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String
+renderServerNodesStatusToTable values =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = ["Server Id", "State", "Address"]
+    formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
+      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [show serverNodeHost <> ":" <> show serverNodePort]]
+    formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
+    rows = map formatRow values
+    colSpec = replicate (length titles) $ Table.column Table.expand Table.left def def
 
 approxNaturalTime :: NominalDiffTime -> String
 approxNaturalTime n

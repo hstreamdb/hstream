@@ -46,7 +46,7 @@ library
     HStream.Client.Execute
     HStream.Client.Gadget
     HStream.Client.Internal
-    HStream.Client.Type
+    HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
     HStream.Server.Exception
@@ -175,7 +175,7 @@ executable hstream-server
   ghc-options:
     -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
 
-executable hstream-client
+executable hstream
   import:           shared-properties
   main-is:          app/client.hs
   build-depends:
@@ -187,6 +187,7 @@ executable hstream-client
     , grpc-haskell-core
     , haskeline
     , hstream
+    , hstream-admin
     , hstream-common
     , hstream-common-stats
     , hstream-sql

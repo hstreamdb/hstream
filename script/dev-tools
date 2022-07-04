@@ -952,8 +952,8 @@ class QuickBuildDevImageCommand:
                     "/usr/local/bin/hstream-server",
                 ),
                 (
-                    f"{installdir}/hstream-client",
-                    "/usr/local/bin/hstream-client",
+                    f"{installdir}/hstream",
+                    "/usr/local/bin/hstream",
                 ),
                 (f"{installdir}/hadmin", "/usr/local/bin/hadmin"),
                 (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),

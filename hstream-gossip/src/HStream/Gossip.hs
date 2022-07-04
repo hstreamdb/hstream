@@ -20,8 +20,6 @@ module HStream.Gossip
   , getEpochSTM
   , getFailedNodes
   , getFailedNodesSTM
-  , getNodeHistory
-  , getNodeHistorySTM
   ) where
 
 import           Control.Concurrent.STM         (STM, atomically, readTVar,
@@ -76,15 +74,9 @@ getFailedNodes GossipContext {..} = readTVarIO deadServers <&> Map.elems
 getFailedNodesSTM :: GossipContext -> STM [I.ServerNode]
 getFailedNodesSTM GossipContext {..} = readTVar deadServers <&> Map.elems
 
-getNodeHistory :: GossipContext -> IO ([I.ServerNode], [I.ServerNode])
-getNodeHistory gc = atomically $ (,) <$> getMemberListSTM gc <*> getFailedNodesSTM gc
-
-getNodeHistorySTM :: GossipContext -> STM ([I.ServerNode], [I.ServerNode])
-getNodeHistorySTM gc = (,) <$> getMemberListSTM gc <*> getFailedNodesSTM gc
-
 getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
 getClusterStatus gc = do
-  (alives, deads) <- getNodeHistory gc
+  (alives, deads) <-  (,) <$> getMemberList gc <*> getFailedNodes gc
   return $ HM.fromList $
        map (helper NodeStateRunning . fromInternalServerNode) alives
     ++ map (helper NodeStateDead    . fromInternalServerNode) deads

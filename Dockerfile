@@ -62,7 +62,7 @@ COPY --from=hstreamdb/logdevice:latest /usr/local/bin/logdeviced \
 COPY --from=hstreamdb/logdevice /logdevice/common/test/ssl_certs/ /logdevice/common/test/ssl_certs/
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
-                    /root/.cabal/bin/hstream-client \
+                    /root/.cabal/bin/hstream \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
                     /usr/local/bin/
