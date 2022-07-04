@@ -12,7 +12,7 @@ thrift::
 	(cd external/hsthrift && THRIFT_COMPILE=$(THRIFT_COMPILE) make thrift)
 	(cd hstream-admin/if && $(THRIFT_COMPILE) logdevice/admin/if/admin.thrift --hs -r -o ..)
 
-grpc:: grpc-cpp grpc-hs grpc-gateway
+grpc:: grpc-cpp grpc-hs
 
 grpc-hs: grpc-cpp
 	($(CABAL) build proto3-suite && mkdir -p ~/.cabal/bin && \
@@ -46,20 +46,6 @@ grpc-cpp:
 		$(PROTO_COMPILE) --cpp_out gen-cpp --grpc_out gen-cpp -I protos --plugin=protoc-gen-grpc=$(PROTO_CPP_PLUGIN) \
 			protos/HStream/Server/HStreamApi.proto \
 	)
-
-grpc-go:
-	(cd common/api && mkdir -p gen-go && \
-		$(PROTO_COMPILE) -I protos -I /usr/local/include \
-			--go_out ./gen-go --go_opt paths=source_relative \
-			--go-grpc_out ./gen-go --go-grpc_opt paths=source_relative \
-			protos/HStream/Server/HStreamApi.proto)
-
-grpc-gateway: grpc-go
-	(cd common/api && mkdir -p gen-go && \
-		$(PROTO_COMPILE) -I protos -I /usr/local/include	\
-			--grpc-gateway_out ./gen-go --grpc-gateway_opt paths=source_relative \
-			--grpc-gateway_opt grpc_api_configuration=./protos/HStream/Server/HStreamApi.yaml \
-			protos/HStream/Server/HStreamApi.proto)
 
 sql:: sql-deps
 	(cd hstream-sql/etc && $(BNFC) --haskell --functor --text-token -p HStream -m -d SQL.cf -o ../gen-sql)
