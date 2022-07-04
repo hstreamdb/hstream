@@ -53,7 +53,6 @@ import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
-import           HStream.Server.Persistence     ()
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Logger           as Log
 

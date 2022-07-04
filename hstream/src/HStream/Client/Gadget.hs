@@ -33,7 +33,7 @@ describeCluster ctx@ClientContext{..} addr = do
   getInfoWithAddr ctx addr getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} =
-      hstreamApiDescribeCluster (mkClientNormalRequest Empty)
+      hstreamApiDescribeCluster (mkClientNormalRequest' Empty)
     handleRespApp :: ClientResult 'Normal API.DescribeClusterResponse -> IO (Maybe API.DescribeClusterResponse)
     handleRespApp
       (ClientNormalResponse resp@(API.DescribeClusterResponse _ _ nodes) _meta1 _meta2 _code _details) = do
@@ -48,7 +48,7 @@ lookupStream ctx addr stream = do
   where
     getRespApp API.HStreamApi{..} = do
       let req = def { API.lookupStreamRequestStreamName = stream }
-      hstreamApiLookupStream (mkClientNormalRequest req)
+      hstreamApiLookupStream (mkClientNormalRequest' req)
     handleRespApp = getServerResp >=> return . API.lookupStreamResponseServerNode
 
 lookupSubscription :: ClientContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
@@ -57,7 +57,7 @@ lookupSubscription ctx addr subId = do
   where
     getRespApp API.HStreamApi{..} = do
       let req = API.LookupSubscriptionRequest { lookupSubscriptionRequestSubscriptionId = subId }
-      hstreamApiLookupSubscription (mkClientNormalRequest req)
+      hstreamApiLookupSubscription (mkClientNormalRequest' req)
     handleRespApp = getServerResp >=> return . API.lookupSubscriptionResponseServerNode
 
 -- | Try the best to execute an GRPC request until all possible choices failed,

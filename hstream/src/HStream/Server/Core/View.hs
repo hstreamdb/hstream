@@ -17,7 +17,7 @@ import           HStream.Utils               (TaskStatus (..), cBytesToText)
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc name checkIfExist = do
   atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-  deleteStoreStream sc (HCS.transToViewStreamName name) checkIfExist
+  deleteStoreStream sc (HCS.transToStreamName name) checkIfExist
 
 hstreamQueryToView :: P.PersistentQuery -> API.View
 hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _ _) =

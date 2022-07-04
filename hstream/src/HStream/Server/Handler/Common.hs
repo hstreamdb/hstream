@@ -6,9 +6,7 @@
 
 module HStream.Server.Handler.Common where
 
-import           Control.Concurrent               (ThreadId, forkIO, killThread,
-                                                   putMVar, readMVar, swapMVar,
-                                                   takeMVar)
+import           Control.Concurrent
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    onException, try)
@@ -31,6 +29,7 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    runOps)
 import qualified Z.Data.CBytes                    as CB
 import           Z.Data.CBytes                    (CBytes)
+import qualified Z.IO.Network                     as ZNet
 
 import           HStream.Connector.ClickHouse
 import qualified HStream.Connector.HStore         as HCS
@@ -41,12 +40,15 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
                                                    runTask)
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
+import           HStream.Server.Config
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
+                                                   cBytesToText,
                                                    clientDefaultKey,
+                                                   newRandomText, runWithAddr,
                                                    textToCBytes)
 
 --------------------------------------------------------------------------------
@@ -146,32 +148,34 @@ isValidRecordId ShardRecordId{..} batchNumMap =
 
 --------------------------------------------------------------------------------
 
-runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
-runTaskWrapper sourceType sinkType taskBuilder ldclient = do
-  -- create a new ckpReader from ldclient
-  let readerName = textToCBytes (getTaskName taskBuilder)
-  -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
-  ldreader <- HS.newLDRsmCkpReader ldclient readerName HS.checkpointStoreLogID 5000 1000 Nothing
-  -- create a new sourceConnector
-  let sourceConnector = HCS.hstoreSourceConnector ldclient ldreader sourceType
-  -- create a new sinkConnector
-  let sinkConnector = HCS.hstoreSinkConnector ldclient sinkType
-  -- RUN TASK
-  runTask sourceConnector sinkConnector taskBuilder
+runTaskWrapper :: ServerContext -> TaskBuilder -> HS.LDClient -> IO ()
+runTaskWrapper ServerContext{..} taskBuilder ldclient = do
+  let consumerName = textToCBytes (getTaskName taskBuilder)
+
+  runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+    -- create a new sourceConnector
+    let sourceConnector = HCS.hstoreSourceConnectorWithoutCkp api (cBytesToText consumerName)
+    -- create a new sinkConnector
+    let sinkConnector = HCS.hstoreSinkConnector api
+    -- RUN TASK
+    runTask sourceConnector sinkConnector taskBuilder
 
 runSinkConnector
   :: ServerContext
   -> CB.CBytes -- ^ Connector Id
   -> SourceConnectorWithoutCkp
+  -> Text -- ^ source stream name
   -> SinkConnector
-  -> IO ThreadId
-runSinkConnector ServerContext{..} cid src connector = do
+  -> IO ()
+runSinkConnector ServerContext{..} cid src streamName connector = do
     P.setConnectorStatus cid Running zkHandle
-    forkIO $ catches (forever action) cleanup
+    catches (forever action) cleanup
   where
     writeToConnector c SourceRecord{..} =
       writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
-    action = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
+    action = do
+      datas <- (readRecordsWithoutCkp src) streamName
+      mapM_ (writeToConnector connector) datas
     cleanup =
       [ Handler (\(_ :: ERRException) -> do
                     Log.warning "Sink connector thread died due to SQL errors"
@@ -207,7 +211,8 @@ handleCreateSinkConnector
   :: ServerContext
   -> CB.CBytes -- ^ Connector Name
   -> Text -- ^ Source Stream Name
-  -> ConnectorConfig -> IO P.PersistentConnector
+  -> ConnectorConfig
+  -> IO P.PersistentConnector
 handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
   onException action cleanup
   where
@@ -218,9 +223,6 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
     action = do
       P.setConnectorStatus cid Creating zkHandle
       Log.debug "Start creating sink connector"
-      ldreader <- HS.newLDReader scLDClient 1000 Nothing
-      let src = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
-      subscribeToStreamWithoutCkp src sName Latest
 
       connector <- case cConfig of
         ClickhouseConnector config  -> do
@@ -232,10 +234,14 @@ handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
       P.setConnectorStatus cid Created zkHandle
       Log.debug . Log.buildString . CB.unpack $ cid <> "Connected"
 
-      tid <- runSinkConnector serverCtx cid src connector
-      Log.debug . Log.buildString $ "Sink connector started running on thread#" <> show tid
+      tid <- forkIO $ runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+        consumerName <- newRandomText 20
+        let src = HCS.hstoreSourceConnectorWithoutCkp api consumerName
+        subscribeToStreamWithoutCkp src sName
 
-      takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
+        runSinkConnector serverCtx cid src sName connector
+      Log.debug . Log.buildString $ "Sink connector started running on thread#" <> show tid
+      modifyMVar_ runningConnectors (return . HM.insert cid tid)
       P.getConnector cid zkHandle
 
 -- TODO: return info in a more maintainable way
@@ -245,7 +251,7 @@ handleCreateAsSelect :: ServerContext
                      -> P.QueryType
                      -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
+handleCreateAsSelect ctx@ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
     (getTaskName taskBuilder) commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
@@ -257,7 +263,7 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper HS.StreamTypeStream sinkType taskBuilder scLDClient
+      runTaskWrapper ctx taskBuilder scLDClient
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

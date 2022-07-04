@@ -100,11 +100,11 @@ taskBuilderWithName builder taskName =
     }
 
 runTask ::
-  SourceConnector ->
+  SourceConnectorWithoutCkp ->
   SinkConnector ->
   TaskBuilder ->
   IO ()
-runTask SourceConnector {..} sinkConnector taskBuilder@TaskTopologyConfig {..} = do
+runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyConfig {..} = do
   -- build and add internalSinkProcessor
   let sinkProcessors = HM.map (buildInternalSinkProcessor sinkConnector) sinkCfgs
   let newTaskBuilder =
@@ -120,17 +120,18 @@ runTask SourceConnector {..} sinkConnector taskBuilder@TaskTopologyConfig {..} =
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
     ctx <- buildTaskContext task lf
-    forM_ sourceStreamNames (`subscribeToStream` Latest)
+    forM_ sourceStreamNames (subscribeToStreamWithoutCkp)
     forever $ runRIO ctx $ do
-      sourceRecords <- liftIO readRecords
-      forM_ sourceRecords $ \SourceRecord {..} -> do
-        let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
-        let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
-        liftIO $ updateTimestampInTaskContext ctx srcTimestamp
-        e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
-        case e' of
-          Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
-          Right _                   -> return ()
+      forM sourceStreamNames $ \sourceStreamName -> do
+        sourceRecords <- liftIO $ readRecordsWithoutCkp sourceStreamName
+        forM_ sourceRecords $ \SourceRecord {..} -> do
+          let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
+          let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
+          liftIO $ updateTimestampInTaskContext ctx srcTimestamp
+          e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+          case e' of
+            Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
+            Right _                   -> return ()
 
 validateTopology :: TaskTopologyConfig -> ()
 validateTopology TaskTopologyConfig {..} =

@@ -8,15 +8,19 @@ module HStream.Utils.JSON
   , extractJsonStringDef'
   ) where
 
-import           Control.Monad        (join)
-import           Data.Aeson           as Aeson
-import           Data.Bifunctor       (first)
-import qualified Data.HashMap.Strict  as HM
-import           Data.Text            (Text)
-import qualified Data.Text            as Text
-import           Text.Casing          (fromHumps, toQuietSnake)
+import           Control.Monad           (join)
+import           Data.Aeson              (FromJSON (..), FromJSONKey,
+                                          ToJSON (..), ToJSONKey)
+import           Data.Aeson              as Aeson
+import           Data.Bifunctor          (first)
+import qualified Data.HashMap.Strict     as HM
+import           Data.Text               (Text)
+import qualified Data.Text               as Text
+import           Text.Casing             (fromHumps, toQuietSnake)
+import           Z.Data.CBytes           (CBytes)
 
 import           HStream.Utils.Common
+import           HStream.Utils.Converter
 
 -- | Flatten all JSON structures.
 --
@@ -62,3 +66,14 @@ extractJsonStringDef' :: Aeson.Value -> String
 extractJsonStringDef' (Aeson.String x) = Text.unpack x
 extractJsonStringDef' x = "Expecting string value, but got " <> show x
 {-# INLINE extractJsonStringDef' #-}
+
+--------------------------------------------------------------------------------
+
+instance FromJSON CBytes where
+  parseJSON v = let pText = parseJSON v in textToCBytes <$> pText
+
+instance ToJSON CBytes where
+  toJSON cb = toJSON (cBytesToText cb)
+
+instance FromJSONKey CBytes
+instance ToJSONKey CBytes

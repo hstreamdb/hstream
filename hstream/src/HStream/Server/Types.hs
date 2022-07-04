@@ -20,6 +20,7 @@ import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
+import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import qualified HStream.Stats                    as Stats
@@ -52,6 +53,8 @@ data ServerContext = ServerContext
   , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
+
+  , serverOpts               :: ServerOpts
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

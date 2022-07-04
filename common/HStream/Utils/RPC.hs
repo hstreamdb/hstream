@@ -9,6 +9,10 @@
 module HStream.Utils.RPC
   ( HStreamClientApi
 
+  , runWithAddr
+  , mkGRPCClientConf
+  , mkClientNormalRequest
+
   , mkServerErrResp
   , returnErrResp
   , returnResp
@@ -24,21 +28,54 @@ module HStream.Utils.RPC
   , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
   ) where
 
-import           Data.Aeson                    (FromJSON, ToJSON)
-import           Data.Swagger                  (ToSchema)
-import qualified Data.Vector                   as V
-import           GHC.Generics                  (Generic)
+import           Control.Monad
+import           Data.Aeson                       (FromJSON, ToJSON)
+import qualified Data.ByteString.Char8            as BSC
+import           Data.Swagger                     (ToSchema)
+import qualified Data.Vector                      as V
+import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Network.GRPC.HighLevel.Server
-import qualified Proto3.Suite                  as PB
-import           Z.Data.JSON                   (JSON)
-import           Z.IO.Time                     (SystemTime (..), getSystemTime')
+import qualified Proto3.Suite                     as PB
+import           Z.Data.JSON                      (JSON)
+import           Z.IO.Network.SocketAddr          (SocketAddr (..))
+import           Z.IO.Time                        (SystemTime (..),
+                                                   getSystemTime')
 
-import qualified Data.Text                     as T
+import qualified Data.Text                        as T
 import           HStream.Server.HStreamApi
-import           HStream.ThirdParty.Protobuf   (Struct, Timestamp (..))
+import           HStream.ThirdParty.Protobuf      (Struct, Timestamp (..))
 
 type HStreamClientApi = HStreamApi ClientRequest ClientResult
+
+runWithAddr :: SocketAddr -> (HStreamClientApi -> IO a) -> IO a
+runWithAddr addr action =
+  withGRPCClient (mkGRPCClientConf addr) (hstreamApiClient >=> action)
+
+mkGRPCClientConf :: SocketAddr -> ClientConfig
+mkGRPCClientConf = \case
+  SocketAddrIPv4 v4 port ->
+    ClientConfig
+    { clientServerHost = Host . BSC.pack . show $ v4
+    , clientServerPort = Port $ fromIntegral port
+    , clientArgs = []
+    , clientSSLConfig = Nothing
+    , clientAuthority = Nothing
+    }
+  SocketAddrIPv6 v6 port _flow _scope ->
+    ClientConfig
+    { clientServerHost = Host . BSC.pack . show $ v6
+    , clientServerPort = Port $ fromIntegral port
+    , clientArgs = []
+    , clientSSLConfig = Nothing
+    , clientAuthority = Nothing
+    }
+
+mkClientNormalRequest :: Int -> a -> ClientRequest 'Normal a b
+mkClientNormalRequest requestTimeout x = ClientNormalRequest x requestTimeout (MetadataMap mempty)
+
+--------------------------------------------------------------------------------
 
 mkServerErrResp :: StatusCode -> StatusDetails -> ServerResponse 'Normal a
 mkServerErrResp = ServerNormalResponse Nothing mempty

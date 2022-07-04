@@ -42,7 +42,7 @@ import           HStream.Utils
 createStream :: StreamName -> Int
   -> Action API.Stream
 createStream sName rFac API.HStreamApi{..} =
-  hstreamApiCreateStream (mkClientNormalRequest def
+  hstreamApiCreateStream (mkClientNormalRequest' def
     { API.streamStreamName        = sName
     , API.streamReplicationFactor = fromIntegral rFac})
 
@@ -60,29 +60,30 @@ terminateQueries :: TerminationSelection
   -> IO (ClientResult 'Normal API.TerminateQueriesResponse )
 terminateQueries (OneQuery qid) API.HStreamApi{..} =
   hstreamApiTerminateQueries
-    (mkClientNormalRequest def{API.terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid})
+    (mkClientNormalRequest' def{API.terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid})
 terminateQueries AllQueries API.HStreamApi{..} =
   hstreamApiTerminateQueries
-    (mkClientNormalRequest def{API.terminateQueriesRequestAll = True})
+    (mkClientNormalRequest' def{API.terminateQueriesRequestAll = True})
 terminateQueries (ManyQueries qids) API.HStreamApi{..} =
   hstreamApiTerminateQueries
-    (mkClientNormalRequest
+    (mkClientNormalRequest'
       def {API.terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids})
 
 dropAction :: Bool -> DropObject -> Action Empty
 dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
   case dropObject of
-    DStream    txt -> hstreamApiDeleteStream (mkClientNormalRequest def
+    DStream    txt -> hstreamApiDeleteStream (mkClientNormalRequest' def
                       { API.deleteStreamRequestStreamName     = txt
                       , API.deleteStreamRequestIgnoreNonExist = ignoreNonExist
+                      , API.deleteStreamRequestForce          = True
                       })
 
-    DView      txt -> hstreamApiDeleteView (mkClientNormalRequest def
+    DView      txt -> hstreamApiDeleteView (mkClientNormalRequest' def
                       { API.deleteViewRequestViewId = txt
                       , API.deleteViewRequestIgnoreNonExist = ignoreNonExist
                       })
 
-    DConnector txt -> hstreamApiDeleteConnector (mkClientNormalRequest def
+    DConnector txt -> hstreamApiDeleteConnector (mkClientNormalRequest' def
                       { API.deleteConnectorRequestName = txt
                       -- , API.deleteConnectorRequestIgnoreNonExist = checkIfExist
                       })
@@ -96,7 +97,7 @@ insertIntoStream sName insertType payload API.HStreamApi{..} = do
         JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
         RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp clientDefaultKey
       record = buildRecord header payload
-  hstreamApiAppend (mkClientNormalRequest def
+  hstreamApiAppend (mkClientNormalRequest' def
     { API.appendRequestStreamName = sName
     , API.appendRequestRecords    = V.singleton record
     })
@@ -104,7 +105,7 @@ insertIntoStream sName insertType payload API.HStreamApi{..} = do
 createStreamBySelect :: T.Text -> Int -> [String]
   -> Action API.CreateQueryStreamResponse
 createStreamBySelect sName rFac sql API.HStreamApi{..} =
-  hstreamApiCreateQueryStream (mkClientNormalRequest def
+  hstreamApiCreateQueryStream (mkClientNormalRequest' def
     { API.createQueryStreamRequestQueryStream
         = Just def
         { API.streamStreamName        = sName

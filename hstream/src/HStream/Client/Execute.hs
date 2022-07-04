@@ -22,7 +22,7 @@ import           HStream.Client.Type           (ClientContext (..))
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import           HStream.SQL
-import           HStream.Utils                 (Format)
+import           HStream.Utils                 (Format, serverNodeToSocketAddr)
 
 executeShowPlan :: ClientContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =
