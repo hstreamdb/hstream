@@ -8,6 +8,8 @@ RUN cabal update && \
     cd /hstream && make && \
     cabal build --flags "${BUILD_TYPE}" all && \
     cabal install --flags "${BUILD_TYPE}" hstream hstream-admin hstream-store && \
+    git clone --depth=1 https://github.com/hstreamdb/http-services.git && cd http-services && \
+    GO111MODULE=on CGO_ENABLED=0 GOOS=$(GOOS) go build -ldflags '-s -w' -v -o /root/.local/bin/hstream-http-server ./cmd/http-server && \
     rm -rf /hstream
 
 # ------------------------------------------------------------------------------
@@ -65,6 +67,7 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hstream-client \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
+                    /root/.local/bin/hstream-http-server \
                     /usr/local/bin/
 COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh
 COPY ./conf/hstream.yaml /etc/hstream/config.yaml
