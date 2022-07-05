@@ -8,9 +8,9 @@
 
 module HStream.SQL.Codegen where
 
-import           Data.Aeson                                      (Object,
-                                                                  Value (Bool, Null, Number, String))
-import qualified Data.Aeson                                      as Aeson
+import           Data.Aeson                      (Object,
+                                                  Value (Bool, Null, Number, String))
+import qualified Data.Aeson                      as Aeson
 import           Data.Bifunctor
 import qualified Data.ByteString.Char8           as BSC
 import           Data.Function
@@ -30,7 +30,6 @@ import           RIO
 import qualified RIO.ByteString.Lazy             as BL
 import qualified Z.Data.CBytes                   as CB
 
-import qualified HStream.Connector.Type          as HCT
 import           HStream.SQL.AST                 hiding (StreamName)
 import           HStream.SQL.Exception           (SomeSQLException (..),
                                                   throwSQLException)
@@ -41,7 +40,7 @@ import           HStream.SQL.Internal.Codegen    (binOpOnValue, compareValue,
                                                   getFieldByName,
                                                   unaryOpOnValue)
 import           HStream.SQL.Parse               (parseAndRefine)
-import           HStream.Utils                   (genUnique)
+import           HStream.Utils                   (genUnique, jsonObjectToStruct)
 
 import           DiffFlow.Graph
 import           DiffFlow.Types
@@ -50,7 +49,7 @@ import           DiffFlow.Types
 type SerMat  = Object
 type SerPipe = BL.ByteString
 
-type StreamName     = HCT.StreamName
+type StreamName = T.Text
 type ViewName = T.Text
 type ConnectorName  = T.Text
 type CheckIfExist  = Bool
@@ -71,7 +70,7 @@ data ConnectorConfig
 data HStreamPlan
   = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder
   | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder Int
-  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder (MVar (DataChangeBatch HCT.Timestamp))
+  | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder (MVar (DataChangeBatch Int64))
   | CreatePlan          StreamName Int
   | CreateConnectorPlan ConnectorType ConnectorName Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
@@ -225,8 +224,8 @@ genRExprValue (RExprUnaryOp name op expr) o =
   in (pack name, unaryOpOnValue op v)
 genRExprValue (RExprAggregate name agg) o =
   case agg of
-    Nullary _     -> (pack name, Null) -- FIXME: should return nothing
-    Unary _ rexpr -> genRExprValue rexpr o
+    Nullary _              -> (pack name, Null) -- FIXME: should return nothing
+    Unary _ rexpr          -> genRExprValue rexpr o
     Binary _ rexpr1 rexpr2 -> genRExprValue rexpr1 o -- FIXME: different binary aggs?
 
 genFilterR :: RWhere -> Object -> Bool

@@ -30,8 +30,9 @@ where
 import           Control.Concurrent
 import qualified Data.Aeson as Aeson
 import           Control.Exception                     (throw)
-import           Control.Concurrent (forkIO)
+import qualified Data.Aeson                            as Aeson
 import           Data.Maybe
+import qualified Data.Time                             as Time
 import           Data.Typeable
 import qualified Prelude                               as Prelude
 import           RIO
@@ -41,7 +42,6 @@ import           RIO.HashMap.Partial                   as HM'
 import qualified RIO.HashSet                           as HS
 import qualified RIO.List                              as L
 import qualified RIO.Text                              as T
-import qualified Data.Time                             as Time
 
 
 import qualified HStream.Logger                        as Log
@@ -54,10 +54,10 @@ import           HStream.Processing.Type
 import           HStream.Processing.Util
 import qualified HStream.Server.HStreamApi             as API
 
-import Types
-import Graph
-import Shard
-import Weird
+import           Graph
+import           Shard
+import           Types
+import           Weird
 
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =

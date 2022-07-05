@@ -74,7 +74,6 @@ library
     , diff-flow
     , extra
     , hstream-common
-    , hstream-connector
     , mysql-haskell
     , proto3-suite
     , rio
@@ -128,7 +127,6 @@ test-suite hstream-sql-test
     , containers
     , hspec
     , hstream-common
-    , hstream-connector
     , hstream-sql
     , HUnit
     , random                ^>=1.2

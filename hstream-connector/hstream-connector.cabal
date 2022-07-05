@@ -64,6 +64,7 @@ library
     , haxl
     , hstream-common
     , hstream-store
+    , hstream-sql
     , mysql-haskell
     , proto3-suite
     , proto3-wire

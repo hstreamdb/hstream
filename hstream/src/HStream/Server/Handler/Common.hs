@@ -7,7 +7,6 @@
 module HStream.Server.Handler.Common where
 
 import           Control.Concurrent
-import           Data.Hashable           (Hashable)
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
                                                    onException)
@@ -64,15 +63,15 @@ import           DiffFlow.Shard
 import           DiffFlow.Types
 import           DiffFlow.Weird
 
-runTaskWrapper :: Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> Maybe RWindow -> GraphBuilder -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> IO ()
-runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType window graphBuilder accumulation = do
+runTaskWrapper :: ServerContext -> Text -> [(Node, Text)] -> (Node, Text) -> HS.StreamType -> HS.StreamType -> Maybe RWindow -> GraphBuilder -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> IO ()
+runTaskWrapper ServerContext{..} taskName inNodesWithStreams outNodeWithStream sourceType sinkType window graphBuilder accumulation = do
   runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
-    let consumerName = textToCBytes (getTaskName taskBuilder)
+    let consumerName = taskName
 
     sourceConnectors <- forM inNodesWithStreams
       (\(inNode,_) -> do
         -- create a new sourceConnector
-        return $ HCS.hstoreSourceConnectorWithoutCkp api (cBytesToText consumerName)
+        return $ HCS.hstoreSourceConnectorWithoutCkp api consumerName
       )
 
     -- create a new sinkConnector
@@ -97,7 +96,7 @@ runTaskWrapper taskName inNodesWithStreams outNodeWithStream sourceType sinkType
     runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
 
 --------------------------------------------------------------------------------
-runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnector] -> SinkConnector -> TemporalFilter -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> Shard HStream.Connector.Type.Timestamp -> IO ()
+runTask' :: [(Node, Text)] -> (Node, Text) -> [SourceConnectorWithoutCkp] -> SinkConnector -> TemporalFilter -> Maybe (MVar (DataChangeBatch HCT.Timestamp)) -> Shard HStream.Connector.Type.Timestamp -> IO ()
 runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard@Shard{..} = do
 
   -- the task itself
@@ -105,15 +104,15 @@ runTask' inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector tem
 
   -- subscribe to all source streams
   forM_ (sourceConnectors `zip` inNodesWithStreams)
-    (\(SourceConnector{..}, (_, sourceStreamName)) ->
-        subscribeToStream sourceStreamName Latest
+    (\(SourceConnectorWithoutCkp{..}, (_, sourceStreamName)) ->
+        subscribeToStreamWithoutCkp sourceStreamName
     )
 
   -- main loop: push input to INPUT nodes
   forkIO . forever $ do
     forM_ (sourceConnectors `zip` inNodesWithStreams)
-      (\(SourceConnector{..}, (inNode, _)) -> do
-          sourceRecords <- readRecords
+      (\(SourceConnectorWithoutCkp{..}, (inNode, sourceStreamName)) -> do
+          sourceRecords <- readRecordsWithoutCkp sourceStreamName
           forM_ sourceRecords $ \SourceRecord{..} -> do
             let dataChange
                   = DataChange
@@ -258,7 +257,7 @@ handleCreateAsSelect :: ServerContext
                      -> P.QueryType
                      -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkType = do
+handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType sinkType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
     tName commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
@@ -278,7 +277,7 @@ handleCreateAsSelect ServerContext{..} plan commandQueryStmtText queryType sinkT
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType win builder accumulation
+      runTaskWrapper ctx tName inNodesWithStreams outNodeWithStream HS.StreamTypeStream sinkType win builder accumulation
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString

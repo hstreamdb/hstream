@@ -41,9 +41,10 @@ import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Connector.Common         (SourceConnector (..))
 import qualified HStream.IO.Worker                as IO
+import           HStream.Connector.Common         (SourceConnectorWithoutCkp (..))
 import           HStream.Connector.Type           hiding (StreamName, Timestamp)
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config
 import qualified HStream.Server.Core.Common       as Core
@@ -62,9 +63,9 @@ import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
-import qualified HStream.SQL.Internal.Codegen     as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
+import qualified HStream.SQL.Internal.Codegen     as HSC
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
@@ -98,83 +99,84 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       handleCreateAsSelect sc plan commandQueryStmtText query S.StreamTypeView
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
       returnCommandQueryEmptyResp
-    CreatePlan stream fac -> do
-      let s = API.Stream
-            { streamStreamName = stream
-            , streamReplicationFactor = fromIntegral fac
-            , streamBacklogDuration = 0
-            }
-      _ <- createStreamHandler sc (ServerNormalRequest _metadata s)
-      returnCommandQueryEmptyResp
-    InsertPlan stream insertType payload -> do
-      timestamp <- getProtoTimestamp
-      let header = case insertType of
-            JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
-            RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
-      let record = buildRecord header payload
-      let request = AppendRequest
-                  { appendRequestStreamName = stream
-                  , appendRequestRecords = V.singleton record
-                  }
-      _ <- append0Handler sc (ServerNormalRequest _metadata request)
-      returnCommandQueryEmptyResp
-    DropPlan checkIfExist dropObject -> case dropObject of
-      DStream stream -> do
-        let request = DeleteStreamRequest
-                    { deleteStreamRequestStreamName = stream
-                    , deleteStreamRequestIgnoreNonExist = not checkIfExist
-                    , deleteStreamRequestForce = False
-                    }
-        _ <- deleteStreamHandler sc (ServerNormalRequest _metadata request)
+    CreatePlan stream fac ->
+      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+        let s = API.Stream
+              { streamStreamName = stream
+              , streamReplicationFactor = fromIntegral fac
+              , streamBacklogDuration = 0
+              }
+        hstreamApiCreateStream api (mkClientNormalRequest 1000 s)
         returnCommandQueryEmptyResp
-      DView view -> do
-        let request = DeleteViewRequest
-                    { deleteViewRequestViewId = view
-                    , deleteViewRequestIgnoreNonExist = not checkIfExist
+    InsertPlan stream insertType payload ->
+      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+        timestamp <- getProtoTimestamp
+        let header = case insertType of
+              JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
+              RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
+        let record = buildRecord header payload
+        let request = AppendRequest
+                    { appendRequestStreamName = stream
+                    , appendRequestRecords = V.singleton record
                     }
-        _ <- deleteViewHandler sc (ServerNormalRequest _metadata request)
+        hstreamApiAppend api (mkClientNormalRequest 1000 request)
         returnCommandQueryEmptyResp
-      DConnector conn -> do
-        let request = DeleteConnectorRequest
-                    { deleteConnectorRequestId = conn
-                    }
-        _ <- deleteConnectorHandler sc (ServerNormalRequest _metadata request)
-        returnCommandQueryEmptyResp
+    DropPlan checkIfExist dropObject ->
+      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+        case dropObject of
+          DStream stream -> do
+            let request = DeleteStreamRequest
+                        { deleteStreamRequestStreamName = stream
+                        , deleteStreamRequestIgnoreNonExist = not checkIfExist
+                        , deleteStreamRequestForce = False
+                        }
+            hstreamApiDeleteStream api (mkClientNormalRequest 1000 request)
+            returnCommandQueryEmptyResp
+          DView view -> do
+            let request = DeleteViewRequest
+                        { deleteViewRequestViewId = view
+                        , deleteViewRequestIgnoreNonExist = not checkIfExist
+                        }
+            hstreamApiDeleteView api (mkClientNormalRequest 1000 request)
+            returnCommandQueryEmptyResp
+          DConnector conn -> do
+            let request = DeleteConnectorRequest
+                        { deleteConnectorRequestName = conn
+                        }
+            hstreamApiDeleteConnector api (mkClientNormalRequest 1000 request)
+            returnCommandQueryEmptyResp
     -- FIXME: Return non-empty results
-    ShowPlan showObject -> case showObject of
-      SStreams -> do
-        _ <- listStreamsHandler sc (ServerNormalRequest _metadata ListStreamsRequest)
-        returnCommandQueryEmptyResp
-      SQueries -> do
-        _ <- listQueriesHandler sc (ServerNormalRequest _metadata ListQueriesRequest)
-        returnCommandQueryEmptyResp
-      SConnectors -> do
-        _ <- listConnectorsHandler sc (ServerNormalRequest _metadata ListConnectorsRequest)
-        returnCommandQueryEmptyResp
-      SViews -> do
-        _ <- listViewsHandler sc (ServerNormalRequest _metadata ListViewsRequest)
-        returnCommandQueryEmptyResp
-    TerminatePlan sel -> case sel of
-      AllQueries -> do
-        let request = TerminateQueriesRequest
-                    { terminateQueriesRequestQueryId = V.empty
-                    , terminateQueriesRequestAll = True
-                    }
-        _ <- terminateQueriesHandler sc (ServerNormalRequest _metadata request)
-        returnCommandQueryEmptyResp
-      OneQuery qid -> do
-        let request = TerminateQueriesRequest
-                    { terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid
-                    , terminateQueriesRequestAll = False
-                    }
-        _ <- terminateQueriesHandler sc (ServerNormalRequest _metadata request)
-        returnCommandQueryEmptyResp
-      ManyQueries qids -> do
-        let request = TerminateQueriesRequest
-                    { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
-                    , terminateQueriesRequestAll = False
-                    }
-        _ <- terminateQueriesHandler sc (ServerNormalRequest _metadata request)
+    ShowPlan showObject ->
+      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+        case showObject of
+          SStreams -> do
+            hstreamApiListStreams api (mkClientNormalRequest 1000 ListStreamsRequest)
+            returnCommandQueryEmptyResp
+          SQueries -> do
+            hstreamApiListQueries api (mkClientNormalRequest 1000 ListQueriesRequest)
+            returnCommandQueryEmptyResp
+          SConnectors -> do
+            hstreamApiListConnectors api (mkClientNormalRequest 1000 ListConnectorsRequest)
+            returnCommandQueryEmptyResp
+          SViews -> do
+            hstreamApiListViews api (mkClientNormalRequest 1000 ListViewsRequest)
+            returnCommandQueryEmptyResp
+    TerminatePlan sel ->
+      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
+        let request = case sel of
+              AllQueries       -> TerminateQueriesRequest
+                                  { terminateQueriesRequestQueryId = V.empty
+                                  , terminateQueriesRequestAll = True
+                                  }
+              OneQuery qid     -> TerminateQueriesRequest
+                                  { terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid
+                                  , terminateQueriesRequestAll = False
+                                  }
+              ManyQueries qids -> TerminateQueriesRequest
+                                  { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
+                                  , terminateQueriesRequestAll = False
+                                  }
+        hstreamApiTerminateQueries api (mkClientNormalRequest 1000 request)
         returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
       queries <- P.getQueries zkHandle

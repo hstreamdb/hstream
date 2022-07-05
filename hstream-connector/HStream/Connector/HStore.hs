@@ -90,7 +90,7 @@ subscribeToHStoreStream ldclient reader streamId startOffset = do
     Offset lsn -> return lsn
   S.ckpReaderStartReading reader logId startLSN S.LSN_MAX
 
-subscribeToHStoreStream' :: HStreamClientApi -> T.Text -> HPT.StreamName -> IO ()
+subscribeToHStoreStream' :: HStreamClientApi -> T.Text -> HCT.StreamName -> IO ()
 subscribeToHStoreStream' API.HStreamApi{..} consumerName stream = do
   let req = API.Subscription
             { subscriptionSubscriptionId = hstoreSubscriptionPrefix <> stream <> "_" <> consumerName
@@ -105,7 +105,7 @@ unSubscribeToHStoreStream ldclient reader streamId = do
   logId <- S.getUnderlyingLogId ldclient streamId Nothing
   S.ckpReaderStopReading reader logId
 
-unSubscribeToHStoreStream' :: HStreamClientApi -> T.Text -> HPT.StreamName -> IO ()
+unSubscribeToHStoreStream' :: HStreamClientApi -> T.Text -> HCT.StreamName -> IO ()
 unSubscribeToHStoreStream' API.HStreamApi{..} consumerName streamName = do
   let req = API.DeleteSubscriptionRequest
             { deleteSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName
@@ -129,7 +129,7 @@ dataRecordToSourceRecord ldclient Payload {..} = do
     , srcOffset = pLSN
     }
 
-receivedRecordToSourceRecord :: HPT.StreamName -> API.ReceivedRecord -> SourceRecord
+receivedRecordToSourceRecord :: HCT.StreamName -> API.ReceivedRecord -> SourceRecord
 receivedRecordToSourceRecord streamName API.ReceivedRecord{..} =
   let Just API.RecordId{..} = receivedRecordRecordId
       hsrBytes     = receivedRecordRecord in
@@ -151,7 +151,7 @@ readRecordsFromHStore ldclient reader maxlen = do
   let payloads = concat $ map getJsonFormatRecords dataRecords
   mapM (dataRecordToSourceRecord ldclient) payloads
 
-readRecordsFromHStore' :: HStreamClientApi -> T.Text -> Int -> HPT.StreamName -> IO [SourceRecord]
+readRecordsFromHStore' :: HStreamClientApi -> T.Text -> Int -> HCT.StreamName -> IO [SourceRecord]
 readRecordsFromHStore' api consumerName maxlen streamName = do
   let lookupSubReq = API.LookupSubscriptionRequest
                      { API.lookupSubscriptionRequestSubscriptionId = hstoreSubscriptionPrefix <> streamName <> "_" <> consumerName

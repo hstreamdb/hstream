@@ -6,12 +6,12 @@
 
 module HStream.RunQuerySpec (spec) where
 
+import           Control.Concurrent
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 import           Test.Hspec
-import           Control.Concurrent
 
 import           HStream.Server.HStreamApi
 import           HStream.SpecUtils

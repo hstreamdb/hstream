@@ -106,7 +106,7 @@ insertIntoStream sName insertType payload API.HStreamApi{..} = do
 createStreamBySelect :: T.Text -> Int -> String
   -> Action API.CommandQueryResponse
 createStreamBySelect sName rFac sql API.HStreamApi{..} =
-  hstreamApiExecuteQuery (mkClientNormalRequest def
+  hstreamApiExecuteQuery (mkClientNormalRequest' def
     { API.commandQueryStmtText = T.pack sql})
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
