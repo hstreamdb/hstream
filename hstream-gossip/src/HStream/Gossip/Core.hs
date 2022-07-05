@@ -115,7 +115,9 @@ handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = un
   case Map.lookup serverNodeId sMap of
     Nothing -> do
       addToServerList gc node msg OK
-      atomically $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+      atomically $ do
+        modifyTVar' deadServers $ Map.delete serverNodeId
+        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
     Just ServerStatus{..} -> unless (serverInfo == node) $
       -- TODO: vote to resolve conflict
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
@@ -128,6 +130,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm _inc I.ServerNode{..} _node
       modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
       writeTVar latestMessage msg
       modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
+      modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
       mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
       case mWorker of
         Nothing -> return (pure ())
