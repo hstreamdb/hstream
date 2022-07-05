@@ -5,8 +5,8 @@
 module HStream.Server.Shard where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically,
-                                         newEmptyTMVarIO, putTMVar, swapTMVar,
-                                         takeTMVar)
+                                         newEmptyTMVarIO, putTMVar, readTMVar,
+                                         swapTMVar, takeTMVar)
 import           Control.Exception      (Exception (fromException, toException),
                                          SomeException, bracket, throwIO)
 import qualified Crypto.Hash            as CH
@@ -109,6 +109,18 @@ getMergedShard mp1 key1 mp2 key2 = do
   s2 <- getShard' mp2 key2
   mergeShard s1 s2
 
+-- | insert a new shard into ShardMap, if the shardKey is already in the map, then new shard's epoch need to
+--   greater than the exist shard. Otherwise the insertion will be ignore.
+insertShard :: ShardKey -> Shard -> ShardMap -> ShardMap
+insertShard key shard@Shard{epoch=epoch} mp =
+  case M.lookup key mp of
+    Just Shard{epoch=oEpoch} | epoch <= oEpoch -> mp
+                             | otherwise -> M.insert key shard mp
+    Nothing -> M.insert key shard mp
+
+deleteShard :: ShardKey -> ShardMap -> ShardMap
+deleteShard = M.delete
+
 ---------------------------------------------------------------------------------------------------------------
 ---- sharedShardMap
 
@@ -137,8 +149,17 @@ getShardMap SharedShardMap{..} hashValue = takeTMVar $ (V.!) shardMaps (fromInte
 putShardMap :: SharedShardMap -> ShardMap -> Word32 -> STM ()
 putShardMap SharedShardMap{..} mp hashValue = putTMVar ((V.!) shardMaps (fromIntegral hashValue)) mp
 
+readShardMap :: SharedShardMap -> Word32 -> STM ShardMap
+readShardMap SharedShardMap{..} hashValue = readTMVar $ (V.!) shardMaps (fromIntegral hashValue)
+
 modifyShardMap :: SharedShardMap -> Word32 -> ShardMap -> STM ShardMap
 modifyShardMap SharedShardMap{..} hashValue = swapTMVar ((V.!) shardMaps (fromIntegral hashValue))
+
+getShardByKey :: SharedShardMap -> ShardKey -> IO (Maybe Shard)
+getShardByKey mp key = do
+  let hashValue = getShardMapIdx key
+  shardMp <- atomically $ readShardMap mp hashValue
+  return $ getShard shardMp key
 
 type SplitStrategies = ShardMap -> ShardKey -> Either ShardException (Shard, Shard)
 

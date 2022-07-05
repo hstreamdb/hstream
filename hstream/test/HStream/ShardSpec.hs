@@ -12,8 +12,9 @@ import           Data.Maybe            (fromJust)
 import           Data.Word             (Word64)
 import qualified HStream.Logger        as Log
 import           HStream.Server.Shard  (Shard (..), ShardKey, ShardMap,
-                                        getShard, getShardMapIdx, mergeShard,
-                                        mkShard, mkShardMap, splitShardByKey)
+                                        deleteShard, getShard, getShardMapIdx,
+                                        insertShard, mergeShard, mkShard,
+                                        mkShardMap, splitShardByKey)
 import qualified HStream.Store         as S
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
@@ -123,8 +124,8 @@ shardSpec = describe "test manipulate shard" $ do
               (id1, id2) <- generate genOrderPair
               let s1'@Shard{startKey=sk1} = s1 {logId = id1}
               let s2'@Shard{startKey=sk2} = s2 {logId = id2}
-              let mp1 = M.insert sk1 s1' shardMp
-                  mp2 = M.insert sk2 s2' mp1
+              let mp1 = insertShard sk1 s1' shardMp
+                  mp2 = insertShard sk2 s2' mp1
               loop (cnt - 1) mp2
             else do
               shard1@Shard{startKey=sk1, endKey=ek1, logId=id1} <- randomShard shardMp
@@ -141,6 +142,6 @@ shardSpec = describe "test manipulate shard" $ do
                      Log.fatal $ "shardMp = " <> Log.buildString' (show shardMp)
                    isRight res `shouldBe` True
                    let (shard'@Shard{startKey=sk}, removedKey) = head . rights $ [res]
-                   let mp1 = M.delete removedKey shardMp
-                       mp2 = M.insert sk shard'{logId = id1 + id2} mp1
+                   let mp1 = deleteShard removedKey shardMp
+                       mp2 = insertShard sk shard'{logId = id1 + id2} mp1
                    loop (cnt - 1) mp2
