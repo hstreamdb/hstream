@@ -12,6 +12,7 @@ import           Control.Exception                (Handler (Handler),
                                                    onException, try)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad                    (forever, void, when)
+import qualified Data.ByteString                  as BS
 import           Data.Foldable                    (foldrM)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
@@ -19,6 +20,7 @@ import           Data.List                        (find)
 import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
+import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Database.ClickHouseDriver.Client (createClient)
 import           Database.MySQL.Base              (ERRException)
@@ -41,6 +43,7 @@ import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
 import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
                                                    SourceRecord (..))
 import           HStream.Server.Config
+import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
@@ -48,6 +51,7 @@ import qualified HStream.Store                    as HS
 import           HStream.Utils                    (TaskStatus (..),
                                                    cBytesToText,
                                                    clientDefaultKey,
+                                                   decodeByteStringBatch,
                                                    newRandomText, runWithAddr,
                                                    textToCBytes)
 
@@ -145,6 +149,17 @@ isValidRecordId ShardRecordId{..} batchNumMap =
     Just maxIdx | sriBatchIndex >= maxIdx || sriBatchIndex < 0 -> False
                 | otherwise -> True
     Nothing -> False
+
+decodeRecordBatch :: HS.DataRecord BS.ByteString -> (HS.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
+decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
+  where
+    payload = HS.recordPayload dataRecord
+    logId = HS.recordLogID dataRecord
+    batchId = HS.recordLSN dataRecord
+    recordBatch = decodeByteStringBatch payload
+    indexedRecords = V.indexed $ hstreamRecordBatchBatch recordBatch
+    shardRecordIds = V.map (\(i, _) -> ShardRecordId batchId (fromIntegral i)) indexedRecords
+    receivedRecords = V.map (\(i, a) -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) indexedRecords
 
 --------------------------------------------------------------------------------
 

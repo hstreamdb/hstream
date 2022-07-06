@@ -98,6 +98,7 @@ subscribeToHStoreStream' API.HStreamApi{..} consumerName stream = do
             , subscriptionStreamName = stream
             , subscriptionAckTimeoutSeconds = hstoreSubscriptionAckTimeoutSeconds
             , subscriptionMaxUnackedRecords = hstoreSubscriptionMaxUnackedRecords
+            , subscriptionOffset = Enumerated (Right API.SpecialOffsetLATEST)
             }
   void $ hstreamApiCreateSubscription (mkClientNormalRequest 1000 req)
 

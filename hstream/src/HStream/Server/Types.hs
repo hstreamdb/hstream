@@ -4,6 +4,7 @@ module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
+import           Data.Hashable                    (hash)
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
@@ -18,13 +19,17 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
+import qualified HStream.Logger                   as Log
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
+import           HStream.Server.ReaderPool        (ReaderPool)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
+import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -53,8 +58,8 @@ data ServerContext = ServerContext
   , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
-
   , serverOpts               :: ServerOpts
+  , readerPool               :: ReaderPool
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
@@ -74,6 +79,9 @@ data SubscribeState
   | SubscribeStateStopped
   deriving (Eq, Show)
 
+data SubStartOffset = EarlistOffset | LatestOffset
+  deriving (Eq, Show)
+
 data SubscribeContext = SubscribeContext
   { subSubscriptionId    :: T.Text,
     subStreamName        :: T.Text,
@@ -87,7 +95,8 @@ data SubscribeContext = SubscribeContext
     subAssignment        :: Assignment,
     subCurrentTime ::  TVar Word64,
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
-    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds)
+    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
+    subStartOffset       :: SubStartOffset
   }
 
 data CheckedRecordIds = CheckedRecordIds {
@@ -163,3 +172,20 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+--------------------------------------------------------------------------------
+-- shard
+
+getShardName :: Int -> CB.CBytes
+getShardName idx = textToCBytes $ "shard" <> T.pack (show idx)
+
+getShard :: HS.LDClient -> HS.StreamId -> Maybe T.Text -> IO HS.C_LogID
+getShard client streamId key = do
+  partitions <- HS.listStreamPartitions client streamId
+  let size = length partitions - 1
+  let shard = getShardName . getShardIdx size <$> key
+  HS.getUnderlyingLogId client streamId shard
+
+getShardIdx :: Int -> T.Text -> Int
+getShardIdx size key = let hashValue = hash key
+                        in hashValue `mod` size
