@@ -1,0 +1,61 @@
+hosts:
+  remote_ssh_host1: 192.168.10.1
+  remote_ssh_host2: 192.168.10.2
+  remote_ssh_host3: 192.168.10.3
+  remote_ssh_host4: 192.168.10.4
+zookeeper:
+  persistent-dir: "/data/zookeeper"
+  hosts:
+    - remote_ssh_host2
+    - remote_ssh_host3
+    - remote_ssh_host4
+  enable-metrics-provider: true
+hstore:
+  image: hstreamdb/hstream:v0.7.1
+  persistent-dir: "/data/store"
+  hosts:
+    - remote_ssh_host2
+    - remote_ssh_host3
+    - remote_ssh_host4
+  local_config_path: "$PWD/logdevice.conf"
+  remote_config_path: "/root/.config/dev-deploy/logdevice.conf"
+hstore-admin:
+  image: hstreamdb/hstream:v0.7.1
+  memory: 1024m
+  cpus: "0.5"
+  hosts:
+    - remote_ssh_host1
+hserver:
+  image: hstreamdb/hstream:v0.7.1
+  memory: 2048m
+  cpus: "1.5"
+  hosts:
+    - remote_ssh_host2
+    - remote_ssh_host3
+    - remote_ssh_host4
+  local_config_path: "$PWD/server.conf"
+  remote_config_path: "/root/.config/dev-deploy/server.conf"
+prometheus:
+  hosts:
+    - remote_ssh_host1
+  local_config_path: "$PWD/prometheus-config-dir"
+  remote_config_path: "/root/.config/dev-deploy/prometheus-config-dir"
+node-exporter:
+  hosts:
+    - remote_ssh_host2
+    - remote_ssh_host3
+    - remote_ssh_host4
+cadvisor:
+  image: gcr.io/cadvisor/cadvisor:v0.39.3
+  httpPort: 7000
+  hosts:
+    - remote_ssh_host2
+    - remote_ssh_host3
+    - remote_ssh_host4
+grafana:
+  image: grafana/grafana-oss:main
+  disable-login: true
+  local-provisioning-path: "$PWD/configs/grafana-provisioning"
+  remote-provisioning-path: "/root/.config/dev-deploy/grafana/configs/provisioning"
+  hosts:
+    - remote_ssh_host1

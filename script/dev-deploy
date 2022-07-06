@@ -10,9 +10,11 @@ import json
 import os
 import getpass
 import subprocess
+import sys
 from pathlib import Path
-
+import yaml
 from typing import List, Optional, Tuple
+
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
@@ -37,8 +39,18 @@ CWD = os.getcwd()
 PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 )
-DEFAULT_DEPLOY_CONF = os.path.join(PROJECT_ROOT, "script/dev_deploy_conf.json")
+DEFAULT_DEPLOY_CONF = [
+    os.path.join(PROJECT_ROOT, "script/dev_deploy_conf.yml"),
+    os.path.join(PROJECT_ROOT, "script/dev_deploy_conf.yaml"),
+    os.path.join(PROJECT_ROOT, "script/dev_deploy_conf.json"),
+]
 DEFAULT_CONTAINER_CONFIG_PATH = "/etc/hstream/config.yaml"
+
+
+def fall_back_default_conf():
+    for path in DEFAULT_DEPLOY_CONF:
+        if os.path.isfile(path):
+            return path
 
 
 def run_sh(
@@ -1253,7 +1265,7 @@ class SimpleService(Service):
         self.GRAFANA_SVC = super().get_service(GrafanaService)
 
     def init_parser(self):
-        self.cmd.add_argument("--config", default=DEFAULT_DEPLOY_CONF)
+        self.cmd.add_argument("--config", default=fall_back_default_conf())
 
         action_subparser = self.cmd.add_subparsers(
             title="action", dest="action_command"
@@ -1277,131 +1289,149 @@ class SimpleService(Service):
         action_subparser.add_parser("remove", help="remove persistent data")
 
     def parse_config(self, config):
+        if not os.path.isfile(config):
+            logerr(
+                f"The configuration file {config} does not exists or is not a file!"
+            )
+            sys.exit(-1)
+
+        _, file_ext = os.path.splitext(config)
+        if file_ext == ".json":
+            self.parse_config_json(config)
+        elif file_ext == ".yml" or file_ext == ".yaml":
+            self.parse_config_yaml(config)
+        else:
+            logerr(
+                "The format of configuration file should be specified in either YAML or JSON."
+            )
+            sys.exit(-1)
+
+    def parse_config_yaml(self, config: str):
+        with open(config, "r") as f:
+            deploy_cfg = yaml.safe_load(f)
+            loginfo(f"Found YAML configuration {config}.")
+            self.set_config(deploy_cfg)
+
+    def parse_config_json(self, config: str):
         with open(config, "r") as f:
             deploy_cfg = json.load(f)
-            self.zk_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["zookeeper"])["hosts"]
-            ]
-            self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
-            # config_path_in_zk: zk:host1:2181,host2:2181/logdevice.conf
-            self.config_path_in_zk = (
-                "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
-            )
-            self.admin_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["hstore-admin"])["hosts"]
-            ]
-            self.hstore_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["hstore"])["hosts"]
-            ]
-            self.hserver_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["hserver"])["hosts"]
-            ]
-            self.prometheus_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["prometheus"])["hosts"]
-            ]
-            self.node_exporter_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["node-exporter"])["hosts"]
-            ]
-            self.cadvisor_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["cadvisor"])["hosts"]
-            ]
-            self.grafana_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["grafana"])["hosts"]
-            ]
+            loginfo(f"Found JSON configuration {config}.")
+            self.set_config(deploy_cfg)
 
-            self.zk_enable_metrics_provider = deploy_cfg["zookeeper"].get(
-                "enable-metrics-provider"
-            )
-            self.hstore_local_conf = deploy_cfg["hstore"].get(
-                "local_config_path"
-            )
-            self.hstore_remote_conf = deploy_cfg["hstore"].get(
-                "remote_config_path"
-            )
-            self.hserver_local_conf = deploy_cfg["hserver"].get(
-                "local_config_path"
-            )
-            self.hserver_remote_conf = deploy_cfg["hserver"].get(
-                "remote_config_path"
-            )
-            self.prometheus_local_conf = deploy_cfg["prometheus"].get(
-                "local_config_path"
-            )
-            self.prometheus_remote_conf = deploy_cfg["prometheus"].get(
-                "remote_config_path"
-            )
-            self.grafana_local_conf = deploy_cfg["grafana"].get(
-                "local_config_path"
-            )
-            self.grafana_remote_conf = deploy_cfg["grafana"].get(
-                "remote_config_path"
-            )
+    def set_config(self, deploy_cfg):
+        self.zk_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["zookeeper"])["hosts"]
+        ]
+        self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
+        # config_path_in_zk: zk:host1:2181,host2:2181/logdevice.conf
+        self.config_path_in_zk = (
+            "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
+        )
+        self.admin_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["hstore-admin"])["hosts"]
+        ]
+        self.hstore_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["hstore"])["hosts"]
+        ]
+        self.hserver_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["hserver"])["hosts"]
+        ]
+        self.prometheus_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["prometheus"])["hosts"]
+        ]
+        self.node_exporter_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["node-exporter"])["hosts"]
+        ]
+        self.cadvisor_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["cadvisor"])["hosts"]
+        ]
+        self.grafana_hosts = [
+            (host, deploy_cfg["hosts"][host])
+            for host in (deploy_cfg["grafana"])["hosts"]
+        ]
 
-            self.zk_image = deploy_cfg["zookeeper"].get(
-                "image", ZookeeperService.DEFAULT_IMAGE_TAG
-            )
-            self.hstore_image = deploy_cfg["hstore"].get(
-                "image", HStoreService.DEFAULT_IMAGE_TAG
-            )
-            self.hadmin_image = deploy_cfg["hstore-admin"].get(
-                "image", HStoreAdminService.DEFAULT_IMAGE_TAG
-            )
-            self.hserver_image = deploy_cfg["hserver"].get(
-                "image", HServerService.DEFAULT_IMAGE_TAG
-            )
-            self.prometheus_image = deploy_cfg["prometheus"].get(
-                "image", PrometheusService.DEFAULT_IMAGE_TAG
-            )
-            self.node_exporter_image = deploy_cfg["node-exporter"].get(
-                "image", NodeExporterService.DEFAULT_IMAGE_TAG
-            )
-            self.cadvisor_image = deploy_cfg["cadvisor"].get(
-                "image", CadvisorService.DEFAULT_IMAGE_TAG
-            )
-            self.grafana_image = deploy_cfg["grafana"].get(
-                "image", GrafanaService.DEFAULT_IMAGE_TAG
-            )
+        self.zk_enable_metrics_provider = deploy_cfg["zookeeper"].get(
+            "enable-metrics-provider"
+        )
+        self.hstore_local_conf = deploy_cfg["hstore"].get("local_config_path")
+        self.hstore_remote_conf = deploy_cfg["hstore"].get("remote_config_path")
+        self.hserver_local_conf = deploy_cfg["hserver"].get("local_config_path")
+        self.hserver_remote_conf = deploy_cfg["hserver"].get(
+            "remote_config_path"
+        )
+        self.prometheus_local_conf = deploy_cfg["prometheus"].get(
+            "local_config_path"
+        )
+        self.prometheus_remote_conf = deploy_cfg["prometheus"].get(
+            "remote_config_path"
+        )
+        self.grafana_local_conf = deploy_cfg["grafana"].get("local_config_path")
+        self.grafana_remote_conf = deploy_cfg["grafana"].get(
+            "remote_config_path"
+        )
 
-            self.cadvisor_port = deploy_cfg["cadvisor"].get(
-                "port", CadvisorService.DEFAULT_METRICS_PORT
-            )
-            self.grafana_disable_login = deploy_cfg["grafana"].get(
-                "disable-login"
-            )
-            self.grafana_local_provisioning_path = deploy_cfg["grafana"].get(
-                "local-provisioning-path"
-            )
-            self.grafana_remote_provisioning_path = deploy_cfg["grafana"].get(
-                "remote-provisioning-path"
-            )
+        self.zk_image = deploy_cfg["zookeeper"].get(
+            "image", ZookeeperService.DEFAULT_IMAGE_TAG
+        )
+        self.hstore_image = deploy_cfg["hstore"].get(
+            "image", HStoreService.DEFAULT_IMAGE_TAG
+        )
+        self.hadmin_image = deploy_cfg["hstore-admin"].get(
+            "image", HStoreAdminService.DEFAULT_IMAGE_TAG
+        )
+        self.hserver_image = deploy_cfg["hserver"].get(
+            "image", HServerService.DEFAULT_IMAGE_TAG
+        )
+        self.prometheus_image = deploy_cfg["prometheus"].get(
+            "image", PrometheusService.DEFAULT_IMAGE_TAG
+        )
+        self.node_exporter_image = deploy_cfg["node-exporter"].get(
+            "image", NodeExporterService.DEFAULT_IMAGE_TAG
+        )
+        self.cadvisor_image = deploy_cfg["cadvisor"].get(
+            "image", CadvisorService.DEFAULT_IMAGE_TAG
+        )
+        self.grafana_image = deploy_cfg["grafana"].get(
+            "image", GrafanaService.DEFAULT_IMAGE_TAG
+        )
 
-            self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
-                "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
-            )
-            self.hstore_persistent_dir = deploy_cfg["hstore"].get(
-                "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
-            )
+        self.cadvisor_port = deploy_cfg["cadvisor"].get(
+            "port", CadvisorService.DEFAULT_METRICS_PORT
+        )
+        self.grafana_disable_login = deploy_cfg["grafana"].get("disable-login")
+        self.grafana_local_provisioning_path = deploy_cfg["grafana"].get(
+            "local-provisioning-path"
+        )
+        self.grafana_remote_provisioning_path = deploy_cfg["grafana"].get(
+            "remote-provisioning-path"
+        )
 
-            get_memory_cpus = lambda obj_name: (
-                deploy_cfg[obj_name].get("memory"),
-                deploy_cfg[obj_name].get("cpus"),
-            )
-            self.zk_memory_cpus = get_memory_cpus("zookeeper")
-            self.hstore_memory_cpus = get_memory_cpus("hstore")
-            self.hadmin_memory_cpus = get_memory_cpus("hstore-admin")
-            self.hserver_memory_cpus = get_memory_cpus("hserver")
-            self.prometheus_memory_cpus = get_memory_cpus("prometheus")
-            self.node_exporter_memory_cpus = get_memory_cpus("node-exporter")
-            self.cadvisor_memory_cpus = get_memory_cpus("cadvisor")
-            self.grafana_memory_cpus = get_memory_cpus("grafana")
+        self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
+            "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
+        )
+        self.hstore_persistent_dir = deploy_cfg["hstore"].get(
+            "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
+        )
+
+        get_memory_cpus = lambda obj_name: (
+            deploy_cfg[obj_name].get("memory"),
+            deploy_cfg[obj_name].get("cpus"),
+        )
+        self.zk_memory_cpus = get_memory_cpus("zookeeper")
+        self.hstore_memory_cpus = get_memory_cpus("hstore")
+        self.hadmin_memory_cpus = get_memory_cpus("hstore-admin")
+        self.hserver_memory_cpus = get_memory_cpus("hserver")
+        self.prometheus_memory_cpus = get_memory_cpus("prometheus")
+        self.node_exporter_memory_cpus = get_memory_cpus("node-exporter")
+        self.cadvisor_memory_cpus = get_memory_cpus("cadvisor")
+        self.grafana_memory_cpus = get_memory_cpus("grafana")
 
     def start_cmd(self, config: str, disable_restart, **kargs) -> List[str]:
         self.parse_config(config)
