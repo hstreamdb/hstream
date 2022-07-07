@@ -27,9 +27,12 @@ module HStream.Utils.Converter
   , bytesToLazyByteString
     --
   , cBytesToValue
+  , textToValue
+  , textToMaybeValue
   , stringToValue
   , valueToBytes
   , listToStruct
+  , pairListToStruct
   , structToStruct
 
   , cBytesToIntegral
@@ -149,6 +152,12 @@ cBytesToLazyText = TL.fromStrict . cBytesToText
 cBytesToValue :: ZCB.CBytes -> PB.Value
 cBytesToValue = PB.Value . Just . PB.ValueKindStringValue . cBytesToText
 
+textToValue :: Text -> PB.Value
+textToValue = PB.Value . Just . PB.ValueKindStringValue
+
+textToMaybeValue :: Text -> Maybe PB.Value
+textToMaybeValue = Just . PB.Value . Just . PB.ValueKindStringValue
+
 textToCBytes :: Text -> ZCB.CBytes
 textToCBytes = ZCB.pack . Text.unpack
 
@@ -171,6 +180,9 @@ lazyByteStringToCBytes = ZCB.fromBytes . ZF.fromByteString . BL.toStrict
 
 listToStruct :: Text -> [PB.Value] -> PB.Struct
 listToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindListValue . PB.ListValue . V.fromList
+
+pairListToStruct :: [(Text, Maybe PB.Value)] -> PB.Struct
+pairListToStruct = PB.Struct . Map.fromList
 
 structToStruct :: Text -> PB.Struct -> PB.Struct
 structToStruct x = PB.Struct . Map.singleton x . Just . PB.Value . Just . PB.ValueKindStructValue

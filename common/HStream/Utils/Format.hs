@@ -134,10 +134,7 @@ renderConnectorsToTable connectors =
              , "Created Time"
              , "SQL Text"]
     formatRow API.Connector {..} =
-      [ [T.unpack connectorName]
-      , [T.unpack connectorStatus]
-      -- , [CB.unpack $ formatSystemTimeGMT iso8061DateFormat (MkSystemTime connectorCreatedTime 0)]
-      -- , [T.unpack connectorSql]
+      [ [show connectorInfo]
       ]
     rows = map formatRow connectors
     colSpec = [ Table.column Table.expand Table.left def def

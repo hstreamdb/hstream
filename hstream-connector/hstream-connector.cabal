@@ -50,6 +50,7 @@ library
     HStream.IO.Storage
     HStream.IO.Types
     HStream.IO.ZkKv
+    HStream.IO.Messages
 
   build-depends:
     , aeson

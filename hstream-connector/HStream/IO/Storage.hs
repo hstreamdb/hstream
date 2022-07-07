@@ -7,7 +7,6 @@
 
 module HStream.IO.Storage where
 
-import           Control.Monad             (forM)
 import qualified Data.Aeson                as J
 import qualified Data.Text                 as T
 import qualified Data.Text.Lazy            as LT
@@ -16,6 +15,7 @@ import           HStream.IO.Types
 import           HStream.IO.ZkKv           (ZkKv (..))
 import qualified HStream.Server.HStreamApi as API
 import           ZooKeeper.Types
+import           Data.Foldable             (foldrM)
 
 data Storage where
     Storage :: Kv kv => {
@@ -38,40 +38,38 @@ newZkStorage zk = do
 
 createIOTask :: Storage -> T.Text -> T.Text -> TaskInfo -> IO ()
 createIOTask Storage{..} taskName taskId taskInfo = do
-  insert namesKv taskName $ LTE.encodeUtf8 (LT.fromStrict taskId)
   insert tasksKv taskId $ J.encode taskInfo
   insert statusKv taskId $ ioTaskStatusToBS NEW
+  insert namesKv taskName $ LTE.encodeUtf8 (LT.fromStrict taskId)
 
 getIdFromName :: Storage -> T.Text -> IO (Maybe T.Text)
-getIdFromName Storage{..} name =
-  get namesKv name >>= \case
-    Nothing -> return Nothing
-    Just v  -> return . Just . LT.toStrict . LTE.decodeUtf8 $ v
+getIdFromName Storage{..} name = do
+  get namesKv name >>= traverse (return . LT.toStrict . LTE.decodeUtf8)
 
 listIOTasks :: Storage -> IO [API.Connector]
-listIOTasks Storage{..} = do
+listIOTasks s@Storage{..} = do
   names <- keys namesKv
-  forM names toItem
+  foldrM toItem [] names
   where
-    toItem name = do
-      -- TODO: atomically read
-      Just taskIdBS <- get namesKv name
-      let taskId = LT.toStrict $ LTE.decodeUtf8 taskIdBS
-      Just statusBS <- get statusKv taskId
-      Just infoBS <- get tasksKv taskId
-      let Just TaskInfo {..} = J.decode infoBS
-      let status = LT.toStrict . LTE.decodeUtf8 $ statusBS
-      return $ API.Connector taskName status
+    toItem :: T.Text -> [API.Connector] -> IO [API.Connector]
+    toItem name res = do
+      get namesKv name >>= \case
+        Nothing -> return res
+        Just taskIdBS -> do
+          item <- showIOTaskFromId s (LT.toStrict $ LTE.decodeUtf8 taskIdBS)
+          return (item : res)
 
 showIOTask :: Storage -> T.Text -> IO (Maybe API.Connector)
-showIOTask Storage{..} taskId = do
-  get tasksKv taskId >>= \case
-    Nothing -> return Nothing
-    Just infoBS -> do
-      Just statusBS <- get statusKv taskId
-      let status = LT.toStrict . LTE.decodeUtf8 $ statusBS
-          Just TaskInfo {..} = J.decode infoBS
-      return . Just $ API.Connector taskName status
+showIOTask s@Storage{..} name = do
+  get namesKv name >>= mapM (showIOTaskFromId s . LT.toStrict . LTE.decodeUtf8)
+
+showIOTaskFromId :: Storage -> T.Text -> IO API.Connector
+showIOTaskFromId Storage{..} taskId = do
+  Just infoBS <- get tasksKv taskId
+  Just statusBS <- get statusKv taskId
+  let status = LT.toStrict . LTE.decodeUtf8 $ statusBS
+      Just TaskInfo {..} = J.decode infoBS
+  return $ mkConnector taskName status
 
 updateStatus :: Storage -> T.Text -> IOTaskStatus -> IO ()
 updateStatus Storage{..} taskId status = update statusKv taskId $ ioTaskStatusToBS status

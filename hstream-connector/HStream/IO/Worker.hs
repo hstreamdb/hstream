@@ -8,8 +8,7 @@
 module HStream.IO.Worker where
 
 import           Control.Concurrent        (MVar, modifyMVar_, newMVar,
-                                            readMVar)
-import           Control.Monad             (unless)
+                                            readMVar, ThreadId, forkIO)
 import qualified Data.Aeson                as J
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.Text                 as T
@@ -21,35 +20,62 @@ import           HStream.IO.Types
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
+import Data.IORef (IORef, newIORef, readIORef)
+import Control.Monad (forM_)
+import Control.Exception (catch, throwIO)
 
 data Worker
-  = Worker {
-    kvConfig :: KvConfig,
-    hsConfig :: HStreamConfig,
-    ioTasksM :: MVar (HM.HashMap T.Text IOTask.IOTask),
-    storage  :: S.Storage
-  }
+  = Worker
+    { kvConfig :: KvConfig
+    , hsConfig :: HStreamConfig
+    , tasksPath :: T.Text
+    , ioTasksM :: MVar (HM.HashMap T.Text IOTask.IOTask)
+    , storage  :: S.Storage
+    , monitorTid :: IORef ThreadId
+    }
 
 newWorker :: KvConfig -> HStreamConfig -> IO Worker
 newWorker kvCfg hsConfig = do
   let (ZkKvConfig zk _ _) = kvCfg
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
-  Worker kvCfg hsConfig <$> newMVar HM.empty <*> S.newZkStorage zk
+  -- tmp tasksPath
+  worker <- Worker kvCfg hsConfig "/tm/io/tasks"
+    <$> newMVar HM.empty
+    <*> S.newZkStorage zk
+    <*> newIORef undefined
+  tid <- forkIO $ monitor worker
+  return worker
+
+closeWorker :: Worker -> IO ()
+closeWorker Worker{..} = do
+  tid <- readIORef monitorTid
+  throwIO StopWorkerException
+
+monitor :: Worker -> IO ()
+monitor worker@Worker{..} = do
+  catch monitorTasks $ \case
+    StopWorkerException -> pure ()
+  monitor worker
+  where
+    monitorTasks = do
+      ioTasks <- readMVar ioTasksM
+      forM_ ioTasks IOTask.checkProcess
 
 createIOTaskFromSql :: Worker -> T.Text -> IO API.Connector
 createIOTaskFromSql worker@Worker{..} sql = do
-  (CG.CreateConnectorPlan cType cName ifNotExist cfg) <- CG.streamCodegen sql
+  (CG.CreateConnectorPlan cType cName cTarget ifNotExist cfg) <- CG.streamCodegen sql
   Log.info $ "CreateConnector CodeGen"
            <> ", connector type: " <> Log.buildText cType
            <> ", connector name: " <> Log.buildText cName
            <> ", config: "         <> Log.buildString (show cfg)
   taskId <- UUID.toText <$> UUID.nextRandom
-  let (Just (J.String image)) = HM.lookup "task.image" cfg
+  let taskType = if cType == "SOURCE" then SOURCE else SINK
+      (image, extraOptions) = makeImage taskType cTarget
       connectorConfig =
         J.object
           [ "hstream" J..= toTaskJson hsConfig taskId
           , "kv" J..= toTaskJson kvConfig taskId
-          , "connector" J..= J.toJSON (HM.filterWithKey (\k _ -> k /= "task.image") cfg)
+          , "connector" J..= HM.union extraOptions cfg
           ]
       taskInfo = TaskInfo
         { taskName = cName
@@ -58,54 +84,46 @@ createIOTaskFromSql worker@Worker{..} sql = do
         , connectorConfig = connectorConfig
         , originSql = sql
         }
-  S.createIOTask storage cName taskId taskInfo
   createIOTask worker taskId taskInfo
-  return $ API.Connector cName (ioTaskStatusToText NEW)
+  return $ mkConnector cName (ioTaskStatusToText NEW)
 
 createIOTask :: Worker -> T.Text -> TaskInfo -> IO ()
-createIOTask Worker{..} taskId taskInfo = do
-  task <- IOTask.newIOTask taskId storage taskInfo
-  IOTask.startIOTask task
-  modifyMVar_ ioTasksM $ pure . HM.insert taskId task
+createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
+  S.createIOTask storage taskName taskId taskInfo
+  modifyMVar_ ioTasksM $ \ioTasks -> do
+    case HM.lookup taskName ioTasks of
+      Just _ -> fail "exists"
+      Nothing -> do
+        task <- IOTask.newIOTask taskId storage taskInfo (tasksPath <> "/" <> taskId)
+        IOTask.initIOTask task
+        IOTask.startIOTask task
+        return $ HM.insert taskName task ioTasks
 
 showIOTask :: Worker -> T.Text -> IO (Maybe API.Connector)
 showIOTask Worker{..} name = do
-  S.getIdFromName storage name >>= \case
-    Nothing  -> return Nothing
-    Just tid -> S.showIOTask storage tid
+  S.showIOTask storage name
 
 listIOTasks :: Worker -> IO [API.Connector]
 listIOTasks Worker{..} = S.listIOTasks storage
 
-stopIOTask :: Worker -> T.Text -> Bool -> IO ()
-stopIOTask worker@Worker{..} name ifExist = do
-  S.getIdFromName storage name >>= \case
-    Nothing   -> unless ifExist $ fail ("invalid task name: " ++ T.unpack name)
-    Just taskId -> do
-      getIOTask worker taskId >>= \case
-        Nothing   -> pure ()
-        Just task -> IOTask.stopIOTask task ifExist
-
--- restartIOTask :: Worker -> T.Text -> IO ()
--- restartIOTask worker taskName = do
---   stopIOTask worker taskName True
---   startIOTask worker taskName
+stopIOTask :: Worker -> T.Text -> Bool -> Bool-> IO ()
+stopIOTask worker name ifIsRunning force = do
+  ioTask <- getIOTask worker name
+  IOTask.stopIOTask ioTask ifIsRunning force
 
 startIOTask :: Worker -> T.Text -> IO ()
-startIOTask worker@Worker{..} name = do
-  S.getIdFromName storage name >>= \case
-    Nothing   -> fail $ "invalid task name: " ++ T.unpack name
-    Just taskId -> do
-      getIOTask worker taskId >>= \case
-        Nothing   -> pure ()
-        Just task -> IOTask.startIOTask task
+startIOTask worker name = do
+  getIOTask worker name >>= IOTask.startIOTask
 
-getIOTask :: Worker -> T.Text -> IO (Maybe IOTask.IOTask)
-getIOTask Worker{..} taskId = HM.lookup taskId <$> readMVar ioTasksM
+getIOTask :: Worker -> T.Text -> IO IOTask.IOTask
+getIOTask Worker{..} name = do
+  ioTasks <- readMVar ioTasksM
+  case HM.lookup name ioTasks of
+    Nothing -> fail "connector not exists"
+    Just ioTask -> return ioTask
 
 deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
-  stopIOTask worker taskName True
+  stopIOTask worker taskName True False
   S.deleteIOTask storage taskName
   modifyMVar_ ioTasksM $ return . HM.delete taskName
-

@@ -125,7 +125,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           S.StreamTypeView
         >> atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
         >> returnCommandQueryEmptyResp
-    CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
+    CreateConnectorPlan {} -> do
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
       queries   <- P.getQueries zkHandle
@@ -206,10 +206,10 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       execPlan <- genExecutionPlan sql
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
-    StartPlan (StartObjectConnector name) -> do
-      IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
-    StopPlan (StopObjectConnector name) -> do
+    PausePlan (PauseObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False >> returnCommandQueryEmptyResp
+    ResumePlan (ResumeObjectConnector name) -> do
+      IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
     _ -> discard
   where
     create sName = do
