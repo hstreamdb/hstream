@@ -9,8 +9,6 @@ module HStream.Utils.JSON
   ) where
 
 import           Control.Monad           (join)
-import           Data.Aeson              (FromJSON (..), FromJSONKey,
-                                          ToJSON (..), ToJSONKey)
 import           Data.Aeson              as Aeson
 import           Data.Bifunctor          (first)
 import qualified Data.HashMap.Strict     as HM

@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -22,7 +23,8 @@ import           Network.GRPC.HighLevel.Generated
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
 import           HStream.Connector.HStore         (transToStreamName)
-import           HStream.Gossip                   (getMemberList)
+import           HStream.Gossip                   (getFailedNodes,
+                                                   getMemberList)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common    (alignDefault,
@@ -32,7 +34,8 @@ import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (mkServerErrResp, returnResp)
+import           HStream.Utils                    (mkServerErrResp,
+                                                   pattern EnumPB, returnResp)
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
@@ -40,14 +43,24 @@ describeClusterHandler :: ServerContext
 describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
   let protocolVer = Types.protocolVersion
       serverVer   = Types.serverVersion
-  nodes <- getMemberList gossipContext
-  nodes' <- mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) nodes
+  alives <- getMemberList gossipContext
+  deads  <- getFailedNodes gossipContext
+  alives' <- V.concat <$> mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) alives
+  deads'  <- V.concat <$> mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) deads
+  let nodesStatus =
+          fmap (helper NodeStateRunning) alives'
+       <> fmap (helper NodeStateDead   ) deads'
 
   returnResp $ DescribeClusterResponse
-    { describeClusterResponseProtocolVersion = protocolVer
-    , describeClusterResponseServerVersion   = serverVer
-    , describeClusterResponseServerNodes     = V.concat nodes'
+    { describeClusterResponseProtocolVersion   = protocolVer
+    , describeClusterResponseServerVersion     = serverVer
+    , describeClusterResponseServerNodes       = alives'
+    , describeClusterResponseServerNodesStatus = nodesStatus
     }
+ where
+  helper state node = ServerNodeStatus
+    { serverNodeStatusNode  = Just node
+    , serverNodeStatusState = EnumPB state}
 
 lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse

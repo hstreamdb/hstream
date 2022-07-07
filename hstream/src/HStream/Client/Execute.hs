@@ -18,13 +18,13 @@ import           Z.IO.Network                  (SocketAddr)
 
 import           HStream.Client.Action
 import           HStream.Client.Gadget
-import           HStream.Client.Type           (ClientContext (..))
+import           HStream.Client.Types          (HStreamSqlContext (..))
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import           HStream.SQL
 import           HStream.Utils                 (Format, serverNodeToSocketAddr)
 
-executeShowPlan :: ClientContext -> ShowObject -> IO ()
+executeShowPlan :: HStreamSqlContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =
   case showObject of
     SStreams    -> execute ctx listStreams
@@ -32,8 +32,8 @@ executeShowPlan ctx showObject =
     SQueries    -> execute ctx listQueries
     SConnectors -> execute ctx listConnectors
 
-executeInsert :: ClientContext -> T.Text -> Action AppendResponse -> IO ()
-executeInsert ctx@ClientContext{..} sName action = do
+executeInsert :: HStreamSqlContext -> T.Text -> Action AppendResponse -> IO ()
+executeInsert ctx@HStreamSqlContext{..} sName action = do
   curAddr <- readMVar currentServer
   lookupStream ctx curAddr sName >>= \case
     Nothing       -> return ()
@@ -48,14 +48,14 @@ executeInsert ctx@ClientContext{..} sName action = do
         ClientErrorResponse _ ->
           executeInsert ctx sName action
 
-execute :: Format a => ClientContext
+execute :: Format a => HStreamSqlContext
   -> Action a -> IO ()
-execute ctx@ClientContext{..} action = do
+execute ctx@HStreamSqlContext{..} action = do
   addr <- readMVar currentServer
   executeWithAddr_ ctx addr action printResult
 
 executeWithAddr_
-  :: ClientContext -> SocketAddr
+  :: HStreamSqlContext -> SocketAddr
   -> Action a
   -> (ClientResult 'Normal a -> IO ())
   -> IO ()

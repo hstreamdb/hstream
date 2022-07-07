@@ -13,18 +13,13 @@ module HStream.Client.Utils
   , printResult
   ) where
 
-import qualified Data.ByteString.Char8         as BSC
 import           Data.Char                     (toUpper)
-import qualified Data.Map                      as Map
 import qualified Data.Text                     as T
 import           Network.GRPC.HighLevel.Client
 import           Proto3.Suite.Class            (HasDefault, def)
-import           Z.IO.Network.SocketAddr       (SocketAddr (..), ipv4)
 
-import           HStream.Server.HStreamApi     (ServerNode (..))
 import           HStream.Utils                 (Format (formatResult),
-                                                mkClientNormalRequest,
-                                                textToCBytes)
+                                                mkClientNormalRequest)
 
 clientDefaultRequest :: HasDefault a => ClientRequest 'Normal a b
 clientDefaultRequest = mkClientNormalRequest' def

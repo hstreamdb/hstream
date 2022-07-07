@@ -1,6 +1,5 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -8,61 +7,90 @@
 
 module Main where
 
-import           Control.Concurrent
+import           Control.Concurrent               (forkIO, newMVar, readMVar,
+                                                   threadDelay)
 import           Control.Exception                (finally, handle)
-import           Control.Monad
+import           Control.Monad                    (forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Char                        (toUpper)
 import qualified Data.Map                         as M
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
+                                                   ClientRequest (..),
+                                                   ClientResult (..),
+                                                   GRPCIOError (GRPCIOBadStatusCode),
+                                                   StatusDetails (unStatusDetails),
+                                                   withGRPCClient)
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
-import           Network.Socket                   (PortNumber)
 import qualified Options.Applicative              as O
 import qualified System.Console.Haskeline         as H
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
-import qualified Z.Data.CBytes                    as CB
 import           Z.IO.Network.SocketAddr          (ipv4)
 
-import           HStream.Client.Action
+import qualified Data.List                        as L
+import           Data.Maybe                       (maybeToList)
+import           HStream.Client.Action            (createStream,
+                                                   createStreamBySelect,
+                                                   dropAction, insertIntoStream,
+                                                   terminateQueries)
 import           HStream.Client.Execute           (execute, executeInsert,
                                                    executeShowPlan)
-import           HStream.Client.Gadget
-import           HStream.Client.Internal
-import           HStream.Client.Type              (ClientContext (..))
+import           HStream.Client.Gadget            (describeCluster)
+import           HStream.Client.Internal          (callDeleteSubscription,
+                                                   callDeleteSubscriptionAll,
+                                                   callListSubscriptions,
+                                                   callStreamingFetch,
+                                                   callSubscription)
+import           HStream.Client.Types             (CliConnOpts (..),
+                                                   Command (..),
+                                                   HStreamCommand (..),
+                                                   HStreamNodes (..),
+                                                   HStreamSqlContext (..),
+                                                   HStreamSqlOpts (..),
+                                                   commandParser)
+import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Logger                   as Log
-import           HStream.Server.HStreamApi
-import           HStream.SQL
+import           HStream.Server.HStreamApi        (CommandPushQuery (..),
+                                                   CommandQuery (..),
+                                                   CommandQueryResponse (..),
+                                                   DescribeClusterResponse (..),
+                                                   HStreamApi (..),
+                                                   ServerNode (serverNodeId),
+                                                   hstreamApiClient)
+import qualified HStream.Server.HStreamApi        as API
+import           HStream.SQL                      (HStreamPlan (..),
+                                                   RCreate (..), RSQL (..),
+                                                   RStreamOptions (..),
+                                                   hstreamCodegen,
+                                                   parseAndRefine)
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
+import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
                                                    mkGRPCClientConf,
                                                    setupSigsegvHandler)
 
-data UserConfig = UserConfig
-  { _serverHost                     :: String
-  , _serverPort                     :: PortNumber
-  , _clientId                       :: String
-  , _availableServersUpdateInterval :: Int
-  }
-
-parseConfig :: O.Parser UserConfig
-parseConfig =
-  UserConfig
-    <$> O.strOption (O.long "host" <> O.metavar "HOST" <> O.showDefault <> O.value "127.0.0.1" <> O.help "server host value")
-    <*> O.option O.auto (O.long "port" <> O.metavar "INT" <> O.showDefault <> O.value 6570 <> O.short 'p' <> O.help "server port value")
-    <*> O.strOption (O.long "client-id" <> O.metavar "ID" <> O.help "unique id for the client")
-    <*> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in second")
-
 main :: IO ()
-main = do
-  UserConfig{..} <- O.execParser $ O.info (parseConfig O.<**> O.helper) (O.fullDesc <> O.progDesc "HStream-Client")
+main = runCommand =<<
+  O.customExecParser (O.prefs (O.showHelpOnEmpty <> O.showHelpOnError))
+                     (O.info (commandParser O.<**> O.helper)
+                             (O.fullDesc <> O.header "======= HStream CLI =======")
+                     )
+
+runCommand :: HStreamCommand -> IO ()
+runCommand HStreamCommand {..} =
+  case cliCommand of
+    HStreamSql opts   -> hstreamSQL cliConnOpts opts
+    HStreamNodes opts -> hstreamNodes cliConnOpts opts
+
+hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
+hstreamSQL CliConnOpts{..} HStreamSqlOpts{ _clientId = clientId, _updateInterval = updateInterval } = do
   putStrLn [r|
       __  _________________  _________    __  ___
      / / / / ___/_  __/ __ \/ ____/   |  /  |/  /
@@ -70,26 +98,47 @@ main = do
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
-  let _addr = ipv4 (CB.pack _serverHost) (fromIntegral _serverPort)
-  available <- newMVar []
-  current <- newMVar _addr
-  let ctx = ClientContext { cctxServerHost = _serverHost
-                          , cctxServerPort = _serverPort
-                          , availableServers = available
-                          , currentServer    = current
-                          , clientId         = _clientId
-                          , availableServersUpdateInterval = _availableServersUpdateInterval
-                          }
+  let addr = ipv4 _serverHost _serverPort
+  availableServers <- newMVar []
+  currentServer    <- newMVar addr
+  let ctx = HStreamSqlContext {..}
   setupSigsegvHandler
-  m_desc <- describeCluster ctx _addr
+  m_desc <- describeCluster ctx addr
   case m_desc of
     Nothing -> Log.e "Connection timed out. Please check the server URI and try again."
     Just _  -> app ctx
 
+
+hstreamNodes :: CliConnOpts -> HStreamNodes -> IO ()
+hstreamNodes connOpts HStreamNodesList =
+  getNodes connOpts >>= putStrLn . formatResult . V.toList . API.describeClusterResponseServerNodes
+hstreamNodes connOpts (HStreamNodesStatus Nothing) =
+  getNodes connOpts >>= putStrLn . formatResult . V.toList . API.describeClusterResponseServerNodesStatus
+hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =
+  getNodes connOpts >>= putStrLn . formatResult . maybeToList . L.find (compareServerId sid) . V.toList . API.describeClusterResponseServerNodesStatus
+  where
+    compareServerId x API.ServerNodeStatus{..} =
+      case serverNodeStatusNode of
+        Just API.ServerNode{..} -> serverNodeId == x
+        Nothing                 -> False
+
+getNodes :: CliConnOpts -> IO DescribeClusterResponse
+getNodes CliConnOpts{..} =
+  withGRPCClient (mkGRPCClientConf $ ipv4 _serverHost _serverPort) $ \client -> do
+    HStreamApi{..} <- hstreamApiClient client
+    res <- hstreamApiDescribeCluster (mkClientNormalRequest' Empty)
+    case res of
+      ClientNormalResponse resp _ _ _ _ -> return resp
+      ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode x details))
+        -> error $ show x <> " Error: "  <> show (unStatusDetails details)
+      ClientErrorResponse err -> error $ "Server Error: " <> show err <> "\n"
+
+--------------------------------------------------------------------------------
+
 -- FIXME: Currently, every new command will create a new connection to a server,
 -- and this needs to be optimized. This could be done with a grpc client pool.
-app :: ClientContext -> IO ()
-app ctx@ClientContext{..} = do
+app :: HStreamSqlContext -> IO ()
+app ctx@HStreamSqlContext{..} = do
   putStrLn helpInfo
   void $ forkIO maintainAvailableNodes
   H.runInputT H.defaultSettings loop
@@ -98,7 +147,7 @@ app ctx@ClientContext{..} = do
       readMVar availableServers >>= \case
         []     -> return ()
         node:_ -> void $ describeCluster ctx node
-      threadDelay $ availableServersUpdateInterval * 1000 * 1000
+      threadDelay $ updateInterval * 1000 * 1000
 
     loop :: H.InputT IO ()
     loop = H.withInterrupt . H.handleInterrupt loop $ do
@@ -108,8 +157,8 @@ app ctx@ClientContext{..} = do
           | take 1 (words str) == [":q"] -> pure ()
           | otherwise -> liftIO (commandExec ctx str) >> loop
 
-commandExec :: ClientContext -> String -> IO ()
-commandExec ctx@ClientContext{..} xs = case words xs of
+commandExec :: HStreamSqlContext -> String -> IO ()
+commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   [] -> return ()
 
   -- The Following commands are for testing only
@@ -149,7 +198,7 @@ sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
   ClientReaderResponse _meta _status _details <-
-    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 [] action)
+    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 mempty action)
   return ()
   where
     action call _meta recv = do
@@ -164,7 +213,7 @@ sqlStreamAction HStreamApi{..} sql = do
 sqlAction :: HStreamClientApi -> T.Text -> IO ()
 sqlAction HStreamApi{..} sql = do
   let commandQuery = CommandQuery{ commandQueryStmtText = sql }
-  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 [])
+  resp <- hstreamApiExecuteQuery (ClientNormalRequest commandQuery 100 mempty)
   case resp of
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details -> do
       putStr $ formatCommandQueryResponse x
@@ -230,9 +279,9 @@ helpInfos = M.fromList [
 groupedHelpInfo :: String
 groupedHelpInfo = ("SQL Statements\n" <> ) . unlines . map (\(x, y) -> x <> "  " <> y) . M.toList $ helpInfos
 
-runActionWithGrpc :: ClientContext
+runActionWithGrpc :: HStreamSqlContext
   -> (HStreamClientApi -> IO b) -> IO b
-runActionWithGrpc ClientContext{..} action= do
+runActionWithGrpc HStreamSqlContext{..} action= do
   addr <- readMVar currentServer
   withGRPCClient (mkGRPCClientConf addr)
     (hstreamApiClient >=> action)
