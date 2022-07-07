@@ -10,24 +10,26 @@ module HStream.Client.Internal
   , callStreamingFetch
   ) where
 
-import           Control.Concurrent
-import           Control.Monad
+import           Control.Concurrent               (readMVar)
+import           Control.Monad                    (forM_, void)
 import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel.Generated (ClientRequest (..),
+                                                   ClientResult (..),
+                                                   GRPCMethodType (..),
+                                                   withGRPCClient)
 
 import           HStream.Client.Execute           (executeWithAddr_)
-import           HStream.Client.Gadget
-import           HStream.Client.Type
-import           HStream.Client.Utils
+import           HStream.Client.Gadget            (lookupSubscription)
+import           HStream.Client.Types             (HStreamSqlContext (..))
+import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils                    (HStreamClientApi,
                                                    mkGRPCClientConf,
                                                    serverNodeToSocketAddr)
 
-callSubscription :: ClientContext -> T.Text -> T.Text -> IO ()
+callSubscription :: HStreamSqlContext -> T.Text -> T.Text -> IO ()
 callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..}  = do
@@ -46,7 +48,7 @@ callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callDeleteSubscription :: ClientContext -> T.Text -> IO ()
+callDeleteSubscription :: HStreamSqlContext -> T.Text -> IO ()
 callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} = do
@@ -62,7 +64,7 @@ callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callDeleteSubscriptionAll :: ClientContext -> IO ()
+callDeleteSubscriptionAll :: HStreamSqlContext -> IO ()
 callDeleteSubscriptionAll ctx = do
   curNode <- readMVar (currentServer ctx)
   withGRPCClient (mkGRPCClientConf curNode) $ \client -> do
@@ -83,7 +85,7 @@ callDeleteSubscriptionAll ctx = do
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callListSubscriptions :: ClientContext -> IO ()
+callListSubscriptions :: HStreamSqlContext -> IO ()
 callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} = do
@@ -97,7 +99,7 @@ callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callStreamingFetch :: ClientContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
+callStreamingFetch :: HStreamSqlContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
 callStreamingFetch ctx startRecordIds subId clientId = do
   curNode <- readMVar (currentServer ctx)
   m_node <- lookupSubscription ctx curNode subId
@@ -134,10 +136,10 @@ callStreamingFetch ctx startRecordIds subId clientId = do
             Right Nothing -> do
               putStrLn "Stopped."
 
-execute :: ClientContext
+execute :: HStreamSqlContext
   -> (HStreamClientApi -> IO (ClientResult 'Normal a))
   -> (ClientResult 'Normal a -> IO ())
   -> IO ()
-execute ctx@ClientContext{..} action cont = do
+execute ctx@HStreamSqlContext{..} action cont = do
   addr <- readMVar currentServer
   executeWithAddr_ ctx addr action cont

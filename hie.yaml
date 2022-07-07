@@ -244,7 +244,7 @@ cradle:
       component: "hstream:exe:hstream-server"
 
     - path: "hstream/./app/client.hs"
-      component: "hstream:exe:hstream-client"
+      component: "hstream:exe:hstream"
 
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
