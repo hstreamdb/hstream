@@ -46,10 +46,10 @@ instance Arbitrary Shard where
     mkShard logId streamId startKey endKey <$> arbitrary
 
 genScopedShardKey :: ShardKey -> ShardKey -> IO ShardKey
-genScopedShardKey startKey endKey = generate $ oneof
-  [ fromIntegral <$> chooseWord64(0, fromIntegral startKey)
-  , fromIntegral <$> chooseWord64(fromIntegral startKey, fromIntegral endKey)
-  , fromIntegral <$> chooseWord64(fromIntegral endKey, maxBound)
+genScopedShardKey startKey endKey = generate $ frequency
+  [ (1, fromIntegral <$> chooseWord64(0, fromIntegral startKey))
+  , (5, fromIntegral <$> chooseWord64(fromIntegral startKey, fromIntegral endKey))
+  , (1, fromIntegral <$> chooseWord64(fromIntegral endKey, maxBound))
   ]
 
 spec :: SpecWith ()

@@ -2,7 +2,38 @@
 {-# LANGUAGE NamedFieldPuns            #-}
 {-# LANGUAGE OverloadedStrings         #-}
 
-module HStream.Server.Shard where
+module HStream.Server.Shard(
+  Shard (..),
+  ShardKey,
+  mkShard,
+  splitShardByKey,
+  halfSplit,
+  mergeShard,
+
+  ShardMap,
+  mkShardMap,
+  getShard,
+  insertShard,
+  deleteShard,
+
+  SharedShardMap,
+  mkSharedShardMap,
+  getShardMap,
+  putShardMap,
+  readShardMap,
+  getShardByKey,
+  getShardMapIdx,
+  splitByKey,
+  splitHalf,
+  mergeTwoShard,
+
+  ShardException,
+  CanNotMerge,
+  CanNotSplit,
+  ShardNotExist,
+
+  hashShardKey,
+) where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically,
                                          newEmptyTMVarIO, putTMVar, readTMVar,
@@ -28,7 +59,7 @@ import qualified Z.Data.CBytes          as CB
 
 type ShardKey = Integer
 
-hashShardKey :: B.ByteString -> Integer
+hashShardKey :: B.ByteString -> ShardKey
 hashShardKey key =
   let w8KeyList = BA.unpack (CH.hash key :: CH.Digest CH.MD5)
    in foldl' (\acc c -> (.|.) (acc `shiftL` 8) (fromIntegral c)) (0 :: Integer) w8KeyList
@@ -70,8 +101,8 @@ halfSplit shard@Shard{..}
 mergeShard :: Shard -> Shard -> Either ShardException (Shard, ShardKey)
 mergeShard shard1@Shard{logId=logId1, streamId=streamId1, startKey=startKey1, endKey=endKey1, epoch=epoch1}
            shard2@Shard{logId=logId2, streamId=streamId2, startKey=startKey2, endKey=endKey2, epoch=epoch2}
-  | logId1 == logId2 = Left . ShardException $ CanNotMerge "cannot merge same shard"
-  | endKey1 + 1 /= startKey2 || streamId1 /= streamId2 = Left . ShardException $ CanNotMerge "error shard"
+  | logId1 == logId2 = Left . ShardException $ CanNotMerge "can't merge same shard"
+  | endKey1 + 1 /= startKey2 || streamId1 /= streamId2 = Left . ShardException $ CanNotMerge "can't merge non-adjacent shards"
     -- always let shard1 before shard2, so that after merge, the new shard's key range is [start1, end2],
     -- and always remove startkey2 from shardMap
   | startKey1 > startKey2 = mergeShard shard2 shard1
@@ -146,8 +177,8 @@ getShardMapIdx key = fromIntegral (hash key) `shiftR` (32 - kNumShardBits)
 getShardMap :: SharedShardMap -> Word32 -> STM ShardMap
 getShardMap SharedShardMap{..} hashValue = takeTMVar $ (V.!) shardMaps (fromIntegral hashValue)
 
-putShardMap :: SharedShardMap -> ShardMap -> Word32 -> STM ()
-putShardMap SharedShardMap{..} mp hashValue = putTMVar ((V.!) shardMaps (fromIntegral hashValue)) mp
+putShardMap :: SharedShardMap -> Word32 -> ShardMap -> STM ()
+putShardMap SharedShardMap{..} hashValue = putTMVar ((V.!) shardMaps (fromIntegral hashValue))
 
 readShardMap :: SharedShardMap -> Word32 -> STM ShardMap
 readShardMap SharedShardMap{..} hashValue = readTMVar $ (V.!) shardMaps (fromIntegral hashValue)
@@ -167,7 +198,7 @@ type SplitStrategies = ShardMap -> ShardKey -> Either ShardException (Shard, Sha
 splitByKey :: S.LDClient -> SharedShardMap -> ShardKey -> IO ()
 splitByKey = splitShardInternal getSplitedShard
 
--- | Splite Shard by half
+-- | Split Shard by half
 splitHalf :: S.LDClient -> SharedShardMap -> ShardKey -> IO ()
 splitHalf = splitShardInternal getHalfSplitedShard
 
@@ -176,38 +207,38 @@ splitShardInternal stratege client sharedMp key = do
   let hash1 = getShardMapIdx key
   bracket
     (atomically $ getShardMap sharedMp hash1)
-    (\originShardMp -> atomically $ putShardMap sharedMp originShardMp hash1)
+    (atomically . putShardMap sharedMp hash1)
     (\originShardMp -> do
-        case stratege originShardMp key of
-          Left e -> throwIO e
-          Right (s1, s2) -> do
-            s1'@Shard{startKey=key1} <- createShard client s1
-            s2'@Shard{startKey=key2} <- createShard client s2
-            Log.info $ "Split key " <> Log.buildString' key <> " into two new shards: "
-                    <> Log.buildString' (show s1') <> " and "
-                    <> Log.buildString' (show s2')
+      case stratege originShardMp key of
+        Left e         -> throwIO e
+        Right (s1, s2) -> do
+          s1'@Shard{startKey=key1} <- createShard client s1
+          s2'@Shard{startKey=key2} <- createShard client s2
+          Log.info $ "Split key " <> Log.buildString' key <> " into two new shards: "
+                  <> Log.buildString' (show s1') <> " and "
+                  <> Log.buildString' (show s2')
 
-            let hash1' = getShardMapIdx key1
-            let hash2' = getShardMapIdx key2
-            if hash2' == hash1'
-              then do
-                -- After split, two new shard are still managed by same shardMap,
-                let newShardMp = insertMultiShardToMap originShardMp [s1', s2']
-                Log.debug $ "After split " <> Log.buildString' key <> ", "
-                         <> "update shardMp " <> Log.buildString' (show newShardMp)
-                atomically $ putShardMap sharedMp newShardMp hash1'
-              else do
-                -- The two new shards are managed by different shardMap, so they
-                -- need to be updated separately
-                mp2 <- atomically $ getShardMap sharedMp hash2'
-                let newMp1 = M.insert key1 s1' originShardMp
-                    newMp2 = M.insert key2 s2' mp2
-                Log.debug $ "After split " <> Log.buildString' key <> ", "
-                         <> "update shardMp " <> Log.buildString' (show newMp1)
-                         <> " and " <> Log.buildString' (show newMp2)
-                atomically $ do
-                  putShardMap sharedMp newMp1 hash1'
-                  putShardMap sharedMp newMp2 hash2'
+          let hash1' = getShardMapIdx key1
+          let hash2' = getShardMapIdx key2
+          if hash2' == hash1'
+            then do
+              -- After split, two new shard are still managed by same shardMap,
+              let newShardMp = insertMultiShardToMap originShardMp [s1', s2']
+              Log.debug $ "After split " <> Log.buildString' key <> ", "
+                       <> "update shardMp " <> Log.buildString' (show newShardMp)
+              atomically $ putShardMap sharedMp hash1' newShardMp
+            else do
+              -- The two new shards are managed by different shardMap, so they
+              -- need to be updated separately
+              mp2 <- atomically $ getShardMap sharedMp hash2'
+              let newMp1 = M.insert key1 s1' originShardMp
+                  newMp2 = M.insert key2 s2' mp2
+              Log.debug $ "After split " <> Log.buildString' key <> ", "
+                       <> "update shardMp " <> Log.buildString' (show newMp1)
+                       <> " and " <> Log.buildString' (show newMp2)
+              atomically $ do
+                putShardMap sharedMp hash1' newMp1
+                putShardMap sharedMp hash2' newMp2
     )
 
 mergeTwoShard :: S.LDClient -> SharedShardMap -> ShardKey -> ShardKey -> IO ()
@@ -220,7 +251,7 @@ mergeTwoShard client mp key1 key2 = do
     (cleanUp hash1 hash2)
     (\(shardMp1, shardMp2) -> do
       case getMergedShard shardMp1 key1 shardMp2 key2 of
-        Left e -> throwIO e
+        Left e                -> throwIO e
         Right (s, removedKey) -> do
           newShard@Shard{startKey} <- createShard client s
           Log.info $ "Merge " <> Log.buildString' key1 <> " and " <> Log.buildString' key2 <> " into "
@@ -231,8 +262,8 @@ mergeTwoShard client mp key1 key2 = do
                    <> " removedShardMp=" <> Log.buildString' (show removedShardMp)
                    <> " newShardMp=" <> Log.buildString' (show updateShardMp)
           atomically $ do
-            putShardMap mp removedShardMp (getShardMapIdx removedKey)
-            putShardMap mp updateShardMp (getShardMapIdx startKey)
+            putShardMap mp (getShardMapIdx removedKey) removedShardMp
+            putShardMap mp (getShardMapIdx startKey) updateShardMp
     )
  where
    getShards hash1 hash2
@@ -245,10 +276,10 @@ mergeTwoShard client mp key1 key2 = do
          return (mp1, mp2)
 
    cleanUp hash1 hash2 (mp1, mp2)
-     | hash1 == hash2 = atomically $ putShardMap mp mp1 hash1
+     | hash1 == hash2 = atomically $ putShardMap mp hash1 mp1
      | otherwise = atomically $ do
-         putShardMap mp mp1 hash1
-         putShardMap mp mp2 hash2
+         putShardMap mp hash1 mp1
+         putShardMap mp hash2 mp2
 
    -- key1 -> shardMp1{startKey1, endKey1}, key2 -> shardMp2{startKey2, endKey2}
    -- getMergedShard always return a new shard with key range [start1, end2], so need to
