@@ -58,6 +58,7 @@ library
     HStream.Server.Persistence.Exception
     HStream.Server.Types
     HStream.Server.ReaderPool
+    HStream.Server.Shard
 
   other-modules:
     HStream.Server.Core.Common
@@ -127,6 +128,8 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
+    , cryptonite
+    , memory
 
   default-language:   Haskell2010
   default-extensions:
@@ -170,6 +173,8 @@ executable hstream-server
     , Z-Data
     , Z-IO
     , zoovisitor
+    , cryptonite
+    , memory
 
   default-language: Haskell2010
   ghc-options:
@@ -218,6 +223,7 @@ test-suite hstream-test
     HStream.RunStoreAdminSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
+    HStream.ShardSpec
 
   hs-source-dirs:     test
   build-depends:
@@ -246,6 +252,7 @@ test-suite hstream-test
     , Z-Data
     , Z-IO
     , zoovisitor
+    , QuickCheck
 
   default-language:   Haskell2010
   default-extensions:
