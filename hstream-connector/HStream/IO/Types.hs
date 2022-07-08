@@ -108,10 +108,14 @@ makeImage _ _ = error "unimplemented"
 
 -- doubleBind, for nested Monads
 -- e.g. IO (Maybe a) (a -> IO (Maybe b))
-(>>>=) :: (Monad m, Monad n, Traversable n) => m (n a) -> (a -> m (n b)) -> m (n b)
-(>>>=) mv action = do
-    b <- mv >>= mapM action
-    return (join b)
+-- (>>>=) :: (Monad m, Monad n, Traversable n) => m (n a) -> (a -> m (n b)) -> m (n b)
+-- (>>>=) mv action = do
+--     b <- mv >>= mapM action
+--     return (join b)
 
 data StopWorkerException = StopWorkerException deriving Show
 instance Exception StopWorkerException
+
+newtype CheckFailedException = CheckFailedException T.Text
+  deriving Show
+instance Exception CheckFailedException

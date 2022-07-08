@@ -7,8 +7,7 @@
 
 module HStream.IO.Worker where
 
-import           Control.Concurrent        (MVar, modifyMVar_, newMVar,
-                                            readMVar, ThreadId, forkIO)
+import qualified Control.Concurrent        as C
 import qualified Data.Aeson                as J
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.Text                 as T
@@ -22,16 +21,17 @@ import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
 import Data.IORef (IORef, newIORef, readIORef)
 import Control.Monad (forM_)
-import Control.Exception (catch, throwIO)
+import Control.Exception (catch)
+import qualified Data.IORef as C
 
 data Worker
   = Worker
     { kvConfig :: KvConfig
     , hsConfig :: HStreamConfig
     , tasksPath :: T.Text
-    , ioTasksM :: MVar (HM.HashMap T.Text IOTask.IOTask)
+    , ioTasksM :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
     , storage  :: S.Storage
-    , monitorTid :: IORef ThreadId
+    , monitorTid :: IORef C.ThreadId
     }
 
 newWorker :: KvConfig -> HStreamConfig -> IO Worker
@@ -40,16 +40,17 @@ newWorker kvCfg hsConfig = do
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
   -- tmp tasksPath
   worker <- Worker kvCfg hsConfig "/tm/io/tasks"
-    <$> newMVar HM.empty
+    <$> C.newMVar HM.empty
     <*> S.newZkStorage zk
     <*> newIORef undefined
-  tid <- forkIO $ monitor worker
+  tid <- C.forkIO $ monitor worker
+  C.writeIORef (monitorTid worker) tid
   return worker
 
 closeWorker :: Worker -> IO ()
 closeWorker Worker{..} = do
   tid <- readIORef monitorTid
-  throwIO StopWorkerException
+  C.throwTo tid StopWorkerException
 
 monitor :: Worker -> IO ()
 monitor worker@Worker{..} = do
@@ -58,7 +59,7 @@ monitor worker@Worker{..} = do
   monitor worker
   where
     monitorTasks = do
-      ioTasks <- readMVar ioTasksM
+      ioTasks <- C.readMVar ioTasksM
       forM_ ioTasks IOTask.checkProcess
 
 createIOTaskFromSql :: Worker -> T.Text -> IO API.Connector
@@ -90,7 +91,7 @@ createIOTaskFromSql worker@Worker{..} sql = do
 createIOTask :: Worker -> T.Text -> TaskInfo -> IO ()
 createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
   S.createIOTask storage taskName taskId taskInfo
-  modifyMVar_ ioTasksM $ \ioTasks -> do
+  C.modifyMVar_ ioTasksM $ \ioTasks -> do
     case HM.lookup taskName ioTasks of
       Just _ -> fail "exists"
       Nothing -> do
@@ -117,7 +118,7 @@ startIOTask worker name = do
 
 getIOTask :: Worker -> T.Text -> IO IOTask.IOTask
 getIOTask Worker{..} name = do
-  ioTasks <- readMVar ioTasksM
+  ioTasks <- C.readMVar ioTasksM
   case HM.lookup name ioTasks of
     Nothing -> fail "connector not exists"
     Just ioTask -> return ioTask
@@ -126,4 +127,4 @@ deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
   stopIOTask worker taskName True False
   S.deleteIOTask storage taskName
-  modifyMVar_ ioTasksM $ return . HM.delete taskName
+  C.modifyMVar_ ioTasksM $ return . HM.delete taskName

@@ -7,11 +7,9 @@
 
 module HStream.IO.IOTask where
 
-import           Control.Concurrent   (MVar, ThreadId, forkIO, killThread,
-                                       modifyMVar_, newMVar, readMVar,
-                                       threadDelay)
-import           Control.Exception    (SomeException, bracket, catch)
-import           Control.Monad        (unless, when, void)
+import qualified Control.Concurrent   as C
+import qualified Control.Exception    as E
+import           Control.Monad        (unless, when, void, msum)
 import qualified Data.Aeson           as J
 import qualified Data.ByteString.Lazy as BSL
 import           Data.IORef           (IORef, newIORef, readIORef, writeIORef)
@@ -24,6 +22,7 @@ import qualified System.Process.Typed as TP
 import GHC.IO.Handle.Types (Handle)
 import qualified HStream.IO.Messages as MSG
 import GHC.IO.Handle (hFlush)
+import qualified Data.ByteString.Lazy.Char8 as BSLC
 
 data IOTask = IOTask
   { taskId   :: T.Text,
@@ -31,18 +30,19 @@ data IOTask = IOTask
     taskPath :: FilePath,
     storage  :: S.Storage,
     process' :: IORef (Maybe (TP.Process Handle () ())),
-    statusM  :: MVar IOTaskStatus
+    statusM  :: C.MVar IOTaskStatus
   }
 
 newIOTask :: T.Text -> S.Storage -> TaskInfo -> T.Text -> IO IOTask
 newIOTask taskId storage info taskPath = do
   IOTask taskId info (T.unpack taskPath) storage
     <$> newIORef Nothing
-    <*> newMVar NEW
+    <*> C.newMVar NEW
 
 initIOTask :: IOTask -> IO ()
 initIOTask IOTask{..} = do
   let configPath = taskPath ++ "/config.json"
+      TaskInfo{..} = taskInfo
   -- create task files
   createDirectoryIfMissing True taskPath
   BSL.writeFile configPath (J.encode connectorConfig)
@@ -64,6 +64,8 @@ runIOTask IOTask{..} = do
         " --name ", T.unpack (getDockerName taskId),
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
+        " run",
+        " -config /data/config.json",
         " >> ", taskPath, "/log", " 2>&1"
       ]
     taskProcessConfig = TP.setStdin TP.createPipe
@@ -105,7 +107,7 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
       else do
         Just tp <- readIORef process'
         let stdin = TP.getStdin tp
-        BSL.hPut stdin (J.encode MSG.InputCommandStop)
+        BSLC.hPutStrLn stdin (J.encode MSG.InputCommandStop <> "\n")
         hFlush stdin
         _ <- TP.waitExitCode tp
         TP.stopProcess tp
@@ -118,12 +120,9 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
     killDockerCmd = "docker kill " ++ T.unpack (getDockerName taskId)
     killProcessConfig = TP.shell killDockerCmd
 
-printException :: IO () -> IO ()
-printException action = catch action (\(e :: SomeException) -> print e)
-
 updateStatus :: IOTask -> (IOTaskStatus -> IO IOTaskStatus) -> IO ()
 updateStatus IOTask{..} action = do
-  modifyMVar_ statusM $ \status -> do
+  C.modifyMVar_ statusM $ \status -> do
     ts <- action status
     when (ts /= status) $ S.updateStatus storage taskId ts
     return ts
@@ -138,4 +137,33 @@ checkProcess ioTask@IOTask{..} = do
           Nothing -> return status
           Just _ -> return FAILED
       _ -> return status
+
+checkIOTask :: IOTask -> IO ()
+checkIOTask IOTask{taskInfo=TaskInfo{..}, ..} = do
+  Log.info $ "checkCmd:" <> Log.buildString checkCmd
+  (exitCode, output, err) <- TP.readProcess checkProcessConfig
+  when (exitCode /= TP.ExitSuccess) $ do
+    Log.info $ Log.buildString ("check process exited: " ++ show exitCode)
+    Log.info $ "stdout:" <> Log.buildString (BSLC.unpack output)
+    Log.info $ "stderr:" <> Log.buildString (BSLC.unpack err)
+    E.throwIO (CheckFailedException "check process exited unexpectedly")
+  let (result :: Maybe MSG.CheckResult) = msum . map J.decode $ BSLC.lines output
+  case result of
+    Nothing -> E.throwIO (CheckFailedException "check process didn't return correct result messsage")
+    Just MSG.CheckResult {result=False, message=msg} -> do
+      E.throwIO (CheckFailedException $ "check failed:" <> msg)
+    Just _ -> pure ()
+  where
+    checkProcessConfig = TP.setStdin TP.closed
+      . TP.setStdout TP.createPipe
+      . TP.setStderr TP.closed
+      $ TP.shell checkCmd
+    checkCmd = concat [
+        "docker run --rm -i --network=host",
+        " --name ", T.unpack (getDockerName taskId),
+        " -v " , taskPath, ":/data",
+        " " , T.unpack (tcImage taskConfig),
+        " check",
+        " -config /data/config.json"
+      ]
 
