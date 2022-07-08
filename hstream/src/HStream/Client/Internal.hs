@@ -28,6 +28,7 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils                    (HStreamClientApi,
                                                    mkGRPCClientConf,
                                                    serverNodeToSocketAddr)
+import           Proto3.Suite                     (Enumerated (Enumerated))
 
 callSubscription :: HStreamSqlContext -> T.Text -> T.Text -> IO ()
 callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
@@ -38,6 +39,7 @@ callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
                    , API.subscriptionStreamName = stream
                    , API.subscriptionAckTimeoutSeconds = 1
                    , API.subscriptionMaxUnackedRecords = 100
+                   , API.subscriptionOffset = (Enumerated (Right API.SpecialOffsetLATEST))
                    }
       hstreamApiCreateSubscription (mkClientNormalRequest' subReq)
     handleRespApp :: ClientResult 'Normal API.Subscription -> IO ()
