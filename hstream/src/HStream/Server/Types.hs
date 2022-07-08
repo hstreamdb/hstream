@@ -25,6 +25,7 @@ import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import           HStream.Server.ReaderPool        (ReaderPool)
+import           HStream.Server.Shard             (SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import           HStream.Utils                    (textToCBytes)
@@ -58,6 +59,7 @@ data ServerContext = ServerContext
   , gossipContext            :: GossipContext
   , serverOpts               :: ServerOpts
   , readerPool               :: ReaderPool
+  , shardInfo                :: MVar (HM.HashMap Text SharedShardMap)
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper

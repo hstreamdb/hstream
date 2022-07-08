@@ -121,8 +121,8 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   let rids = V.zipWith (API.RecordId logId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse sName rids
   where
-    streamName  = textToCBytes sName
-    streamID    = S.mkStreamId S.StreamTypeStream streamName
+    streamName = textToCBytes sName
+    streamID   = S.mkStreamId S.StreamTypeStream streamName
 
 readShard
   :: HasCallStack
