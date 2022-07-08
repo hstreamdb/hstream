@@ -35,6 +35,7 @@ import           Control.Concurrent                (MVar, modifyMVar,
                                                     modifyMVar_)
 import           HStream.Connector.HStore          (transToStreamName)
 import qualified HStream.Logger                    as Log
+import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
 import           HStream.Server.Handler.Common     (decodeRecordBatch)
