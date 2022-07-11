@@ -11,6 +11,7 @@
 module HStream.Server.Handler.Query where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (Exception, Handler (..),
                                                    handle)
 import           Control.Monad                    (join)
@@ -256,22 +257,24 @@ executePushQueryHandler
                 zkHandle
             -- run task
             -- FIXME: take care of the life cycle of the thread and global state
-            tid <-
-              forkIO $
-                P.setQueryStatus qid Running zkHandle
-                  >> runTaskWrapper ctx taskBuilder scLDClient
+            P.setQueryStatus qid Running zkHandle
+            tid <- forkIO $ runTaskWrapper ctx taskBuilder scLDClient
             takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
             -- sub from sink stream and push to client
             consumerName <- newRandomText 20
             let sc = HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
             subscribeToStreamWithoutCkp sc sink SpecialOffsetLATEST
 
+            sending <- async (sendToClient zkHandle qid sink sc streamSend)
+
             forkIO $ handlePushQueryCanceled meta $ do
               killThread tid
+              cancel sending
               P.setQueryStatus qid Terminated zkHandle
               unSubscribeToStreamWithoutCkp sc sink
 
-            sendToClient zkHandle qid sink sc streamSend
+            wait sending
+
       _ -> do
         Log.fatal "Push Query: Inconsistent Method Called"
         returnServerStreamingResp StatusInternal "inconsistent method called"

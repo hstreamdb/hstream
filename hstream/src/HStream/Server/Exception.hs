@@ -6,6 +6,7 @@
 
 module HStream.Server.Exception where
 
+import           Control.Concurrent.Async             (AsyncCancelled (..))
 import           Control.Exception                    (Exception (..),
                                                        Handler (Handler),
                                                        IOException,
@@ -100,6 +101,9 @@ finalExceptionHandlers = [
   Handler $ \(err :: IOException) -> do
     Log.fatal $ Log.buildString' err
     return (StatusInternal, mkStatusDetails err)
+  ,
+  Handler $ \(err :: AsyncCancelled) -> do
+    return (StatusOk, "")
   ,
   Handler $ \(err :: SomeException) -> do
     Log.fatal $ Log.buildString' err

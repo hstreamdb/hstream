@@ -26,6 +26,7 @@ module HStream.Processing.Processor
   )
 where
 
+import           Control.Concurrent
 import           Control.Exception                     (throw)
 import           Data.Maybe
 import           Data.Typeable
@@ -123,18 +124,28 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
     ctx <- buildTaskContext task lf
     let offset = API.SpecialOffsetLATEST
     forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
-
-    asyncs <- forM sourceStreamNames $ \sourceStreamName -> do
-      async $ withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> runRIO ctx $ do
-        forM_ sourceRecords $ \r@SourceRecord {..} -> do
-          let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
-          let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
-          liftIO $ updateTimestampInTaskContext ctx srcTimestamp
-          e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
-          case e' of
-            Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
-            Right _                   -> return ()
-    mapM_ wait asyncs
+    loop task ctx sourceStreamNames []
+  where
+    runOnePath :: Task -> TaskContext -> T.Text -> IO ()
+    runOnePath Task{..} ctx sourceStreamName = withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> runRIO ctx $ do
+      forM_ sourceRecords $ \r@SourceRecord {..} -> do
+        let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
+        let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
+        liftIO $ updateTimestampInTaskContext ctx srcTimestamp
+        e' <- try $ runEP sourceEProcessor (mkERecord Record {recordKey = srcKey, recordValue = srcValue, recordTimestamp = srcTimestamp})
+        case e' of
+          Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
+          Right _                   -> return ()
+    loop :: Task -> TaskContext -> [T.Text] -> [Async ()] -> IO ()
+    loop task ctx [] asyncs = return ()
+    loop task ctx [sourceStreamName] asyncs =
+      runOnePath task ctx sourceStreamName `onException` do
+        forM_ asyncs cancel
+        let sourceStreamNames = HM.keys (taskSourceConfig task)
+        forM_ sourceStreamNames unSubscribeToStreamWithoutCkp
+    loop task ctx (sourceStreamName:xs) asyncs = do
+      withAsync (runOnePath task ctx sourceStreamName) $ \a -> do
+        loop task ctx xs (asyncs ++ [a])
 
 validateTopology :: TaskTopologyConfig -> ()
 validateTopology TaskTopologyConfig {..} =

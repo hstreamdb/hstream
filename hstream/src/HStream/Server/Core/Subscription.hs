@@ -9,9 +9,10 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async          (async, wait)
+import           Control.Concurrent.Async          (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception                 (Exception, catch, throwIO)
+import           Control.Exception                 (Exception, catch,
+                                                    onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString                   as BS
 import qualified Data.HashMap.Strict               as HM
@@ -165,7 +166,7 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
   mockAckPool <- newTChanIO
   Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId initReq)) 1
   Log.debug "pass first recv"
-  SubscribeContextWrapper {..} <- initSub ctx (streamingFetchRequestSubscriptionId initReq)
+  (SubscribeContextWrapper {..}, tid_m) <- initSub ctx (streamingFetchRequestSubscriptionId initReq)
   Log.debug "pass initSub"
   let streamSend resp = do
         let req = StreamingFetchRequest
@@ -181,12 +182,15 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
   let streamRecv = do
         req <- atomically $ readTChan mockAckPool
         return $ Right (Just req)
-  async (recvAcks ctx scwState scwContext consumerCtx streamRecv) >>= wait
+  (withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait) `onException` do
+    case tid_m of
+      Just tid -> killThread tid
+      Nothing  -> return ()
   Log.debug "pass recvAcks"
 streamingFetchCore ctx SFetchCoreInteractive = \(streamSend,streamRecv) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
   Log.debug "pass first recv"
-  SubscribeContextWrapper {..} <- initSub ctx streamingFetchRequestSubscriptionId
+  (SubscribeContextWrapper {..}, _) <- initSub ctx streamingFetchRequestSubscriptionId
   Log.debug "pass initSub"
   consumerCtx <- initConsumer scwContext streamingFetchRequestConsumerName streamSend
   Log.debug "pass initConsumer"
@@ -202,7 +206,7 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend,streamRecv) -> do
           Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
           return firstReq
 
-initSub :: ServerContext -> SubscriptionId -> IO SubscribeContextWrapper
+initSub :: ServerContext -> SubscriptionId -> IO (SubscribeContextWrapper, Maybe ThreadId)
 initSub serverCtx@ServerContext {..} subId = do
   (needInit, SubscribeContextNewWrapper {..}) <- atomically $ do
     subMap <- readTVar scSubscribeContexts
@@ -228,11 +232,11 @@ initSub serverCtx@ServerContext {..} subId = do
       let errHandler = \case
             Left e  -> throwTo tid e
             Right _ -> pure ()
-      void $ forkFinally (sendRecords serverCtx scwState scwContext) errHandler
-      return wrapper
+      tid <- forkFinally (sendRecords serverCtx scwState scwContext) errHandler
+      return (wrapper, Just tid)
     else do
       mctx <- atomically $ readTMVar scnwContext
-      return $ SubscribeContextWrapper {scwState = scnwState, scwContext = mctx}
+      return (SubscribeContextWrapper {scwState = scnwState, scwContext = mctx}, Nothing)
 
 -- For each subscriptionId, create ldCkpReader and ldReader, then
 -- add all shards of target stream to SubscribeContext
@@ -393,20 +397,31 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
           if isFirstSend
           then do
             writeIORef isFirstSendRef False
-            void $ forkIO $ forever $ do
-              threadDelay (100 * 1000)
-              updateClockAndDoResend
-          else pure ()
-          successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
-          let cSubscriptionId = textToCBytes subSubscriptionId
-              byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
-              recordSize = fromIntegral $ length recordBatches
-          Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
-          Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
-          atomically $ addUnackedRecords subCtx successSendRecords
-          loop isFirstSendRef
+            -- Note: automically kill child thread when the parent thread is killed
+            tid <- forkIO $ forever $ do
+                     threadDelay (100 * 1000)
+                     updateClockAndDoResend
+            -- FIXME: the same code
+            successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
+            let cSubscriptionId = textToCBytes subSubscriptionId
+                byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
+                recordSize = fromIntegral $ length recordBatches
+            Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
+            Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
+            atomically $ addUnackedRecords subCtx successSendRecords
+            loop isFirstSendRef `onException` (killThread tid)
+          else do
+            -- FIXME: the same code
+            successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
+            let cSubscriptionId = textToCBytes subSubscriptionId
+                byteSize = fromIntegral $ sum $ map (BS.length . S.recordPayload) recordBatches
+                recordSize = fromIntegral $ length recordBatches
+            Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
+            Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
+            atomically $ addUnackedRecords subCtx successSendRecords
+            loop isFirstSendRef
         else
-          when (state == SubscribeStateStopping) $
+          when (state == SubscribeStateStopping) $ do
             throwIO SubscribeInValidError
 
     updateClockAndDoResend :: IO ()
