@@ -9,6 +9,7 @@ module HStream.Server.Handler.Stream
   ( createStreamHandler,
     deleteStreamHandler,
     listStreamsHandler,
+    listShardsHandler,
     appendHandler,
     append0Handler,
     readShardHandler
@@ -120,6 +121,15 @@ append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@Appen
   where
     inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
+
+
+listShardsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListShardsRequest ListShardsResponse
+  -> IO (ServerResponse 'Normal ListShardsResponse)
+listShardsHandler sc (ServerNormalRequest _metadata request) = do
+  Log.debug "Receive List Shards Request"
+  C.listShards sc request >>= returnResp . ListShardsResponse
 
 readShardHandler
   :: ServerContext

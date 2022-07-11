@@ -14,25 +14,21 @@ module HStream.Server.Handler.Cluster
 
 import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception                (Exception (..), Handler (..),
-                                                   catches, throwIO)
-import           Control.Monad                    (unless, void)
+                                                   throwIO)
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
-import           HStream.Connector.HStore         (transToStreamName)
 import           HStream.Gossip                   (getFailedNodes,
                                                    getMemberList)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common    (alignDefault,
-                                                   orderingKeyToStoreKey)
+import           HStream.Server.Handler.Common    (alignDefault)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty)
 import           HStream.Utils                    (mkServerErrResp,
                                                    pattern EnumPB, returnResp)
