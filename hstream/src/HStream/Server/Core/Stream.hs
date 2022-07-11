@@ -33,7 +33,6 @@ import qualified Z.Data.CBytes                     as CB
 
 import           Control.Concurrent                (MVar, modifyMVar,
                                                     modifyMVar_)
-import           HStream.Connector.HStore          (transToStreamName)
 import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
@@ -50,7 +49,9 @@ import           HStream.Server.Shard              (Shard (..), cBytesToKey,
                                                     mkSharedShardMapWithShards,
                                                     shardStartKey)
 import           HStream.Server.Types              (ServerContext (..),
-                                                    ShardDict)
+                                                    ShardDict,
+                                                    getShard, getShardName,
+                                                    transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.ThirdParty.Protobuf       as PB

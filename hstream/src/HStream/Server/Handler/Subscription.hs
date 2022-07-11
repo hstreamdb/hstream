@@ -22,8 +22,7 @@ where
 
 import           Control.Concurrent.STM
 import           Control.Exception                (Handler (Handler), throwIO)
-import           Control.Monad                    (unless, when)
-import           Data.Maybe                       (fromJust, isNothing)
+import           Control.Monad
 import           Network.GRPC.HighLevel.Generated
 import           ZooKeeper.Types                  (ZHandle)
 
@@ -31,7 +30,6 @@ import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
-                                                   SubscriptionIdNotFound (..),
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    setRespType)
@@ -59,17 +57,15 @@ deleteSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@DeleteSubscriptionRequest
-  { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force}) = subExceptionHandle $ do
+deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = subExceptionHandle $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
 
+  let subId = deleteSubscriptionRequestSubscriptionId req
   hr <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hr subId == serverID) $
     throwIO Core.SubscriptionOnDifferentNode
 
-  subscription <- P.getObject @ZHandle @'SubRep subId zkHandle
-  when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
-  Core.deleteSubscription ctx (fromJust subscription) force
+  Core.deleteSubscription ctx req
   Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
 

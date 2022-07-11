@@ -38,7 +38,7 @@ data SinkRecord = SinkRecord
     snkKey       :: Maybe BL.ByteString,
     snkValue     :: BL.ByteString,
     snkTimestamp :: Timestamp
-  }
+  } deriving Show
 
 data TimestampedKey k = TimestampedKey
   { tkKey       :: k,

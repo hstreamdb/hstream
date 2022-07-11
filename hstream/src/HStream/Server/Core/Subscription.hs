@@ -20,7 +20,7 @@ import           Data.IORef                        (newIORef, readIORef,
 import           Data.Kind                         (Type)
 import qualified Data.List                         as L
 import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromJust)
+import           Data.Maybe                        (fromJust, isNothing)
 import qualified Data.Set                          as Set
 import qualified Data.Text                         as T
 import qualified Data.Vector                       as V
@@ -29,7 +29,6 @@ import           Network.GRPC.HighLevel            (StreamRecv, StreamSend)
 import           Proto3.Suite                      (Enumerated (Enumerated))
 import           ZooKeeper.Types                   (ZHandle)
 
-import           HStream.Connector.HStore          (transToStreamName)
 import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch,
                                                     getCommitRecordId,
@@ -66,8 +65,11 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
     throwIO StreamNotExist
   P.storeObject subscriptionSubscriptionId sub zkHandle
 
-deleteSubscription :: ServerContext -> Subscription -> Bool -> IO ()
-deleteSubscription ServerContext{..} Subscription{subscriptionSubscriptionId = subId} force = do
+deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
+deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
+  subscription <- P.getObject @ZHandle @'P.SubRep subId zkHandle
+  when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
+
   (status, msub) <- atomically $ do
     res <- getSubState
     case res of

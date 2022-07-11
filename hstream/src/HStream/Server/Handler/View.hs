@@ -17,7 +17,6 @@ import           Network.GRPC.HighLevel.Generated
 
 import           Control.Monad                    (void)
 import qualified Data.Map.Strict                  as Map
-import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
@@ -42,7 +41,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
   plan <- HSC.streamCodegen createViewRequestSql
   case plan of
     HSC.CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
-      create (HCH.transToStreamName sink)
+      create (transToStreamName sink)
       (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
       returnResp $ View { viewViewId = cBytesToText qid

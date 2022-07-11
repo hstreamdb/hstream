@@ -1,20 +1,27 @@
 module HStream.Server.Core.Common where
 
-import           Control.Exception             (throwIO)
-import qualified Data.ByteString               as BS
-import qualified Data.Map.Strict               as Map
-import qualified Data.Vector                   as V
-import           Data.Word                     (Word32, Word64)
+import           Control.Concurrent
+import           Control.Exception           (SomeException (..), throwIO, try)
+import           Control.Monad
+import qualified Data.ByteString             as BS
+import           Data.Foldable               (foldrM)
+import qualified Data.HashMap.Strict         as HM
+import qualified Data.List                   as L
+import qualified Data.Map.Strict             as Map
+import qualified Data.Vector                 as V
+import           Data.Word                   (Word32, Word64)
+import qualified Z.Data.CBytes               as CB
 
-import qualified HStream.Logger                as Log
-import           HStream.Server.Exception      (ObjectNotExist (ObjectNotExist))
-import           HStream.Server.Handler.Common (terminateQueryAndRemove,
-                                                terminateRelatedQueries)
+import qualified HStream.Logger              as Log
+import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
 import           HStream.Server.HStreamApi
+import qualified HStream.Server.Persistence  as P
 import           HStream.Server.Types
-import qualified HStream.Store                 as HS
-import           HStream.ThirdParty.Protobuf   (Empty (Empty))
-import           HStream.Utils                 (decodeByteStringBatch)
+import           HStream.SQL.Codegen
+import qualified HStream.Store               as HS
+import           HStream.ThirdParty.Protobuf (Empty (Empty))
+import           HStream.Utils               (TaskStatus (..),
+                                              decodeByteStringBatch)
 
 deleteStoreStream
   :: ServerContext
@@ -140,3 +147,68 @@ decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
     indexedRecords = V.indexed $ hstreamRecordBatchBatch recordBatch
     shardRecordIds = V.map (\(i, _) -> ShardRecordId batchId (fromIntegral i)) indexedRecords
     receivedRecords = V.map (\(i, a) -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) indexedRecords
+
+--------------------------------------------------------------------------------
+-- Query
+
+terminateQueryAndRemove :: ServerContext -> CB.CBytes -> IO ()
+terminateQueryAndRemove sc@ServerContext{..} objectId = do
+  queries <- P.getQueries zkHandle
+  let queryExists = L.find (\query -> P.getQuerySink query == objectId) queries
+  case queryExists of
+    Just query -> do
+      Log.debug . Log.buildString
+         $ "TERMINATE: found query " <> show (P.queryType query)
+        <> " with query id " <> show (P.queryId query)
+        <> " writes to the stream being dropped " <> show objectId
+      void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
+      P.removeQuery' (P.queryId query) zkHandle
+      Log.debug . Log.buildString
+         $ "TERMINATE: query " <> show (P.queryType query)
+        <> " has been removed"
+    Nothing    -> do
+      Log.debug . Log.buildString
+        $ "TERMINATE: found no query writes to the stream being dropped " <> show objectId
+
+terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
+terminateRelatedQueries sc@ServerContext{..} name = do
+  queries <- P.getQueries zkHandle
+  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
+  Log.debug . Log.buildString
+     $ "TERMINATE: the queries related to the terminating stream " <> show name
+    <> ": " <> show getRelatedQueries
+  mapM_ (handleQueryTerminate sc . OneQuery) getRelatedQueries
+
+handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [CB.CBytes]
+handleQueryTerminate ServerContext{..} (OneQuery qid) = do
+  hmapQ <- readMVar runningQueries
+  case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
+  P.setQueryStatus qid Terminated zkHandle
+  void $ swapMVar runningQueries (HM.delete qid hmapQ)
+  Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
+  return [qid]
+handleQueryTerminate sc@ServerContext{..} AllQueries = do
+  hmapQ <- readMVar runningQueries
+  handleQueryTerminate sc (ManyQueries $ HM.keys hmapQ)
+handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
+  hmapQ <- readMVar runningQueries
+  qids' <- foldrM (action hmapQ) [] qids
+  Log.debug . Log.buildString $ "TERMINATE: terminated queries: " <> show qids'
+  return qids'
+  where
+    action hm x terminatedQids = do
+      result <- try $ do
+        case HM.lookup x hm of
+          Just tid -> do
+            killThread tid
+            P.setQueryStatus x Terminated zkHandle
+            void $ swapMVar runningQueries (HM.delete x hm)
+          _        ->
+            Log.debug $ "query id " <> Log.buildString' x <> " not found"
+      case result of
+        Left (e ::SomeException) -> do
+          Log.warning . Log.buildString
+            $ "TERMINATE: unable to terminate query: " <> show x
+           <> "because of " <> show e
+          return terminatedQids
+        Right _                  -> return (x:terminatedQids)

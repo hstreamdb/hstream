@@ -59,6 +59,7 @@ library
     HStream.Server.Types
     HStream.Server.ReaderPool
     HStream.Server.Shard
+    HStream.Server.HStore
 
   other-modules:
     HStream.Server.Core.Common

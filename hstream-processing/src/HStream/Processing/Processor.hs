@@ -46,6 +46,7 @@ import           HStream.Processing.Processor.Internal
 import           HStream.Processing.Store
 import           HStream.Processing.Type
 import           HStream.Processing.Util
+import qualified HStream.Server.HStreamApi             as API
 
 build :: TaskBuilder -> Task
 build tp@TaskTopologyConfig {..} =
@@ -120,11 +121,12 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
   logOptions <- logOptionsHandle stderr True
   withLogFunc logOptions $ \lf -> do
     ctx <- buildTaskContext task lf
-    forM_ sourceStreamNames (subscribeToStreamWithoutCkp)
-    forever $ runRIO ctx $ do
-      forM sourceStreamNames $ \sourceStreamName -> do
-        sourceRecords <- liftIO $ readRecordsWithoutCkp sourceStreamName
-        forM_ sourceRecords $ \SourceRecord {..} -> do
+    let offset = API.SpecialOffsetLATEST
+    forM_ sourceStreamNames (flip subscribeToStreamWithoutCkp offset)
+
+    asyncs <- forM sourceStreamNames $ \sourceStreamName -> do
+      async $ withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> runRIO ctx $ do
+        forM_ sourceRecords $ \r@SourceRecord {..} -> do
           let acSourceName = iSourceName (taskSourceConfig HM'.! srcStream)
           let (sourceEProcessor, _) = taskTopologyForward HM'.! acSourceName
           liftIO $ updateTimestampInTaskContext ctx srcTimestamp
@@ -132,6 +134,7 @@ runTask SourceConnectorWithoutCkp {..} sinkConnector taskBuilder@TaskTopologyCon
           case e' of
             Left (e :: SomeException) -> liftIO $ Log.fatal $ Log.buildString (Prelude.show e)
             Right _                   -> return ()
+    mapM_ wait asyncs
 
 validateTopology :: TaskTopologyConfig -> ()
 validateTopology TaskTopologyConfig {..} =
