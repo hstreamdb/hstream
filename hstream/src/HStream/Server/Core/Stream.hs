@@ -19,8 +19,8 @@ import           Control.Exception                 (Exception (displayException)
 import           Control.Monad                     (forM_, unless, void, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
-import           Data.Maybe                        (fromJust, fromMaybe)
 import qualified Data.Map.Strict                   as M
+import           Data.Maybe                        (fromJust, fromMaybe)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
@@ -33,7 +33,8 @@ import           HStream.Connector.HStore          (transToStreamName)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
 import           HStream.Server.Handler.Common     (decodeRecordBatch)
-import           HStream.Server.HStreamApi         (Shard (Shard), ReadShardRequest (readShardRequestShardId))
+import           HStream.Server.HStreamApi         (ReadShardRequest (readShardRequestShardId),
+                                                    Shard (Shard))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -187,7 +188,8 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
  where
    streamId = transToStreamName listShardsRequestStreamName
    startKey = CB.pack "startKey"
-   endKey = CB.pack "endKey"
+   endKey   = CB.pack "endKey"
+   epoch    = CB.pack "epoch"
 
    getShardInfo shards logId = do
      attr <- S.getStreamPartitionExtraAttrs scLDClient logId
@@ -195,21 +197,23 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
        Nothing -> return . V.snoc shards $
          Shard { shardStreamName = listShardsRequestStreamName
                , shardShardId    = logId
-               , shardIsActive = True
+               , shardIsActive   = True
                }
-       Just(sKey, eKey) -> return . V.snoc shards $
-         Shard { shardStreamName = listShardsRequestStreamName
-               , shardShardId    = logId
+       Just(sKey, eKey, ep) -> return . V.snoc shards $
+         Shard { shardStreamName        = listShardsRequestStreamName
+               , shardShardId           = logId
                , shardStartHashRangeKey = sKey
-               , shardEndHashRangeKey = eKey
+               , shardEndHashRangeKey   = eKey
+               , shardEpoch             = ep
                -- FIXME: neet a way to find if this shard is active
-               , shardIsActive = True
+               , shardIsActive          = True
                }
 
    getInfo mp = do
      startHashRangeKey <- cBytesToText <$> M.lookup startKey mp
-     endHashRangeKey <- cBytesToText <$> M.lookup endKey mp
-     return (startHashRangeKey, endHashRangeKey)
+     endHashRangeKey   <- cBytesToText <$> M.lookup endKey mp
+     shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
+     return (startHashRangeKey, endHashRangeKey, shardEpoch)
 
 --------------------------------------------------------------------------------
 
