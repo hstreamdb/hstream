@@ -28,7 +28,6 @@ import           ZooKeeper.Types
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Gossip                   (GossipContext, getMemberList)
-import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
