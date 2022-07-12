@@ -4,8 +4,8 @@ module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
-import           Data.Hashable                    (hash)
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map.Strict as M
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
 import qualified Data.Set                         as Set
@@ -25,10 +25,9 @@ import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import           HStream.Server.ReaderPool        (ReaderPool)
-import           HStream.Server.Shard             (SharedShardMap)
+import           HStream.Server.Shard             (SharedShardMap, ShardKey)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
-import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -39,6 +38,7 @@ serverVersion = "0.8.0"
 type Timestamp = Int64
 type ServerID = Word32
 type ServerState = PB.Enumerated NodeState
+type ShardDict = M.Map ShardKey HS.C_LogID
 
 data ServerContext = ServerContext
   { scLDClient               :: HS.LDClient
@@ -60,6 +60,9 @@ data ServerContext = ServerContext
   , serverOpts               :: ServerOpts
   , readerPool               :: ReaderPool
   , shardInfo                :: MVar (HM.HashMap Text SharedShardMap)
+    -- ^ streamName -> ShardMap, use to manipulate shards
+  , shardTable               :: MVar (HM.HashMap Text ShardDict)
+    -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
@@ -172,20 +175,3 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
-
---------------------------------------------------------------------------------
--- shard
-
-getShardName :: Int -> CB.CBytes
-getShardName idx = textToCBytes $ "shard" <> T.pack (show idx)
-
-getShard :: HS.LDClient -> HS.StreamId -> Maybe T.Text -> IO HS.C_LogID
-getShard client streamId key = do
-  partitions <- HS.listStreamPartitions client streamId
-  let size = length partitions - 1
-  let shard = getShardName . getShardIdx size <$> key
-  HS.getUnderlyingLogId client streamId shard
-
-getShardIdx :: Int -> T.Text -> Int
-getShardIdx size key = let hashValue = hash key
-                        in hashValue `mod` size

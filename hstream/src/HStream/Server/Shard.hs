@@ -37,17 +37,21 @@ module HStream.Server.Shard(
   ShardNotExist,
 
   hashShardKey,
+  keyToCBytes,
+  cBytesToKey,
+  shardStartKey,
+  shardEndKey,
+  shardEpoch
 ) where
 
 import           Control.Concurrent.STM (STM, TMVar, atomically,
-                                         newEmptyTMVarIO, putTMVar, readTMVar,
-                                         swapTMVar, takeTMVar)
+                                         putTMVar, readTMVar,
+                                         swapTMVar, takeTMVar, newTMVarIO)
 import           Control.Exception      (Exception (fromException, toException),
                                          SomeException, bracket, throwIO)
 import qualified Crypto.Hash            as CH
 import           Data.Bits              (shiftL, shiftR, (.|.))
 import qualified Data.ByteArray         as BA
-import qualified Data.ByteString        as B
 import           Data.Foldable          (foldl', forM_)
 import           Data.Hashable          (Hashable (hash))
 import           Data.List              (iterate')
@@ -61,6 +65,7 @@ import           Data.Word              (Word32, Word64)
 import qualified HStream.Logger         as Log
 import qualified HStream.Store          as S
 import qualified Z.Data.CBytes          as CB
+import Data.Text.Encoding (encodeUtf8)
 
 newtype ShardKey = ShardKey Integer
   deriving (Show, Eq, Ord, Integral, Real, Enum, Num, Hashable)
@@ -69,13 +74,16 @@ instance Bounded ShardKey where
   minBound = ShardKey 0
   maxBound = ShardKey ((1 `shiftL` 128) - 1)
 
-hashShardKey :: B.ByteString -> ShardKey
+hashShardKey :: T.Text -> ShardKey
 hashShardKey key =
-  let w8KeyList = BA.unpack (CH.hash key :: CH.Digest CH.MD5)
+  let w8KeyList = BA.unpack (CH.hash . encodeUtf8 $ key :: CH.Digest CH.MD5)
    in ShardKey $ foldl' (\acc c -> (.|.) (acc `shiftL` 8) (fromIntegral c)) (0 :: Integer) w8KeyList
 
 keyToCBytes :: ShardKey -> CB.CBytes
-keyToCBytes = CB.pack . show
+keyToCBytes (ShardKey key) = CB.pack . show $ key
+
+cBytesToKey :: CB.CBytes -> ShardKey
+cBytesToKey = ShardKey . read . CB.unpack
 
 -- Devide the key space into N parts, return [(startKey, endKey)]
 devideKeySpace :: Int -> [(ShardKey, ShardKey)]
@@ -191,7 +199,7 @@ newtype SharedShardMap = SharedShardMap
   { shardMaps :: Vector (TMVar ShardMap) }
 
 mkSharedShardMap :: IO SharedShardMap
-mkSharedShardMap = do shardMaps <- V.replicateM kNumShards newEmptyTMVarIO
+mkSharedShardMap = do shardMaps <- V.replicateM kNumShards $ newTMVarIO mkEmptyShardMap
                       return SharedShardMap {shardMaps}
 
 mkSharedShardMapWithShards :: [Shard] -> IO SharedShardMap
@@ -201,7 +209,7 @@ mkSharedShardMapWithShards shards = do
     let idx = getShardMapIdx key
     getShardMap mp idx >>= pure <$> insertShard key shard >>= putShardMap mp idx
   return mp 
-        
+
 getShardMapIdx :: ShardKey -> Word32
 getShardMapIdx key = fromIntegral (hash key) `shiftR` (32 - kNumShardBits)
 
@@ -325,9 +333,18 @@ mergeTwoShard client mp key1 key2 = do
 ---------------------------------------------------------------------------------------------------------------
 ---- helper
 
+shardStartKey :: CB.CBytes
+shardStartKey = "startKey" 
+
+shardEndKey :: CB.CBytes
+shardEndKey = "endKey"
+
+shardEpoch :: CB.CBytes
+shardEpoch = "epoch"
+
 createShard :: S.LDClient -> Shard -> IO Shard
 createShard client shard@Shard{..} = do
-  let attr = M.fromList [("startKey", keyToCBytes startKey), ("endKey", keyToCBytes endKey), ("epoch", CB.pack . show $ epoch)]
+  let attr = M.fromList [(shardStartKey, keyToCBytes startKey), (shardEndKey, keyToCBytes endKey), (shardEpoch, CB.pack . show $ epoch)]
   newShardId <- S.createStreamPartitionWithExtrAttr client streamId (Just $ getShardName startKey endKey) attr
   return $ shard {shardId = newShardId}
 
