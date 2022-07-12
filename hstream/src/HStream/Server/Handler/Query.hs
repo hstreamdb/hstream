@@ -207,7 +207,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
     PausePlan (PauseObjectConnector name) -> do
-      IO.stopIOTask scIOWorker name False >> returnCommandQueryEmptyResp
+      IO.stopIOTask scIOWorker name False False >> returnCommandQueryEmptyResp
     ResumePlan (ResumeObjectConnector name) -> do
       IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
     _ -> discard

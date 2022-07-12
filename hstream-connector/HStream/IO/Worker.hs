@@ -39,7 +39,7 @@ newWorker kvCfg hsConfig = do
   let (ZkKvConfig zk _ _) = kvCfg
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
   -- tmp tasksPath
-  worker <- Worker kvCfg hsConfig "/tm/io/tasks"
+  worker <- Worker kvCfg hsConfig "/tmp/io/tasks"
     <$> C.newMVar HM.empty
     <*> S.newZkStorage zk
     <*> newIORef undefined
@@ -90,13 +90,14 @@ createIOTaskFromSql worker@Worker{..} sql = do
 
 createIOTask :: Worker -> T.Text -> TaskInfo -> IO ()
 createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
+  task <- IOTask.newIOTask taskId storage taskInfo (tasksPath <> "/" <> taskId)
+  IOTask.initIOTask task
+  IOTask.checkIOTask task
   S.createIOTask storage taskName taskId taskInfo
   C.modifyMVar_ ioTasksM $ \ioTasks -> do
     case HM.lookup taskName ioTasks of
       Just _ -> fail "exists"
       Nothing -> do
-        task <- IOTask.newIOTask taskId storage taskInfo (tasksPath <> "/" <> taskId)
-        IOTask.initIOTask task
         IOTask.startIOTask task
         return $ HM.insert taskName task ioTasks
 

@@ -11,9 +11,11 @@ module HStream.Utils.Format
   ) where
 
 import qualified Data.Aeson.Text                  as A
+import qualified Data.Aeson                       as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
 import qualified Data.Map.Strict                  as M
+import qualified Data.HashMap.Strict              as HM
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock                  (NominalDiffTime)
@@ -29,7 +31,7 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
                                                    iso8061DateFormat)
 
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Utils.Converter          (valueToJsonValue)
+import           HStream.Utils.Converter          (valueToJsonValue, structToJsonObject)
 
 --------------------------------------------------------------------------------
 
@@ -129,13 +131,15 @@ renderConnectorsToTable connectors =
     (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
     (Table.colsAllG Table.center <$> rows) ++ "\n"
   where
-    titles = [ "Connector ID"
+    titles = [ "Name"
              , "Status"
-             , "Created Time"
-             , "SQL Text"]
-    formatRow API.Connector {..} =
-      [ [show connectorInfo]
+             ]
+    formatRow API.Connector {connectorInfo=Just info} =
+      [ [toString $ infoJson HM.! "name"]
+      , [toString $ infoJson HM.! "status"]
       ]
+      where infoJson = structToJsonObject info
+            toString (A.String v) = T.unpack v
     rows = map formatRow connectors
     colSpec = [ Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def

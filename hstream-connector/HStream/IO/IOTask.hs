@@ -65,7 +65,7 @@ runIOTask IOTask{..} = do
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
         " run",
-        " -config /data/config.json",
+        " --config /data/config.json",
         " >> ", taskPath, "/log", " 2>&1"
       ]
     taskProcessConfig = TP.setStdin TP.createPipe
@@ -164,6 +164,6 @@ checkIOTask IOTask{taskInfo=TaskInfo{..}, ..} = do
         " -v " , taskPath, ":/data",
         " " , T.unpack (tcImage taskConfig),
         " check",
-        " -config /data/config.json"
+        " --config /data/config.json"
       ]
 

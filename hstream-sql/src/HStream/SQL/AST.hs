@@ -461,10 +461,10 @@ instance Refine Create where
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateSourceConnector _ (Ident s) target options) = RCreateConnector "SOURCE" s (Text.pack target) False (refine options)
-  refine (CreateSourceConnectorIf _ (Ident s) target options) = RCreateConnector "SOURCE" s (Text.pack target) True (refine options)
-  refine (CreateSinkConnector _ (Ident s) target options) = RCreateConnector "SINK" s (Text.pack target) False (refine options)
-  refine (CreateSinkConnectorIf _ (Ident s) target options) = RCreateConnector "SINK" s (Text.pack target) True (refine options)
+  refine (CreateSourceConnector _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t False (refine options)
+  refine (CreateSourceConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t True (refine options)
+  refine (CreateSinkConnector _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t False (refine options)
+  refine (CreateSinkConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t True (refine options)
   refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT

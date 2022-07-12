@@ -103,7 +103,7 @@ pauseConnectorHandler ServerContext{..}
   (ServerNormalRequest _metadata PauseConnectorRequest{..}) = connectorExceptionHandle $ do
   Log.debug $ "Receive Terminate Connector Request. "
     <> "Connector ID: " <> Log.buildText pauseConnectorRequestName
-  IO.stopIOTask scIOWorker pauseConnectorRequestName False
+  IO.stopIOTask scIOWorker pauseConnectorRequestName False False
   returnResp Empty
 
 --------------------------------------------------------------------------------
