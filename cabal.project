@@ -48,9 +48,6 @@ package proto3-wire
 package proto3-suite
   tests: false
 
-package hstream-gossip
-  tests: false
-
 constraints:
     Z-IO          == 0.8.1.1
   , Z-Data        == 0.8.8.0

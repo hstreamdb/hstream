@@ -13,7 +13,9 @@ import           Control.Exception                (finally, handle)
 import           Control.Monad                    (forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Char                        (toUpper)
+import qualified Data.List                        as L
 import qualified Data.Map                         as M
+import           Data.Maybe                       (maybeToList)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
@@ -31,8 +33,7 @@ import           System.Posix                     (Handler (Catch),
 import           Text.RawString.QQ                (r)
 import           Z.IO.Network.SocketAddr          (ipv4)
 
-import qualified Data.List                        as L
-import           Data.Maybe                       (maybeToList)
+import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Client.Action            (createStream,
                                                    createStreamBySelect,
                                                    dropAction, insertIntoStream,
@@ -88,6 +89,7 @@ runCommand HStreamCommand {..} =
   case cliCommand of
     HStreamSql opts   -> hstreamSQL cliConnOpts opts
     HStreamNodes opts -> hstreamNodes cliConnOpts opts
+    HStreamInit       -> hstreamInit cliConnOpts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL CliConnOpts{..} HStreamSqlOpts{ _clientId = clientId, _updateInterval = updateInterval } = do
@@ -115,12 +117,25 @@ hstreamNodes connOpts HStreamNodesList =
 hstreamNodes connOpts (HStreamNodesStatus Nothing) =
   getNodes connOpts >>= putStrLn . formatResult . V.toList . API.describeClusterResponseServerNodesStatus
 hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =
-  getNodes connOpts >>= putStrLn . formatResult . maybeToList . L.find (compareServerId sid) . V.toList . API.describeClusterResponseServerNodesStatus
+  getNodes connOpts
+  >>= putStrLn
+    . formatResult
+    . maybeToList . L.find (compareServerId sid)
+    . V.toList . API.describeClusterResponseServerNodesStatus
   where
     compareServerId x API.ServerNodeStatus{..} =
       case serverNodeStatusNode of
         Just API.ServerNode{..} -> serverNodeId == x
         Nothing                 -> False
+
+-- TODO: Init should have it's own rpc call
+hstreamInit :: CliConnOpts -> IO ()
+hstreamInit CliConnOpts{..} = do
+  withGRPCClient (mkGRPCClientConf $ ipv4 _serverHost _serverPort) $ \client -> do
+    hstreamApiClient client
+    >>= Admin.sendAdminCommand "server init"
+    >>= Admin.formatCommandResponse
+    >>= putStrLn
 
 getNodes :: CliConnOpts -> IO DescribeClusterResponse
 getNodes CliConnOpts{..} =
