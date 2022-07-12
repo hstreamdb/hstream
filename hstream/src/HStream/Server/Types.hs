@@ -5,9 +5,9 @@ module HStream.Server.Types where
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict              as HM
-import qualified Data.Map.Strict as M
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
+import qualified Data.Map.Strict                  as M
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
@@ -25,7 +25,7 @@ import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
 import           HStream.Server.ReaderPool        (ReaderPool)
-import           HStream.Server.Shard             (SharedShardMap, ShardKey)
+import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 

@@ -1,7 +1,6 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.RegressionSpec (spec) where
@@ -69,8 +68,10 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
-    executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
-      `shouldReturn`
+    -- executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
+    res <- executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
+
+    res `shouldBe`
       [ mkStruct [("cnt", Aeson.Number 1), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 1)]
       , mkStruct [("cnt", Aeson.Number 2), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 2)]
       , mkStruct [("cnt", Aeson.Number 3), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 3)]
@@ -84,13 +85,13 @@ spec = aroundAll provideHstreamApi $
     runCreateStreamSql api "CREATE STREAM s6;"
     runQuerySimple_ api "CREATE VIEW v6 as SELECT key1, key2, key3, SUM(key1) FROM s6 GROUP BY key1 EMIT CHANGES;"
     _ <- forkIO $ do
-      threadDelay 2000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
+      threadDelay 5000000 -- FIXME: requires a notification mechanism to ensure that the task starts successfully before inserting data
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (0, \"hello_00000000000000000000\", true);"
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (1, \"hello_00000000000000000001\", false);"
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (0, \"hello_00000000000000000002\", true);"
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (1, \"hello_00000000000000000003\", false);"
       runInsertSql api "INSERT INTO s6 (key1, key2, key3) VALUES (0, \"hello_00000000000000000004\", true);"
-    threadDelay 4000000
+    threadDelay 8000000
     runQuerySimple api "SELECT * FROM v6 WHERE key1 = 1;"
       `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(key1)", Aeson.Number 2)
                                                   , ("key1", Aeson.Number 1)

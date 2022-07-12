@@ -19,10 +19,12 @@ import qualified Data.Map.Strict as M
 import qualified Data.HashMap.Strict as HM
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throwIO)
-import           Control.Monad                     (foldM, forM, unless, void, when)
+import           Control.Monad                     (foldM, forM, unless, void,
+                                                    when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
 import qualified Data.Map.Strict                   as M
+import qualified Data.HashMap.Strict               as HM
 import           Data.Maybe                        (fromJust, fromMaybe)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
@@ -31,7 +33,10 @@ import           GHC.Stack                         (HasCallStack)
 import           Network.GRPC.HighLevel.Generated
 import qualified Z.Data.CBytes                     as CB
 
+import           Control.Concurrent                (MVar, modifyMVar,
+                                                    modifyMVar_)
 import           HStream.Connector.HStore          (transToStreamName)
+import qualified HStream.Logger                    as Log
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
 import           HStream.Server.Handler.Common     (decodeRecordBatch)
@@ -41,6 +46,12 @@ import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
 import           HStream.Server.ReaderPool         (getReader, putReader)
+import           HStream.Server.Shard              (Shard (..), cBytesToKey,
+                                                    createShard, devideKeySpace,
+                                                    hashShardKey,
+                                                    mkShardWithDefaultId,
+                                                    mkSharedShardMapWithShards,
+                                                    shardStartKey)
 import           HStream.Server.Types              (ServerContext (..),
                                                     ShardDict)
 import HStream.Server.Shard (devideKeySpace, shardStartKey, createShard, mkShardWithDefaultId, mkSharedShardMapWithShards, Shard (..), cBytesToKey, hashShardKey)
@@ -189,7 +200,7 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
   return $ API.AppendResponse appendRequestStreamName records
 
 --------------------------------------------------------------------------------
-    
+
 getShardId :: S.LDClient -> MVar (HM.HashMap Text ShardDict) -> Text -> Maybe Text -> IO S.C_LogID
 getShardId client shardTable sName partitionKey = do
   getShardDict >>= return . snd . fromJust . M.lookupLE shardKey
@@ -198,7 +209,7 @@ getShardId client shardTable sName partitionKey = do
    streamID   = S.mkStreamId S.StreamTypeStream streamName
    streamName = textToCBytes sName
 
-   getShardDict = modifyMVar shardTable $ \mp -> do 
+   getShardDict = modifyMVar shardTable $ \mp -> do
      case HM.lookup sName mp of
        Just shards -> do
            Log.info $ "shardDict exist for stream " <> Log.buildText sName
@@ -214,12 +225,12 @@ getShardId client shardTable sName partitionKey = do
      Log.fatal $ "getStreamPartitionExtraAttrs for shard " <> Log.buildInt shardId
      attrs <- S.getStreamPartitionExtraAttrs client shardId
      Log.fatal $ "attrs for shard " <> Log.buildInt shardId <> ": " <> Log.buildString' (show attrs)
-     startKey <- case M.lookup shardStartKey attrs of 
-                   Nothing -> return $ cBytesToKey "0"
+     startKey <- case M.lookup shardStartKey attrs of
+                   Nothing  -> return $ cBytesToKey "0"
                    -- Nothing -> throwIO $ ShardKeyNotFound shardId
                    Just key -> return $ cBytesToKey key
-     return $ M.insert startKey shardId dict 
-     -- case M.lookup shardStartKey attrs of 
+     return $ M.insert startKey shardId dict
+     -- case M.lookup shardStartKey attrs of
      --   -- Nothing -> return $ cBytesToKey "0"
      --   Nothing -> return dict
      --   Just key -> return $ M.insert (cBytesToKey key) shardId dict
@@ -282,4 +293,4 @@ instance Exception StreamExists where
 newtype ShardKeyNotFound = ShardKeyNotFound S.C_LogID
   deriving (Show)
 instance Exception ShardKeyNotFound where
-  displayException (ShardKeyNotFound shardId) = "Can't get shardKey for shard " <> show shardId 
+  displayException (ShardKeyNotFound shardId) = "Can't get shardKey for shard " <> show shardId

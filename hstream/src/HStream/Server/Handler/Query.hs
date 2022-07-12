@@ -59,6 +59,8 @@ import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
+import           HStream.Server.Shard             (keyToCBytes, shardEndKey,
+                                                   shardEpoch, shardStartKey)
 import           HStream.Server.Types
 import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
@@ -222,6 +224,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           <> " with attributes: "
           <> show attrs
       S.createStream scLDClient sName attrs
+      let extrAttr = Map.fromList [(shardStartKey, keyToCBytes minBound), (shardEndKey, keyToCBytes maxBound), (shardEpoch, "1")]
+      void $ S.createStreamPartitionWithExtrAttr scLDClient sName (Just "query") extrAttr
     sendResp ma valueSerde = do
       case ma of
         Nothing -> returnCommandQueryResp V.empty
@@ -254,6 +258,8 @@ executePushQueryHandler
               scLDClient
               (transToStreamName sink)
               (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
+            let extrAttr = Map.fromList [(shardStartKey, keyToCBytes minBound), (shardEndKey, keyToCBytes maxBound), (shardEpoch, "1")]
+            _ <- S.createStreamPartitionWithExtrAttr scLDClient (transToStreamName sink) (Just "query") extrAttr
             -- create persistent query
             (qid, _) <-
               P.createInsertPersistentQuery
@@ -398,6 +404,8 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
       else do
         HS.createStream scLDClient (HCH.transToStreamName sink)
           (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
+        let extrAttr = Map.fromList [(shardStartKey, keyToCBytes minBound), (shardEndKey, keyToCBytes maxBound), (shardEpoch, "1")]
+        void $ S.createStreamPartitionWithExtrAttr scLDClient (transToStreamName sink) (Just "query") extrAttr
         (qid, timestamp) <- handleCreateAsSelect ctx taskBuilder'
           createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
         runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do

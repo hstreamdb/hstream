@@ -99,7 +99,7 @@ viewSpecAround = provideRunTest setup clean
                          <> " AS SELECT SUM(a) FROM " <> source2
                          <> " GROUP BY b EMIT CHANGES;"
       -- FIXME: wait the SELECT task to be initialized.
-      threadDelay 2000000
+      threadDelay 5000000
       return (source1, source2, viewName)
     clean api (source1, source2, viewName) = do
       runDropSql api $ "DROP VIEW " <> viewName <> " IF EXISTS;"

@@ -44,9 +44,9 @@ module HStream.Server.Shard(
   shardEpoch
 ) where
 
-import           Control.Concurrent.STM (STM, TMVar, atomically,
-                                         putTMVar, readTMVar,
-                                         swapTMVar, takeTMVar, newTMVarIO)
+import           Control.Concurrent.STM (STM, TMVar, atomically, newTMVarIO,
+                                         putTMVar, readTMVar, swapTMVar,
+                                         takeTMVar)
 import           Control.Exception      (Exception (fromException, toException),
                                          SomeException, bracket, throwIO)
 import qualified Crypto.Hash            as CH
@@ -58,6 +58,7 @@ import           Data.List              (iterate')
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as M
 import qualified Data.Text              as T
+import           Data.Text.Encoding     (encodeUtf8)
 import           Data.Typeable          (cast)
 import           Data.Vector            (Vector)
 import qualified Data.Vector            as V
@@ -65,7 +66,6 @@ import           Data.Word              (Word32, Word64)
 import qualified HStream.Logger         as Log
 import qualified HStream.Store          as S
 import qualified Z.Data.CBytes          as CB
-import Data.Text.Encoding (encodeUtf8)
 
 newtype ShardKey = ShardKey Integer
   deriving (Show, Eq, Ord, Integral, Real, Enum, Num, Hashable)
@@ -99,7 +99,7 @@ defaultShardId :: S.C_LogID
 defaultShardId = minBound
 
 data Shard = Shard
-  { shardId    :: S.C_LogID
+  { shardId  :: S.C_LogID
   , streamId :: S.StreamId
   , startKey :: ShardKey
   , endKey   :: ShardKey
@@ -110,7 +110,7 @@ mkShard :: S.C_LogID -> S.StreamId -> ShardKey -> ShardKey -> Word64 -> Shard
 mkShard shardId streamId startKey endKey epoch = Shard {shardId, streamId, startKey, endKey, epoch}
 
 mkShardWithDefaultId :: S.StreamId -> ShardKey -> ShardKey -> Word64 -> Shard
-mkShardWithDefaultId = mkShard defaultShardId 
+mkShardWithDefaultId = mkShard defaultShardId
 
 splitShardByKey :: Shard -> ShardKey -> Either ShardException (Shard, Shard)
 splitShardByKey shard@Shard{..} key
@@ -208,7 +208,7 @@ mkSharedShardMapWithShards shards = do
   forM_ shards $ \shard@Shard{startKey=key} -> atomically $ do
     let idx = getShardMapIdx key
     getShardMap mp idx >>= pure <$> insertShard key shard >>= putShardMap mp idx
-  return mp 
+  return mp
 
 getShardMapIdx :: ShardKey -> Word32
 getShardMapIdx key = fromIntegral (hash key) `shiftR` (32 - kNumShardBits)
@@ -334,7 +334,7 @@ mergeTwoShard client mp key1 key2 = do
 ---- helper
 
 shardStartKey :: CB.CBytes
-shardStartKey = "startKey" 
+shardStartKey = "startKey"
 
 shardEndKey :: CB.CBytes
 shardEndKey = "endKey"

@@ -239,7 +239,7 @@ doSubInit ctx@ServerContext{..} subId = do
                 subStartOffset = startOffset
               }
       shards <- getShards ctx subscriptionStreamName
-      Log.debug $ "get shards: " <> Log.buildString (show shards)
+      Log.debug $ "get shards for stream " <> Log.buildString' (show subscriptionStreamName) <> ": " <> Log.buildString (show shards)
       addNewShardsToSubCtx emptySubCtx shards
       return emptySubCtx
   where
