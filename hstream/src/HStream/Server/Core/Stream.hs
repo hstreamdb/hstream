@@ -37,8 +37,6 @@ import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
-import           HStream.Server.HStreamApi         (ReadShardRequest (readShardRequestShardId),
-                                                    Shard (Shard))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -50,8 +48,7 @@ import           HStream.Server.Shard              (Shard (..), cBytesToKey,
                                                     mkSharedShardMapWithShards,
                                                     shardStartKey)
 import           HStream.Server.Types              (ServerContext (..),
-                                                    ShardDict, getShard,
-                                                    getShardName,
+                                                    ShardDict,
                                                     transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S

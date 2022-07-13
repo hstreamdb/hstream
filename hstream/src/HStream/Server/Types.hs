@@ -180,23 +180,6 @@ printAckedRanges mp = show (Map.elems mp)
 type ConsumerName = T.Text
 
 --------------------------------------------------------------------------------
--- shard
-
-getShardName :: Int -> CB.CBytes
-getShardName idx = textToCBytes $ "shard" <> T.pack (show idx)
-
-getShard :: HS.LDClient -> HS.StreamId -> Maybe T.Text -> IO HS.C_LogID
-getShard client streamId key = do
-  partitions <- HS.listStreamPartitions client streamId
-  let size = length partitions - 1
-  let shard = getShardName . getShardIdx size <$> key
-  HS.getUnderlyingLogId client streamId shard
-
-getShardIdx :: Int -> T.Text -> Int
-getShardIdx size key = let hashValue = hash key
-                        in hashValue `mod` size
-
---------------------------------------------------------------------------------
 
 transToStreamName :: HPT.StreamName -> S.StreamId
 transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
