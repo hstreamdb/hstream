@@ -27,16 +27,11 @@ import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
-import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                      (Enumerated (Enumerated))
-import qualified Z.Data.CBytes                     as CB
 
 import           Control.Concurrent                (MVar, modifyMVar,
                                                     modifyMVar_)
-import           HStream.Connector.HStore          (transToStreamName)
 import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
-import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..),
                                                     WrongServer (..))
@@ -54,13 +49,12 @@ import           HStream.Server.Types              (ServerContext (..),
                                                     transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
-import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
 
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
-createStream ServerContext{..} stream@API.Stream{
+createStream ServerContext{..} API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
 
   when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")

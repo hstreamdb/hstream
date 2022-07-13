@@ -55,6 +55,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiReadShard = readShardHandler serverContext,
         hstreamApiListShards = listShardsHandler serverContext,
         hstreamApiSplitShards = splitShardsHandler serverContext,
+        hstreamApiMergeShards = mergeShardsHandler serverContext,
 
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,

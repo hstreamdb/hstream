@@ -39,6 +39,8 @@ module HStream.Server.Shard(
   hashShardKey,
   keyToCBytes,
   cBytesToKey,
+  shardKeyToText,
+  textToShardKey,
   shardStartKey,
   shardEndKey,
   shardEpoch
@@ -78,6 +80,12 @@ hashShardKey :: T.Text -> ShardKey
 hashShardKey key =
   let w8KeyList = BA.unpack (CH.hash . encodeUtf8 $ key :: CH.Digest CH.MD5)
    in ShardKey $ foldl' (\acc c -> (.|.) (acc `shiftL` 8) (fromIntegral c)) (0 :: Integer) w8KeyList
+
+shardKeyToText :: ShardKey -> T.Text
+shardKeyToText (ShardKey key) = T.pack (show key)
+
+textToShardKey :: T.Text -> ShardKey
+textToShardKey = ShardKey . read . T.unpack
 
 keyToCBytes :: ShardKey -> CB.CBytes
 keyToCBytes (ShardKey key) = CB.pack . show $ key
@@ -234,14 +242,14 @@ getShardByKey mp key = do
 type SplitStrategies = ShardMap -> ShardKey -> Either ShardException (Shard, Shard)
 
 -- | Split Shard with specific ShardKey
-splitByKey :: S.LDClient -> SharedShardMap -> ShardKey -> IO ()
+splitByKey :: S.LDClient -> SharedShardMap -> ShardKey -> IO (Shard, Shard)
 splitByKey = splitShardInternal getSplitedShard
 
 -- | Split Shard by half
-splitHalf :: S.LDClient -> SharedShardMap -> ShardKey -> IO ()
+splitHalf :: S.LDClient -> SharedShardMap -> ShardKey -> IO (Shard, Shard)
 splitHalf = splitShardInternal getHalfSplitedShard
 
-splitShardInternal :: SplitStrategies -> S.LDClient -> SharedShardMap -> ShardKey -> IO ()
+splitShardInternal :: SplitStrategies -> S.LDClient -> SharedShardMap -> ShardKey -> IO (Shard, Shard)
 splitShardInternal stratege client sharedMp key = do
   let hash1 = getShardMapIdx key
   bracket
@@ -278,9 +286,10 @@ splitShardInternal stratege client sharedMp key = do
               atomically $ do
                 putShardMap sharedMp hash1' newMp1
                 putShardMap sharedMp hash2' newMp2
+          return (s1', s2')
     )
 
-mergeTwoShard :: S.LDClient -> SharedShardMap -> ShardKey -> ShardKey -> IO ()
+mergeTwoShard :: S.LDClient -> SharedShardMap -> ShardKey -> ShardKey -> IO (Shard, ShardKey)
 mergeTwoShard client mp key1 key2 = do
   let hash1 = getShardMapIdx key1
   let hash2 = getShardMapIdx key2
@@ -303,6 +312,7 @@ mergeTwoShard client mp key1 key2 = do
           atomically $ do
             putShardMap mp (getShardMapIdx removedKey) removedShardMp
             putShardMap mp (getShardMapIdx startKey) updateShardMp
+          return (newShard, removedKey)
     )
  where
    getShards hash1 hash2

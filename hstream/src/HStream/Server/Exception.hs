@@ -21,6 +21,8 @@ import           ZooKeeper.Exception
 
 import qualified HStream.Logger                       as Log
 import           HStream.Server.Persistence.Exception (PersistenceException)
+import           HStream.Server.Shard                 (CanNotMerge, CanNotSplit,
+                                                       ShardNotExist)
 import qualified HStream.Store                        as Store
 import           HStream.Utils                        (mkServerErrResp)
 
@@ -106,7 +108,7 @@ finalExceptionHandlers = [
     Log.fatal $ Log.buildString' err
     return (StatusInternal, mkStatusDetails err)
   ,
-  Handler $ \(err :: AsyncCancelled) -> do
+  Handler $ \(_ :: AsyncCancelled) -> do
     return (StatusOk, "")
   ,
   Handler $ \(err :: SomeException) -> do
@@ -142,6 +144,19 @@ zooKeeperExceptionHandler = [
   Handler $ \(e :: ZNODEEXISTS        ) -> handleZKException e StatusAlreadyExists,
   Handler $ \(e :: ZNONODE            ) -> handleZKException e StatusNotFound,
   Handler $ \(e :: ZooException       ) -> handleZKException e StatusInternal
+  ]
+
+shardExceptionHandler :: Handlers (StatusCode, StatusDetails)
+shardExceptionHandler = [
+  Handler $ \(e :: CanNotSplit) -> do
+    Log.fatal $ Log.buildString' e
+    return (StatusFailedPrecondition, mkStatusDetails e),
+  Handler $ \(e :: CanNotMerge) -> do
+    Log.fatal $ Log.buildString' e
+    return (StatusFailedPrecondition, mkStatusDetails e),
+  Handler $ \(e :: ShardNotExist) -> do
+    Log.fatal $ Log.buildString' e
+    return (StatusNotFound, mkStatusDetails e)
   ]
 
 defaultHandlers :: Handlers (StatusCode, StatusDetails)
