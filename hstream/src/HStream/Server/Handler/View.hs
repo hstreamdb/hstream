@@ -24,8 +24,7 @@ import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
-import           HStream.Server.Shard             (keyToCBytes, shardEndKey,
-                                                   shardEpoch, shardStartKey)
+import qualified HStream.Server.Shard             as SD
 import           HStream.Server.Types
 import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Store                    as S
@@ -57,7 +56,7 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
     attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
     create sName = do
       S.createStream scLDClient sName attrs
-      let extrAttr = Map.fromList [(shardStartKey, keyToCBytes minBound), (shardEndKey, keyToCBytes maxBound), (shardEpoch, "1")]
+      let extrAttr = Map.fromList [(SD.shardStartKey, SD.keyToCBytes minBound), (SD.shardEndKey, SD.keyToCBytes maxBound), (SD.shardEpoch, "1")]
       void $ S.createStreamPartitionWithExtrAttr scLDClient sName (Just "view") extrAttr
 
 listViewsHandler

@@ -68,10 +68,8 @@ spec = aroundAll provideHstreamApi $
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
       runInsertSql api "INSERT INTO s4 (a, b) VALUES (1, 4);"
-    -- executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
-    res <- executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
-
-    res `shouldBe`
+    executeCommandPushQuery "SELECT `SUM(a)`, `result` AS cnt, b, `a+1` FROM s5 EMIT CHANGES;"
+      `shouldReturn`
       [ mkStruct [("cnt", Aeson.Number 1), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 1)]
       , mkStruct [("cnt", Aeson.Number 2), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 2)]
       , mkStruct [("cnt", Aeson.Number 3), ("a+1", Aeson.Number 2), ("b", Aeson.Number 4), ("SUM(a)", Aeson.Number 3)]

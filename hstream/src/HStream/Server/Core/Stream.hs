@@ -1,5 +1,5 @@
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module HStream.Server.Core.Stream
@@ -15,16 +15,14 @@ module HStream.Server.Core.Stream
   , RecordTooBig (..)
   ) where
 
-import qualified Data.Map.Strict as M
-import qualified Data.HashMap.Strict as HM
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throwIO)
 import           Control.Monad                     (foldM, forM, unless, void,
                                                     when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
-import qualified Data.Map.Strict                   as M
 import qualified Data.HashMap.Strict               as HM
+import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
@@ -40,8 +38,6 @@ import qualified HStream.Logger                    as Log
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
 import           HStream.Server.Handler.Common     (decodeRecordBatch)
-import           HStream.Server.HStreamApi         (ReadShardRequest (readShardRequestShardId),
-                                                    Shard (Shard))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -54,18 +50,15 @@ import           HStream.Server.Shard              (Shard (..), cBytesToKey,
                                                     shardStartKey)
 import           HStream.Server.Types              (ServerContext (..),
                                                     ShardDict)
-import HStream.Server.Shard (devideKeySpace, shardStartKey, createShard, mkShardWithDefaultId, mkSharedShardMapWithShards, Shard (..), cBytesToKey, hashShardKey)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 import           Proto3.Suite                      (Enumerated (Enumerated))
-import Control.Concurrent (modifyMVar, modifyMVar_, MVar)
-import qualified HStream.Logger as Log
 
 -------------------------------------------------------------------------------
 
--- createStream will create a stream with a default partition
+-- createStream will create a stream with specific number of partitions
 -- FIXME: Currently, creating a stream which partially exists will do the job
 -- but return failure response
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerResponse 'Normal API.Stream)
@@ -139,12 +132,10 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   shardId <- getShardId scLDClient shardTable sName partitionKey
   Log.debug $ "shardId for key " <> Log.buildString' (show partitionKey) <> " is " <> Log.buildString' (show shardId)
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
-  Log.debug "append success"
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
   Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length records)
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
-  Log.debug $ "rids " <> Log.buildString' (show rids)
   return $ API.AppendResponse sName rids
  where
    streamName = textToCBytes sName
@@ -212,28 +203,26 @@ getShardId client shardTable sName partitionKey = do
    getShardDict = modifyMVar shardTable $ \mp -> do
      case HM.lookup sName mp of
        Just shards -> do
-           Log.info $ "shardDict exist for stream " <> Log.buildText sName
+           Log.debug $ "shardDict exist for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shards)
            return (mp, shards)
        Nothing     -> do
          -- loading shard infomation for stream first.
          shards <- M.elems <$> S.listStreamPartitions client streamID
          shardDict <- foldM insertShardDict M.empty shards
-         Log.fatal $ "build shardDict for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shardDict)
+         Log.debug $ "build shardDict for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shardDict)
          return (HM.insert sName shardDict mp, shardDict)
 
    insertShardDict dict shardId = do
-     Log.fatal $ "getStreamPartitionExtraAttrs for shard " <> Log.buildInt shardId
      attrs <- S.getStreamPartitionExtraAttrs client shardId
-     Log.fatal $ "attrs for shard " <> Log.buildInt shardId <> ": " <> Log.buildString' (show attrs)
+     Log.debug $ "attrs for shard " <> Log.buildInt shardId <> ": " <> Log.buildString' (show attrs)
      startKey <- case M.lookup shardStartKey attrs of
-                   Nothing  -> return $ cBytesToKey "0"
-                   -- Nothing -> throwIO $ ShardKeyNotFound shardId
-                   Just key -> return $ cBytesToKey key
+        -- FIXME: Under the new shard model, each partition created should have an extrAttr attribute,
+        -- except for the default partition created by default for each stream. After the default
+        -- partition is subsequently removed, an error should be returned here.
+        Nothing  -> return $ cBytesToKey "0"
+        -- Nothing -> throwIO $ ShardKeyNotFound shardId
+        Just key -> return $ cBytesToKey key
      return $ M.insert startKey shardId dict
-     -- case M.lookup shardStartKey attrs of
-     --   -- Nothing -> return $ cBytesToKey "0"
-     --   Nothing -> return dict
-     --   Just key -> return $ M.insert (cBytesToKey key) shardId dict
 
 --------------------------------------------------------------------------------
 
@@ -255,19 +244,19 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
      attr <- S.getStreamPartitionExtraAttrs scLDClient logId
      case getInfo attr of
        Nothing -> return . V.snoc shards $
-         Shard { shardStreamName = listShardsRequestStreamName
-               , shardShardId    = logId
-               , shardIsActive   = True
-               }
+         API.Shard { API.shardStreamName = listShardsRequestStreamName
+                   , API.shardShardId    = logId
+                   , API.shardIsActive   = True
+                   }
        Just(sKey, eKey, ep) -> return . V.snoc shards $
-         Shard { shardStreamName        = listShardsRequestStreamName
-               , shardShardId           = logId
-               , shardStartHashRangeKey = sKey
-               , shardEndHashRangeKey   = eKey
-               , shardEpoch             = ep
-               -- FIXME: neet a way to find if this shard is active
-               , shardIsActive          = True
-               }
+         API.Shard { API.shardStreamName        = listShardsRequestStreamName
+                   , API.shardShardId           = logId
+                   , API.shardStartHashRangeKey = sKey
+                   , API.shardEndHashRangeKey   = eKey
+                   , API.shardEpoch             = ep
+                   -- FIXME: neet a way to find if this shard is active
+                   , API.shardIsActive          = True
+                   }
 
    getInfo mp = do
      startHashRangeKey <- cBytesToText <$> M.lookup startKey mp
