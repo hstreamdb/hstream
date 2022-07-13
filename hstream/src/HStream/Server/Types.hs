@@ -21,6 +21,7 @@ import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
+import           HStream.Processing.Type          as HPT
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
@@ -28,6 +29,8 @@ import           HStream.Server.ReaderPool        (ReaderPool)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
+import qualified HStream.Store                    as S
+import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -175,3 +178,14 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+--------------------------------------------------------------------------------
+
+transToStreamName :: HPT.StreamName -> S.StreamId
+transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
+
+transToTempStreamName :: HPT.StreamName -> S.StreamId
+transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
+
+transToViewStreamName :: HPT.StreamName -> S.StreamId
+transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes

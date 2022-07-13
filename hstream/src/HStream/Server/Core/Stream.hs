@@ -33,11 +33,10 @@ import qualified Z.Data.CBytes                     as CB
 
 import           Control.Concurrent                (MVar, modifyMVar,
                                                     modifyMVar_)
-import           HStream.Connector.HStore          (transToStreamName)
 import qualified HStream.Logger                    as Log
+import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..))
-import           HStream.Server.Handler.Common     (decodeRecordBatch)
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -49,7 +48,8 @@ import           HStream.Server.Shard              (Shard (..), cBytesToKey,
                                                     mkSharedShardMapWithShards,
                                                     shardStartKey)
 import           HStream.Server.Types              (ServerContext (..),
-                                                    ShardDict)
+                                                    ShardDict,
+                                                    transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.ThirdParty.Protobuf       as PB

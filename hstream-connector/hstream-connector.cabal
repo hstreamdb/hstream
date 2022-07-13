@@ -43,7 +43,6 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Connector.ClickHouse
-    HStream.Connector.HStore
     HStream.Connector.MySQL
     HStream.IO.IOTask
     HStream.IO.Worker

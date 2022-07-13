@@ -11,6 +11,7 @@ module HStream.Processing.Connector
 where
 
 import           HStream.Processing.Type
+import qualified HStream.Server.HStreamApi as API
 import           RIO
 
 -- data StreamStoreConnector =
@@ -29,9 +30,10 @@ data SourceConnector = SourceConnector
   }
 
 data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp
-  { subscribeToStreamWithoutCkp :: StreamName -> IO (),
+  { subscribeToStreamWithoutCkp :: StreamName -> API.SpecialOffset -> IO (),
     unSubscribeToStreamWithoutCkp :: StreamName -> IO (),
-    readRecordsWithoutCkp :: StreamName -> IO [SourceRecord]
+    --readRecordsWithoutCkp :: StreamName -> IO [SourceRecord]
+    withReadRecordsWithoutCkp :: StreamName -> ([SourceRecord] -> IO ()) -> IO ()
   }
 
 data SinkConnector = SinkConnector
