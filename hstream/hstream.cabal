@@ -67,6 +67,7 @@ library
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View
+    HStream.Server.Core.Shard
     HStream.Server.Handler.Admin
     HStream.Server.Handler.Cluster
     HStream.Server.Handler.Connector
@@ -76,6 +77,7 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
+    HStream.Server.Handler.Shard
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Object

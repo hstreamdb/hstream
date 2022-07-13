@@ -17,6 +17,7 @@ import           HStream.Server.Handler.Admin
 import           HStream.Server.Handler.Cluster
 import           HStream.Server.Handler.Connector
 import           HStream.Server.Handler.Query
+import           HStream.Server.Handler.Shard
 import qualified HStream.Server.Handler.Stats        as H
 import           HStream.Server.Handler.StoreAdmin
 import           HStream.Server.Handler.Stream
@@ -50,9 +51,10 @@ handlers serverContext@ServerContext{..} =
 
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
 
-        hstreamApiReadShard = readShardHandler serverContext,
         -- Shards
+        hstreamApiReadShard = readShardHandler serverContext,
         hstreamApiListShards = listShardsHandler serverContext,
+        hstreamApiSplitShards = splitShardsHandler serverContext,
 
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,

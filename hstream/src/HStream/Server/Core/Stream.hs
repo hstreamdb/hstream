@@ -9,20 +9,15 @@ module HStream.Server.Core.Stream
   , append
   , appendStream
   , append0Stream
-  , readShard
-  , listShards
   , FoundSubscription (..)
   , StreamExists (..)
   , RecordTooBig (..)
   ) where
 
-import           Control.Concurrent                (MVar, modifyMVar,
-                                                    modifyMVar_)
 import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
-                                                    bracket, catch, throwIO)
-import           Control.Monad                     (foldM, forM, unless, void,
-                                                    when)
+                                                    catch, throwIO)
+import           Control.Monad                     (foldM, forM, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
 import qualified Data.HashMap.Strict               as HM
@@ -32,9 +27,13 @@ import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
+import           Network.GRPC.HighLevel.Generated
 import           Proto3.Suite                      (Enumerated (Enumerated))
 import qualified Z.Data.CBytes                     as CB
 
+import           Control.Concurrent                (MVar, modifyMVar,
+                                                    modifyMVar_)
+import           HStream.Connector.HStore          (transToStreamName)
 import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch)
@@ -44,7 +43,6 @@ import           HStream.Server.Exception          (InvalidArgument (..),
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
-import           HStream.Server.ReaderPool         (getReader, putReader)
 import           HStream.Server.Shard              (Shard (..), cBytesToKey,
                                                     createShard, devideKeySpace,
                                                     hashShardKey,
@@ -56,6 +54,7 @@ import           HStream.Server.Types              (ServerContext (..),
                                                     transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
+import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
 
 -------------------------------------------------------------------------------
@@ -163,39 +162,6 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
  where
    streamName = textToCBytes sName
 
-readShard
-  :: HasCallStack
-  => ServerContext
-  -> API.ReadShardRequest
-  -> IO (V.Vector API.ReceivedRecord)
-readShard ServerContext{..} API.ReadShardRequest{..} = do
-  logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
-  startLSN <- getStartLSN logId
-
-  bracket
-    (getReader readerPool)
-    (flip S.readerStopReading logId >> putReader readerPool)
-    (\reader -> readData reader logId startLSN)
-  where
-    streamId = transToStreamName readShardRequestStreamName
-    shard = textToCBytes readShardRequestShardId
-
-    getStartLSN :: S.C_LogID -> IO S.LSN
-    getStartLSN logId =
-      case fromJust . API.shardOffsetOffset . fromJust $ readShardRequestOffset of
-        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
-        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
-        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
-        _                                                                                 -> error "wrong shard offset"
-
-    readData :: S.LDReader -> S.C_LogID -> S.LSN -> IO (V.Vector API.ReceivedRecord)
-    readData reader logId startLSN = do
-      void $ S.readerStartReading reader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
-      S.readerSetTimeout reader 0
-      records <- S.readerRead reader (fromIntegral readShardRequestMaxRead)
-      let receivedRecordsVecs = decodeRecordBatch <$> records
-      return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
-
 --------------------------------------------------------------------------------
 
 append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
@@ -249,46 +215,6 @@ getShardId client shardTable sName partitionKey = do
 
 --------------------------------------------------------------------------------
 
-listShards
-  :: HasCallStack
-  => ServerContext
-  -> API.ListShardsRequest
-  -> IO (V.Vector API.Shard)
-listShards ServerContext{..} API.ListShardsRequest{..} = do
-  shards <- M.elems <$> S.listStreamPartitions scLDClient streamId
-  V.foldM' getShardInfo V.empty $ V.fromList shards
- where
-   streamId = transToStreamName listShardsRequestStreamName
-   startKey = CB.pack "startKey"
-   endKey   = CB.pack "endKey"
-   epoch    = CB.pack "epoch"
-
-   getShardInfo shards logId = do
-     attr <- S.getStreamPartitionExtraAttrs scLDClient logId
-     case getInfo attr of
-       Nothing -> return . V.snoc shards $
-         API.Shard { API.shardStreamName = listShardsRequestStreamName
-                   , API.shardShardId    = logId
-                   , API.shardIsActive   = True
-                   }
-       Just(sKey, eKey, ep) -> return . V.snoc shards $
-         API.Shard { API.shardStreamName        = listShardsRequestStreamName
-                   , API.shardShardId           = logId
-                   , API.shardStartHashRangeKey = sKey
-                   , API.shardEndHashRangeKey   = eKey
-                   , API.shardEpoch             = ep
-                   -- FIXME: neet a way to find if this shard is active
-                   , API.shardIsActive          = True
-                   }
-
-   getInfo mp = do
-     startHashRangeKey <- cBytesToText <$> M.lookup startKey mp
-     endHashRangeKey   <- cBytesToText <$> M.lookup endKey mp
-     shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
-     return (startHashRangeKey, endHashRangeKey, shardEpoch)
-
---------------------------------------------------------------------------------
-
 data FoundSubscription = FoundSubscription
   deriving (Show)
 instance Exception FoundSubscription
@@ -301,8 +227,3 @@ data StreamExists = StreamExists
   deriving (Show)
 instance Exception StreamExists where
   displayException StreamExists = "StreamExists: Stream has been created"
-
-newtype ShardKeyNotFound = ShardKeyNotFound S.C_LogID
-  deriving (Show)
-instance Exception ShardKeyNotFound where
-  displayException (ShardKeyNotFound shardId) = "Can't get shardKey for shard " <> show shardId
