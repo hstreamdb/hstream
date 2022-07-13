@@ -38,7 +38,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
 
   aroundWith withRandomStreamName $ do
     it "test createStream request" $ \(api, name) -> do
-      let stream = mkStreamWithDefaultShards name 3
+      let stream = mkStream name 3 10
       createStreamRequest api stream `shouldReturn` stream
       -- create an existed stream should fail
       createStreamRequest api stream `shouldThrow` anyException
@@ -87,8 +87,6 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       resp <- appendRequest api name (V.fromList [record1, record2])
       appendResponseStreamName resp `shouldBe` name
       recordIdBatchIndex <$> appendResponseRecordIds resp `shouldBe` V.fromList [0, 1]
-      batchPayload <- readBatchPayload name
-      fmap (hstreamRecordPayload . decodeByteStringRecord) batchPayload `shouldBe` V.fromList [payload1, payload2]
 
 -------------------------------------------------------------------------------------------------
 

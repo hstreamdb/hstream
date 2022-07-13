@@ -15,6 +15,8 @@ import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
+import           Control.Monad                    (void)
+import qualified Data.Map.Strict                  as Map
 import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.View         as CoreView
@@ -22,6 +24,7 @@ import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.Shard             as SD
 import           HStream.Server.Types
 import qualified HStream.SQL.Codegen              as HSC
 import qualified HStream.Store                    as S
@@ -51,7 +54,10 @@ createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{
     _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
   where
     attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
-    create sName = S.createStream scLDClient sName attrs
+    create sName = do
+      S.createStream scLDClient sName attrs
+      let extrAttr = Map.fromList [(SD.shardStartKey, SD.keyToCBytes minBound), (SD.shardEndKey, SD.keyToCBytes maxBound), (SD.shardEpoch, "1")]
+      void $ S.createStreamPartitionWithExtrAttr scLDClient sName (Just "view") extrAttr
 
 listViewsHandler
   :: ServerContext

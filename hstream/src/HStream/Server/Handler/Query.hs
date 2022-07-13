@@ -59,6 +59,7 @@ import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
 import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
@@ -90,8 +91,7 @@ createQueryStreamHandler
         shardCount = streamShardCount <$> createQueryStreamRequestQueryStream
     (builder, source, sink, _) <-
       genStreamBuilderWithStream tName sName select
-    let attrs = S.def{ S.logReplicationFactor = S.defAttr1 rFac }
-    S.createStream scLDClient (transToStreamName sink) attrs
+    createStreamWithShard scLDClient (transToStreamName sink) "query" rFac
     let query = P.StreamQuery (textToCBytes <$> source) (textToCBytes sink)
     void $
       handleCreateAsSelect
@@ -216,12 +216,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     _ -> discard
   where
     create sName = do
-      let attrs = S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor }
-      Log.debug . Log.buildString $
-        "CREATE: new stream " <> show sName
-          <> " with attributes: "
-          <> show attrs
-      S.createStream scLDClient sName attrs
+      Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
+      createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
     sendResp ma valueSerde = do
       case ma of
         Nothing -> returnCommandQueryResp V.empty
@@ -250,10 +246,7 @@ executePushQueryHandler
                 <> Log.buildString (show sources)
             throwIO StreamNotExist
           else do
-            S.createStream
-              scLDClient
-              (transToStreamName sink)
-              (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
+            createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
             -- create persistent query
             (qid, _) <-
               P.createInsertPersistentQuery
@@ -284,6 +277,12 @@ executePushQueryHandler
       _ -> do
         Log.fatal "Push Query: Inconsistent Method Called"
         returnServerStreamingResp StatusInternal "inconsistent method called"
+
+createStreamWithShard :: S.LDClient -> S.StreamId -> CB.CBytes -> Int -> IO ()
+createStreamWithShard client streamId shardName factor = do
+  S.createStream client streamId (S.def{ S.logReplicationFactor = S.defAttr1 factor })
+  let extrAttr = Map.fromList [(Shard.shardStartKey, Shard.keyToCBytes minBound), (Shard.shardEndKey, Shard.keyToCBytes maxBound), (Shard.shardEpoch, "1")]
+  void $ S.createStreamPartitionWithExtrAttr client streamId (Just shardName) extrAttr
 
 --------------------------------------------------------------------------------
 
@@ -396,8 +395,7 @@ createQueryHandler ctx@ServerContext{..} (ServerNormalRequest _ CreateQueryReque
           <> Log.buildString (show sources)
         throwIO StreamNotExist
       else do
-        HS.createStream scLDClient (HCH.transToStreamName sink)
-          (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
+        createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
         (qid, timestamp) <- handleCreateAsSelect ctx taskBuilder'
           createQueryRequestQueryText (P.PlainQuery $ textToCBytes <$> sources) HS.StreamTypeTemp
         runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do

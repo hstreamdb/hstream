@@ -65,8 +65,12 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
     IO.newWorker
       (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
       (IO.HStreamConfig (cBytesToText (_serverHost <> ":" <> CB.pack (show _serverPort))))
+
   let readerNums = 8
   readerPool <- mkReaderPool ldclient readerNums
+
+  shardInfo  <- newMVar HM.empty
+  shardTable <- newMVar HM.empty
 
   return
     ServerContext
@@ -88,6 +92,8 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
       , gossipContext            = gossipContext
       , serverOpts               = opts
       , readerPool               = readerPool
+      , shardInfo                = shardInfo
+      , shardTable               = shardTable
       }
 
 --------------------------------------------------------------------------------
