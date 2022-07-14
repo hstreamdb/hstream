@@ -11,7 +11,7 @@ zookeeper:
     - remote_ssh_host4
   enable-metrics-provider: true
 hstore:
-  image: hstreamdb/hstream:v0.7.1
+  image: hstreamdb/hstream:v0.8.0
   persistent-dir: "/data/store"
   hosts:
     - remote_ssh_host2
@@ -20,13 +20,13 @@ hstore:
   local_config_path: "$PWD/logdevice.conf"
   remote_config_path: "/root/.config/dev-deploy/logdevice.conf"
 hstore-admin:
-  image: hstreamdb/hstream:v0.7.1
+  image: hstreamdb/hstream:v0.8.0
   memory: 1024m
   cpus: "0.5"
   hosts:
     - remote_ssh_host1
 hserver:
-  image: hstreamdb/hstream:v0.7.1
+  image: hstreamdb/hstream:v0.8.0
   memory: 2048m
   cpus: "1.5"
   hosts:
