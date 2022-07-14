@@ -7,9 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler
-  (
-    handlers,
-    -- routineForSubs
+  ( handlers
   )
 where
 

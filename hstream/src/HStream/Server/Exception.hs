@@ -40,6 +40,10 @@ newtype InvalidArgument = InvalidArgument String
   deriving (Show)
 instance Exception InvalidArgument
 
+newtype WrongServer = WrongServer Text
+  deriving (Show)
+instance Exception WrongServer
+
 newtype OperationNotSupported = OperationNotSupported String
   deriving (Show)
 instance Exception OperationNotSupported
