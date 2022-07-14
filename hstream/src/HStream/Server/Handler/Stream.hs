@@ -6,12 +6,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Stream
-  ( createStreamHandler,
-    deleteStreamHandler,
-    listStreamsHandler,
-    appendHandler,
-    append0Handler,
-    readShardHandler
+  ( createStreamHandler
+  , deleteStreamHandler
+  , listStreamsHandler
+  , listShardsHandler
+  , appendHandler
+  , append0Handler
+  , readShardHandler
   )
 where
 
@@ -40,6 +41,7 @@ createStreamHandler
 createStreamHandler sc (ServerNormalRequest _metadata stream) = createStreamExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
   C.createStream sc stream
+  returnResp stream
 
 -- DeleteStream have two mod: force delete or normal delete
 -- For normal delete, if current stream have active subscription, the delete request will return error.
@@ -56,6 +58,7 @@ deleteStreamHandler
 deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
   C.deleteStream sc request
+  returnResp Empty
 
 listStreamsHandler
   :: ServerContext
@@ -71,27 +74,7 @@ appendHandler
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
-    recv_time <- getPOSIXTime
-    Log.debug $ "Receive Append Request: StreamName {"
-             <> Log.buildText appendRequestStreamName
-             <> "}, nums of records = "
-             <> Log.buildInt (V.length appendRequestRecords)
-    Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
-    Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-    Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-    hashRing <- readTVarIO loadBalanceHashRing
-    let partitionKey = getRecordKey . V.head $ appendRequestRecords
-    let identifier = case partitionKey of
-          Just key -> appendRequestStreamName <> key
-          Nothing  -> appendRequestStreamName <> clientDefaultKey
-    if getAllocatedNodeId hashRing identifier == serverID
-       then do
-         append_start <- getPOSIXTime
-         r <- C.appendStream sc request partitionKey
-         Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
-         Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
-         returnResp r
-       else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+    returnResp =<< C.append sc request
   where
     inc_failed = do
       Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
@@ -121,6 +104,15 @@ append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@Appen
     inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
+
+listShardsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListShardsRequest ListShardsResponse
+  -> IO (ServerResponse 'Normal ListShardsResponse)
+listShardsHandler sc (ServerNormalRequest _metadata request) = do
+  Log.debug "Receive List Shards Request"
+  C.listShards sc request >>= returnResp . ListShardsResponse
+
 readShardHandler
   :: ServerContext
   -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
@@ -147,6 +139,8 @@ appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
     handlers =
       [ Handler (\(_ :: C.RecordTooBig) ->
           return (StatusFailedPrecondition, "Record size exceeds the maximum size limit" ))
+      , Handler (\(err :: WrongServer) ->
+          return (StatusFailedPrecondition, mkStatusDetails err))
       , Handler (\(err :: Store.NOTFOUND) ->
           return (StatusUnavailable, mkStatusDetails err))
       , Handler (\(err :: Store.NOTINSERVERCONFIG) ->
@@ -175,4 +169,3 @@ readShardExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
   [ Handler (\(err :: Store.NOTFOUND) ->
       return (StatusUnavailable, mkStatusDetails err))
   ] ++ defaultHandlers
-

@@ -28,7 +28,6 @@ import           ZooKeeper.Types
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
 import           HStream.Gossip                   (GossipContext, getMemberList)
-import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
@@ -66,8 +65,12 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
     IO.newWorker
       (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
       (IO.HStreamConfig (cBytesToText (_serverHost <> ":" <> CB.pack (show _serverPort))))
+
   let readerNums = 8
   readerPool <- mkReaderPool ldclient readerNums
+
+  shardInfo  <- newMVar HM.empty
+  shardTable <- newMVar HM.empty
 
   return
     ServerContext
@@ -89,6 +92,8 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
       , gossipContext            = gossipContext
       , serverOpts               = opts
       , readerPool               = readerPool
+      , shardInfo                = shardInfo
+      , shardTable               = shardTable
       }
 
 --------------------------------------------------------------------------------

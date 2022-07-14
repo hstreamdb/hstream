@@ -96,6 +96,7 @@ data AdminCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminStatusCommand
+  | AdminInitCommand
   deriving (Show)
 
 adminCommandParser :: O.Parser AdminCommand
@@ -113,6 +114,8 @@ adminCommandParser = O.hsubparser
                              (O.progDesc "View command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
+ <> O.command "init" (O.info (pure AdminInitCommand)
+                               (O.progDesc "Init an HServer cluster"))
   )
 
 -------------------------------------------------------------------------------

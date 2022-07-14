@@ -13,6 +13,7 @@ module HStream.Utils.Format
 import qualified Data.Aeson.Text                  as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
+import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -174,7 +175,7 @@ renderServerNodesStatusToTable values =
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
       [[show serverNodeId], [showNodeStatus serverNodeStatusState], [show serverNodeHost <> ":" <> show serverNodePort]]
     formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
-    rows = map formatRow values
+    rows = map formatRow . L.sort $ values
     colSpec = replicate (length titles) $ Table.column Table.expand Table.left def def
 
 approxNaturalTime :: NominalDiffTime -> String

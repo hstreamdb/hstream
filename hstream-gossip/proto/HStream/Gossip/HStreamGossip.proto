@@ -20,6 +20,8 @@ service HStreamGossip {
 
 message Empty {};
 
+message ServerList { repeated hstream.server.internal.ServerNode nodes = 1;}
+
 message Ping { repeated Message msg = 1; }
 
 message Ack  { repeated Message msg = 1; }

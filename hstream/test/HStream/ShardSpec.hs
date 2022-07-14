@@ -11,10 +11,10 @@ import qualified Data.Map.Strict       as M
 import           Data.Maybe            (fromJust)
 import           Data.Word             (Word64)
 import qualified HStream.Logger        as Log
-import           HStream.Server.Shard  (Shard (..), ShardKey, ShardMap,
-                                        deleteShard, getShard, getShardMapIdx,
-                                        insertShard, mergeShard, mkShard,
-                                        mkShardMap, splitShardByKey)
+import           HStream.Server.Shard  (Shard (..), ShardKey (ShardKey),
+                                        ShardMap, deleteShard, getShard,
+                                        getShardMapIdx, insertShard, mergeShard,
+                                        mkShard, mkShardMap, splitShardByKey)
 import qualified HStream.Store         as S
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
@@ -27,9 +27,18 @@ genChar = elements ['a'..'z']
 
 genOrderPair :: Gen (Word64, Word64)
 genOrderPair = do
-  first <- chooseUpTo (maxBound `div` 5000)
+  first <- chooseUpTo (maxBound `div` 50000)
   second <- chooseWord64 (first, maxBound)
   return (first, second)
+
+genOrderShardKey :: Gen (ShardKey, ShardKey)
+genOrderShardKey = do
+  first <- ShardKey <$> choose (fromIntegral (minBound :: ShardKey), fromIntegral ((maxBound - minBound) :: ShardKey) `div` 2)
+  second <- ShardKey <$> choose (fromIntegral first, fromIntegral (maxBound :: ShardKey))
+  return (first, second)
+
+instance Arbitrary ShardKey where
+  arbitrary = ShardKey <$> choose (fromIntegral (minBound :: ShardKey), fromIntegral (maxBound :: ShardKey))
 
 instance Arbitrary S.StreamId where
   arbitrary = do
@@ -38,24 +47,24 @@ instance Arbitrary S.StreamId where
 
 instance Arbitrary Shard where
   arbitrary = do
-    (first, second) <- genOrderPair
-    logId           <- arbitrary
+    (first, second) <- genOrderShardKey
+    shardId           <- arbitrary
     streamId        <- arbitrary
-    let startKey = fromIntegral first
-        endKey   = fromIntegral second
-    mkShard logId streamId startKey endKey <$> arbitrary
+    let startKey = first
+        endKey   = second
+    mkShard shardId streamId startKey endKey <$> arbitrary
 
 genScopedShardKey :: ShardKey -> ShardKey -> IO ShardKey
 genScopedShardKey startKey endKey = generate $ frequency
-  [ (1, fromIntegral <$> chooseWord64(0, fromIntegral startKey))
-  , (5, fromIntegral <$> chooseWord64(fromIntegral startKey, fromIntegral endKey))
-  , (1, fromIntegral <$> chooseWord64(fromIntegral endKey, maxBound))
+  [ (1, ShardKey <$> choose(fromIntegral (minBound :: ShardKey), fromIntegral startKey))
+  , (5, ShardKey <$> choose(fromIntegral startKey, fromIntegral endKey))
+  , (1, ShardKey <$> choose(fromIntegral endKey, fromIntegral (maxBound :: ShardKey)))
   ]
 
 spec :: SpecWith ()
 spec = describe "HStream.ShardSpec" $ do
-    shardMapIdxSpec
-    shardSpec
+  shardMapIdxSpec
+  shardSpec
 
 shardMapIdxSpec :: SpecWith ()
 shardMapIdxSpec = describe "test get shardMap index" $ do
@@ -72,8 +81,8 @@ shardSpec = describe "test manipulate shard" $ do
         isRight res `shouldBe` True
         let (s1, s2) = head . rights $ [res]
         (id1, id2) <- generate genOrderPair
-        let s1'@Shard{startKey=startKey1} = s1 {logId = id1}
-        let s2'@Shard{startKey=startKey2, endKey=endKey2} = s2 {logId = id2}
+        let s1'@Shard{startKey=startKey1} = s1 {shardId = id1}
+        let s2'@Shard{startKey=startKey2, endKey=endKey2} = s2 {shardId = id2}
         let mergeRes = mergeShard s1' s2'
         when (isLeft mergeRes) $
           Log.fatal $ "merge shard failed:"
@@ -104,7 +113,7 @@ shardSpec = describe "test manipulate shard" $ do
            Log.fatal $ "randomShard error, key = " <> Log.buildString' (show key) <> ", mp = " <> Log.buildString' (show shardMp)
            error "get randomShard error"
 
-     randomSplitKey startKey endKey = generate $ fromIntegral <$> chooseWord64 (fromIntegral startKey, fromIntegral endKey)
+     randomSplitKey startKey endKey = generate $ ShardKey <$> choose (fromIntegral startKey, fromIntegral endKey)
 
      mergeAllShards (first : shards) = foldl' (\acc shard -> fst . head . rights $ [mergeShard acc shard]) first shards
      mergeAllShards [] = error "shards should not empty"
@@ -119,17 +128,21 @@ shardSpec = describe "test manipulate shard" $ do
               shard'@Shard{..} <- randomShard shardMp
               splitKey <- randomSplitKey startKey endKey
               let res = splitShardByKey shard' splitKey
+              when (isLeft res) $ do
+                Log.fatal $ "split shard failed:"
+                         <> " shard = " <> Log.buildString' (show shard')
+                         <> ", splitKey = " <> Log.buildString' (show splitKey)
               isRight res `shouldBe` True
               let (s1, s2) = head . rights $ [res]
               (id1, id2) <- generate genOrderPair
-              let s1'@Shard{startKey=sk1} = s1 {logId = id1}
-              let s2'@Shard{startKey=sk2} = s2 {logId = id2}
+              let s1'@Shard{startKey=sk1} = s1 {shardId = id1}
+              let s2'@Shard{startKey=sk2} = s2 {shardId = id2}
               let mp1 = insertShard sk1 s1' shardMp
                   mp2 = insertShard sk2 s2' mp1
               loop (cnt - 1) mp2
             else do
-              shard1@Shard{startKey=sk1, endKey=ek1, logId=id1} <- randomShard shardMp
-              let shard2@Shard{startKey=sk2, logId=id2} = fromJust $ getShard shardMp (ek1 + 1)
+              shard1@Shard{startKey=sk1, endKey=ek1, shardId=id1} <- randomShard shardMp
+              let shard2@Shard{startKey=sk2, shardId=id2} = fromJust $ getShard shardMp (ek1 + 1)
               if sk1 == sk2
                  then loop cnt shardMp
                  else do
@@ -143,5 +156,5 @@ shardSpec = describe "test manipulate shard" $ do
                    isRight res `shouldBe` True
                    let (shard'@Shard{startKey=sk}, removedKey) = head . rights $ [res]
                    let mp1 = deleteShard removedKey shardMp
-                       mp2 = insertShard sk shard'{logId = id1 + id2} mp1
+                       mp2 = insertShard sk shard'{shardId = id1 + id2} mp1
                    loop (cnt - 1) mp2

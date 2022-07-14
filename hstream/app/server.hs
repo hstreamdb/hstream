@@ -76,8 +76,9 @@ app config@ServerOpts{..} = do
                        , serverNodeGossipPort = fromIntegral _serverInternalPort
                        , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                        }
-    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode
-    void $ startGossip serverHostBS _seedNodes gossipContext
+    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
+    -- TODO: Use with async might be a better way
+    void $ forkIO $ void $ startGossip serverHostBS gossipContext
 
     serverContext <- initializeServer config gossipContext zk serverState
     void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
@@ -101,7 +102,9 @@ serve host port tlsConfig sc listeners = do
   |]
   Log.i "*************************"
 
-  let serverOnStarted = Log.info $ "Server is started on port " <> Log.buildInt port
+  let serverOnStarted = do
+        Log.info $ "Server is started on port " <> Log.buildInt port
+        Log.info "Please wait until the cluster is initialized"
   let grpcOpts =
         GRPC.defaultServiceOptions
         { GRPC.serverHost = GRPC.Host host

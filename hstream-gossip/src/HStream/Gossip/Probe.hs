@@ -5,7 +5,7 @@
 
 module HStream.Gossip.Probe where
 
-import           Control.Concurrent             (threadDelay)
+import           Control.Concurrent             (readMVar, threadDelay)
 import           Control.Concurrent.STM         (TMVar, atomically, check,
                                                  newEmptyTMVarIO, putTMVar,
                                                  readTMVar, readTVar,
@@ -13,6 +13,7 @@ import           Control.Concurrent.STM         (TMVar, atomically, check,
                                                  takeTMVar, writeTChan,
                                                  writeTQueue)
 import           Control.Monad                  (forever, join, when)
+import           Data.ByteString                (ByteString)
 import           Data.List                      ((\\))
 import qualified Data.List                      as L
 import qualified Data.Map                       as Map
@@ -41,13 +42,21 @@ import           HStream.Gossip.Utils           (broadcast, getMessagesToSend,
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
 
-bootstrapPing :: GRPC.Client -> IO (Maybe I.ServerNode)
-bootstrapPing client = do
+bootstrapPing :: (ByteString, Int) -> GRPC.Client -> IO (Maybe I.ServerNode)
+bootstrapPing (joinHost, joinPort) client = do
   HStreamGossip{..} <- hstreamGossipClient client
   hstreamGossipBootstrapPing (mkClientNormalRequest Empty) >>= \case
-    ClientNormalResponse serverNode _ _ _ _ -> return (Just serverNode)
-    ClientErrorResponse _                   -> Log.debug "The server has not been started"
-                                            >> return Nothing
+    ClientNormalResponse serverNode _ _ _ _ -> do
+      Log.debug $ "The server "
+                <> Log.buildString' serverNode
+                <> " ready"
+      return (Just serverNode)
+    ClientErrorResponse _                   -> do
+      Log.debug $ "The server "
+                <> Log.buildByteString joinHost <> ":"
+                <> Log.buildInt joinPort
+                <> " has not been started"
+      return Nothing
 
 ping :: Messages -> GRPC.Client -> IO (Maybe Ack)
 ping msg client = do
@@ -122,14 +131,16 @@ doPing client GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{
               Just _  -> pure True
 
 scheduleProbe :: GossipContext -> IO ()
-scheduleProbe gc@GossipContext{..} = forever $ do
-  memberMap <- atomically $ do
-    memberMap <- snd <$> readTVar serverList
-    check (not $ Map.null memberMap)
-    return memberMap
-  let members = Map.keys memberMap
-  let pingOrder = shuffle' members (length members) randomGen
-  runProbe gc randomGen pingOrder members
+scheduleProbe gc@GossipContext{..} = do
+  _ <- readMVar clusterInited
+  forever $ do
+    memberMap <- atomically $ do
+      memberMap <- snd <$> readTVar serverList
+      check (not $ Map.null memberMap)
+      return memberMap
+    let members = Map.keys memberMap
+    let pingOrder = shuffle' members (length members) randomGen
+    runProbe gc randomGen pingOrder members
 
 -- TODO: When a new server join in the cluster, add it randomly
 runProbe :: RandomGen gen => GossipContext -> gen -> [ServerId] -> [ServerId] -> IO ()

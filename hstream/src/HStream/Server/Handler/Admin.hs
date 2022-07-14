@@ -25,7 +25,8 @@ import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
-import           HStream.Gossip                   (getClusterStatus)
+import           HStream.Gossip                   (getClusterStatus,
+                                                   initCluster)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
 import qualified HStream.Server.Core.Subscription as HC
@@ -67,6 +68,7 @@ adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
               AT.AdminSubscriptionCommand c -> runSubscription sc c
               AT.AdminViewCommand c         -> runView sc c
               AT.AdminStatusCommand         -> runStatus sc
+              AT.AdminInitCommand           -> runInit sc
   returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
@@ -186,7 +188,11 @@ runSubscription ctx AT.SubscriptionCmdList = do
   let content = Aeson.object ["headers" .= headers, "rows" .= rows]
   return $ tableResponse content
 runSubscription ctx (AT.SubscriptionCmdDelete subscription force) = do
-  HC.deleteSubscription ctx subscription force
+  let req = API.DeleteSubscriptionRequest
+            { deleteSubscriptionRequestSubscriptionId = (API.subscriptionSubscriptionId subscription)
+            , deleteSubscriptionRequestForce = force
+            }
+  HC.deleteSubscription ctx req
   return $ plainResponse "OK"
 runSubscription ctx (AT.SubscriptionCmdCreate sub) = do
   HC.createSubscription ctx sub
@@ -227,6 +233,14 @@ runStatus ServerContext{..} = do
           , showNodeStatus serverNodeStatusState
           , nodeHost <> ":" <> nodePort
           ]
+
+-------------------------------------------------------------------------------
+-- Admin Init Command
+
+runInit :: ServerContext -> IO Text.Text
+runInit ServerContext{..} = do
+  initCluster gossipContext
+  return $ plainResponse "OK"
 
 -------------------------------------------------------------------------------
 -- Helpers

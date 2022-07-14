@@ -23,7 +23,7 @@ import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           System.Timeout                   (timeout)
 
 import           HStream.Gossip.Core              (addToServerList,
-                                                   handleEventMessage)
+                                                   broadCastUserEvent)
 import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
                                                    Cluster (..), Empty (..),
                                                    Gossip (..),
@@ -34,15 +34,13 @@ import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
                                                    SeenEvents (SeenEvents),
                                                    UserEvent (..),
                                                    hstreamGossipClient)
-import           HStream.Gossip.Types             (EventMessage (..),
-                                                   GossipContext (..),
+import           HStream.Gossip.Types             (GossipContext (..),
                                                    GossipOpts (..),
                                                    RequestAction (..),
                                                    ServerState (OK),
                                                    ServerStatus (..))
 import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (broadcast, getMessagesToSend,
-                                                   incrementTVar,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf',
                                                    returnErrResp, returnResp)
@@ -134,10 +132,8 @@ cliClusterHandler GossipContext{..} _serverReq = do
   returnResp Cluster {clusterMembers = members}
 
 cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)
-cliUserEventHandler gc@GossipContext{..} (ServerNormalRequest _metadata UserEvent {..}) = do
-  lpTime <- atomically $ incrementTVar eventLpTime
-  let eventMessage = EventMessage userEventName lpTime userEventPayload
-  handleEventMessage gc eventMessage
+cliUserEventHandler gc (ServerNormalRequest _metadata UserEvent {..}) = do
+  broadCastUserEvent gc userEventName userEventPayload
   returnResp Empty
 
 cliGetSeenEventsHandler :: GossipContext -> ServerRequest 'Normal Empty SeenEvents -> IO (ServerResponse 'Normal SeenEvents)

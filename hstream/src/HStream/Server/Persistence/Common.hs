@@ -19,8 +19,7 @@ module HStream.Server.Persistence.Common
   , ObjRepType (..)
   ) where
 
-import           Data.Aeson                (FromJSON (..), FromJSONKey,
-                                            ToJSON (..), ToJSONKey)
+import           Data.Aeson                (FromJSON (..), ToJSON (..))
 import           Data.Int                  (Int64)
 import           Data.Map                  (Map)
 import qualified Data.Text                 as T
@@ -30,8 +29,7 @@ import           Z.Data.CBytes             (CBytes)
 
 import           HStream.Server.HStreamApi (Subscription)
 import           HStream.Server.Types      (ServerID)
-import           HStream.Utils             (TaskStatus (..), cBytesToText,
-                                            textToCBytes)
+import           HStream.Utils             (TaskStatus (..))
 
 --------------------------------------------------------------------------------
 

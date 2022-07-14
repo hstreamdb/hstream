@@ -49,19 +49,21 @@ library
     HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.Core.Common
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
+    HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.InternalHandler
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
-    HStream.Server.Types
     HStream.Server.ReaderPool
     HStream.Server.Shard
+    HStream.Server.Types
 
   other-modules:
-    HStream.Server.Core.Common
+    HStream.Server.Core.Cluster
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View
@@ -91,6 +93,7 @@ library
     , bytestring
     , clickhouse-haskell
     , containers
+    , cryptonite
     , deepseq
     , directory
     , grpc-haskell
@@ -105,6 +108,7 @@ library
     , hstream-processing
     , hstream-sql
     , hstream-store
+    , memory
     , microlens
     , microlens-aeson
     , mysql-haskell
@@ -128,8 +132,6 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
-    , cryptonite
-    , memory
 
   default-language:   Haskell2010
   default-extensions:
@@ -152,6 +154,7 @@ executable hstream-server
     , base
     , bytestring
     , containers
+    , cryptonite
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
@@ -161,6 +164,7 @@ executable hstream-server
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
+    , memory
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -173,8 +177,6 @@ executable hstream-server
     , Z-Data
     , Z-IO
     , zoovisitor
-    , cryptonite
-    , memory
 
   default-language: Haskell2010
   ghc-options:
@@ -222,9 +224,9 @@ test-suite hstream-test
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunStoreAdminSpec
+    HStream.ShardSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
-    HStream.ShardSpec
 
   hs-source-dirs:     test
   build-depends:
@@ -245,6 +247,7 @@ test-suite hstream-test
     , io-streams
     , mysql-haskell
     , proto3-suite
+    , QuickCheck
     , random                ^>=1.2
     , scientific
     , text
@@ -253,7 +256,6 @@ test-suite hstream-test
     , Z-Data
     , Z-IO
     , zoovisitor
-    , QuickCheck
 
   default-language:   Haskell2010
   default-extensions:

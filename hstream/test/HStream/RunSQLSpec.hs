@@ -6,19 +6,15 @@
 module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
-import qualified Data.Aeson                      as Aeson
-import qualified Data.List                       as L
-import qualified Data.Text                       as T
-import qualified Data.Vector                     as V
-import qualified Database.ClickHouseDriver.Types as ClickHouse
-import           Database.MySQL.Base             (MySQLValue (MySQLInt32))
+import qualified Data.Aeson           as Aeson
+import qualified Data.Text            as T
 import           Test.Hspec
 
-import           HStream.Logger                  as Log
+import           HStream.Logger       as Log
 import           HStream.SpecUtils
-import           HStream.Store.Logger            (pattern C_DBG_ERROR,
-                                                  setLogDeviceDbgLevel)
-import           HStream.Utils                   hiding (newRandomText)
+import           HStream.Store.Logger (pattern C_DBG_ERROR,
+                                       setLogDeviceDbgLevel)
+import           HStream.Utils        hiding (newRandomText)
 
 spec :: Spec
 spec = describe "HStream.RunSQLSpec" $ do
@@ -99,7 +95,7 @@ viewSpecAround = provideRunTest setup clean
                          <> " AS SELECT SUM(a) FROM " <> source2
                          <> " GROUP BY b EMIT CHANGES;"
       -- FIXME: wait the SELECT task to be initialized.
-      threadDelay 2000000
+      threadDelay 5000000
       return (source1, source2, viewName)
     clean api (source1, source2, viewName) = do
       runDropSql api $ "DROP VIEW " <> viewName <> " IF EXISTS;"

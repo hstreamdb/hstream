@@ -1,7 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -14,6 +13,7 @@ import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
 import qualified Data.Map                         as Map
+import           Data.Text                        (Text)
 import           Data.Word                        (Word32)
 import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
                                                    ClientRequest (..),
@@ -157,3 +157,9 @@ showNodesTable nodes =
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               ]
+
+eventNameINIT :: Text
+eventNameINIT = "INIT_INTERNAL_USE_ONLY"
+
+eventNameINITED :: Text
+eventNameINITED = "INITED_INTERNAL_USE_ONLY"

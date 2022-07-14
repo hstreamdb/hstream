@@ -14,6 +14,7 @@ module HStream.Store.Stream
   , mkStreamIdFromFullLogDir
   , getStreamLogAttrs
   , getStreamPartitionHeadTimestamp
+  , getStreamPartitionExtraAttrs
     -- ** Operations
   , createStream
   , createStreamPartition
@@ -430,6 +431,13 @@ getStreamPartitionHeadTimestamp client stream m_key = do
   case ts of
     FFI.C_MAX_MILLISECONDS -> return Nothing
     _                      -> return $ Just ts
+
+getStreamPartitionExtraAttrs
+  :: FFI.LDClient
+  -> FFI.C_LogID
+  -> IO (Map CBytes CBytes)
+getStreamPartitionExtraAttrs client logId = do
+   fmap LD.logAttrsExtras <$> LD.logGroupGetAttrs =<< LD.getLogGroupByID client logId
 
 -------------------------------------------------------------------------------
 
