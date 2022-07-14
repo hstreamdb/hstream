@@ -1,9 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Cluster
@@ -12,104 +9,30 @@ module HStream.Server.Handler.Cluster
   , lookupSubscriptionHandler
   ) where
 
-import           Control.Concurrent.STM           (readTVarIO)
-import           Control.Exception                (Exception (..), Handler (..),
-                                                   throwIO)
-import           Data.Text                        (Text)
-import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
-import           HStream.Common.Types             (fromInternalServerNodeWithKey)
-import           HStream.Gossip                   (getFailedNodes,
-                                                   getMemberList)
-import qualified HStream.Logger                   as Log
+import qualified HStream.Server.Core.Cluster      as C
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common    (alignDefault)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
-import qualified HStream.Server.Types             as Types
 import           HStream.ThirdParty.Protobuf      (Empty)
-import           HStream.Utils                    (mkServerErrResp,
-                                                   pattern EnumPB, returnResp)
+import           HStream.Utils                    (returnResp)
 
 describeClusterHandler :: ServerContext
                        -> ServerRequest 'Normal Empty DescribeClusterResponse
                        -> IO (ServerResponse 'Normal DescribeClusterResponse)
-describeClusterHandler ServerContext{..} (ServerNormalRequest _meta _) = defaultExceptionHandle $ do
-  let protocolVer = Types.protocolVersion
-      serverVer   = Types.serverVersion
-  alives <- getMemberList gossipContext
-  deads  <- getFailedNodes gossipContext
-  alives' <- V.concat <$> mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) alives
-  deads'  <- V.concat <$> mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) deads
-  let nodesStatus =
-          fmap (helper NodeStateRunning) alives'
-       <> fmap (helper NodeStateDead   ) deads'
-
-  returnResp $ DescribeClusterResponse
-    { describeClusterResponseProtocolVersion   = protocolVer
-    , describeClusterResponseServerVersion     = serverVer
-    , describeClusterResponseServerNodes       = alives'
-    , describeClusterResponseServerNodesStatus = nodesStatus
-    }
- where
-  helper state node = ServerNodeStatus
-    { serverNodeStatusNode  = Just node
-    , serverNodeStatusState = EnumPB state}
+describeClusterHandler sc (ServerNormalRequest _meta _) =
+  defaultExceptionHandle $ returnResp =<< C.describeCluster sc
 
 lookupStreamHandler :: ServerContext
                     -> ServerRequest 'Normal LookupStreamRequest LookupStreamResponse
                     -> IO (ServerResponse 'Normal LookupStreamResponse)
-lookupStreamHandler ServerContext{..} (ServerNormalRequest _meta req@LookupStreamRequest {
-  lookupStreamRequestStreamName  = stream,
-  lookupStreamRequestOrderingKey = orderingKey}) = lookupStreamExceptionHandle $ do
-  Log.info $ "receive lookupStream request: " <> Log.buildString' req
-  hashRing <- readTVarIO loadBalanceHashRing
-  let key      = alignDefault orderingKey
-  theNode <- getResNode hashRing (stream <> key) scAdvertisedListenersKey
-  returnResp LookupStreamResponse {
-    lookupStreamResponseStreamName  = stream
-  , lookupStreamResponseOrderingKey = orderingKey
-  , lookupStreamResponseServerNode  = Just theNode
-  }
+lookupStreamHandler sc (ServerNormalRequest _meta req) =
+  defaultExceptionHandle $ returnResp =<< C.lookupStream sc req
 
 lookupSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal LookupSubscriptionRequest LookupSubscriptionResponse
   -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
-lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@LookupSubscriptionRequest{
-  lookupSubscriptionRequestSubscriptionId = subId}) = defaultExceptionHandle $ do
-  Log.info $ "receive lookupSubscription request: " <> Log.buildString (show req)
-  hashRing <- readTVarIO loadBalanceHashRing
-  theNode <- getResNode hashRing subId scAdvertisedListenersKey
-  returnResp LookupSubscriptionResponse {
-    lookupSubscriptionResponseSubscriptionId = subId
-  , lookupSubscriptionResponseServerNode     = Just theNode
-  }
-
---------------------------------------------------------------------------------
--- Exception and Exception Handlers
-
-data DataInconsistency = DataInconsistency Text Text
-  deriving (Show)
-instance Exception DataInconsistency where
-  displayException (DataInconsistency streamName key) =
-    "Partition " <> show key <> " of stream " <> show streamName
-    <> " doesn't appear in store, but exists in zk."
-
-lookupStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-lookupStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  dataInconsistencyHandler ++ defaultHandlers
-  where
-    dataInconsistencyHandler = [
-      Handler (\(err :: DataInconsistency) ->
-        return (StatusAborted, mkStatusDetails err))
-      ]
-
-getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
-getResNode hashRing hashKey listenerKey = do
-  let serverNode = getAllocatedNode hashRing hashKey
-  theNodes <- fromInternalServerNodeWithKey listenerKey serverNode
-  if V.null theNodes then throwIO ObjectNotExist
-                     else pure $ V.head theNodes
+lookupSubscriptionHandler sc (ServerNormalRequest _meta req) =
+  defaultExceptionHandle $ returnResp =<< C.lookupSubscription sc req
