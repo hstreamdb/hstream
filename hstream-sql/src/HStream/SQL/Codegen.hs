@@ -12,7 +12,6 @@ import           Data.Aeson                      (Object,
                                                   Value (Bool, Null, Number, String))
 import qualified Data.Aeson                      as Aeson
 import           Data.Bifunctor
-import qualified Data.ByteString.Char8           as BSC
 import           Data.Function
 import           Data.Functor
 import qualified Data.HashMap.Strict             as HM

@@ -10,8 +10,8 @@ module HStream.Connector.Common
   )
 where
 
-import qualified HStream.Server.HStreamApi as API
 import           HStream.Connector.Type
+import qualified HStream.Server.HStreamApi as API
 import           RIO
 
 -- data StreamStoreConnector =

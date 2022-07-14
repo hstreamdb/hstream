@@ -5,7 +5,6 @@
 module HStream.Server.Persistence.MemoryStore where
 
 import           Control.Concurrent
-import qualified Data.Aeson                           as Aeson
 import qualified Data.HashMap.Strict                  as HM
 import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
@@ -20,7 +19,6 @@ import qualified HStream.Connector.Type               as HCT
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
-import           HStream.SQL.Codegen                  (SerMat)
 import           HStream.Utils                        (TaskStatus (..))
 
 import           DiffFlow.Types

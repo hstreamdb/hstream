@@ -7,30 +7,20 @@
 
 module HStream.Server.Handler.View where
 
-import qualified Data.ByteString.Char8            as BSC
-import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (atomicModifyIORef')
 import           Data.List                        (find)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Monad                    (void)
-import qualified Data.Map.Strict                  as Map
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
-import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
-import qualified HStream.Server.Shard             as SD
 import           HStream.Server.Types
-import qualified HStream.SQL.Codegen              as HSC
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToText, returnErrResp,
-                                                   returnResp, textToCBytes)
+import           HStream.Utils                    (cBytesToText, returnErrResp,
+                                                   returnResp)
 
 listViewsHandler
   :: ServerContext

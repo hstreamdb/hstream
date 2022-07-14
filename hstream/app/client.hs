@@ -188,7 +188,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
-  xs'@(_:_)   -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
+  (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
     (parseAndRefine . T.pack) xs >>= \case
       RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
       RQCreate (RCreateAs stream _ rOptions) ->

@@ -48,9 +48,9 @@ library
     HStream.Connector.Type
     HStream.Connector.Util
     HStream.IO.IOTask
-    HStream.IO.Worker
     HStream.IO.Storage
     HStream.IO.Types
+    HStream.IO.Worker
     HStream.IO.ZkKv
 
   build-depends:
@@ -63,23 +63,23 @@ library
     , grpc-haskell-core
     , haxl
     , hstream-common
-    , hstream-store
     , hstream-sql
+    , hstream-store
     , mysql-haskell
     , proto3-suite
     , proto3-wire
     , rio
     , scientific
+    , stm
     , text
     , time
+    , typed-process
     , unordered-containers
-    , vector
     , uuid
+    , vector
     , Z-Data
     , Z-IO
     , zoovisitor
-    , typed-process
-    , stm
 
   default-extensions:
     DeriveGeneric

@@ -61,7 +61,7 @@ import           HStream.Utils
 -------------------------------------------------------------------------------
 
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
-createStream ServerContext{..} stream@API.Stream{
+createStream ServerContext{..} API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
 
   when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")

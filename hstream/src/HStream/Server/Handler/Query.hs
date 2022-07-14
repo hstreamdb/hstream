@@ -14,64 +14,54 @@ import           Control.Concurrent
 import           Control.Concurrent.Async         (async, cancel, wait)
 import           Control.Exception                (Exception, Handler (..),
                                                    handle)
-import           Control.Monad                    (forM, join)
+import           Control.Monad
 import qualified Data.Aeson                       as Aeson
-import           Data.Bifunctor
 import qualified Data.ByteString.Char8            as BS
-import           Data.Function                    (on, (&))
-import           Data.Functor
 import qualified Data.HashMap.Strict              as HM
-import           Data.Int                         (Int64)
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
 import           Data.List                        (find, (\\))
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (catMaybes, fromJust,
-                                                   fromMaybe, isJust)
-import           Data.Scientific
+import           Data.Maybe                       (fromJust, isJust)
 import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
-import qualified Data.Text.Encoding               as TE
-import qualified Data.Time                        as Time
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
-import           Proto3.Suite                     (HasDefault (def))
 import qualified Z.Data.CBytes                    as CB
+import qualified Z.IO.Network                     as ZNet
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
-import qualified HStream.IO.Worker                as IO
 import           HStream.Connector.Common         (SourceConnectorWithoutCkp (..))
 import           HStream.Connector.Type           hiding (StreamName, Timestamp)
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config
 import qualified HStream.Server.Core.Common       as Core
+import qualified HStream.Server.Core.Stream       as Core
+import qualified HStream.Server.Core.View         as Core
 import           HStream.Server.Exception
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
-import           HStream.Server.Handler.Stream
-import           HStream.Server.Handler.View
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.Persistence       as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
-import           HStream.SQL                      (parseAndRefine)
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import qualified HStream.SQL.Internal.Codegen     as HSC
-import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
 
-import           DiffFlow.Types
+import           DiffFlow.Types                   (DataChange (..),
+                                                   DataChangeBatch (..))
 
 -- Other sqls, called in 'sqlAction'
 executeQueryHandler :: ServerContext
@@ -84,68 +74,61 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
-    CreateBySelectPlan tName inNodesWithStreams outNodeWithStream _ _ fac -> do
+    CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
           query   = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
       create (transToStreamName sink)
-      handleCreateAsSelect sc plan commandQueryStmtText query S.StreamTypeStream
+      void $ handleCreateAsSelect sc plan commandQueryStmtText query
       returnCommandQueryEmptyResp
-    CreateViewPlan tName schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
+    CreateViewPlan _ schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
           query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
       create (transToStreamName sink)
-      handleCreateAsSelect sc plan commandQueryStmtText query S.StreamTypeView
+      void $ handleCreateAsSelect sc plan commandQueryStmtText query
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
       returnCommandQueryEmptyResp
-    CreatePlan stream fac ->
-      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
-        let s = API.Stream
-              { streamStreamName = stream
-              , streamReplicationFactor = fromIntegral fac
-              , streamBacklogDuration = 0
-              }
-        hstreamApiCreateStream api (mkClientNormalRequest 1000 s)
-        returnCommandQueryEmptyResp
-    InsertPlan stream insertType payload ->
-      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
-        timestamp <- getProtoTimestamp
-        let header = case insertType of
-              JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
-              RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
-        let record = buildRecord header payload
-        let request = AppendRequest
-                    { appendRequestStreamName = stream
-                    , appendRequestRecords = V.singleton record
-                    }
-        hstreamApiAppend api (mkClientNormalRequest 1000 request)
-        returnCommandQueryEmptyResp
+    CreatePlan stream fac -> do
+      let s = API.Stream
+            { streamStreamName = stream
+            , streamReplicationFactor = fromIntegral fac
+            , streamBacklogDuration = 0
+            , streamShardCount = 1
+            }
+      Core.createStream sc s
+      returnCommandQueryEmptyResp
+    InsertPlan stream insertType payload -> do
+      timestamp <- getProtoTimestamp
+      let header = case insertType of
+            JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
+            RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp T.empty
+      let record = buildRecord header payload
+      let request = AppendRequest
+                  { appendRequestStreamName = stream
+                  , appendRequestRecords = V.singleton record
+                  }
+      void $ Core.appendStream sc request Nothing
+      returnCommandQueryEmptyResp
     DropPlan checkIfExist dropObject ->
-      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
-        case dropObject of
-          DStream stream -> do
-            let request = DeleteStreamRequest
-                        { deleteStreamRequestStreamName = stream
-                        , deleteStreamRequestIgnoreNonExist = not checkIfExist
-                        , deleteStreamRequestForce = False
-                        }
-            hstreamApiDeleteStream api (mkClientNormalRequest 1000 request)
-            returnCommandQueryEmptyResp
-          DView view -> do
-            let request = DeleteViewRequest
-                        { deleteViewRequestViewId = view
-                        , deleteViewRequestIgnoreNonExist = not checkIfExist
-                        }
-            hstreamApiDeleteView api (mkClientNormalRequest 1000 request)
-            returnCommandQueryEmptyResp
-          DConnector conn -> do
-            let request = DeleteConnectorRequest
-                        { deleteConnectorRequestName = conn
-                        }
-            hstreamApiDeleteConnector api (mkClientNormalRequest 1000 request)
-            returnCommandQueryEmptyResp
+      case dropObject of
+        DStream stream -> do
+          let request = DeleteStreamRequest
+                      { deleteStreamRequestStreamName = stream
+                      , deleteStreamRequestIgnoreNonExist = not checkIfExist
+                      , deleteStreamRequestForce = False
+                      }
+          Core.deleteStream sc request
+          returnCommandQueryEmptyResp
+        DView view -> do
+          Core.deleteView sc view checkIfExist
+          returnCommandQueryEmptyResp
+        DConnector conn -> do
+          -- FIXME: use Core.*
+          IO.deleteIOTask scIOWorker conn
+          returnCommandQueryEmptyResp
     -- FIXME: Return non-empty results
+    -- FIXME: use Core.*
     ShowPlan showObject ->
       runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
         case showObject of
@@ -161,6 +144,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           SViews -> do
             hstreamApiListViews api (mkClientNormalRequest 1000 ListViewsRequest)
             returnCommandQueryEmptyResp
+    -- FIXME: use Core.*
     TerminatePlan sel ->
       runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
         let request = case sel of
@@ -176,15 +160,14 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                                   { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
                                   , terminateQueriesRequestAll = False
                                   }
-        hstreamApiTerminateQueries api (mkClientNormalRequest 1000 request)
+        void $ hstreamApiTerminateQueries api (mkClientNormalRequest 1000 request)
         returnCommandQueryEmptyResp
     SelectViewPlan RSelectView {..} -> do
-      queries <- P.getQueries zkHandle
       hm <- readIORef P.groupbyStores
       case HM.lookup rSelectViewFrom hm of
         Nothing -> returnErrResp StatusNotFound "VIEW not found"
         Just accumulation -> do
-          dcb@DataChangeBatch{..} <- readMVar accumulation
+          DataChangeBatch{..} <- readMVar accumulation
           results <- case dcbChanges of
             [] -> do
               x <- sendResp mempty
@@ -193,7 +176,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
               forM (filterView rSelectViewWhere dcbChanges) $ \change -> do
                 sendResp (dcRow $ mapView rSelectViewSelect change)
           return $ L.last results
-    ExplainPlan sql -> do
+    ExplainPlan _ -> do
       undefined
       {-
       execPlan <- genExecutionPlan sql
@@ -221,11 +204,11 @@ mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
                L.map (\(field,alias) ->
                          (T.pack alias, HSC.getFieldByName dcRow field)
                      ) fieldsWithAlias
-  in DataChange {dcRow = newRow}
+  in change {dcRow = newRow}
 
 filterView :: SelectViewCond -> [DataChange a] -> [DataChange a]
 filterView (field, rexpr) changes =
-  L.filter (\change@DataChange{..} ->
+  L.filter (\DataChange{..} ->
               let column       = HSC.getFieldByName dcRow field
                   (_,expected) = HSC.genRExprValue rexpr dcRow
                in column == expected
@@ -241,11 +224,9 @@ executePushQueryHandler
     Log.debug $ "Receive Push Query Request: " <> Log.buildText commandPushQueryQueryText
     plan <- streamCodegen commandPushQueryQueryText
     case plan of
-      SelectPlan tName inNodesWithStreams outNodeWithStream win builder -> do
+      SelectPlan _ inNodesWithStreams outNodeWithStream _ _ -> do
         let sources = snd <$> inNodesWithStreams
             sink    = snd outNodeWithStream
-            rFac    = scDefaultStreamRepFactor
-            attrs   = S.def{ S.logReplicationFactor = S.defAttr1 rFac }
         exists <- mapM (S.doesStreamExist scLDClient . transToStreamName) sources
         case and exists of
           False -> do
@@ -256,7 +237,7 @@ executePushQueryHandler
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
             let query = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
             -- run task
-            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query S.StreamTypeTemp
+            (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query
             tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
 
             -- sub from sink stream and push to client
@@ -293,7 +274,7 @@ sendToClient ::
   SourceConnectorWithoutCkp ->
   (Struct -> IO (Either GRPCIOError ())) ->
   IO (ServerResponse 'ServerStreaming Struct)
-sendToClient zkHandle qid streamName sc@SourceConnectorWithoutCkp {..} streamSend = do
+sendToClient zkHandle qid streamName SourceConnectorWithoutCkp {..} streamSend = do
   let f (e :: ZooException) = do
         Log.fatal $ "ZooKeeper Exception: " <> Log.buildString (show e)
         return $ ServerWriterResponse [] StatusAborted "failed to get status"
@@ -391,7 +372,7 @@ restartQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal RestartQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-restartQueryHandler ServerContext{..} (ServerNormalRequest _metadata RestartQueryRequest{..}) = do
+restartQueryHandler _ (ServerNormalRequest _metadata _) = do
   Log.fatal "Restart Query Not Supported"
   returnErrResp StatusUnimplemented "restart query not suppported yet"
     -- queries <- P.withMaybeZHandle zkHandle P.getQueries
