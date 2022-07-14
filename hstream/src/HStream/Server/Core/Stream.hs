@@ -6,6 +6,7 @@ module HStream.Server.Core.Stream
   ( createStream
   , deleteStream
   , listStreams
+  , append
   , appendStream
   , append0Stream
   , readShard
@@ -15,6 +16,9 @@ module HStream.Server.Core.Stream
   , RecordTooBig (..)
   ) where
 
+import           Control.Concurrent                (MVar, modifyMVar,
+                                                    modifyMVar_)
+import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throwIO)
 import           Control.Monad                     (foldM, forM, unless, void,
@@ -28,15 +32,15 @@ import           Data.Text                         (Text)
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
-import           Network.GRPC.HighLevel.Generated
+import           Proto3.Suite                      (Enumerated (Enumerated))
 import qualified Z.Data.CBytes                     as CB
 
-import           Control.Concurrent                (MVar, modifyMVar,
-                                                    modifyMVar_)
+import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
-                                                    StreamNotExist (..))
+                                                    StreamNotExist (..),
+                                                    WrongServer (..))
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
@@ -52,18 +56,14 @@ import           HStream.Server.Types              (ServerContext (..),
                                                     transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
-import           HStream.ThirdParty.Protobuf       as PB
 import           HStream.Utils
-import           Proto3.Suite                      (Enumerated (Enumerated))
 
 -------------------------------------------------------------------------------
 
--- createStream will create a stream with specific number of partitions
--- FIXME: Currently, creating a stream which partially exists will do the job
--- but return failure response
-createStream :: HasCallStack => ServerContext -> API.Stream -> IO (ServerResponse 'Normal API.Stream)
+createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
 createStream ServerContext{..} stream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
+
   when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
@@ -81,17 +81,15 @@ createStream ServerContext{..} stream@API.Stream{
   modifyMVar_ shardInfo $ return . HM.insert streamStreamName shardMp
   let shardDict = foldl' (\acc Shard{startKey=key, shardId=sId} -> M.insert key sId acc) M.empty shards
   modifyMVar_ shardTable $ return . HM.insert streamStreamName shardDict
-  returnResp stream
 
 deleteStream :: ServerContext
              -> API.DeleteStreamRequest
-             -> IO (ServerResponse 'Normal Empty)
+             -> IO ()
 deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
   deleteStreamRequestStreamName = sName, ..} = do
   storeExists <- S.doesStreamExist scLDClient streamId
   if storeExists then doDelete
     else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
-  returnResp Empty
   where
     streamId = transToStreamName sName
     doDelete = do
@@ -120,6 +118,31 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
         b = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
     return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
+
+append :: ServerContext -> API.AppendRequest -> IO API.AppendResponse
+append sc@ServerContext{..} request@API.AppendRequest{..} = do
+  let cStreamName = textToCBytes appendRequestStreamName
+  recv_time <- getPOSIXTime
+  Log.debug $ "Receive Append Request: StreamName {"
+           <> Log.buildText appendRequestStreamName
+           <> "}, nums of records = "
+           <> Log.buildInt (V.length appendRequestRecords)
+  Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
+  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
+  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
+  hashRing <- readTVarIO loadBalanceHashRing
+  let partitionKey = getRecordKey . V.head $ appendRequestRecords
+  let identifier = case partitionKey of
+        Just key -> appendRequestStreamName <> key
+        Nothing  -> appendRequestStreamName <> clientDefaultKey
+  if getAllocatedNodeId hashRing identifier == serverID
+     then do
+       append_start <- getPOSIXTime
+       r <- appendStream sc request partitionKey
+       Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
+       Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
+       return r
+     else throwIO $ WrongServer "Send appendRequest to wrong server."
 
 appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
