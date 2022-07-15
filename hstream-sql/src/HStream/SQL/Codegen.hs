@@ -34,8 +34,9 @@ import           HStream.SQL.Exception           (SomeSQLException (..),
                                                   throwSQLException)
 import           HStream.SQL.Internal.Codegen    (binOpOnValue, compareValue,
                                                   composeColName, diffTimeToMs,
-                                                  genJoiner,
+                                                  genJoiner, genJoiner',
                                                   genRandomSinkStream,
+                                                  genTableRefName,
                                                   getFieldByName,
                                                   unaryOpOnValue)
 import           HStream.SQL.Parse               (parseAndRefine)
@@ -172,7 +173,7 @@ genSourceGraphBuilder (RFrom tableRefs) baseBuilder = do
           (builder_4, nodeIndex_2) = addNode builder_3 subgraph (IndexSpec outNode_2)
       let keygen_1 = \o -> HM.fromList [("key", String "__constant_key__")]
           keygen_2 = \o -> HM.fromList [("key", String "__constant_key__")]
-          joiner = Joiner (\o1 o2 -> o1 <> o2)
+          joiner = genJoiner (genTableRefName ref1) (genTableRefName ref2)
           (builder_5, nodeJoin) = addNode builder_4 subgraph (JoinSpec nodeIndex_1 nodeIndex_2 keygen_1 keygen_2 joiner)
       return (builder_5, inNodesWithStreams_1 <> inNodesWithStreams_2, nodeJoin)
     go startBuilder subgraph refs = do
@@ -185,11 +186,10 @@ genSourceGraphBuilder (RFrom tableRefs) baseBuilder = do
                 let (newBuilder_2, nodeIndex) = addNode newBuilder_1 subgraph (IndexSpec newOutNode)
                 let keygen_1 = \o -> HM.fromList [("key", String "__constant_key__")]
                     keygen_2 = \o -> HM.fromList [("key", String "__constant_key__")]
-                    joiner = Joiner (\o1 o2 -> o1 <> o2)
+                    joiner = genJoiner' (genTableRefName ref)
                     (newBuilder_3, nodeJoin) = addNode newBuilder_2 subgraph (JoinSpec curOutNode nodeIndex keygen_1 keygen_2 joiner)
                 return (newBuilder_3, curInNodesWithStreams <> newInNodesWithStreams, nodeJoin)
             ) (builder_2, inNodesWithStreams_1, outNode_2) (L.drop 2 refs)
-
 
 genTaskName :: IO Text
 -- Please do not encode the this id to other forms,

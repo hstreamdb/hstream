@@ -20,7 +20,7 @@ spec = aroundAll provideHstreamApi $
   describe "HStream.RegressionSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
-{-
+
   it "#391_JOIN" $ \api -> do
     runDropSql api "DROP STREAM s1 IF EXISTS;"
     runDropSql api "DROP STREAM s2 IF EXISTS;"
@@ -40,7 +40,7 @@ spec = aroundAll provideHstreamApi $
         , ("s2.b"     , Aeson.Number 3)]]
     runDropSql api "DROP STREAM s1 IF EXISTS;"
     runDropSql api "DROP STREAM s2 IF EXISTS;"
--}
+
   it "#403_RAW" $ \api -> do
     runDropSql api "DROP STREAM s4 IF EXISTS;"
     runDropSql api "DROP STREAM s5 IF EXISTS;"
