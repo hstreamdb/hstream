@@ -7,6 +7,7 @@ module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
 import qualified Data.Aeson           as Aeson
+import qualified Data.List            as L
 import qualified Data.Text            as T
 import           Test.Hspec
 
@@ -69,11 +70,15 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
 
     -- TODO
     executeCommandPushQuery ("SELECT SUM(a) AS result FROM " <> source <> " GROUP BY b EMIT CHANGES;")
-      `shouldReturn` [ mkStruct [("result", Aeson.Number 1)]
-                     , mkStruct [("result", Aeson.Number 3)]
-                     , mkStruct [("result", Aeson.Number 6)]
-                     , mkStruct [("result", Aeson.Number 4)]
-                     ]
+      >>= (`shouldSatisfy`
+            (\l -> not (L.null l) &&
+                   L.last l == (mkStruct [("result", Aeson.Number 4)]) &&
+                   L.init l `L.isSubsequenceOf` [ mkStruct [("result", Aeson.Number 1)]
+                                              , mkStruct [("result", Aeson.Number 3)]
+                                              , mkStruct [("result", Aeson.Number 6)]
+                                              ]
+            )
+          )
 
 -------------------------------------------------------------------------------
 -- ViewSpec

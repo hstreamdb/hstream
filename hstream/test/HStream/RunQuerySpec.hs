@@ -95,6 +95,8 @@ spec = aroundAll provideHstreamApi $
   source1 <- runIO $ newRandomText 20
   source2 <- runIO $ newRandomText 20
 
+  let sql = "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
+
   it "clean streams" $ \api -> do
     runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
 
@@ -102,7 +104,7 @@ spec = aroundAll provideHstreamApi $
     runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
 
   it "run a query" $ \api ->
-    runCreateWithSelectSql api $ "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
+    runCreateWithSelectSql api sql
 
   it "list queries" $ \_ ->
     ( do
@@ -113,8 +115,8 @@ spec = aroundAll provideHstreamApi $
   it "get query" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let queryName = queryId $ V.head queries
-        query <- getQuery queryName
+        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
+        query <- getQuery (queryId thisQuery)
         case query of
           Just _ -> return True
           _      -> return False
@@ -123,9 +125,9 @@ spec = aroundAll provideHstreamApi $
   it "terminate query" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let queryName = queryId $ V.head queries
-        _ <- terminateQuery queryName
-        query <- getQuery queryName
+        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
+        _ <- terminateQuery (queryId thisQuery)
+        query <- getQuery (queryId thisQuery)
         let terminated = getPBStatus Terminated
         case query of
           Just (Query _ status _ _ ) -> return (status == terminated)
@@ -144,10 +146,10 @@ spec = aroundAll provideHstreamApi $
   it "delete query" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let queryName = queryId $ V.head queries
-        _ <- terminateQuery queryName
-        _ <- deleteQuery queryName
-        query <- getQuery queryName
+        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
+        _ <- terminateQuery (queryId thisQuery)
+        _ <- deleteQuery (queryId thisQuery)
+        query <- getQuery (queryId thisQuery)
         case query of
           Just Query{} -> return True
           _            -> return False

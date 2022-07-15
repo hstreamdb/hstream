@@ -114,6 +114,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
     (\(SourceConnectorWithoutCkp{..}, (inNode, sourceStreamName)) -> do
         forkIO $ withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> do
           forM_ sourceRecords $ \SourceRecord{..} -> do
+            ts <- getCurrentTimestamp
             let dataChange
                   = DiffFlow.DataChange
                   { dcRow = (fromJust . Aeson.decode $ srcValue)
