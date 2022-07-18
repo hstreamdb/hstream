@@ -83,9 +83,6 @@ instance Format API.ListConnectorsResponse where
 instance Format API.AppendResponse where
   formatResult = const "Done.\n"
 
-instance Format API.CreateQueryStreamResponse where
-  formatResult = const "Done.\n"
-
 instance Format API.TerminateQueriesResponse where
   formatResult = const "Done.\n"
 
@@ -96,6 +93,9 @@ instance Format P.Struct where
       [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
       [("Error Message:", Just v)] -> "Error Message: " ++ show v ++ "\n"
       x -> show x
+
+instance Format API.CommandQueryResponse where
+  formatResult = formatCommandQueryResponse
 
 --------------------------------------------------------------------------------
 emptyNotice :: String -> String

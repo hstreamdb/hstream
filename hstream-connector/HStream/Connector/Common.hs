@@ -3,14 +3,14 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE StrictData        #-}
 
-module HStream.Processing.Connector
+module HStream.Connector.Common
   ( SourceConnector (..),
     SourceConnectorWithoutCkp (..),
     SinkConnector (..),
   )
 where
 
-import           HStream.Processing.Type
+import           HStream.Connector.Type
 import qualified HStream.Server.HStreamApi as API
 import           RIO
 
@@ -23,10 +23,10 @@ import           RIO
 --   }
 
 data SourceConnector = SourceConnector
-  { subscribeToStream :: StreamName -> Offset -> IO (),
+  { subscribeToStream   :: StreamName -> Offset -> IO (),
     unSubscribeToStream :: StreamName -> IO (),
-    readRecords :: IO [SourceRecord],
-    commitCheckpoint :: StreamName -> Offset -> IO ()
+    readRecords         :: IO [SourceRecord],
+    commitCheckpoint    :: StreamName -> Offset -> IO ()
   }
 
 data SourceConnectorWithoutCkp = SourceConnectorWithoutCkp

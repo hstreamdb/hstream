@@ -6,6 +6,7 @@
 
 module HStream.RunQuerySpec (spec) where
 
+import           Control.Concurrent
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
@@ -21,21 +22,6 @@ import           HStream.Utils                    (TaskStatus (..),
 
 getQueryResponseIdIs :: T.Text -> Query -> Bool
 getQueryResponseIdIs targetId (Query queryId _ _ _) = queryId == targetId
-
-createQuery :: T.Text -> T.Text -> IO (Maybe Query)
-createQuery qid sql = withGRPCClient clientConfig $ \client -> do
-  HStreamApi{..} <- hstreamApiClient client
-  let createQueryRequest = CreateQueryRequest { createQueryRequestId        = qid
-                                              , createQueryRequestQueryText = sql
-                                              }
-  resp <- hstreamApiCreateQuery (ClientNormalRequest createQueryRequest 100 (MetadataMap Map.empty))
-  case resp of
-    ClientNormalResponse x@Query{} _meta1 _meta2 StatusOk _details -> return $ Just x
-    ClientErrorResponse clientError -> do
-      putStrLn $ "Create Query Client Error: " <> show clientError
-      return Nothing
-    _ -> return Nothing
-
 
 listQueries :: IO (Maybe ListQueriesResponse)
 listQueries = withGRPCClient clientConfig $ \client -> do
@@ -107,7 +93,9 @@ spec = aroundAll provideHstreamApi $
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   source1 <- runIO $ newRandomText 20
-  let queryname1 = "testquery1"
+  source2 <- runIO $ newRandomText 20
+
+  let sql = "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
 
   it "clean streams" $ \api -> do
     runDropSql api $ "DROP STREAM " <> source1 <> " IF EXISTS;"
@@ -115,26 +103,20 @@ spec = aroundAll provideHstreamApi $
   it "create streams" $ \api ->
     runCreateStreamSql api $ "CREATE STREAM " <> source1 <> " WITH (REPLICATE = 3);"
 
-  it "create query" $ \_ ->
-    ( do
-        res <- createQuery queryname1 ("SELECT * FROM " <> source1 <> " EMIT CHANGES;")
-        case res of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+  it "run a query" $ \api ->
+    runCreateWithSelectSql api sql
 
   it "list queries" $ \_ ->
     ( do
         Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
-        let record = V.find (getQueryResponseIdIs queryname1) queries
-        case record of
-          Just _ -> return True
-          _      -> return False
-    ) `shouldReturn` True
+        return $ V.null queries
+    ) `shouldReturn` False
 
   it "get query" $ \_ ->
     ( do
-        query <- getQuery queryname1
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
+        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
+        query <- getQuery (queryId thisQuery)
         case query of
           Just _ -> return True
           _      -> return False
@@ -142,8 +124,10 @@ spec = aroundAll provideHstreamApi $
 
   it "terminate query" $ \_ ->
     ( do
-        _ <- terminateQuery queryname1
-        query <- getQuery queryname1
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
+        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
+        _ <- terminateQuery (queryId thisQuery)
+        query <- getQuery (queryId thisQuery)
         let terminated = getPBStatus Terminated
         case query of
           Just (Query _ status _ _ ) -> return (status == terminated)
@@ -161,9 +145,11 @@ spec = aroundAll provideHstreamApi $
 
   it "delete query" $ \_ ->
     ( do
-        _ <- terminateQuery queryname1
-        _ <- deleteQuery queryname1
-        query <- getQuery queryname1
+        Just ListQueriesResponse {listQueriesResponseQueries = queries} <- listQueries
+        let (Just thisQuery) = V.find (\x -> queryQueryText x == sql) queries
+        _ <- terminateQuery (queryId thisQuery)
+        _ <- deleteQuery (queryId thisQuery)
+        query <- getQuery (queryId thisQuery)
         case query of
           Just Query{} -> return True
           _            -> return False

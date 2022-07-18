@@ -103,16 +103,11 @@ insertIntoStream sName insertType payload API.HStreamApi{..} = do
     , API.appendRequestRecords    = V.singleton record
     })
 
-createStreamBySelect :: T.Text -> Int -> [String]
-  -> Action API.CreateQueryStreamResponse
+createStreamBySelect :: T.Text -> Int -> String
+  -> Action API.CommandQueryResponse
 createStreamBySelect sName rFac sql API.HStreamApi{..} =
-  hstreamApiCreateQueryStream (mkClientNormalRequest' def
-    { API.createQueryStreamRequestQueryStream
-        = Just def
-        { API.streamStreamName        = sName
-        , API.streamReplicationFactor = fromIntegral rFac
-        , API.streamShardCount        = 1}
-    , API.createQueryStreamRequestQueryStatements = extractSelect sql})
+  hstreamApiExecuteQuery (mkClientNormalRequest' def
+    { API.commandQueryStmtText = T.pack sql})
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
 

@@ -7,56 +7,20 @@
 
 module HStream.Server.Handler.View where
 
-import qualified Data.ByteString.Char8            as BSC
-import qualified Data.HashMap.Strict              as HM
-import           Data.IORef                       (atomicModifyIORef')
 import           Data.List                        (find)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Monad                    (void)
-import qualified Data.Map.Strict                  as Map
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
-import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
-import qualified HStream.Server.Shard             as SD
 import           HStream.Server.Types
-import qualified HStream.SQL.Codegen              as HSC
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToText, returnErrResp,
-                                                   returnResp, textToCBytes)
-
-createViewHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CreateViewRequest View
-  -> IO (ServerResponse 'Normal View)
-createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Create View Request: " <> Log.buildString (T.unpack createViewRequestSql)
-  plan <- HSC.streamCodegen createViewRequestSql
-  case plan of
-    HSC.CreateViewPlan schema sources sink taskBuilder _repFactor materialized -> do
-      create (transToStreamName sink)
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
-      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink materialized hm, ()))
-      returnResp $ View { viewViewId = cBytesToText qid
-                        , viewStatus = getPBStatus Running
-                        , viewCreatedTime = timestamp
-                        , viewSql = createViewRequestSql
-                        , viewSchema = V.fromList $ T.pack <$> schema
-                        }
-    _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
-  where
-    attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
-    create sName = do
-      S.createStream scLDClient sName attrs
-      let extrAttr = Map.fromList [(SD.shardStartKey, SD.keyToCBytes minBound), (SD.shardEndKey, SD.keyToCBytes maxBound), (SD.shardEpoch, "1")]
-      void $ S.createStreamPartitionWithExtrAttr scLDClient sName (Just "view") extrAttr
+import           HStream.Utils                    (cBytesToText, returnErrResp,
+                                                   returnResp)
 
 listViewsHandler
   :: ServerContext

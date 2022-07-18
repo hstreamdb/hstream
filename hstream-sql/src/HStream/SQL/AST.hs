@@ -255,51 +255,23 @@ instance Refine Sel where
   refine (DSel _ (SelListSublist _ cols)) = RSelList $ refine <$> cols
 
 ---- Frm
-data RJoinType = RJoinInner | RJoinLeft | RJoinOuter deriving (Eq, Show)
-type instance RefinedType JoinType = RJoinType
-instance Refine JoinType where
-  refine (JoinInner  _)   = RJoinInner
-  refine (JoinLeft  pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinLeft
-  refine (JoinOuter pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinOuter
+data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
+               | RTableRefSubquery RSelect (Maybe StreamName)
+               | RTableRefUnion RTableRef RTableRef (Maybe StreamName)
+               deriving (Eq, Show)
+type instance RefinedType TableRef = RTableRef
+instance Refine TableRef where
+  refine (TableRefSimple _ (Ident t)) = RTableRefSimple t Nothing
+  refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
+  refine (TableRefUnion _ ref1 ref2) = RTableRefUnion (refine ref1) (refine ref2) Nothing
+  refine (TableRefAs _ (TableRefSimple _ (Ident t)) (Ident alias)) = RTableRefSimple t (Just alias)
+  refine (TableRefAs _ (TableRefSubquery _ select) (Ident alias)) = RTableRefSubquery (refine select) (Just alias)
+  refine (TableRefAs _ (TableRefUnion _ ref1 ref2) (Ident alias)) = RTableRefUnion (refine ref1) (refine ref2) (Just alias)
 
--- TODO: Defined a RJoinWindow type to describe different windows (symmetry, left, right, ...) ?
-type RJoinWindow = RInterval
-type instance RefinedType JoinWindow = RInterval
-instance Refine JoinWindow where
-  refine (DJoinWindow _ interval) = refine interval
-
-type instance RefinedType JoinCond = RSearchCond
-instance Refine JoinCond where
-  refine (DJoinCond _ cond) = refine cond
-
--- TODO: Stream alias is not supported yet
-data RFrom = RFromSingle StreamName
-           | RFromJoin   (StreamName,FieldName) (StreamName,FieldName) RJoinType RJoinWindow
-           deriving (Eq, Show)
+data RFrom = RFrom [RTableRef] deriving (Eq, Show)
 type instance RefinedType From = RFrom
-
--- Note: Ensured by Validate: only the following situations are allowed:
---       1. stream1
---       2. stream1 `JOIN` stream2
---       Ensured by Validate: stream names in JOIN ON and FROM match
 instance Refine From where
-  refine (DFrom _ [TableRefSimple _ (Ident t)]) = RFromSingle t
-  refine (DFrom pos [
-                   TableRefJoin _
-                   (TableRefSimple _ (Ident t1))
-                   joinType
-                   (TableRefSimple _ (Ident t2))
-                   win
-                   cond
-                  ]) =
-    case refine cond of
-      (RCondOp RCompOpEQ (RExprCol _ (Just s1) f1) (RExprCol _ (Just _) f2)) ->
-        case t1 == s1 of
-          True  -> RFromJoin (t1,f1) (t2,f2) (refine joinType) (refine win)
-          False -> RFromJoin (t1,f2) (t2,f1) (refine joinType) (refine win)
-      _ -> throwSQLException RefineException pos "Impossible happened"
-  refine (DFrom _ [TableRefAs pos _ _]) = throwSQLException RefineException pos "Stream alias is not supported yet"
-  refine (DFrom pos _) = throwSQLException RefineException pos "Impossible happened"
+  refine (DFrom pos refs) = RFrom (refine <$> refs)
 
 ---- Whr
 data RCompOp = RCompOpEQ | RCompOpNE | RCompOpLT | RCompOpGT | RCompOpLEQ | RCompOpGEQ deriving (Eq, Show)
@@ -411,7 +383,7 @@ instance Refine SelectView where
                 (DerivedColAs _ (ExprRaw _ (RawColumn col)) (Ident alias))                   ->
                   (col, Text.unpack alias)
            in SVSelectFields (f <$> dcols)
-      svFrm = let (RFromSingle stream) = refine frm in stream
+      svFrm = let (RFrom [RTableRefSimple stream Nothing]) = refine frm in stream
       svWhr = let (RWhere (RCondOp RCompOpEQ (RExprCol _ Nothing field) rexpr)) = refine whr
                in (field, rexpr)
 

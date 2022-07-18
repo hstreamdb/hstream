@@ -4,7 +4,7 @@
 
 module HStream.Server.Persistence.MemoryStore where
 
-import qualified Data.Aeson                           as Aeson
+import           Control.Concurrent
 import qualified Data.HashMap.Strict                  as HM
 import           Data.IORef                           (IORef, modifyIORef,
                                                        newIORef, readIORef)
@@ -15,12 +15,13 @@ import           GHC.IO                               (throwIO, unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes)
 import           Z.IO.Time                            (getSystemTime')
 
-import           HStream.Processing.Stream            (Materialized)
+import qualified HStream.Connector.Type               as HCT
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
-import           HStream.SQL.Codegen                  (SerMat)
 import           HStream.Utils                        (TaskStatus (..))
+
+import           DiffFlow.Types
 
 type PStoreMem   = (QueriesM, ConnectorsM)
 type ConnectorsM = IORef (HM.HashMap CBytes PersistentConnector)
@@ -34,7 +35,7 @@ connectorsCollection :: ConnectorsM
 connectorsCollection = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE connectorsCollection #-}
 
-groupbyStores :: IORef (HM.HashMap Text (Materialized Aeson.Object Aeson.Object SerMat))
+groupbyStores :: IORef (HM.HashMap Text (MVar (DataChangeBatch HCT.Timestamp)))
 groupbyStores = unsafePerformIO $ newIORef HM.empty
 {-# NOINLINE groupbyStores #-}
 

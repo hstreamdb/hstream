@@ -14,7 +14,7 @@ SELECT * FROM temperatureSource EMIT CHANGES;
 
 CREATE STREAM demoStream ;
 
-CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2 INNER JOIN source1 WITHIN (INTERVAL 5 SECOND) ON (source2.temperature = source1.temperature) WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = "JSON");
+CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2, source1 WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = "JSON");
 
 INSERT INTO demoStream (temperature, humidity) VALUES (30, 75);
 -}
@@ -125,16 +125,12 @@ DerivedColAs.    DerivedCol ::= ValueExpr "AS" Ident ;
 DFrom. From ::= "FROM" [TableRef] ;
 separator TableRef "," ;
 
-TableRefSimple. TableRef ::= Ident ;
-TableRefAs.     TableRef ::= TableRef "AS" Ident ;
-TableRefJoin.   TableRef ::= TableRef JoinType "JOIN" TableRef JoinWindow JoinCond ;
+TableRefUnion.    TableRef  ::= TableRef "UNION" TableRef1 ;
+TableRefAs.       TableRef1 ::= TableRef2 "AS" Ident ;
+TableRefSimple.   TableRef2 ::= Ident ;
+TableRefSubquery. TableRef2 ::= Select ;
 
-JoinInner.  JoinType ::= "INNER" ;
-JoinLeft.   JoinType ::= "LEFT" ;
-JoinOuter.  JoinType ::= "OUTER" ;
-
-DJoinWindow. JoinWindow ::= "WITHIN" "(" Interval ")" ;
-DJoinCond. JoinCond ::= "ON" SearchCond ;
+coercions TableRef 2 ;
 
 -- Where
 DWhereEmpty. Where ::= "" ;
