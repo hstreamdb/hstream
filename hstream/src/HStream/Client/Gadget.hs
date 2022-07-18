@@ -9,28 +9,47 @@ module HStream.Client.Gadget where
 
 import           Control.Concurrent
 import           Control.Monad
-import qualified Data.List                     as L
-import qualified Data.Text                     as T
-import qualified Data.Text.Encoding            as BS
-import qualified Data.Text.IO                  as T
-import qualified Data.Vector                   as V
-import           Network.GRPC.HighLevel        (GRPCIOError (..),
-                                                StatusDetails (..))
-import           Network.GRPC.HighLevel.Client (ClientError (..),
-                                                ClientResult (..),
-                                                GRPCMethodType (..))
-import           Proto3.Suite                  (def)
-import           Z.IO.Network.SocketAddr       (SocketAddr (..))
+import qualified Data.List                        as L
+import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as BS
+import qualified Data.Text.IO                     as T
+import qualified Data.Vector                      as V
+import           Network.GRPC.HighLevel           (GRPCIOError (..),
+                                                   StatusDetails (..))
+import           Network.GRPC.HighLevel.Client    (ClientError (..),
+                                                   ClientResult (..),
+                                                   GRPCMethodType (..))
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import           Proto3.Suite                     (def)
+import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
-import           HStream.Client.Action         (Action, runActionWithAddr)
-import           HStream.Client.Types          (HStreamSqlContext (..))
-import           HStream.Client.Utils          (mkClientNormalRequest')
-import qualified HStream.Server.HStreamApi     as API
-import           HStream.ThirdParty.Protobuf   (Empty (..))
-import           HStream.Utils                 (getServerResp,
-                                                serverNodeToSocketAddr)
+import           HStream.Client.Action            (Action, runActionWithAddr)
+import           HStream.Client.Types             (HStreamSqlContext (..))
+import           HStream.Client.Utils             (mkClientNormalRequest')
+import qualified HStream.Server.HStreamApi        as API
+import           HStream.ThirdParty.Protobuf      (Empty (..))
+import           HStream.Utils                    (getServerResp,
+                                                   mkGRPCClientConf,
+                                                   serverNodeToSocketAddr)
 
 --------------------------------------------------------------------------------
+
+waitForServerToStart :: Int -> SocketAddr -> IO (Maybe ())
+waitForServerToStart t addr = withGRPCClient (mkGRPCClientConf addr) $ \client -> do
+  api <- API.hstreamApiClient client
+  loop t api
+  where
+    interval = 1000000
+    loop timeout api@API.HStreamApi{..} = do
+     resp <- hstreamApiEcho (mkClientNormalRequest' $ API.EchoRequest "")
+     case resp of
+       ClientNormalResponse {} -> return $ Just ()
+       _                       -> do
+         let newTimeout = timeout - interval
+         threadDelay interval
+         putStrLn "Waiting for server to start..."
+         if newTimeout <= 0 then return Nothing
+           else loop newTimeout api
 
 describeCluster :: HStreamSqlContext -> SocketAddr -> IO (Maybe API.DescribeClusterResponse)
 describeCluster ctx@HStreamSqlContext{..} addr = do
