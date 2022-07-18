@@ -7,6 +7,7 @@ module HStream.RunSQLSpec (spec) where
 
 import           Control.Concurrent
 import qualified Data.Aeson           as Aeson
+import qualified Data.List            as L
 import qualified Data.Text            as T
 import           Test.Hspec
 
@@ -69,11 +70,15 @@ baseSpec = aroundAll provideHstreamApi $ aroundWith baseSpecAround $
 
     -- TODO
     executeCommandPushQuery ("SELECT SUM(a) AS result FROM " <> source <> " GROUP BY b EMIT CHANGES;")
-      `shouldReturn` [ mkStruct [("result", Aeson.Number 1)]
-                     , mkStruct [("result", Aeson.Number 3)]
-                     , mkStruct [("result", Aeson.Number 6)]
-                     , mkStruct [("result", Aeson.Number 4)]
-                     ]
+      >>= (`shouldSatisfy`
+            (\l -> not (L.null l) &&
+                   L.last l == (mkStruct [("result", Aeson.Number 4)]) &&
+                   L.init l `L.isSubsequenceOf` [ mkStruct [("result", Aeson.Number 1)]
+                                              , mkStruct [("result", Aeson.Number 3)]
+                                              , mkStruct [("result", Aeson.Number 6)]
+                                              ]
+            )
+          )
 
 -------------------------------------------------------------------------------
 -- ViewSpec
@@ -92,7 +97,7 @@ viewSpecAround = provideRunTest setup clean
                                 <> " AS SELECT a, 1 AS b FROM " <> source1
                                 <> " EMIT CHANGES;"
       runQuerySimple_ api $ "CREATE VIEW " <> viewName
-                         <> " AS SELECT SUM(a) FROM " <> source2
+                         <> " AS SELECT SUM(a), b FROM " <> source2
                          <> " GROUP BY b EMIT CHANGES;"
       -- FIXME: wait the SELECT task to be initialized.
       threadDelay 5000000
@@ -126,10 +131,14 @@ viewSpec =
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (2);"
     threadDelay 4000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 3)])
+      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 3)
+                                                  , ("b", Aeson.Number 1)
+                                                  ])
 
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (3);"
     runInsertSql api $ "INSERT INTO " <> source1 <> " (a) VALUES (4);"
     threadDelay 4000000
     runQuerySimple api ("SELECT * FROM " <> viewName <> " WHERE b = 1;")
-      `grpcShouldReturn` mkViewResponse (mkStruct [("SUM(a)", Aeson.Number 10)])
+      `grpcShouldReturn` mkViewResponse (mkStruct [ ("SUM(a)", Aeson.Number 10)
+                                                  , ("b", Aeson.Number 1)
+                                                  ])

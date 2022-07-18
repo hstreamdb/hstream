@@ -18,9 +18,9 @@ spec = describe "Create" $ do
 
   it "bnfc example 0" $ do
     parseAndRefine "SELECT * FROM temperatureSource EMIT CHANGES;"
-      `shouldReturn` RQSelect (RSelect RSelAsterisk (RFromSingle "temperatureSource") RWhereEmpty RGroupByEmpty RHavingEmpty)
+      `shouldReturn` RQSelect (RSelect RSelAsterisk (RFrom [RTableRefSimple "temperatureSource" Nothing]) RWhereEmpty RGroupByEmpty RHavingEmpty)
     parseAndRefine "CREATE STREAM abnormal_weather AS SELECT * FROM weather WHERE temperature > 30 AND humidity > 80 EMIT CHANGES;"
-      `shouldReturn` RQCreate (RCreateAs "abnormal_weather" (RSelect RSelAsterisk (RFromSingle "weather") (RWhere (RCondAnd (RCondOp RCompOpGT (RExprCol "temperature" Nothing "temperature") (RExprConst "30" (ConstantInt 30))) (RCondOp RCompOpGT (RExprCol "humidity" Nothing "humidity") (RExprConst "80" (ConstantInt 80))))) RGroupByEmpty RHavingEmpty) (RStreamOptions {rRepFactor = 3}))
+      `shouldReturn` RQCreate (RCreateAs "abnormal_weather" (RSelect RSelAsterisk (RFrom [RTableRefSimple "weather" Nothing]) (RWhere (RCondAnd (RCondOp RCompOpGT (RExprCol "temperature" Nothing "temperature") (RExprConst "30" (ConstantInt 30))) (RCondOp RCompOpGT (RExprCol "humidity" Nothing "humidity") (RExprConst "80" (ConstantInt 80))))) RGroupByEmpty RHavingEmpty) (RStreamOptions {rRepFactor = 3}))
 
   it "bnfc example 1" $ do
     parseAndRefine
@@ -29,7 +29,7 @@ spec = describe "Create" $ do
 
   -- #TODO: enable it when 'FORMAT' is available
   -- it "bnfc example 2" $ do parseAndRefine
-  --   "CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2 INNER JOIN source1 WITHIN (INTERVAL 5 SECOND) ON (source2.temperature = source1.temperature) WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = "JSON");"
+  --   "CREATE STREAM demoSink AS SELECT SUM(source2.humidity) AS result FROM source2, source1 WHERE source2.humidity > 20 GROUP BY source2.humidity, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES WITH (FORMAT = "JSON");"
   --     `shouldReturn`
 
   it "bnfc example 3" $ do
@@ -41,7 +41,7 @@ spec = describe "Create" $ do
 
   it "CREATE VIEW" $ do
     parseAndRefine "CREATE VIEW foo AS SELECT a, SUM(a), COUNT(*) FROM bar GROUP BY b EMIT CHANGES;"
-      `shouldReturn` RQCreate (RCreateView "foo" (RSelect (RSelList [(Left (RExprCol "a" Nothing "a"),"a"),(Right (Unary AggSum (RExprCol "a" Nothing "a")),"SUM(a)"),(Right (Nullary AggCountAll),"COUNT(*)")]) (RFromSingle "bar") RWhereEmpty (RGroupBy Nothing "b" Nothing) RHavingEmpty))
+      `shouldReturn` RQCreate (RCreateView "foo" (RSelect (RSelList [(Left (RExprCol "a" Nothing "a"),"a"),(Right (Unary AggSum (RExprCol "a" Nothing "a")),"SUM(a)"),(Right (Nullary AggCountAll),"COUNT(*)")]) (RFrom [RTableRefSimple "bar" Nothing]) RWhereEmpty (RGroupBy Nothing "b" Nothing) RHavingEmpty))
 
   it "CREATE CONNECTOR" $ do
     parseAndRefine "CREATE SOURCE CONNECTOR mysql_conn WITH (\"task.image\" = \"hstream/source-debezium\");"
@@ -49,14 +49,14 @@ spec = describe "Create" $ do
 
   it "SELECT (Stream)" $ do
     parseAndRefine "SELECT * FROM my_stream EMIT CHANGES;"
-      `shouldReturn` RQSelect (RSelect RSelAsterisk (RFromSingle "my_stream") RWhereEmpty RGroupByEmpty RHavingEmpty)
+      `shouldReturn` RQSelect (RSelect RSelAsterisk (RFrom [RTableRefSimple "my_stream" Nothing]) RWhereEmpty RGroupByEmpty RHavingEmpty)
     parseAndRefine "SELECT temperature, humidity FROM weather WHERE temperature > 10 AND humidity < 75 EMIT CHANGES;"
-      `shouldReturn` RQSelect (RSelect (RSelList [(Left (RExprCol "temperature" Nothing "temperature"),"temperature"),(Left (RExprCol "humidity" Nothing "humidity"),"humidity")]) (RFromSingle "weather") (RWhere (RCondAnd (RCondOp RCompOpGT (RExprCol "temperature" Nothing "temperature") (RExprConst "10" (ConstantInt 10))) (RCondOp RCompOpLT (RExprCol "humidity" Nothing "humidity") (RExprConst "75" (ConstantInt 75))))) RGroupByEmpty RHavingEmpty)
-    parseAndRefine "SELECT stream1.temperature, stream2.humidity FROM stream1 INNER JOIN stream2 WITHIN (INTERVAL 5 SECOND) ON stream1.humidity = stream2.humidity EMIT CHANGES;"
+      `shouldReturn` RQSelect (RSelect (RSelList [(Left (RExprCol "temperature" Nothing "temperature"),"temperature"),(Left (RExprCol "humidity" Nothing "humidity"),"humidity")]) (RFrom [RTableRefSimple "weather" Nothing]) (RWhere (RCondAnd (RCondOp RCompOpGT (RExprCol "temperature" Nothing "temperature") (RExprConst "10" (ConstantInt 10))) (RCondOp RCompOpLT (RExprCol "humidity" Nothing "humidity") (RExprConst "75" (ConstantInt 75))))) RGroupByEmpty RHavingEmpty)
+    parseAndRefine "SELECT stream1.temperature, stream2.humidity FROM stream1, stream2 EMIT CHANGES;"
       `shouldReturn`
-        RQSelect (RSelect (RSelList [(Left (RExprCol "stream1.temperature" (Just "stream1") "temperature"),"stream1.temperature"),(Left (RExprCol "stream2.humidity" (Just "stream2") "humidity"),"stream2.humidity")]) (RFromJoin ("stream1","humidity") ("stream2","humidity") RJoinInner (fromInteger 5)) RWhereEmpty RGroupByEmpty RHavingEmpty)
+        RQSelect (RSelect (RSelList [(Left (RExprCol "stream1.temperature" (Just "stream1") "temperature"),"stream1.temperature"),(Left (RExprCol "stream2.humidity" (Just "stream2") "humidity"),"stream2.humidity")]) (RFrom [RTableRefSimple "stream1" Nothing, RTableRefSimple "stream2" Nothing]) RWhereEmpty RGroupByEmpty RHavingEmpty)
     parseAndRefine "SELECT COUNT(*) FROM weather GROUP BY cityId, TUMBLING (INTERVAL 10 SECOND) EMIT CHANGES;"
-      `shouldReturn` RQSelect (RSelect (RSelList [(Right (Nullary AggCountAll),"COUNT(*)")]) (RFromSingle "weather") RWhereEmpty (RGroupBy Nothing "cityId" (Just (RTumblingWindow (fromInteger 10)))) RHavingEmpty)
+      `shouldReturn` RQSelect (RSelect (RSelList [(Right (Nullary AggCountAll),"COUNT(*)")]) (RFrom [RTableRefSimple "weather" Nothing]) RWhereEmpty (RGroupBy Nothing "cityId" (Just (RTumblingWindow (fromInteger 10)))) RHavingEmpty)
 
   it "SELECT (View)" $ do
     parseAndRefine "SELECT `SUM(a)`, cnt, a FROM my_view WHERE b = 1;"

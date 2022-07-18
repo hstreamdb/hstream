@@ -27,8 +27,8 @@ import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
 import qualified Z.IO.Logger                      as Log
 
-import           HStream.Processing.Connector
-import           HStream.Processing.Type          as HPT
+import           HStream.Connector.Common
+import           HStream.Connector.Type           as HCT
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import qualified HStream.Server.HStreamApi        as API
@@ -75,7 +75,7 @@ subscribeToHStoreStream ldclient reader streamId startOffset = do
 
 subscribeToHStoreStream' :: ServerContext
                          -> T.Text
-                         -> HPT.StreamName
+                         -> HCT.StreamName
                          -> API.SpecialOffset
                          -> IO ()
 subscribeToHStoreStream' ctx consumerName streamName offset = do
@@ -95,7 +95,7 @@ unSubscribeToHStoreStream ldclient reader streamId = do
 
 unSubscribeToHStoreStream' :: ServerContext
                            -> T.Text
-                           -> HPT.StreamName
+                           -> HCT.StreamName
                            -> IO ()
 unSubscribeToHStoreStream' ctx consumerName streamName = do
   let req = API.DeleteSubscriptionRequest
@@ -120,7 +120,7 @@ dataRecordToSourceRecord ldclient Payload {..} = do
     , srcOffset = pLSN
     }
 
-receivedRecordToSourceRecord :: HPT.StreamName -> API.ReceivedRecord -> SourceRecord
+receivedRecordToSourceRecord :: HCT.StreamName -> API.ReceivedRecord -> SourceRecord
 receivedRecordToSourceRecord streamName API.ReceivedRecord{..} =
   let Just API.RecordId{..} = receivedRecordRecordId
       hsrBytes     = receivedRecordRecord in
@@ -144,7 +144,7 @@ readRecordsFromHStore ldclient reader maxlen = do
 
 withReadRecordsFromHStore' :: ServerContext
                            -> T.Text
-                           -> HPT.StreamName
+                           -> HCT.StreamName
                            -> ([SourceRecord] -> IO ())
                            -> IO ()
 withReadRecordsFromHStore' ctx consumerName streamName action = do

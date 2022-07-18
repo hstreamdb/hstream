@@ -19,9 +19,9 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Connector.Type           as HCT
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
-import           HStream.Processing.Type          as HPT
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
@@ -181,11 +181,11 @@ type ConsumerName = T.Text
 
 --------------------------------------------------------------------------------
 
-transToStreamName :: HPT.StreamName -> S.StreamId
+transToStreamName :: HCT.StreamName -> S.StreamId
 transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
 
-transToTempStreamName :: HPT.StreamName -> S.StreamId
+transToTempStreamName :: HCT.StreamName -> S.StreamId
 transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
 
-transToViewStreamName :: HPT.StreamName -> S.StreamId
+transToViewStreamName :: HCT.StreamName -> S.StreamId
 transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes

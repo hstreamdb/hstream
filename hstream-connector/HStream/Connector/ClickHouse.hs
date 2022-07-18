@@ -18,9 +18,9 @@ import qualified Database.ClickHouseDriver.Types as CK
 import           Haxl.Core                       (Env)
 import           HStream.Utils                   (flattenJSON)
 
+import           HStream.Connector.Common        (SinkConnector (..))
+import           HStream.Connector.Type          (SinkRecord (..))
 import qualified HStream.Logger                  as Log
-import           HStream.Processing.Connector    (SinkConnector (..))
-import           HStream.Processing.Type         (SinkRecord (..))
 
 clickHouseSinkConnector :: Env () w -> SinkConnector
 clickHouseSinkConnector ckClient =

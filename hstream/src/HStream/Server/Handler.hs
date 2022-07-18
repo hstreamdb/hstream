@@ -61,20 +61,19 @@ handlers serverContext@ServerContext{..} =
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
         hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
-        hstreamApiCreateQueryStream = createQueryStreamHandler serverContext,
         -- FIXME:
-        hstreamApiCreateQuery = createQueryHandler serverContext,
         hstreamApiGetQuery = getQueryHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,
+
         hstreamApiCreateConnector = createConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
         hstreamApiStopConnector = stopConnectorHandler serverContext,
         hstreamApiStartConnector = startConnectorHandler serverContext,
-        hstreamApiCreateView = createViewHandler serverContext,
+
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,

@@ -6,19 +6,19 @@ module HStream.Connector.MySQL
   ( mysqlSinkConnector
   ) where
 
-import           Control.Monad                (void)
-import qualified Data.Aeson                   as Aeson
-import qualified Data.ByteString.Lazy.Char8   as DBCL
-import qualified Data.HashMap.Strict          as HM
-import           Data.List                    (intercalate)
-import           Data.Scientific              (floatingOrInteger)
-import qualified Data.Text                    as Text
-import           Database.MySQL.Base          as MySQL
-import           HStream.Utils                (flattenJSON)
+import           Control.Monad              (void)
+import qualified Data.Aeson                 as Aeson
+import qualified Data.ByteString.Lazy.Char8 as DBCL
+import qualified Data.HashMap.Strict        as HM
+import           Data.List                  (intercalate)
+import           Data.Scientific            (floatingOrInteger)
+import qualified Data.Text                  as Text
+import           Database.MySQL.Base        as MySQL
+import           HStream.Utils              (flattenJSON)
 
-import qualified HStream.Logger               as Log
-import           HStream.Processing.Connector (SinkConnector (..))
-import           HStream.Processing.Type      (SinkRecord (..))
+import           HStream.Connector.Common   (SinkConnector (..))
+import           HStream.Connector.Type     (SinkRecord (..))
+import qualified HStream.Logger             as Log
 
 mysqlSinkConnector :: Text.Text -> MySQL.MySQLConn -> SinkConnector
 mysqlSinkConnector table myClient =

@@ -16,8 +16,8 @@ import           HStream.Common.Types             (fromInternalServerNodeWithKey
 import           HStream.Gossip                   (getFailedNodes,
                                                    getMemberList)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Core.Common       (alignDefault)
 import           HStream.Server.Exception
-import           HStream.Server.Handler.Common    (alignDefault)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types

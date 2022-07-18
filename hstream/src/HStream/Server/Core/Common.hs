@@ -8,9 +8,12 @@ import           Data.Foldable               (foldrM)
 import qualified Data.HashMap.Strict         as HM
 import qualified Data.List                   as L
 import qualified Data.Map.Strict             as Map
+import           Data.Text                   (Text)
+import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
 import           Data.Word                   (Word32, Word64)
 import qualified Z.Data.CBytes               as CB
+import           Z.Data.CBytes               (CBytes)
 
 import qualified HStream.Logger              as Log
 import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
@@ -20,8 +23,9 @@ import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store               as HS
 import           HStream.ThirdParty.Protobuf (Empty (Empty))
-import           HStream.Utils               (TaskStatus (..),
-                                              decodeByteStringBatch)
+import           HStream.Utils               (TaskStatus (..), clientDefaultKey,
+                                              decodeByteStringBatch,
+                                              textToCBytes)
 
 deleteStoreStream
   :: ServerContext
@@ -212,3 +216,13 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
+
+--------------------------------------------------------------------------------
+alignDefault :: Text -> Text
+alignDefault x  = if T.null x then clientDefaultKey else x
+
+orderingKeyToStoreKey :: Text -> Maybe CBytes
+orderingKeyToStoreKey key
+  | key == clientDefaultKey = Nothing
+  | T.null key = Nothing
+  | otherwise  = Just $ textToCBytes key
