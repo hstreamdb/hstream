@@ -6,7 +6,8 @@
 
 module HStream.Gossip.Start where
 
-import           Control.Concurrent               (newEmptyMVar, readMVar,
+import           Control.Concurrent               (MVar, newEmptyMVar, newMVar,
+                                                   putMVar, readMVar,
                                                    threadDelay, tryPutMVar)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
@@ -66,10 +67,10 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds' = do
   incarnation   <- newTVarIO 0
   randomGen     <- initStdGen
   clusterInited <- newEmptyMVar
-  let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds')) _eventHandlers
+  clusterReady  <- if current `elem` seeds' then newEmptyMVar else newMVar ()
+  let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds') clusterReady) _eventHandlers
   let gc = GossipContext {..}
   return gc { eventHandlers = Map.insert eventNameINIT (handleINITEvent gc) eventHandlers}
-
 --------------------------------------------------------------------------------
 
 startGossip :: ByteString -> GossipContext -> IO (Async ())
@@ -77,16 +78,14 @@ startGossip grpcHost gc@GossipContext {..} = do
   a <- startListeners grpcHost gc
   atomically $ modifyTVar workers (Map.insert (I.serverNodeId serverSelf) a)
   case numInited of
-    Just _ -> bootstrap seeds gc
-    -- FIXME: add join command instead of the following
-    Nothing -> do
-      members <- do
-        Log.info . Log.buildString $ "Try to join server on " <> show (head seeds)
-        joinCluster serverSelf (head seeds)
-      initGossip gc members
+    Just _  -> bootstrap seeds gc
+    Nothing -> joinCluster serverSelf seeds >>= initGossip gc >> putMVar clusterReady ()
   return a
 
 bootstrap :: [(ByteString, Int)] -> GossipContext -> IO ()
+bootstrap [] gc@GossipContext{..} = do
+  Log.info "Only one node in the cluster, no bootstrapping needed"
+  broadCastUserEvent gc eventNameINIT (BL.toStrict $ PT.toLazyByteString (API.ServerList $ V.singleton serverSelf))
 bootstrap initialServers gc@GossipContext{..} = do
   readMVar clusterInited >>= \case
     User ->  do
@@ -107,15 +106,15 @@ handleINITEvent gc@GossipContext{..} payload = do
         check $ Map.size mWorkers == (length seeds + 1)
       broadCastUserEvent gc eventNameINITED (BL.toStrict $ PT.toLazyByteString serverSelf)
 
-handleINITEDEvent :: Maybe (TVar Int) -> Int -> EventPayload -> IO ()
-handleINITEDEvent (Just inited) l payload = case PT.fromByteString payload of
+handleINITEDEvent :: Maybe (TVar Int) -> Int -> MVar () -> EventPayload -> IO ()
+handleINITEDEvent (Just inited) l ready payload = case PT.fromByteString payload of
   Left err -> Log.warning $ Log.buildString' err
   Right (node :: I.ServerNode) -> do
     Log.debug $ Log.buildString' node <> " has been initialized"
     x <- atomically $ stateTVar inited (\x -> (x + 1, x + 1))
-    if x == l then Log.info "All servers have been initialized"
+    if x == l then putMVar ready () >> Log.info "All servers have been initialized"
       else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
-handleINITEDEvent Nothing _ _ = pure ()
+handleINITEDEvent Nothing _ _ _ = pure ()
 
 startListeners ::  ByteString -> GossipContext -> IO (Async ())
 startListeners grpcHost gc@GossipContext {..} = do
@@ -145,16 +144,21 @@ waitForServersToStart = mapConcurrently wait
           loop join client
         Just node -> return node
 
-joinCluster :: I.ServerNode -> (ByteString, Int) -> IO [I.ServerNode]
-joinCluster sNode (joinHost, joinPort) =
-  GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
+joinCluster :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
+joinCluster _ [] =
+  error $ "Failed to join the cluster, "
+       <> "please make sure the seed-nodes lists at least one available node from the cluster."
+joinCluster sNode ((joinHost, joinPort):rest) = do
+  members <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
     API.HStreamGossip{..} <- API.hstreamGossipClient client
     hstreamGossipJoin (mkClientNormalRequest def { API.joinReqNew = Just sNode}) >>= \case
       GRPC.ClientNormalResponse (API.JoinResp xs) _ _ _ _ -> do
         Log.info . Log.buildString $ "Successfully joined cluster with " <> show xs
         return $ V.toList xs \\ [sNode]
-      GRPC.ClientErrorResponse _ -> error $ "failed to join "
-                                         <> U.bs2str joinHost <> ":" <> show joinPort
+      GRPC.ClientErrorResponse _ -> do
+        Log.info . Log.buildString $ "failed to join " <> U.bs2str joinHost <> ":" <> show joinPort
+        return []
+  if null members then joinCluster sNode rest else return members
 
 initGossip :: GossipContext -> [I.ServerNode] -> IO ()
 initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK)
