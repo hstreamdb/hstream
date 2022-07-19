@@ -40,7 +40,8 @@ import           HStream.Client.Action            (createStream,
                                                    terminateQueries)
 import           HStream.Client.Execute           (execute, executeInsert,
                                                    executeShowPlan)
-import           HStream.Client.Gadget            (describeCluster)
+import           HStream.Client.Gadget            (describeCluster,
+                                                   waitForServerToStart)
 import           HStream.Client.Internal          (callDeleteSubscription,
                                                    callDeleteSubscriptionAll,
                                                    callListSubscriptions,
@@ -54,7 +55,6 @@ import           HStream.Client.Types             (CliConnOpts (..),
                                                    HStreamSqlOpts (..),
                                                    commandParser)
 import           HStream.Client.Utils             (mkClientNormalRequest')
-import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi        (CommandPushQuery (..),
                                                    CommandQuery (..),
                                                    CommandQueryResponse (..),
@@ -92,24 +92,26 @@ runCommand HStreamCommand {..} =
     HStreamInit       -> hstreamInit cliConnOpts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL CliConnOpts{..} HStreamSqlOpts{ _clientId = clientId, _updateInterval = updateInterval } = do
-  putStrLn [r|
+hstreamSQL CliConnOpts{..} HStreamSqlOpts{ _clientId = clientId, _updateInterval = updateInterval, _retryTimeout = retryTimeout } = do
+  let addr = ipv4 _serverHost _serverPort
+  availableServers <- newMVar []
+  currentServer    <- newMVar addr
+  let ctx = HStreamSqlContext {..}
+  setupSigsegvHandler
+  connected <- waitForServerToStart (retryTimeout * 1000000) addr
+  case connected of
+    Nothing -> error "Connection timed out. Please check the server URI and try again."
+    Just _  -> showHStream
+  void $ describeCluster ctx addr
+  app ctx
+  where
+    showHStream = putStrLn [r|
       __  _________________  _________    __  ___
      / / / / ___/_  __/ __ \/ ____/   |  /  |/  /
     / /_/ /\__ \ / / / /_/ / __/ / /| | / /|_/ /
    / __  /___/ // / / _, _/ /___/ ___ |/ /  / /
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
-  let addr = ipv4 _serverHost _serverPort
-  availableServers <- newMVar []
-  currentServer    <- newMVar addr
-  let ctx = HStreamSqlContext {..}
-  setupSigsegvHandler
-  m_desc <- describeCluster ctx addr
-  case m_desc of
-    Nothing -> Log.e "Connection timed out. Please check the server URI and try again."
-    Just _  -> app ctx
-
 
 hstreamNodes :: CliConnOpts -> HStreamNodes -> IO ()
 hstreamNodes connOpts HStreamNodesList =

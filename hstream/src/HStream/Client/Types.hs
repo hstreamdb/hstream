@@ -37,12 +37,14 @@ data HStreamSqlContext = HStreamSqlContext
 data HStreamSqlOpts = HStreamSqlOpts
   { _clientId       :: String
   , _updateInterval :: Int
+  , _retryTimeout   :: Int
   }
 
 hstreamSqlOptsParser :: O.Parser HStreamSqlOpts
 hstreamSqlOptsParser = HStreamSqlOpts
-    <$> O.strOption (O.long "client-id" <> O.metavar "ID" <> O.help "unique id for the client")
-    <*> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in second")
+  <$> O.strOption (O.long "client-id" <> O.metavar "ID" <> O.help "unique id for the client")
+  <*> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in seconds")
+  <*> O.option O.auto (O.long "retry-timeout" <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
 
 data HStreamNodes
   = HStreamNodesList
