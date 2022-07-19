@@ -112,7 +112,7 @@ handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
 handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = unless (node == serverSelf) $ do
-  Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " joining cluster"
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " joining cluster"
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing -> do
@@ -120,11 +120,12 @@ handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = un
       atomically $ do
         modifyTVar' deadServers $ Map.delete serverNodeId
         modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+      Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " has joined the cluster"
     Just ServerStatus{..} -> unless (serverInfo == node) $
       -- TODO: vote to resolve conflict
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
 handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} _node)= do
-  Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " leaving cluster"
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " leaving cluster"
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
@@ -137,6 +138,7 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} 
       case mWorker of
         Nothing -> return (pure ())
         Just  a -> return $ do
+          Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
           Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
           cancel a
 handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do

@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Concurrent               (MVar, forkIO, newMVar,
-                                                   swapMVar)
+                                                   readMVar, swapMVar)
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Monad                    (forM_, void, when)
@@ -91,7 +91,7 @@ serve :: ByteString
       -> ServerContext
       -> AdvertisedListeners
       -> IO ()
-serve host port tlsConfig sc listeners = do
+serve host port tlsConfig sc@ServerContext{..} listeners = do
   Log.i "************************"
   putStrLn [r|
    _  _   __ _____ ___ ___  __  __ __
@@ -103,8 +103,8 @@ serve host port tlsConfig sc listeners = do
   Log.i "*************************"
 
   let serverOnStarted = do
-        Log.info $ "Server is started on port " <> Log.buildInt port
-        Log.info "Please wait until the cluster is initialized"
+        Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
+        void $ forkIO $ void (readMVar (clusterReady gossipContext)) >> Log.info "Cluster is ready!"
   let grpcOpts =
         GRPC.defaultServiceOptions
         { GRPC.serverHost = GRPC.Host host

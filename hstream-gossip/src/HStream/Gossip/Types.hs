@@ -85,6 +85,7 @@ data GossipContext = GossipContext
   , deadServers   :: TVar DeadServers
   , randomGen     :: StdGen
   , clusterInited :: MVar InitType
+  , clusterReady  :: MVar ()
   , gossipOpts    :: GossipOpts
   }
 
