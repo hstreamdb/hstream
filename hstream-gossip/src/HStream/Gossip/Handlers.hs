@@ -105,10 +105,13 @@ joinHandler :: GossipContext
 joinHandler GossipContext{..} (ServerNormalRequest _metadata JoinReq {..}) = do
   case joinReqNew of
     Nothing -> error "no node info in join request"
-    Just node -> do
-      atomically $ writeTQueue statePool $ T.GJoin node
+    Just node@I.ServerNode{..} -> do
       sMap' <- snd <$> readTVarIO serverList
-      returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+      case Map.lookup serverNodeId sMap' of
+        Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
+          atomically $ writeTQueue statePool $ T.GJoin node
+          returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+        _  -> returnErrResp StatusAlreadyExists "Node with the same id already exists"
 
 gossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
 gossipHandler GossipContext{..} (ServerNormalRequest _metadata Gossip {..}) = do

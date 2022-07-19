@@ -6,9 +6,9 @@
 
 module HStream.Gossip.Start where
 
-import           Control.Concurrent               (MVar, newEmptyMVar, newMVar,
-                                                   putMVar, readMVar,
-                                                   threadDelay, tryPutMVar)
+import           Control.Concurrent               (MVar, newEmptyMVar, putMVar,
+                                                   readMVar, threadDelay,
+                                                   tryPutMVar)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (TVar, atomically, check,
@@ -27,6 +27,7 @@ import           Proto3.Suite                     (def)
 import qualified Proto3.Suite                     as PT
 import           System.Random                    (initStdGen)
 
+import           Control.Exception                (throwIO)
 import           HStream.Gossip.Core              (addToServerList,
                                                    broadCastUserEvent,
                                                    runEventHandler,
@@ -36,6 +37,7 @@ import           HStream.Gossip.Handlers          (handlers)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
 import           HStream.Gossip.Types             (EventHandlers, EventPayload,
+                                                   FailedToStart (..),
                                                    GossipContext (..),
                                                    GossipOpts (..),
                                                    InitType (..),
@@ -67,7 +69,7 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds' = do
   incarnation   <- newTVarIO 0
   randomGen     <- initStdGen
   clusterInited <- newEmptyMVar
-  clusterReady  <- if current `elem` seeds' then newEmptyMVar else newMVar ()
+  clusterReady  <- newEmptyMVar
   let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds') clusterReady) _eventHandlers
   let gc = GossipContext {..}
   return gc { eventHandlers = Map.insert eventNameINIT (handleINITEvent gc) eventHandlers}
@@ -145,9 +147,10 @@ waitForServersToStart = mapConcurrently wait
         Just node -> return node
 
 joinCluster :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
-joinCluster _ [] =
-  error $ "Failed to join the cluster, "
-       <> "please make sure the seed-nodes lists at least one available node from the cluster."
+joinCluster _ [] = do
+  Log.fatal $ "Failed to join the cluster, "
+           <> "please make sure the seed-nodes lists at least one available node from the cluster."
+  throwIO FailedToStart
 joinCluster sNode ((joinHost, joinPort):rest) = do
   members <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
     API.HStreamGossip{..} <- API.hstreamGossipClient client
@@ -155,6 +158,9 @@ joinCluster sNode ((joinHost, joinPort):rest) = do
       GRPC.ClientNormalResponse (API.JoinResp xs) _ _ _ _ -> do
         Log.info . Log.buildString $ "Successfully joined cluster with " <> show xs
         return $ V.toList xs \\ [sNode]
+      GRPC.ClientErrorResponse (GRPC.ClientIOError (GRPC.GRPCIOBadStatusCode GRPC.StatusAlreadyExists _))  -> do
+        Log.fatal "Failed to join the cluster, node with the same id already exists"
+        throwIO FailedToStart
       GRPC.ClientErrorResponse _ -> do
         Log.info . Log.buildString $ "failed to join " <> U.bs2str joinHost <> ":" <> show joinPort
         return []

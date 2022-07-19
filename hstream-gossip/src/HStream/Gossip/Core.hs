@@ -191,7 +191,7 @@ handleEventMessage GossipContext{..} msg@(EventMessage eName lpTime bs) = do
         Nothing -> handleNewEvent lpInt
         Just events -> if event `elem` events
           then return $ pure ()
-          else handleNewEvent lpInt >> return (Log.fatal (Log.buildString' currentTime))
+          else handleNewEvent lpInt
    where
      event = (eName, bs)
      handleNewEvent lpInt = do
