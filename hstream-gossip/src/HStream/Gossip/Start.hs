@@ -85,9 +85,11 @@ startGossip grpcHost gc@GossipContext {..} = do
   return a
 
 bootstrap :: [(ByteString, Int)] -> GossipContext -> IO ()
-bootstrap [] gc@GossipContext{..} = do
+bootstrap [] GossipContext{..} = do
   Log.info "Only one node in the cluster, no bootstrapping needed"
-  broadCastUserEvent gc eventNameINIT (BL.toStrict $ PT.toLazyByteString (API.ServerList $ V.singleton serverSelf))
+  putMVar clusterInited Gossip
+  putMVar clusterReady ()
+  Log.info "All servers have been initialized"
 bootstrap initialServers gc@GossipContext{..} = do
   readMVar clusterInited >>= \case
     User ->  do
@@ -101,7 +103,6 @@ handleINITEvent gc@GossipContext{..} payload = do
     Left err -> Log.warning $ Log.buildString' err
     Right API.ServerList{..} -> do
       initGossip gc $ V.toList serverListNodes
-      -- atomically $ maybe (pure () ) (`modifyTVar'` (+ 1)) numInited
       void $ tryPutMVar clusterInited Gossip
       atomically $ do
         mWorkers <- readTVar workers
