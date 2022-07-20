@@ -8,6 +8,7 @@
 
 import           Control.Concurrent               (MVar, forkIO, newMVar,
                                                    readMVar, swapMVar)
+import           Control.Concurrent.Async         (concurrently_)
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Monad                    (forM_, void, when)
@@ -77,13 +78,12 @@ app config@ServerOpts{..} = do
                        , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                        }
     gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
-    -- TODO: Use with async might be a better way
-    void $ forkIO $ void $ startGossip serverHostBS gossipContext
 
     serverContext <- initializeServer config gossipContext zk serverState
     void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-    serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners
+    concurrently_ (startGossip serverHostBS gossipContext)
+      (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
 
 serve :: ByteString
       -> Word16
@@ -104,7 +104,7 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
 
   let serverOnStarted = do
         Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
-        void $ forkIO $ void (readMVar (clusterReady gossipContext)) >> Log.info "Cluster is ready!"
+        void $ forkIO $ void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
   let grpcOpts =
         GRPC.defaultServiceOptions
         { GRPC.serverHost = GRPC.Host host

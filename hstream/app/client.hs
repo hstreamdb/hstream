@@ -115,7 +115,7 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{ _clientId = clientId, _updateInterval
 
 hstreamNodes :: CliConnOpts -> HStreamNodes -> IO ()
 hstreamNodes connOpts HStreamNodesList =
-  getNodes connOpts >>= putStrLn . formatResult . V.toList . API.describeClusterResponseServerNodes
+  getNodes connOpts >>= putStrLn . formatResult . L.sort . V.toList . API.describeClusterResponseServerNodes
 hstreamNodes connOpts (HStreamNodesStatus Nothing) =
   getNodes connOpts >>= putStrLn . formatResult . V.toList . API.describeClusterResponseServerNodesStatus
 hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =

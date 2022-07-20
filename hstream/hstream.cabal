@@ -151,6 +151,7 @@ executable hstream-server
   import:           shared-properties
   main-is:          app/server.hs
   build-depends:
+    , async
     , base
     , bytestring
     , containers
