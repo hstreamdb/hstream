@@ -18,7 +18,6 @@ module HStream.Store.Stream
     -- ** Operations
   , createStream
   , createStreamPartition
-  , createStreamPartitionWithExtrAttr
   , renameStream
   , renameStream'
   , archiveStream
@@ -265,18 +264,9 @@ createStreamPartition
   => FFI.LDClient
   -> StreamId
   -> Maybe CBytes
-  -> IO FFI.C_LogID
-createStreamPartition client streamid m_key = do
-  createStreamPartitionWithExtrAttr client streamid m_key Map.empty
-
-createStreamPartitionWithExtrAttr
-  :: HasCallStack
-  => FFI.LDClient
-  -> StreamId
-  -> Maybe CBytes
   -> Map CBytes CBytes
   -> IO FFI.C_LogID
-createStreamPartitionWithExtrAttr client streamid m_key attr = do
+createStreamPartition client streamid m_key attr = do
   stream_exist <- doesStreamExist client streamid
   if stream_exist
      then do (log_path, _key) <- getStreamLogPath streamid m_key

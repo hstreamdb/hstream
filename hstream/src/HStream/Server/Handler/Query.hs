@@ -263,7 +263,7 @@ createStreamWithShard :: S.LDClient -> S.StreamId -> CB.CBytes -> Int -> IO ()
 createStreamWithShard client streamId shardName factor = do
   S.createStream client streamId (S.def{ S.logReplicationFactor = S.defAttr1 factor })
   let extrAttr = Map.fromList [(Shard.shardStartKey, Shard.keyToCBytes minBound), (Shard.shardEndKey, Shard.keyToCBytes maxBound), (Shard.shardEpoch, "1")]
-  void $ S.createStreamPartitionWithExtrAttr client streamId (Just shardName) extrAttr
+  void $ S.createStreamPartition client streamId (Just shardName) extrAttr
 
 --------------------------------------------------------------------------------
 
