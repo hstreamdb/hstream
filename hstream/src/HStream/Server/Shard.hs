@@ -345,7 +345,7 @@ shardEpoch = "epoch"
 createShard :: S.LDClient -> Shard -> IO Shard
 createShard client shard@Shard{..} = do
   let attr = M.fromList [(shardStartKey, keyToCBytes startKey), (shardEndKey, keyToCBytes endKey), (shardEpoch, CB.pack . show $ epoch)]
-  newShardId <- S.createStreamPartitionWithExtrAttr client streamId (Just $ getShardName startKey endKey) attr
+  newShardId <- S.createStreamPartition client streamId (Just $ getShardName startKey endKey) attr
   return $ shard {shardId = newShardId}
 
 getShardName :: ShardKey -> ShardKey -> CB.CBytes
