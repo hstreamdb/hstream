@@ -29,11 +29,12 @@ import           HStream.Server.HStreamApi            (Subscription (..))
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils
+import           HStream.Server.Types                 (SubscriptionWrap (..))
 import           HStream.Utils                        (cBytesToText)
 
 -------------------------------------------------------------------------------
 
-instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepType) Subscription where
+instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepType) SubscriptionWrap where
   storeObject objId val zk =
     handleExist $ createInsert zk subPath (encodeValueToBytes val)
     where
@@ -55,12 +56,12 @@ instance {-# OVERLAPPABLE #-} BasicObjectPersistence ZHandle ('SubRep :: ObjRepT
 
   removeAllObjects zk = tryDeleteAllPath zk subscriptionsPath
 
-getSubscriptions :: ZHandle -> IO [Subscription]
+getSubscriptions :: ZHandle -> IO [SubscriptionWrap]
 getSubscriptions zk = do
   subscriptionIds <- map cBytesToText <$> tryGetChildren zk subscriptionsPath
   catMaybes <$> mapM (flip (getObject @ZHandle @'SubRep) zk) subscriptionIds
 
-getSubscriptionWithStream :: ZHandle -> Text -> IO [Subscription]
+getSubscriptionWithStream :: ZHandle -> Text -> IO [SubscriptionWrap]
 getSubscriptionWithStream zk sName = do
   subscriptionIds <- map cBytesToText <$> tryGetChildren zk subscriptionsPath
   catMaybes <$> mapM (filterWithStream zk) subscriptionIds
@@ -69,7 +70,7 @@ getSubscriptionWithStream zk sName = do
       maybeSub <- getObject @ZHandle @'SubRep subId zkHandle
       return $ case maybeSub of
         Nothing -> Nothing
-        Just sub@Subscription {..}
+        Just sub@SubscriptionWrap{originSub=Subscription{..}}
           | subscriptionStreamName == sName -> Just sub
           | otherwise -> Nothing
 
@@ -78,10 +79,13 @@ updateSubscription zk sName sName' = do
   withSubscriptionsLock zk $ do
     subs <- getSubscriptions zk
     let ops = [ zooSetOpInit (mkSubscriptionPath subscriptionSubscriptionId)
-                             (Just $ encodeValueToBytes sub { subscriptionStreamName = sName'})
+                             (Just $ encodeValueToBytes $ update sub wrap)
                              Nothing
-              | sub@Subscription{..} <- subs, subscriptionStreamName == sName ]
+              | wrap@SubscriptionWrap{originSub=sub@Subscription{..}} <- subs, subscriptionStreamName == sName ]
     zooMulti zk ops
+ where
+   update sub wrap = let newSub = sub { subscriptionStreamName = sName' }
+                      in wrap { originSub = newSub }
 
 withSubscriptionsLock :: ZHandle -> IO a -> IO ()
 withSubscriptionsLock zk action = do

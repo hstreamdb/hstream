@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE GADTs            #-}
-{-# LANGUAGE KindSignatures   #-}
 {-# LANGUAGE MultiWayIf       #-}
 {-# LANGUAGE TupleSections    #-}
 {-# LANGUAGE TypeApplications #-}
@@ -15,6 +14,7 @@ import           Control.Exception                 (Exception, catch,
                                                     onException, throwIO)
 import           Control.Monad
 import qualified Data.ByteString                   as BS
+import           Data.Foldable                     (foldl')
 import qualified Data.HashMap.Strict               as HM
 import           Data.IORef                        (newIORef, readIORef,
                                                     writeIORef)
@@ -49,12 +49,12 @@ import           HStream.Utils                     (textToCBytes)
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions ServerContext{..} = do
   subs <- P.listObjects zkHandle
-  mapM update $ V.fromList (Map.elems subs)
-  where
-    update sub@Subscription{..} = do
-      archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
-      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
-                  else return sub
+  mapM update $ V.fromList (map originSub $ Map.elems subs)
+ where
+   update sub@Subscription{..} = do
+     archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
+     if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
+                 else return sub
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
@@ -64,7 +64,21 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
     Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
     throwIO StreamNotExist
-  P.storeObject subscriptionSubscriptionId sub zkHandle
+  shards <- getShards scLDClient subscriptionStreamName
+  startOffsets <- case subscriptionOffset of
+    (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards
+    (Enumerated (Right SpecialOffsetLATEST))   -> foldM gatherTailLSN HM.empty shards
+    _                                          -> throwIO InvalidSubscriptionOffset
+
+  let subWrap = SubscriptionWrap
+        { originSub  = sub
+        , subOffsets = startOffsets
+        }
+  P.storeObject subscriptionSubscriptionId subWrap zkHandle
+ where
+   gatherTailLSN acc shard = do
+     lsn <- (+1) <$> S.getTailLSN scLDClient shard
+     return $ HM.insert shard lsn acc
 
 deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
 deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
@@ -143,7 +157,6 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
 data DeleteSubStatus = NotExist | CanDelete | CanNotDelete | Signaled
   deriving (Show)
 
-
 --------------------------------------------------------------------------------
 -- streaming fetch
 
@@ -182,7 +195,7 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
   let streamRecv = do
         req <- atomically $ readTChan mockAckPool
         return $ Right (Just req)
-  (withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait) `onException` do
+  withAsync (recvAcks ctx scwState scwContext consumerCtx streamRecv) wait `onException` do
     case tid_m of
       Just tid -> killThread tid
       Nothing  -> return ()
@@ -241,12 +254,12 @@ initSub serverCtx@ServerContext {..} subId = do
 -- For each subscriptionId, create ldCkpReader and ldReader, then
 -- add all shards of target stream to SubscribeContext
 doSubInit :: ServerContext -> SubscriptionId -> IO SubscribeContext
-doSubInit ctx@ServerContext{..} subId = do
+doSubInit ServerContext{..} subId = do
   P.getObject subId zkHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
       throwIO $ SubscriptionIdNotFound subId
-    Just Subscription {..} -> do
+    Just SubscriptionWrap {originSub=Subscription{..}, ..} -> do
       let readerName = textToCBytes subId
       -- Notice: doc this. shard count can not larger than this.
       let maxReadLogs = 1000
@@ -259,11 +272,6 @@ doSubInit ctx@ServerContext{..} subId = do
       -- create a ldReader for rereading unacked records
       ldReader <- newMVar =<< S.newLDReader scLDClient maxReadLogs (Just ldReaderBufferSize)
       Log.debug $ "created a ldReader for subscription {" <> Log.buildText subId <> "}"
-
-      startOffset <- case subscriptionOffset of
-        (Enumerated (Right SpecialOffsetEARLIEST)) -> return EarlistOffset
-        (Enumerated (Right SpecialOffsetLATEST))   -> return LatestOffset
-        _                                      -> throwIO InvalidSubscriptionOffset
 
       unackedRecords <- newTVarIO 0
       consumerContexts <- newTVarIO HM.empty
@@ -287,9 +295,9 @@ doSubInit ctx@ServerContext{..} subId = do
                 subCurrentTime = curTime,
                 subWaitingCheckedRecordIds = checkList,
                 subWaitingCheckedRecordIdsIndex = checkListIndex,
-                subStartOffset = startOffset
+                subStartOffset = subOffsets
               }
-      shards <- getShards ctx subscriptionStreamName
+      shards <- getShards scLDClient subscriptionStreamName
       Log.debug $ "get shards for stream " <> Log.buildString' (show subscriptionStreamName) <> ": " <> Log.buildString (show shards)
       addNewShardsToSubCtx emptySubCtx shards
       return emptySubCtx
@@ -317,12 +325,11 @@ doSubInit ctx@ServerContext{..} subId = do
             consumerWorkloads = cws
           }
 
+
 -- get all partitions of the specified stream
-getShards :: ServerContext -> T.Text -> IO [S.C_LogID]
-getShards ServerContext{..} streamName = do
-  let streamId = transToStreamName streamName
-  res <- S.listStreamPartitions scLDClient streamId
-  return $ Map.elems res
+getShards :: S.LDClient -> T.Text -> IO [S.C_LogID]
+getShards client streamName = do
+  Map.elems <$> S.listStreamPartitions client (transToStreamName streamName)
 
 addNewShardsToSubCtx :: SubscribeContext -> [S.C_LogID] -> IO ()
 addNewShardsToSubCtx SubscribeContext {subAssignment = Assignment{..}, ..} shards = atomically $ do
@@ -368,7 +375,7 @@ initConsumer SubscribeContext {subAssignment = Assignment{..}, ..} consumerName 
     return cc
 
 sendRecords :: ServerContext -> TVar SubscribeState -> SubscribeContext -> IO ()
-sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
+sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
   threadDelay 10000
   isFirstSendRef <- newIORef True
   loop isFirstSendRef
@@ -389,7 +396,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
           atomically $ do
             assignShards subAssignment
             assignWaitingConsumers subAssignment
-          addRead scLDClient subLdCkpReader subAssignment subStartOffset
+          addRead subLdCkpReader subAssignment subStartOffset
           atomically checkUnackedRecords
           recordBatches <- readRecordBatches
           let receivedRecordsVecs = fmap decodeRecordBatch recordBatches
@@ -409,7 +416,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
             Stats.subscription_time_series_add_send_out_bytes scStatsHolder cSubscriptionId byteSize
             Stats.subscription_time_series_add_send_out_records scStatsHolder cSubscriptionId recordSize
             atomically $ addUnackedRecords subCtx successSendRecords
-            loop isFirstSendRef `onException` (killThread tid)
+            loop isFirstSendRef `onException` killThread tid
           else do
             -- FIXME: the same code
             successSendRecords <- sendReceivedRecordsVecs receivedRecordsVecs
@@ -454,7 +461,7 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
 
     getNewShards :: IO [S.C_LogID]
     getNewShards = do
-      shards <- catch (getShards ctx subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
+      shards <- catch (getShards scLDClient subStreamName) (\(_::S.NOTFOUND)-> pure mempty)
       if L.null shards
         then return []
         else do
@@ -470,14 +477,19 @@ sendRecords ctx@ServerContext{..} subState subCtx@SubscribeContext {..} = do
               []
               shards
 
-    addRead :: S.LDClient -> S.LDSyncCkpReader -> Assignment -> SubStartOffset -> IO ()
-    addRead client ldCkpReader Assignment {..} startOffsest = do
+    addRead :: S.LDSyncCkpReader -> Assignment -> HM.HashMap S.C_LogID S.LSN -> IO ()
+    addRead ldCkpReader Assignment {..} startOffsets = do
       shards <- atomically $ swapTVar waitingReadShards []
       forM_ shards $ \shard -> do
         Log.debug $ "start reading " <> Log.buildString (show shard)
-        offset <- case startOffsest of
-          EarlistOffset -> return S.LSN_MIN
-          LatestOffset  -> (+1) <$> S.getTailLSN client shard
+        offset <- case HM.lookup shard startOffsets of
+          Nothing -> do
+            Log.fatal $ "can't find startOffsets for shard "
+                     <> Log.buildInt shard
+                     <> ", startOffsets="
+                     <> Log.buildString' (show startOffsets)
+            error $ "can't find startOffsets for shard " <> show shard
+          Just s -> return s
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just offset) S.LSN_MAX
 
     readRecordBatches :: IO [S.DataRecord BS.ByteString]

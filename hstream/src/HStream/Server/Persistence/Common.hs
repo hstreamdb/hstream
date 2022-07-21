@@ -28,7 +28,7 @@ import           GHC.Stack                 (HasCallStack)
 import           Z.Data.CBytes             (CBytes)
 
 import           HStream.Server.HStreamApi (Subscription)
-import           HStream.Server.Types      (ServerID)
+import           HStream.Server.Types      (ServerID, SubscriptionWrap)
 import           HStream.Utils             (TaskStatus (..))
 
 --------------------------------------------------------------------------------
@@ -100,7 +100,7 @@ data ObjRepType = SubRep
 
 -- | The real type of the stored object
 type family RealObjType (a :: ObjRepType) where
-  RealObjType 'SubRep    = Subscription
+  RealObjType 'SubRep    = SubscriptionWrap
 
 class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b | b -> a where
   -- | persist an object to the store
