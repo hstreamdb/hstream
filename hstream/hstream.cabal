@@ -63,6 +63,7 @@ library
 
   other-modules:
     HStream.Server.Core.Cluster
+    HStream.Server.Core.Query
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View

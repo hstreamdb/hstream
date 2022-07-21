@@ -20,7 +20,6 @@ import qualified Data.ByteString.Char8            as BS
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef                       (atomicModifyIORef',
                                                    readIORef)
-import           Data.List                        (find, (\\))
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust, isJust)
@@ -28,8 +27,8 @@ import           Data.String                      (IsString (fromString))
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
+import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
-import qualified Z.IO.Network                     as ZNet
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
@@ -37,8 +36,7 @@ import           HStream.Connector.Common         (SourceConnectorWithoutCkp (..
 import           HStream.Connector.Type           hiding (StreamName, Timestamp)
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Config
-import qualified HStream.Server.Core.Common       as Core
+import qualified HStream.Server.Core.Query        as Core
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core
 import           HStream.Server.Exception
@@ -73,22 +71,23 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   case plan of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
-      IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
+      connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      returnCommandQueryResp (mkVectorStruct connector "created_connector")
     CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
           query   = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
       create (transToStreamName sink)
-      void $ handleCreateAsSelect sc plan commandQueryStmtText query
-      returnCommandQueryEmptyResp
+      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
+      returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "stream_query_id")
     CreateViewPlan _ schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
           query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
       create (transToStreamName sink)
-      void $ handleCreateAsSelect sc plan commandQueryStmtText query
+      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
       atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-      returnCommandQueryEmptyResp
+      returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
@@ -97,7 +96,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
             , streamShardCount = 1
             }
       Core.createStream sc s
-      returnCommandQueryEmptyResp
+      returnCommandQueryResp (mkVectorStruct s "created_stream")
     InsertPlan stream insertType payload -> do
       timestamp <- getProtoTimestamp
       let header = case insertType of
@@ -124,44 +123,43 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           Core.deleteView sc view checkIfExist
           returnCommandQueryEmptyResp
         DConnector conn -> do
-          -- FIXME: use Core.*
           IO.deleteIOTask scIOWorker conn
           returnCommandQueryEmptyResp
-    -- FIXME: Return non-empty results
-    -- FIXME: use Core.*
     ShowPlan showObject ->
-      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
-        case showObject of
-          SStreams -> do
-            hstreamApiListStreams api (mkClientNormalRequest 1000 ListStreamsRequest)
-            returnCommandQueryEmptyResp
-          SQueries -> do
-            hstreamApiListQueries api (mkClientNormalRequest 1000 ListQueriesRequest)
-            returnCommandQueryEmptyResp
-          SConnectors -> do
-            hstreamApiListConnectors api (mkClientNormalRequest 1000 ListConnectorsRequest)
-            returnCommandQueryEmptyResp
-          SViews -> do
-            hstreamApiListViews api (mkClientNormalRequest 1000 ListViewsRequest)
-            returnCommandQueryEmptyResp
-    -- FIXME: use Core.*
-    TerminatePlan sel ->
-      runWithAddr (ZNet.ipv4 "127.0.0.1" (ZNet.PortNumber $ _serverPort serverOpts)) $ \api -> do
-        let request = case sel of
-              AllQueries       -> TerminateQueriesRequest
-                                  { terminateQueriesRequestQueryId = V.empty
-                                  , terminateQueriesRequestAll = True
-                                  }
-              OneQuery qid     -> TerminateQueriesRequest
-                                  { terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid
-                                  , terminateQueriesRequestAll = False
-                                  }
-              ManyQueries qids -> TerminateQueriesRequest
-                                  { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
-                                  , terminateQueriesRequestAll = False
-                                  }
-        void $ hstreamApiTerminateQueries api (mkClientNormalRequest 1000 request)
-        returnCommandQueryEmptyResp
+      case showObject of
+        SStreams -> do
+          streams <- Core.listStreams sc ListStreamsRequest
+          returnCommandQueryResp (mkVectorStruct streams "streams")
+        SQueries -> do
+          queries <- Core.listQueries sc
+          returnCommandQueryResp (mkVectorStruct (V.fromList queries) "queries")
+        SConnectors -> do
+          connectors <- IO.listIOTasks scIOWorker
+          returnCommandQueryResp (mkVectorStruct (V.fromList connectors) "connectors")
+        SViews -> do
+          views <- Core.listViews sc
+          returnCommandQueryResp (mkVectorStruct (V.fromList views) "views")
+    TerminatePlan sel -> do
+      let request = case sel of
+            AllQueries       -> TerminateQueriesRequest
+                                { terminateQueriesRequestQueryId = V.empty
+                                , terminateQueriesRequestAll = True
+                                }
+            OneQuery qid     -> TerminateQueriesRequest
+                                { terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid
+                                , terminateQueriesRequestAll = False
+                                }
+            ManyQueries qids -> TerminateQueriesRequest
+                                { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
+                                , terminateQueriesRequestAll = False
+                                }
+      Core.terminateQueries sc request >>= \case
+        Left terminatedQids -> returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
+        Right TerminateQueriesResponse{..} -> do
+          let value  = PB.toAesonValue terminateQueriesResponseQueryId
+              object = HM.fromList [("terminated", value)]
+              result = V.singleton (jsonObjectToStruct object)
+          returnCommandQueryResp result
     SelectViewPlan RSelectView {..} -> do
       hm <- readIORef P.groupbyStores
       case HM.lookup rSelectViewFrom hm of
@@ -196,6 +194,9 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       returnCommandQueryResp
         (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
     discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
+    mkVectorStruct a label =
+      let object = HM.fromList [(label, PB.toAesonValue a)]
+       in V.singleton (jsonObjectToStruct object)
 
 mapView :: SelectViewSelect -> DataChange a -> DataChange a
 mapView SVSelectAll change = change
@@ -303,68 +304,46 @@ sendToClient zkHandle qid streamName SourceConnectorWithoutCkp {..} streamSend =
 
 --------------------------------------------------------------------------------
 
-hstreamQueryToQuery :: P.PersistentQuery -> Query
-hstreamQueryToQuery (P.PersistentQuery queryId sqlStatement createdTime _ status _ _) =
-  Query
-  { queryId          = cBytesToText queryId
-  , queryStatus      = getPBStatus status
-  , queryCreatedTime = createdTime
-  , queryQueryText   = sqlStatement
-  }
-
 listQueriesHandler
   :: ServerContext
   -> ServerRequest 'Normal ListQueriesRequest ListQueriesResponse
   -> IO (ServerResponse 'Normal ListQueriesResponse)
-listQueriesHandler ServerContext{..} (ServerNormalRequest _metadata _) = do
+listQueriesHandler ctx (ServerNormalRequest _metadata _) = do
   Log.debug "Receive List Query Request"
-  queries <- P.getQueries zkHandle
-  let records = map hstreamQueryToQuery queries
-  let resp    = ListQueriesResponse . V.fromList $ records
-  returnResp resp
+  Core.listQueries ctx >>= returnResp . (ListQueriesResponse . V.fromList)
 
 getQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal GetQueryRequest Query
   -> IO (ServerResponse 'Normal Query)
-getQueryHandler ServerContext{..} (ServerNormalRequest _metadata GetQueryRequest{..}) = do
+getQueryHandler ctx (ServerNormalRequest _metadata req@GetQueryRequest{..}) = do
   Log.debug $ "Receive Get Query Request. "
     <> "Query ID: " <> Log.buildText getQueryRequestId
-  query <- do
-    queries <- P.getQueries zkHandle
-    return $ find (\P.PersistentQuery{..} -> cBytesToText queryId == getQueryRequestId) queries
-  case query of
-    Just q -> returnResp $ hstreamQueryToQuery q
+  Core.getQuery ctx req >>= \case
+    Just q -> returnResp q
     _      -> returnErrResp StatusNotFound "Query does not exist"
 
 terminateQueriesHandler
   :: ServerContext
   -> ServerRequest 'Normal TerminateQueriesRequest TerminateQueriesResponse
   -> IO (ServerResponse 'Normal TerminateQueriesResponse)
-terminateQueriesHandler sc@ServerContext{..} (ServerNormalRequest _metadata TerminateQueriesRequest{..}) = queryExceptionHandle $ do
+terminateQueriesHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@TerminateQueriesRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
-  qids <-
-    if terminateQueriesRequestAll
-      then HM.keys <$> readMVar runningQueries
-      else return . V.toList $ textToCBytes <$> terminateQueriesRequestQueryId
-  terminatedQids <- Core.handleQueryTerminate sc (HSC.ManyQueries qids)
-  if length terminatedQids < length qids
-    then do
-      Log.warning $ "Following queries cannot be terminated: "
-        <> Log.buildString (show $ qids \\ terminatedQids)
+  Core.terminateQueries ctx req >>= \case
+    Left terminatedQids -> do
       returnErrResp StatusAborted ("Only the following queries are terminated " <> fromString (show terminatedQids))
-    else returnResp $ TerminateQueriesResponse (V.fromList $ cBytesToText <$> terminatedQids)
+    Right resp -> returnResp resp
 
 deleteQueryHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteQueryRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteQueryHandler ServerContext{..} (ServerNormalRequest _metadata DeleteQueryRequest{..}) =
+deleteQueryHandler ctx (ServerNormalRequest _metadata req@DeleteQueryRequest{..}) =
   queryExceptionHandle $ do
     Log.debug $ "Receive Delete Query Request. "
       <> "Query ID: " <> Log.buildText deleteQueryRequestId
-    P.removeQuery (textToCBytes deleteQueryRequestId) zkHandle
+    Core.deleteQuery ctx req
     returnResp Empty
 
 -- FIXME: Incorrect implementation!
