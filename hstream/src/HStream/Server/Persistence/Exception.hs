@@ -101,3 +101,10 @@ newtype SubscriptionIdOccupied = SubscriptionIdOccupied Text
 instance Exception SubscriptionIdOccupied where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
+
+newtype ShardReaderIdExists = ShardReaderIdExists Text
+  deriving (Show)
+instance Exception  ShardReaderIdExists where
+  toException   = persistenceExceptionToException
+  fromException = persistenceExceptionFromException
+

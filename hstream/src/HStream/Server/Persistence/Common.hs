@@ -17,6 +17,8 @@ module HStream.Server.Persistence.Common
   , TaskPersistence (..)
   , BasicObjectPersistence (..)
   , ObjRepType (..)
+  , ShardReader (..)
+  , ReaderPersistence (..)
   ) where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
@@ -27,9 +29,10 @@ import           GHC.Generics              (Generic)
 import           GHC.Stack                 (HasCallStack)
 import           Z.Data.CBytes             (CBytes)
 
-import           HStream.Server.HStreamApi (Subscription)
 import           HStream.Server.Types      (ServerID, SubscriptionWrap)
 import           HStream.Utils             (TaskStatus (..))
+import Data.Word (Word64, Word32)
+import qualified HStream.Store as S
 
 --------------------------------------------------------------------------------
 
@@ -118,3 +121,20 @@ class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b |
   removeObject :: HasCallStack => T.Text -> handle -> IO ()
   -- | remove all objects
   removeAllObjects :: HasCallStack => handle -> IO ()
+
+--------------------------------------------------------------------------------
+    --
+data ShardReader = ShardReader
+  { readerStreamName  :: T.Text
+  , readerShardId     :: Word64
+  , readerShardOffset :: S.LSN
+  , readerReaderId    :: T.Text
+  , readerReadTimeout :: Word32
+  } deriving (Show, Generic, FromJSON, ToJSON)
+
+class ReaderPersistence handle where
+  storeReader  :: HasCallStack => T.Text -> ShardReader -> handle -> IO ()
+  getReader    :: HasCallStack => T.Text -> handle -> IO (Maybe ShardReader)
+  removeReader :: HasCallStack => T.Text -> handle -> IO ()
+  readerExist  :: HasCallStack => T.Text -> handle -> IO Bool
+

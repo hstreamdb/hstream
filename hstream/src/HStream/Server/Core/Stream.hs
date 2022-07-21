@@ -23,7 +23,7 @@ module HStream.Server.Core.Stream
 import           Control.Concurrent                (MVar, modifyMVar,
                                                     modifyMVar_, newMVar,
                                                     putMVar, takeMVar, withMVar)
-import           Control.Concurrent.STM            (TVar, readTVarIO)
+import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throwIO)
 import           Control.Monad                     (foldM, forM, unless, when)
@@ -39,9 +39,7 @@ import           GHC.Stack                         (HasCallStack)
 import           Proto3.Suite                      (Enumerated (Enumerated))
 import qualified Z.Data.CBytes                     as CB
 
-import           Data.Word                         (Word32)
-import           HStream.Common.ConsistentHashing  (HashRing,
-                                                    getAllocatedNodeId)
+import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
@@ -62,6 +60,10 @@ import           HStream.Server.Types              (ServerContext (..),
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.Utils
+import qualified HStream.Server.Persistence as P
+import HStream.Server.HStreamApi (CreateShardReaderRequest(createShardReaderRequestShardId))
+import HStream.Server.Persistence (ShardReader(..))
+import ZooKeeper.Exception (ZNONODE(..))
 
 -------------------------------------------------------------------------------
 
@@ -226,46 +228,48 @@ createShardReader
   => ServerContext
   -> API.CreateShardReaderRequest
   -> IO API.CreateShardReaderResponse
-createShardReader ServerContext{..} API.CreateShardReaderRequest{..} = do
-  checkReaderReq loadBalanceHashRing createShardReaderRequestReaderId serverID
-  modifyMVar_ shardReaderMap $ \mp -> do
-    case HM.lookup createShardReaderRequestReaderId mp of
-      Just _ -> throwIO ShardReaderExists
-      Nothing -> do
-        startLSN <- getStartLSN createShardReaderRequestShardId
-        reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
-        S.readerStartReading reader createShardReaderRequestShardId startLSN S.LSN_MAX
-        S.readerSetTimeout reader (fromIntegral createShardReaderRequestTimeout)
-        readerMvar <- newMVar reader
-        return (HM.insert createShardReaderRequestReaderId readerMvar mp)
+createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardReaderRequestStreamName=rStreamName,
+    createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
+    createShardReaderRequestReaderId=rId} = do
+  exist <- P.readerExist rId zkHandle
+  when exist $ throwIO ShardReaderExists
+  startLSN <- getStartLSN rShardId
+  let shardReader = mkShardReader startLSN
+  P.storeReader rId shardReader zkHandle 
   return API.CreateShardReaderResponse
-    { API.createShardReaderResponseStreamName  = createShardReaderRequestStreamName
-    , API.createShardReaderResponseShardId     = createShardReaderRequestShardId
-    , API.createShardReaderResponseShardOffset = createShardReaderRequestShardOffset
-    , API.createShardReaderResponseReaderId    = createShardReaderRequestReaderId
-    , API.createShardReaderResponseTimeout     = createShardReaderRequestTimeout
+    { API.createShardReaderResponseStreamName  = rStreamName
+    , API.createShardReaderResponseShardId     = rShardId
+    , API.createShardReaderResponseShardOffset = rOffset
+    , API.createShardReaderResponseReaderId    = rId
+    , API.createShardReaderResponseTimeout     = rTimeout
     }
  where
-   ldReaderBufferSize = 10
+   mkShardReader offset = ShardReader rStreamName rShardId offset rId rTimeout
 
    getStartLSN :: S.C_LogID -> IO S.LSN
    getStartLSN logId =
-     case fromJust . API.shardOffsetOffset . fromJust $ createShardReaderRequestShardOffset of
+     case fromJust . API.shardOffsetOffset . fromJust $ rOffset of
        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
        _                                                                                 -> error "wrong shard offset"
 
 deleteShardReader
-  :: ServerContext
+  :: HasCallStack
+  => ServerContext
   -> API.DeleteShardReaderRequest
   -> IO ()
 deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
-  checkReaderReq loadBalanceHashRing deleteShardReaderRequestReaderId serverID
+  hashRing <- readTVarIO loadBalanceHashRing
+  unless (getAllocatedNodeId hashRing deleteShardReaderRequestReaderId == serverID) $
+    throwIO $ WrongServer "Send deleteShard request to wrong server."
+  isSuccess <- catch (P.removeReader deleteShardReaderRequestReaderId zkHandle >> return True) $
+      \ (_ :: ZNONODE) -> return False
   modifyMVar_ shardReaderMap $ \mp -> do
     case HM.lookup deleteShardReaderRequestReaderId mp of
-      Nothing -> throwIO ShardReaderNotExists
+      Nothing -> return mp
       Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
+  unless isSuccess $ throwIO ShardReaderNotExists
 
 listShards
   :: HasCallStack
@@ -308,27 +312,39 @@ readShard
   -> API.ReadShardRequest
   -> IO (V.Vector API.ReceivedRecord)
 readShard ServerContext{..} API.ReadShardRequest{..} = do
-  checkReaderReq loadBalanceHashRing readShardRequestReaderId serverID
+  hashRing <- readTVarIO loadBalanceHashRing
+  unless (getAllocatedNodeId hashRing readShardRequestReaderId == serverID) $
+    throwIO $ WrongServer "Send readShard request to wrong server."
   bracket getReader putReader readRecords
  where
-   getReader = withMVar shardReaderMap $ \mp -> do
-     case HM.lookup readShardRequestReaderId mp of
-       Nothing         -> throwIO ShardReaderNotExists
+   ldReaderBufferSize = 10
+
+   getReader = do
+     mReader <- withMVar shardReaderMap $ return . HM.lookup readShardRequestReaderId
+     case mReader of 
        Just readerMvar -> takeMVar readerMvar
+       Nothing         -> do
+         r@ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
+           Nothing -> throwIO ShardReaderNotExists 
+           Just reader -> return reader
+         Log.info $ "get reader " <> Log.buildText readShardRequestReaderId <> " from store: " <> Log.buildString' (show r)
+         reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
+         S.readerStartReading reader readerShardId readerShardOffset S.LSN_MAX
+         S.readerSetTimeout reader (fromIntegral readerReadTimeout)
+         readerMvar <- newMVar reader
+         modifyMVar_ shardReaderMap $ return . HM.insert readShardRequestReaderId readerMvar
+         return reader
    putReader reader = withMVar shardReaderMap $ \mp -> do
      case HM.lookup readShardRequestReaderId mp of
-       Nothing -> error "can't put reader back to shardReaderMap, something wrong."
+       Nothing -> pure ()
        Just readerMvar -> putMVar readerMvar reader
    readRecords reader = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
+     Log.info $ "reader " <> Log.buildText readShardRequestReaderId <> " start reading"
      let receivedRecordsVecs = decodeRecordBatch <$> records
+     let res = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+     Log.info $ "reader read " <> Log.buildString' (show res)
      return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
-
-checkReaderReq :: TVar HashRing -> Text -> Word32 -> IO ()
-checkReaderReq loadBalanceHashRing readerId serverID = do
-  hashRing <- readTVarIO loadBalanceHashRing
-  when (getAllocatedNodeId hashRing readerId == serverID) $
-    throwIO $ WrongServer "Send request to wrong server."
 
 --------------------------------------------------------------------------------
 

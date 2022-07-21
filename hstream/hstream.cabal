@@ -79,6 +79,7 @@ library
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Object
     HStream.Server.Persistence.Tasks
+    HStream.Server.Persistence.ShardReader
     HStream.Server.Persistence.Utils
 
   hs-source-dirs:     src

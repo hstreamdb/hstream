@@ -123,7 +123,7 @@ createShardReaderHandler
   -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
   -> IO (ServerResponse 'Normal CreateShardReaderResponse)
 createShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
-  Log.debug "Receive Create ShardReader Request"
+  Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request) 
   C.createShardReader sc request >>= returnResp
 
 deleteShardReaderHandler
@@ -131,7 +131,7 @@ deleteShardReaderHandler
   -> ServerRequest 'Normal DeleteShardReaderRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
-  Log.debug "Receive Delete ShardReader Request"
+  Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
   C.deleteShardReader sc request >> returnResp Empty
 
 readShardHandler

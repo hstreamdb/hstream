@@ -75,10 +75,10 @@ lookupSubscription ServerContext{..} req@LookupSubscriptionRequest{
 
 lookupShardReader :: ServerContext -> LookupShardReaderRequest -> IO LookupShardReaderResponse
 lookupShardReader ServerContext{..} req@LookupShardReaderRequest{lookupShardReaderRequestReaderId=readerId} = do
-  Log.info $ "receive lookupShardReader request: " <> Log.buildString' req
   hashRing <- readTVarIO loadBalanceHashRing
   theNode  <- getResNode hashRing readerId scAdvertisedListenersKey
-  return $ LookupShardReaderResponse
+  Log.info $ "receive lookupShardReader request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
+  return $ LookupShardReaderResponse 
     { lookupShardReaderResponseReaderId    = readerId
     , lookupShardReaderResponseServerNode  = Just theNode
     }
