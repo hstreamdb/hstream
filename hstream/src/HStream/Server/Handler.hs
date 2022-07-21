@@ -71,6 +71,8 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
         hstreamApiPauseConnector = pauseConnectorHandler serverContext,
         hstreamApiResumeConnector = resumeConnectorHandler serverContext,
+        hstreamApiLookupConnector = lookupConnectorHandler serverContext,
+
         hstreamApiCreateView = createViewHandler serverContext,
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,

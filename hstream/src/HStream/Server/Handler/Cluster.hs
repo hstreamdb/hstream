@@ -9,6 +9,7 @@ module HStream.Server.Handler.Cluster
   ( describeClusterHandler
   , lookupStreamHandler
   , lookupSubscriptionHandler
+  , lookupConnectorHandler
   ) where
 
 import           Control.Concurrent.STM           (readTVarIO)
@@ -87,6 +88,19 @@ lookupSubscriptionHandler ServerContext{..} (ServerNormalRequest _meta req@Looku
   returnResp LookupSubscriptionResponse {
     lookupSubscriptionResponseSubscriptionId = subId
   , lookupSubscriptionResponseServerNode     = Just theNode
+  }
+
+lookupConnectorHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupConnectorRequest LookupConnectorResponse
+  -> IO (ServerResponse 'Normal LookupConnectorResponse)
+lookupConnectorHandler ServerContext{..} (ServerNormalRequest _meta req@LookupConnectorRequest{..}) = defaultExceptionHandle $ do
+  Log.info $ "receive lookupConnector request: " <> Log.buildString (show req)
+  hashRing <- readTVarIO loadBalanceHashRing
+  theNode <- getResNode hashRing lookupConnectorRequestName scAdvertisedListenersKey
+  returnResp LookupConnectorResponse {
+    lookupConnectorResponseName = lookupConnectorRequestName
+  , lookupConnectorResponseServerNode     = Just theNode
   }
 
 --------------------------------------------------------------------------------

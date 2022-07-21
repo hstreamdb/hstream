@@ -8,6 +8,7 @@
 module HStream.IO.Storage where
 
 import qualified Data.Aeson                as J
+import           Data.Foldable             (foldrM)
 import qualified Data.Text                 as T
 import qualified Data.Text.Lazy            as LT
 import qualified Data.Text.Lazy.Encoding   as LTE
@@ -15,7 +16,6 @@ import           HStream.IO.Types
 import           HStream.IO.ZkKv           (ZkKv (..))
 import qualified HStream.Server.HStreamApi as API
 import           ZooKeeper.Types
-import           Data.Foldable             (foldrM)
 
 data Storage where
     Storage :: Kv kv => {

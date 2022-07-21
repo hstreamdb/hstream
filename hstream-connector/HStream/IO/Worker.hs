@@ -8,8 +8,12 @@
 module HStream.IO.Worker where
 
 import qualified Control.Concurrent        as C
+import           Control.Exception         (catch, throwIO)
+import           Control.Monad             (forM_, unless)
 import qualified Data.Aeson                as J
 import qualified Data.HashMap.Strict       as HM
+import           Data.IORef                (IORef, newIORef, readIORef)
+import qualified Data.IORef                as C
 import qualified Data.Text                 as T
 import qualified Data.UUID                 as UUID
 import qualified Data.UUID.V4              as UUID
@@ -19,27 +23,24 @@ import           HStream.IO.Types
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
-import Data.IORef (IORef, newIORef, readIORef)
-import Control.Monad (forM_)
-import Control.Exception (catch)
-import qualified Data.IORef as C
 
 data Worker
   = Worker
-    { kvConfig :: KvConfig
-    , hsConfig :: HStreamConfig
-    , tasksPath :: T.Text
-    , ioTasksM :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
-    , storage  :: S.Storage
+    { kvConfig   :: KvConfig
+    , hsConfig   :: HStreamConfig
+    , tasksPath  :: T.Text
+    , checkNode  :: T.Text -> IO Bool
+    , ioTasksM   :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
+    , storage    :: S.Storage
     , monitorTid :: IORef C.ThreadId
     }
 
-newWorker :: KvConfig -> HStreamConfig -> IO Worker
-newWorker kvCfg hsConfig = do
+newWorker :: KvConfig -> HStreamConfig -> (T.Text -> IO Bool) -> IO Worker
+newWorker kvCfg hsConfig checkNode = do
   let (ZkKvConfig zk _ _) = kvCfg
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
   -- tmp tasksPath
-  worker <- Worker kvCfg hsConfig "/tmp/io/tasks"
+  worker <- Worker kvCfg hsConfig "/tmp/io/tasks" checkNode
     <$> C.newMVar HM.empty
     <*> S.newZkStorage zk
     <*> newIORef undefined
@@ -56,6 +57,7 @@ monitor :: Worker -> IO ()
 monitor worker@Worker{..} = do
   catch monitorTasks $ \case
     StopWorkerException -> pure ()
+  C.threadDelay 3000000
   monitor worker
   where
     monitorTasks = do
@@ -69,6 +71,7 @@ createIOTaskFromSql worker@Worker{..} sql = do
            <> ", connector type: " <> Log.buildText cType
            <> ", connector name: " <> Log.buildText cName
            <> ", config: "         <> Log.buildString (show cfg)
+  checkNode_ worker cName
   taskId <- UUID.toText <$> UUID.nextRandom
   let taskType = if cType == "SOURCE" then SOURCE else SINK
       (image, extraOptions) = makeImage taskType cTarget
@@ -110,22 +113,30 @@ listIOTasks Worker{..} = S.listIOTasks storage
 
 stopIOTask :: Worker -> T.Text -> Bool -> Bool-> IO ()
 stopIOTask worker name ifIsRunning force = do
+  checkNode_ worker name
   ioTask <- getIOTask worker name
   IOTask.stopIOTask ioTask ifIsRunning force
 
 startIOTask :: Worker -> T.Text -> IO ()
 startIOTask worker name = do
+  checkNode_ worker name
   getIOTask worker name >>= IOTask.startIOTask
 
 getIOTask :: Worker -> T.Text -> IO IOTask.IOTask
 getIOTask Worker{..} name = do
   ioTasks <- C.readMVar ioTasksM
   case HM.lookup name ioTasks of
-    Nothing -> fail "connector not exists"
+    Nothing     -> fail "connector not exists"
     Just ioTask -> return ioTask
 
 deleteIOTask :: Worker -> T.Text -> IO ()
 deleteIOTask worker@Worker{..} taskName = do
+  checkNode_ worker taskName
   stopIOTask worker taskName True False
   S.deleteIOTask storage taskName
   C.modifyMVar_ ioTasksM $ return . HM.delete taskName
+
+checkNode_ :: Worker -> T.Text -> IO ()
+checkNode_ Worker{..} name = do
+  res <- checkNode name
+  unless res . throwIO $ WrongNodeException "send HStream IO request to wrong node"

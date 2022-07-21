@@ -5,16 +5,16 @@ module HStream.IO.Types where
 import qualified Data.Aeson                 as J
 import qualified Data.Text                  as T
 
+import           Control.Exception          (Exception)
 import qualified Data.Aeson.TH              as JT
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import qualified Data.HashMap.Strict        as HM
 import           Data.Maybe                 (isJust)
+import           GHC.Base                   (join)
+import qualified HStream.Server.HStreamApi  as API
+import           HStream.Utils              (pairListToStruct, textToMaybeValue)
 import           ZooKeeper.Types            (ZHandle)
-import qualified HStream.Server.HStreamApi as API
-import           HStream.Utils (textToMaybeValue, pairListToStruct)
-import GHC.Base (join)
-import           Control.Exception                (Exception)
 
 data IOTaskType = SOURCE | SINK
   deriving (Show, Eq)
@@ -102,8 +102,10 @@ mkConnector name status = API.Connector. Just $
 
 makeImage :: IOTaskType -> T.Text -> (T.Text, HM.HashMap T.Text J.Value)
 makeImage SOURCE "mysql" = ("hstream/source-debezium", HM.fromList [("source", "mysql")])
-makeImage SOURCE "postgres" = ("hstream/source-debezium", HM.fromList [("source", "postgres")])
+makeImage SOURCE "postgresql" = ("hstream/source-debezium", HM.fromList [("source", "postgresql")])
 makeImage SOURCE "sql-server" = ("hstream/source-debezium", HM.fromList [("source", "sql-server")])
+makeImage SINK   "mysql" = ("hstream/sink-jdbc", HM.fromList [("sink", "mysql")])
+makeImage SINK   "postgresql" = ("hstream/sink-jdbc", HM.fromList [("sink", "postgresql")])
 makeImage _ _ = error "unimplemented"
 
 -- doubleBind, for nested Monads
@@ -119,3 +121,7 @@ instance Exception StopWorkerException
 newtype CheckFailedException = CheckFailedException T.Text
   deriving Show
 instance Exception CheckFailedException
+
+newtype WrongNodeException = WrongNodeException T.Text
+  deriving Show
+instance Exception WrongNodeException

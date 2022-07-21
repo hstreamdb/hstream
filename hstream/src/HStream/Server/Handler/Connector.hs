@@ -7,40 +7,23 @@
 
 module HStream.Server.Handler.Connector where
 
-import           Control.Concurrent               (killThread, readMVar)
 import           Control.Exception                (Exception, Handler (..),
                                                    throwIO)
-import           Control.Monad                    (unless, void, when)
-import           Data.Functor                     ((<&>))
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Database.MySQL.Base              (ERRException)
-import           Network.GRPC.HighLevel.Generated
-import qualified Z.Data.CBytes                    as CB
-import           Z.IO.Time                        (SystemTime (MkSystemTime),
-                                                   getSystemTime')
-
-import qualified Data.HashMap.Strict              as HM
-import           HStream.Connector.HStore         (transToStreamName)
-import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
-                                                   StreamNotExist (..),
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    mkStatusDetails, setRespType)
-import           HStream.Server.Handler.Common    (handleCreateSinkConnector)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import qualified HStream.SQL.Codegen              as CodeGen
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToText,
-                                                   mkServerErrResp, returnResp,
-                                                   textToCBytes)
+                                                   mkServerErrResp, returnResp)
+import           Network.GRPC.HighLevel.Generated
 
 createConnectorHandler
   :: ServerContext

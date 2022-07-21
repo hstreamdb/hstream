@@ -10,12 +10,12 @@ module HStream.Utils.Format
   , formatStatus
   ) where
 
-import qualified Data.Aeson.Text                  as A
 import qualified Data.Aeson                       as A
+import qualified Data.Aeson.Text                  as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
-import qualified Data.Map.Strict                  as M
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
 import           Data.Time.Clock                  (NominalDiffTime)
@@ -31,7 +31,8 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
                                                    iso8061DateFormat)
 
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Utils.Converter          (valueToJsonValue, structToJsonObject)
+import           HStream.Utils.Converter          (structToJsonObject,
+                                                   valueToJsonValue)
 
 --------------------------------------------------------------------------------
 

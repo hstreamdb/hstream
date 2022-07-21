@@ -7,22 +7,23 @@
 
 module HStream.IO.IOTask where
 
-import qualified Control.Concurrent   as C
-import qualified Control.Exception    as E
-import           Control.Monad        (unless, when, void, msum)
-import qualified Data.Aeson           as J
-import qualified Data.ByteString.Lazy as BSL
-import           Data.IORef           (IORef, newIORef, readIORef, writeIORef)
-import qualified Data.Text            as T
-import qualified HStream.IO.Storage   as S
-import           HStream.IO.Types
-import qualified HStream.Logger       as Log
-import           RIO.Directory        (createDirectoryIfMissing)
-import qualified System.Process.Typed as TP
-import GHC.IO.Handle.Types (Handle)
-import qualified HStream.IO.Messages as MSG
-import GHC.IO.Handle (hFlush)
+import qualified Control.Concurrent         as C
+import qualified Control.Exception          as E
+import           Control.Monad              (msum, unless, void, when)
+import qualified Data.Aeson                 as J
+import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
+import           Data.IORef                 (IORef, newIORef, readIORef,
+                                             writeIORef)
+import qualified Data.Text                  as T
+import           GHC.IO.Handle              (hFlush)
+import           GHC.IO.Handle.Types        (Handle)
+import qualified HStream.IO.Messages        as MSG
+import qualified HStream.IO.Storage         as S
+import           HStream.IO.Types
+import qualified HStream.Logger             as Log
+import           RIO.Directory              (createDirectoryIfMissing)
+import qualified System.Process.Typed       as TP
 
 data IOTask = IOTask
   { taskId   :: T.Text,
@@ -135,7 +136,7 @@ checkProcess ioTask@IOTask{..} = do
         Just tp <- readIORef process'
         TP.getExitCode tp >>= \case
           Nothing -> return status
-          Just _ -> return FAILED
+          Just _  -> return FAILED
       _ -> return status
 
 checkIOTask :: IOTask -> IO ()

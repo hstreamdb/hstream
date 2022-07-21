@@ -43,6 +43,7 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult,
                                                    mkGRPCClientConf,
+                                                   serverNodeToSocketAddr,
                                                    setupSigsegvHandler)
 
 data UserConfig = UserConfig
@@ -140,6 +141,13 @@ commandExec ctx@ClientContext{..} xs = case words xs of
           -> execute ctx $ dropAction checkIfExists dropObj
         InsertPlan sName insertType payload
           -> executeInsert ctx sName $ insertIntoStream sName insertType payload
+        ConnectorWritePlan name -> do
+          addr <- readMVar currentServer
+          lookupConnector ctx addr name >>= \case
+            Nothing -> putStrLn "lookupConnector failed"
+            Just node -> do
+              withGRPCClient (mkGRPCClientConf (serverNodeToSocketAddr node))
+                (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (mkGRPCClientConf addr)

@@ -2,9 +2,9 @@
 
 module HStream.IO.Messages where
 
-import qualified Data.Aeson                 as J
-import qualified Data.Text                  as T
-import qualified Data.Aeson.TH              as JT
+import qualified Data.Aeson    as J
+import qualified Data.Aeson.TH as JT
+import qualified Data.Text     as T
 
 
 data InputCommand
@@ -16,7 +16,7 @@ instance J.ToJSON InputCommand where
 
 data CheckResult
   = CheckResult
-    { result :: Bool
+    { result  :: Bool
     , message :: T.Text
     }
 

@@ -2,9 +2,11 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NoImplicitPrelude   #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData          #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module HStream.SQL.Codegen where
 
@@ -571,3 +573,15 @@ mapAlias (SVSelectFields xs) res = HM.fromList
       | otherwise =
           (snd . fromJust) (T.uncons name ) & \name' ->
           (fst . fromJust) (T.unsnoc name')
+
+--------------------------------------------------------------------------------
+
+pattern ConnectorWritePlan :: T.Text -> HStreamPlan
+pattern ConnectorWritePlan name <- (getLookupConnectorName -> Just name)
+
+getLookupConnectorName :: HStreamPlan -> Maybe T.Text
+getLookupConnectorName (CreateConnectorPlan _ name _ _ _)        = Just name
+getLookupConnectorName (PausePlan (PauseObjectConnector name))   = Just name
+getLookupConnectorName (ResumePlan (ResumeObjectConnector name)) = Just name
+getLookupConnectorName (DropPlan _ (DConnector name))            = Just name
+getLookupConnectorName _                                         = Nothing
