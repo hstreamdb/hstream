@@ -9,20 +9,24 @@ module HStream.Server.Core.Stream
   , append
   , appendStream
   , append0Stream
-  , readShard
   , listShards
+  , createShardReader
+  , deleteShardReader
+  , readShard
   , FoundSubscription (..)
   , StreamExists (..)
   , RecordTooBig (..)
+  , ShardReaderExists (..)
+  , ShardReaderNotExists (..)
   ) where
 
 import           Control.Concurrent                (MVar, modifyMVar,
-                                                    modifyMVar_)
-import           Control.Concurrent.STM            (readTVarIO)
+                                                    modifyMVar_, newMVar,
+                                                    putMVar, takeMVar, withMVar)
+import           Control.Concurrent.STM            (TVar, readTVarIO)
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throwIO)
-import           Control.Monad                     (foldM, forM, unless, void,
-                                                    when)
+import           Control.Monad                     (foldM, forM, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
 import qualified Data.HashMap.Strict               as HM
@@ -35,7 +39,9 @@ import           GHC.Stack                         (HasCallStack)
 import           Proto3.Suite                      (Enumerated (Enumerated))
 import qualified Z.Data.CBytes                     as CB
 
-import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
+import           Data.Word                         (Word32)
+import           HStream.Common.ConsistentHashing  (HashRing,
+                                                    getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
 import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
@@ -44,7 +50,6 @@ import           HStream.Server.Exception          (InvalidArgument (..),
 import qualified HStream.Server.HStreamApi         as API
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
-import           HStream.Server.ReaderPool         (getReader, putReader)
 import           HStream.Server.Shard              (Shard (..), cBytesToKey,
                                                     createShard, devideKeySpace,
                                                     hashShardKey,
@@ -163,39 +168,6 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
  where
    streamName = textToCBytes sName
 
-readShard
-  :: HasCallStack
-  => ServerContext
-  -> API.ReadShardRequest
-  -> IO (V.Vector API.ReceivedRecord)
-readShard ServerContext{..} API.ReadShardRequest{..} = do
-  logId <- S.getUnderlyingLogId scLDClient streamId (Just shard)
-  startLSN <- getStartLSN logId
-
-  bracket
-    (getReader readerPool)
-    (flip S.readerStopReading logId >> putReader readerPool)
-    (\reader -> readData reader logId startLSN)
-  where
-    streamId = transToStreamName readShardRequestStreamName
-    shard = textToCBytes readShardRequestShardId
-
-    getStartLSN :: S.C_LogID -> IO S.LSN
-    getStartLSN logId =
-      case fromJust . API.shardOffsetOffset . fromJust $ readShardRequestOffset of
-        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
-        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
-        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
-        _                                                                                 -> error "wrong shard offset"
-
-    readData :: S.LDReader -> S.C_LogID -> S.LSN -> IO (V.Vector API.ReceivedRecord)
-    readData reader logId startLSN = do
-      void $ S.readerStartReading reader logId startLSN (startLSN + fromIntegral readShardRequestMaxRead)
-      S.readerSetTimeout reader 0
-      records <- S.readerRead reader (fromIntegral readShardRequestMaxRead)
-      let receivedRecordsVecs = decodeRecordBatch <$> records
-      return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
-
 --------------------------------------------------------------------------------
 
 append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
@@ -249,6 +221,52 @@ getShardId client shardTable sName partitionKey = do
 
 --------------------------------------------------------------------------------
 
+createShardReader
+  :: HasCallStack
+  => ServerContext
+  -> API.CreateShardReaderRequest
+  -> IO API.CreateShardReaderResponse
+createShardReader ServerContext{..} API.CreateShardReaderRequest{..} = do
+  checkReaderReq loadBalanceHashRing createShardReaderRequestReaderId serverID
+  modifyMVar_ shardReaderMap $ \mp -> do
+    case HM.lookup createShardReaderRequestReaderId mp of
+      Just _ -> throwIO ShardReaderExists
+      Nothing -> do
+        startLSN <- getStartLSN createShardReaderRequestShardId
+        reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
+        S.readerStartReading reader createShardReaderRequestShardId startLSN S.LSN_MAX
+        S.readerSetTimeout reader (fromIntegral createShardReaderRequestTimeout)
+        readerMvar <- newMVar reader
+        return (HM.insert createShardReaderRequestReaderId readerMvar mp)
+  return API.CreateShardReaderResponse
+    { API.createShardReaderResponseStreamName  = createShardReaderRequestStreamName
+    , API.createShardReaderResponseShardId     = createShardReaderRequestShardId
+    , API.createShardReaderResponseShardOffset = createShardReaderRequestShardOffset
+    , API.createShardReaderResponseReaderId    = createShardReaderRequestReaderId
+    , API.createShardReaderResponseTimeout     = createShardReaderRequestTimeout
+    }
+ where
+   ldReaderBufferSize = 10
+
+   getStartLSN :: S.C_LogID -> IO S.LSN
+   getStartLSN logId =
+     case fromJust . API.shardOffsetOffset . fromJust $ createShardReaderRequestShardOffset of
+       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
+       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
+       API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
+       _                                                                                 -> error "wrong shard offset"
+
+deleteShardReader
+  :: ServerContext
+  -> API.DeleteShardReaderRequest
+  -> IO ()
+deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
+  checkReaderReq loadBalanceHashRing deleteShardReaderRequestReaderId serverID
+  modifyMVar_ shardReaderMap $ \mp -> do
+    case HM.lookup deleteShardReaderRequestReaderId mp of
+      Nothing -> throwIO ShardReaderNotExists
+      Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
+
 listShards
   :: HasCallStack
   => ServerContext
@@ -287,6 +305,34 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
      shardEpoch        <- read . CB.unpack <$> M.lookup epoch mp
      return (startHashRangeKey, endHashRangeKey, shardEpoch)
 
+readShard
+  :: HasCallStack
+  => ServerContext
+  -> API.ReadShardRequest
+  -> IO (V.Vector API.ReceivedRecord)
+readShard ServerContext{..} API.ReadShardRequest{..} = do
+  checkReaderReq loadBalanceHashRing readShardRequestReaderId serverID
+  bracket getReader putReader readRecords
+ where
+   getReader = withMVar shardReaderMap $ \mp -> do
+     case HM.lookup readShardRequestReaderId mp of
+       Nothing         -> throwIO ShardReaderNotExists
+       Just readerMvar -> takeMVar readerMvar
+   putReader reader = withMVar shardReaderMap $ \mp -> do
+     case HM.lookup readShardRequestReaderId mp of
+       Nothing -> error "can't put reader back to shardReaderMap, something wrong."
+       Just readerMvar -> putMVar readerMvar reader
+   readRecords reader = do
+     records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
+     let receivedRecordsVecs = decodeRecordBatch <$> records
+     return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+
+checkReaderReq :: TVar HashRing -> Text -> Word32 -> IO ()
+checkReaderReq loadBalanceHashRing readerId serverID = do
+  hashRing <- readTVarIO loadBalanceHashRing
+  when (getAllocatedNodeId hashRing readerId == serverID) $
+    throwIO $ WrongServer "Send request to wrong server."
+
 --------------------------------------------------------------------------------
 
 data FoundSubscription = FoundSubscription
@@ -306,3 +352,11 @@ newtype ShardKeyNotFound = ShardKeyNotFound S.C_LogID
   deriving (Show)
 instance Exception ShardKeyNotFound where
   displayException (ShardKeyNotFound shardId) = "Can't get shardKey for shard " <> show shardId
+
+data ShardReaderNotExists = ShardReaderNotExists
+  deriving (Show)
+instance Exception ShardReaderNotExists
+
+data ShardReaderExists = ShardReaderExists
+  deriving (Show)
+instance Exception ShardReaderExists

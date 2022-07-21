@@ -66,6 +66,7 @@ data ServerContext = ServerContext
     -- ^ streamName -> ShardMap, use to manipulate shards
   , shardTable               :: MVar (HM.HashMap Text ShardDict)
     -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
+  , shardReaderMap           :: MVar (HM.HashMap Text (MVar S.LDReader))
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
