@@ -50,9 +50,12 @@ handlers serverContext@ServerContext{..} =
 
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
 
-        hstreamApiReadShard = readShardHandler serverContext,
         -- Shards
         hstreamApiListShards = listShardsHandler serverContext,
+        -- Reader
+        hstreamApiCreateShardReader = createShardReaderHandler serverContext,
+        hstreamApiDeleteShardReader = deleteShardReaderHandler serverContext,
+        hstreamApiReadShard         = readShardHandler serverContext,
 
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
@@ -84,6 +87,7 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDescribeCluster = describeClusterHandler serverContext,
         hstreamApiLookupStream = lookupStreamHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
+        hstreamApiLookupShardReader = lookupShardReaderHandler serverContext,
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }

@@ -4,6 +4,7 @@ module HStream.Server.Core.Cluster
   ( describeCluster
   , lookupStream
   , lookupSubscription
+  , lookupShardReader
   ) where
 
 import           Control.Concurrent.STM           (readTVarIO)
@@ -73,6 +74,16 @@ lookupSubscription ServerContext{..} req@LookupSubscriptionRequest{
   return $ LookupSubscriptionResponse
     { lookupSubscriptionResponseSubscriptionId = subId
     , lookupSubscriptionResponseServerNode     = Just theNode
+    }
+
+lookupShardReader :: ServerContext -> LookupShardReaderRequest -> IO LookupShardReaderResponse
+lookupShardReader ServerContext{..} req@LookupShardReaderRequest{lookupShardReaderRequestReaderId=readerId} = do
+  Log.info $ "receive lookupShardReader request: " <> Log.buildString' req
+  hashRing <- readTVarIO loadBalanceHashRing
+  theNode  <- getResNode hashRing readerId scAdvertisedListenersKey
+  return $ LookupShardReaderResponse
+    { lookupShardReaderResponseReaderId    = readerId
+    , lookupShardReaderResponseServerNode  = Just theNode
     }
 
 -------------------------------------------------------------------------------

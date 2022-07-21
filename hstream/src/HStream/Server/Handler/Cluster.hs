@@ -7,6 +7,7 @@ module HStream.Server.Handler.Cluster
   ( describeClusterHandler
   , lookupStreamHandler
   , lookupSubscriptionHandler
+  , lookupShardReaderHandler
   ) where
 
 import           Network.GRPC.HighLevel.Generated
@@ -36,3 +37,9 @@ lookupSubscriptionHandler
   -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
 lookupSubscriptionHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupSubscription sc req
+
+lookupShardReaderHandler :: ServerContext
+                    -> ServerRequest 'Normal LookupShardReaderRequest LookupShardReaderResponse
+                    -> IO (ServerResponse 'Normal LookupShardReaderResponse)
+lookupShardReaderHandler sc (ServerNormalRequest _meta req) =
+  defaultExceptionHandle $ returnResp =<< C.lookupShardReader sc req

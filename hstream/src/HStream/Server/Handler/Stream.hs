@@ -12,6 +12,8 @@ module HStream.Server.Handler.Stream
   , listShardsHandler
   , appendHandler
   , append0Handler
+  , createShardReaderHandler
+  , deleteShardReaderHandler
   , readShardHandler
   )
 where
@@ -23,6 +25,8 @@ import           Network.GRPC.HighLevel.Generated
 import           Control.Concurrent.STM           (readTVarIO)
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
+import           HStream.Server.Core.Stream       (ShardReaderExists (..),
+                                                   ShardReaderNotExists (..))
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -104,6 +108,7 @@ append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@Appen
     inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
+--------------------------------------------------------------------------------
 
 listShardsHandler
   :: ServerContext
@@ -113,11 +118,27 @@ listShardsHandler sc (ServerNormalRequest _metadata request) = do
   Log.debug "Receive List Shards Request"
   C.listShards sc request >>= returnResp . ListShardsResponse
 
+createShardReaderHandler
+  :: ServerContext
+  -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
+  -> IO (ServerResponse 'Normal CreateShardReaderResponse)
+createShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+  Log.debug "Receive Create ShardReader Request"
+  C.createShardReader sc request >>= returnResp
+
+deleteShardReaderHandler
+  :: ServerContext
+  -> ServerRequest 'Normal DeleteShardReaderRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+  Log.debug "Receive Delete ShardReader Request"
+  C.deleteShardReader sc request >> returnResp Empty
+
 readShardHandler
   :: ServerContext
   -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
   -> IO (ServerResponse 'Normal ReadShardResponse)
-readShardHandler sc (ServerNormalRequest _metadata request) = readShardExceptionHandle $ do
+readShardHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
   Log.debug $ "Receive read shard Request: " <> Log.buildString (show request)
   C.readShard sc request >>= returnResp . ReadShardResponse
 
@@ -164,8 +185,12 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
        return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
 
-readShardExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-readShardExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  [ Handler (\(err :: Store.NOTFOUND) ->
-      return (StatusUnavailable, mkStatusDetails err))
+shardReaderExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+shardReaderExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  [ Handler (\(err :: ShardReaderExists) ->
+      return (StatusAlreadyExists, mkStatusDetails err)),
+    Handler (\(err :: ShardReaderNotExists) ->
+      return (StatusFailedPrecondition, mkStatusDetails err)),
+    Handler (\(err :: WrongServer) ->
+      return (StatusFailedPrecondition, mkStatusDetails err))
   ] ++ defaultHandlers

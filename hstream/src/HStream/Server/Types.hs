@@ -25,7 +25,6 @@ import qualified HStream.IO.Worker                as IO
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
-import           HStream.Server.ReaderPool        (ReaderPool)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
@@ -61,11 +60,11 @@ data ServerContext = ServerContext
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
   , serverOpts               :: ServerOpts
-  , readerPool               :: ReaderPool
   , shardInfo                :: MVar (HM.HashMap Text SharedShardMap)
     -- ^ streamName -> ShardMap, use to manipulate shards
   , shardTable               :: MVar (HM.HashMap Text ShardDict)
     -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
+  , shardReaderMap           :: MVar (HM.HashMap Text (MVar S.LDReader))
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
