@@ -5,8 +5,10 @@ module HStream.Gossip.Types
   , module G
   ) where
 
+import           Control.Concurrent             (MVar)
 import           Control.Concurrent.Async       (Async)
 import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
+import           Control.Exception              (Exception)
 import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
 import qualified Data.Map                       as Map
@@ -39,6 +41,7 @@ data ServerStatus = ServerStatus
   , latestMessage :: TVar G.StateMessage
   }
 
+data InitType = User | Gossip
 type ServerList    = (Epoch, Map ServerId ServerStatus)
 type Workers       = Map ServerId (Async ())
 type BroadcastPool = [(G.Message, Word32)]
@@ -69,6 +72,8 @@ data ServerState = OK | Suspicious
 data GossipContext = GossipContext
   { serverSelf    :: I.ServerNode
   , eventHandlers :: EventHandlers
+  , seeds         :: [(ByteString, Int)]
+  , numInited     :: Maybe (TVar Int)
   , serverList    :: TVar ServerList
   , actionChan    :: TChan RequestAction
   , statePool     :: TQueue G.StateMessage
@@ -80,6 +85,8 @@ data GossipContext = GossipContext
   , eventLpTime   :: TVar Word32
   , deadServers   :: TVar DeadServers
   , randomGen     :: StdGen
+  , clusterInited :: MVar InitType
+  , clusterReady  :: MVar ()
   , gossipOpts    :: GossipOpts
   }
 
@@ -212,3 +219,9 @@ serverID = option auto
   $  long "server-id"
   <> metavar "UINT32"
   <> help "ID of the hstream server node"
+
+--------------------------------------------------------------------------------
+
+data FailedToStart = FailedToStart
+  deriving (Show, Eq)
+instance Exception FailedToStart

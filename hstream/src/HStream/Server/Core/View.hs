@@ -6,7 +6,6 @@ import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
 import           GHC.Stack                   (HasCallStack)
 
-import qualified HStream.Connector.HStore    as HCS
 import           HStream.Server.Core.Common  (deleteStoreStream)
 import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Server.Persistence  as P
@@ -17,7 +16,7 @@ import           HStream.Utils               (TaskStatus (..), cBytesToText)
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc name checkIfExist = do
   atomicModifyIORef' P.groupbyStores (\hm -> (HM.delete name hm, ()))
-  deleteStoreStream sc (HCS.transToStreamName name) checkIfExist
+  deleteStoreStream sc (transToStreamName name) checkIfExist
 
 hstreamQueryToView :: P.PersistentQuery -> API.View
 hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _ _) =

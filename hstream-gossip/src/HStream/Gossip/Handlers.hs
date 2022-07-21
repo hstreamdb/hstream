@@ -23,7 +23,7 @@ import qualified Network.GRPC.HighLevel.Generated as GRPC
 import           System.Timeout                   (timeout)
 
 import           HStream.Gossip.Core              (addToServerList,
-                                                   handleEventMessage)
+                                                   broadCastUserEvent)
 import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
                                                    Cluster (..), Empty (..),
                                                    Gossip (..),
@@ -34,15 +34,13 @@ import           HStream.Gossip.HStreamGossip     (Ack (..), CliJoinReq (..),
                                                    SeenEvents (SeenEvents),
                                                    UserEvent (..),
                                                    hstreamGossipClient)
-import           HStream.Gossip.Types             (EventMessage (..),
-                                                   GossipContext (..),
+import           HStream.Gossip.Types             (GossipContext (..),
                                                    GossipOpts (..),
                                                    RequestAction (..),
                                                    ServerState (OK),
                                                    ServerStatus (..))
 import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (broadcast, getMessagesToSend,
-                                                   incrementTVar,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf',
                                                    returnErrResp, returnResp)
@@ -107,10 +105,13 @@ joinHandler :: GossipContext
 joinHandler GossipContext{..} (ServerNormalRequest _metadata JoinReq {..}) = do
   case joinReqNew of
     Nothing -> error "no node info in join request"
-    Just node -> do
-      atomically $ writeTQueue statePool $ T.GJoin node
+    Just node@I.ServerNode{..} -> do
       sMap' <- snd <$> readTVarIO serverList
-      returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+      case Map.lookup serverNodeId sMap' of
+        Nothing | serverNodeId /= I.serverNodeId serverSelf -> do
+          atomically $ writeTQueue statePool $ T.GJoin node
+          returnResp . JoinResp . V.fromList $ serverSelf : (serverInfo <$> Map.elems sMap')
+        _  -> returnErrResp StatusAlreadyExists "Node with the same id already exists"
 
 gossipHandler :: GossipContext -> ServerRequest 'Normal Gossip Empty -> IO (ServerResponse 'Normal Empty)
 gossipHandler GossipContext{..} (ServerNormalRequest _metadata Gossip {..}) = do
@@ -134,10 +135,8 @@ cliClusterHandler GossipContext{..} _serverReq = do
   returnResp Cluster {clusterMembers = members}
 
 cliUserEventHandler :: GossipContext -> ServerRequest 'Normal UserEvent Empty -> IO (ServerResponse 'Normal Empty)
-cliUserEventHandler gc@GossipContext{..} (ServerNormalRequest _metadata UserEvent {..}) = do
-  lpTime <- atomically $ incrementTVar eventLpTime
-  let eventMessage = EventMessage userEventName lpTime userEventPayload
-  handleEventMessage gc eventMessage
+cliUserEventHandler gc (ServerNormalRequest _metadata UserEvent {..}) = do
+  broadCastUserEvent gc userEventName userEventPayload
   returnResp Empty
 
 cliGetSeenEventsHandler :: GossipContext -> ServerRequest 'Normal Empty SeenEvents -> IO (ServerResponse 'Normal SeenEvents)

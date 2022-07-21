@@ -50,15 +50,12 @@ library
     HStream.SQL.AST
     HStream.SQL.Codegen
     HStream.SQL.Exception
-    HStream.SQL.ExecPlan
     HStream.SQL.Internal.Codegen
     HStream.SQL.Internal.Validate
     HStream.SQL.Parse
 
   other-modules:
-    HStream.SQL.Codegen.Boilerplate
     HStream.SQL.ErrM
-    HStream.SQL.ExecPlan.Utils
     HStream.SQL.Extra
     HStream.SQL.Lex
     HStream.SQL.Par
@@ -74,9 +71,9 @@ library
     , binary
     , bytestring            ^>=0.10
     , clickhouse-haskell
+    , diff-flow
     , extra
     , hstream-common
-    , hstream-processing
     , mysql-haskell
     , proto3-suite
     , rio
@@ -130,7 +127,6 @@ test-suite hstream-sql-test
     , containers
     , hspec
     , hstream-common
-    , hstream-processing
     , hstream-sql
     , HUnit
     , random                ^>=1.2

@@ -46,20 +46,24 @@ library
     HStream.Client.Execute
     HStream.Client.Gadget
     HStream.Client.Internal
-    HStream.Client.Type
+    HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.Core.Common
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
+    HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.InternalHandler
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
+    HStream.Server.ReaderPool
+    HStream.Server.Shard
     HStream.Server.Types
 
   other-modules:
-    HStream.Server.Core.Common
+    HStream.Server.Core.Cluster
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View
@@ -89,7 +93,9 @@ library
     , bytestring
     , clickhouse-haskell
     , containers
+    , cryptonite
     , deepseq
+    , diff-flow
     , directory
     , grpc-haskell
     , grpc-haskell-core
@@ -100,9 +106,9 @@ library
     , hstream-common-stats
     , hstream-connector
     , hstream-gossip
-    , hstream-processing
     , hstream-sql
     , hstream-store
+    , memory
     , microlens
     , microlens-aeson
     , mysql-haskell
@@ -145,9 +151,11 @@ executable hstream-server
   import:           shared-properties
   main-is:          app/server.hs
   build-depends:
+    , async
     , base
     , bytestring
     , containers
+    , cryptonite
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
@@ -157,6 +165,7 @@ executable hstream-server
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
+    , memory
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -174,7 +183,7 @@ executable hstream-server
   ghc-options:
     -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
 
-executable hstream-client
+executable hstream
   import:           shared-properties
   main-is:          app/client.hs
   build-depends:
@@ -186,6 +195,7 @@ executable hstream-client
     , grpc-haskell-core
     , haskeline
     , hstream
+    , hstream-admin
     , hstream-common
     , hstream-common-stats
     , hstream-sql
@@ -215,6 +225,7 @@ test-suite hstream-test
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunStoreAdminSpec
+    HStream.ShardSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
 
@@ -237,6 +248,7 @@ test-suite hstream-test
     , io-streams
     , mysql-haskell
     , proto3-suite
+    , QuickCheck
     , random                ^>=1.2
     , scientific
     , text

@@ -7,9 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler
-  (
-    handlers,
-    -- routineForSubs
+  ( handlers
   )
 where
 
@@ -51,6 +49,11 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
 
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
+
+        hstreamApiReadShard = readShardHandler serverContext,
+        -- Shards
+        hstreamApiListShards = listShardsHandler serverContext,
+
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
@@ -58,13 +61,12 @@ handlers serverContext@ServerContext{..} =
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
         hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
-        hstreamApiCreateQueryStream = createQueryStreamHandler serverContext,
         -- FIXME:
-        hstreamApiCreateQuery = createQueryHandler serverContext,
         hstreamApiGetQuery = getQueryHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,
+
         hstreamApiCreateConnector = createConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
@@ -73,7 +75,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiResumeConnector = resumeConnectorHandler serverContext,
         hstreamApiLookupConnector = lookupConnectorHandler serverContext,
 
-        hstreamApiCreateView = createViewHandler serverContext,
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,

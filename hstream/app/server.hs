@@ -7,7 +7,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Concurrent               (MVar, forkIO, newMVar,
-                                                   swapMVar)
+                                                   readMVar, swapMVar)
+import           Control.Concurrent.Async         (concurrently_)
 import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Monad                    (forM_, void, when)
@@ -76,13 +77,13 @@ app config@ServerOpts{..} = do
                        , serverNodeGossipPort = fromIntegral _serverInternalPort
                        , serverNodeAdvertisedListeners = advertisedListenersToPB _serverAdvertisedListeners
                        }
-    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode
-    void $ startGossip serverHostBS _seedNodes gossipContext
+    gossipContext <- initGossipContext defaultGossipOpts mempty serverNode _seedNodes
 
     serverContext <- initializeServer config gossipContext zk serverState
     void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-    serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners
+    concurrently_ (startGossip serverHostBS gossipContext)
+      (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
 
 serve :: ByteString
       -> Word16
@@ -90,7 +91,7 @@ serve :: ByteString
       -> ServerContext
       -> AdvertisedListeners
       -> IO ()
-serve host port tlsConfig sc listeners = do
+serve host port tlsConfig sc@ServerContext{..} listeners = do
   Log.i "************************"
   putStrLn [r|
    _  _   __ _____ ___ ___  __  __ __
@@ -101,7 +102,9 @@ serve host port tlsConfig sc listeners = do
   |]
   Log.i "*************************"
 
-  let serverOnStarted = Log.info $ "Server is started on port " <> Log.buildInt port
+  let serverOnStarted = do
+        Log.info $ "Server is started on port " <> Log.buildInt port <> ", waiting for cluster to get ready"
+        void $ forkIO $ void (readMVar (clusterReady gossipContext)) >> Log.i "Cluster is ready!"
   let grpcOpts =
         GRPC.defaultServiceOptions
         { GRPC.serverHost = GRPC.Host host

@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE StrictData        #-}
 
-module HStream.Processing.Type
+module HStream.Connector.Type
   ( Timestamp,
     StreamName,
     Offset (..),
@@ -9,6 +9,7 @@ module HStream.Processing.Type
     SinkRecord (..),
     TimestampedKey (..),
     mkTimestampedKey,
+    TemporalFilter (..)
   )
 where
 
@@ -16,7 +17,7 @@ import           RIO
 import qualified RIO.ByteString.Lazy as BL
 import qualified RIO.Text            as T
 
-type Timestamp = Int64
+type Timestamp = Int64 -- ms
 
 type StreamName = T.Text
 
@@ -38,7 +39,7 @@ data SinkRecord = SinkRecord
     snkKey       :: Maybe BL.ByteString,
     snkValue     :: BL.ByteString,
     snkTimestamp :: Timestamp
-  }
+  } deriving Show
 
 data TimestampedKey k = TimestampedKey
   { tkKey       :: k,
@@ -51,3 +52,8 @@ mkTimestampedKey key timestamp =
     { tkKey = key,
       tkTimestamp = timestamp
     }
+
+data TemporalFilter = NoFilter
+                    | Tumbling Timestamp
+                    | Hopping Timestamp Timestamp
+                    | Sliding Timestamp

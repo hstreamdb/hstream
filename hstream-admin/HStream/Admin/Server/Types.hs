@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module HStream.Admin.Server.Types where
 
 import           Data.Aeson                (FromJSON (..), ToJSON (..))
@@ -14,6 +16,7 @@ import           Z.IO.Network.SocketAddr   (PortNumber)
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Utils             as U
+import           Proto3.Suite              (Enumerated (Enumerated))
 
 -------------------------------------------------------------------------------
 
@@ -93,6 +96,7 @@ data AdminCommand
   | AdminSubscriptionCommand SubscriptionCommand
   | AdminViewCommand ViewCommand
   | AdminStatusCommand
+  | AdminInitCommand
   deriving (Show)
 
 adminCommandParser :: O.Parser AdminCommand
@@ -110,6 +114,8 @@ adminCommandParser = O.hsubparser
                              (O.progDesc "View command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
+ <> O.command "init" (O.info (pure AdminInitCommand)
+                               (O.progDesc "Init an HServer cluster"))
   )
 
 -------------------------------------------------------------------------------
@@ -152,6 +158,13 @@ streamParser = API.Stream
                      <> O.value 0
                      <> O.help "Backlog duration in seconds"
                       )
+  <*> O.option O.auto ( O.long "shards"
+                     <> O.short 's'
+                     <> O.metavar "INT"
+                     <> O.showDefault
+                     <> O.value 1
+                     <> O.help "shard numbers of the stream"
+                      )
 
 -------------------------------------------------------------------------------
 
@@ -175,6 +188,14 @@ subscriptionCmdParser = O.hsubparser
                        )
   )
 
+instance Read API.SpecialOffset where
+  readPrec = do
+    i <- Read.lexP
+    case i of
+        Read.Ident "earlist" -> return API.SpecialOffsetEARLIEST
+        Read.Ident "latest"  -> return API.SpecialOffsetLATEST
+        x -> errorWithoutStackTrace $ "cannot parse value: " <> show x
+
 subscriptionParser :: O.Parser API.Subscription
 subscriptionParser = API.Subscription
   <$> O.strOption ( O.long "id" <> O.metavar "SubID"
@@ -186,6 +207,12 @@ subscriptionParser = API.Subscription
   <*> O.option O.auto ( O.long "max-unacked-records" <> O.metavar "INT"
                      <> O.value 10000
                      <> O.help "maximum count of unacked records")
+  <*> (Enumerated <$> O.option O.auto ( O.long "subscription offset"
+                                     <> O.metavar "[earlist|lastest]"
+                                     <> O.value (Right API.SpecialOffsetLATEST)
+                                     <> O.help "maximum count of unacked records"
+                                      )
+    )
 
 -------------------------------------------------------------------------------
 

@@ -43,47 +43,44 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.Connector.ClickHouse
-    HStream.Connector.HStore
+    HStream.Connector.Common
     HStream.Connector.MySQL
+    HStream.Connector.Type
+    HStream.Connector.Util
     HStream.IO.IOTask
-    HStream.IO.Worker
     HStream.IO.Storage
     HStream.IO.Types
+    HStream.IO.Worker
     HStream.IO.ZkKv
     HStream.IO.Messages
 
   build-depends:
     , aeson
-    , aeson-pretty
-    , ansi-terminal
     , base
     , bytestring
     , clickhouse-haskell
     , containers
-    , deepseq
     , grpc-haskell
     , grpc-haskell-core
     , haxl
     , hstream-common
-    , hstream-processing
     , hstream-sql
     , hstream-store
     , mysql-haskell
     , proto3-suite
     , proto3-wire
-    , random
     , rio
     , scientific
+    , stm
     , text
     , time
+    , typed-process
     , unordered-containers
-    , vector
     , uuid
+    , vector
     , Z-Data
     , Z-IO
     , zoovisitor
-    , typed-process
-    , stm
 
   default-extensions:
     DeriveGeneric

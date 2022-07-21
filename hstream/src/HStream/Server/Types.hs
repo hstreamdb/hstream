@@ -7,6 +7,7 @@ import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
+import qualified Data.Map.Strict                  as M
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
@@ -18,13 +19,18 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
+import           HStream.Connector.Type           as HCT
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse)
+import           HStream.Server.ReaderPool        (ReaderPool)
+import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
+import qualified HStream.Store                    as S
+import           HStream.Utils                    (textToCBytes)
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -35,6 +41,7 @@ serverVersion = "0.8.0"
 type Timestamp = Int64
 type ServerID = Word32
 type ServerState = PB.Enumerated NodeState
+type ShardDict = M.Map ShardKey HS.C_LogID
 
 data ServerContext = ServerContext
   { scLDClient               :: HS.LDClient
@@ -53,8 +60,12 @@ data ServerContext = ServerContext
   , scServerState            :: MVar ServerState
   , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
-
   , serverOpts               :: ServerOpts
+  , readerPool               :: ReaderPool
+  , shardInfo                :: MVar (HM.HashMap Text SharedShardMap)
+    -- ^ streamName -> ShardMap, use to manipulate shards
+  , shardTable               :: MVar (HM.HashMap Text ShardDict)
+    -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
@@ -74,6 +85,9 @@ data SubscribeState
   | SubscribeStateStopped
   deriving (Eq, Show)
 
+data SubStartOffset = EarlistOffset | LatestOffset
+  deriving (Eq, Show)
+
 data SubscribeContext = SubscribeContext
   { subSubscriptionId    :: T.Text,
     subStreamName        :: T.Text,
@@ -87,7 +101,8 @@ data SubscribeContext = SubscribeContext
     subAssignment        :: Assignment,
     subCurrentTime ::  TVar Word64,
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
-    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds)
+    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
+    subStartOffset       :: SubStartOffset
   }
 
 data CheckedRecordIds = CheckedRecordIds {
@@ -163,3 +178,14 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+--------------------------------------------------------------------------------
+
+transToStreamName :: HCT.StreamName -> S.StreamId
+transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
+
+transToTempStreamName :: HCT.StreamName -> S.StreamId
+transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
+
+transToViewStreamName :: HCT.StreamName -> S.StreamId
+transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes

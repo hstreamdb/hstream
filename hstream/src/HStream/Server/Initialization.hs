@@ -14,32 +14,6 @@ import           Control.Exception                (catch)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find, sort)
-import qualified Data.Text                        as T
-import           Data.Unique                      (hashUnique, newUnique)
-import           Data.Word                        (Word32)
-import           System.Exit                      (exitFailure)
-import           Text.Printf                      (printf)
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper                        (zooCreateOpInit,
-                                                   zooGetChildren, zooMulti,
-                                                   zooSetOpInit)
-import qualified ZooKeeper.Recipe                 as Recipe
-import           ZooKeeper.Types
-
-import qualified HStream.Admin.Store.API          as AA
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
-                                                   getAllocatedNodeId)
-import qualified HStream.IO.Types                 as IO
-import qualified HStream.IO.Worker                as IO
-import qualified HStream.Logger                   as Log
-import           HStream.Server.Config            (ServerOpts (..),
-                                                   TlsConfig (..))
-import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (ioPath)
-import           HStream.Server.Types
-import           HStream.Stats                    (newServerStatsHolder)
-import qualified HStream.Store                    as S
-import           HStream.Utils
 import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
                                                    AuthProperty (authPropName),
                                                    ProcessMeta,
@@ -48,17 +22,24 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProc
                                                    StatusCode (StatusOk),
                                                    getAuthProperties)
 import           Text.Printf                      (printf)
-import           ZooKeeper.Types                  (ZHandle)
+import qualified Z.Data.CBytes                    as CB
+import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
+                                                   getAllocatedNodeId)
 import           HStream.Gossip                   (GossipContext, getMemberList)
+import qualified HStream.IO.Types                 as IO
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
+import           HStream.Server.Persistence       (ioPath)
+import           HStream.Server.ReaderPool        (mkReaderPool)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
+import           HStream.Utils
 
 initializeServer
   :: ServerOpts
@@ -90,6 +71,12 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
         return $ getAllocatedNodeId hr k == _serverID
        )
 
+  let readerNums = 8
+  readerPool <- mkReaderPool ldclient readerNums
+
+  shardInfo  <- newMVar HM.empty
+  shardTable <- newMVar HM.empty
+
   return
     ServerContext
       { zkHandle                 = zk
@@ -108,8 +95,10 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
       , scServerState            = serverState
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
-
       , serverOpts               = opts
+      , readerPool               = readerPool
+      , shardInfo                = shardInfo
+      , shardTable               = shardTable
       }
 
 --------------------------------------------------------------------------------

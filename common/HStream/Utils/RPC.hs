@@ -43,7 +43,7 @@ import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 
-import qualified Data.Text                        as T
+import           Data.String                      (IsString)
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct, Timestamp (..))
 
@@ -134,7 +134,7 @@ isSuccessful _                                       = False
 pattern EnumPB :: a -> PB.Enumerated a
 pattern EnumPB x = PB.Enumerated (Right x)
 
-showNodeStatus :: PB.Enumerated NodeState -> T.Text
+showNodeStatus :: IsString s => PB.Enumerated NodeState -> s
 showNodeStatus = \case
   EnumPB NodeStateStarting    -> "Starting"
   EnumPB NodeStateRunning     -> "Running"

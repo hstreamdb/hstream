@@ -15,6 +15,7 @@ import qualified Data.Aeson.Text                  as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
 import qualified Data.HashMap.Strict              as HM
+import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as TL
@@ -33,6 +34,7 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils.Converter          (structToJsonObject,
                                                    valueToJsonValue)
+import           HStream.Utils.RPC                (showNodeStatus)
 
 --------------------------------------------------------------------------------
 
@@ -60,6 +62,12 @@ instance Format [API.Query] where
 instance Format [API.Connector] where
   formatResult = emptyNotice . renderConnectorsToTable
 
+instance Format [API.ServerNode] where
+  formatResult = emptyNotice . renderServerNodesToTable
+
+instance Format [API.ServerNodeStatus] where
+  formatResult = emptyNotice . renderServerNodesStatusToTable
+
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
   formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)))
@@ -78,9 +86,6 @@ instance Format API.ListConnectorsResponse where
 instance Format API.AppendResponse where
   formatResult = const "Done.\n"
 
-instance Format API.CreateQueryStreamResponse where
-  formatResult = const "Done.\n"
-
 instance Format API.TerminateQueriesResponse where
   formatResult = const "Done.\n"
 
@@ -91,6 +96,9 @@ instance Format P.Struct where
       [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
       [("Error Message:", Just v)] -> "Error Message: " ++ show v ++ "\n"
       x -> show x
+
+instance Format API.CommandQueryResponse where
+  formatResult = formatCommandQueryResponse
 
 --------------------------------------------------------------------------------
 emptyNotice :: String -> String
@@ -147,6 +155,30 @@ renderConnectorsToTable connectors =
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               ]
+
+renderServerNodesToTable :: [API.ServerNode] -> String
+renderServerNodesToTable values =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = ["Server Id"]
+    formatRow API.ServerNode {..} = [[show serverNodeId]]
+    rows = map formatRow values
+    colSpec = [ Table.column Table.expand Table.left def def]
+
+renderServerNodesStatusToTable :: [API.ServerNodeStatus] -> String
+renderServerNodesStatusToTable values =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = ["Server Id", "State", "Address"]
+    formatRow API.ServerNodeStatus {serverNodeStatusNode = Just API.ServerNode{..}, ..} =
+      [[show serverNodeId], [showNodeStatus serverNodeStatusState], [show serverNodeHost <> ":" <> show serverNodePort]]
+    formatRow API.ServerNodeStatus {serverNodeStatusNode = Nothing} = []
+    rows = map formatRow . L.sort $ values
+    colSpec = replicate (length titles) $ Table.column Table.expand Table.left def def
 
 approxNaturalTime :: NominalDiffTime -> String
 approxNaturalTime n

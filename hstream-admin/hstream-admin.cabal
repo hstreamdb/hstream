@@ -121,6 +121,7 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor            >=0.1.2    && <1
+    , proto3-suite
 
   include-dirs:       . /usr/local/include
   extra-lib-dirs:     /usr/local/lib
@@ -172,6 +173,7 @@ executable hadmin
     , vector
     , Z-Data
     , Z-IO
+    , proto3-suite
 
   default-language:   Haskell2010
   default-extensions:
