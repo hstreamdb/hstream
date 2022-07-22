@@ -55,7 +55,7 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       sortedReqs `shouldSatisfy` (`Set.isSubsetOf` sortedResp)
 
   aroundWith withRandomStreamName $ do
-    it "test deleteStream request" $ \(api, name) -> do
+    xit "test deleteStream request" $ \(api, name) -> do
       let stream = mkStreamWithDefaultShards name 1
       createStreamRequest api stream `shouldReturn` stream
       resp <- listStreamRequest api
