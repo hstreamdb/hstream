@@ -23,6 +23,7 @@ import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Proto3.Suite                     (def)
 import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
+import           Data.Maybe                       (fromJust)
 import           HStream.Client.Action            (Action, runActionWithAddr)
 import           HStream.Client.Types             (HStreamSqlContext (..))
 import           HStream.Client.Utils             (mkClientNormalRequest')
@@ -67,12 +68,19 @@ describeCluster ctx@HStreamSqlContext{..} addr = do
 
 lookupStream :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
 lookupStream ctx addr stream = do
-  getInfoWithAddr ctx addr getRespApp handleRespApp
+  -- FIXME: currently redirect all lookupStream request to the first shard of a stream
+  API.Shard{..} <- V.head . fromJust <$> getInfoWithAddr ctx addr getShards handleGetShardsReq
+  getInfoWithAddr ctx addr (getRespApp shardShardId) handleRespApp
   where
-    getRespApp API.HStreamApi{..} = do
-      let req = def { API.lookupStreamRequestStreamName = stream }
-      hstreamApiLookupStream (mkClientNormalRequest' req)
-    handleRespApp = getServerResp >=> return . API.lookupStreamResponseServerNode
+    getShards API.HStreamApi{..} = do
+        let req = def { API.listShardsRequestStreamName = stream }
+        hstreamApiListShards (mkClientNormalRequest' req)
+    handleGetShardsReq = getServerResp >=> return . Just . API.listShardsResponseShards
+
+    getRespApp shardId API.HStreamApi{..} = do
+      let req = def { API.lookupShardRequestShardId = shardId }
+      hstreamApiLookupShard (mkClientNormalRequest' req)
+    handleRespApp = getServerResp >=> return . API.lookupShardResponseServerNode
 
 lookupSubscription :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
 lookupSubscription ctx addr subId = do
