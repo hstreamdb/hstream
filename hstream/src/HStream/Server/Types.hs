@@ -1,4 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 
 module HStream.Server.Types where
 
@@ -17,6 +19,8 @@ import qualified Proto3.Suite                     as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types                  (ZHandle)
 
+import           Data.Aeson                       (FromJSON (..), ToJSON (..))
+import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Connector.Type           as HCT
@@ -24,7 +28,8 @@ import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
 import           HStream.Server.Config
 import           HStream.Server.HStreamApi        (NodeState,
-                                                   StreamingFetchResponse)
+                                                   StreamingFetchResponse,
+                                                   Subscription)
 import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
@@ -36,6 +41,11 @@ protocolVersion = "0.1.0"
 
 serverVersion :: Text
 serverVersion = "0.8.0"
+
+data SubscriptionWrap = SubscriptionWrap
+  { originSub  :: Subscription
+  , subOffsets :: HM.HashMap S.C_LogID S.LSN
+  } deriving (Generic, Show, FromJSON, ToJSON)
 
 type Timestamp = Int64
 type ServerID = Word32
@@ -84,9 +94,6 @@ data SubscribeState
   | SubscribeStateStopped
   deriving (Eq, Show)
 
-data SubStartOffset = EarlistOffset | LatestOffset
-  deriving (Eq, Show)
-
 data SubscribeContext = SubscribeContext
   { subSubscriptionId    :: T.Text,
     subStreamName        :: T.Text,
@@ -101,7 +108,7 @@ data SubscribeContext = SubscribeContext
     subCurrentTime ::  TVar Word64,
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
     subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
-    subStartOffset       :: SubStartOffset
+    subStartOffset       :: HM.HashMap S.C_LogID S.LSN
   }
 
 data CheckedRecordIds = CheckedRecordIds {
