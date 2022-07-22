@@ -284,11 +284,8 @@ listShards ServerContext{..} API.ListShardsRequest{..} = do
    getShardInfo shards logId = do
      attr <- S.getStreamPartitionExtraAttrs scLDClient logId
      case getInfo attr of
-       Nothing -> return . V.snoc shards $
-         API.Shard { API.shardStreamName = listShardsRequestStreamName
-                   , API.shardShardId    = logId
-                   , API.shardIsActive   = True
-                   }
+       -- FIXME: should raise an exception when get Nothing
+       Nothing -> return shards
        Just(sKey, eKey, ep) -> return . V.snoc shards $
          API.Shard { API.shardStreamName        = listShardsRequestStreamName
                    , API.shardShardId           = logId
