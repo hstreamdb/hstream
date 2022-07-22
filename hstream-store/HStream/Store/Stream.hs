@@ -224,12 +224,18 @@ isArchiveStreamName name = do
   let name' = CBytes.toBytes name
   pure $ prefix `ZV.isPrefixOf` name'
 
--- ArchivedStreamName format: "prefix + name + suffix"
-toArchivedStreamName :: HasCallStack => FFI.LDClient -> StreamId -> IO CBytes
-toArchivedStreamName client streamid@StreamId{..} = do
-  -- we use default loggroup's logid as the suffix
-  logid <- getUnderlyingLogId client streamid Nothing
-  let suffix = CBytes.buildCBytes $ ZB.int logid
+-- ArchivedStreamName format: "prefix + name + unique word64"
+toArchivedStreamName :: StreamId -> IO CBytes
+toArchivedStreamName StreamId{..} = do
+  -- After a stream has been archived, a new stream with the same name as the
+  -- previous one is allowed to be created. The unique suffix is used to ensure
+  -- that the following scenarios are executed correctly:
+  --    step1. create stream "test"
+  --    step2. archive stream "test"
+  --    step3. create stream "test"
+  --    step4. archive stream "test"
+  -- If the suffix isn't unique, step4 will failed.
+  suffix <- CBytes.buildCBytes . ZB.int <$> genUnique
   already <- isArchiveStreamName streamName
   if already
      then pure $ streamName <> suffix
@@ -350,7 +356,7 @@ _renameStream_ client from to = do
 -- Note that all operations depend on logid will work as expected.
 archiveStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ArchivedStream
 archiveStream client streamid = do
-  archiveStreamName <- toArchivedStreamName client streamid
+  archiveStreamName <- toArchivedStreamName streamid
   renameStream' client streamid archiveStreamName
   return $ ArchivedStream archiveStreamName
 

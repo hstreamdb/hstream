@@ -9,7 +9,6 @@ import           Data.Int
 import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
-import           Z.Data.CBytes                    (CBytes)
 import           Z.Data.Vector.Base               (Bytes)
 
 import qualified HStream.Store                    as S
@@ -148,9 +147,10 @@ archiveStreamSpec = describe "ArchiveStreamSpec" $ do
     ss' `shouldContain` [streamId]
 
     archived' <- S.archiveStream client streamId
-    S.doesArchivedStreamExist client archived `shouldReturn` True
-    S.removeArchivedStream client archived'
     S.doesArchivedStreamExist client archived `shouldReturn` False
+    S.doesArchivedStreamExist client archived' `shouldReturn` True
+    S.removeArchivedStream client archived'
+    S.doesArchivedStreamExist client archived' `shouldReturn` False
 
 writeReadSpec :: Spec
 writeReadSpec = describe "WriteReadSpec" $ do
