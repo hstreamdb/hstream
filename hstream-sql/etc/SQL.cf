@@ -146,7 +146,7 @@ GrpItemWin. GrpItem ::= Window ;
 
 TumblingWindow. Window ::= "TUMBLING" "(" Interval ")" ;
 HoppingWindow.  Window ::= "HOPPING"  "(" Interval "," Interval ")" ;
-SessionWindow.  Window ::= "SESSION"  "(" Interval ")" ;
+SlidingWindow.  Window ::= "SLIDING"  "(" Interval ")" ;
 
 -- Having
 DHavingEmpty. Having ::= "" ;
