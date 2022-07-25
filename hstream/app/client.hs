@@ -7,8 +7,9 @@
 
 module Main where
 
-import           Control.Concurrent               (forkIO, newMVar, readMVar,
-                                                   threadDelay)
+import           Control.Concurrent               (forkFinally, myThreadId,
+                                                   newMVar, readMVar,
+                                                   threadDelay, throwTo)
 import           Control.Exception                (finally, handle)
 import           Control.Monad                    (forever, void, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
@@ -17,6 +18,8 @@ import qualified Data.List                        as L
 import qualified Data.Map                         as M
 import           Data.Maybe                       (maybeToList)
 import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as T
+import qualified Data.Text.IO                     as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
                                                    ClientRequest (..),
@@ -100,7 +103,7 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _ret
   setupSigsegvHandler
   connected <- waitForServerToStart (retryTimeout * 1000000) addr
   case connected of
-    Nothing -> error "Connection timed out. Please check the server URI and try again."
+    Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> showHStream
   void $ describeCluster ctx addr
   app ctx
@@ -147,7 +150,7 @@ getNodes CliConnOpts{..} =
     case res of
       ClientNormalResponse resp _ _ _ _ -> return resp
       ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode x details))
-        -> error $ show x <> " Error: "  <> show (unStatusDetails details)
+        -> errorWithoutStackTrace $ show x <> " Error: "  <> show (unStatusDetails details)
       ClientErrorResponse err -> error $ "Server Error: " <> show err <> "\n"
 
 --------------------------------------------------------------------------------
@@ -157,7 +160,8 @@ getNodes CliConnOpts{..} =
 app :: HStreamSqlContext -> IO ()
 app ctx@HStreamSqlContext{..} = do
   putStrLn helpInfo
-  void $ forkIO maintainAvailableNodes
+  tid <- myThreadId
+  void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
   H.runInputT H.defaultSettings loop
   where
     maintainAvailableNodes = forever $ do
@@ -214,9 +218,13 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
   let commandPushQuery = CommandPushQuery{ commandPushQueryQueryText = sql }
-  ClientReaderResponse _meta _status _details <-
-    hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 mempty action)
-  return ()
+  resp <- hstreamApiExecutePushQuery (ClientReaderRequest commandPushQuery 10000000 mempty action)
+  case resp of
+    ClientReaderResponse {} -> return ()
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
+      T.putStrLn $ "Error: " <> T.decodeUtf8 (unStatusDetails details)
+    ClientErrorResponse err -> do
+      putStrLn $ "Error: " <> (case err of ClientIOError ge -> show ge; _ -> show err) <> ", please try a different server node"
   where
     action call _meta recv = do
       msg <- withInterrupt (clientCallCancel call) recv
@@ -234,7 +242,7 @@ sqlAction HStreamApi{..} sql = do
   case resp of
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details -> do
       putStr $ formatCommandQueryResponse x
-    ClientErrorResponse clientError -> putStrLn $ "Client Error: " <> show clientError
+    ClientErrorResponse _ -> putStr $ formatResult resp
 
 withInterrupt :: IO () -> IO a -> IO a
 withInterrupt interruptHandle act = do

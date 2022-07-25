@@ -259,7 +259,7 @@ executeCommandQuery sql = withGRPCClient clientConfig $ \client -> do
     ClientNormalResponse x@CommandQueryResponse{} _meta1 _meta2 _status _details ->
       return $ Just x
     ClientErrorResponse clientError -> do
-      putStrLn $ "Client Error: " <> show clientError
+      putStrLn $ formatResult resp
       return Nothing
 
 executeCommandQuery' :: T.Text -> IO CommandQueryResponse
