@@ -51,9 +51,9 @@ describeCluster ServerContext{..} = do
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
 lookupShard ServerContext{..} req@LookupShardRequest {
   lookupShardRequestShardId = shardId} = do
-  Log.info $ "receive lookupShard request: " <> Log.buildString' req
   hashRing <- readTVarIO loadBalanceHashRing
   theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
+  Log.info $ "receive lookupShard request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
   return $ LookupShardResponse
     { lookupShardResponseShardId    = shardId
     , lookupShardResponseServerNode = Just theNode
@@ -78,7 +78,7 @@ lookupShardReader ServerContext{..} req@LookupShardReaderRequest{lookupShardRead
   hashRing <- readTVarIO loadBalanceHashRing
   theNode  <- getResNode hashRing readerId scAdvertisedListenersKey
   Log.info $ "receive lookupShardReader request: " <> Log.buildString' req <> ", should send to " <> Log.buildString' (show theNode)
-  return $ LookupShardReaderResponse 
+  return $ LookupShardReaderResponse
     { lookupShardReaderResponseReaderId    = readerId
     , lookupShardReaderResponseServerNode  = Just theNode
     }

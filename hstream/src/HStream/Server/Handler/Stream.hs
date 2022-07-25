@@ -22,8 +22,6 @@ import           Control.Exception
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Concurrent.STM           (readTVarIO)
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Core.Stream       (ShardReaderExists (..),
                                                    ShardReaderNotExists (..))
@@ -91,21 +89,12 @@ append0Handler
   -> IO (ServerResponse 'Normal AppendResponse)
 append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
-
-  Log.debug $ "Receive Append0 Request: StreamName {"
-           <> Log.buildText appendRequestStreamName
-           <> "}, nums of records = "
-           <> Log.buildInt (V.length appendRequestRecords)
-  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-  let partitionKey = getRecordKey . V.head $ appendRequestRecords
-  hashRing <- readTVarIO loadBalanceHashRing
-  let identifier = appendRequestStreamName <> clientDefaultKey
-  if getAllocatedNodeId hashRing identifier == serverID
-    then C.append0Stream sc request partitionKey >>= returnResp
-    else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+    let partitionKey = getRecordKey . V.head $ appendRequestRecords
+    returnResp =<< C.append0Stream sc request partitionKey
   where
-    inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+    inc_failed = do
+      Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
+      Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
 --------------------------------------------------------------------------------
@@ -123,7 +112,7 @@ createShardReaderHandler
   -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
   -> IO (ServerResponse 'Normal CreateShardReaderResponse)
 createShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
-  Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request) 
+  Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
   C.createShardReader sc request >>= returnResp
 
 deleteShardReaderHandler

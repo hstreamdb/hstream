@@ -21,18 +21,18 @@ module HStream.Server.Persistence.Common
   , ReaderPersistence (..)
   ) where
 
-import           Data.Aeson                (FromJSON (..), ToJSON (..))
-import           Data.Int                  (Int64)
-import           Data.Map                  (Map)
-import qualified Data.Text                 as T
-import           GHC.Generics              (Generic)
-import           GHC.Stack                 (HasCallStack)
-import           Z.Data.CBytes             (CBytes)
+import           Data.Aeson           (FromJSON (..), ToJSON (..))
+import           Data.Int             (Int64)
+import           Data.Map             (Map)
+import qualified Data.Text            as T
+import           GHC.Generics         (Generic)
+import           GHC.Stack            (HasCallStack)
+import           Z.Data.CBytes        (CBytes)
 
-import           HStream.Server.Types      (ServerID, SubscriptionWrap)
-import           HStream.Utils             (TaskStatus (..))
-import Data.Word (Word64, Word32)
-import qualified HStream.Store as S
+import           Data.Word            (Word32, Word64)
+import           HStream.Server.Types (ServerID, SubscriptionWrap)
+import qualified HStream.Store        as S
+import           HStream.Utils        (TaskStatus (..))
 
 --------------------------------------------------------------------------------
 

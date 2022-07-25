@@ -21,8 +21,9 @@ module HStream.Server.Core.Stream
   ) where
 
 import           Control.Concurrent                (MVar, modifyMVar,
-                                                    modifyMVar_, newMVar,
-                                                    putMVar, takeMVar, withMVar)
+                                                    modifyMVar_, newEmptyMVar,
+                                                    putMVar, readMVar, takeMVar,
+                                                    withMVar)
 import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throwIO)
@@ -33,6 +34,7 @@ import qualified Data.HashMap.Strict               as HM
 import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import           Data.Text                         (Text)
+import qualified Data.Text                         as T
 import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
@@ -45,7 +47,10 @@ import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..),
                                                     WrongServer (..))
+import           HStream.Server.HStreamApi         (CreateShardReaderRequest (createShardReaderRequestShardId))
 import qualified HStream.Server.HStreamApi         as API
+import           HStream.Server.Persistence        (ShardReader (..))
+import qualified HStream.Server.Persistence        as P
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
 import           HStream.Server.Shard              (Shard (..), cBytesToKey,
@@ -60,10 +65,7 @@ import           HStream.Server.Types              (ServerContext (..),
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.Utils
-import qualified HStream.Server.Persistence as P
-import HStream.Server.HStreamApi (CreateShardReaderRequest(createShardReaderRequestShardId))
-import HStream.Server.Persistence (ShardReader(..))
-import ZooKeeper.Exception (ZNONODE(..))
+import           ZooKeeper.Exception               (ZNONODE (..))
 
 -------------------------------------------------------------------------------
 
@@ -137,30 +139,27 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
   Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-  hashRing <- readTVarIO loadBalanceHashRing
   let partitionKey = getRecordKey . V.head $ appendRequestRecords
-  let identifier = case partitionKey of
-        Just key -> appendRequestStreamName <> key
-        Nothing  -> appendRequestStreamName <> clientDefaultKey
-  if getAllocatedNodeId hashRing identifier == serverID
-     then do
-       append_start <- getPOSIXTime
-       r <- appendStream sc request partitionKey
-       Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
-       Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
-       return r
-     else throwIO $ WrongServer "Send appendRequest to wrong server."
+  append_start <- getPOSIXTime
+  r <- appendStream sc request partitionKey
+  Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
+  Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
+  return r
 
-appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
+appendStream :: ServerContext -> API.AppendRequest -> T.Text -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
   appendRequestRecords = records} partitionKey = do
+  shardId <- getShardId scLDClient shardTable sName partitionKey
+  Log.debug $ "shardId for key " <> Log.buildString' (show partitionKey) <> " is " <> Log.buildString' (show shardId)
+  hashRing <- readTVarIO loadBalanceHashRing
+  unless (getAllocatedNodeId hashRing (T.pack . show $ shardId) == serverID) $
+    throwIO $ WrongServer "Send appendRequest to wrong server."
+
   timestamp <- getProtoTimestamp
   let payload = encodeBatch . API.HStreamRecordBatch $
         encodeRecord . updateRecordTimestamp timestamp <$> records
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  shardId <- getShardId scLDClient shardTable sName partitionKey
-  Log.debug $ "shardId for key " <> Log.buildString' (show partitionKey) <> " is " <> Log.buildString' (show shardId)
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
@@ -172,14 +171,19 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
 
 --------------------------------------------------------------------------------
 
-append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
+append0Stream :: ServerContext -> API.AppendRequest -> T.Text -> IO API.AppendResponse
 append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
+  shardId <- getShardId scLDClient shardTable appendRequestStreamName partitionKey
+  Log.debug $ "shardId for key " <> Log.buildString' (show partitionKey) <> " is " <> Log.buildString' (show shardId)
+  hashRing <- readTVarIO loadBalanceHashRing
+  unless (getAllocatedNodeId hashRing (T.pack . show $ shardId) == serverID) $
+    throwIO $ WrongServer "Send appendRequest to wrong server."
+
   timestamp <- getProtoTimestamp
   let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
       payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
       streamName = textToCBytes appendRequestStreamName
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  shardId <- getShardId scLDClient shardTable appendRequestStreamName partitionKey
   S.AppendCompletion {..} <- S.appendBatchBS scLDClient shardId (V.toList payloads) cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
@@ -189,19 +193,17 @@ append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
 
 --------------------------------------------------------------------------------
 
-getShardId :: S.LDClient -> MVar (HM.HashMap Text ShardDict) -> Text -> Maybe Text -> IO S.C_LogID
+getShardId :: S.LDClient -> MVar (HM.HashMap Text ShardDict) -> Text -> Text -> IO S.C_LogID
 getShardId client shardTable sName partitionKey = do
   getShardDict >>= return . snd . fromJust . M.lookupLE shardKey
  where
-   shardKey   = hashShardKey . fromMaybe clientDefaultKey $ partitionKey
+   shardKey   = hashShardKey partitionKey
    streamID   = S.mkStreamId S.StreamTypeStream streamName
    streamName = textToCBytes sName
 
    getShardDict = modifyMVar shardTable $ \mp -> do
      case HM.lookup sName mp of
-       Just shards -> do
-           Log.debug $ "shardDict exist for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shards)
-           return (mp, shards)
+       Just shards -> return (mp, shards)
        Nothing     -> do
          -- loading shard infomation for stream first.
          shards <- M.elems <$> S.listStreamPartitions client streamID
@@ -235,7 +237,8 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
   when exist $ throwIO ShardReaderExists
   startLSN <- getStartLSN rShardId
   let shardReader = mkShardReader startLSN
-  P.storeReader rId shardReader zkHandle 
+  Log.info $ "create shardReader " <> Log.buildString' (show shardReader)
+  P.storeReader rId shardReader zkHandle
   return API.CreateShardReaderResponse
     { API.createShardReaderResponseStreamName  = rStreamName
     , API.createShardReaderResponseShardId     = rShardId
@@ -320,30 +323,27 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
    ldReaderBufferSize = 10
 
    getReader = do
-     mReader <- withMVar shardReaderMap $ return . HM.lookup readShardRequestReaderId
-     case mReader of 
+     mReader <- HM.lookup readShardRequestReaderId <$> readMVar shardReaderMap
+     case mReader of
        Just readerMvar -> takeMVar readerMvar
        Nothing         -> do
-         r@ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
-           Nothing -> throwIO ShardReaderNotExists 
+         ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
+           Nothing     -> throwIO ShardReaderNotExists
            Just reader -> return reader
-         Log.info $ "get reader " <> Log.buildText readShardRequestReaderId <> " from store: " <> Log.buildString' (show r)
          reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
          S.readerStartReading reader readerShardId readerShardOffset S.LSN_MAX
          S.readerSetTimeout reader (fromIntegral readerReadTimeout)
-         readerMvar <- newMVar reader
+         readerMvar <- newEmptyMVar
          modifyMVar_ shardReaderMap $ return . HM.insert readShardRequestReaderId readerMvar
          return reader
-   putReader reader = withMVar shardReaderMap $ \mp -> do
+   putReader reader = do
+    withMVar shardReaderMap $ \mp -> do
      case HM.lookup readShardRequestReaderId mp of
-       Nothing -> pure ()
+       Nothing         -> pure ()
        Just readerMvar -> putMVar readerMvar reader
    readRecords reader = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
-     Log.info $ "reader " <> Log.buildText readShardRequestReaderId <> " start reading"
      let receivedRecordsVecs = decodeRecordBatch <$> records
-     let res = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
-     Log.info $ "reader read " <> Log.buildString' (show res)
      return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
 
 --------------------------------------------------------------------------------

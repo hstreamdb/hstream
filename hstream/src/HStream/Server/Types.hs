@@ -4,9 +4,9 @@
 
 module HStream.Server.Types where
 
-import Data.Aeson (FromJSON (..), ToJSON (..))
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
+import           Data.Aeson                       (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
@@ -20,7 +20,6 @@ import qualified Proto3.Suite                     as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types                  (ZHandle)
 
-import           Data.Aeson                       (FromJSON (..), ToJSON (..))
 import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
@@ -36,8 +35,6 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (textToCBytes)
-import GHC.Generics (Generic)
-import qualified HStream.Server.HStreamApi as API
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"

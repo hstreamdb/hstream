@@ -2,17 +2,21 @@
 
 module HStream.Server.Persistence.ShardReader where
 
-import qualified Data.Text as T
-import ZooKeeper.Types (ZHandle)
-import HStream.Server.Persistence.Common (ReaderPersistence(..))
-import HStream.Server.Persistence.Utils (createInsert, encodeValueToBytes, mkReaderPath, decodeZNodeValue, deletePath)
-import HStream.Utils (textToCBytes)
-import ZooKeeper.Exception
-import HStream.Server.Persistence.Exception (ShardReaderIdExists(..))
-import Control.Exception (handle)
-import qualified Z.Data.CBytes as CB
-import ZooKeeper (zooExists)
-import Data.Maybe (isJust)
+import           Control.Exception                    (handle)
+import           Data.Maybe                           (isJust)
+import qualified Data.Text                            as T
+import           HStream.Server.Persistence.Common    (ReaderPersistence (..))
+import           HStream.Server.Persistence.Exception (ShardReaderIdExists (..))
+import           HStream.Server.Persistence.Utils     (createInsert,
+                                                       decodeZNodeValue,
+                                                       deletePath,
+                                                       encodeValueToBytes,
+                                                       mkReaderPath)
+import           HStream.Utils                        (textToCBytes)
+import qualified Z.Data.CBytes                        as CB
+import           ZooKeeper                            (zooExists)
+import           ZooKeeper.Exception
+import           ZooKeeper.Types                      (ZHandle)
 
 instance ReaderPersistence ZHandle where
   storeReader readerId reader zk = do
