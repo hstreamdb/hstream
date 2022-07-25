@@ -58,7 +58,6 @@ library
     HStream.Server.InternalHandler
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
-    HStream.Server.ReaderPool
     HStream.Server.Shard
     HStream.Server.Types
 

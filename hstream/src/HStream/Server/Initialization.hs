@@ -35,7 +35,6 @@ import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
 import           HStream.Server.Persistence       (ioPath)
-import           HStream.Server.ReaderPool        (mkReaderPool)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
@@ -71,11 +70,9 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
         return $ getAllocatedNodeId hr k == _serverID
        )
 
-  let readerNums = 8
-  readerPool <- mkReaderPool ldclient readerNums
-
   shardInfo  <- newMVar HM.empty
   shardTable <- newMVar HM.empty
+  shardReaderMap <- newMVar HM.empty
 
   return
     ServerContext
@@ -96,9 +93,9 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
       , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
       , serverOpts               = opts
-      , readerPool               = readerPool
       , shardInfo                = shardInfo
       , shardTable               = shardTable
+      , shardReaderMap           = shardReaderMap
       }
 
 --------------------------------------------------------------------------------
