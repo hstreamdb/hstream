@@ -2,9 +2,10 @@
 
 module HStream.Server.Core.Cluster
   ( describeCluster
-  , lookupStream
+  , lookupShard
   , lookupSubscription
   , lookupShardReader
+  , lookupConnector
   ) where
 
 import           Control.Concurrent.STM           (readTVarIO)
@@ -12,12 +13,12 @@ import           Control.Exception                (throwIO)
 import           Data.Text                        (Text)
 import qualified Data.Vector                      as V
 
+import qualified Data.Text                        as T
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
 import           HStream.Gossip                   (getFailedNodes,
                                                    getMemberList)
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Common       (alignDefault)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
@@ -48,18 +49,29 @@ describeCluster ServerContext{..} = do
     , serverNodeStatusState = EnumPB state
     }
 
-lookupStream :: ServerContext -> LookupStreamRequest -> IO LookupStreamResponse
-lookupStream ServerContext{..} req@LookupStreamRequest {
-  lookupStreamRequestStreamName  = stream,
-  lookupStreamRequestOrderingKey = orderingKey} = do
-  Log.info $ "receive lookupStream request: " <> Log.buildString' req
+lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
+lookupShard ServerContext{..} req@LookupShardRequest {
+  lookupShardRequestShardId = shardId} = do
+  Log.info $ "receive lookupShard request: " <> Log.buildString' req
   hashRing <- readTVarIO loadBalanceHashRing
-  let key      = alignDefault orderingKey
-  theNode <- getResNode hashRing (stream <> key) scAdvertisedListenersKey
-  return $ LookupStreamResponse
-    { lookupStreamResponseStreamName  = stream
-    , lookupStreamResponseOrderingKey = orderingKey
-    , lookupStreamResponseServerNode  = Just theNode
+  theNode <- getResNode hashRing (T.pack $ show shardId) scAdvertisedListenersKey
+  return $ LookupShardResponse
+    { lookupShardResponseShardId    = shardId
+    , lookupShardResponseServerNode = Just theNode
+    }
+
+lookupConnector
+  :: ServerContext
+  -> LookupConnectorRequest
+  -> IO LookupConnectorResponse
+lookupConnector ServerContext{..} req@LookupConnectorRequest{
+  lookupConnectorRequestName = name} = do
+  Log.info $ "receive lookupConnector request: " <> Log.buildString (show req)
+  hashRing <- readTVarIO loadBalanceHashRing
+  theNode <- getResNode hashRing name scAdvertisedListenersKey
+  return $ LookupConnectorResponse
+    { lookupConnectorResponseName = name
+    , lookupConnectorResponseServerNode     = Just theNode
     }
 
 lookupSubscription

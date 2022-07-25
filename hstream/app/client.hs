@@ -4,6 +4,7 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PatternSynonyms     #-}
 
 module Main where
 
@@ -41,7 +42,8 @@ import           HStream.Client.Action            (createStream,
 import           HStream.Client.Execute           (execute, executeInsert,
                                                    executeShowPlan)
 import           HStream.Client.Gadget            (describeCluster,
-                                                   waitForServerToStart)
+                                                   waitForServerToStart,
+                                                   lookupConnector)
 import           HStream.Client.Internal          (callDeleteSubscription,
                                                    callDeleteSubscriptionAll,
                                                    callListSubscriptions,
@@ -67,7 +69,8 @@ import           HStream.SQL                      (HStreamPlan (..),
                                                    RCreate (..), RSQL (..),
                                                    RStreamOptions (..),
                                                    hstreamCodegen,
-                                                   parseAndRefine)
+                                                   parseAndRefine,
+                                                   pattern ConnectorWritePlan)
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))

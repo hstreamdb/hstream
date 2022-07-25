@@ -85,10 +85,10 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListNodes = listStoreNodesHandler serverContext,
 
         -- Cluster
-        hstreamApiDescribeCluster = describeClusterHandler serverContext,
-        hstreamApiLookupStream = lookupStreamHandler serverContext,
+        hstreamApiDescribeCluster    = describeClusterHandler serverContext,
+        hstreamApiLookupShard        = lookupShardHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
-        hstreamApiLookupShardReader = lookupShardReaderHandler serverContext,
+        hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }
