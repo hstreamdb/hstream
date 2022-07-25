@@ -108,7 +108,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                   { appendRequestStreamName = stream
                   , appendRequestRecords = V.singleton record
                   }
-      void $ Core.appendStream sc request Nothing
+      void $ Core.appendStream sc request ""
       returnCommandQueryEmptyResp
     DropPlan checkIfExist dropObject ->
       case dropObject of
