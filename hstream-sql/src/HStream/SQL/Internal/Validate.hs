@@ -492,15 +492,12 @@ instance Validate GroupBy where
 -- 2. For HoppingWindow, length >= hop
 instance Validate Window where
   validate win@(TumblingWindow _ interval)  = validate interval >> return win
-  validate win@(HoppingWindow pos i1 i2)    = Left $ buildSQLException ParseException pos "Hopping window is not supported"
-    {-
+  validate win@(HoppingWindow pos i1 i2)    = do
     void $ validate i1
     void $ validate i2
     unless (i1 >= i2) (Left $ buildSQLException ParseException pos "Hopping interval can not be larger than the size of the window")
     return win
-    -}
-  validate win@(SessionWindow pos interval) = Left $ buildSQLException ParseException pos "Session window is not supported"
-    --validate interval >> return win
+  validate win@(SlidingWindow pos interval) = validate interval >> return win
 
 -- Having
 -- 1. SearchCond in it should be legal
