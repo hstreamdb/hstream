@@ -19,6 +19,7 @@ import qualified Data.ByteString.Internal         as BS
 import qualified Data.ByteString.Lazy.Char8       as BSCL
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef
+import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromMaybe)
 import           Data.Text                        (Text)
@@ -162,7 +163,7 @@ runQuerySimple HStreamApi{..} sql = hstreamApiExecuteQuery $ mkQueryReqSimple sq
 
 runQuerySimple_ :: HStreamClientApi -> T.Text -> IO ()
 runQuerySimple_ HStreamApi{..} sql = do
-  hstreamApiExecuteQuery (mkQueryReqSimple sql) `grpcShouldReturn` querySuccessResp
+  void $ hstreamApiExecuteQuery (mkQueryReqSimple sql) >>= getServerResp
 
 querySuccessResp :: CommandQueryResponse
 querySuccessResp = CommandQueryResponse V.empty
@@ -369,7 +370,11 @@ runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation
 runCreateWithSelectSql api sql = do
   RQCreate (RCreateAs stream _ rOptions) <- parseAndRefine sql
   resp <- getServerResp =<< createStreamBySelect stream (rRepFactor rOptions) (T.unpack sql) api
-  commandQueryResponseResultSet resp `shouldBe` V.empty
+  commandQueryResponseResultSet resp `shouldSatisfy` \v ->
+    V.length v == 1 &&
+    let Struct kvmap = V.head v
+        [(label,_)] = M.toList kvmap
+     in label == "stream_query_id"
 
 runShowStreamsSql :: HStreamClientApi -> T.Text -> IO String
 runShowStreamsSql api sql = do
