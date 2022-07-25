@@ -77,12 +77,11 @@ getTimeStamp HStreamRecord{..} =
       !ts = floor @Double $ (fromIntegral timestampSeconds * 1e3) + (fromIntegral timestampNanos / 1e6)
   in ts
 
-getRecordKey :: HStreamRecord -> Maybe Text
+getRecordKey :: HStreamRecord -> Text
 getRecordKey record =
   case fmap hstreamRecordHeaderKey . hstreamRecordHeader $ record of
-    Just "__default__" -> Nothing
-    Just ""            -> Nothing
-    key'               -> key'
+    Just key -> key
+    Nothing  -> error "HStreamRecord doesn't have a header."
 
 updateRecordTimestamp :: Timestamp -> HStreamRecord -> HStreamRecord
 updateRecordTimestamp timestamp HStreamRecord{..} =
