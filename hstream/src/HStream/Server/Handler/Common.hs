@@ -121,7 +121,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
                   , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                   , dcDiff = 1
                   }
-            Prelude.print $ "### Get input: " <> show dataChange
+            Log.debug . Log.buildString $ "Get input: " <> show dataChange
             DiffFlow.pushInput shard inNode dataChange -- original update
             -- insert new negated updates to limit the valid range of this update
             case temporalFilter of
@@ -143,7 +143,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
   tid3 <- forkIO . forever $ do
     forM_ inNodesWithStreams $ \(inNode, _) -> do
       ts <- getCurrentTimestamp
-      -- Prelude.print $ "### Advance time to " <> show ts
+      -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
       DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
     threadDelay 100000
 
@@ -155,9 +155,9 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
   forever (do
     let (outNode, outStream) = outNodeWithStream
     DiffFlow.popOutput shard outNode $ \dcb@DiffFlow.DataChangeBatch{..} -> do
-      Prelude.print $ "~~~~~~~ POPOUT: " <> show dcb
+      Log.debug . Log.buildString $ "~~~ POPOUT: " <> show dcb
       forM_ dcbChanges $ \change -> do
-        Prelude.print $ "<<< this change: " <> show change
+        Log.debug . Log.buildString $ "<<< this change: " <> show change
         modifyMVar_ accumulatedOutput
           (\dcb -> return $ DiffFlow.updateDataChangeBatch' dcb (\xs -> xs ++ [change]))
         when (DiffFlow.dcDiff change > 0) $ do

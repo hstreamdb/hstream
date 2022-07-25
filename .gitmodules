@@ -13,6 +13,3 @@
 [submodule "external/protocol"]
 	path = external/protocol
 	url = git@github.com:hstreamdb/protocol.git
-[submodule "external/diff-flow"]
-	path = external/diff-flow
-	url = git@github.com:hstreamdb/diff-flow.git
