@@ -12,6 +12,7 @@ import           Control.Concurrent.STM         (TMVar, atomically, check,
                                                  readTVarIO, stateTVar,
                                                  takeTMVar, writeTChan,
                                                  writeTQueue)
+import           Control.Exception              (throwIO)
 import           Control.Monad                  (forever, join, when)
 import           Data.ByteString                (ByteString)
 import           Data.List                      ((\\))
@@ -19,7 +20,11 @@ import qualified Data.List                      as L
 import qualified Data.Map                       as Map
 import qualified Data.Vector                    as V
 import           Data.Word                      (Word32)
-import           Network.GRPC.HighLevel.Client  (ClientResult (..))
+import           Network.GRPC.HighLevel         (GRPCIOError (..),
+                                                 StatusCode (..),
+                                                 StatusDetails (..))
+import           Network.GRPC.HighLevel.Client  (ClientError (..),
+                                                 ClientResult (..))
 import qualified Network.GRPC.HighLevel.Client  as GRPC
 import           System.Random                  (RandomGen)
 import           System.Random.Shuffle          (shuffle')
@@ -33,11 +38,14 @@ import           HStream.Gossip.HStreamGossip   as API (Ack (..), Empty (..),
 import           HStream.Gossip.Types           (GossipContext (..),
                                                  GossipOpts (..), Messages,
                                                  RequestAction (..), ServerId,
-                                                 ServerState (Suspicious),
+                                                 ServerState (..),
                                                  ServerStatus (..))
 import qualified HStream.Gossip.Types           as T
-import           HStream.Gossip.Utils           (broadcast, getMessagesToSend,
-                                                 getMsgInc,
+import           HStream.Gossip.Utils           (ClusterInitedErr (..),
+                                                 ClusterReadyErr (..),
+                                                 broadcast, clusterInitedErr,
+                                                 clusterReadyErr,
+                                                 getMessagesToSend, getMsgInc,
                                                  mkClientNormalRequest)
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as I
@@ -51,6 +59,14 @@ bootstrapPing (joinHost, joinPort) client = do
                 <> Log.buildString' serverNode
                 <> " ready"
       return (Just serverNode)
+    ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusFailedPrecondition details)) -> do
+      when (details == clusterInitedErr)$ throwIO ClusterInitedErr
+      when (details == clusterReadyErr) $ throwIO ClusterReadyErr
+      Log.debug $ "The server "
+                <> Log.buildByteString joinHost <> ":"
+                <> Log.buildInt joinPort
+                <> " returned an unexpected status details" <> Log.buildByteString (unStatusDetails details)
+      return Nothing
     ClientErrorResponse _                   -> do
       Log.debug $ "The server "
                 <> Log.buildByteString joinHost <> ":"

@@ -9,6 +9,7 @@ module HStream.Gossip.Utils where
 import           Control.Concurrent.STM           (STM, TQueue, TVar, readTVar,
                                                    stateTVar, writeTQueue,
                                                    writeTVar)
+import           Control.Exception                (Exception)
 import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
 import           Data.Foldable                    (foldl')
@@ -163,3 +164,21 @@ eventNameINIT = "INIT_INTERNAL_USE_ONLY"
 
 eventNameINITED :: Text
 eventNameINITED = "INITED_INTERNAL_USE_ONLY"
+
+clusterInitedErr :: StatusDetails
+clusterInitedErr = "Cluster is already initialized"
+
+clusterReadyErr  :: StatusDetails
+clusterReadyErr  = "Cluster is ready"
+
+data ClusterInitedErr = ClusterInitedErr
+  deriving (Show, Eq)
+instance Exception ClusterInitedErr
+
+data ClusterReadyErr = ClusterReadyErr
+  deriving (Show, Eq)
+instance Exception ClusterReadyErr
+
+data FailedToStart = FailedToStart
+  deriving (Show, Eq)
+instance Exception FailedToStart
