@@ -139,9 +139,8 @@ getQuerySink PersistentQuery{..} =
     (StreamQuery _ s) -> s
     (ViewQuery _ s _) -> s
 
-createInsertPersistentQuery :: T.Text -> T.Text -> QueryType -> ServerID ->  ZHandle -> IO (CBytes, Int64)
-createInsertPersistentQuery taskName queryText queryType queryHServer zkHandle = do
+createInsertPersistentQuery :: CBytes -> T.Text -> QueryType -> ServerID ->  ZHandle -> IO Int64
+createInsertPersistentQuery qid queryText queryType queryHServer zkHandle = do
   MkSystemTime timestamp _ <- getSystemTime'
-  let qid   = Z.Data.CBytes.pack (T.unpack taskName)
   insertQuery qid queryText timestamp queryType queryHServer zkHandle
-  return (qid, timestamp)
+  return timestamp

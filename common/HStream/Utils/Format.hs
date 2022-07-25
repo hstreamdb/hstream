@@ -45,7 +45,7 @@ instance Format API.Stream where
   formatResult = (<> "\n") . T.unpack . API.streamStreamName
 
 instance Format API.View where
-  formatResult = show . API.viewViewId
+  formatResult = T.unpack . API.viewViewId
 
 instance Format [API.Stream] where
   formatResult = emptyNotice . concatMap formatResult

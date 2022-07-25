@@ -44,7 +44,8 @@ import           HStream.Server.Types
 import           HStream.SQL.AST                  (RWindow (..))
 import           HStream.SQL.Codegen
 import           HStream.Utils                    (TaskStatus (..),
-                                                   newRandomText)
+                                                   cBytesToText, newRandomText,
+                                                   textToCBytes)
 
 import qualified DiffFlow.Graph                   as DiffFlow
 import qualified DiffFlow.Shard                   as DiffFlow
@@ -264,38 +265,37 @@ handleCreateAsSelect :: ServerContext
                      -> P.QueryType
                      -> IO (CB.CBytes, Int64)
 handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType = do
-  (qid, timestamp) <- P.createInsertPersistentQuery
-    tName commandQueryStmtText queryType serverID zkHandle
+  timestamp <- P.createInsertPersistentQuery
+               qid commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
-  tid <- forkIO $ catches (action qid) (cleanup qid)
+  tid <- forkIO $ catches action cleanup
   modifyMVar_ runningQueries (return . HM.insert qid tid)
   return (qid, timestamp)
   where
-    (tName,inNodesWithStreams,outNodeWithStream,win,builder,accumulation) = case plan of
+    (qid,inNodesWithStreams,outNodeWithStream,win,builder,accumulation) = case plan of
         SelectPlan tName inNodesWithStreams outNodeWithStream win builder ->
-          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+          (textToCBytes tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
         CreateBySelectPlan tName inNodesWithStreams outNodeWithStream win builder _ ->
-          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
-        CreateViewPlan tName _ inNodesWithStreams outNodeWithStream win builder accumulation ->
-          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
+          (textToCBytes tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+        CreateViewPlan tName _ inNodesWithStreams (_,outStream) win builder accumulation ->
+          (textToCBytes outStream,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
         _ -> undefined
-    action qid = do
-      Log.debug . Log.buildString
-        $ "CREATE AS SELECT: query " <> show qid
-       <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper ctx tName inNodesWithStreams outNodeWithStream win builder accumulation
-    cleanup qid =
+    action = do
+      Log.debug . Log.buildString $ "CREATE AS SELECT: query " <> show qid
+        <> " has stared working on " <> show commandQueryStmtText
+      runTaskWrapper ctx (cBytesToText qid) inNodesWithStreams outNodeWithStream win builder accumulation
+    cleanup =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " is killed because of " <> show e
                     P.setQueryStatus qid Terminated zkHandle
-                    void $ releasePid qid)
+                    void releasePid)
       , Handler (\(e :: SomeException) -> do
                     Log.warning . Log.buildString
                        $ "CREATE AS SELECT: query " <> show qid
                       <> " died because of " <> show e
                     P.setQueryStatus qid ConnectionAbort zkHandle
-                    void $ releasePid qid)
+                    void releasePid)
       ]
-    releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)
+    releasePid = modifyMVar_ runningQueries (return . HM.delete qid)
