@@ -6,9 +6,10 @@
 
 module HStream.Gossip.Start where
 
-import           Control.Concurrent               (MVar, newEmptyMVar, putMVar,
-                                                   readMVar, threadDelay,
-                                                   tryPutMVar)
+import           Control.Concurrent               (MVar, modifyMVar,
+                                                   newEmptyMVar, newMVar,
+                                                   putMVar, readMVar,
+                                                   threadDelay, tryPutMVar)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
 import           Control.Concurrent.STM           (TVar, atomically, check,
@@ -16,6 +17,8 @@ import           Control.Concurrent.STM           (TVar, atomically, check,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    readTVar, stateTVar)
+import           Control.Exception                (Handler (Handler), catches,
+                                                   throwIO)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -27,8 +30,6 @@ import           Proto3.Suite                     (def)
 import qualified Proto3.Suite                     as PT
 import           System.Random                    (initStdGen)
 
-import           Control.Exception                (Handler (Handler), catches,
-                                                   throwIO)
 import           HStream.Gossip.Core              (addToServerList,
                                                    broadCastUserEvent,
                                                    runEventHandler,
@@ -48,6 +49,7 @@ import           HStream.Gossip.Utils             (ClusterInitedErr (..),
                                                    FailedToStart (..),
                                                    eventNameINIT,
                                                    eventNameINITED,
+                                                   maxRetryTimeInterval,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf')
 import qualified HStream.Logger                   as Log
@@ -159,11 +161,32 @@ waitForServersToStart = mapConcurrently wait
         Just node -> return node
 
 joinCluster :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
-joinCluster _ [] = do
-  Log.fatal $ "Failed to join the cluster, "
-           <> "please make sure the seed-nodes lists at least one available node from the cluster."
-  throwIO FailedToStart
-joinCluster sNode ((joinHost, joinPort):rest) = do
+joinCluster node joins = do
+  retryCount <- newMVar 0
+  loop retryCount
+  where
+    loop retryCount = do
+      members <- joinCluster' node joins
+      case members of
+        [] -> retry retryCount
+        _  -> return members
+    retry :: MVar Int -> IO [I.ServerNode]
+    retry retryCount = do
+      count <- modifyMVar retryCount (\x -> return (x + 1, x + 1))
+      -- TODO: Allow configuration to specify the retry count
+      if count >= 5
+        then do
+          Log.fatal $ "Failed to join the cluster, "
+                    <> "please make sure the seed-nodes lists at least one available node from the cluster."
+          throwIO FailedToStart
+        else do
+          Log.warning $ Log.buildString $ "Failed to join, retrying " <> show count <> " time"
+          threadDelay $ max ((2 ^ count) * 1000 * 1000) maxRetryTimeInterval
+          loop retryCount
+
+joinCluster' :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
+joinCluster' _ [] = return []
+joinCluster' sNode ((joinHost, joinPort):rest) = do
   members <- GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
     API.HStreamGossip{..} <- API.hstreamGossipClient client
     hstreamGossipJoin (mkClientNormalRequest def { API.joinReqNew = Just sNode}) >>= \case
@@ -176,7 +199,7 @@ joinCluster sNode ((joinHost, joinPort):rest) = do
       GRPC.ClientErrorResponse _ -> do
         Log.info . Log.buildString $ "failed to join " <> U.bs2str joinHost <> ":" <> show joinPort
         return []
-  if null members then joinCluster sNode rest else return members
+  if null members then joinCluster' sNode rest else return members
 
 initGossip :: GossipContext -> [I.ServerNode] -> IO ()
 initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK)
