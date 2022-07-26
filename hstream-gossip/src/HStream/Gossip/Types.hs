@@ -8,7 +8,6 @@ module HStream.Gossip.Types
 import           Control.Concurrent             (MVar)
 import           Control.Concurrent.Async       (Async)
 import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
-import           Control.Exception              (Exception)
 import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
 import qualified Data.Map                       as Map
@@ -219,9 +218,3 @@ serverID = option auto
   $  long "server-id"
   <> metavar "UINT32"
   <> help "ID of the hstream server node"
-
---------------------------------------------------------------------------------
-
-data FailedToStart = FailedToStart
-  deriving (Show, Eq)
-instance Exception FailedToStart
