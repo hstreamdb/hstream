@@ -4,7 +4,7 @@
 
 module HStream.Utils.BuildRecord where
 
-import           Control.Exception         (displayException, Exception, throw)
+import           Control.Exception         (Exception, displayException, throw)
 import           Data.ByteString           (ByteString)
 import qualified Data.ByteString           as B
 import qualified Data.ByteString.Lazy      as BL

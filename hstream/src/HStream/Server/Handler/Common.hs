@@ -9,7 +9,7 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   onException, throw)
+                                                   onException)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -100,7 +100,7 @@ runTask :: [(DiffFlow.Node, Text)]
         -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
         -> DiffFlow.Shard HStream.Connector.Type.Timestamp
         -> IO ()
-runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard@DiffFlow.Shard{..} = do
+runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard = do
 
   -- the task itself
   tid1 <- forkIO $ DiffFlow.run shard
@@ -119,7 +119,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
             ts <- getCurrentTimestamp
             let dataChange
                   = DiffFlow.DataChange
-                  { dcRow = (fromJust . Aeson.decode $ srcValue)
+                  { dcRow = fromJust . Aeson.decode $ srcValue
                   , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                   , dcDiff = 1
                   }

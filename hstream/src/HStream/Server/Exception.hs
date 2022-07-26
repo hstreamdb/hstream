@@ -104,8 +104,6 @@ serverExceptionHandlers = [
   Handler $ \(err :: UnexpectedError) -> do
     return (StatusInternal, mkStatusDetails err),
   Handler $ \(err :: WrongOffset) -> do
-    return (StatusInternal, mkStatusDetails err),
-  Handler $ \(err :: WrongOffset) -> do
     return (StatusInternal, mkStatusDetails err)
   ]
 

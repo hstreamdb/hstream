@@ -25,16 +25,16 @@ import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
 import qualified Z.IO.Logger                      as Log
 
+import           Control.Exception                (throwIO)
 import           HStream.Connector.Common
 import           HStream.Connector.Type           as HCT
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
+import           HStream.Server.Exception         (WrongOffset (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.Utils
-import Control.Exception (throwIO)
-import HStream.Server.Exception (WrongOffset(..))
 
 hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> S.StreamType -> SourceConnector
 hstoreSourceConnector ldclient reader streamType = SourceConnector {

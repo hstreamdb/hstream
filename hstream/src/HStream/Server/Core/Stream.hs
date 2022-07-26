@@ -337,9 +337,10 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
      case mReader of
        Just readerMvar -> takeMVar readerMvar
        Nothing         -> do
-         ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
+         r@ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
            Nothing     -> throwIO ShardReaderNotExists
            Just reader -> return reader
+         Log.info $ "get reader from persistence: " <> Log.buildString' (show r)
          reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
          S.readerStartReading reader readerShardId readerShardOffset S.LSN_MAX
          S.readerSetTimeout reader (fromIntegral readerReadTimeout)
@@ -354,7 +355,10 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
    readRecords reader = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
      let receivedRecordsVecs = decodeRecordBatch <$> records
-     return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+     let res = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+     Log.debug $ "reader " <> Log.buildText readShardRequestReaderId
+              <> " read " <> Log.buildInt (V.length res) <> " records"
+     return res
 
 --------------------------------------------------------------------------------
 

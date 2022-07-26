@@ -1,6 +1,6 @@
 module HStream.Server.Core.View where
 
-import Control.Exception (throw)
+import           Control.Exception           (throw)
 import qualified Data.HashMap.Strict         as HM
 import           Data.IORef                  (atomicModifyIORef')
 import qualified Data.Text                   as T
@@ -8,12 +8,12 @@ import qualified Data.Vector                 as V
 import           GHC.Stack                   (HasCallStack)
 
 import           HStream.Server.Core.Common  (deleteStoreStream)
+import           HStream.Server.Exception    (UnexpectedError (..))
 import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Server.Persistence  as P
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf (Empty)
 import           HStream.Utils               (TaskStatus (..), cBytesToText)
-import HStream.Server.Exception (UnexpectedError(..))
 
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc name checkIfExist = do
