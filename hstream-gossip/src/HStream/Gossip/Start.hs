@@ -181,7 +181,7 @@ joinCluster node joins = do
           throwIO FailedToStart
         else do
           Log.warning $ Log.buildString $ "Failed to join, retrying " <> show count <> " time"
-          threadDelay $ max ((2 ^ count) * 1000 * 1000) maxRetryTimeInterval
+          threadDelay $ min ((2 ^ count) * 1000 * 1000) maxRetryTimeInterval
           loop retryCount
 
 joinCluster' :: I.ServerNode -> [(ByteString, Int)] -> IO [I.ServerNode]
