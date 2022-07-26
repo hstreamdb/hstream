@@ -26,7 +26,8 @@ import           Control.Concurrent                (MVar, modifyMVar,
                                                     withMVar)
 import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
-                                                    bracket, catch, throwIO)
+                                                    bracket, catch, throw,
+                                                    throwIO)
 import           Control.Monad                     (foldM, forM, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
@@ -128,7 +129,8 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
     return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
 
-append :: ServerContext -> API.AppendRequest -> IO API.AppendResponse
+append :: HasCallStack
+       => ServerContext -> API.AppendRequest -> IO API.AppendResponse
 append sc@ServerContext{..} request@API.AppendRequest{..} = do
   let cStreamName = textToCBytes appendRequestStreamName
   recv_time <- getPOSIXTime
@@ -136,17 +138,25 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
            <> Log.buildText appendRequestStreamName
            <> "}, nums of records = "
            <> Log.buildInt (V.length appendRequestRecords)
+
   Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-  let partitionKey = getRecordKey . V.head $ appendRequestRecords
+
+  let partitionKey = if V.null appendRequestRecords
+                        then throw $ InvalidArgument "Empty RequestRecords!"
+                        else getRecordKey . V.head $ appendRequestRecords
   append_start <- getPOSIXTime
   r <- appendStream sc request partitionKey
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
   return r
 
-appendStream :: ServerContext -> API.AppendRequest -> T.Text -> IO API.AppendResponse
+appendStream :: HasCallStack
+             => ServerContext
+             -> API.AppendRequest
+             -> T.Text
+             -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
   appendRequestRecords = records} partitionKey = do
   shardId <- getShardId scLDClient shardTable sName partitionKey
