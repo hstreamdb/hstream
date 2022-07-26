@@ -8,6 +8,7 @@
 module HStream.IO.IOTask where
 
 import qualified Control.Concurrent         as C
+import           Control.Exception          (throwIO)
 import qualified Control.Exception          as E
 import           Control.Monad              (msum, unless, void, when)
 import qualified Data.Aeson                 as J
@@ -95,7 +96,7 @@ startIOTask task = do
     status | elem status [NEW, FAILED, STOPPED]  -> do
       runIOTask task
       return RUNNING
-    _ -> fail "invalid status"
+    status -> throwIO $ InvalidStatusException status
 
 stopIOTask :: IOTask -> Bool -> Bool -> IO ()
 stopIOTask task@IOTask{..} ifIsRunning force = do
@@ -115,7 +116,7 @@ stopIOTask task@IOTask{..} ifIsRunning force = do
         writeIORef process' Nothing
       return STOPPED
     s -> do
-      unless ifIsRunning $ fail "task is not RUNNING"
+      unless ifIsRunning $ throwIO (InvalidStatusException s)
       return s
   where
     killDockerCmd = "docker kill " ++ T.unpack (getDockerName taskId)

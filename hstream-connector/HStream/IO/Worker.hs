@@ -35,12 +35,11 @@ data Worker
     , monitorTid :: IORef C.ThreadId
     }
 
-newWorker :: KvConfig -> HStreamConfig -> (T.Text -> IO Bool) -> IO Worker
-newWorker kvCfg hsConfig checkNode = do
+newWorker :: KvConfig -> HStreamConfig -> T.Text -> (T.Text -> IO Bool) -> IO Worker
+newWorker kvCfg hsConfig tasksPath checkNode = do
   let (ZkKvConfig zk _ _) = kvCfg
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
-  -- tmp tasksPath
-  worker <- Worker kvCfg hsConfig "/tmp/io/tasks" checkNode
+  worker <- Worker kvCfg hsConfig tasksPath checkNode
     <$> C.newMVar HM.empty
     <*> S.newZkStorage zk
     <*> newIORef undefined
@@ -99,7 +98,7 @@ createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
   S.createIOTask storage taskName taskId taskInfo
   C.modifyMVar_ ioTasksM $ \ioTasks -> do
     case HM.lookup taskName ioTasks of
-      Just _ -> fail "exists"
+      Just _ -> throwIO $ ConnectorExistedException taskName
       Nothing -> do
         IOTask.startIOTask task
         return $ HM.insert taskName task ioTasks
@@ -126,7 +125,7 @@ getIOTask :: Worker -> T.Text -> IO IOTask.IOTask
 getIOTask Worker{..} name = do
   ioTasks <- C.readMVar ioTasksM
   case HM.lookup name ioTasks of
-    Nothing     -> fail "connector not exists"
+    Nothing     -> throwIO $ ConnectorNotExistException name
     Just ioTask -> return ioTask
 
 deleteIOTask :: Worker -> T.Text -> IO ()

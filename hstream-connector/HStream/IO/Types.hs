@@ -11,7 +11,6 @@ import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import qualified Data.HashMap.Strict        as HM
 import           Data.Maybe                 (isJust)
-import           GHC.Base                   (join)
 import qualified HStream.Server.HStreamApi  as API
 import           HStream.Utils              (pairListToStruct, textToMaybeValue)
 import           ZooKeeper.Types            (ZHandle)
@@ -129,3 +128,15 @@ instance Exception WrongNodeException
 newtype UnimplementedConnectorException = UnimplementedConnectorException T.Text
   deriving Show
 instance Exception UnimplementedConnectorException
+
+newtype ConnectorExistedException = ConnectorExistedException T.Text
+  deriving Show
+instance Exception ConnectorExistedException
+
+newtype ConnectorNotExistException = ConnectorNotExistException T.Text
+  deriving Show
+instance Exception ConnectorNotExistException
+
+newtype InvalidStatusException = InvalidStatusException IOTaskStatus
+  deriving Show
+instance Exception InvalidStatusException

@@ -95,6 +95,7 @@ data ServerOpts = ServerOpts
   , _ldLogLevel                :: !Log.LDLogLevel
 
   , _gossipOpts                :: !GossipOpts
+  , _ioTasksPath               :: !Text
   } deriving (Show)
 
 getConfig :: IO ServerOpts
@@ -243,6 +244,9 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
   nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
   nodeTlsCaPath   <- nodeCfgObj .:? "tls-ca-path"
+
+  -- hstream io config
+  _ioTasksPath <- nodeCfgObj .:? "io-tasks-path" .!= "/tmp/io/tasks"
 
   let _enableTls   = _enableTls_ || nodeEnableTls
   let _tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath

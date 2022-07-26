@@ -43,10 +43,6 @@ spec = describe "Create" $ do
     parseAndRefine "CREATE VIEW foo AS SELECT a, SUM(a), COUNT(*) FROM bar GROUP BY b EMIT CHANGES;"
       `shouldReturn` RQCreate (RCreateView "foo" (RSelect (RSelList [(Left (RExprCol "a" Nothing "a"),"a"),(Right (Unary AggSum (RExprCol "a" Nothing "a")),"SUM(a)"),(Right (Nullary AggCountAll),"COUNT(*)")]) (RFrom [RTableRefSimple "bar" Nothing]) RWhereEmpty (RGroupBy Nothing "b" Nothing) RHavingEmpty))
 
-  it "CREATE CONNECTOR" $ do
-    parseAndRefine "CREATE SOURCE CONNECTOR mysql_conn WITH (\"task.image\" = \"hstream/source-debezium\");"
-      `shouldReturn` RQCreate (RCreateConnector "SOURCE" "mysql_conn" False (RConnectorOptions (HM.fromList [("task.image", J.toJSON ("hstream/source-debezium" :: T.Text))])))
-
   it "SELECT (Stream)" $ do
     parseAndRefine "SELECT * FROM my_stream EMIT CHANGES;"
       `shouldReturn` RQSelect (RSelect RSelAsterisk (RFrom [RTableRefSimple "my_stream" Nothing]) RWhereEmpty RGroupByEmpty RHavingEmpty)
