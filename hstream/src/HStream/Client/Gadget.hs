@@ -105,11 +105,11 @@ getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
       T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)
       return Nothing
     ClientErrorResponse err -> do
-      putStrLn $ "Error: " <> show err <> " , retry on a different server node"
+      putStrLn $ "Error: " <> (case err of ClientIOError ge -> show ge; _ -> show err )<> " , retrying on a different server node"
       modifyMVar_ availableServers (return . L.delete addr)
       curServers <- readMVar availableServers
       case curServers of
-        []  -> return Nothing
+        []  -> errorWithoutStackTrace "No more server nodes available!"
         x:_ -> getInfoWithAddr ctx x action cont
     _ -> do
       void . swapMVar currentServer $ addr

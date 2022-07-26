@@ -19,8 +19,8 @@ deleteView sc name checkIfExist = do
   deleteStoreStream sc (transToStreamName name) checkIfExist
 
 hstreamQueryToView :: P.PersistentQuery -> API.View
-hstreamQueryToView (P.PersistentQuery queryId sqlStatement createdTime (P.ViewQuery _ _ schema) status _ _) =
-  API.View { viewViewId = cBytesToText queryId
+hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ viewName schema) status _ _) =
+  API.View { viewViewId = cBytesToText viewName
        , viewStatus = getPBStatus status
        , viewCreatedTime = createdTime
        , viewSql = sqlStatement
