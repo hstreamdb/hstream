@@ -192,7 +192,7 @@ parseJSONToOptions CliOptions {..} obj = do
   -- to set payload size for gRPC and LD.
   _maxRecordSize    <- nodeCfgObj .:? "max-record-size" .!= 1048576
   when (_maxRecordSize < 0 && _maxRecordSize > 104876)
-    $ error "max-record-size has to be a positive number less than 1MB"
+    $ errorWithoutStackTrace "max-record-size has to be a positive number less than 1MB"
 
   let _serverID           = fromMaybe nodeId _serverID_
   let _serverHost         = fromMaybe "0.0.0.0" _serverHost_
@@ -209,7 +209,7 @@ parseJSONToOptions CliOptions {..} obj = do
   -- Cluster Option
   seeds <- flip fromMaybe _seedNodes_ <$> (nodeCfgObj .: "seed-nodes")
   let !_seedNodes = case parseHostPorts seeds of
-        Left err -> error err
+        Left err -> errorWithoutStackTrace err
         Right hps -> map (second . fromMaybe $ fromIntegral _serverInternalPort) hps
 
   clusterCfgObj <- nodeCfgObj .:? "gossip" .!= mempty
@@ -250,8 +250,8 @@ parseJSONToOptions CliOptions {..} obj = do
   let _tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
   let !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
         (False, _, _) -> Nothing
-        (_, Nothing, _) -> error "enable-tls=true, but tls-key-path is empty"
-        (_, _, Nothing) -> error "enable-tls=true, but tls-cert-path is empty"
+        (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
+        (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
         (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
 
   return ServerOpts {..}

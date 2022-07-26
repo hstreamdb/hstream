@@ -51,10 +51,10 @@ instance Format API.View where
   formatResult = show . API.viewViewId
 
 instance Format [API.Stream] where
-  formatResult = emptyNotice . concatMap formatResult
+  formatResult = emptyNotice . renderStreamsToTable
 
 instance Format [API.View] where
-  formatResult = emptyNotice . unlines . map formatResult
+  formatResult = emptyNotice . renderViewsToTable
 
 instance Format [API.Query] where
   formatResult = emptyNotice . renderQueriesToTable
@@ -70,9 +70,9 @@ instance Format [API.ServerNodeStatus] where
 
 instance Format a => Format (ClientResult 'Normal a) where
   formatResult (ClientNormalResponse response _ _ _ _) = formatResult response
-  formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode StatusInternal details)))
-    = "Error: " <> BS.unpack (unStatusDetails details) <> "\n"
-  formatResult (ClientErrorResponse err) = "Server Error: " <> show err <> "\n"
+  formatResult (ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _code details)))
+    = "Client Error: " <> BS.unpack (unStatusDetails details) <> "\n"
+  formatResult (ClientErrorResponse err) = "Error: " <> show err <> "\n"
 
 instance Format API.ListStreamsResponse where
   formatResult = formatResult . V.toList . API.listStreamsResponseStreams
@@ -102,15 +102,16 @@ instance Format API.CommandQueryResponse where
 
 --------------------------------------------------------------------------------
 emptyNotice :: String -> String
-emptyNotice xs = if null (words xs) then "Succeeded. No results.\n" else xs
+emptyNotice xs = if null (words xs) then "Done. No results.\n" else xs
 
 formatCommandQueryResponse :: API.CommandQueryResponse -> String
 formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
-  []  -> "Succeeded. No results.\n"
+  []  -> "Done. \n"
   [y] -> formatResult y
   ys  -> "unknown behaviour" <> show ys
 
 renderQueriesToTable :: [API.Query] -> String
+renderQueriesToTable [] = ""
 renderQueriesToTable queries =
   Table.tableString colSpec Table.asciiS
     (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
@@ -135,6 +136,7 @@ renderQueriesToTable queries =
               ]
 
 renderConnectorsToTable :: [API.Connector] -> String
+renderConnectorsToTable [] = ""
 renderConnectorsToTable connectors =
   Table.tableString colSpec Table.asciiS
     (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
@@ -150,6 +152,54 @@ renderConnectorsToTable connectors =
       where infoJson = structToJsonObject info
             toString (A.String v) = T.unpack v
     rows = map formatRow connectors
+    colSpec = [ Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              ]
+
+renderStreamsToTable :: [API.Stream] -> String
+renderStreamsToTable [] = ""
+renderStreamsToTable streams =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = [ "Stream Name"
+             , "Replica"
+             , "Retention Time"
+             , "Shard Count"]
+    formatRow API.Stream {..} =
+      [ [T.unpack streamStreamName]
+      , [show streamReplicationFactor]
+      , [show streamBacklogDuration <> "sec"]
+      , [show streamShardCount]
+      ]
+    rows = map formatRow streams
+    colSpec = [ Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              , Table.column Table.expand Table.left def def
+              ]
+
+renderViewsToTable :: [API.View] -> String
+renderViewsToTable [] = ""
+renderViewsToTable views =
+  Table.tableString colSpec Table.asciiS
+    (Table.fullH (repeat $ Table.headerColumn Table.left Nothing) titles)
+    (Table.colsAllG Table.center <$> rows) ++ "\n"
+  where
+    titles = [ "View Name"
+             , "Status"
+             , "Created Time"
+             , "Schema"]
+    formatRow API.View {..} =
+      [ [T.unpack viewViewId]
+      , [formatStatus viewStatus]
+      , [CB.unpack $ formatSystemTimeGMT iso8061DateFormat (MkSystemTime viewCreatedTime 0)]
+      , [show viewSchema]
+      ]
+    rows = map formatRow views
     colSpec = [ Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
