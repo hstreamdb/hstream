@@ -1,8 +1,7 @@
-{-# LANGUAGE ApplicativeDo        #-}
-{-# LANGUAGE BangPatterns         #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ApplicativeDo     #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module HStream.Server.Config
   ( ServerOpts (..)

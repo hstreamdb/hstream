@@ -7,6 +7,7 @@
 
 module HStream.Gossip.Handlers where
 
+import           Control.Concurrent               (tryReadMVar)
 import           Control.Concurrent.STM           (atomically, newEmptyTMVarIO,
                                                    readTMVar, readTVar,
                                                    readTVarIO, stateTVar,
@@ -40,7 +41,9 @@ import           HStream.Gossip.Types             (GossipContext (..),
                                                    ServerState (OK),
                                                    ServerStatus (..))
 import qualified HStream.Gossip.Types             as T
-import           HStream.Gossip.Utils             (broadcast, getMessagesToSend,
+import           HStream.Gossip.Utils             (broadcast, clusterInitedErr,
+                                                   clusterReadyErr,
+                                                   getMessagesToSend,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf',
                                                    returnErrResp, returnResp)
@@ -64,7 +67,12 @@ handlers gc = HStreamGossip {
 bootstrapPingHandler :: GossipContext
   -> ServerRequest 'Normal Empty I.ServerNode
   -> IO (ServerResponse 'Normal I.ServerNode)
-bootstrapPingHandler GossipContext{..} _req = returnResp serverSelf
+bootstrapPingHandler GossipContext{..} _req =
+  tryReadMVar clusterReady >>= \case
+    Nothing -> tryReadMVar clusterInited >>= \case
+      Nothing -> returnResp serverSelf
+      Just _  -> returnErrResp StatusFailedPrecondition clusterInitedErr
+    Just _ -> returnErrResp StatusFailedPrecondition clusterReadyErr
 
 pingHandler :: GossipContext
   -> ServerRequest 'Normal Ping Ack

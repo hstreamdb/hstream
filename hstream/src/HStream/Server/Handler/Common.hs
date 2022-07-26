@@ -76,7 +76,6 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
   shard <- DiffFlow.buildShard graph
 
   let temporalFilter = case window of
-        Nothing -> NoFilter
         Just (RTumblingWindow interval) ->
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
            in Tumbling (fromIntegral interval_ms)
@@ -87,7 +86,7 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
         Just (RSlidingWindow interval) ->
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
            in Sliding (fromIntegral interval_ms)
-        _ -> error "not supported"
+        Nothing -> NoFilter
 
   -- RUN TASK
   runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
@@ -101,7 +100,7 @@ runTask :: [(DiffFlow.Node, Text)]
         -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
         -> DiffFlow.Shard HStream.Connector.Type.Timestamp
         -> IO ()
-runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard@DiffFlow.Shard{..} = do
+runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard = do
 
   -- the task itself
   tid1 <- forkIO $ DiffFlow.run shard
@@ -120,7 +119,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
             ts <- getCurrentTimestamp
             let dataChange
                   = DiffFlow.DataChange
-                  { dcRow = (fromJust . Aeson.decode $ srcValue)
+                  { dcRow = fromJust . Aeson.decode $ srcValue
                   , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
                   , dcDiff = 1
                   }

@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
 
 module HStream.Server.Handler.Query where
 
@@ -121,7 +120,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           Core.deleteStream sc request
           returnCommandQueryEmptyResp
         DView view -> do
-          Core.deleteView sc view checkIfExist
+          void $ Core.deleteView sc view checkIfExist
           returnCommandQueryEmptyResp
         DConnector conn -> do
           IO.deleteIOTask scIOWorker conn
@@ -209,12 +208,12 @@ mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
   in change {dcRow = newRow}
 
 filterView :: SelectViewCond -> [DataChange a] -> [DataChange a]
-filterView (field, rexpr) changes =
+filterView (field, rexpr) =
   L.filter (\DataChange{..} ->
               let column       = HSC.getFieldByName dcRow field
                   (_,expected) = HSC.genRExprValue rexpr dcRow
                in column == expected
-           ) changes
+           )
 
 executePushQueryHandler ::
   ServerContext ->
@@ -249,7 +248,7 @@ executePushQueryHandler
 
             sending <- async (sendToClient zkHandle qid sink sc streamSend)
 
-            forkIO $ handlePushQueryCanceled meta $ do
+            void . forkIO $ handlePushQueryCanceled meta $ do
               killThread tid
               cancel sending
               P.setQueryStatus qid Terminated zkHandle
@@ -328,7 +327,7 @@ terminateQueriesHandler
   :: ServerContext
   -> ServerRequest 'Normal TerminateQueriesRequest TerminateQueriesResponse
   -> IO (ServerResponse 'Normal TerminateQueriesResponse)
-terminateQueriesHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req@TerminateQueriesRequest{..}) = queryExceptionHandle $ do
+terminateQueriesHandler ctx (ServerNormalRequest _metadata req@TerminateQueriesRequest{..}) = queryExceptionHandle $ do
   Log.debug $ "Receive Terminate Query Request. "
     <> "Query ID: " <> Log.buildString (show terminateQueriesRequestQueryId)
   Core.terminateQueries ctx req >>= \case

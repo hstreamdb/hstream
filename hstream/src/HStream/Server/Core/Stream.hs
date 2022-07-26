@@ -18,6 +18,7 @@ module HStream.Server.Core.Stream
   , RecordTooBig (..)
   , ShardReaderExists (..)
   , ShardReaderNotExists (..)
+  , UnKnownShardOffset (..)
   ) where
 
 import           Control.Concurrent                (MVar, modifyMVar,
@@ -36,7 +37,6 @@ import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromJust, fromMaybe)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
-import qualified Data.Text                         as Text
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
 import           Proto3.Suite                      (Enumerated (Enumerated))
@@ -127,7 +127,7 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     let r = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
         b = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
-    return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
+    return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
 
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse
@@ -265,7 +265,7 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
        API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
        API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
-       _                                                                                 -> error "wrong shard offset"
+       _                                                                                 -> throwIO UnKnownShardOffset
 
 deleteShardReader
   :: HasCallStack
@@ -337,9 +337,10 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
      case mReader of
        Just readerMvar -> takeMVar readerMvar
        Nothing         -> do
-         ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
+         r@ShardReader{..} <- P.getReader readShardRequestReaderId zkHandle >>= \case
            Nothing     -> throwIO ShardReaderNotExists
            Just reader -> return reader
+         Log.info $ "get reader from persistence: " <> Log.buildString' (show r)
          reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
          S.readerStartReading reader readerShardId readerShardOffset S.LSN_MAX
          S.readerSetTimeout reader (fromIntegral readerReadTimeout)
@@ -354,7 +355,10 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
    readRecords reader = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
      let receivedRecordsVecs = decodeRecordBatch <$> records
-     return $ foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+     let res = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+     Log.debug $ "reader " <> Log.buildText readShardRequestReaderId
+              <> " read " <> Log.buildInt (V.length res) <> " records"
+     return res
 
 --------------------------------------------------------------------------------
 
@@ -383,3 +387,7 @@ instance Exception ShardReaderNotExists
 data ShardReaderExists = ShardReaderExists
   deriving (Show)
 instance Exception ShardReaderExists
+
+data UnKnownShardOffset = UnKnownShardOffset
+  deriving (Show)
+instance Exception UnKnownShardOffset

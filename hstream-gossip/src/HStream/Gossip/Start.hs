@@ -27,7 +27,8 @@ import           Proto3.Suite                     (def)
 import qualified Proto3.Suite                     as PT
 import           System.Random                    (initStdGen)
 
-import           Control.Exception                (throwIO)
+import           Control.Exception                (Handler (Handler), catches,
+                                                   throwIO)
 import           HStream.Gossip.Core              (addToServerList,
                                                    broadCastUserEvent,
                                                    runEventHandler,
@@ -37,13 +38,15 @@ import           HStream.Gossip.Handlers          (handlers)
 import qualified HStream.Gossip.HStreamGossip     as API
 import           HStream.Gossip.Probe             (bootstrapPing, scheduleProbe)
 import           HStream.Gossip.Types             (EventHandlers, EventPayload,
-                                                   FailedToStart (..),
                                                    GossipContext (..),
                                                    GossipOpts (..),
                                                    InitType (..),
                                                    ServerState (..))
 import qualified HStream.Gossip.Types             as T
-import           HStream.Gossip.Utils             (eventNameINIT,
+import           HStream.Gossip.Utils             (ClusterInitedErr (..),
+                                                   ClusterReadyErr (..),
+                                                   FailedToStart (..),
+                                                   eventNameINIT,
                                                    eventNameINITED,
                                                    mkClientNormalRequest,
                                                    mkGRPCClientConf')
@@ -73,6 +76,7 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds' = do
   let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds') clusterReady) _eventHandlers
   let gc = GossipContext {..}
   return gc { eventHandlers = Map.insert eventNameINIT (handleINITEvent gc) eventHandlers}
+
 --------------------------------------------------------------------------------
 
 startGossip :: ByteString -> GossipContext -> IO (Async ())
@@ -90,7 +94,14 @@ bootstrap [] GossipContext{..} = do
   putMVar clusterInited Gossip
   putMVar clusterReady ()
   Log.info "All servers have been initialized"
-bootstrap initialServers gc@GossipContext{..} = do
+bootstrap initialServers gc@GossipContext{..} = flip catches
+  [ Handler (\(_ :: ClusterInitedErr) -> do
+      Log.warning "Received multiple init signals in the cluster, this one will be ignored"
+      return ())
+  , Handler (\(_ :: ClusterReadyErr) -> do
+      Log.warning "Dead seed node detected, will send join request instead"
+      joinCluster serverSelf seeds >>= initGossip gc >> putMVar clusterReady ())
+  ] $ do
   readMVar clusterInited >>= \case
     User ->  do
       members <- waitForServersToStart initialServers
