@@ -3,7 +3,7 @@ cradle:
     - path: "common/."
       component: "lib:hstream-common"
 
-    - path: "common/gen-hs"
+    - path: "common/api/gen-hs"
       component: "lib:hstream-common"
 
     - path: "common/test"
@@ -23,12 +23,6 @@ cradle:
 
     - path: "external/gRPC-haskell/core/tests"
       component: "grpc-haskell-core:test:tests"
-
-    - path: "external/diff-flow/src"
-      component: "lib:diff-flow"
-
-    - path: "external/diff-flow/test"
-      component: "diff-flow:test:lib-test"
 
     - path: "external/gRPC-haskell/src"
       component: "lib:grpc-haskell"
@@ -267,14 +261,35 @@ cradle:
     - path: "hstream-connector/./"
       component: "lib:hstream-connector"
 
+    - path: "hstream-diffflow/src"
+      component: "lib:diff-flow"
+
+    - path: "hstream-diffflow/test"
+      component: "diff-flow:test:lib-test"
+
+    - path: "hstream-diffflow/./example/Main.hs"
+      component: "diff-flow:exe:example"
+
+    - path: "hstream-diffflow/./example/Reduce.hs"
+      component: "diff-flow:exe:example-2"
+
+    - path: "hstream-diffflow/./example/Distinct.hs"
+      component: "diff-flow:exe:example-3"
+
+    - path: "hstream-diffflow/./example/Loop.hs"
+      component: "diff-flow:exe:example-4"
+
+    - path: "hstream-diffflow/./bench/benchmark.hs"
+      component: "diff-flow:bench:lib-bench"
+
+    - path: "hstream-diffflow/./bench/throughout.hs"
+      component: "diff-flow:exe:throughout-bench"
+
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"
 
     - path: "hstream-sql/gen-sql"
       component: "lib:hstream-sql"
-
-    - path: "hstream-sql/sql-example-mock/Example.hs"
-      component: "hstream-sql:exe:sql-example-mock"
 
     - path: "hstream-sql/test"
       component: "hstream-sql:test:hstream-sql-test"

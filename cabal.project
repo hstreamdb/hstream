@@ -7,6 +7,7 @@ packages:
   hstream-connector
   hstream-admin
   hstream-gossip
+  hstream-diffflow
 
   external/gRPC-haskell
   external/gRPC-haskell/core
@@ -17,8 +18,6 @@ packages:
   external/hsthrift/common/mangle/mangle.cabal
   external/hsthrift/lib/thrift-lib.cabal
   external/hsthrift/cpp-channel/thrift-cpp-channel.cabal
-
-  external/diff-flow/diff-flow.cabal
 
 -- https://github.com/haskell/cabal/issues/4271
 package thrift-lib
