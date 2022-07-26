@@ -71,9 +71,9 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   case plan of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
     CreateConnectorPlan {} -> do
-      -- IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
-      connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
-      returnCommandQueryResp (mkVectorStruct connector "created_connector")
+      IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
+      -- connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      -- returnCommandQueryResp (mkVectorStruct connector "created_connector")
     CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
