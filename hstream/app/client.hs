@@ -1,10 +1,10 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE PatternSynonyms     #-}
 
 module Main where
 
@@ -42,8 +42,8 @@ import           HStream.Client.Action            (createStream,
 import           HStream.Client.Execute           (execute, executeInsert,
                                                    executeShowPlan)
 import           HStream.Client.Gadget            (describeCluster,
-                                                   waitForServerToStart,
-                                                   lookupConnector)
+                                                   lookupConnector,
+                                                   waitForServerToStart)
 import           HStream.Client.Internal          (callDeleteSubscription,
                                                    callDeleteSubscriptionAll,
                                                    callListSubscriptions,
