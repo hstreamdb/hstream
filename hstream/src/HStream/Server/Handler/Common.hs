@@ -80,10 +80,13 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
         Just (RTumblingWindow interval) ->
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
            in Tumbling (fromIntegral interval_ms)
-        Just (RHoppingWIndow len hop) ->
+        Just (RHoppingWindow len hop) ->
           let len_ms = (Time.diffTimeToPicoseconds len) `div` (1000 * 1000 * 1000)
               hop_ms = (Time.diffTimeToPicoseconds hop) `div` (1000 * 1000 * 1000)
            in Hopping (fromIntegral len_ms) (fromIntegral hop_ms)
+        Just (RSlidingWindow interval) ->
+          let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
+           in Sliding (fromIntegral interval_ms)
         _ -> error "not supported"
 
   -- RUN TASK
@@ -124,12 +127,29 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
             Prelude.print $ "### Get input: " <> show dataChange
             DiffFlow.pushInput shard inNode dataChange -- original update
             -- insert new negated updates to limit the valid range of this update
+            let insert_ms = DiffFlow.timestampTime (DiffFlow.dcTimestamp dataChange)
             case temporalFilter of
               NoFilter -> return ()
               Tumbling interval_ms -> do
-                let insert_ms = DiffFlow.timestampTime (DiffFlow.dcTimestamp dataChange)
                 let _start_ms = interval_ms * (insert_ms `div` interval_ms)
                     end_ms    = interval_ms * (1 + insert_ms `div` interval_ms)
+                let negatedDataChange = dataChange
+                                        { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                                        , DiffFlow.dcDiff = -1
+                                        }
+                DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+              Hopping interval_ms hop_ms -> do
+                -- FIXME: determine the accurate semantic of HOPPING window
+                let _start_ms = hop_ms * (insert_ms `div` hop_ms)
+                    end_ms = interval_ms + hop_ms * (insert_ms `div` hop_ms)
+                let negatedDataChange = dataChange
+                                        { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                                        , DiffFlow.dcDiff = -1
+                                        }
+                DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+              Sliding interval_ms -> do
+                let _start_ms = insert_ms
+                    end_ms    = insert_ms + interval_ms
                 let negatedDataChange = dataChange
                                         { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
                                         , DiffFlow.dcDiff = -1

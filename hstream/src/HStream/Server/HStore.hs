@@ -193,7 +193,7 @@ writeRecordToHStore ctx SinkRecord{..} = do
             { appendRequestStreamName = snkStream
             , appendRequestRecords = V.singleton record
             }
-  void $ Core.appendStream ctx req Nothing
+  void $ Core.appendStream ctx req ""
 
 data Payload = Payload
   { pLogID     :: S.C_LogID

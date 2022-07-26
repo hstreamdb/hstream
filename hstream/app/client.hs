@@ -76,7 +76,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
-                                                   formatResult,
+                                                   formatResult, genUnique,
                                                    mkGRPCClientConf,
                                                    serverNodeToSocketAddr,
                                                    setupSigsegvHandler)
@@ -96,7 +96,7 @@ runCommand HStreamCommand {..} =
     HStreamInit       -> hstreamInit cliConnOpts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL CliConnOpts{..} HStreamSqlOpts{ _clientId = clientId, _updateInterval = updateInterval, _retryTimeout = retryTimeout } = do
+hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _retryTimeout = retryTimeout } = do
   let addr = ipv4 _serverHost _serverPort
   availableServers <- newMVar []
   currentServer    <- newMVar addr
@@ -187,7 +187,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   ":sub":subId:stream:_ -> callSubscription ctx (T.pack subId) (T.pack stream)
   ":delSub":subId:_     -> callDeleteSubscription ctx (T.pack subId)
   ":delAllSubs":_       -> callDeleteSubscriptionAll ctx
-  ":fetch":subId:_      -> callStreamingFetch ctx V.empty (T.pack subId) (T.pack clientId)
+  ":fetch":subId:_      -> genUnique >>= callStreamingFetch ctx V.empty (T.pack subId) . T.pack . show
   ":listSubs":_         -> callListSubscriptions ctx
   -- }
 

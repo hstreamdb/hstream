@@ -309,14 +309,14 @@ instance Refine Where where
 
 ---- Grp
 data RWindow = RTumblingWindow RInterval
-             | RHoppingWIndow  RInterval RInterval
-             | RSessionWindow  RInterval
+             | RHoppingWindow  RInterval RInterval
+             | RSlidingWindow  RInterval
              deriving (Eq, Show)
 type instance RefinedType Window = RWindow
 instance Refine Window where
   refine (TumblingWindow _ interval) = RTumblingWindow (refine interval)
-  refine (HoppingWindow  _ len hop ) = RHoppingWIndow (refine len) (refine hop)
-  refine (SessionWindow  _ interval) = RSessionWindow (refine interval)
+  refine (HoppingWindow  _ len hop ) = RHoppingWindow (refine len) (refine hop)
+  refine (SlidingWindow  _ interval) = RSlidingWindow (refine interval)
 
 data RGroupBy = RGroupByEmpty
               | RGroupBy (Maybe StreamName) FieldName (Maybe RWindow)
