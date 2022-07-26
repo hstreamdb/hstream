@@ -1,5 +1,6 @@
 module HStream.Server.Core.View where
 
+import Control.Exception (throw)
 import qualified Data.HashMap.Strict         as HM
 import           Data.IORef                  (atomicModifyIORef')
 import qualified Data.Text                   as T
@@ -12,6 +13,7 @@ import qualified HStream.Server.Persistence  as P
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf (Empty)
 import           HStream.Utils               (TaskStatus (..), cBytesToText)
+import HStream.Server.Exception (UnexpectedError(..))
 
 deleteView :: ServerContext -> T.Text -> Bool -> IO Empty
 deleteView sc name checkIfExist = do
@@ -26,7 +28,7 @@ hstreamQueryToView (P.PersistentQuery _ sqlStatement createdTime (P.ViewQuery _ 
        , viewSql = sqlStatement
        , viewSchema = V.fromList $ T.pack <$> schema
        }
-hstreamQueryToView _ = error "Impossible happened..."
+hstreamQueryToView _ = throw $ UnexpectedError "unexpected match in hstreamQueryToView."
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
 listViews ServerContext{..} = map hstreamQueryToView . filter P.isViewQuery <$> P.getQueries zkHandle

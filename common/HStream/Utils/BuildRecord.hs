@@ -4,7 +4,7 @@
 
 module HStream.Utils.BuildRecord where
 
-import           Control.Exception         (displayException)
+import           Control.Exception         (displayException, Exception, throw)
 import           Data.ByteString           (ByteString)
 import qualified Data.ByteString           as B
 import qualified Data.ByteString.Lazy      as BL
@@ -49,7 +49,7 @@ decodeByteStringRecord :: B.ByteString -> HStreamRecord
 decodeByteStringRecord record =
   let rc = PT.fromByteString record
   in case rc of
-      Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
+      Left e    -> throw . DecodeHStreamRecordErr $ "Decode HStreamRecord error: " <> displayException e
       Right res -> res
 
 encodeBatch :: HStreamRecordBatch -> ByteString
@@ -62,7 +62,7 @@ decodeByteStringBatch :: B.ByteString -> HStreamRecordBatch
 decodeByteStringBatch batch =
   let rc = PT.fromByteString batch
   in case rc of
-      Left e    -> error $ "Decode HStreamRecord error: " <> displayException e
+      Left e    -> throw . DecodeHStreamRecordErr $ "Decode HStreamRecord error: " <> displayException e
       Right res -> res
 
 getPayload :: HStreamRecord -> Bytes
@@ -81,7 +81,7 @@ getRecordKey :: HStreamRecord -> Text
 getRecordKey record =
   case fmap hstreamRecordHeaderKey . hstreamRecordHeader $ record of
     Just key -> key
-    Nothing  -> error "HStreamRecord doesn't have a header."
+    Nothing  -> throw NoRecordHeader
 
 updateRecordTimestamp :: Timestamp -> HStreamRecord -> HStreamRecord
 updateRecordTimestamp timestamp HStreamRecord{..} =
@@ -94,3 +94,12 @@ clientDefaultKey = "__default__"
 
 clientDefaultKey' :: CBytes
 clientDefaultKey' = textToCBytes clientDefaultKey
+
+newtype DecodeHStreamRecordErr = DecodeHStreamRecordErr String
+  deriving(Show)
+instance Exception DecodeHStreamRecordErr
+
+data NoRecordHeader = NoRecordHeader
+  deriving (Show)
+instance Exception NoRecordHeader where
+  displayException NoRecordHeader = "HStreamRecord doesn't have a header."

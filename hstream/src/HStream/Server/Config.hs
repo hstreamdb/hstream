@@ -2,7 +2,6 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 
 module HStream.Server.Config
   ( ServerOpts (..)

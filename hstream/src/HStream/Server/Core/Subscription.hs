@@ -488,7 +488,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                      <> Log.buildInt shard
                      <> ", startOffsets="
                      <> Log.buildString' (show startOffsets)
-            error $ "can't find startOffsets for shard " <> show shard
+            throwIO . UnexpectedError $ "can't find startOffsets for shard " <> show shard
           Just s -> return s
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just offset) S.LSN_MAX
 

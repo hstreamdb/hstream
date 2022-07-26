@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -35,6 +33,8 @@ import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.Utils
+import Control.Exception (throwIO)
+import HStream.Server.Exception (WrongOffset(..))
 
 hstoreSourceConnector :: S.LDClient -> S.LDSyncCkpReader -> S.StreamType -> SourceConnector
 hstoreSourceConnector ldclient reader streamType = SourceConnector {
@@ -177,8 +177,8 @@ commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Off
 commitCheckpointToHStore ldclient reader streamId offset = do
   logId <- S.getUnderlyingLogId ldclient streamId Nothing
   case offset of
-    Earlist    -> error "expect normal offset, but get Earlist"
-    Latest     -> error "expect normal offset, but get Latest"
+    Earlist    -> throwIO $ WrongOffset "expect normal offset, but get Earlist"
+    Latest     -> throwIO $ WrongOffset "expect normal offset, but get Latest"
     Offset lsn -> S.writeCheckpoints reader (M.singleton logId lsn) 10{-retries-}
 
 writeRecordToHStore :: ServerContext -> SinkRecord -> IO ()

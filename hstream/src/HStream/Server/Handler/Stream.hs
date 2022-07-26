@@ -23,8 +23,6 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Core.Stream       (ShardReaderExists (..),
-                                                   ShardReaderNotExists (..))
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -157,6 +155,10 @@ appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
           return (StatusUnavailable, mkStatusDetails err))
       , Handler (\(err :: Store.NOSEQUENCER) -> do
           return (StatusUnavailable, mkStatusDetails err))
+      , Handler (\(err :: NoRecordHeader) ->
+          return (StatusInvalidArgument, mkStatusDetails err))
+      , Handler (\(err :: DecodeHStreamRecordErr) -> do
+          return (StatusInvalidArgument, mkStatusDetails err))
       ] ++ defaultHandlers
     mkHandlers = setRespType mkServerErrResp handlers
 
@@ -176,10 +178,12 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
 
 shardReaderExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
 shardReaderExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  [ Handler (\(err :: ShardReaderExists) ->
+  [ Handler (\(err :: C.ShardReaderExists) ->
       return (StatusAlreadyExists, mkStatusDetails err)),
-    Handler (\(err :: ShardReaderNotExists) ->
+    Handler (\(err :: C.ShardReaderNotExists) ->
       return (StatusFailedPrecondition, mkStatusDetails err)),
     Handler (\(err :: WrongServer) ->
-      return (StatusFailedPrecondition, mkStatusDetails err))
+      return (StatusFailedPrecondition, mkStatusDetails err)),
+    Handler (\(err :: C.UnKnownShardOffset) ->
+      return (StatusInvalidArgument, mkStatusDetails err))
   ] ++ defaultHandlers

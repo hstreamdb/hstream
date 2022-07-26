@@ -9,7 +9,7 @@ module HStream.Server.Handler.Common where
 import           Control.Concurrent
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   onException)
+                                                   onException, throw)
 import           Control.Exception.Base           (AsyncException (..))
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
@@ -76,7 +76,6 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
   shard <- DiffFlow.buildShard graph
 
   let temporalFilter = case window of
-        Nothing -> NoFilter
         Just (RTumblingWindow interval) ->
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
            in Tumbling (fromIntegral interval_ms)
@@ -87,7 +86,7 @@ runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBui
         Just (RSlidingWindow interval) ->
           let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
            in Sliding (fromIntegral interval_ms)
-        _ -> error "not supported"
+        Nothing -> NoFilter
 
   -- RUN TASK
   runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
