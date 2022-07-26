@@ -99,12 +99,13 @@ mkConnector name status = API.Connector. Just $
     , ("status", textToMaybeValue status)
     ]
 
+-- TODO: read from config file
 makeImage :: IOTaskType -> T.Text -> (T.Text, HM.HashMap T.Text J.Value)
-makeImage SOURCE "mysql"      = ("hstream/source-mysql", HM.fromList [])
-makeImage SOURCE "postgresql" = ("hstream/source-postgresql", HM.fromList [])
-makeImage SOURCE "sqlserver"  = ("hstream/source-sqlserver", HM.fromList [])
-makeImage SINK   "mysql"      = ("hstream/sink-mysql", HM.fromList [])
-makeImage SINK   "postgresql" = ("hstream/sink-postgresql", HM.fromList [])
+makeImage SOURCE "mysql"      = ("hstreamdb/connector:source-mysql", HM.fromList [])
+makeImage SOURCE "postgresql" = ("hstreamdb/connector:source-postgresql", HM.fromList [])
+makeImage SOURCE "sqlserver"  = ("hstreamdb/connector:source-sqlserver", HM.fromList [])
+makeImage SINK   "mysql"      = ("hstreamdb/connector:sink-mysql", HM.fromList [])
+makeImage SINK   "postgresql" = ("hstreamdb/connector:sink-postgresql", HM.fromList [])
 makeImage _ name              = throw $ UnimplementedConnectorException name
 
 -- doubleBind, for nested Monads
