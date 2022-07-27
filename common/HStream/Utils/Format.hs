@@ -108,7 +108,7 @@ formatCommandQueryResponse :: API.CommandQueryResponse -> String
 formatCommandQueryResponse (API.CommandQueryResponse x) = case V.toList x of
   []  -> "Done. \n"
   [y] -> formatResult y
-  ys  -> "unknown behaviour" <> show ys
+  ys  -> L.concatMap formatResult ys
 
 renderQueriesToTable :: [API.Query] -> String
 renderQueriesToTable [] = ""

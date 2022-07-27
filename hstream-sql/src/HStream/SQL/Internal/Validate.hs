@@ -552,29 +552,16 @@ instance Validate Select where
 instance Validate SelectView where
   validate sv@(DSelectView _ sel frm whr) = do
     validate sel >> validate frm >> validate whr
-    validateSel sel >> validateFrm frm >> validateWhr whr
+    validateSel sel >> validateFrm frm
     return sv
     where
       validateSel sel@(DSel _ (SelListAsterisk _)) = return sel
       validateSel sel@(DSel _ (SelListSublist _ dcols)) = mapM_ validate dcols >> return sel
 
-      validateDCols dcol@(DerivedColSimpl _ vexpr) = validate vexpr
-      validateDCols dcol@(DerivedColAs pos vexpr _) = validateDCols (DerivedColSimpl pos vexpr)
-
-      validateVExpr vexpr@(ExprColName _ (ColNameSimple _ _)) = return vexpr
-      validateVExpr vexpr = Left $ buildSQLException ParseException (getPos vexpr) "Only column names are allowed in SELECT clause when selecing from a VIEW"
-
       validateFrm frm@(DFrom _ refs) = mapM_ validateRef refs >> return frm
 
       validateRef ref@(TableRefSimple _ _) = return ref
       validateRef ref = Left $ buildSQLException ParseException (getPos ref) "Only a view name is allowed in FROM clause when selecting from a VIEW"
-
-      --validateWhr (DWhereEmpty pos) = Left $ buildSQLException ParseException pos "There has to be a nonempty WHERE clause when selecting from a VIEW"
-      validateWhr whr@(DWhereEmpty pos) = return whr
-      validateWhr whr@(DWhere _ cond)   = validateCond cond >> return whr
-
-      validateCond cond@(CondOp _ (ExprColName _ (ColNameSimple _ _)) (CompOpEQ _) vexpr2) = return cond
-      validateCond cond = Left $ buildSQLException ParseException (getPos cond) "Only forms like COLUMN = VALUE is allowed in WHERE clause when selecting from a VIEW"
 
 ------------------------------------- EXPLAIN ----------------------------------
 instance Validate Explain where
@@ -602,9 +589,7 @@ instance Validate Create where
   validate create@(CreateSourceConnectorIf _ _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateSinkConnector _ _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateSinkConnectorIf _ _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = case grp of
-    DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "CREATE VIEW must have GROUP BY info given "
-    _ -> validate select >> return create
+  validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = validate select >> return create
 
 instance Validate StreamOption where
   validate op@(OptionRepFactor pos n') = do

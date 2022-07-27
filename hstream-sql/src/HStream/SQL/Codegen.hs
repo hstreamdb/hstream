@@ -104,7 +104,7 @@ hstreamCodegen = \case
     (builder, inNodesWithStreams, outNodeWithStream, window) <- genGraphBuilderWithOutput (Just view) select
     accumulation <- newMVar emptyDataChangeBatch
     let schema = case sel of
-          RSelAsterisk -> throwSQLException CodegenException Nothing "Impossible happened"
+          RSelAsterisk    -> ["*"] -- FIXME: schema on 'SELECT *'
           RSelList fields -> map snd fields
     return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream window builder accumulation
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
