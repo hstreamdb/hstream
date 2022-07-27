@@ -24,7 +24,7 @@ perStreamTimeSeriesSpec :: Spec
 perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeSeries" $ do
 
   aroundWith withRandomStream $ do
-    it "appends" $ \(api, name) -> do
+    it "appends" $ \(api, (name, shardId)) -> do
       let methodName = "appends"
       PerStreamTimeSeriesStatsAllResponse resp <- perStreamTimeSeriesReq api methodName
       Map.lookup name resp `shouldBe` Nothing
@@ -35,7 +35,7 @@ perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeS
       timeStamp <- getProtoTimestamp
       let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
       payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
-      replicateM_ 100 $ appendRequest api name payloads
+      replicateM_ 100 $ appendRequest api name shardId payloads
 
       PerStreamTimeSeriesStatsAllResponse resp_ <- perStreamTimeSeriesReq api methodName
       let Just (Just (StatsDoubleVals rates1)) = Map.lookup name resp_

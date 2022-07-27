@@ -97,18 +97,6 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
             }
       Core.createStream sc s
       returnCommandQueryResp (mkVectorStruct s "created_stream")
-    InsertPlan stream insertType payload -> do
-      timestamp <- getProtoTimestamp
-      let header = case insertType of
-            JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
-            RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp clientDefaultKey
-      let record = buildRecord header payload
-      let request = AppendRequest
-                  { appendRequestStreamName = stream
-                  , appendRequestRecords = V.singleton record
-                  }
-      void $ Core.appendStream sc request clientDefaultKey
-      returnCommandQueryEmptyResp
     DropPlan checkIfExist dropObject ->
       case dropObject of
         DStream stream -> do

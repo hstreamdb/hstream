@@ -128,8 +128,10 @@ append :: HasCallStack
 append sc@ServerContext{..} request@API.AppendRequest{..} = do
   recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
+           <> Log.buildText appendRequestStreamName
+           <> "(shardId: "
            <> Log.buildInt appendRequestShardId
-           <> "}, nums of records = "
+           <> ")}, nums of records = "
            <> Log.buildInt (V.length appendRequestRecords)
 
   Stats.handle_time_series_add_queries_in scStatsHolder "append" 1

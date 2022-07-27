@@ -28,7 +28,7 @@ import qualified Data.Text                        as Text
 import qualified Data.Text.Encoding               as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
-import           Data.Word                        (Word32)
+import           Data.Word                        (Word32, Word64)
 import qualified Database.ClickHouseDriver.Client as ClickHouse
 import qualified Database.ClickHouseDriver.Types  as ClickHouse
 import qualified Database.MySQL.Base              as MySQL
@@ -195,23 +195,29 @@ withRandomStreamNames n = provideRunTest setup clean
     clean api names = forM_ names $ \name -> do
       cleanStreamReq api name `shouldReturn` PB.Empty
 
-withRandomStream :: ActionWith (HStreamClientApi, T.Text) -> HStreamClientApi -> IO ()
+withRandomStream :: ActionWith (HStreamClientApi, (T.Text, Word64)) -> HStreamClientApi -> IO ()
 withRandomStream = provideRunTest setup clean
   where
-    setup api = do name <- newRandomText 20
-                   _ <- createStreamReq api (mkStream name 1 1)
-                   threadDelay 1000000
-                   return name
-    clean api name = cleanStreamReq api name `shouldReturn` PB.Empty
+    setup api = do
+      name <- newRandomText 20
+      _ <- createStreamReq api (mkStream name 1 1)
+      ListShardsResponse shards <- listShardsReq api name
+      let Shard{..}:_ = V.toList shards
+      threadDelay 1000000
+      return (name, shardShardId)
+    clean api (name, _) = cleanStreamReq api name `shouldReturn` PB.Empty
 
-withRandomStreams :: Int -> ActionWith (HStreamClientApi, [T.Text]) -> HStreamClientApi -> IO ()
+withRandomStreams :: Int -> ActionWith (HStreamClientApi, [(T.Text, Word64)]) -> HStreamClientApi -> IO ()
 withRandomStreams n = provideRunTest setup clean
   where
-    setup api = replicateM n $ do name <- newRandomText 20
-                                  _ <- createStreamReq api (mkStream name 1 1)
-                                  threadDelay 1000000
-                                  return name
-    clean api names = forM_ names $ \name -> do
+    setup api = replicateM n $ do
+      name <- newRandomText 20
+      _ <- createStreamReq api (mkStream name 1 1)
+      ListShardsResponse shards <- listShardsReq api name
+      let Shard{..}:_ = V.toList shards
+      threadDelay 1000000
+      return (name, shardShardId)
+    clean api names = forM_ names $ \(name, _) -> do
       cleanStreamReq api name `shouldReturn` PB.Empty
 
 mkStreamWithName :: T.Text -> Stream
@@ -236,9 +242,15 @@ cleanStreamReq HStreamApi{..} streamName =
       req = ClientNormalRequest delReq requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiDeleteStream req
 
-appendRequest :: HStreamClientApi -> T.Text -> V.Vector HStreamRecord -> IO AppendResponse
-appendRequest HStreamApi{..} streamName records =
-  let appReq = AppendRequest streamName records
+listShardsReq :: HStreamClientApi -> T.Text -> IO ListShardsResponse
+listShardsReq HStreamApi{..} streamName =
+  let listReq = ListShardsRequest streamName
+      req = ClientNormalRequest listReq requestTimeout $ MetadataMap Map.empty
+  in getServerResp =<< hstreamApiListShards req
+
+appendRequest :: HStreamClientApi -> T.Text -> Word64 -> V.Vector HStreamRecord -> IO AppendResponse
+appendRequest HStreamApi{..} streamName shardId records =
+  let appReq = AppendRequest streamName shardId records
       req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
   in getServerResp =<< hstreamApiAppend req
 
