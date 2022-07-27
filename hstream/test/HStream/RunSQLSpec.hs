@@ -18,13 +18,13 @@ import           HStream.Store.Logger (pattern C_DBG_ERROR,
 import           HStream.Utils        hiding (newRandomText)
 
 spec :: Spec
-spec = xdescribe "HStream.RunSQLSpec" $ do
+spec = describe "HStream.RunSQLSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
   -- FIXME: FIX following tests
-  baseSpec
-  viewSpec
+  -- baseSpec
+  -- viewSpec
 
 -------------------------------------------------------------------------------
 -- BaseSpec
