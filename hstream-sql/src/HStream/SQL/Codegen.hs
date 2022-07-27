@@ -2,9 +2,11 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NoImplicitPrelude   #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData          #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module HStream.SQL.Codegen where
 
@@ -59,8 +61,8 @@ data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text | DConnector Text
 data TerminationSelection = AllQueries | OneQuery CB.CBytes | ManyQueries [CB.CBytes]
 data InsertType = JsonFormat | RawFormat
-data StartObject = StartObjectConnector Text
-data StopObject = StopObjectConnector Text
+data PauseObject = PauseObjectConnector Text
+data ResumeObject = ResumeObjectConnector Text
 
 data ConnectorConfig
   = ClickhouseConnector Clickhouse.ConnParams
@@ -72,15 +74,15 @@ data HStreamPlan
   | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder Int
   | CreateViewPlan      Text ViewSchema [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder (MVar (DataChangeBatch Int64))
   | CreatePlan          StreamName Int
-  | CreateConnectorPlan ConnectorType ConnectorName Bool (HM.HashMap Text Value)
+  | CreateConnectorPlan ConnectorType ConnectorName Text Bool (HM.HashMap Text Value)
   | InsertPlan          StreamName InsertType ByteString
   | DropPlan            CheckIfExist DropObject
   | ShowPlan            ShowObject
   | TerminatePlan       TerminationSelection
   | SelectViewPlan      RSelectView
   | ExplainPlan         Text
-  | StartPlan StartObject
-  | StopPlan StopObject
+  | PausePlan           PauseObject
+  | ResumePlan          ResumeObject
 
 --------------------------------------------------------------------------------
 
@@ -106,8 +108,8 @@ hstreamCodegen = \case
           RSelList fields -> map snd fields
     return $ CreateViewPlan tName schema inNodesWithStreams outNodeWithStream window builder accumulation
   RQCreate (RCreate stream rOptions) -> return $ CreatePlan stream (rRepFactor rOptions)
-  RQCreate (RCreateConnector cType cName ifNotExist (RConnectorOptions cOptions)) ->
-    return $ CreateConnectorPlan cType cName ifNotExist cOptions
+  RQCreate (RCreateConnector cType cName cTarget ifNotExist (RConnectorOptions cOptions)) ->
+    return $ CreateConnectorPlan cType cName cTarget ifNotExist cOptions
   RQInsert (RInsert stream tuples)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . HM.fromList $ second constantToValue <$> tuples)
   RQInsert (RInsertBinary stream bs) -> return $ InsertPlan stream RawFormat  bs
   RQInsert (RInsertJSON stream bs)   -> return $ InsertPlan stream JsonFormat (BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode (BL.fromStrict bs))
@@ -125,19 +127,10 @@ hstreamCodegen = \case
   RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
   RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
   RQExplain rexplain                 -> return $ ExplainPlan rexplain
-  RQStart (RStartConnector name)     -> return $ StartPlan (StartObjectConnector name)
-  RQStop (RStopConnector name)       -> return $ StopPlan (StopObjectConnector name)
+  RQPause (RPauseConnector name)     -> return $ PausePlan (PauseObjectConnector name)
+  RQResume (RResumeConnector name)   -> return $ ResumePlan (ResumeObjectConnector name)
 
 --------------------------------------------------------------------------------
-
-genCreateConnectorPlan :: RCreate -> HStreamPlan
-genCreateConnectorPlan (RCreateConnector cType cName ifNotExist (RConnectorOptions cOptions)) =
-  CreateConnectorPlan cType cName ifNotExist cOptions
-genCreateConnectorPlan _ =
-  throwSQLException CodegenException Nothing "Implementation: Wrong function called"
-
-
-
 
 extractInt :: String -> Maybe Constant -> Int
 extractInt errPrefix = \case
@@ -463,3 +456,15 @@ mapAlias (SVSelectFields xs) res = HM.fromList
       | otherwise =
           (snd . fromJust) (T.uncons name ) & \name' ->
           (fst . fromJust) (T.unsnoc name')
+
+--------------------------------------------------------------------------------
+
+pattern ConnectorWritePlan :: T.Text -> HStreamPlan
+pattern ConnectorWritePlan name <- (getLookupConnectorName -> Just name)
+
+getLookupConnectorName :: HStreamPlan -> Maybe T.Text
+getLookupConnectorName (CreateConnectorPlan _ name _ _ _)        = Just name
+getLookupConnectorName (PausePlan (PauseObjectConnector name))   = Just name
+getLookupConnectorName (ResumePlan (ResumeObjectConnector name)) = Just name
+getLookupConnectorName (DropPlan _ (DConnector name))            = Just name
+getLookupConnectorName _                                         = Nothing

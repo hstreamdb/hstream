@@ -7,6 +7,7 @@ module HStream.Server.Handler.Cluster
   ( describeClusterHandler
   , lookupShardHandler
   , lookupSubscriptionHandler
+  , lookupConnectorHandler
   , lookupShardReaderHandler
   ) where
 
@@ -39,6 +40,13 @@ lookupSubscriptionHandler
   -> IO (ServerResponse 'Normal LookupSubscriptionResponse)
 lookupSubscriptionHandler sc (ServerNormalRequest _meta req) =
   defaultExceptionHandle $ returnResp =<< C.lookupSubscription sc req
+
+lookupConnectorHandler
+  :: ServerContext
+  -> ServerRequest 'Normal LookupConnectorRequest LookupConnectorResponse
+  -> IO (ServerResponse 'Normal LookupConnectorResponse)
+lookupConnectorHandler sc (ServerNormalRequest _meta req) =
+  defaultExceptionHandle $ returnResp =<< C.lookupConnector sc req
 
 lookupShardReaderHandler
   :: ServerContext

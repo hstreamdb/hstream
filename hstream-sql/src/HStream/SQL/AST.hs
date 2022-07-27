@@ -408,8 +408,8 @@ newtype RConnectorOptions = RConnectorOptions (HM.HashMap Text Aeson.Value)
 
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
-             -- RCreateConnector <SOURCE|SINK> <ConnectorName> <EXISTS> <OPTIONS>
-             | RCreateConnector Text Text Bool RConnectorOptions
+             -- RCreateConnector <SOURCE|SINK> <Name> <Target> <EXISTS> <OPTIONS>
+             | RCreateConnector Text Text Text Bool RConnectorOptions
              | RCreateView Text RSelect
              deriving (Eq, Show)
 
@@ -433,10 +433,10 @@ instance Refine Create where
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateSourceConnector _ (Ident s) options) = RCreateConnector "SOURCE" s False (refine options)
-  refine (CreateSourceConnectorIf _ (Ident s) options) = RCreateConnector "SOURCE" s True (refine options)
-  refine (CreateSinkConnector _ (Ident s) options) = RCreateConnector "SINK" s False (refine options)
-  refine (CreateSinkConnectorIf _ (Ident s) options) = RCreateConnector "SINK" s True (refine options)
+  refine (CreateSourceConnector _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t False (refine options)
+  refine (CreateSourceConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t True (refine options)
+  refine (CreateSinkConnector _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t False (refine options)
+  refine (CreateSinkConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t True (refine options)
   refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT
@@ -509,23 +509,23 @@ instance Refine Terminate where
   refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
----- Start
-newtype RStart = RStartConnector Text
+---- Pause
+newtype RPause = RPauseConnector Text
   deriving (Eq, Show)
 
-type instance RefinedType Start = RStart
+type instance RefinedType Pause = RPause
 
-instance Refine Start where
-  refine (StartConnector _ (Ident name)) = RStartConnector name
+instance Refine Pause where
+  refine (PauseConnector _ (Ident name)) = RPauseConnector name
 
----- Stop
-newtype RStop = RStopConnector Text
+---- Resume
+newtype RResume = RResumeConnector Text
   deriving (Eq, Show)
 
-type instance RefinedType Stop = RStop
+type instance RefinedType Resume = RResume
 
-instance Refine Stop where
-  refine (StopConnector _ (Ident name)) = RStopConnector name
+instance Refine Resume where
+  refine (ResumeConnector _ (Ident name)) = RResumeConnector name
 
 ---- SQL
 data RSQL = RQSelect      RSelect
@@ -536,8 +536,8 @@ data RSQL = RQSelect      RSelect
           | RQTerminate   RTerminate
           | RQSelectView  RSelectView
           | RQExplain     RExplain
-          | RQStart       RStart
-          | RQStop        RStop
+          | RQPause       RPause
+          | RQResume      RResume
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
@@ -549,8 +549,8 @@ instance Refine SQL where
   refine (QTerminate  _ term)    =  RQTerminate   (refine     term)
   refine (QSelectView _ selView) =  RQSelectView  (refine  selView)
   refine (QExplain    _ explain) =  RQExplain     (refine  explain)
-  refine (QStart      _ start)   =  RQStart       (refine  start)
-  refine (QStop       _ stop)    =  RQStop        (refine  stop)
+  refine (QPause      _ pause)   =  RQPause       (refine  pause)
+  refine (QResume     _ resume)  =  RQResume      (refine  resume)
 
 --------------------------------------------------------------------------------
 

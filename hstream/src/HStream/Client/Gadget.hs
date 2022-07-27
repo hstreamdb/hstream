@@ -91,6 +91,15 @@ lookupSubscription ctx addr subId = do
       hstreamApiLookupSubscription (mkClientNormalRequest' req)
     handleRespApp = getServerResp >=> return . API.lookupSubscriptionResponseServerNode
 
+lookupConnector :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
+lookupConnector ctx addr name = do
+  getInfoWithAddr ctx addr getRespApp handleRespApp
+  where
+    getRespApp API.HStreamApi{..} = do
+      let req = API.LookupConnectorRequest { lookupConnectorRequestName = name }
+      hstreamApiLookupConnector (mkClientNormalRequest' req)
+    handleRespApp = getServerResp >=> return . API.lookupConnectorResponseServerNode
+
 -- | Try the best to execute an GRPC request until all possible choices failed,
 -- with the given address instead of which from HStreamSqlContext.
 getInfoWithAddr

@@ -69,9 +69,10 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   plan <- streamCodegen commandQueryStmtText
   case plan of
     SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
-    CreateConnectorPlan _cType _cName _ifNotExist _cConfig -> do
-      connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
-      returnCommandQueryResp (mkVectorStruct connector "created_connector")
+    CreateConnectorPlan {} -> do
+      IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
+      -- connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      -- returnCommandQueryResp (mkVectorStruct connector "created_connector")
     CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
@@ -179,11 +180,11 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       execPlan <- genExecutionPlan sql
       let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
       returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
-    StartPlan (StartObjectConnector name) -> do
-      IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
-    StopPlan (StopObjectConnector name) -> do
-      IO.stopIOTask scIOWorker name False >> returnCommandQueryEmptyResp
       -}
+    PausePlan (PauseObjectConnector name) -> do
+      IO.stopIOTask scIOWorker name False False >> returnCommandQueryEmptyResp
+    ResumePlan (ResumeObjectConnector name) -> do
+      IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
     _ -> discard
   where
     create sName = do

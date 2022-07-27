@@ -9,7 +9,7 @@ module HStream.Server.Initialization
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
-import           Control.Concurrent.STM           (TVar, newTVarIO)
+import           Control.Concurrent.STM           (TVar, newTVarIO, readTVarIO)
 import           Control.Exception                (catch)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
@@ -26,7 +26,8 @@ import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
+                                                   getAllocatedNodeId)
 import           HStream.Gossip                   (GossipContext, getMemberList)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
@@ -64,6 +65,11 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
     IO.newWorker
       (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
       (IO.HStreamConfig (cBytesToText (_serverHost <> ":" <> CB.pack (show _serverPort))))
+      _ioTasksPath
+      (\k -> do
+        hr <- readTVarIO hashRing
+        return $ getAllocatedNodeId hr k == _serverID
+       )
 
   shardInfo  <- newMVar HM.empty
   shardTable <- newMVar HM.empty

@@ -5,12 +5,14 @@ module HStream.IO.Types where
 import qualified Data.Aeson                 as J
 import qualified Data.Text                  as T
 
+import           Control.Exception          (Exception, throw)
 import qualified Data.Aeson.TH              as JT
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import qualified Data.HashMap.Strict        as HM
 import           Data.Maybe                 (isJust)
-import           RIO.Prelude.Types          (HashMap)
+import qualified HStream.Server.HStreamApi  as API
+import           HStream.Utils              (pairListToStruct, textToMaybeValue)
 import           ZooKeeper.Types            (ZHandle)
 
 data IOTaskType = SOURCE | SINK
@@ -90,3 +92,52 @@ data HStreamConfig = HStreamConfig
 instance TaskJson HStreamConfig where
   toTaskJson HStreamConfig {..} _ = J.object [ "serviceUrl" J..= serviceUrl]
 
+mkConnector :: T.Text -> T.Text -> API.Connector
+mkConnector name status = API.Connector. Just $
+  pairListToStruct
+    [ ("name", textToMaybeValue name)
+    , ("status", textToMaybeValue status)
+    ]
+
+-- TODO: read from config file
+makeImage :: IOTaskType -> T.Text -> (T.Text, HM.HashMap T.Text J.Value)
+makeImage SOURCE "mysql"      = ("hstreamdb/connector:source-mysql", HM.fromList [])
+makeImage SOURCE "postgresql" = ("hstreamdb/connector:source-postgresql", HM.fromList [])
+makeImage SOURCE "sqlserver"  = ("hstreamdb/connector:source-sqlserver", HM.fromList [])
+makeImage SINK   "mysql"      = ("hstreamdb/connector:sink-mysql", HM.fromList [])
+makeImage SINK   "postgresql" = ("hstreamdb/connector:sink-postgresql", HM.fromList [])
+makeImage _ name              = throw $ UnimplementedConnectorException name
+
+-- doubleBind, for nested Monads
+-- e.g. IO (Maybe a) (a -> IO (Maybe b))
+-- (>>>=) :: (Monad m, Monad n, Traversable n) => m (n a) -> (a -> m (n b)) -> m (n b)
+-- (>>>=) mv action = do
+--     b <- mv >>= mapM action
+--     return (join b)
+
+data StopWorkerException = StopWorkerException deriving Show
+instance Exception StopWorkerException
+
+newtype CheckFailedException = CheckFailedException T.Text
+  deriving Show
+instance Exception CheckFailedException
+
+newtype WrongNodeException = WrongNodeException T.Text
+  deriving Show
+instance Exception WrongNodeException
+
+newtype UnimplementedConnectorException = UnimplementedConnectorException T.Text
+  deriving Show
+instance Exception UnimplementedConnectorException
+
+newtype ConnectorExistedException = ConnectorExistedException T.Text
+  deriving Show
+instance Exception ConnectorExistedException
+
+newtype ConnectorNotExistException = ConnectorNotExistException T.Text
+  deriving Show
+instance Exception ConnectorNotExistException
+
+newtype InvalidStatusException = InvalidStatusException IOTaskStatus
+  deriving Show
+instance Exception InvalidStatusException

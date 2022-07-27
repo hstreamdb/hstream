@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -44,6 +45,7 @@ import           HStream.Client.Action            (createStream,
 import           HStream.Client.Execute           (execute, executeInsert,
                                                    executeShowPlan)
 import           HStream.Client.Gadget            (describeCluster,
+                                                   lookupConnector,
                                                    waitForServerToStart)
 import           HStream.Client.Internal          (callDeleteSubscription,
                                                    callDeleteSubscriptionAll,
@@ -70,7 +72,8 @@ import           HStream.SQL                      (HStreamPlan (..),
                                                    RCreate (..), RSQL (..),
                                                    RStreamOptions (..),
                                                    hstreamCodegen,
-                                                   parseAndRefine)
+                                                   parseAndRefine,
+                                                   pattern ConnectorWritePlan)
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
@@ -78,6 +81,7 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    formatCommandQueryResponse,
                                                    formatResult, genUnique,
                                                    mkGRPCClientConf,
+                                                   serverNodeToSocketAddr,
                                                    setupSigsegvHandler)
 
 main :: IO ()
@@ -210,6 +214,13 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
           -> execute ctx $ dropAction checkIfExists dropObj
         InsertPlan sName insertType payload
           -> executeInsert ctx sName $ insertIntoStream sName insertType payload
+        ConnectorWritePlan name -> do
+          addr <- readMVar currentServer
+          lookupConnector ctx addr name >>= \case
+            Nothing -> putStrLn "lookupConnector failed"
+            Just node -> do
+              withGRPCClient (mkGRPCClientConf (serverNodeToSocketAddr node))
+                (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
         _ -> do
           addr <- readMVar currentServer
           withGRPCClient (mkGRPCClientConf addr)

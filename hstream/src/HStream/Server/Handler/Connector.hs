@@ -67,26 +67,26 @@ deleteConnectorHandler ServerContext{..}
   IO.deleteIOTask scIOWorker deleteConnectorRequestName
   returnResp Empty
 
-startConnectorHandler
+resumeConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal StartConnectorRequest Empty
+  -> ServerRequest 'Normal ResumeConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-startConnectorHandler sc@ServerContext{..}
-  (ServerNormalRequest _metadata StartConnectorRequest{..}) = connectorExceptionHandle $ do
-  Log.debug $ "Receive Start Connector Request. "
-    <> "Connector ID: " <> Log.buildText startConnectorRequestName
-  IO.startIOTask scIOWorker startConnectorRequestName
+resumeConnectorHandler sc@ServerContext{..}
+  (ServerNormalRequest _metadata ResumeConnectorRequest{..}) = connectorExceptionHandle $ do
+  Log.debug $ "Receive ResumeConnectorRequest. "
+    <> "Connector Name: " <> Log.buildText resumeConnectorRequestName
+  IO.startIOTask scIOWorker resumeConnectorRequestName
   returnResp Empty
 
-stopConnectorHandler
+pauseConnectorHandler
   :: ServerContext
-  -> ServerRequest 'Normal StopConnectorRequest Empty
+  -> ServerRequest 'Normal PauseConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-stopConnectorHandler ServerContext{..}
-  (ServerNormalRequest _metadata StopConnectorRequest{..}) = connectorExceptionHandle $ do
+pauseConnectorHandler ServerContext{..}
+  (ServerNormalRequest _metadata PauseConnectorRequest{..}) = connectorExceptionHandle $ do
   Log.debug $ "Receive Terminate Connector Request. "
-    <> "Connector ID: " <> Log.buildText stopConnectorRequestName
-  IO.stopIOTask scIOWorker stopConnectorRequestName False
+    <> "Connector ID: " <> Log.buildText pauseConnectorRequestName
+  IO.stopIOTask scIOWorker pauseConnectorRequestName False False
   returnResp Empty
 
 --------------------------------------------------------------------------------

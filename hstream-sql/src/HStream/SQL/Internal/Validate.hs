@@ -598,10 +598,10 @@ instance Validate Create where
   validate create@(CreateAs _ _ select) = validate select >> return create
   validate create@(CreateAsOp _ _ select options) =
     validate select >> validate (StreamOptions options) >> return create
-  validate create@(CreateSourceConnector _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateSourceConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateSinkConnector _ _ options) = validate (ConnectorOptions options) >> return create
-  validate create@(CreateSinkConnectorIf _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSourceConnector _ _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSourceConnectorIf _ _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSinkConnector _ _ _ options) = validate (ConnectorOptions options) >> return create
+  validate create@(CreateSinkConnectorIf _ _ _ options) = validate (ConnectorOptions options) >> return create
   validate create@(CreateView _ _ select@(DSelect _ _ _ _ grp _)) = case grp of
     DGroupByEmpty pos -> Left $ buildSQLException ParseException pos "CREATE VIEW must have GROUP BY info given "
     _ -> validate select >> return create
@@ -671,5 +671,5 @@ instance Validate SQL where
   validate sql@(QDrop        _    drop_) = validate drop_    >> return sql
   validate sql@(QTerminate   _     term) = validate term     >> return sql
   validate sql@(QExplain     _  explain) = validate explain  >> return sql
-  validate sql@(QStart _ _)              = return sql
-  validate sql@(QStop _ _)               = return sql
+  validate sql@(QPause _ _)              = return sql
+  validate sql@(QResume _ _)             = return sql
