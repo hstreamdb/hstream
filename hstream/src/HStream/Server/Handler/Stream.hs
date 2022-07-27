@@ -11,7 +11,6 @@ module HStream.Server.Handler.Stream
   , listStreamsHandler
   , listShardsHandler
   , appendHandler
-  , append0Handler
   , createShardReaderHandler
   , deleteShardReaderHandler
   , readShardHandler
@@ -19,7 +18,6 @@ module HStream.Server.Handler.Stream
 where
 
 import           Control.Exception
-import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
@@ -75,20 +73,6 @@ appendHandler
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
     returnResp =<< C.append sc request
-  where
-    inc_failed = do
-      Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
-      Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
-    cStreamName = textToCBytes appendRequestStreamName
-
-append0Handler
-  :: ServerContext
-  -> ServerRequest 'Normal AppendRequest AppendResponse
-  -> IO (ServerResponse 'Normal AppendResponse)
-append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
-  appendStreamExceptionHandle inc_failed $ do
-    let partitionKey = getRecordKey . V.head $ appendRequestRecords
-    returnResp =<< C.append0Stream sc request partitionKey
   where
     inc_failed = do
       Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1

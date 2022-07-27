@@ -8,7 +8,6 @@ module HStream.Server.Core.Stream
   , listStreams
   , append
   , appendStream
-  , append0Stream
   , listShards
   , createShardReader
   , deleteShardReader
@@ -21,21 +20,19 @@ module HStream.Server.Core.Stream
   , UnKnownShardOffset (..)
   ) where
 
-import           Control.Concurrent                (MVar, modifyMVar,
-                                                    modifyMVar_, newEmptyMVar,
+import           Control.Concurrent                (modifyMVar_, newEmptyMVar,
                                                     putMVar, readMVar, takeMVar,
                                                     withMVar)
 import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throw,
                                                     throwIO)
-import           Control.Monad                     (foldM, forM, unless, when)
+import           Control.Monad                     (forM, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
 import qualified Data.HashMap.Strict               as HM
 import qualified Data.Map.Strict                   as M
 import           Data.Maybe                        (fromJust, fromMaybe)
-import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Vector                       as V
 import           GHC.Stack                         (HasCallStack)
@@ -54,14 +51,11 @@ import           HStream.Server.Persistence        (ShardReader (..))
 import qualified HStream.Server.Persistence        as P
 import           HStream.Server.Persistence.Object (getSubscriptionWithStream,
                                                     updateSubscription)
-import           HStream.Server.Shard              (Shard (..), cBytesToKey,
-                                                    createShard, devideKeySpace,
-                                                    hashShardKey,
+import           HStream.Server.Shard              (Shard (..), createShard,
+                                                    devideKeySpace,
                                                     mkShardWithDefaultId,
-                                                    mkSharedShardMapWithShards,
-                                                    shardStartKey)
+                                                    mkSharedShardMapWithShards)
 import           HStream.Server.Types              (ServerContext (..),
-                                                    ShardDict,
                                                     transToStreamName)
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
@@ -132,10 +126,9 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse
 append sc@ServerContext{..} request@API.AppendRequest{..} = do
-  let cStreamName = textToCBytes appendRequestStreamName
   recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
-           <> Log.buildText appendRequestStreamName
+           <> Log.buildInt appendRequestShardId
            <> "}, nums of records = "
            <> Log.buildInt (V.length appendRequestRecords)
 
@@ -143,28 +136,18 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
 
-  let partitionKey = if V.null appendRequestRecords
-                        then throw $ InvalidArgument "Empty RequestRecords!"
-                        else getRecordKey . V.head $ appendRequestRecords
   append_start <- getPOSIXTime
-  r <- appendStream sc request partitionKey
+  resp <- appendStream sc request
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
-  return r
+  return resp
+  where
+    cStreamName = textToCBytes appendRequestStreamName
 
 appendStream :: HasCallStack
-             => ServerContext
-             -> API.AppendRequest
-             -> T.Text
-             -> IO API.AppendResponse
-appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
-  appendRequestRecords = records} partitionKey = do
-  shardId <- getShardId scLDClient shardTable sName partitionKey
-  Log.debug $ "shardId for key " <> Log.buildString' (show partitionKey) <> " is " <> Log.buildString' (show shardId)
-  hashRing <- readTVarIO loadBalanceHashRing
-  unless (getAllocatedNodeId hashRing (T.pack . show $ shardId) == serverID) $
-    throwIO $ WrongServer "Send appendRequest to wrong server."
-
+             => ServerContext -> API.AppendRequest -> IO API.AppendResponse
+appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
+  appendRequestRecords = records, ..} = do
   timestamp <- getProtoTimestamp
   let payload = encodeBatch . API.HStreamRecordBatch $
         encodeRecord . updateRecordTimestamp timestamp <$> records
@@ -172,66 +155,15 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sNam
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length records)
+  Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
+  Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral $ length records)
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
-  return $ API.AppendResponse sName rids
- where
-   streamName = textToCBytes sName
-
---------------------------------------------------------------------------------
-
-append0Stream :: ServerContext -> API.AppendRequest -> T.Text -> IO API.AppendResponse
-append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
-  shardId <- getShardId scLDClient shardTable appendRequestStreamName partitionKey
-  Log.debug $ "shardId for key " <> Log.buildString' (show partitionKey) <> " is " <> Log.buildString' (show shardId)
-  hashRing <- readTVarIO loadBalanceHashRing
-  unless (getAllocatedNodeId hashRing (T.pack . show $ shardId) == serverID) $
-    throwIO $ WrongServer "Send appendRequest to wrong server."
-
-  timestamp <- getProtoTimestamp
-  let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
-      payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
-      streamName = textToCBytes appendRequestStreamName
-  when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
-  S.AppendCompletion {..} <- S.appendBatchBS scLDClient shardId (V.toList payloads) cmpStrategy Nothing
-  -- XXX: Should we add a server option to toggle Stats?
-  Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length appendRequestRecords)
-  let records = V.zipWith (\_ idx -> API.RecordId shardId appendCompLSN idx) appendRequestRecords [0..]
-  return $ API.AppendResponse appendRequestStreamName records
-
---------------------------------------------------------------------------------
-
-getShardId :: S.LDClient -> MVar (HM.HashMap Text ShardDict) -> Text -> Text -> IO S.C_LogID
-getShardId client shardTable sName partitionKey = do
-  getShardDict >>= return . snd . fromJust . M.lookupLE shardKey
- where
-   shardKey   = hashShardKey partitionKey
-   streamID   = S.mkStreamId S.StreamTypeStream streamName
-   streamName = textToCBytes sName
-
-   getShardDict = modifyMVar shardTable $ \mp -> do
-     case HM.lookup sName mp of
-       Just shards -> return (mp, shards)
-       Nothing     -> do
-         -- loading shard infomation for stream first.
-         shards <- M.elems <$> S.listStreamPartitions client streamID
-         shardDict <- foldM insertShardDict M.empty shards
-         Log.debug $ "build shardDict for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shardDict)
-         return (HM.insert sName shardDict mp, shardDict)
-
-   insertShardDict dict shardId = do
-     attrs <- S.getStreamPartitionExtraAttrs client shardId
-     Log.debug $ "attrs for shard " <> Log.buildInt shardId <> ": " <> Log.buildString' (show attrs)
-     startKey <- case M.lookup shardStartKey attrs of
-        -- FIXME: Under the new shard model, each partition created should have an extrAttr attribute,
-        -- except for the default partition created by default for each stream. After the default
-        -- partition is subsequently removed, an error should be returned here.
-        Nothing  -> return $ cBytesToKey "0"
-        -- Nothing -> throwIO $ ShardKeyNotFound shardId
-        Just key -> return $ cBytesToKey key
-     return $ M.insert startKey shardId dict
+  return $ API.AppendResponse {
+      appendResponseStreamName = appendRequestStreamName
+    , appendResponseShardId    = shardId
+    , appendResponseRecordIds  = rids }
+  where
+    cStreamName = textToCBytes appendRequestStreamName
 
 --------------------------------------------------------------------------------
 
