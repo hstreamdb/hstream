@@ -216,13 +216,3 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
-
---------------------------------------------------------------------------------
-alignDefault :: Text -> Text
-alignDefault x  = if T.null x then clientDefaultKey else x
-
-orderingKeyToStoreKey :: Text -> Maybe CBytes
-orderingKeyToStoreKey key
-  | key == clientDefaultKey = Nothing
-  | T.null key = Nothing
-  | otherwise  = Just $ textToCBytes key
