@@ -159,6 +159,9 @@ showNodesTable nodes =
               , Table.column Table.expand Table.left def def
               ]
 
+maxRetryTimeInterval :: Int
+maxRetryTimeInterval = 10 * 1000 * 1000
+
 eventNameINIT :: Text
 eventNameINIT = "INIT_INTERNAL_USE_ONLY"
 
