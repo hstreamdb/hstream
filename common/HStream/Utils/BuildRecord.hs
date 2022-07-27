@@ -90,7 +90,7 @@ updateRecordTimestamp timestamp HStreamRecord{..} =
    in HStreamRecord (Just newHeader) hstreamRecordPayload
 
 clientDefaultKey :: Text
-clientDefaultKey = "__default__"
+clientDefaultKey = ""
 
 clientDefaultKey' :: CBytes
 clientDefaultKey' = textToCBytes clientDefaultKey
