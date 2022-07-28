@@ -48,8 +48,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-pip                    \
       bash-completion                \
       vim                            \
-      docker                         \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+COPY --from=docker:dind /usr/local/bin/docker /usr/local/bin/
 
 COPY --from=hstreamdb/haskell:latest /usr/local/lib/ /usr/local/lib/
 COPY --from=hstreamdb/haskell:latest /usr/lib/libjemalloc.so.2 /usr/lib/libjemalloc.so.2
