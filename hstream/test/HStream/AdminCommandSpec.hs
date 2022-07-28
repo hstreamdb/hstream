@@ -36,7 +36,7 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
       timeStamp <- getProtoTimestamp
       let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
       payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
-      forM_ streamNames $ \name -> replicateM_ 100 $ appendRequest api name payloads
+      forM_ streamNames $ \(name, shardId) -> replicateM_ 100 $ appendRequest api name shardId payloads
 
       resp <- adminCommandStatsReq api
       let Just (Just resultObj) =
@@ -46,7 +46,7 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
 
       forM_ rows $ \(A.Array row) -> do
         let (A.String name) = row V.! 0
-        when (name `elem` streamNames) $ do
+        when (name `elem` (fst <$> streamNames)) $ do
           Log.i $ "Check stream " <> Log.buildText name
           row V.! 1 `shouldSatisfy` (\(A.String x) -> read @Double (T.unpack x) > 0)
           row V.! 2 `shouldSatisfy` (\(A.String x) -> read @Double (T.unpack x) > 0)
