@@ -64,8 +64,9 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
   ioWorker <-
     IO.newWorker
       (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
-      (IO.HStreamConfig (cBytesToText (_serverHost <> ":" <> CB.pack (show _serverPort))))
+      (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioTasksPath
+      _ioTasksNetwork
       (\k -> do
         hr <- readTVarIO hashRing
         return $ getAllocatedNodeId hr k == _serverID

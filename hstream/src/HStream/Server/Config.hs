@@ -95,6 +95,7 @@ data ServerOpts = ServerOpts
 
   , _gossipOpts                :: !GossipOpts
   , _ioTasksPath               :: !Text
+  , _ioTasksNetwork            :: !Text
   } deriving (Show)
 
 getConfig :: IO ServerOpts
@@ -144,6 +145,9 @@ data CliOptions = CliOptions
   , _ldAdminPort_        :: !(Maybe Int)
   , _ldLogLevel_         :: !(Maybe Log.LDLogLevel)
   , _storeConfigPath     :: !CBytes
+
+  , _ioTasksPath_        :: !(Maybe Text)
+  , _ioTasksNetwork_     :: !(Maybe Text)
   }
   deriving Show
 
@@ -172,6 +176,8 @@ cliOptionsParser = do
   _tlsKeyPath_         <- optional tlsKeyPath
   _tlsCertPath_        <- optional tlsCertPath
   _tlsCaPath_          <- optional tlsCaPath
+  _ioTasksPath_        <- optional ioTasksPath
+  _ioTasksNetwork_     <- optional ioTasksNetwork
   return CliOptions {..}
 
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
@@ -243,19 +249,21 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeTlsKeyPath  <- nodeCfgObj .:? "tls-key-path"
   nodeTlsCertPath <- nodeCfgObj .:? "tls-cert-path"
   nodeTlsCaPath   <- nodeCfgObj .:? "tls-ca-path"
-
-  -- hstream io config
-  _ioTasksPath <- nodeCfgObj .:? "io-tasks-path" .!= "/tmp/io/tasks"
-
   let _enableTls   = _enableTls_ || nodeEnableTls
-  let _tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath
-  let _tlsCertPath = _tlsCertPath_ <|> nodeTlsCertPath
-  let _tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
-  let !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
+      _tlsKeyPath  = _tlsKeyPath_  <|> nodeTlsKeyPath
+      _tlsCertPath = _tlsCertPath_ <|> nodeTlsCertPath
+      _tlsCaPath   = _tlsCaPath_   <|> nodeTlsCaPath
+      !_tlsConfig  = case (_enableTls, _tlsKeyPath, _tlsCertPath) of
         (False, _, _) -> Nothing
         (_, Nothing, _) -> errorWithoutStackTrace "enable-tls=true, but tls-key-path is empty"
         (_, _, Nothing) -> errorWithoutStackTrace "enable-tls=true, but tls-cert-path is empty"
         (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
+
+  -- hstream io config
+  nodeIOTasksPath <- nodeCfgObj .:? "io-tasks-path" .!= "/tmp/io/tasks"
+  nodeIOTasksNetwork <- nodeCfgObj .:? "io-tasks-network" .!= "host"
+  let _ioTasksPath = fromMaybe nodeIOTasksPath _ioTasksPath_
+      _ioTasksNetwork = fromMaybe nodeIOTasksNetwork _ioTasksNetwork_
 
   return ServerOpts {..}
 
@@ -375,6 +383,18 @@ tlsCaPath = strOption
   $  long "tls-ca-path"
   <> metavar "PATH"
   <> help "Trusted CA(Certificate Authority) path"
+
+ioTasksPath :: O.Parser Text
+ioTasksPath = strOption
+  $  long "io-tasks-path"
+  <> metavar "PATH"
+  <> help "io tasks path"
+
+ioTasksNetwork :: O.Parser Text
+ioTasksNetwork = strOption
+  $  long "io-tasks-network"
+  <> metavar "STR"
+  <> help "io tasks network"
 
 readProtocol :: Text.Text -> AA.ProtocolId
 readProtocol x = case (Text.strip . Text.toUpper) x of

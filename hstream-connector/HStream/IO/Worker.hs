@@ -26,20 +26,21 @@ import qualified HStream.SQL.Codegen       as CG
 
 data Worker
   = Worker
-    { kvConfig   :: KvConfig
-    , hsConfig   :: HStreamConfig
-    , tasksPath  :: T.Text
-    , checkNode  :: T.Text -> IO Bool
-    , ioTasksM   :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
-    , storage    :: S.Storage
-    , monitorTid :: IORef C.ThreadId
+    { kvConfig     :: KvConfig
+    , hsConfig     :: HStreamConfig
+    , tasksPath    :: T.Text
+    , tasksNetwork :: T.Text
+    , checkNode    :: T.Text -> IO Bool
+    , ioTasksM     :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
+    , storage      :: S.Storage
+    , monitorTid   :: IORef C.ThreadId
     }
 
-newWorker :: KvConfig -> HStreamConfig -> T.Text -> (T.Text -> IO Bool) -> IO Worker
-newWorker kvCfg hsConfig tasksPath checkNode = do
+newWorker :: KvConfig -> HStreamConfig -> T.Text -> T.Text -> (T.Text -> IO Bool) -> IO Worker
+newWorker kvCfg hsConfig tasksPath tasksNetwork checkNode = do
   let (ZkKvConfig zk _ _) = kvCfg
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
-  worker <- Worker kvCfg hsConfig tasksPath checkNode
+  worker <- Worker kvCfg hsConfig tasksPath tasksNetwork checkNode
     <$> C.newMVar HM.empty
     <*> S.newZkStorage zk
     <*> newIORef undefined
@@ -83,7 +84,7 @@ createIOTaskFromSql worker@Worker{..} sql = do
       taskInfo = TaskInfo
         { taskName = cName
         , taskType = if cType == "SOURCE" then SOURCE else SINK
-        , taskConfig = TaskConfig image
+        , taskConfig = TaskConfig image tasksNetwork
         , connectorConfig = connectorConfig
         , originSql = sql
         }
