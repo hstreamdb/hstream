@@ -85,7 +85,7 @@ listShardsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListShardsRequest ListShardsResponse
   -> IO (ServerResponse 'Normal ListShardsResponse)
-listShardsHandler sc (ServerNormalRequest _metadata request) = do
+listShardsHandler sc (ServerNormalRequest _metadata request) = listShardsExceptionHandle $ do
   Log.debug "Receive List Shards Request"
   C.listShards sc request >>= returnResp . ListShardsResponse
 
@@ -159,6 +159,12 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
        Log.warning $ Log.buildString' err
        return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
+
+listShardsExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+listShardsExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+   Handler (\(err :: Store.NOTFOUND) ->
+          return (StatusUnavailable, mkStatusDetails err))
+  : defaultHandlers
 
 shardReaderExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
 shardReaderExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $

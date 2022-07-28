@@ -22,9 +22,8 @@ spec = describe "HStream.RunSQLSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
-  -- FIXME: FIX following tests
-  -- baseSpec
-  -- viewSpec
+  baseSpec
+  viewSpec
 
 -------------------------------------------------------------------------------
 -- BaseSpec

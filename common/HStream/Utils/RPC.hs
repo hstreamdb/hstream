@@ -21,8 +21,10 @@ module HStream.Utils.RPC
   , returnCommandQueryResp
   , returnCommandQueryEmptyResp
   , getServerResp
+  , getServerRespPure
   , getProtoTimestamp
   , isSuccessful
+
   , pattern EnumPB
   , showNodeStatus
   , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
@@ -121,6 +123,15 @@ getServerResp result = do
       error $ "Impossible happened..." <> show _status
     ClientErrorResponse err -> ioError . userError $ "Server error happened: " <> show err
 {-# INLINE getServerResp #-}
+
+getServerRespPure :: ClientResult 'Normal a -> Either String a
+getServerRespPure result = do
+  case result of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> Right x
+    ClientNormalResponse _resp _meta1 _meta2 _status _details ->
+      Left $ "Impossible happened..." <> show _status
+    ClientErrorResponse err -> Left $ "Error: " <> show err
+{-# INLINE getServerRespPure #-}
 
 getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do

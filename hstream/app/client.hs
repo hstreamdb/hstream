@@ -41,9 +41,9 @@ import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Client.Action            (createStream,
                                                    createStreamBySelect,
                                                    dropAction, insertIntoStream,
-                                                   terminateQueries)
-import           HStream.Client.Execute           (execute, executeInsert,
-                                                   executeShowPlan)
+                                                   listShards, terminateQueries)
+import           HStream.Client.Execute           (execute, executeShowPlan,
+                                                   execute_)
 import           HStream.Client.Gadget            (describeCluster,
                                                    lookupConnector,
                                                    waitForServerToStart)
@@ -202,18 +202,24 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
     (parseAndRefine . T.pack) xs >>= \case
       RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
       RQCreate (RCreateAs stream _ rOptions) ->
-        execute ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
+        execute_ ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
       rSql' -> hstreamCodegen rSql' >>= \case
         CreatePlan sName rFac
-          -> execute ctx $ createStream sName rFac
+          -> execute_ ctx $ createStream sName rFac
         ShowPlan showObj
           -> executeShowPlan ctx showObj
         TerminatePlan termSel
-          -> execute ctx $ terminateQueries termSel
+          -> execute_ ctx $ terminateQueries termSel
         DropPlan checkIfExists dropObj
-          -> execute ctx $ dropAction checkIfExists dropObj
+          -> execute_ ctx $ dropAction checkIfExists dropObj
         InsertPlan sName insertType payload
-          -> executeInsert ctx sName $ insertIntoStream sName insertType payload
+          -> do
+            result <- execute ctx $ listShards sName
+            case result of
+              Just (API.ListShardsResponse shards) -> do
+                let API.Shard{..}:_ = V.toList shards
+                execute_ ctx $ insertIntoStream sName shardShardId insertType payload
+              Nothing -> return ()
         ConnectorWritePlan name -> do
           addr <- readMVar currentServer
           lookupConnector ctx addr name >>= \case

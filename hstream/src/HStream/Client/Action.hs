@@ -15,6 +15,7 @@ module HStream.Client.Action
   , dropAction
   , insertIntoStream
   , createStreamBySelect
+  , listShards
   , runActionWithAddr
   , Action
   ) where
@@ -24,6 +25,7 @@ import qualified Data.ByteString                  as BS
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
+import           Data.Word                        (Word64)
 import           Network.GRPC.HighLevel.Generated (ClientResult (..),
                                                    GRPCMethodType (Normal),
                                                    withGRPCClient)
@@ -90,16 +92,17 @@ dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do
                       })
 
 insertIntoStream
-  :: StreamName -> InsertType -> BS.ByteString
+  :: StreamName -> Word64 -> InsertType -> BS.ByteString
   -> Action API.AppendResponse
-insertIntoStream sName insertType payload API.HStreamApi{..} = do
+insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
   timestamp <- getProtoTimestamp
   let header = case insertType of
         JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
         RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp clientDefaultKey
       record = buildRecord header payload
   hstreamApiAppend (mkClientNormalRequest' def
-    { API.appendRequestStreamName = sName
+    { API.appendRequestShardId    = shardId
+    , API.appendRequestStreamName = sName
     , API.appendRequestRecords    = V.singleton record
     })
 
@@ -110,6 +113,12 @@ createStreamBySelect sName rFac sql API.HStreamApi{..} =
     { API.commandQueryStmtText = T.pack sql})
 
 type Action a = HStreamClientApi -> IO (ClientResult 'Normal a)
+
+listShards :: T.Text -> Action API.ListShardsResponse
+listShards sName API.HStreamApi{..} = do
+  hstreamApiListShards $ mkClientNormalRequest' def {
+    listShardsRequestStreamName = sName
+  }
 
 runActionWithAddr :: SocketAddr -> Action a -> IO (ClientResult 'Normal a)
 runActionWithAddr addr action =

@@ -17,7 +17,7 @@ import           HStream.Utils        (setupSigsegvHandler)
 
 spec :: Spec
 spec = aroundAll provideHstreamApi $
-  xdescribe "HStream.RegressionSpec" $ do
+  describe "HStream.RegressionSpec" $ do
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
