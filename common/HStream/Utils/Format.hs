@@ -94,6 +94,10 @@ instance Format P.Struct where
     case M.toList kv of
       [("SELECT",      Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
       [("SELECTVIEW",  Just x)] -> (<> "\n") . TL.unpack . A.encodeToLazyText . valueToJsonValue $ x
+      [("stream_query_id", Just x)] -> let (A.String qid) = valueToJsonValue x
+                                        in "Done. Query ID: " <> T.unpack qid <> "\n"
+      [("view_query_id", Just x)]   -> let (A.String qid) = valueToJsonValue x
+                                        in "Done. Query ID: " <> T.unpack qid <> "\n"
       [("Error Message:", Just v)] -> "Error Message: " ++ show v ++ "\n"
       x -> show x
 
