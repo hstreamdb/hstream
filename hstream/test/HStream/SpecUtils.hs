@@ -375,7 +375,9 @@ runCreateStreamSql api sql = do
 runInsertSql :: HStreamClientApi -> T.Text -> Expectation
 runInsertSql api sql = do
   InsertPlan sName insertType payload <- streamCodegen sql
-  resp <- getServerResp =<< insertIntoStream sName insertType payload api
+  ListShardsResponse shards <- getServerResp =<<listShards sName api
+  let Shard{..}:_ = V.toList shards
+  resp <- getServerResp =<< insertIntoStream sName shardShardId insertType payload api
   appendResponseStreamName resp `shouldBe` sName
 
 runCreateWithSelectSql :: HStreamClientApi -> T.Text -> Expectation

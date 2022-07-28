@@ -41,9 +41,9 @@ import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Client.Action            (createStream,
                                                    createStreamBySelect,
                                                    dropAction, insertIntoStream,
-                                                   terminateQueries, listShards)
-import           HStream.Client.Execute           (execute,
-                                                   executeShowPlan, execute_)
+                                                   listShards, terminateQueries)
+import           HStream.Client.Execute           (execute, executeShowPlan,
+                                                   execute_)
 import           HStream.Client.Gadget            (describeCluster,
                                                    lookupConnector,
                                                    waitForServerToStart)
