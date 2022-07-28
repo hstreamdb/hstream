@@ -11,27 +11,33 @@ module HStream.Server.HStore
   )
 where
 
+import           Control.Concurrent               (modifyMVar)
+import           Control.Exception                (throwIO)
 import           Control.Monad
 import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString.Lazy             as BL
+import           Data.Functor                     ((<&>))
+import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map.Strict                  as M
 import qualified Data.Map.Strict                  as Map
 import           Data.Maybe                       (fromJust)
+import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Proto3.Suite                     (Enumerated (..))
 import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
-import qualified Z.IO.Logger                      as Log
 
-import           Control.Exception                (throwIO)
 import           HStream.Connector.Common
 import           HStream.Connector.Type           as HCT
+import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (WrongOffset (..))
 import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.Shard             (cBytesToKey, hashShardKey,
+                                                   shardStartKey)
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.Utils
@@ -186,14 +192,16 @@ writeRecordToHStore ctx SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
 
   timestamp <- getProtoTimestamp
+  shardId <- getShardId ctx snkStream
   let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
       payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode snkValue
   let record = buildRecord header payload
   let req = API.AppendRequest
             { appendRequestStreamName = snkStream
+            , appendRequestShardId = shardId
             , appendRequestRecords = V.singleton record
             }
-  void $ Core.appendStream ctx req clientDefaultKey
+  void $ Core.appendStream ctx req
 
 data Payload = Payload
   { pLogID     :: S.C_LogID
@@ -201,6 +209,38 @@ data Payload = Payload
   , pLSN       :: S.LSN
   , pTimeStamp :: Int64
   } deriving (Show)
+
+--------------------------------------------------------------------------------
+
+getShardId :: ServerContext -> Text -> IO S.C_LogID
+getShardId ServerContext{..} sName = do
+  getShardDict <&> snd . fromJust . M.lookupLE shardKey
+ where
+   shardKey   = hashShardKey clientDefaultKey
+   streamID   = S.mkStreamId S.StreamTypeStream streamName
+   streamName = textToCBytes sName
+
+   getShardDict = modifyMVar shardTable $ \mp -> do
+     case HM.lookup sName mp of
+       Just shards -> return (mp, shards)
+       Nothing     -> do
+         -- loading shard infomation for stream first.
+         shards <- M.elems <$> S.listStreamPartitions scLDClient streamID
+         shardDict <- foldM insertShardDict M.empty shards
+         Log.debug $ "build shardDict for stream " <> Log.buildText sName <> ": " <> Log.buildString' (show shardDict)
+         return (HM.insert sName shardDict mp, shardDict)
+
+   insertShardDict dict shardId = do
+     attrs <- S.getStreamPartitionExtraAttrs scLDClient shardId
+     Log.debug $ "attrs for shard " <> Log.buildInt shardId <> ": " <> Log.buildString' (show attrs)
+     startKey <- case M.lookup shardStartKey attrs of
+        -- FIXME: Under the new shard model, each partition created should have an extrAttr attribute,
+        -- except for the default partition created by default for each stream. After the default
+        -- partition is subsequently removed, an error should be returned here.
+        Nothing  -> return $ cBytesToKey "0"
+        -- Nothing -> throwIO $ ShardKeyNotFound shardId
+        Just key -> return $ cBytesToKey key
+     return $ M.insert startKey shardId dict
 
 --------------------------------------------------------------------------------
 

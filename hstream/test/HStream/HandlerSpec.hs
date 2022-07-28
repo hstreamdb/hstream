@@ -77,14 +77,14 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
           header  = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
           record1 = buildRecord header payload1
           record2 = buildRecord header payload2
-      -- append to a nonexistent stream should throw exception
-      appendRequest api name (V.fromList [record1, record2]) `shouldThrow` anyException
       createStreamRequest api stream `shouldReturn` stream
       -- FIXME: Even we have called the "syncLogsConfigVersion" method, there is
       -- __no__ guarantee that subsequent "append" will have an up-to-date view
       -- of the LogsConfig. For details, see Logdevice::Client::syncLogsConfigVersion
       threadDelay 2000000
-      resp <- appendRequest api name (V.fromList [record1, record2])
+      ListShardsResponse shards <- listShardsReq api name
+      let Shard{..}:_ = V.toList shards
+      resp <- appendRequest api name shardShardId (V.fromList [record1, record2])
       appendResponseStreamName resp `shouldBe` name
       recordIdBatchIndex <$> appendResponseRecordIds resp `shouldBe` V.fromList [0, 1]
 

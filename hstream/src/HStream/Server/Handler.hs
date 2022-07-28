@@ -41,7 +41,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteStream = deleteStreamHandler serverContext,
         hstreamApiListStreams = listStreamsHandler serverContext,
         hstreamApiAppend = appendHandler serverContext,
-        hstreamApiAppend0 = append0Handler serverContext,
         -- Subscribe
         hstreamApiCreateSubscription = createSubscriptionHandler serverContext,
         hstreamApiDeleteSubscription = deleteSubscriptionHandler serverContext,
