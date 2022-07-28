@@ -154,14 +154,11 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
         Nothing -> returnErrResp StatusNotFound "VIEW not found"
         Just accumulation -> do
           DataChangeBatch{..} <- readMVar accumulation
-          results <- case dcbChanges of
-            [] -> do
-              x <- sendResp mempty
-              return [x]
+          case dcbChanges of
+            [] -> sendResp mempty
             _  -> do
-              forM (filterView rSelectViewWhere dcbChanges) $ \change -> do
-                sendResp (dcRow $ mapView rSelectViewSelect change)
-          return $ L.last results
+              sendResp $ V.map (dcRow . mapView rSelectViewSelect)
+                (V.fromList $ filterView rSelectViewWhere dcbChanges)
     ExplainPlan _ -> do
       undefined
       {-
@@ -178,9 +175,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     create sName = do
       Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
       createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
-    sendResp result =
-      returnCommandQueryResp
-        (V.singleton $ structToStruct "SELECTVIEW" $ jsonObjectToStruct result)
+    sendResp results = returnCommandQueryResp $
+      V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
     discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
     mkVectorStruct a label =
       let object = HM.fromList [(label, PB.toAesonValue a)]
@@ -195,13 +191,9 @@ mapView (SVSelectFields fieldsWithAlias) change@DataChange{..} =
                      ) fieldsWithAlias
   in change {dcRow = newRow}
 
-filterView :: SelectViewCond -> [DataChange a] -> [DataChange a]
-filterView (field, rexpr) =
-  L.filter (\DataChange{..} ->
-              let column       = HSC.getFieldByName dcRow field
-                  (_,expected) = HSC.genRExprValue rexpr dcRow
-               in column == expected
-           )
+filterView :: RWhere -> [DataChange a] -> [DataChange a]
+filterView rwhere =
+  L.filter (\DataChange{..} -> HSC.genFilterR rwhere dcRow)
 
 executePushQueryHandler ::
   ServerContext ->
