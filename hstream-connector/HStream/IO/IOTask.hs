@@ -62,7 +62,8 @@ runIOTask IOTask{..} = do
     TaskInfo {..} = taskInfo
     TaskConfig {..} = taskConfig
     taskCmd = concat [
-        "docker run --rm -i --network=host",
+        "docker run --rm -i",
+        " --network=", T.unpack tcNetwork,
         " --name ", T.unpack (getDockerName taskId),
         " -v " , taskPath, ":/data",
         " " , T.unpack tcImage,
@@ -141,7 +142,7 @@ checkProcess ioTask@IOTask{..} = do
       _ -> return status
 
 checkIOTask :: IOTask -> IO ()
-checkIOTask IOTask{taskInfo=TaskInfo{..}, ..} = do
+checkIOTask IOTask{..} = do
   Log.info $ "checkCmd:" <> Log.buildString checkCmd
   (exitCode, output, err) <- TP.readProcess checkProcessConfig
   when (exitCode /= TP.ExitSuccess) $ do
@@ -160,11 +161,13 @@ checkIOTask IOTask{taskInfo=TaskInfo{..}, ..} = do
       . TP.setStdout TP.createPipe
       . TP.setStderr TP.closed
       $ TP.shell checkCmd
+    TaskConfig {..} = taskConfig taskInfo
     checkCmd = concat [
-        "docker run --rm -i --network=host",
+        "docker run --rm -i",
+        " --network=", T.unpack tcNetwork,
         " --name ", T.unpack (getDockerName taskId),
         " -v " , taskPath, ":/data",
-        " " , T.unpack (tcImage taskConfig),
+        " " , T.unpack tcImage,
         " check",
         " --config /data/config.json"
       ]

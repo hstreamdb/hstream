@@ -22,7 +22,8 @@ $(JT.deriveJSON JT.defaultOptions ''IOTaskType)
 
 
 data TaskConfig = TaskConfig
-  { tcImage :: T.Text
+  { tcImage   :: T.Text
+  , tcNetwork :: T.Text
   }
 
 $(JT.deriveJSON JT.defaultOptions ''TaskConfig)
