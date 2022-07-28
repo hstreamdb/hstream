@@ -355,11 +355,11 @@ instance Refine Select where
 ---- SELECTVIEW
 
 data SelectViewSelect = SVSelectAll | SVSelectFields [(FieldName, FieldAlias)] deriving (Eq, Show)
-type SelectViewCond = (FieldName, RValueExpr)
+
 data RSelectView = RSelectView
   { rSelectViewSelect :: SelectViewSelect
   , rSelectViewFrom   :: StreamName
-  , rSelectViewWhere  :: SelectViewCond
+  , rSelectViewWhere  :: RWhere
   } deriving (Eq, Show)
 
 type instance RefinedType SelectView = RSelectView
@@ -383,9 +383,10 @@ instance Refine SelectView where
                 (DerivedColAs _ (ExprRaw _ (RawColumn col)) (Ident alias))                   ->
                   (col, Text.unpack alias)
            in SVSelectFields (f <$> dcols)
+      svFrm :: StreamName
       svFrm = let (RFrom [RTableRefSimple stream Nothing]) = refine frm in stream
-      svWhr = let (RWhere (RCondOp RCompOpEQ (RExprCol _ Nothing field) rexpr)) = refine whr
-               in (field, rexpr)
+      svWhr :: RWhere
+      svWhr = refine whr
 
 ---- EXPLAIN
 type RExplain = Text

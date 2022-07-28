@@ -56,7 +56,7 @@ spec = describe "Create" $ do
 
   it "SELECT (View)" $ do
     parseAndRefine "SELECT `SUM(a)`, cnt, a FROM my_view WHERE b = 1;"
-      `shouldReturn` RQSelectView (RSelectView {rSelectViewSelect = SVSelectFields [("`SUM(a)`","`SUM(a)`"),("cnt","cnt"),("a","a")], rSelectViewFrom = "my_view", rSelectViewWhere = ("b",RExprConst "1" (ConstantInt 1))})
+      `shouldReturn` RQSelectView (RSelectView {rSelectViewSelect = SVSelectFields [("`SUM(a)`","`SUM(a)`"),("cnt","cnt"),("a","a")], rSelectViewFrom = "my_view", rSelectViewWhere = RWhere (RCondOp RCompOpEQ (RExprCol "b" Nothing "b") (RExprConst "1" (ConstantInt 1)))})
 
   it "INSERT" $ do
     parseAndRefine "INSERT INTO weather (cityId, temperature, humidity) VALUES (11254469, 12, 65);"
