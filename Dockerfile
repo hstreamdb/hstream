@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-pip                    \
       bash-completion                \
       vim                            \
+      docker                         \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 COPY --from=hstreamdb/haskell:latest /usr/local/lib/ /usr/local/lib/

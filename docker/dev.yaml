@@ -13,6 +13,8 @@ services:
     networks:
       - hstream-quickstart
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp:/tmp
       - data_store:/data/store
     command:
       - bash
@@ -28,7 +30,9 @@ services:
         --address $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
-        --store-admin-host hstore --store-admin-port 6440
+        --store-admin-host hstore --store-admin-port 6440 \
+        --io-tasks-path /tmp/io/tasks \
+        --io-tasks-network hstream-quickstart
 
   hserver1:
     image: hstreamdb/hstream
@@ -42,6 +46,8 @@ services:
     networks:
       - hstream-quickstart
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp:/tmp
       - data_store:/data/store
     command:
       - bash
@@ -57,7 +63,9 @@ services:
         --address $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
-        --store-admin-host hstore --store-admin-port 6440
+        --store-admin-host hstore --store-admin-port 6440 \
+        --io-tasks-path /tmp/io/tasks \
+        --io-tasks-network hstream-quickstart
 
   hserver-init:
     image: hstreamdb/hstream
