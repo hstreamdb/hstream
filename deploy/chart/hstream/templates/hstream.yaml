@@ -9,7 +9,7 @@ spec:
   type: {{ .Values.service.type }}
   ports:
     - name: server
-      targetPort: server 
+      targetPort: server
       port: {{ .Values.service.port }}
       protocol: TCP
   selector:
@@ -63,7 +63,9 @@ spec:
           /usr/local/bin/hstream-server \
             --config-path /etc/hstream/config.yaml \
             --host 0.0.0.0 --port 6570 \
+            --internal-port 6571 \
             --address $(POD_IP) \
+            --seed-nodes {{ include "hstream.seedNodes" . }} \
             --server-id $((100 + $ordinal)) \
             --zkuri {{ include "hstream.zookeeper.uri" . }} \
             --store-config /etc/logdevice/config.json \
@@ -72,6 +74,8 @@ spec:
           - name: server
             containerPort: 6570
             protocol: TCP
+          # Gossip port
+          - containerPort: 6571
         env:
         - name: POD_IP
           valueFrom:
