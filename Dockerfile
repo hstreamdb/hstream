@@ -68,6 +68,10 @@ COPY --from=builder /root/.cabal/bin/hstream-server \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
                     /usr/local/bin/
+COPY --from=ghcr.io/hstreamdb/http-services:latest \
+  /usr/local/bin/hstream-http-server \
+  /usr/local/bin/
+
 COPY ./script/wait-for-storage.sh /usr/local/script/wait-for-storage.sh
 COPY ./conf/hstream.yaml /etc/hstream/config.yaml
 
