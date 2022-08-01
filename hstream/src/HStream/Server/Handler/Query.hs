@@ -35,24 +35,24 @@ import           HStream.Connector.Common         (SourceConnectorWithoutCkp (..
 import           HStream.Connector.Type           hiding (StreamName, Timestamp)
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
-import qualified HStream.Server.Core.Query        as Core
-import qualified HStream.Server.Core.Stream       as Core
-import qualified HStream.Server.Core.View         as Core
-import           HStream.Server.Exception
-import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector
-import qualified HStream.Server.HStore            as HStore
-import           HStream.Server.HStreamApi
-import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Server.Persistence       as P
-import qualified HStream.Server.Shard             as Shard
-import           HStream.Server.Types
 import           HStream.SQL.AST
 import           HStream.SQL.Codegen              hiding (StreamName)
 import qualified HStream.SQL.Codegen              as HSC
 import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import qualified HStream.SQL.Internal.Codegen     as HSC
+import qualified HStream.Server.Core.Query        as Core
+import qualified HStream.Server.Core.Stream       as Core
+import qualified HStream.Server.Core.View         as Core
+import           HStream.Server.Exception
+import qualified HStream.Server.HStore            as HStore
+import           HStream.Server.HStreamApi
+import qualified HStream.Server.HStreamApi        as API
+import           HStream.Server.Handler.Common
+import           HStream.Server.Handler.Connector
+import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.Shard             as Shard
+import           HStream.Server.Types
 import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
@@ -68,7 +68,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
+    SelectPlan {} -> returnErrResp StatusInvalidArgument "Inconsistent method called"
     CreateConnectorPlan {} -> do
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
       -- connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
@@ -84,10 +84,19 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
           query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
-      create (transToStreamName sink)
-      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-      returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
+      -- make sure source streams exist
+      existedStreams <- V.toList <$> Core.listStreamNames sc
+      existedViews   <-              Core.listViewNames   sc
+      let existSources = existedStreams <> existedViews
+      case L.find (`notElem` existSources) sources of
+        Nothing -> do
+          create (transToStreamName sink)
+          (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
+          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
+          returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
+        Just nonExistedSource -> do
+          returnErrResp StatusInvalidArgument . StatusDetails . BS.pack $
+            "Source " <> show nonExistedSource <> " doesn't exist"
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
@@ -175,9 +184,12 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     create sName = do
       Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
       createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
+
+    -- TODO: return correct RPC name
+    discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
+
     sendResp results = returnCommandQueryResp $
       V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
-    discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
     mkVectorStruct a label =
       let object = HM.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)

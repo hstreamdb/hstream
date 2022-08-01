@@ -6,6 +6,7 @@ module HStream.Server.Core.Stream
   ( createStream
   , deleteStream
   , listStreams
+  , listStreamNames
   , append
   , appendStream
   , listShards
@@ -122,6 +123,11 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
         b = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
     return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
+
+listStreamNames :: ServerContext -> IO (V.Vector T.Text)
+listStreamNames ServerContext{..} = do
+  streams <- S.findStreams scLDClient S.StreamTypeStream
+  pure $ V.map (T.pack . S.showStreamName) (V.fromList streams)
 
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse
