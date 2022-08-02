@@ -25,8 +25,7 @@ import           Control.Concurrent                (modifyMVar_, newEmptyMVar,
                                                     withMVar)
 import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
-                                                    bracket, catch, throw,
-                                                    throwIO)
+                                                    bracket, catch, throwIO)
 import           Control.Monad                     (forM, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
@@ -80,6 +79,7 @@ createStream ServerContext{..} API.Stream{
   shards <- forM partitions $ \(startKey, endKey) -> do
     let shard = mkShardWithDefaultId streamId startKey endKey (fromIntegral shardCount)
     createShard scLDClient shard
+  Log.debug $ "create shards for stream " <> Log.buildText streamStreamName <> ": " <> Log.buildString' (show shards)
 
   shardMp <- mkSharedShardMapWithShards shards
   modifyMVar_ shardInfo $ return . HM.insert streamStreamName shardMp
@@ -121,7 +121,7 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     let r = fromMaybe 0 . S.attrValue . S.logReplicationFactor $ attrs
         b = fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration $ attrs
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
-    return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral $ shardCnt - 1)
+    return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral shardCnt)
 
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse

@@ -259,7 +259,10 @@ doSubInit ServerContext{..} subId = do
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
       throwIO $ SubscriptionIdNotFound subId
-    Just SubscriptionWrap {originSub=Subscription{..}, ..} -> do
+    Just SubscriptionWrap {originSub=oSub@Subscription{..}, ..} -> do
+      Log.debug $ "get subscriptionInfo from persistence: \n"
+               <> "subscription = " <> Log.buildString' (show oSub) <> "\n"
+               <> "startOffsets = " <> Log.buildString' (show subOffsets)
       let readerName = textToCBytes subId
       -- Notice: doc this. shard count can not larger than this.
       let maxReadLogs = 1000
