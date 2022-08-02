@@ -87,5 +87,5 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP VIEW v6 IF EXISTS;"
 
   it "HS-1787" $ \api -> do
-    runQuerySimple api "CREATE VIEW v7 AS SELECT SUM(x) FROM s7_does_not_exist GROUP BY i EMIT CHANGES;"
+    runQuerySimple_ api "CREATE VIEW v7 AS SELECT SUM(x) FROM s7_does_not_exist GROUP BY i EMIT CHANGES;"
       `shouldThrow` anyIOException
