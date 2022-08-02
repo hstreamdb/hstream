@@ -6,7 +6,6 @@
 
 module HStream.RunQuerySpec (spec) where
 
-import           Control.Concurrent
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
