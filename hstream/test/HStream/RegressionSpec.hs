@@ -6,14 +6,19 @@
 module HStream.RegressionSpec (spec) where
 
 import           Control.Concurrent
-import qualified Data.Aeson           as Aeson
-import qualified Data.List            as L
+import qualified Data.Aeson                    as Aeson
+import qualified Data.ByteString.Char8         as BS
+import qualified Data.List                     as L
+import qualified Data.Text                     as T
 import           Test.Hspec
 
 import           HStream.SpecUtils
-import           HStream.Store.Logger (pattern C_DBG_ERROR,
-                                       setLogDeviceDbgLevel)
-import           HStream.Utils        (setupSigsegvHandler)
+import           HStream.Store.Logger          (pattern C_DBG_ERROR,
+                                                setLogDeviceDbgLevel)
+import           HStream.Utils                 (setupSigsegvHandler)
+
+import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.LowLevel
 
 spec :: Spec
 spec = aroundAll provideHstreamApi $
@@ -87,5 +92,7 @@ spec = aroundAll provideHstreamApi $
     runDropSql api "DROP VIEW v6 IF EXISTS;"
 
   it "HS-1787" $ \api -> do
-    runQuerySimple_ api "CREATE VIEW v7 AS SELECT SUM(x) FROM s7_does_not_exist GROUP BY i EMIT CHANGES;"
-      `shouldThrow` anyIOException
+    let doesNotExistSourceStream = "s7_does_not_exist" :: T.Text
+    ClientErrorResponse errResp <- runQuerySimple api $ "CREATE VIEW v7 AS SELECT SUM(x) FROM " <> doesNotExistSourceStream <> " GROUP BY i EMIT CHANGES;"
+    errResp `shouldBe` ClientIOError (GRPCIOBadStatusCode StatusInvalidArgument (StatusDetails . BS.pack $ "Source " <> show doesNotExistSourceStream <> " doesn't exist"))
+    runDropSql api "DROP VIEW v7 IF EXISTS;"
