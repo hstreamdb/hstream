@@ -270,6 +270,7 @@ language_extensions:
   - GeneralizedNewtypeDeriving
   - MultiParamTypeClasses
   - TemplateHaskell
+  - TypeApplications
   - QuasiQuotes
 
 # Attempt to find the cabal file in ancestors of the current directory, and

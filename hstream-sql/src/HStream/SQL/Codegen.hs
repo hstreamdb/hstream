@@ -69,6 +69,7 @@ data ConnectorConfig
   | MySqlConnector T.Text MySQL.ConnectInfo
   deriving Show
 
+-- TODO: docs for transformations from Text
 data HStreamPlan
   = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder
   | CreateBySelectPlan  Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder Int
