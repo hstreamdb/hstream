@@ -14,14 +14,14 @@ module HStream.Client.Execute
 import           Control.Concurrent            (readMVar)
 import           Data.Functor                  (void)
 import           Network.GRPC.HighLevel.Client
-import           Z.IO.Network                  (SocketAddr)
 
 import           HStream.Client.Action
 import           HStream.Client.Gadget
 import           HStream.Client.Types          (HStreamSqlContext (..))
 import           HStream.Client.Utils
 import           HStream.SQL
-import           HStream.Utils                 (Format, getServerResp)
+import           HStream.Utils                 (Format, SocketAddr,
+                                                getServerResp)
 
 executeShowPlan :: HStreamSqlContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =

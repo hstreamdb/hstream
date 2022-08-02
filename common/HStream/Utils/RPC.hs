@@ -9,6 +9,7 @@
 module HStream.Utils.RPC
   ( HStreamClientApi
 
+  , SocketAddr(..)
   , runWithAddr
   , mkGRPCClientConf
   , mkClientNormalRequest
@@ -32,6 +33,7 @@ module HStream.Utils.RPC
 
 import           Control.Monad
 import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Char8            as BSC
 import           Data.Swagger                     (ToSchema)
 import qualified Data.Vector                      as V
@@ -41,7 +43,6 @@ import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Network.GRPC.HighLevel.Server
 import qualified Proto3.Suite                     as PB
 import           Z.Data.JSON                      (JSON)
-import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 
@@ -50,6 +51,8 @@ import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct, Timestamp (..))
 
 type HStreamClientApi = HStreamApi ClientRequest ClientResult
+data SocketAddr = SocketAddr ByteString Int
+  deriving (Eq, Show)
 
 runWithAddr :: SocketAddr -> (HStreamClientApi -> IO a) -> IO a
 runWithAddr addr action =
@@ -57,18 +60,10 @@ runWithAddr addr action =
 
 mkGRPCClientConf :: SocketAddr -> ClientConfig
 mkGRPCClientConf = \case
-  SocketAddrIPv4 v4 port ->
+  SocketAddr host port ->
     ClientConfig
-    { clientServerHost = Host . BSC.pack . show $ v4
-    , clientServerPort = Port $ fromIntegral port
-    , clientArgs = []
-    , clientSSLConfig = Nothing
-    , clientAuthority = Nothing
-    }
-  SocketAddrIPv6 v6 port _flow _scope ->
-    ClientConfig
-    { clientServerHost = Host . BSC.pack . show $ v6
-    , clientServerPort = Port $ fromIntegral port
+    { clientServerHost = Host host
+    , clientServerPort = Port port
     , clientArgs = []
     , clientSSLConfig = Nothing
     , clientAuthority = Nothing
