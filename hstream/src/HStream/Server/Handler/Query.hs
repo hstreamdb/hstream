@@ -92,7 +92,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
           returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
-        (_ : _) -> do
+        _ : _ -> do
           returnErrResp StatusInvalidArgument . StatusDetails . BS.pack $
             "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
     CreatePlan stream fac -> do
