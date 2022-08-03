@@ -15,7 +15,7 @@ import           GHC.IO                               (throwIO, unsafePerformIO)
 import           Z.Data.CBytes                        (CBytes)
 import           Z.IO.Time                            (getSystemTime')
 
-import qualified HStream.Connector.Type               as HCT
+import qualified HStream.Server.ConnectorTypes        as HCT
 import           HStream.Server.Persistence.Common
 import           HStream.Server.Persistence.Exception
 import           HStream.Server.Persistence.Utils

@@ -24,8 +24,6 @@ import           Data.Text                       (pack)
 import qualified Data.Text                       as T
 import           Data.Time                       (diffTimeToPicoseconds,
                                                   showGregorian)
-import qualified Database.ClickHouseDriver.Types as Clickhouse
-import qualified Database.MySQL.Base             as MySQL
 import qualified Proto3.Suite                    as PB
 import           RIO
 import qualified RIO.ByteString.Lazy             as BL
@@ -63,11 +61,6 @@ data TerminationSelection = AllQueries | OneQuery CB.CBytes | ManyQueries [CB.CB
 data InsertType = JsonFormat | RawFormat
 data PauseObject = PauseObjectConnector Text
 data ResumeObject = ResumeObjectConnector Text
-
-data ConnectorConfig
-  = ClickhouseConnector Clickhouse.ConnParams
-  | MySqlConnector T.Text MySQL.ConnectInfo
-  deriving Show
 
 data HStreamPlan
   = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder

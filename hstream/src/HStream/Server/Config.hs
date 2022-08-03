@@ -54,6 +54,8 @@ import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Logger           as Log
+import qualified HStream.IO.Types as IO
+import qualified Data.HashMap.Strict        as HM
 
 -------------------------------------------------------------------------------
 
@@ -94,8 +96,7 @@ data ServerOpts = ServerOpts
   , _ldLogLevel                :: !Log.LDLogLevel
 
   , _gossipOpts                :: !GossipOpts
-  , _ioTasksPath               :: !Text
-  , _ioTasksNetwork            :: !Text
+  , _ioOptions                 :: !IO.IOOptions
   } deriving (Show)
 
 getConfig :: IO ServerOpts
@@ -260,10 +261,14 @@ parseJSONToOptions CliOptions {..} obj = do
         (_, Just kp, Just cp) -> Just $ TlsConfig kp cp _tlsCaPath
 
   -- hstream io config
-  nodeIOTasksPath <- nodeCfgObj .:? "io-tasks-path" .!= "/tmp/io/tasks"
-  nodeIOTasksNetwork <- nodeCfgObj .:? "io-tasks-network" .!= "host"
-  let _ioTasksPath = fromMaybe nodeIOTasksPath _ioTasksPath_
-      _ioTasksNetwork = fromMaybe nodeIOTasksNetwork _ioTasksNetwork_
+  nodeIOCfg <- nodeCfgObj .:? "hstream-io" .!= mempty
+  nodeIOTasksPath <- nodeIOCfg .:? "tasks-path" .!= "/tmp/io/tasks"
+  nodeIOTasksNetwork <- nodeIOCfg .:? "tasks-network" .!= "host"
+  optSourceImages <- nodeIOCfg .:? "source-images" .!= HM.empty
+  optSinkImages <- nodeIOCfg .:? "sink-images" .!= HM.empty
+  let optTasksPath = fromMaybe nodeIOTasksPath _ioTasksPath_
+      optTasksNetwork = fromMaybe nodeIOTasksNetwork _ioTasksNetwork_
+      _ioOptions = IO.IOOptions {..}
 
   return ServerOpts {..}
 

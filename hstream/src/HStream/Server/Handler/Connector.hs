@@ -11,7 +11,6 @@ import           Control.Exception                (Exception, Handler (..),
                                                    throwIO)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Database.MySQL.Base              (ERRException)
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
@@ -118,10 +117,8 @@ connectorExceptionHandlers =[
     return (StatusInternal, mkStatusDetails err)),
   Handler (\(err :: ConnectorTerminatedOrNotExist) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusNotFound, "Connector can not be terminated: No running connector with the same id")),
-  Handler (\(err :: ERRException) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusInternal, "Mysql error " <> mkStatusDetails err))]
+    return (StatusNotFound, "Connector can not be terminated: No running connector with the same id"))
+  ]
 
 connectorExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
 connectorExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $

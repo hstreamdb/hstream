@@ -18,24 +18,18 @@ import           Data.Int                         (Int64)
 import           Data.Maybe                       (fromJust)
 import           Data.Text                        (Text)
 import qualified Data.Time                        as Time
-import           Database.ClickHouseDriver.Client (createClient)
-import           Database.MySQL.Base              (ERRException)
-import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
 import qualified Z.Data.CBytes                    as CB
 
-import           HStream.Connector.ClickHouse
-import           HStream.Connector.Common
-import           HStream.Connector.MySQL
-import           HStream.Connector.Type           (SinkRecord (..),
+import           HStream.Server.ConnectorTypes     (SinkRecord (..),
                                                    SourceRecord (..),
                                                    TemporalFilter (..),
-                                                   Timestamp)
-import qualified HStream.Connector.Type           as HCT
-import           HStream.Connector.Util           (getCurrentTimestamp)
+                                                   SinkConnector (..),
+                                                   SourceConnectorWithoutCkp(..))
+import qualified HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
@@ -43,8 +37,7 @@ import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.SQL.AST                  (RWindow (..))
 import           HStream.SQL.Codegen
-import           HStream.Utils                    (TaskStatus (..),
-                                                   newRandomText)
+import           HStream.Utils                    (TaskStatus (..))
 
 import qualified DiffFlow.Graph                   as DiffFlow
 import qualified DiffFlow.Shard                   as DiffFlow
@@ -98,7 +91,7 @@ runTask :: [(DiffFlow.Node, Text)]
         -> SinkConnector
         -> TemporalFilter
         -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
-        -> DiffFlow.Shard HStream.Connector.Type.Timestamp
+        -> DiffFlow.Shard HCT.Timestamp
         -> IO ()
 runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard = do
 
@@ -116,7 +109,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
     (\(SourceConnectorWithoutCkp{..}, (inNode, sourceStreamName)) -> do
         forkIO $ withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> do
           forM_ sourceRecords $ \SourceRecord{..} -> do
-            ts <- getCurrentTimestamp
+            ts <- HCT.getCurrentTimestamp
             let dataChange
                   = DiffFlow.DataChange
                   { dcRow = fromJust . Aeson.decode $ srcValue
@@ -161,7 +154,7 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
   -- second loop: advance input after an interval
   tid3 <- forkIO . forever $ do
     forM_ inNodesWithStreams $ \(inNode, _) -> do
-      ts <- getCurrentTimestamp
+      ts <- HCT.getCurrentTimestamp
       -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
       DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
     threadDelay 100000
@@ -194,35 +187,6 @@ runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temp
 
 --------------------------------------------------------------------------------
 
-runSinkConnector
-  :: ServerContext
-  -> CB.CBytes -- ^ Connector Id
-  -> SourceConnectorWithoutCkp
-  -> Text -- ^ source stream name
-  -> SinkConnector
-  -> IO ()
-runSinkConnector ServerContext{..} cid src streamName connector = do
-    P.setConnectorStatus cid Running zkHandle
-    catches (forever action) cleanup
-  where
-    writeToConnector c SourceRecord{..} =
-      writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
-    action = withReadRecordsWithoutCkp src streamName $ \sourceRecords -> do
-      mapM_ (writeToConnector connector) sourceRecords
-    cleanup =
-      [ Handler (\(_ :: ERRException) -> do
-                    Log.warning "Sink connector thread died due to SQL errors"
-                    P.setConnectorStatus cid ConnectionAbort zkHandle
-                    void releasePid)
-      , Handler (\(e :: AsyncException) -> do
-                    Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
-                    P.setConnectorStatus cid Terminated zkHandle
-                    void releasePid)
-      ]
-    releasePid = do
-      hmapC <- readMVar runningConnectors
-      swapMVar runningConnectors $ HM.delete cid hmapC
-
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
   x <- runOps unsafeSC callCQ [OpRecvCloseOnServer]
@@ -239,42 +203,6 @@ responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalRespons
 
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
-
-handleCreateSinkConnector
-  :: ServerContext
-  -> CB.CBytes -- ^ Connector Name
-  -> Text -- ^ Source Stream Name
-  -> ConnectorConfig
-  -> IO P.PersistentConnector
-handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
-  onException action cleanup
-  where
-    cleanup = do
-      Log.debug "Create sink connector failed"
-      P.setConnectorStatus cid CreationAbort zkHandle
-
-    action = do
-      P.setConnectorStatus cid Creating zkHandle
-      Log.debug "Start creating sink connector"
-
-      connector <- case cConfig of
-        ClickhouseConnector config  -> do
-          Log.debug $ "Connecting to clickhouse with " <> Log.buildString (show config)
-          clickHouseSinkConnector  <$> createClient config
-        MySqlConnector table config -> do
-          Log.debug $ "Connecting to mysql with " <> Log.buildString (show config)
-          mysqlSinkConnector table <$> MySQL.connect config
-      P.setConnectorStatus cid Created zkHandle
-      Log.debug . Log.buildString . CB.unpack $ cid <> "Connected"
-
-      consumerName <- newRandomText 20
-      let src = HStore.hstoreSourceConnectorWithoutCkp serverCtx consumerName
-      subscribeToStreamWithoutCkp src sName SpecialOffsetLATEST
-      tid <- forkIO $ runSinkConnector serverCtx cid src sName connector
-
-      Log.debug . Log.buildString $ "Sink connector started running on thread#" <> show tid
-      modifyMVar_ runningConnectors (return . HM.insert cid tid)
-      P.getConnector cid zkHandle
 
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext

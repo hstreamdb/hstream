@@ -16,7 +16,6 @@ import qualified Data.Aeson                       as Aeson
 import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Char8            as BSC
 import qualified Data.ByteString.Internal         as BS
-import qualified Data.ByteString.Lazy.Char8       as BSCL
 import qualified Data.HashMap.Strict              as HM
 import           Data.IORef
 import qualified Data.Map                         as M
@@ -25,18 +24,13 @@ import           Data.Maybe                       (fromMaybe)
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Text                        as Text
-import qualified Data.Text.Encoding               as Text
 import qualified Data.Text.Lazy                   as TL
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
-import qualified Database.ClickHouseDriver.Client as ClickHouse
-import qualified Database.ClickHouseDriver.Types  as ClickHouse
-import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import           Proto3.Suite                     (def)
 import           System.Environment               (lookupEnv)
-import qualified System.IO.Streams                as Streams
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
 import           Test.Hspec
@@ -74,52 +68,6 @@ clientConfig = unsafePerformIO $ do
         error $ "Connect to server " <> addr <> " failed. "
              <> "Make sure you have run hstream server on " <> addr
 {-# NOINLINE clientConfig #-}
-
-mysqlConnectInfo :: MySQL.ConnectInfo
-mysqlConnectInfo = unsafePerformIO $ do
-  port <- read . fromMaybe "3306" <$> lookupEnv "MYSQL_LOCAL_PORT"
-  return $ MySQL.ConnectInfo { ciUser = "root"
-                             , ciPassword = ""
-                             , ciPort = port
-                             , ciHost = "127.0.0.1"
-                             , ciDatabase = "mysql"
-                             , ciCharset = 33
-                             }
-{-# NOINLINE mysqlConnectInfo #-}
-
-createMySqlConnectorSql :: T.Text -> T.Text -> T.Text
-createMySqlConnectorSql name stream
-  = "CREATE SINK CONNECTOR " <> name <> " WITH (type=mysql, "
- <> "host="     <> T.pack (show $ MySQL.ciHost     mysqlConnectInfo) <> ","
- <> "port="     <> T.pack (show $ MySQL.ciPort     mysqlConnectInfo) <> ","
- <> "username=" <> T.pack (show $ MySQL.ciUser     mysqlConnectInfo) <> ","
- <> "password=" <> T.pack (show $ MySQL.ciPassword mysqlConnectInfo) <> ","
- <> "database=" <> T.pack (show $ MySQL.ciDatabase mysqlConnectInfo) <> ","
- <> "stream="   <> stream
- <> ");"
-
-clickHouseConnectInfo :: ClickHouse.ConnParams
-clickHouseConnectInfo = unsafePerformIO $ do
-  port <- BSC.pack . fromMaybe "9000" <$> lookupEnv "CLICKHOUSE_LOCAL_PORT"
-  return $ ClickHouse.ConnParams { username'    = "default"
-                                 , host'        = "127.0.0.1"
-                                 , port'        = port
-                                 , password'    = ""
-                                 , compression' = False
-                                 , database'    = "default"
-                                 }
-{-# NOINLINE clickHouseConnectInfo #-}
-
-createClickHouseConnectorSql :: T.Text -> T.Text -> T.Text
-createClickHouseConnectorSql name stream
-  = "CREATE SINK CONNECTOR " <> name <> " WITH (type=clickhouse, "
- <> "host="     <> T.pack (show $ ClickHouse.host' clickHouseConnectInfo)     <> ","
- <> "port="     <> Text.decodeUtf8 (ClickHouse.port' clickHouseConnectInfo)  <> ","
- <> "username=" <> T.pack (show $ ClickHouse.username' clickHouseConnectInfo) <> ","
- <> "password=" <> T.pack (show $ ClickHouse.password' clickHouseConnectInfo) <> ","
- <> "database=" <> T.pack (show $ ClickHouse.database' clickHouseConnectInfo) <> ","
- <> "stream="   <> stream
- <> ");"
 
 newRandomText :: Int -> IO Text
 newRandomText n = Text.pack . take n . randomRs ('a', 'z') <$> newStdGen
@@ -315,41 +263,6 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
                   return ()
                 _ -> error "unknown data encountered"
             _ -> return ()
-
-createMysqlTable :: Text -> IO ()
-createMysqlTable source = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn ->
-  void $ MySQL.execute_ conn $
-    MySQL.Query . BSCL.pack $ "CREATE TABLE IF NOT EXISTS "
-                           <> Text.unpack source
-                           <> "(temperature INT, humidity INT) CHARACTER SET utf8"
-
-dropMysqlTable :: Text -> IO ()
-dropMysqlTable name = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn ->
-  void $ MySQL.execute_ conn $ MySQL.Query . BSCL.pack $ "DROP TABLE IF EXISTS " <> Text.unpack name
-
-fetchMysql :: Text -> IO [[MySQL.MySQLValue]]
-fetchMysql source = bracket (MySQL.connect mysqlConnectInfo) MySQL.close $ \conn -> do
-  (_, items) <- MySQL.query_ conn $ MySQL.Query . BSCL.pack $ "SELECT * FROM " <> Text.unpack source
-  Streams.fold (\xs x -> xs ++ [x]) [] items
-
-createClickHouseTable :: Text -> IO ()
-createClickHouseTable source =
-  bracket (ClickHouse.createClient clickHouseConnectInfo) ClickHouse.closeClient $ \conn ->
-    void $ ClickHouse.query conn ("CREATE TABLE IF NOT EXISTS " ++ Text.unpack source ++
-                                  " (temperature Int64, humidity Int64) " ++ "ENGINE = Memory")
-
-dropClickHouseTable :: Text -> IO ()
-dropClickHouseTable source =
-  bracket (ClickHouse.createClient clickHouseConnectInfo) ClickHouse.closeClient $ \conn -> do
-    void $ ClickHouse.query conn $ "DROP TABLE IF EXISTS " <> Text.unpack source
-
-fetchClickHouse :: Text -> IO (V.Vector (V.Vector ClickHouse.ClickhouseType))
-fetchClickHouse source =
-  bracket (ClickHouse.createClient clickHouseConnectInfo) ClickHouse.closeClient $ \conn -> do
-    q <- ClickHouse.query conn $ "SELECT * FROM " <> Text.unpack source <> " ORDER BY temperature"
-    case q of
-      Right res -> return res
-      _         -> return V.empty
 
 readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
 readBatchPayload name = do

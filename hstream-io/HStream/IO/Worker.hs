@@ -8,7 +8,7 @@
 module HStream.IO.Worker where
 
 import qualified Control.Concurrent        as C
-import           Control.Exception         (catch, throwIO)
+import           Control.Exception         (catch, throwIO, throw)
 import           Control.Monad             (forM_, unless)
 import qualified Data.Aeson                as J
 import qualified Data.HashMap.Strict       as HM
@@ -23,24 +23,24 @@ import           HStream.IO.Types
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
+import           Data.Maybe                (fromMaybe)
 
 data Worker
   = Worker
     { kvConfig     :: KvConfig
     , hsConfig     :: HStreamConfig
-    , tasksPath    :: T.Text
-    , tasksNetwork :: T.Text
+    , options      :: IOOptions
     , checkNode    :: T.Text -> IO Bool
     , ioTasksM     :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
     , storage      :: S.Storage
     , monitorTid   :: IORef C.ThreadId
     }
 
-newWorker :: KvConfig -> HStreamConfig -> T.Text -> T.Text -> (T.Text -> IO Bool) -> IO Worker
-newWorker kvCfg hsConfig tasksPath tasksNetwork checkNode = do
+newWorker :: KvConfig -> HStreamConfig -> IOOptions -> (T.Text -> IO Bool) -> IO Worker
+newWorker kvCfg hsConfig options checkNode = do
   let (ZkKvConfig zk _ _) = kvCfg
   Log.info $ "new Worker with hsConfig:" <> Log.buildString (show hsConfig)
-  worker <- Worker kvCfg hsConfig tasksPath tasksNetwork checkNode
+  worker <- Worker kvCfg hsConfig options checkNode
     <$> C.newMVar HM.empty
     <*> S.newZkStorage zk
     <*> newIORef undefined
@@ -73,18 +73,19 @@ createIOTaskFromSql worker@Worker{..} sql = do
            <> ", config: "         <> Log.buildString (show cfg)
   checkNode_ worker cName
   taskId <- UUID.toText <$> UUID.nextRandom
-  let taskType = if cType == "SOURCE" then SOURCE else SINK
-      (image, extraOptions) = makeImage taskType cTarget
+  let IOOptions {..} = options
+      taskType = if cType == "SOURCE" then SOURCE else SINK
+      image = makeImage taskType cTarget options
       connectorConfig =
         J.object
           [ "hstream" J..= toTaskJson hsConfig taskId
           , "kv" J..= toTaskJson kvConfig taskId
-          , "connector" J..= HM.union extraOptions cfg
+          , "connector" J..= cfg
           ]
       taskInfo = TaskInfo
         { taskName = cName
         , taskType = if cType == "SOURCE" then SOURCE else SINK
-        , taskConfig = TaskConfig image tasksNetwork
+        , taskConfig = TaskConfig image optTasksNetwork
         , connectorConfig = connectorConfig
         , originSql = sql
         }
@@ -93,7 +94,8 @@ createIOTaskFromSql worker@Worker{..} sql = do
 
 createIOTask :: Worker -> T.Text -> TaskInfo -> IO ()
 createIOTask Worker{..} taskId taskInfo@TaskInfo {..} = do
-  task <- IOTask.newIOTask taskId storage taskInfo (tasksPath <> "/" <> taskId)
+  let taskPath = optTasksPath options <> "/" <> taskId
+  task <- IOTask.newIOTask taskId storage taskInfo taskPath
   IOTask.initIOTask task
   IOTask.checkIOTask task
   S.createIOTask storage taskName taskId taskInfo
@@ -140,3 +142,10 @@ checkNode_ :: Worker -> T.Text -> IO ()
 checkNode_ Worker{..} name = do
   res <- checkNode name
   unless res . throwIO $ WrongNodeException "send HStream IO request to wrong node"
+
+makeImage :: IOTaskType -> T.Text -> IOOptions -> T.Text
+makeImage typ name IOOptions{..} = 
+  fromMaybe
+    (throw $ UnimplementedConnectorException name)
+    (HM.lookup name images)
+  where images = if typ == SOURCE then optSourceImages else optSinkImages

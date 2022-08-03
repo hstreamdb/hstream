@@ -1,5 +1,5 @@
 cabal-version: 2.2
-name:          hstream-connector
+name:          hstream-io
 version:       0.1.0.0
 synopsis:
   High performance stream processing platform for IoT data written in Haskell.
@@ -42,11 +42,6 @@ common shared-properties
 library
   import:             shared-properties
   exposed-modules:
-    HStream.Connector.ClickHouse
-    HStream.Connector.Common
-    HStream.Connector.MySQL
-    HStream.Connector.Type
-    HStream.Connector.Util
     HStream.IO.IOTask
     HStream.IO.Storage
     HStream.IO.Types

@@ -1,11 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 module HStream.IO.Types where
 
 import qualified Data.Aeson                 as J
 import qualified Data.Text                  as T
 
-import           Control.Exception          (Exception, throw)
+import           Control.Exception          (Exception)
 import qualified Data.Aeson.TH              as JT
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
@@ -100,14 +101,12 @@ mkConnector name status = API.Connector. Just $
     , ("status", textToMaybeValue status)
     ]
 
--- TODO: read from config file
-makeImage :: IOTaskType -> T.Text -> (T.Text, HM.HashMap T.Text J.Value)
-makeImage SOURCE "mysql"      = ("hstreamdb/connector:source-mysql", HM.fromList [])
-makeImage SOURCE "postgresql" = ("hstreamdb/connector:source-postgresql", HM.fromList [])
-makeImage SOURCE "sqlserver"  = ("hstreamdb/connector:source-sqlserver", HM.fromList [])
-makeImage SINK   "mysql"      = ("hstreamdb/connector:sink-mysql", HM.fromList [])
-makeImage SINK   "postgresql" = ("hstreamdb/connector:sink-postgresql", HM.fromList [])
-makeImage _ name              = throw $ UnimplementedConnectorException name
+data IOOptions = IOOptions
+  { optTasksNetwork :: T.Text 
+  , optTasksPath :: T.Text
+  , optSourceImages :: HM.HashMap T.Text T.Text
+  , optSinkImages :: HM.HashMap T.Text T.Text
+  } deriving (Show)
 
 -- doubleBind, for nested Monads
 -- e.g. IO (Maybe a) (a -> IO (Maybe b))
