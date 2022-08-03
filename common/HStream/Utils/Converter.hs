@@ -52,6 +52,7 @@ import qualified Data.Map.Strict           as Map
 import           Data.Scientific           (toRealFloat)
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
+import qualified Data.Text.Encoding        as BSC
 import qualified Data.Text.Encoding        as Text
 import qualified Data.Text.Lazy            as TL
 import qualified Data.Vector               as V
@@ -65,9 +66,9 @@ import qualified Z.Data.Parser             as Parser
 import qualified Z.Data.Text               as ZT
 import qualified Z.Data.Vector             as ZV
 import qualified Z.Foreign                 as ZF
-import           Z.IO.Network.SocketAddr   (SocketAddr (..), ipv4)
 
 import           HStream.Server.HStreamApi (ServerNode (..))
+import           HStream.Utils.RPC         (SocketAddr (SocketAddr))
 
 pattern V :: PB.ValueKind -> PB.Value
 pattern V x = PB.Value (Just x)
@@ -218,4 +219,4 @@ integralToCBytes = ZCB.buildCBytes . Build.int
 -- FIXME: It only supports IPv4 addresses and can throw 'InvalidArgument' exception.
 serverNodeToSocketAddr :: ServerNode -> SocketAddr
 serverNodeToSocketAddr ServerNode{..} = do
-  ipv4 (textToCBytes serverNodeHost) (fromIntegral serverNodePort)
+  SocketAddr (BSC.encodeUtf8 serverNodeHost) (fromIntegral serverNodePort)

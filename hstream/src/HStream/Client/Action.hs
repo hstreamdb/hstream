@@ -30,7 +30,6 @@ import           Network.GRPC.HighLevel.Generated (ClientResult (..),
                                                    GRPCMethodType (Normal),
                                                    withGRPCClient)
 import           Proto3.Suite.Class               (def)
-import           Z.IO.Network                     (SocketAddr)
 
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi

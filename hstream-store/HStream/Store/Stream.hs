@@ -283,21 +283,21 @@ showStreamName = CBytes.unpack . streamName
 -- | Create stream
 --
 -- Currently a Stream is a logidr.
-createStream :: HasCallStack
-             => FFI.LDClient -> StreamId -> LD.LogAttributes -> IO ()
+createStream
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> LD.LogAttributes
+  -> IO ()
 createStream client streamid attrs = do
   path <- getStreamDirPath streamid
-  void $ LD.makeLogDirectory client path attrs True
-  -- create default loggroup
-  (log_path, key) <- getStreamLogPath streamid Nothing
-  logid <- createRandomLogGroup client log_path def
-  updateGloLogPathCache streamid key logid
+  dir <- LD.makeLogDirectory client path attrs True
+  LD.syncLogsConfigVersion client =<< LD.logDirectoryGetVersion dir
 
 -- | Create a partition of a stream. If the stream doesn't exist, throw
 -- StoreError.
 --
--- Currently a stream partition is a loggroup which only contains one random
--- logid.
+-- Currently a stream partition is a loggroup which only contains one random logid.
 createStreamPartition
   :: HasCallStack
   => FFI.LDClient
@@ -644,7 +644,10 @@ getStreamLogPath :: StreamId -> Maybe CBytes -> IO (CBytes, CBytes)
 getStreamLogPath streamid m_key = do
   s <- readIORef gloStreamSettings
   dir_path <- getStreamDirPath streamid
-  let key_name = fromMaybe (streamDefaultKey s) m_key
+  let key_name = case m_key of
+       Just ""  -> streamDefaultKey s
+       Just key -> key
+       Nothing  -> streamDefaultKey s
   full_path <- dir_path `FS.join` key_name
   pure (full_path, key_name)
 {-# INLINABLE getStreamLogPath #-}

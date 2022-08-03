@@ -35,7 +35,8 @@ import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (WrongOffset (..))
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Shard             (cBytesToKey, hashShardKey,
+import           HStream.Server.Shard             (Shard (streamId),
+                                                   cBytesToKey, hashShardKey,
                                                    shardStartKey)
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
