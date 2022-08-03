@@ -8,12 +8,13 @@
 module HStream.IO.Worker where
 
 import qualified Control.Concurrent        as C
-import           Control.Exception         (catch, throwIO, throw)
+import           Control.Exception         (catch, throw, throwIO)
 import           Control.Monad             (forM_, unless)
 import qualified Data.Aeson                as J
 import qualified Data.HashMap.Strict       as HM
 import           Data.IORef                (IORef, newIORef, readIORef)
 import qualified Data.IORef                as C
+import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
 import qualified Data.UUID                 as UUID
 import qualified Data.UUID.V4              as UUID
@@ -23,17 +24,16 @@ import           HStream.IO.Types
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.SQL.Codegen       as CG
-import           Data.Maybe                (fromMaybe)
 
 data Worker
   = Worker
-    { kvConfig     :: KvConfig
-    , hsConfig     :: HStreamConfig
-    , options      :: IOOptions
-    , checkNode    :: T.Text -> IO Bool
-    , ioTasksM     :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
-    , storage      :: S.Storage
-    , monitorTid   :: IORef C.ThreadId
+    { kvConfig   :: KvConfig
+    , hsConfig   :: HStreamConfig
+    , options    :: IOOptions
+    , checkNode  :: T.Text -> IO Bool
+    , ioTasksM   :: C.MVar (HM.HashMap T.Text IOTask.IOTask)
+    , storage    :: S.Storage
+    , monitorTid :: IORef C.ThreadId
     }
 
 newWorker :: KvConfig -> HStreamConfig -> IOOptions -> (T.Text -> IO Bool) -> IO Worker
@@ -144,7 +144,7 @@ checkNode_ Worker{..} name = do
   unless res . throwIO $ WrongNodeException "send HStream IO request to wrong node"
 
 makeImage :: IOTaskType -> T.Text -> IOOptions -> T.Text
-makeImage typ name IOOptions{..} = 
+makeImage typ name IOOptions{..} =
   fromMaybe
     (throw $ UnimplementedConnectorException name)
     (HM.lookup name images)

@@ -47,15 +47,15 @@ import           System.Environment             (getArgs, getProgName)
 import           System.Exit                    (exitSuccess)
 import           Z.Data.CBytes                  (CBytes)
 
+import qualified Data.HashMap.Strict            as HM
 import qualified HStream.Admin.Store.API        as AA
 import           HStream.Gossip                 (GossipOpts (..),
                                                  defaultGossipOpts)
+import qualified HStream.IO.Types               as IO
 import qualified HStream.Logger                 as Log
 import qualified HStream.Server.HStreamInternal as SAI
 import           HStream.Store                  (Compression (..))
 import qualified HStream.Store.Logger           as Log
-import qualified HStream.IO.Types as IO
-import qualified Data.HashMap.Strict        as HM
 
 -------------------------------------------------------------------------------
 

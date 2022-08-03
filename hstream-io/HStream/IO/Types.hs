@@ -102,10 +102,10 @@ mkConnector name status = API.Connector. Just $
     ]
 
 data IOOptions = IOOptions
-  { optTasksNetwork :: T.Text 
-  , optTasksPath :: T.Text
+  { optTasksNetwork :: T.Text
+  , optTasksPath    :: T.Text
   , optSourceImages :: HM.HashMap T.Text T.Text
-  , optSinkImages :: HM.HashMap T.Text T.Text
+  , optSinkImages   :: HM.HashMap T.Text T.Text
   } deriving (Show)
 
 -- doubleBind, for nested Monads

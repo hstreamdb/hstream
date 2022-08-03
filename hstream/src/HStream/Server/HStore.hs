@@ -29,8 +29,8 @@ import           Proto3.Suite                     (Enumerated (..))
 import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
 
-import           HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Logger                   as Log
+import           HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (WrongOffset (..))

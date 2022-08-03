@@ -19,12 +19,12 @@ module HStream.Server.ConnectorTypes
   )
 where
 
-import qualified HStream.Server.HStreamApi as API
-import           RIO
-import qualified RIO.ByteString.Lazy as BL
-import qualified RIO.Text            as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
+import qualified HStream.Server.HStreamApi as API
+import           RIO
+import qualified RIO.ByteString.Lazy       as BL
+import qualified RIO.Text                  as T
 
 type Timestamp = Int64 -- ms
 

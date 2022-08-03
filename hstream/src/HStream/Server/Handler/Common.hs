@@ -24,13 +24,13 @@ import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    runOps)
 import qualified Z.Data.CBytes                    as CB
 
-import           HStream.Server.ConnectorTypes     (SinkRecord (..),
-                                                   SourceRecord (..),
-                                                   TemporalFilter (..),
-                                                   SinkConnector (..),
-                                                   SourceConnectorWithoutCkp(..))
-import qualified HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Logger                   as Log
+import           HStream.Server.ConnectorTypes    (SinkConnector (..),
+                                                   SinkRecord (..),
+                                                   SourceConnectorWithoutCkp (..),
+                                                   SourceRecord (..),
+                                                   TemporalFilter (..))
+import qualified HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
