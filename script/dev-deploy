@@ -12,7 +12,7 @@ import getpass
 import subprocess
 from pathlib import Path
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union, Dict, Any
 
 logerr = lambda s: print(f"\033[91m{s}\033[0m")
 logdebug = lambda s: print(f"\033[95m[DEBUG] \033[0m{s}")
@@ -144,7 +144,6 @@ class Service:
         self._parser.add_argument("--container-bin", default="docker")
         self._parser.add_argument(
             "--remote",
-            required=True,
             type=str,
             help="comma separated remote (host,local_address) pairs, e.g. server1:10.100.0.1,server2:10.100.0.2",
         )
@@ -826,7 +825,6 @@ class HServerService(Service):
         memory_cpus,
         zkuri,
         store_config,
-        store_admin_host,
         remotes,
         extra_container_options="",
         rm=False,
@@ -844,6 +842,7 @@ class HServerService(Service):
                 config_path, DEFAULT_CONTAINER_CONFIG_PATH
             )
         cmds = []
+        seed_address = remotes[0][1]
         for (i, (host, addr)) in enumerate(remotes):
             if is_container_running(host, container_name, container_bin):
                 logwarn(f"Service {self.KEYS[0]} already running.")
@@ -860,9 +859,9 @@ class HServerService(Service):
                     f"--config-path {DEFAULT_CONTAINER_CONFIG_PATH} "
                     f"--zkuri {zkuri} "
                     f"--store-config {store_config} "
-                    f"--store-admin-host {store_admin_host} "
                     f"--server-id {i} "
                     f"--store-log-level error "
+                    f"--seed-nodes {seed_address} "
                     f"'"
                 )
         return cmds
@@ -1223,10 +1222,105 @@ class GrafanaService(Service):
         return cmds
 
 
+class BasicConf:
+    hosts: Union[List[Tuple[str, str]], None] = None
+    image: Union[str, None] = None
+    cpu: Union[str, None] = None
+    memory: Union[str, None] = None
+    local_conf_path: Union[str, Path, None] = None
+    remote_conf_path: Union[str, Path, None] = None
+    persistent_dir: Union[str, Path, None] = None
+
+    def __init__(self, config: Dict[str, str], hosts: Dict[str, str]):
+        self.hosts = [(host, hosts[host]) for host in config.get("hosts", [])]
+        self.image = config.get("image")
+        self.cpu = config.get("cpu")
+        self.memory = config.get("memory")
+        self.local_conf_path = config.get("local_config_path")
+        self.remote_conf_path = config.get("remote_config_path")
+        self.persistent_dir = config.get(
+            "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
+        )
+
+    def get_memory_cpu(self) -> Tuple[str, str]:
+        return (self.memory, self.cpu)
+
+
+class ZkConf(BasicConf):
+    DEFAULT_STORE_CONFIG_NODE_IN_ZK = "/logdevice.conf"
+
+    zk_ip: Union[str, None] = None
+    config_path_in_zk: Union[str, Path, None] = None
+    enable_metrics: bool = True
+
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.hosts))
+        # config_path_in_zk: zk:host1:2181,host2:2181/logdevice.conf
+        self.config_path_in_zk = (
+            "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
+        )
+        self.enable_metrics = config.get("enable-metrics-provider")
+        self.image = config.get("image", ZookeeperService.DEFAULT_IMAGE_TAG)
+
+
+class HStoreConf(BasicConf):
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", HStoreService.DEFAULT_IMAGE_TAG)
+
+
+class HAdminConf(BasicConf):
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", HStoreAdminService.DEFAULT_IMAGE_TAG)
+
+
+class HServerConf(BasicConf):
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", HServerService.DEFAULT_IMAGE_TAG)
+
+
+class PrometheusConf(BasicConf):
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", PrometheusService.DEFAULT_IMAGE_TAG)
+
+
+class NodeExporterConf(BasicConf):
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", NodeExporterService.DEFAULT_IMAGE_TAG)
+
+
+class CadVisorConf(BasicConf):
+    cadvisor_port: Union[str, None] = None
+
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", CadvisorService.DEFAULT_IMAGE_TAG)
+        self.cadvisor_port = config.get(
+            "port", CadvisorService.DEFAULT_METRICS_PORT
+        )
+
+
+class GrafanaConf(BasicConf):
+    disable_login: bool = False
+    local_provisioning_path: Union[str, Path, None] = None
+    remote_provisioning_path: Union[str, Path, None] = None
+
+    def __init__(self, config: Dict[str, Any], hosts: Dict[str, str]):
+        super().__init__(config, hosts)
+        self.image = config.get("image", GrafanaService.DEFAULT_IMAGE_TAG)
+        self.disable_login = config.get("disable-login")
+        self.local_provisioning_path = config.get("local-provisioning-path")
+        self.remote_provisioning_path = config.get("remote-provisioning-path")
+
+
 class SimpleService(Service):
     KEYS = ["simple"]
     DEFAULT_CONTAINER_BIN = "docker"
-    DEFAULT_STORE_CONFIG_NODE_IN_ZK = "/logdevice.conf"
     ALL_SERVICES = [
         "zk",
         "hstore",
@@ -1279,129 +1373,49 @@ class SimpleService(Service):
     def parse_config(self, config):
         with open(config, "r") as f:
             deploy_cfg = json.load(f)
-            self.zk_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["zookeeper"])["hosts"]
-            ]
-            self.zk_ip = ",".join(map(lambda x: x[1] + ":2181", self.zk_hosts))
-            # config_path_in_zk: zk:host1:2181,host2:2181/logdevice.conf
-            self.config_path_in_zk = (
-                "zk:" + self.zk_ip + self.DEFAULT_STORE_CONFIG_NODE_IN_ZK
-            )
-            self.admin_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["hstore-admin"])["hosts"]
-            ]
-            self.hstore_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["hstore"])["hosts"]
-            ]
-            self.hserver_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["hserver"])["hosts"]
-            ]
-            self.prometheus_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["prometheus"])["hosts"]
-            ]
-            self.node_exporter_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["node-exporter"])["hosts"]
-            ]
-            self.cadvisor_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["cadvisor"])["hosts"]
-            ]
-            self.grafana_hosts = [
-                (host, deploy_cfg["hosts"][host])
-                for host in (deploy_cfg["grafana"])["hosts"]
-            ]
+            hosts = deploy_cfg.get("hosts")
 
-            self.zk_enable_metrics_provider = deploy_cfg["zookeeper"].get(
-                "enable-metrics-provider"
+            print("zookeeper" in deploy_cfg)
+            self.zk_conf = (
+                ZkConf(deploy_cfg.get("zookeeper"), hosts)
+                if "zookeeper" in deploy_cfg
+                else None
             )
-            self.hstore_local_conf = deploy_cfg["hstore"].get(
-                "local_config_path"
+            self.hstore_conf = (
+                HStoreConf(deploy_cfg.get("hstore"), hosts)
+                if "hstore" in deploy_cfg
+                else None
             )
-            self.hstore_remote_conf = deploy_cfg["hstore"].get(
-                "remote_config_path"
+            self.hadmin_conf = (
+                HAdminConf(deploy_cfg.get("hstore-admin"), hosts)
+                if "hstore-admin" in deploy_cfg
+                else None
             )
-            self.hserver_local_conf = deploy_cfg["hserver"].get(
-                "local_config_path"
+            self.hserver_conf = (
+                HServerConf(deploy_cfg.get("hserver"), hosts)
+                if "hserver" in deploy_cfg
+                else None
             )
-            self.hserver_remote_conf = deploy_cfg["hserver"].get(
-                "remote_config_path"
+            self.prometheus_conf = (
+                PrometheusConf(deploy_cfg.get("prometheus", None), hosts)
+                if "prometheus" in deploy_cfg
+                else None
             )
-            self.prometheus_local_conf = deploy_cfg["prometheus"].get(
-                "local_config_path"
+            self.node_exporter_conf = (
+                NodeExporterConf(deploy_cfg.get("node-exporter"), hosts)
+                if "node-exporter" in deploy_cfg
+                else None
             )
-            self.prometheus_remote_conf = deploy_cfg["prometheus"].get(
-                "remote_config_path"
+            self.cadvisor_conf = (
+                CadVisorConf(deploy_cfg.get("cadvisor"), hosts)
+                if "cadvisor" in deploy_cfg
+                else None
             )
-            self.grafana_local_conf = deploy_cfg["grafana"].get(
-                "local_config_path"
+            self.grafana_conf = (
+                GrafanaConf(deploy_cfg.get("grafana"), hosts)
+                if "grafana" in deploy_cfg
+                else None
             )
-            self.grafana_remote_conf = deploy_cfg["grafana"].get(
-                "remote_config_path"
-            )
-
-            self.zk_image = deploy_cfg["zookeeper"].get(
-                "image", ZookeeperService.DEFAULT_IMAGE_TAG
-            )
-            self.hstore_image = deploy_cfg["hstore"].get(
-                "image", HStoreService.DEFAULT_IMAGE_TAG
-            )
-            self.hadmin_image = deploy_cfg["hstore-admin"].get(
-                "image", HStoreAdminService.DEFAULT_IMAGE_TAG
-            )
-            self.hserver_image = deploy_cfg["hserver"].get(
-                "image", HServerService.DEFAULT_IMAGE_TAG
-            )
-            self.prometheus_image = deploy_cfg["prometheus"].get(
-                "image", PrometheusService.DEFAULT_IMAGE_TAG
-            )
-            self.node_exporter_image = deploy_cfg["node-exporter"].get(
-                "image", NodeExporterService.DEFAULT_IMAGE_TAG
-            )
-            self.cadvisor_image = deploy_cfg["cadvisor"].get(
-                "image", CadvisorService.DEFAULT_IMAGE_TAG
-            )
-            self.grafana_image = deploy_cfg["grafana"].get(
-                "image", GrafanaService.DEFAULT_IMAGE_TAG
-            )
-
-            self.cadvisor_port = deploy_cfg["cadvisor"].get(
-                "port", CadvisorService.DEFAULT_METRICS_PORT
-            )
-            self.grafana_disable_login = deploy_cfg["grafana"].get(
-                "disable-login"
-            )
-            self.grafana_local_provisioning_path = deploy_cfg["grafana"].get(
-                "local-provisioning-path"
-            )
-            self.grafana_remote_provisioning_path = deploy_cfg["grafana"].get(
-                "remote-provisioning-path"
-            )
-
-            self.zk_persistent_dir = deploy_cfg["zookeeper"].get(
-                "persistent-dir", ZookeeperService.DEFAULT_PERSISTENT_DIR
-            )
-            self.hstore_persistent_dir = deploy_cfg["hstore"].get(
-                "persistent-dir", HStoreService.DEFAULT_PERSISTENT_DIR
-            )
-
-            get_memory_cpus = lambda obj_name: (
-                deploy_cfg[obj_name].get("memory"),
-                deploy_cfg[obj_name].get("cpus"),
-            )
-            self.zk_memory_cpus = get_memory_cpus("zookeeper")
-            self.hstore_memory_cpus = get_memory_cpus("hstore")
-            self.hadmin_memory_cpus = get_memory_cpus("hstore-admin")
-            self.hserver_memory_cpus = get_memory_cpus("hserver")
-            self.prometheus_memory_cpus = get_memory_cpus("prometheus")
-            self.node_exporter_memory_cpus = get_memory_cpus("node-exporter")
-            self.cadvisor_memory_cpus = get_memory_cpus("cadvisor")
-            self.grafana_memory_cpus = get_memory_cpus("grafana")
 
     def start_cmd(self, config: str, disable_restart, **kargs) -> List[str]:
         self.parse_config(config)
@@ -1416,140 +1430,149 @@ class SimpleService(Service):
         loginfo(f"{disable_restarted=}")
 
         # start zookeeper
-        zk_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "image": self.zk_image,
-        }
-        zk_start_args = {
-            "remotes": self.zk_hosts,
-            "persistent_dir": self.zk_persistent_dir,
-            "metrics_provider": self.zk_enable_metrics_provider,
-            "memory_cpus": self.zk_memory_cpus,
-            "restart": False if "zk" in disable_restarted else True,
-            **zk_args,
-        }
-        cmds.extend(self.ZK_SVC.start_cmd(**zk_start_args))
+        if self.zk_conf:
+            zk_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
+                "image": self.zk_conf.image,
+            }
+            zk_start_args = {
+                "remotes": self.zk_conf.hosts,
+                "persistent_dir": self.zk_conf.persistent_dir,
+                "metrics_provider": self.zk_conf.enable_metrics,
+                "memory_cpus": self.zk_conf.get_memory_cpu(),
+                "restart": False if "zk" in disable_restarted else True,
+                **zk_args,
+            }
+            cmds.extend(self.ZK_SVC.start_cmd(**zk_start_args))
 
-        zk_store_args = {
-            "remotes": [self.zk_hosts[0]],
-            "key": self.DEFAULT_STORE_CONFIG_NODE_IN_ZK,
-            "file": self.hstore_local_conf,
-            "value": None,
-            **zk_args,
-        }
-        cmds.extend(self.ZK_SVC.store_cmd(**zk_store_args))
+            zk_store_args = {
+                "remotes": [self.zk_conf.hosts[0]],
+                "key": ZkConf.DEFAULT_STORE_CONFIG_NODE_IN_ZK,
+                "file": self.hstore_conf.local_conf_path,
+                "value": None,
+                **zk_args,
+            }
+            cmds.extend(self.ZK_SVC.store_cmd(**zk_store_args))
 
-        zk_cmd_args = {
-            "remotes": [self.zk_hosts[0]],
-            "command": "zkCli.sh get " + zk_store_args["key"],
-            **zk_args,
-        }
-        cmds.extend(self.ZK_SVC.post_start_cmd(**zk_cmd_args))
+            zk_cmd_args = {
+                "remotes": [self.zk_conf.hosts[0]],
+                "command": "zkCli.sh get " + zk_store_args["key"],
+                **zk_args,
+            }
+            cmds.extend(self.ZK_SVC.post_start_cmd(**zk_cmd_args))
 
         # start hstore_admin
-        admin_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "image": self.hadmin_image,
-            "memory_cpus": self.hadmin_memory_cpus,
-            "config_path": self.config_path_in_zk,
-            "remotes": self.admin_hosts,
-            "restart": False if "hadmin" in disable_restarted else True,
-        }
-        cmds.extend(self.HSTORE_ADMIN_SVC.start_cmd(**admin_args))
+        if self.hadmin_conf:
+            admin_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
+                "image": self.hadmin_conf.image,
+                "memory_cpus": self.hadmin_conf.get_memory_cpu(),
+                "config_path": self.zk_conf.config_path_in_zk,
+                "remotes": self.hadmin_conf.hosts,
+                "restart": False if "hadmin" in disable_restarted else True,
+            }
+            cmds.extend(self.HSTORE_ADMIN_SVC.start_cmd(**admin_args))
 
         # start hstore
-        store_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "image": self.hstore_image,
-            "memory_cpus": self.hstore_memory_cpus,
-            "config_path": self.config_path_in_zk,
-            "data_dir": self.hstore_persistent_dir,
-            # FIXME: make shards configurable
-            "shards": 1,
-            "remotes": self.hstore_hosts,
-            "restart": False if "hstore" in disable_restarted else True,
-        }
-        cmds.extend(self.HSTORE_SVC.start_cmd(**store_args))
+        if self.hstore_conf:
+            store_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
+                "image": self.hstore_conf.image,
+                "memory_cpus": self.hstore_conf.get_memory_cpu(),
+                "config_path": self.zk_conf.config_path_in_zk,
+                "data_dir": self.hstore_conf.persistent_dir,
+                # FIXME: make shards configurable
+                "shards": 1,
+                "remotes": self.hstore_conf.hosts,
+                "restart": False if "hstore" in disable_restarted else True,
+            }
+            cmds.extend(self.HSTORE_SVC.start_cmd(**store_args))
 
         # bootstrap
         bootstrap_args = {
             "container_bin": self.DEFAULT_CONTAINER_BIN,
             "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.admin_hosts,
+            "remotes": self.hadmin_conf.hosts,
             "replicates": 3,
             "server_list": ",".join(
-                map(lambda pair: f"{pair[0]}:{pair[1]}", self.hstore_hosts)
+                map(lambda pair: f"{pair[0]}:{pair[1]}", self.hstore_conf.hosts)
             ),
             "wait": 4,
         }
         cmds.extend(self.HSTORE_ADMIN_SVC.bootstrap_cmd(**bootstrap_args))
 
         # start hserver
-        server_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HServerService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.hserver_hosts,
-            "image": self.hserver_image,
-            "memory_cpus": self.hserver_memory_cpus,
-            "zkuri": self.zk_ip,
-            "store_config": self.config_path_in_zk,
-            "store_admin_host": self.admin_hosts[0][1],
-            "config_path": self.hserver_remote_conf,
-            "restart": False if "hserver" in disable_restarted else True,
-        }
-        cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
+        if self.hserver_conf:
+            server_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HServerService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.hserver_conf.hosts,
+                "image": self.hserver_conf.image,
+                "memory_cpus": self.hserver_conf.get_memory_cpu(),
+                "zkuri": self.zk_conf.zk_ip,
+                "store_config": self.zk_conf.config_path_in_zk,
+                "config_path": self.hserver_conf.remote_conf_path,
+                "restart": False if "hserver" in disable_restarted else True,
+            }
+            cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
 
         # start prometheus
-        prometheus_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
-            "config_path": self.prometheus_remote_conf,
-            "image": self.prometheus_image,
-            "memory_cpus": self.prometheus_memory_cpus,
-            "remotes": self.prometheus_hosts,
-            "restart": False if "prometheus" in disable_restarted else True,
-        }
-        cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
+        if self.prometheus_conf:
+            prometheus_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
+                "config_path": self.prometheus_conf.remote_conf_path,
+                "image": self.prometheus_conf.image,
+                "memory_cpus": self.prometheus_conf.get_memory_cpu(),
+                "remotes": self.prometheus_conf.hosts,
+                "restart": False if "prometheus" in disable_restarted else True,
+            }
+            cmds.extend(self.PROMETHEUS_SVC.start_cmd(**prometheus_args))
 
         # start node-exporter
-        node_exporter_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
-            "image": self.node_exporter_image,
-            "memory_cpus": self.node_exporter_memory_cpus,
-            "remotes": self.node_exporter_hosts,
-            "restart": False if "node-exporter" in disable_restarted else True,
-        }
-        cmds.extend(self.NODE_EXPORTER_SVC.start_cmd(**node_exporter_args))
+        if self.node_exporter_conf:
+            node_exporter_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+                "image": self.node_exporter_conf.image,
+                "memory_cpus": self.node_exporter_conf.get_memory_cpu(),
+                "remotes": self.node_exporter_conf.hosts,
+                "restart": False
+                if "node-exporter" in disable_restarted
+                else True,
+            }
+            cmds.extend(self.NODE_EXPORTER_SVC.start_cmd(**node_exporter_args))
 
         # start cadvisor
-        cadvisor_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": CadvisorService.DEFAULT_CONTAINER_NAME,
-            "image": self.cadvisor_image,
-            "memory_cpus": self.cadvisor_memory_cpus,
-            "remotes": self.cadvisor_hosts,
-            "restart": False if "cadvisor" in disable_restarted else True,
-            "port": self.cadvisor_port,
-        }
-        cmds.extend(self.CADVISOR_SVC.start_cmd(**cadvisor_args))
+        if self.cadvisor_conf:
+            cadvisor_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": CadvisorService.DEFAULT_CONTAINER_NAME,
+                "image": self.cadvisor_conf.image,
+                "memory_cpus": self.cadvisor_conf.get_memory_cpu(),
+                "remotes": self.cadvisor_conf.hosts,
+                "restart": False if "cadvisor" in disable_restarted else True,
+                "port": self.cadvisor_conf.cadvisor_port,
+            }
+            cmds.extend(self.CADVISOR_SVC.start_cmd(**cadvisor_args))
 
         # start grafana
-        grafana_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": GrafanaService.DEFAULT_CONTAINER_NAME,
-            "image": self.grafana_image,
-            "memory_cpus": self.grafana_memory_cpus,
-            "remotes": self.grafana_hosts,
-            "restart": False if "grafana" in disable_restarted else True,
-            "disable_login": self.grafana_disable_login,
-            "config_path": self.grafana_remote_conf,
-            "provisioning_path": self.grafana_remote_provisioning_path,
-        }
-        cmds.extend(self.GRAFANA_SVC.start_cmd(**grafana_args))
+        if self.grafana_conf:
+            grafana_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": GrafanaService.DEFAULT_CONTAINER_NAME,
+                "image": self.grafana_conf.image,
+                "memory_cpus": self.grafana_conf.get_memory_cpu(),
+                "remotes": self.grafana_conf.hosts,
+                "restart": False if "grafana" in disable_restarted else True,
+                "disable_login": self.grafana_conf.disable_login,
+                "config_path": self.grafana_conf.remote_conf_path,
+                "provisioning_path": self.grafana_conf.remote_provisioning_path,
+            }
+            cmds.extend(self.GRAFANA_SVC.start_cmd(**grafana_args))
 
         return cmds
 
@@ -1558,76 +1581,84 @@ class SimpleService(Service):
         cmds = []
 
         # stop hserver
-        server_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HServerService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.hserver_hosts,
-            "force": True,
-        }
-        cmds.extend(self.HSERVER_SVC.stop_cmd(**server_args))
+        if self.hserver_conf:
+            server_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HServerService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.hserver_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.HSERVER_SVC.stop_cmd(**server_args))
 
         # stop hstore
-        store_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.hstore_hosts,
-            "force": True,
-        }
-        cmds.extend(self.HSTORE_SVC.stop_cmd(**store_args))
+        if self.hstore_conf:
+            store_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.hserver_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.HSTORE_SVC.stop_cmd(**store_args))
 
         # stop hstore-admin
-        admin_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.admin_hosts,
-            "force": True,
-        }
-        cmds.extend(self.HSTORE_ADMIN_SVC.stop_cmd(**admin_args))
+        if self.hadmin_conf:
+            admin_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HStoreAdminService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.hadmin_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.HSTORE_ADMIN_SVC.stop_cmd(**admin_args))
 
         # stop zk
-        zk_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.zk_hosts,
-            "force": True,
-        }
-        cmds.extend(self.ZK_SVC.stop_cmd(**zk_args))
+        if self.zk_conf:
+            zk_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.zk_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.ZK_SVC.stop_cmd(**zk_args))
 
         # stop prometheus
-        prometheus_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.prometheus_hosts,
-            "force": True,
-        }
-        cmds.extend(self.PROMETHEUS_SVC.stop_cmd(**prometheus_args))
+        if self.prometheus_conf:
+            prometheus_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": PrometheusService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.prometheus_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.PROMETHEUS_SVC.stop_cmd(**prometheus_args))
 
         # stop node-exporter
-        node_exporter_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.node_exporter_hosts,
-            "force": True,
-        }
-        cmds.extend(self.NODE_EXPORTER_SVC.stop_cmd(**node_exporter_args))
+        if self.node_exporter_conf:
+            node_exporter_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": NodeExporterService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.node_exporter_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.NODE_EXPORTER_SVC.stop_cmd(**node_exporter_args))
 
         # stop cadvisor
-        cadvisor_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": CadvisorService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.cadvisor_hosts,
-            "force": True,
-        }
-        cmds.extend(self.CADVISOR_SVC.stop_cmd(**cadvisor_args))
+        if self.cadvisor_conf:
+            cadvisor_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": CadvisorService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.cadvisor_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.CADVISOR_SVC.stop_cmd(**cadvisor_args))
 
         # stop grafana
-        grafana_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": GrafanaService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.grafana_hosts,
-            "force": True,
-        }
-        cmds.extend(self.GRAFANA_SVC.stop_cmd(**grafana_args))
+        if self.grafana_conf:
+            grafana_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": GrafanaService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.grafana_conf.hosts,
+                "force": True,
+            }
+            cmds.extend(self.GRAFANA_SVC.stop_cmd(**grafana_args))
 
         return cmds
 
@@ -1637,32 +1668,44 @@ class SimpleService(Service):
         # stop all containers
         stop_cmds = self.stop_cmd(config, **kargs)
         # remove store persistent data
-        store_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.hstore_hosts,
-            "persistent_dir": self.hstore_persistent_dir,
-        }
-        remove_hstore_cmds = self.HSTORE_SVC.remove_cmd(
-            # since we already removed the container
-            **store_args,
-            remove_container=False,
-        )
+        if self.hstore_conf:
+            store_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": HStoreService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.hstore_conf.hosts,
+                "persistent_dir": self.hstore_conf.persistent_dir,
+            }
+            stop_cmds.extend(
+                self.HSTORE_SVC.remove_cmd(
+                    # since we already removed the container
+                    **store_args,
+                    remove_container=False,
+                )
+            )
         # remove zk persistent data
-        zk_args = {
-            "container_bin": self.DEFAULT_CONTAINER_BIN,
-            "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
-            "remotes": self.zk_hosts,
-            "persistent_dir": self.zk_persistent_dir,
-        }
-        remove_zk_cmds = self.ZK_SVC.remove_cmd(
-            **zk_args, remove_container=False
-        )
+        if self.zk_conf:
+            zk_args = {
+                "container_bin": self.DEFAULT_CONTAINER_BIN,
+                "container_name": ZookeeperService.DEFAULT_CONTAINER_NAME,
+                "remotes": self.zk_conf.hosts,
+                "persistent_dir": self.zk_conf.persistent_dir,
+            }
+            stop_cmds.extend(
+                self.ZK_SVC.remove_cmd(**zk_args, remove_container=False)
+            )
 
-        return [*stop_cmds, *remove_hstore_cmds, *remove_zk_cmds]
+        return stop_cmds
 
     def print_help(self):
         return self.cmd.print_help()
+
+    @staticmethod
+    def synchronize_config(config):
+        return synchronize_configs(
+            config.local_conf_path,
+            config.remote_conf_path,
+            config.hosts,
+        )
 
     def pre_start(self):
         """
@@ -1671,41 +1714,21 @@ class SimpleService(Service):
         cmds = []
         # FIXME: store local config is always required because user should set zookeeper related field, which cannot
         #  be default
-        cmds.extend(
-            synchronize_configs(
-                self.hstore_local_conf,
-                self.hstore_remote_conf,
-                self.hstore_hosts,
+        if self.hstore_conf:
+            cmds.extend(self.synchronize_config(self.hstore_conf))
+        if self.hserver_conf:
+            cmds.extend(self.synchronize_config(self.hserver_conf))
+        if self.prometheus_conf:
+            cmds.extend(self.synchronize_config(self.prometheus_conf))
+        if self.grafana_conf:
+            cmds.extend(self.synchronize_config(self.grafana_conf))
+            cmds.extend(
+                synchronize_configs(
+                    self.grafana_conf.local_provisioning_path,
+                    self.grafana_conf.remote_provisioning_path,
+                    self.grafana_conf.hosts,
+                )
             )
-        )
-        cmds.extend(
-            synchronize_configs(
-                self.hserver_local_conf,
-                self.hserver_remote_conf,
-                self.hserver_hosts,
-            )
-        )
-        cmds.extend(
-            synchronize_configs(
-                self.prometheus_local_conf,
-                self.prometheus_remote_conf,
-                self.prometheus_hosts,
-            )
-        )
-        cmds.extend(
-            synchronize_configs(
-                self.grafana_local_conf,
-                self.grafana_remote_conf,
-                self.grafana_hosts,
-            )
-        )
-        cmds.extend(
-            synchronize_configs(
-                self.grafana_local_provisioning_path,
-                self.grafana_remote_provisioning_path,
-                self.grafana_hosts,
-            )
-        )
         return cmds
 
 
