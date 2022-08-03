@@ -80,7 +80,7 @@ callDeleteSubscriptionAll ctx = do
                        { deleteSubscriptionRequestSubscriptionId = subscriptionSubscriptionId
                        , deleteSubscriptionRequestForce = True
                        }
-          hstreamApiDeleteSubscription (mkClientNormalRequest' delReq)
+          _ <- hstreamApiDeleteSubscription (mkClientNormalRequest' delReq)
           return ()
         putStrLn "-----------------"
         putStrLn "Done."
@@ -117,7 +117,7 @@ callStreamingFetch ctx startRecordIds subId clientId = do
                     , API.streamingFetchRequestConsumerName = clientId
                     , API.streamingFetchRequestAckIds = startRecordIds
                     }
-      streamSend initReq
+      _ <- streamSend initReq
       recving
       where
         recving :: IO ()
@@ -133,7 +133,7 @@ callStreamingFetch ctx startRecordIds subId clientId = do
                            , API.streamingFetchRequestConsumerName = clientId
                            , API.streamingFetchRequestAckIds = recIds
                            }
-              streamSend ackReq
+              _ <- streamSend ackReq
               recving
             Right Nothing -> do
               putStrLn "Stopped."

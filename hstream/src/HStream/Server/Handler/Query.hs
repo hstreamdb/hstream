@@ -85,18 +85,16 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           sink    = snd outNodeWithStream
           query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
       -- make sure source streams exist
-      existedStreams <- V.toList <$> Core.listStreamNames sc
-      existedViews   <-              Core.listViewNames   sc
-      let existSources = existedStreams <> existedViews
-      case L.find (`notElem` existSources) sources of
-        Nothing -> do
+      nonExistedSource <- filterM (S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
+      case nonExistedSource of
+        [] -> do
           create (transToStreamName sink)
           (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
           returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
-        Just nonExistedSource -> do
+        nonExistedSource@(_ : _) -> do
           returnErrResp StatusInvalidArgument . StatusDetails . BS.pack $
-            "Source " <> show nonExistedSource <> " doesn't exist"
+            "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
