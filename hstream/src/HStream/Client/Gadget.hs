@@ -20,14 +20,13 @@ import           Network.GRPC.HighLevel.Client    (ClientError (..),
                                                    ClientResult (..),
                                                    GRPCMethodType (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
-import           Z.IO.Network.SocketAddr          (SocketAddr (..))
 
 import           HStream.Client.Action            (Action, runActionWithAddr)
 import           HStream.Client.Types             (HStreamSqlContext (..))
 import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (getServerResp,
+import           HStream.Utils                    (SocketAddr, getServerResp,
                                                    mkGRPCClientConf,
                                                    serverNodeToSocketAddr)
 

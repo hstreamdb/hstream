@@ -1,12 +1,12 @@
 module HStream.Client.Types where
 
-import           Control.Concurrent      (MVar)
-import qualified Options.Applicative     as O
-import           Z.Data.CBytes           (CBytes)
-import           Z.IO.Network            (SocketAddr)
-import           Z.IO.Network.SocketAddr (PortNumber)
+import           Control.Concurrent   (MVar)
+import           Data.ByteString      (ByteString)
+import qualified Options.Applicative  as O
+import           Z.Data.CBytes        (CBytes)
 
-import           HStream.Server.Types    (ServerID)
+import           HStream.Server.Types (ServerID)
+import           HStream.Utils        (SocketAddr)
 
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
@@ -55,18 +55,18 @@ hstreamNodesParser = O.hsubparser
   )
 
 data CliConnOpts = CliConnOpts
-  { _serverHost :: CBytes
-  , _serverPort :: PortNumber
+  { _serverHost :: ByteString
+  , _serverPort :: Int
   } deriving (Show, Eq)
 
-serverHost :: O.Parser CBytes
+serverHost :: O.Parser ByteString
 serverHost =
   O.strOption ( O.long "host" <> O.metavar "SERVER-HOST"
               <> O.showDefault <> O.value "127.0.0.1"
               <> O.help "Server host value"
               )
 
-serverPort :: O.Parser PortNumber
+serverPort :: O.Parser Int
 serverPort =
   O.option O.auto ( O.long "port" <> O.metavar "INT"
                   <> O.showDefault <> O.value 6570
