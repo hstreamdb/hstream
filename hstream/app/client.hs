@@ -35,7 +35,6 @@ import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
 import           Text.RawString.QQ                (r)
-import           Z.IO.Network.SocketAddr          (ipv4)
 
 import qualified HStream.Admin.Server.Command     as Admin
 import           HStream.Client.Action            (createStream,
@@ -78,6 +77,7 @@ import           HStream.SQL.Exception            (SomeSQLException,
                                                    formatSomeSQLException)
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (HStreamClientApi,
+                                                   SocketAddr (..),
                                                    formatCommandQueryResponse,
                                                    formatResult, genUnique,
                                                    mkGRPCClientConf,
@@ -100,7 +100,7 @@ runCommand HStreamCommand {..} =
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
 hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _retryTimeout = retryTimeout } = do
-  let addr = ipv4 _serverHost _serverPort
+  let addr = SocketAddr _serverHost _serverPort
   availableServers <- newMVar []
   currentServer    <- newMVar addr
   let ctx = HStreamSqlContext {..}
@@ -140,7 +140,7 @@ hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =
 -- TODO: Init should have it's own rpc call
 hstreamInit :: CliConnOpts -> IO ()
 hstreamInit CliConnOpts{..} = do
-  withGRPCClient (mkGRPCClientConf $ ipv4 _serverHost _serverPort) $ \client -> do
+  withGRPCClient (mkGRPCClientConf $ SocketAddr _serverHost _serverPort) $ \client -> do
     hstreamApiClient client
     >>= Admin.sendAdminCommand "server init"
     >>= Admin.formatCommandResponse
@@ -148,7 +148,7 @@ hstreamInit CliConnOpts{..} = do
 
 getNodes :: CliConnOpts -> IO DescribeClusterResponse
 getNodes CliConnOpts{..} =
-  withGRPCClient (mkGRPCClientConf $ ipv4 _serverHost _serverPort) $ \client -> do
+  withGRPCClient (mkGRPCClientConf $ SocketAddr _serverHost _serverPort) $ \client -> do
     HStreamApi{..} <- hstreamApiClient client
     res <- hstreamApiDescribeCluster (mkClientNormalRequest' Empty)
     case res of

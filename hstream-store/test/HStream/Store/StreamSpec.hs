@@ -38,11 +38,8 @@ base = describe "BaseSpec" $ do
                       }
     S.createStream client streamId attrs
     S.doesStreamExist client streamId `shouldReturn` True
-
-    S.doesStreamPartitionExist client streamId Nothing `shouldReturn` True
+    S.doesStreamPartitionExist client streamId Nothing `shouldReturn` False
     S.doesStreamPartitionExist client streamId (Just "some_non_exist_key") `shouldReturn` False
-    non_exist_stream <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
-    S.doesStreamPartitionExist client non_exist_stream Nothing `shouldReturn` False
 
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldContain` [streamId]
@@ -80,6 +77,7 @@ base = describe "BaseSpec" $ do
     S.createStream client streamId attrs `shouldThrow` S.isEXISTS
 
   it "get full path of loggroup by name or id shoule be equal" $ do
+    _ <- S.createStreamPartition client streamId Nothing Map.empty
     logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
     logid <- S.getUnderlyingLogId client streamId Nothing
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
@@ -159,6 +157,7 @@ writeReadSpec = describe "WriteReadSpec" $ do
     let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client streamid attrs
     S.doesStreamExist client streamid `shouldReturn` True
+    _ <-S.createStreamPartition client streamid Nothing Map.empty
     logid <- S.getUnderlyingLogId client streamid Nothing
     -- NOTE: wait logid avariable
     threadDelay 1000000
@@ -175,6 +174,7 @@ writeReadSpec = describe "WriteReadSpec" $ do
     let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client streamid attrs
     S.doesStreamExist client streamid `shouldReturn` True
+    _ <-S.createStreamPartition client streamid Nothing Map.empty
     logid <- S.getUnderlyingLogId client streamid Nothing
     -- NOTE: wait logid avariable
     threadDelay 1000000
