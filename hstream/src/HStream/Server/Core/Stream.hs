@@ -65,10 +65,10 @@ import           ZooKeeper.Exception               (ZNONODE (..))
 -------------------------------------------------------------------------------
 
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
-createStream ServerContext{..} API.Stream{
+createStream ServerContext{..} pbStream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
   when (streamReplicationFactor == 0)             $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
-  checkResourceName streamStreamName
+  checkPBStream pbStream
 
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
@@ -93,6 +93,8 @@ deleteStream :: ServerContext
              -> IO ()
 deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
   deleteStreamRequestStreamName = sName, ..} = do
+  checkResourceName sName
+
   storeExists <- S.doesStreamExist scLDClient streamId
   if storeExists then doDelete
     else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
@@ -133,6 +135,8 @@ listStreamNames ServerContext{..} = do
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse
 append sc@ServerContext{..} request@API.AppendRequest{..} = do
+  checkPBAppendRequest request
+
   recv_time <- getPOSIXTime
   Log.debug $ "Receive Append Request: StreamName {"
            <> Log.buildText appendRequestStreamName
@@ -157,6 +161,8 @@ appendStream :: HasCallStack
              => ServerContext -> API.AppendRequest -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
   appendRequestRecords = records, ..} = do
+  checkPBAppendRequest request
+
   timestamp <- getProtoTimestamp
   let payload = encodeBatch . API.HStreamRecordBatch $
         encodeRecord . updateRecordTimestamp timestamp <$> records
@@ -181,9 +187,11 @@ createShardReader
   => ServerContext
   -> API.CreateShardReaderRequest
   -> IO API.CreateShardReaderResponse
-createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardReaderRequestStreamName=rStreamName,
+createShardReader ServerContext{..} req@API.CreateShardReaderRequest{createShardReaderRequestStreamName=rStreamName,
     createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
     createShardReaderRequestReaderId=rId} = do
+  checkPBCreateShardReaderRequest req
+
   exist <- P.readerExist rId zkHandle
   when exist $ throwIO ShardReaderExists
   startLSN <- getStartLSN rShardId
@@ -213,7 +221,9 @@ deleteShardReader
   => ServerContext
   -> API.DeleteShardReaderRequest
   -> IO ()
-deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
+deleteShardReader ServerContext{..} req@API.DeleteShardReaderRequest{..} = do
+  checkPBDeleteShardReaderRequest req
+
   hashRing <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hashRing deleteShardReaderRequestReaderId == serverID) $
     throwIO $ WrongServer "Send deleteShard request to wrong server."
