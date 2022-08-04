@@ -72,7 +72,6 @@ data GossipContext = GossipContext
   { serverSelf    :: I.ServerNode
   , eventHandlers :: EventHandlers
   , seeds         :: [(ByteString, Int)]
-  , numInited     :: Maybe (TVar Int)
   , serverList    :: TVar ServerList
   , actionChan    :: TChan RequestAction
   , statePool     :: TQueue G.StateMessage
@@ -84,9 +83,10 @@ data GossipContext = GossipContext
   , eventLpTime   :: TVar Word32
   , deadServers   :: TVar DeadServers
   , randomGen     :: StdGen
-  , clusterInited :: MVar InitType
-  , clusterReady  :: MVar ()
   , gossipOpts    :: GossipOpts
+  , clusterReady  :: MVar ()
+  , clusterInited :: MVar InitType
+  , numInited     :: MVar (Maybe (TVar Int))
   }
 
 data CliOptions = CliOptions {

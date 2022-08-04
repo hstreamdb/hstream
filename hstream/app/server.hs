@@ -82,7 +82,7 @@ app config@ServerOpts{..} = do
     serverContext <- initializeServer config gossipContext zk serverState
     void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-    concurrently_ (startGossip serverHostBS gossipContext)
+    concurrently_ (startGossip gossipContext)
       (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
 
 serve :: ByteString

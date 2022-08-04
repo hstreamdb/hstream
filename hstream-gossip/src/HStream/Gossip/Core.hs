@@ -6,9 +6,10 @@
 
 module HStream.Gossip.Core where
 
+import           Control.Concurrent               (tryPutMVar)
 import           Control.Concurrent.Async         (async, cancel, linkOnly,
                                                    withAsync)
-import           Control.Concurrent.STM           (atomically, dupTChan,
+import           Control.Concurrent.STM           (atomically, check, dupTChan,
                                                    flushTQueue, modifyTVar,
                                                    modifyTVar', newTVarIO,
                                                    peekTQueue, readTVar,
@@ -20,15 +21,20 @@ import           Control.Exception                (SomeException, handle)
 import           Control.Monad                    (forever, join, unless, void,
                                                    when)
 import           Data.Bifunctor                   (bimap)
+import qualified Data.ByteString.Lazy             as BL
 import qualified Data.IntMap.Strict               as IM
 import qualified Data.Map.Strict                  as Map
+import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import qualified Proto3.Suite                     as PT
 
 import           HStream.Gossip.Gossip            (gossip)
+import           HStream.Gossip.HStreamGossip     (ServerList (..))
 import           HStream.Gossip.Probe             (doPing, pingReq, pingReqPing)
 import           HStream.Gossip.Types             (EventMessage (EventMessage),
                                                    EventName, EventPayload,
                                                    GossipContext (..),
+                                                   InitType (Gossip),
                                                    RequestAction (..),
                                                    ServerState (OK, Suspicious),
                                                    ServerStatus (..),
@@ -36,7 +42,9 @@ import           HStream.Gossip.Types             (EventMessage (EventMessage),
 import qualified HStream.Gossip.Types             as T
 import           HStream.Gossip.Utils             (broadcast, broadcastMessage,
                                                    cleanStateMessages,
-                                                   getMsgInc, incrementTVar,
+                                                   eventNameINIT,
+                                                   eventNameINITED, getMsgInc,
+                                                   incrementTVar,
                                                    mkGRPCClientConf,
                                                    updateLamportTime,
                                                    updateStatus)
@@ -177,7 +185,7 @@ handleEventMessages :: GossipContext -> [EventMessage] -> IO ()
 handleEventMessages = mapM_ . handleEventMessage
 
 handleEventMessage :: GossipContext -> EventMessage -> IO ()
-handleEventMessage GossipContext{..} msg@(EventMessage eName lpTime bs) = do
+handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
   Log.debug . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
                             <> "] Received Custom Event" <> show eName <> " with lamport " <> show lpTime
   join . atomically $ do
@@ -198,14 +206,32 @@ handleEventMessage GossipContext{..} msg@(EventMessage eName lpTime bs) = do
         modifyTVar seenEvents $ IM.insertWith (++) lpInt [event]
         modifyTVar broadcastPool $ broadcastMessage (T.GEvent msg)
         return $ case Map.lookup eName eventHandlers of
-          Nothing     -> Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
+          Nothing     -> if eName == eventNameINIT
+            then do
+              Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                                        <> "] Handling Internal Event" <> show eName <> " with lamport " <> show lpInt
+              handleINITEvent gc bs
+            else Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
           Just action -> do
-            Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
-                                      <> "] Handling Custom Event" <> show eName <> " with lamport " <> show lpInt
             action bs
+
+handleINITEvent :: GossipContext -> EventPayload -> IO ()
+handleINITEvent gc@GossipContext{..} payload = do
+  case PT.fromByteString payload of
+    Left err -> Log.warning $ Log.buildString' err
+    Right ServerList{..} -> do
+      initGossip gc $ V.toList serverListNodes
+      void $ tryPutMVar clusterInited Gossip
+      atomically $ do
+        mWorkers <- readTVar workers
+        check $ Map.size mWorkers == length seeds
+      broadCastUserEvent gc eventNameINITED (BL.toStrict $ PT.toLazyByteString serverSelf)
 
 broadCastUserEvent :: GossipContext -> EventName -> EventPayload -> IO ()
 broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
   lpTime <- atomically $ incrementTVar eventLpTime
   let eventMessage = EventMessage userEventName lpTime userEventPayload
   handleEventMessage gc eventMessage
+
+initGossip :: GossipContext -> [I.ServerNode] -> IO ()
+initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK)
