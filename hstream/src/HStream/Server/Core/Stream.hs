@@ -41,7 +41,7 @@ import qualified Z.Data.CBytes                     as CB
 
 import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
-import           HStream.Server.Core.Common        (decodeRecordBatch)
+import           HStream.Server.Core.Common
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..),
                                                     WrongServer (..))
@@ -67,8 +67,9 @@ import           ZooKeeper.Exception               (ZNONODE (..))
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
 createStream ServerContext{..} API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
+  when (streamReplicationFactor == 0)             $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
+  when (notValidateResourceName streamStreamName) $ throwIO (InvalidArgument $ invalidResourceNameMsg streamStreamName)
 
-  when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                    , S.logBacklogDuration   = S.defAttr1 $
@@ -124,10 +125,10 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     shardCnt <- length <$> S.listStreamPartitions scLDClient stream
     return $ API.Stream (T.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b) (fromIntegral shardCnt)
 
-listStreamNames :: ServerContext -> IO (V.Vector T.Text)
+listStreamNames :: ServerContext -> IO ([T.Text])
 listStreamNames ServerContext{..} = do
   streams <- S.findStreams scLDClient S.StreamTypeStream
-  pure $ V.map (T.pack . S.showStreamName) (V.fromList streams)
+  pure $ map (T.pack . S.showStreamName) streams
 
 append :: HasCallStack
        => ServerContext -> API.AppendRequest -> IO API.AppendResponse

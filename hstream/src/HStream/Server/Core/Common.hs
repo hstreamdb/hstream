@@ -216,3 +216,12 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
+
+isValidateResourceName :: T.Text -> Bool
+isValidateResourceName = const True
+
+notValidateResourceName :: T.Text -> Bool
+notValidateResourceName = not . isValidateResourceName
+
+invalidResourceNameMsg :: T.Text -> T.Text
+invalidResourceNameMsg x = "Resource name " <> T.pack (show x) <> " is invalid. A valid resource name consists of a letter (range from 'a' to 'z' or 'A' to 'Z') followed by zero or more letters, digits (range from 0 to 9), underscores ('_'), and dashes('-')"

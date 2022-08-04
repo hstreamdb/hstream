@@ -31,10 +31,7 @@ import           Proto3.Suite                      (Enumerated (Enumerated))
 import           ZooKeeper.Types                   (ZHandle)
 
 import qualified HStream.Logger                    as Log
-import           HStream.Server.Core.Common        (decodeRecordBatch,
-                                                    getCommitRecordId,
-                                                    getSuccessor,
-                                                    insertAckedRecordId)
+import           HStream.Server.Core.Common
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
@@ -58,6 +55,9 @@ listSubscriptions ServerContext{..} = do
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
+  when (notValidateResourceName subscriptionSubscriptionId) $ throwIO (InvalidArgument $ invalidResourceNameMsg subscriptionSubscriptionId)
+  when (notValidateResourceName subscriptionStreamName)     $ throwIO (InvalidArgument $ invalidResourceNameMsg subscriptionStreamName)
+
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
   unless streamExists $ do
