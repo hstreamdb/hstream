@@ -16,7 +16,7 @@ import qualified Z.Data.CBytes               as CB
 import           Z.Data.CBytes               (CBytes)
 
 import qualified HStream.Logger              as Log
-import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
+import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist), InvalidArgument (InvalidArgument))
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence  as P
 import           HStream.Server.Types
@@ -217,11 +217,12 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
 
-isValidateResourceName :: T.Text -> Bool
-isValidateResourceName = const True
-
-notValidateResourceName :: T.Text -> Bool
-notValidateResourceName = not . isValidateResourceName
-
-invalidResourceNameMsg :: T.Text -> T.Text
-invalidResourceNameMsg x = "Resource name " <> T.pack (show x) <> " is invalid. A valid resource name consists of a letter (range from 'a' to 'z' or 'A' to 'Z') followed by zero or more letters, digits (range from 0 to 9), underscores ('_'), and dashes('-')"
+checkResourceName :: T.Text -> IO ()
+checkResourceName x = when (notValidateResourceName x) $ throwIO (InvalidArgument . T.unpack $ x)
+  where
+    isValidateResourceName :: T.Text -> Bool
+    isValidateResourceName = const True
+    notValidateResourceName :: T.Text -> Bool
+    notValidateResourceName = not . isValidateResourceName
+    invalidResourceNameMsg :: T.Text -> T.Text
+    invalidResourceNameMsg x = "Resource name " <> T.pack (show x) <> " is invalid. A valid resource name consists of a letter (range from 'a' to 'z' or 'A' to 'Z') followed by zero or more letters, digits (range from 0 to 9), underscores ('_'), and dashes('-')"

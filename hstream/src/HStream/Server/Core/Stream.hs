@@ -68,7 +68,7 @@ createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
 createStream ServerContext{..} API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
   when (streamReplicationFactor == 0)             $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
-  when (notValidateResourceName streamStreamName) $ throwIO (InvalidArgument $ invalidResourceNameMsg streamStreamName)
+  checkResourceName streamStreamName
 
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor

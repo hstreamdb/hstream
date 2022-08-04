@@ -55,8 +55,8 @@ listSubscriptions ServerContext{..} = do
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
-  when (notValidateResourceName subscriptionSubscriptionId) $ throwIO (InvalidArgument $ invalidResourceNameMsg subscriptionSubscriptionId)
-  when (notValidateResourceName subscriptionStreamName)     $ throwIO (InvalidArgument $ invalidResourceNameMsg subscriptionStreamName)
+  checkResourceName subscriptionSubscriptionId
+  checkResourceName subscriptionStreamName
 
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
