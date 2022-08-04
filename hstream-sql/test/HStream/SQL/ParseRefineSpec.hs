@@ -2,12 +2,13 @@
 
 module HStream.SQL.ParseRefineSpec where
 
-import qualified Data.Aeson          as J
-import qualified Data.HashMap.Strict as HM
-import qualified Data.Text           as T
+import qualified Data.Aeson              as J
+import qualified Data.HashMap.Strict     as HM
+import qualified Data.Text               as T
 import           HStream.SQL.AST
 import           HStream.SQL.Parse
 import           Test.Hspec
+import           Test.Hspec.Expectations (Selector)
 
 spec :: Spec
 spec = describe "Create" $ do
@@ -73,3 +74,11 @@ spec = describe "Create" $ do
     parseAndRefine "DROP STREAM foo IF EXISTS;"    `shouldReturn` RQDrop (RDropIf RDropStream    "foo")
     parseAndRefine "DROP VIEW foo;"                `shouldReturn` RQDrop (RDrop   RDropView      "foo")
     parseAndRefine "DROP VIEW foo IF EXISTS;"      `shouldReturn` RQDrop (RDropIf RDropView      "foo")
+
+  it "HIP-7" $ do
+    parseAndRefine "CREATE STREAM xs.0.c-a_s0;" `shouldReturn` RQCreate (RCreate "xs.0.c-a_s0" (RStreamOptions {rRepFactor = 3}))
+    parseAndRefine "CREATE STREAM _s;" `shouldThrow` anyParseException
+
+anyParseException :: Selector ParseException
+anyParseException = const True
+

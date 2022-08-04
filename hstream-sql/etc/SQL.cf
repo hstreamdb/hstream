@@ -49,39 +49,39 @@ QExplain.     SQL ::= Explain     ";" ;
 QPause.       SQL ::= Pause       ";" ;
 QResume.      SQL ::= Resume      ";" ;
 
----- Create Query
-DCreate.  Create ::= "CREATE" "STREAM" Ident ;
-CreateOp. Create ::= "CREATE" "STREAM" Ident "WITH" "(" [StreamOption] ")" ;
-separator StreamOption "," ;
-CreateAs. Create ::= "CREATE" "STREAM" Ident "AS" Select ;
-CreateAsOp. Create ::= "CREATE" "STREAM" Ident "AS" Select "WITH" "(" [StreamOption] ")" ;
+token ResourceIdent letter (letter | digit | '_' | '-' | '.')*;
 
--- OptionTopic.  StreamOption ::= "TOPIC"  "=" String ;
--- OptionFormat. StreamOption ::= "FORMAT" "=" String ;
+---- Create Query
+separator StreamOption "," ;
+DCreate.    Create ::= "CREATE" "STREAM" ResourceIdent ;
+CreateOp.   Create ::= "CREATE" "STREAM" ResourceIdent "WITH" "(" [StreamOption] ")" ;
+CreateAs.   Create ::= "CREATE" "STREAM" ResourceIdent "AS" Select ;
+CreateAsOp. Create ::= "CREATE" "STREAM" ResourceIdent "AS" Select "WITH" "(" [StreamOption] ")" ;
+
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
-CreateSourceConnector. Create ::= "CREATE" "SOURCE" "CONNECTOR" Ident "FROM" Ident "WITH" "(" [ConnectorOption] ")" ;
-CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" Ident "FROM" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnector. Create ::= "CREATE" "SINK" "CONNECTOR" Ident "TO" Ident "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnectorIf. Create ::= "CREATE" "SINK" "CONNECTOR" Ident "TO" Ident "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 separator ConnectorOption "," ;
+CreateSourceConnector.   Create ::= "CREATE" "SOURCE" "CONNECTOR" ResourceIdent "FROM" ResourceIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" ResourceIdent "FROM" ResourceIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnector.     Create ::= "CREATE" "SINK"   "CONNECTOR" ResourceIdent "TO"   ResourceIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnectorIf.   Create ::= "CREATE" "SINK"   "CONNECTOR" ResourceIdent "TO"   ResourceIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 
-CreateView. Create ::= "CREATE" "VIEW" Ident "AS" Select ;
+CreateView. Create ::= "CREATE" "VIEW" ResourceIdent "AS" Select ;
 
 ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
 
 ---- Pause Query
-PauseConnector. Pause ::= "PAUSE" "CONNECTOR" Ident ;
+PauseConnector. Pause ::= "PAUSE" "CONNECTOR" ResourceIdent ;
 
 --- Resume Query
-ResumeConnector. Resume ::= "RESUME" "CONNECTOR" Ident ;
+ResumeConnector. Resume ::= "RESUME" "CONNECTOR" ResourceIdent ;
 
 ---- Insert Query
-DInsert. Insert ::= "INSERT" "INTO" Ident "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
-separator Ident "," ;
+separator Ident     "," ;
 separator ValueExpr "," ;
-InsertBinary. Insert ::= "INSERT" "INTO" Ident "VALUES" String ;
-InsertJson.   Insert ::= "INSERT" "INTO" Ident "VALUES" SString ;
+DInsert.      Insert ::= "INSERT" "INTO" ResourceIdent "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
+InsertBinary. Insert ::= "INSERT" "INTO" ResourceIdent "VALUES" String ;
+InsertJson.   Insert ::= "INSERT" "INTO" ResourceIdent "VALUES" SString ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
@@ -91,8 +91,8 @@ ShowConnectors. ShowOption ::= "CONNECTORS" ;
 ShowViews. ShowOption ::= "VIEWS" ;
 
 --- Drop Query
-DDrop.  Drop ::= "DROP" DropOption Ident ;
-DropIf. Drop ::= "DROP" DropOption Ident "IF" "EXISTS" ;
+DDrop.  Drop ::= "DROP" DropOption ResourceIdent ;
+DropIf. Drop ::= "DROP" DropOption ResourceIdent "IF" "EXISTS" ;
 
 DropConnector. DropOption ::= "CONNECTOR" ;
 DropStream.    DropOption ::= "STREAM"    ;
