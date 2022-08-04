@@ -258,8 +258,8 @@ cradle:
     - path: "hstream-admin/app/admin.hs"
       component: "hstream-admin:exe:hadmin"
 
-    - path: "hstream-connector/./"
-      component: "lib:hstream-connector"
+    - path: "hstream-io/./"
+      component: "lib:hstream-io"
 
     - path: "hstream-diffflow/src"
       component: "lib:diff-flow"

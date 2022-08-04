@@ -31,10 +31,9 @@ import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
 import           ZooKeeper.Types                  (ZHandle)
 
-import           HStream.Connector.Common         (SourceConnectorWithoutCkp (..))
-import           HStream.Connector.Type           hiding (StreamName, Timestamp)
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
+import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
 import qualified HStream.Server.Core.Query        as Core
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core

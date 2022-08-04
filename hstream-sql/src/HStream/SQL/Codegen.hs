@@ -10,39 +10,36 @@
 
 module HStream.SQL.Codegen where
 
-import           Data.Aeson                      (Object,
-                                                  Value (Bool, Null, Number, String))
-import qualified Data.Aeson                      as Aeson
+import           Data.Aeson                   (Object,
+                                               Value (Bool, Null, Number, String))
+import qualified Data.Aeson                   as Aeson
 import           Data.Bifunctor
 import           Data.Function
 import           Data.Functor
-import qualified Data.HashMap.Strict             as HM
-import qualified Data.List                       as L
+import qualified Data.HashMap.Strict          as HM
+import qualified Data.List                    as L
 import           Data.Maybe
-import           Data.Scientific                 (fromFloatDigits, scientific)
-import           Data.Text                       (pack)
-import qualified Data.Text                       as T
-import           Data.Time                       (diffTimeToPicoseconds,
-                                                  showGregorian)
-import qualified Database.ClickHouseDriver.Types as Clickhouse
-import qualified Database.MySQL.Base             as MySQL
-import qualified Proto3.Suite                    as PB
+import           Data.Scientific              (fromFloatDigits, scientific)
+import           Data.Text                    (pack)
+import qualified Data.Text                    as T
+import           Data.Time                    (diffTimeToPicoseconds,
+                                               showGregorian)
+import qualified Proto3.Suite                 as PB
 import           RIO
-import qualified RIO.ByteString.Lazy             as BL
-import qualified Z.Data.CBytes                   as CB
+import qualified RIO.ByteString.Lazy          as BL
+import qualified Z.Data.CBytes                as CB
 
-import           HStream.SQL.AST                 hiding (StreamName)
-import           HStream.SQL.Exception           (SomeSQLException (..),
-                                                  throwSQLException)
-import           HStream.SQL.Internal.Codegen    (binOpOnValue, compareValue,
-                                                  composeColName, diffTimeToMs,
-                                                  genJoiner, genJoiner',
-                                                  genRandomSinkStream,
-                                                  genTableRefName,
-                                                  getFieldByName,
-                                                  unaryOpOnValue)
-import           HStream.SQL.Parse               (parseAndRefine)
-import           HStream.Utils                   (genUnique, jsonObjectToStruct)
+import           HStream.SQL.AST              hiding (StreamName)
+import           HStream.SQL.Exception        (SomeSQLException (..),
+                                               throwSQLException)
+import           HStream.SQL.Internal.Codegen (binOpOnValue, compareValue,
+                                               composeColName, diffTimeToMs,
+                                               genJoiner, genJoiner',
+                                               genRandomSinkStream,
+                                               genTableRefName, getFieldByName,
+                                               unaryOpOnValue)
+import           HStream.SQL.Parse            (parseAndRefine)
+import           HStream.Utils                (genUnique, jsonObjectToStruct)
 
 import           DiffFlow.Graph
 import           DiffFlow.Types
@@ -63,11 +60,6 @@ data TerminationSelection = AllQueries | OneQuery CB.CBytes | ManyQueries [CB.CB
 data InsertType = JsonFormat | RawFormat
 data PauseObject = PauseObjectConnector Text
 data ResumeObject = ResumeObjectConnector Text
-
-data ConnectorConfig
-  = ClickhouseConnector Clickhouse.ConnParams
-  | MySqlConnector T.Text MySQL.ConnectInfo
-  deriving Show
 
 data HStreamPlan
   = SelectPlan          Text [(Node,StreamName)] (Node,StreamName) (Maybe RWindow) GraphBuilder
