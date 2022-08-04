@@ -3,7 +3,6 @@ module HStream.Client.Types where
 import           Control.Concurrent   (MVar)
 import           Data.ByteString      (ByteString)
 import qualified Options.Applicative  as O
-import           Z.Data.CBytes        (CBytes)
 
 import           HStream.Server.Types (ServerID)
 import           HStream.Utils        (SocketAddr)

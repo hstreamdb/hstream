@@ -32,3 +32,8 @@ hstreamQueryToView _ = throw $ UnexpectedError "unexpected match in hstreamQuery
 
 listViews :: HasCallStack => ServerContext -> IO [API.View]
 listViews ServerContext{..} = map hstreamQueryToView . filter P.isViewQuery <$> P.getQueries zkHandle
+
+listViewNames :: ServerContext -> IO [T.Text]
+listViewNames ServerContext{..} = do
+  xs <- map hstreamQueryToView . filter P.isViewQuery <$> P.getQueries zkHandle
+  pure (API.viewViewId <$> xs)

@@ -67,7 +67,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    SelectPlan {} -> returnErrResp StatusInvalidArgument "inconsistent method called"
+    SelectPlan {} -> returnErrResp StatusInvalidArgument "Inconsistent method called"
     CreateConnectorPlan {} -> do
       IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
       -- connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
@@ -83,10 +83,17 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
           query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
-      create (transToStreamName sink)
-      (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-      atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-      returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
+      -- make sure source streams exist
+      nonExistedSource <- filterM (fmap not . S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
+      case nonExistedSource of
+        [] -> do
+          create (transToStreamName sink)
+          (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
+          atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
+          returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
+        _ : _ -> do
+          returnErrResp StatusInvalidArgument . StatusDetails . BS.pack $
+            "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
     CreatePlan stream fac -> do
       let s = API.Stream
             { streamStreamName = stream
@@ -174,9 +181,12 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     create sName = do
       Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
       createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
+
+    -- TODO: return correct RPC name
+    discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
+
     sendResp results = returnCommandQueryResp $
       V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
-    discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
     mkVectorStruct a label =
       let object = HM.fromList [(label, PB.toAesonValue a)]
        in V.singleton (jsonObjectToStruct object)
