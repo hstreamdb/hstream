@@ -4,7 +4,7 @@ packages:
   common/stats/hstream-common-stats.cabal
   hstream-store
   hstream-sql
-  hstream-connector
+  hstream-io
   hstream-admin
   hstream-gossip
   hstream-diffflow

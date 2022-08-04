@@ -23,10 +23,10 @@ import           ZooKeeper.Types                  (ZHandle)
 import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
-import           HStream.Connector.Type           as HCT
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
 import           HStream.Server.Config
+import           HStream.Server.ConnectorTypes    as HCT
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse,
                                                    Subscription)

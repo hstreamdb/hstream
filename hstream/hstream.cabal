@@ -60,6 +60,7 @@ library
     HStream.Server.Persistence.Exception
     HStream.Server.Shard
     HStream.Server.Types
+    HStream.Server.ConnectorTypes
 
   other-modules:
     HStream.Server.Core.Cluster
@@ -105,7 +106,7 @@ library
     , hstream-admin
     , hstream-common
     , hstream-common-stats
-    , hstream-connector
+    , hstream-io
     , hstream-gossip
     , hstream-sql
     , hstream-store
