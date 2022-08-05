@@ -32,7 +32,7 @@ trimSpacesPrint = removeSpace . printTree
 --------------------------------------------------------------------------------
 extractRefNames :: [TableRef] -> [Text]
 extractRefNames [] = []
-extractRefNames ((TableRefSimple _ (Ident name)) : xs)  = name : extractRefNames xs
+extractRefNames ((TableRefSimple _ (ResourceIdent name)) : xs)  = name : extractRefNames xs
 extractRefNames ((TableRefSubquery _ _) : xs) = extractRefNames xs
 extractRefNames ((TableRefUnion _ ref1 ref2) : xs) = extractRefNames (ref1:ref2:xs)
 extractRefNames ((TableRefAs _ ref (Ident name)) : xs)  = name : extractRefNames (ref : xs)

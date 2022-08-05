@@ -127,7 +127,7 @@ separator TableRef "," ;
 
 TableRefUnion.    TableRef  ::= TableRef "UNION" TableRef1 ;
 TableRefAs.       TableRef1 ::= TableRef2 "AS" Ident ;
-TableRefSimple.   TableRef2 ::= Ident ;
+TableRefSimple.   TableRef2 ::= ResourceIdent ;
 TableRefSubquery. TableRef2 ::= Select ;
 
 coercions TableRef 2 ;
