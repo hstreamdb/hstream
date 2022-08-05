@@ -31,6 +31,7 @@ import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified Options.Applicative              as O
 import qualified System.Console.Haskeline         as H
+import           System.Exit                      (exitFailure)
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
@@ -154,7 +155,8 @@ getNodes CliConnOpts{..} =
     case res of
       ClientNormalResponse resp _ _ _ _ -> return resp
       ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode x details))
-        -> errorWithoutStackTrace $ show x <> " Error: "  <> show (unStatusDetails details)
+        -> putStrLn (show x <> " Error: "  <> show (unStatusDetails details))
+           >> exitFailure
       ClientErrorResponse err -> error $ "Server Error: " <> show err <> "\n"
 
 --------------------------------------------------------------------------------

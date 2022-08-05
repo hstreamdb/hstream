@@ -4,7 +4,6 @@
 
 module HStream.Server.Initialization
   ( initializeServer
-  -- , initNodePath
   , initializeTlsConfig
   ) where
 
