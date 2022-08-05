@@ -3,8 +3,9 @@ module HStream.UtilsSpec (spec) where
 import           Control.Concurrent
 import           Control.Monad
 import           Data.Either
-import qualified Data.Set           as Set
+import qualified Data.Set                 as Set
 import           HStream.Utils
+import           HStream.Utils.Validation
 import           Test.Hspec
 
 spec :: Spec
@@ -33,3 +34,9 @@ utilsSpec = describe "HStream.Utils" $ do
 
   -- TODO
   it "setupSigsegvHandler" $ setupSigsegvHandler `shouldReturn` ()
+
+  it "isValidateResourceName" do
+    isValidateResourceName "x"        `shouldBe` True
+    isValidateResourceName "x.1"      `shouldBe` True
+    isValidateResourceName "x_-X...." `shouldBe` True
+    isValidateResourceName "_x"       `shouldBe` False

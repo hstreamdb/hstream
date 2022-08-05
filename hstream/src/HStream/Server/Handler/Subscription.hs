@@ -34,7 +34,6 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import           HStream.Server.Types.Validate
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (mkServerErrResp, returnResp)
 
@@ -111,7 +110,7 @@ streamingFetchInternal ctx (ServerBiDiRequest _ streamRecv streamSend) = do
         xs <- streamRecv
         case xs of
           Right (Just resp@StreamingFetchRequest{}) -> do
-            checkPB resp
+            checkPBThrow resp
             pure xs
           _ -> pure xs
 

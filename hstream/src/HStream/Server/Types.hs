@@ -20,6 +20,7 @@ import qualified Proto3.Suite                     as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types                  (ZHandle)
 
+import           Control.Exception
 import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
@@ -27,6 +28,7 @@ import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
+import           HStream.Server.Exception         (InvalidArgument (InvalidArgument))
 import           HStream.Server.HStreamApi        (NodeState,
                                                    StreamingFetchResponse,
                                                    Subscription)
@@ -35,6 +37,7 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
 import qualified HStream.Store                    as S
 import           HStream.Utils                    (textToCBytes)
+import           HStream.Utils.Validation
 
 protocolVersion :: Text
 protocolVersion = "0.1.0"
@@ -195,3 +198,8 @@ transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
 
 transToViewStreamName :: HCT.StreamName -> S.StreamId
 transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes
+
+checkPBThrow :: CheckPB a => a -> IO ()
+checkPBThrow x = case checkPB x of
+  Right () -> pure ()
+  Left err -> throwIO (InvalidArgument err)

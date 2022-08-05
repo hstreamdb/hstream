@@ -61,7 +61,6 @@ library
     HStream.Server.Persistence.Exception
     HStream.Server.Shard
     HStream.Server.Types
-    HStream.Server.Types.Validate
 
   other-modules:
     HStream.Server.Core.Cluster
@@ -231,7 +230,6 @@ test-suite hstream-test
     HStream.ShardSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
-    HStream.UtilsSpec
 
   hs-source-dirs:     test
   build-depends:

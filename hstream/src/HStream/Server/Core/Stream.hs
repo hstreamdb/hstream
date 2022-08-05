@@ -55,9 +55,7 @@ import           HStream.Server.Shard              (Shard (..), createShard,
                                                     devideKeySpace,
                                                     mkShardWithDefaultId,
                                                     mkSharedShardMapWithShards)
-import           HStream.Server.Types              (ServerContext (..),
-                                                    transToStreamName)
-import           HStream.Server.Types.Validate
+import           HStream.Server.Types
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.Utils
@@ -68,7 +66,7 @@ import           ZooKeeper.Exception               (ZNONODE (..))
 createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
 createStream ServerContext{..} pbStream@API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
-  checkPB pbStream
+  checkPBThrow pbStream
 
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
@@ -93,8 +91,6 @@ deleteStream :: ServerContext
              -> IO ()
 deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
   deleteStreamRequestStreamName = sName, ..} = do
-  checkResourceName sName
-
   storeExists <- S.doesStreamExist scLDClient streamId
   if storeExists then doDelete
     else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
@@ -186,7 +182,7 @@ createShardReader
 createShardReader ServerContext{..} req@API.CreateShardReaderRequest{createShardReaderRequestStreamName=rStreamName,
     createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
     createShardReaderRequestReaderId=rId} = do
-  checkPB req
+  checkPBThrow req
 
   exist <- P.readerExist rId zkHandle
   when exist $ throwIO ShardReaderExists
@@ -217,7 +213,7 @@ deleteShardReader
   => ServerContext
   -> API.DeleteShardReaderRequest
   -> IO ()
-deleteShardReader ServerContext{..} req@API.DeleteShardReaderRequest{..} = do
+deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
   hashRing <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hashRing deleteShardReaderRequestReaderId == serverID) $
     throwIO $ WrongServer "Send deleteShard request to wrong server."
