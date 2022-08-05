@@ -26,7 +26,7 @@ services:
         --host 0.0.0.0 --port 6570 \
         --internal-port 6571 \
         --server-id 100 \
-        --seed-nodes "$$(hostname -I | awk '{print $$1}'):6571,hserver1:6573" \
+        --seed-nodes "hserver0:6571,hserver1:6573" \
         --address $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
@@ -59,7 +59,7 @@ services:
         --host 0.0.0.0 --port 6572 \
         --internal-port 6573 \
         --server-id 101 \
-        --seed-nodes "hserver0:6571,$$(hostname -I | awk '{print $$1}'):6573" \
+        --seed-nodes "hserver0:6571,hserver1:6573" \
         --address $$(hostname -I | awk '{print $$1}') \
         --zkuri zookeeper:2181 \
         --store-config /data/store/logdevice.conf \
