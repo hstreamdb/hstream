@@ -8,7 +8,6 @@ import           Data.Foldable               (foldrM)
 import qualified Data.HashMap.Strict         as HM
 import qualified Data.List                   as L
 import qualified Data.Map.Strict             as Map
-import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
 import           Data.Word                   (Word32, Word64)
@@ -16,7 +15,7 @@ import qualified Z.Data.CBytes               as CB
 import           Z.Data.CBytes               (CBytes)
 
 import qualified HStream.Logger              as Log
-import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist), InvalidArgument (InvalidArgument))
+import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence  as P
 import           HStream.Server.Types
@@ -216,13 +215,3 @@ handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
            <> "because of " <> show e
           return terminatedQids
         Right _                  -> return (x:terminatedQids)
-
-checkResourceName :: T.Text -> IO ()
-checkResourceName x = when (notValidateResourceName x) $ throwIO (InvalidArgument . T.unpack $ x)
-  where
-    isValidateResourceName :: T.Text -> Bool
-    isValidateResourceName = const True
-    notValidateResourceName :: T.Text -> Bool
-    notValidateResourceName = not . isValidateResourceName
-    invalidResourceNameMsg :: T.Text -> T.Text
-    invalidResourceNameMsg x = "Resource name " <> T.pack (show x) <> " is invalid. A valid resource name consists of a letter (range from 'a' to 'z' or 'A' to 'Z') followed by zero or more letters, digits (range from 0 to 9), underscores ('_'), and dashes('-')"

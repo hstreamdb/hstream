@@ -8,7 +8,7 @@ import           HStream.Server.Types
 import           Test.Hspec
 
 spec :: Spec
-spec =  describe "HStream.AckSpec" $ do
+spec = describe "HStream.AckSpec" $ do
   isSuccessorSpec
   insertAckSpec
 

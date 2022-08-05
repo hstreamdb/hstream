@@ -91,8 +91,8 @@ spec = aroundAll provideHstreamApi $
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
-  source1 <- runIO $ newRandomText 20
-  source2 <- runIO $ newRandomText 20
+  source1 <- runIO $ do xs <- newRandomText 20; pure (xs <> "_-xx.024")
+  source2 <- runIO $ do xs <- newRandomText 20; pure (xs <> "_xx-.210")
 
   let sql = "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
 
@@ -132,15 +132,6 @@ spec = aroundAll provideHstreamApi $
           Just (Query _ status _ _ ) -> return (status == terminated)
           _                          -> return False
     ) `shouldReturn` True
-
-  -- it "restart query" $ \_ ->
-  --   ( do
-  --       _ <- restartQuery queryname1
-  --       query <- getQuery queryname1
-  --       case query of
-  --         Just (Query _ P.Running _ _ ) -> return True
-  --         _                             -> return False
-  --   ) `shouldReturn` True
 
   it "delete query" $ \_ ->
     ( do

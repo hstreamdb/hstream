@@ -34,6 +34,7 @@ import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import           HStream.Server.Types.Validate
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (mkServerErrResp, returnResp)
 
@@ -104,7 +105,15 @@ streamingFetchInternal
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO ()
 streamingFetchInternal ctx (ServerBiDiRequest _ streamRecv streamSend) = do
-  Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend,streamRecv)
+  Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, checkedStreamRecv)
+    where
+      checkedStreamRecv = do
+        xs <- streamRecv
+        case xs of
+          Right (Just resp@StreamingFetchRequest{}) -> do
+            checkPB resp
+            pure xs
+          _ -> pure xs
 
 --------------------------------------------------------------------------------
 -- Exception and Exception Handlers

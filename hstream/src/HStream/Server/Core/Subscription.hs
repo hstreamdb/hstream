@@ -37,6 +37,7 @@ import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence        as P
 import           HStream.Server.Persistence.Object (withSubscriptionsLock)
 import           HStream.Server.Types
+import           HStream.Server.Types.Validate
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.Utils                     (textToCBytes)
@@ -55,8 +56,7 @@ listSubscriptions ServerContext{..} = do
 
 createSubscription :: ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
-  checkResourceName subscriptionSubscriptionId
-  checkResourceName subscriptionStreamName
+  checkPB sub
 
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName

@@ -105,6 +105,7 @@ insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
     , API.appendRequestRecords    = V.singleton record
     })
 
+-- FIXME: unused opts
 createStreamBySelect :: T.Text -> Int -> String
   -> Action API.CommandQueryResponse
 createStreamBySelect sName rFac sql API.HStreamApi{..} =
