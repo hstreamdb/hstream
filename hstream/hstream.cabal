@@ -51,7 +51,6 @@ library
     HStream.Server.Config
     HStream.Server.ConnectorTypes
     HStream.Server.Core.Common
-    HStream.Server.Types.Validate
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
@@ -62,6 +61,7 @@ library
     HStream.Server.Persistence.Exception
     HStream.Server.Shard
     HStream.Server.Types
+    HStream.Server.Types.Validate
 
   other-modules:
     HStream.Server.Core.Cluster
