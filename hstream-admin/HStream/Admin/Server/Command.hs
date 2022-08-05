@@ -19,6 +19,7 @@ import qualified Data.Vector                            as V
 import qualified Network.GRPC.HighLevel.Client          as GRPC
 import           Network.GRPC.HighLevel.Generated       (withGRPCClient)
 import           Network.Socket                         (PortNumber)
+import           System.Exit                            (exitFailure)
 import qualified Z.Data.CBytes                          as CBytes
 import qualified Z.Foreign                              as Z
 
@@ -39,7 +40,7 @@ formatCommandResponse resp =
       case m_type of
         Just (Aeson.String "table") -> extractJsonTable m_content
         Just (Aeson.String "plain") -> pure $ U.fillWithJsonString' "content" obj
-        Just (Aeson.String "error") -> pure $ "Error: " <> U.fillWithJsonString' "content" obj
+        Just (Aeson.String "error") -> putStrLn ("Error: " <> U.fillWithJsonString' "content" obj) >> exitFailure
         _                           -> pure "No such \"type\""
     parseVal x  = pure $ "Expecting obj value, but got " <> show x
 
