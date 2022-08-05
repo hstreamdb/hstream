@@ -80,6 +80,6 @@ spec = describe "Create" $ do
     parseAndRefine "CREATE STREAM xs.0.c-a_s0;" `shouldReturn` RQCreate (RCreate "xs.0.c-a_s0" (RStreamOptions {rRepFactor = 3}))
     parseAndRefine "CREATE STREAM _s;" `shouldThrow` anyParseException
 
-anyParseException :: Selector ParseException
+anyParseException :: Selector SomeSQLException
 anyParseException = const True
 

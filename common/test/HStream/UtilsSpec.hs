@@ -36,7 +36,8 @@ utilsSpec = describe "HStream.Utils" $ do
   it "setupSigsegvHandler" $ setupSigsegvHandler `shouldReturn` ()
 
   it "isValidateResourceName" $ do
-    isValidateResourceName "x"        `shouldBe` True
-    isValidateResourceName "x.1"      `shouldBe` True
-    isValidateResourceName "x_-X...." `shouldBe` True
-    isValidateResourceName "_x"       `shouldBe` False
+    checkResourceName "x"         `shouldBe` Right ()
+    checkResourceName "x.1"       `shouldBe` Right ()
+    checkResourceName "x_-X...."  `shouldBe` Right ()
+    checkResourceName "_x"        `shouldSatisfy` isLeft
+    checkResourceName "zookeeper" `shouldSatisfy` isLeft
