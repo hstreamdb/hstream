@@ -30,7 +30,7 @@ IPDouble. PNDouble ::=     Double ;
 NDouble.  PNDouble ::= "-" Double ;
 
 token SString '\'' char+ '\'' ;
-token RawColumn '`' (char - ["`"])+ '`' ;
+token RawIdent '`' (char - ["`"])+ '`' ;
 --------------------------------------------------------------------------------
 
 comment "//" ;
@@ -49,9 +49,7 @@ QExplain.     SQL ::= Explain     ";" ;
 QPause.       SQL ::= Pause       ";" ;
 QResume.      SQL ::= Resume      ";" ;
 
-token ResourceIdent '`' letter (letter | digit | '_' | '-' | '.')* '`';
-
-ExtendIdent. UserIdent ::= ResourceIdent;
+ExtendIdent. UserIdent ::= RawIdent;
 NormalIdent. UserIdent ::= Ident;
 
 ---- Create Query
@@ -176,7 +174,7 @@ ExprNum. ValueExpr4 ::= PNDouble  ;
 
 -- Plain String
 ExprString. ValueExpr4 ::= String ;
-ExprRaw.    ValueExpr4 ::= RawColumn ;
+ExprRaw.    ValueExpr4 ::= RawIdent ;
 
 -- Boolean Type
 BoolTrue.  Boolean ::= "TRUE"  ;

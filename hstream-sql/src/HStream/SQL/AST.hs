@@ -46,9 +46,9 @@ type instance RefinedType SString = BS.ByteString
 instance Refine SString where
   refine (SString t) = encodeUtf8 . Text.init . Text.tail $ t
 
-type instance RefinedType RawColumn = Text
-instance Refine RawColumn where
-  refine (RawColumn t) = Text.init . Text.tail $ t
+type instance RefinedType RawIdent = Text
+instance Refine RawIdent where
+  refine (RawIdent t) = Text.init . Text.tail $ t
 
 type RBool = Bool
 type instance RefinedType Boolean = RBool
@@ -376,11 +376,11 @@ instance Refine SelectView where
               f docl = case docl of
                 (DerivedColSimpl _ expr@(ExprColName _ (ColNameSimple _ (Ident col))))       ->
                   (col, trimSpacesPrint expr)
-                (DerivedColSimpl _ expr@(ExprRaw _ (RawColumn col)))                         ->
+                (DerivedColSimpl _ expr@(ExprRaw _ (RawIdent col)))                         ->
                   (col, trimSpacesPrint expr)
                 (DerivedColAs _ (ExprColName _ (ColNameSimple _ (Ident col))) (Ident alias)) ->
                   (col, Text.unpack alias)
-                (DerivedColAs _ (ExprRaw _ (RawColumn col)) (Ident alias))                   ->
+                (DerivedColAs _ (ExprRaw _ (RawIdent col)) (Ident alias))                   ->
                   (col, Text.unpack alias)
            in SVSelectFields (f <$> dcols)
       svFrm :: StreamName

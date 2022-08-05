@@ -33,8 +33,8 @@ trimSpacesPrint = removeSpace . printTree
 
 --------------------------------------------------------------------------------
 unifyUserIdent :: UserIdent -> Text
-unifyUserIdent (ExtendIdent _ (ResourceIdent x)) = T.tail (T.init x)
-unifyUserIdent (NormalIdent _ (Ident x))         = x
+unifyUserIdent (ExtendIdent _ (RawIdent x))  = T.tail (T.init x)
+unifyUserIdent (NormalIdent _ (Ident     x)) = x
 
 extractRefNames :: [TableRef] -> [Text]
 extractRefNames [] = []

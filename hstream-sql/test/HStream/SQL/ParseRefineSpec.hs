@@ -2,14 +2,10 @@
 
 module HStream.SQL.ParseRefineSpec where
 
-import qualified Data.Aeson              as J
-import qualified Data.HashMap.Strict     as HM
-import qualified Data.Text               as T
 import           HStream.SQL.AST
 import           HStream.SQL.Exception
 import           HStream.SQL.Parse
 import           Test.Hspec
-import           Test.Hspec.Expectations (Selector)
 
 spec :: Spec
 spec = describe "Create" $ do
@@ -78,8 +74,11 @@ spec = describe "Create" $ do
 
   it "HIP-7" $ do
     parseAndRefine "CREATE STREAM `xs.0.c-a_s0`;" `shouldReturn` RQCreate (RCreate "xs.0.c-a_s0" (RStreamOptions {rRepFactor = 3}))
-    parseAndRefine "CREATE STREAM `_s`;" `shouldThrow` anyParseException
+    parseAndRefine "CREATE VIEW `d.-----0000` AS SELECT a, SUM(a), COUNT(*) FROM `sdsds_-..0001` GROUP BY b EMIT CHANGES;"
+      `shouldReturn` RQCreate (RCreateView "d.-----0000" (RSelect (RSelList [(Left (RExprCol "a" Nothing "a"),"a"),(Right (Unary AggSum (RExprCol "a" Nothing "a")),"SUM(a)"),(Right (Nullary AggCountAll),"COUNT(*)")]) (RFrom [RTableRefSimple "sdsds_-..0001" Nothing]) RWhereEmpty (RGroupBy Nothing "b" Nothing) RHavingEmpty))
+    parseAndRefine "DROP STREAM `xs.0.c-a_s0`;"         `shouldReturn` RQDrop (RDrop RDropStream "xs.0.c-a_s0")
+    parseAndRefine "DROP VIEW `xs.0.c-a_s0` IF EXISTS;" `shouldReturn` RQDrop (RDropIf RDropView "xs.0.c-a_s0")
+    parseAndRefine "CREATE STREAM xs.0.c-a_s0;" `shouldThrow` anyParseException
 
 anyParseException :: Selector SomeSQLException
 anyParseException = const True
-

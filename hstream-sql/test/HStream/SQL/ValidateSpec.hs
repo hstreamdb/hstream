@@ -40,8 +40,8 @@ spec = describe "Validate Basic Data Types" $ do
   it "SString" $ do
     validate (SString "netural term") `shouldSatisfy` isRight
 
-  it "RawColumn" $ do
-    validate (RawColumn "Kaze no Yukue") `shouldSatisfy` isRight
+  it "RawIdent" $ do
+    validate (RawIdent "Kaze no Yukue") `shouldSatisfy` isRight
 
   it "Boolean" $ do
     validate (BoolTrue  mkNothing) `shouldSatisfy` isRight

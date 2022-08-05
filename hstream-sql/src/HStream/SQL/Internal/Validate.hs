@@ -43,7 +43,7 @@ instance Validate PNDouble where
 instance Validate SString where
   validate = return
 
-instance Validate RawColumn where
+instance Validate RawIdent where
   validate = return
 
 instance Validate Boolean where
@@ -575,6 +575,7 @@ instance Validate Explain where
         "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
       CreateOp{}   -> Left $ buildSQLException ParseException pos
         "EXPLAIN can not give any execution plan for CREATE STREAM without a SELECT clause"
+      -- FIXME: not for wildcard
       _            -> Left $ buildSQLException ParseException pos
         "EXPLAIN can not give any execution plan for CREATE CONNECTOR"
 
