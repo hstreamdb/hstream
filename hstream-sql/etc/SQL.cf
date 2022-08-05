@@ -49,39 +49,42 @@ QExplain.     SQL ::= Explain     ";" ;
 QPause.       SQL ::= Pause       ";" ;
 QResume.      SQL ::= Resume      ";" ;
 
-token ResourceIdent letter (letter | digit | '_' | '-' | '.')*;
+token ResourceIdent '`' letter (letter | digit | '_' | '-' | '.')* '`';
+
+ExtendIdent. UserIdent ::= ResourceIdent;
+NormalIdent. UserIdent ::= Ident;
 
 ---- Create Query
 separator StreamOption "," ;
-DCreate.    Create ::= "CREATE" "STREAM" ResourceIdent ;
-CreateOp.   Create ::= "CREATE" "STREAM" ResourceIdent "WITH" "(" [StreamOption] ")" ;
-CreateAs.   Create ::= "CREATE" "STREAM" ResourceIdent "AS" Select ;
-CreateAsOp. Create ::= "CREATE" "STREAM" ResourceIdent "AS" Select "WITH" "(" [StreamOption] ")" ;
+DCreate.    Create ::= "CREATE" "STREAM" UserIdent ;
+CreateOp.   Create ::= "CREATE" "STREAM" UserIdent "WITH" "(" [StreamOption] ")" ;
+CreateAs.   Create ::= "CREATE" "STREAM" UserIdent "AS" Select ;
+CreateAsOp. Create ::= "CREATE" "STREAM" UserIdent "AS" Select "WITH" "(" [StreamOption] ")" ;
 
 OptionRepFactor. StreamOption ::= "REPLICATE" "=" PNInteger ;
 
 separator ConnectorOption "," ;
-CreateSourceConnector.   Create ::= "CREATE" "SOURCE" "CONNECTOR" ResourceIdent "FROM" ResourceIdent "WITH" "(" [ConnectorOption] ")" ;
-CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" ResourceIdent "FROM" ResourceIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnector.     Create ::= "CREATE" "SINK"   "CONNECTOR" ResourceIdent "TO"   ResourceIdent "WITH" "(" [ConnectorOption] ")" ;
-CreateSinkConnectorIf.   Create ::= "CREATE" "SINK"   "CONNECTOR" ResourceIdent "TO"   ResourceIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnector.   Create ::= "CREATE" "SOURCE" "CONNECTOR" UserIdent "FROM" UserIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSourceConnectorIf. Create ::= "CREATE" "SOURCE" "CONNECTOR" UserIdent "FROM" UserIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnector.     Create ::= "CREATE" "SINK"   "CONNECTOR" UserIdent "TO"   UserIdent "WITH" "(" [ConnectorOption] ")" ;
+CreateSinkConnectorIf.   Create ::= "CREATE" "SINK"   "CONNECTOR" UserIdent "TO"   UserIdent "IF" "NOT" "EXIST" "WITH" "(" [ConnectorOption] ")" ;
 
-CreateView. Create ::= "CREATE" "VIEW" ResourceIdent "AS" Select ;
+CreateView. Create ::= "CREATE" "VIEW" UserIdent "AS" Select ;
 
 ConnectorProperty. ConnectorOption ::= String "=" ValueExpr ;
 
 ---- Pause Query
-PauseConnector. Pause ::= "PAUSE" "CONNECTOR" ResourceIdent ;
+PauseConnector. Pause ::= "PAUSE" "CONNECTOR" UserIdent ;
 
 --- Resume Query
-ResumeConnector. Resume ::= "RESUME" "CONNECTOR" ResourceIdent ;
+ResumeConnector. Resume ::= "RESUME" "CONNECTOR" UserIdent ;
 
 ---- Insert Query
 separator Ident     "," ;
 separator ValueExpr "," ;
-DInsert.      Insert ::= "INSERT" "INTO" ResourceIdent "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
-InsertBinary. Insert ::= "INSERT" "INTO" ResourceIdent "VALUES" String ;
-InsertJson.   Insert ::= "INSERT" "INTO" ResourceIdent "VALUES" SString ;
+DInsert.      Insert ::= "INSERT" "INTO" UserIdent "(" [Ident] ")" "VALUES" "(" [ValueExpr] ")" ;
+InsertBinary. Insert ::= "INSERT" "INTO" UserIdent "VALUES" String ;
+InsertJson.   Insert ::= "INSERT" "INTO" UserIdent "VALUES" SString ;
 
 ---- Show Query
 DShow. ShowQ ::= "SHOW" ShowOption ;
@@ -91,8 +94,8 @@ ShowConnectors. ShowOption ::= "CONNECTORS" ;
 ShowViews. ShowOption ::= "VIEWS" ;
 
 --- Drop Query
-DDrop.  Drop ::= "DROP" DropOption ResourceIdent ;
-DropIf. Drop ::= "DROP" DropOption ResourceIdent "IF" "EXISTS" ;
+DDrop.  Drop ::= "DROP" DropOption UserIdent ;
+DropIf. Drop ::= "DROP" DropOption UserIdent "IF" "EXISTS" ;
 
 DropConnector. DropOption ::= "CONNECTOR" ;
 DropStream.    DropOption ::= "STREAM"    ;
@@ -127,7 +130,7 @@ separator TableRef "," ;
 
 TableRefUnion.    TableRef  ::= TableRef "UNION" TableRef1 ;
 TableRefAs.       TableRef1 ::= TableRef2 "AS" Ident ;
-TableRefSimple.   TableRef2 ::= ResourceIdent ;
+TableRefSimple.   TableRef2 ::= UserIdent ;
 TableRefSubquery. TableRef2 ::= Select ;
 
 coercions TableRef 2 ;

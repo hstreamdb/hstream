@@ -20,7 +20,7 @@ import           HStream.SQL.Abs
 import           HStream.SQL.Exception (SomeSQLException (..),
                                         throwSQLException)
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
-                                        trimSpacesPrint)
+                                        trimSpacesPrint, unifyUserIdent)
 import           HStream.SQL.Print     (printTree)
 
 --------------------------------------------------------------------------------
@@ -261,10 +261,10 @@ data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                deriving (Eq, Show)
 type instance RefinedType TableRef = RTableRef
 instance Refine TableRef where
-  refine (TableRefSimple _ (ResourceIdent t)) = RTableRefSimple t Nothing
+  refine (TableRefSimple _ t) = RTableRefSimple (unifyUserIdent t) Nothing
   refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
   refine (TableRefUnion _ ref1 ref2) = RTableRefUnion (refine ref1) (refine ref2) Nothing
-  refine (TableRefAs _ (TableRefSimple _ (ResourceIdent t)) (Ident alias)) = RTableRefSimple t (Just alias)
+  refine (TableRefAs _ (TableRefSimple _ t) (Ident alias)) = RTableRefSimple (unifyUserIdent t) (Just alias)
   refine (TableRefAs _ (TableRefSubquery _ select) (Ident alias)) = RTableRefSubquery (refine select) (Just alias)
   refine (TableRefAs _ (TableRefUnion _ ref1 ref2) (Ident alias)) = RTableRefUnion (refine ref1) (refine ref2) (Just alias)
 
@@ -430,15 +430,15 @@ instance Refine [ConnectorOption] where
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
-  refine (DCreate  _ (ResourceIdent s)) = RCreate s $ refine ([] :: [StreamOption])
-  refine (CreateOp _ (ResourceIdent s) options)  = RCreate s (refine options)
-  refine (CreateAs   _ (ResourceIdent s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
-  refine (CreateAsOp _ (ResourceIdent s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateSourceConnector _ (ResourceIdent s) (ResourceIdent t) options) = RCreateConnector "SOURCE" s t False (refine options)
-  refine (CreateSourceConnectorIf _ (ResourceIdent s) (ResourceIdent t) options) = RCreateConnector "SOURCE" s t True (refine options)
-  refine (CreateSinkConnector _ (ResourceIdent s) (ResourceIdent t) options) = RCreateConnector "SINK" s t False (refine options)
-  refine (CreateSinkConnectorIf _ (ResourceIdent s) (ResourceIdent t) options) = RCreateConnector "SINK" s t True (refine options)
-  refine (CreateView _ (ResourceIdent s) select) = RCreateView s (refine select)
+  refine (DCreate  _ s) = RCreate (unifyUserIdent s) $ refine ([] :: [StreamOption])
+  refine (CreateOp _ s options)  = RCreate (unifyUserIdent s) (refine options)
+  refine (CreateAs   _ s select) = RCreateAs (unifyUserIdent s) (refine select) (refine ([] :: [StreamOption]))
+  refine (CreateAsOp _ s select options) = RCreateAs (unifyUserIdent s) (refine select) (refine options)
+  refine (CreateSourceConnector _ s t options) = RCreateConnector "SOURCE" (unifyUserIdent s) (unifyUserIdent t) False (refine options)
+  refine (CreateSourceConnectorIf _ s t options) = RCreateConnector "SOURCE" (unifyUserIdent s) (unifyUserIdent t) True (refine options)
+  refine (CreateSinkConnector _ s t options) = RCreateConnector "SINK" (unifyUserIdent s) (unifyUserIdent t) False (refine options)
+  refine (CreateSinkConnectorIf _ s t options) = RCreateConnector "SINK" (unifyUserIdent s) (unifyUserIdent t) True (refine options)
+  refine (CreateView _ s select) = RCreateView (unifyUserIdent s) (refine select)
 
 ---- INSERT
 data RInsert = RInsert Text [(FieldName,Constant)]
@@ -447,15 +447,15 @@ data RInsert = RInsert Text [(FieldName,Constant)]
              deriving (Eq, Show)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
-  refine (DInsert _ (ResourceIdent s) fields exprs) = RInsert s $
+  refine (DInsert _ s fields exprs) = RInsert (unifyUserIdent s) $
     zip ((\(Ident f) -> f) <$> fields) (refineConst <$> exprs)
     where
       refineConst expr =
         let (RExprConst _ constant) = refine expr -- Ensured by Validate
          in constant
-  refine (InsertBinary _ (ResourceIdent s) bin) = RInsertBinary s (BSC.pack bin)
-  refine (InsertJson _ (ResourceIdent s) ss) =
-    RInsertJSON s (refine $ ss)
+  refine (InsertBinary _ s bin) = RInsertBinary (unifyUserIdent s) (BSC.pack bin)
+  refine (InsertJson _ s ss) =
+    RInsertJSON (unifyUserIdent s) (refine $ ss)
 
 ---- SHOW
 data RShow
@@ -484,8 +484,8 @@ data RDrop
   | RDropIf RDropOption Text
   deriving (Eq, Show)
 instance Refine Drop where
-  refine (DDrop  _ dropOp (ResourceIdent x)) = RDrop   (refine dropOp) x
-  refine (DropIf _ dropOp (ResourceIdent x)) = RDropIf (refine dropOp) x
+  refine (DDrop  _ dropOp x) = RDrop   (refine dropOp) $ unifyUserIdent x
+  refine (DropIf _ dropOp x) = RDropIf (refine dropOp) $ unifyUserIdent x
 type instance RefinedType Drop = RDrop
 
 data RDropOption
@@ -517,7 +517,7 @@ newtype RPause = RPauseConnector Text
 type instance RefinedType Pause = RPause
 
 instance Refine Pause where
-  refine (PauseConnector _ (ResourceIdent name)) = RPauseConnector name
+  refine (PauseConnector _ name) = RPauseConnector $ unifyUserIdent name
 
 ---- Resume
 newtype RResume = RResumeConnector Text
@@ -526,7 +526,7 @@ newtype RResume = RResumeConnector Text
 type instance RefinedType Resume = RResume
 
 instance Refine Resume where
-  refine (ResumeConnector _ (ResourceIdent name)) = RResumeConnector name
+  refine (ResumeConnector _ name) = RResumeConnector $ unifyUserIdent name
 
 ---- SQL
 data RSQL = RQSelect      RSelect

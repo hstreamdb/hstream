@@ -6,11 +6,13 @@ module HStream.SQL.Extra
   , extractCondRefNames
   , extractRefNameFromExpr
   , trimSpacesPrint
+  , unifyUserIdent
   ) where
 
 import           Data.Char         (isSpace)
 import qualified Data.List         as L
 import           Data.Text         (Text)
+import qualified Data.Text         as T
 import           HStream.SQL.Abs
 import           HStream.SQL.Print (Print, printTree)
 
@@ -30,9 +32,13 @@ trimSpacesPrint = removeSpace . printTree
   where removeSpace = L.filter (not . isSpace)
 
 --------------------------------------------------------------------------------
+unifyUserIdent :: UserIdent -> Text
+unifyUserIdent (ExtendIdent _ (ResourceIdent x)) = T.tail (T.init x)
+unifyUserIdent (NormalIdent _ (Ident x))         = x
+
 extractRefNames :: [TableRef] -> [Text]
 extractRefNames [] = []
-extractRefNames ((TableRefSimple _ (ResourceIdent name)) : xs)  = name : extractRefNames xs
+extractRefNames ((TableRefSimple _ name) : xs)  = unifyUserIdent name : extractRefNames xs
 extractRefNames ((TableRefSubquery _ _) : xs) = extractRefNames xs
 extractRefNames ((TableRefUnion _ ref1 ref2) : xs) = extractRefNames (ref1:ref2:xs)
 extractRefNames ((TableRefAs _ ref (Ident name)) : xs)  = name : extractRefNames (ref : xs)

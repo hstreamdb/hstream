@@ -91,8 +91,8 @@ spec = aroundAll provideHstreamApi $
   runIO setupSigsegvHandler
   runIO $ setLogDeviceDbgLevel C_DBG_ERROR
 
-  source1 <- runIO $ do xs <- newRandomText 20; pure (xs <> "_-xx.024")
-  source2 <- runIO $ do xs <- newRandomText 20; pure (xs <> "_xx-.210")
+  source1 <- runIO $ do xs <- newRandomText 20; pure ("`" <> xs <> "_-xx.024`")
+  source2 <- runIO $ do xs <- newRandomText 20; pure ("`" <> xs <> "_xx-.210`")
 
   let sql = "CREATE STREAM " <> source2 <> " AS SELECT * FROM " <> source1 <> " EMIT CHANGES;"
 

@@ -77,8 +77,8 @@ spec = describe "Create" $ do
     parseAndRefine "DROP VIEW foo IF EXISTS;"      `shouldReturn` RQDrop (RDropIf RDropView      "foo")
 
   it "HIP-7" $ do
-    parseAndRefine "CREATE STREAM xs.0.c-a_s0;" `shouldReturn` RQCreate (RCreate "xs.0.c-a_s0" (RStreamOptions {rRepFactor = 3}))
-    parseAndRefine "CREATE STREAM _s;" `shouldThrow` anyParseException
+    parseAndRefine "CREATE STREAM `xs.0.c-a_s0`;" `shouldReturn` RQCreate (RCreate "xs.0.c-a_s0" (RStreamOptions {rRepFactor = 3}))
+    parseAndRefine "CREATE STREAM `_s`;" `shouldThrow` anyParseException
 
 anyParseException :: Selector SomeSQLException
 anyParseException = const True

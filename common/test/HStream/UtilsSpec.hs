@@ -3,7 +3,8 @@ module HStream.UtilsSpec (spec) where
 import           Control.Concurrent
 import           Control.Monad
 import           Data.Either
-import qualified Data.Set                 as Set
+import qualified Data.Set                  as Set
+import qualified HStream.Server.HStreamApi as API
 import           HStream.Utils
 import           HStream.Utils.Validation
 import           Test.Hspec
@@ -41,3 +42,8 @@ utilsSpec = describe "HStream.Utils" $ do
     checkResourceName "x_-X...."  `shouldBe` Right ()
     checkResourceName "_x"        `shouldSatisfy` isLeft
     checkResourceName "zookeeper" `shouldSatisfy` isLeft
+    checkResourceName "sdsdsds''" `shouldSatisfy` isLeft
+
+  it "validate connector info" $ do
+    let connectorInfo = API.Connector. Just $ pairListToStruct [("name", textToMaybeValue "test_name.....---------42")]
+    checkPB connectorInfo `shouldBe` Right ()
