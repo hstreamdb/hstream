@@ -950,6 +950,9 @@ invalidConsumer SubscribeContext{subAssignment = Assignment{..}, ..} consumer = 
               <- foldM unbindShardWithConsumer (idleShards, shardMap) works
             writeTVar waitingReassignedShards shardsNeedAssign
             writeTVar shard2Consumer newShardMap
+            modifyTVar consumerWorkloads
+              (Set.filter (\ConsumerWorkload{..} ->
+                              cwConsumerName /= consumer))
         let newConsumerCtx = HM.delete consumer ccs
         writeTVar subConsumerContexts newConsumerCtx
       else pure ()
