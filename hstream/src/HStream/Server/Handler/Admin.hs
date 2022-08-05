@@ -4,6 +4,7 @@
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
 
+import           Control.Concurrent               (tryReadMVar)
 import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
@@ -25,7 +26,8 @@ import           Z.Data.CBytes                    (CBytes)
 
 import qualified HStream.Admin.Server.Types       as AT
 import qualified HStream.Admin.Types              as Admin
-import           HStream.Gossip                   (getClusterStatus,
+import           HStream.Gossip                   (GossipContext (clusterReady),
+                                                   getClusterStatus,
                                                    initCluster)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as HC
@@ -240,7 +242,9 @@ runStatus ServerContext{..} = do
 runInit :: ServerContext -> IO Text.Text
 runInit ServerContext{..} = do
   initCluster gossipContext
-  return $ plainResponse "OK"
+  tryReadMVar (clusterReady gossipContext) >>= \case
+    Just _  -> return $ plainResponse "Cluster is ready!"
+    Nothing -> return $ errorResponse "Init signal sent, cluster is not ready yet."
 
 -------------------------------------------------------------------------------
 -- Helpers
