@@ -100,7 +100,7 @@ runCommand HStreamCommand {..} =
     HStreamInit       -> hstreamInit cliConnOpts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _retryTimeout = retryTimeout } = do
+hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _retryTimeout = retryTimeout, _execute = statement } = do
   let addr = SocketAddr _serverHost _serverPort
   availableServers <- newMVar []
   currentServer    <- newMVar addr
@@ -109,9 +109,11 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _ret
   connected <- waitForServerToStart (retryTimeout * 1000000) addr
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
-    Just _  -> showHStream
+    Just _  -> pure ()
   void $ describeCluster ctx addr
-  app ctx
+  if statement == ""
+    then showHStream *> interactiveSQLApp ctx
+    else commandExec ctx statement
   where
     showHStream = putStrLn [r|
       __  _________________  _________    __  ___
@@ -163,8 +165,8 @@ getNodes CliConnOpts{..} =
 
 -- FIXME: Currently, every new command will create a new connection to a server,
 -- and this needs to be optimized. This could be done with a grpc client pool.
-app :: HStreamSqlContext -> IO ()
-app ctx@HStreamSqlContext{..} = do
+interactiveSQLApp :: HStreamSqlContext -> IO ()
+interactiveSQLApp ctx@HStreamSqlContext{..} = do
   putStrLn helpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
