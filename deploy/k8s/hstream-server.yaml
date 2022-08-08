@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: hstream-server-service
+  name: hstream-server
 spec:
   ports:
     - name: server
@@ -39,18 +39,22 @@ spec:
               /usr/local/bin/hstream-server \
                 --config-path /etc/hstream/config.yaml \
                 --host 0.0.0.0 --port 6570 \
+                --internal-port 6571 \
                 --address $(POD_IP) \
+                --seed-nodes "hstream-server-0.hstream-server:6571,hstream-server-1.hstream-server:6571,hstream-server-2.hstream-server:6571" \
                 --server-id $((100 + $ordinal)) \
                 --zkuri zookeeper-0.zookeeper-headless:2181,zookeeper-1.zookeeper-headless:2181,zookeeper-2.zookeeper-headless:2181 \
                 --store-config /etc/logdevice/config.json \
                 --store-admin-host logdevice-admin-server-service \
           ports:
             - containerPort: 6570
+            # Gossip port
+            - containerPort: 6571
           env:
-          - name: POD_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           volumeMounts:
             - name: config
               mountPath: /etc/logdevice
