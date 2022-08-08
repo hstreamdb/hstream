@@ -12,9 +12,10 @@ import           Control.Concurrent               (forkFinally, myThreadId,
                                                    newMVar, readMVar,
                                                    threadDelay, throwTo)
 import           Control.Exception                (finally, handle)
-import           Control.Monad                    (forever, void, (>=>))
+import           Control.Monad                    (forever, void, when, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Char                        (toUpper)
+import qualified Data.Char                        as Char
 import qualified Data.List                        as L
 import qualified Data.Map                         as M
 import           Data.Maybe                       (maybeToList)
@@ -113,7 +114,9 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _ret
   void $ describeCluster ctx addr
   case statement of
     Nothing        -> showHStream *> interactiveSQLApp ctx
-    Just statement -> commandExec ctx statement
+    Just statement -> do
+      when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
+      commandExec ctx statement
   where
     showHStream = putStrLn [r|
       __  _________________  _________    __  ___
