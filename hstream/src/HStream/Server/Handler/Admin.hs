@@ -4,7 +4,7 @@
 
 module HStream.Server.Handler.Admin (adminCommandHandler) where
 
-import           Control.Concurrent               (tryReadMVar)
+import           Control.Concurrent               (readMVar, tryReadMVar)
 import           Control.Monad                    (forM, void)
 import           Data.Aeson                       ((.=))
 import qualified Data.Aeson                       as Aeson
@@ -64,13 +64,14 @@ adminCommandHandler sc@ServerContext{..} req = defaultExceptionHandle $ do
   let args = words (Text.unpack cmd)
   adminCommand <- parseAdminCommand args
   result <- case adminCommand of
-              AT.AdminStatsCommand c        -> runStats scStatsHolder c
-              AT.AdminResetStatsCommand     -> runResetStats scStatsHolder
-              AT.AdminStreamCommand c       -> runStream sc c
-              AT.AdminSubscriptionCommand c -> runSubscription sc c
-              AT.AdminViewCommand c         -> runView sc c
-              AT.AdminStatusCommand         -> runStatus sc
-              AT.AdminInitCommand           -> runInit sc
+    AT.AdminStatsCommand c        -> runStats scStatsHolder c
+    AT.AdminResetStatsCommand     -> runResetStats scStatsHolder
+    AT.AdminStreamCommand c       -> runStream sc c
+    AT.AdminSubscriptionCommand c -> runSubscription sc c
+    AT.AdminViewCommand c         -> runView sc c
+    AT.AdminStatusCommand         -> runStatus sc
+    AT.AdminInitCommand           -> runInit sc
+    AT.AdminCheckReadyCommand     -> runCheckReady sc
   returnResp $ API.AdminCommandResponse {adminCommandResponseResult = result}
 
 handleParseResult :: O.ParserResult a -> IO a
@@ -242,9 +243,13 @@ runStatus ServerContext{..} = do
 runInit :: ServerContext -> IO Text.Text
 runInit ServerContext{..} = do
   initCluster gossipContext
+  return $ plainResponse "Server successfully received init signal"
+
+runCheckReady :: ServerContext -> IO Text.Text
+runCheckReady ServerContext{..} = do
   tryReadMVar (clusterReady gossipContext) >>= \case
-    Just _  -> return $ plainResponse "Cluster is ready!"
-    Nothing -> return $ errorResponse "Init signal sent, cluster is not ready yet."
+    Just _  -> return $ plainResponse "Cluster is ready"
+    Nothing -> return $ errorResponse "Cluster is not ready!"
 
 -------------------------------------------------------------------------------
 -- Helpers

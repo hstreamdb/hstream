@@ -49,6 +49,7 @@ library
     HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.ConnectorTypes
     HStream.Server.Core.Common
     HStream.Server.Exception
     HStream.Server.Handler
@@ -60,7 +61,6 @@ library
     HStream.Server.Persistence.Exception
     HStream.Server.Shard
     HStream.Server.Types
-    HStream.Server.ConnectorTypes
 
   other-modules:
     HStream.Server.Core.Cluster
@@ -80,8 +80,8 @@ library
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Object
-    HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.ShardReader
+    HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.Utils
 
   hs-source-dirs:     src
@@ -106,8 +106,8 @@ library
     , hstream-admin
     , hstream-common
     , hstream-common-stats
-    , hstream-io
     , hstream-gossip
+    , hstream-io
     , hstream-sql
     , hstream-store
     , memory
@@ -189,6 +189,7 @@ executable hstream
   import:           shared-properties
   main-is:          app/client.hs
   build-depends:
+    , aeson
     , ansi-terminal
     , base
     , bytestring
@@ -208,6 +209,7 @@ executable hstream
     , raw-strings-qq
     , text
     , unix
+    , unordered-containers
     , vector
     , Z-Data
     , Z-IO

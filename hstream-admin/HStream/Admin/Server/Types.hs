@@ -8,6 +8,7 @@ import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Options.Applicative       ((<|>))
 import qualified Options.Applicative       as O
+import           Proto3.Suite              (Enumerated (Enumerated))
 import qualified Text.Read                 as Read
 import qualified Z.Data.CBytes             as CB
 import           Z.Data.CBytes             (CBytes)
@@ -16,7 +17,6 @@ import           Z.IO.Network.SocketAddr   (PortNumber)
 import qualified HStream.Logger            as Log
 import qualified HStream.Server.HStreamApi as API
 import qualified HStream.Utils             as U
-import           Proto3.Suite              (Enumerated (Enumerated))
 
 -------------------------------------------------------------------------------
 
@@ -97,6 +97,7 @@ data AdminCommand
   | AdminViewCommand ViewCommand
   | AdminStatusCommand
   | AdminInitCommand
+  | AdminCheckReadyCommand
   deriving (Show)
 
 adminCommandParser :: O.Parser AdminCommand
@@ -108,14 +109,16 @@ adminCommandParser = O.hsubparser
                                     (O.progDesc "Reset all counters to their initial values."))
  <> O.command "stream" (O.info (AdminStreamCommand <$> streamCmdParser)
                                (O.progDesc "Stream command"))
- <> O.command "sub" (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)
-                            (O.progDesc "Subscription command"))
- <> O.command "view" (O.info (AdminViewCommand <$> viewCmdParser)
-                             (O.progDesc "View command"))
+ <> O.command "sub"    (O.info (AdminSubscriptionCommand <$> subscriptionCmdParser)
+                               (O.progDesc "Subscription command"))
+ <> O.command "view"   (O.info (AdminViewCommand <$> viewCmdParser)
+                               (O.progDesc "View command"))
  <> O.command "status" (O.info (pure AdminStatusCommand)
                                (O.progDesc "Get the status of the HServer cluster"))
- <> O.command "init" (O.info (pure AdminInitCommand)
+ <> O.command "init"   (O.info (pure AdminInitCommand)
                                (O.progDesc "Init an HServer cluster"))
+ <> O.command "ready"  (O.info (pure AdminCheckReadyCommand)
+                               (O.progDesc "Check if an HServer cluster is ready"))
   )
 
 -------------------------------------------------------------------------------
