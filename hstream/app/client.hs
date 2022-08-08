@@ -111,9 +111,9 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _ret
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> pure ()
   void $ describeCluster ctx addr
-  if statement == ""
-    then showHStream *> interactiveSQLApp ctx
-    else commandExec ctx statement
+  case statement of
+    Nothing -> showHStream *> interactiveSQLApp ctx
+    Just statement -> commandExec ctx statement
   where
     showHStream = putStrLn [r|
       __  _________________  _________    __  ___
