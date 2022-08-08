@@ -33,8 +33,8 @@ import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
                                                    withGRPCClient)
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified Options.Applicative              as O
-import qualified System.Console.Haskeline         as H
-import           System.Exit                      (exitFailure)
+import qualified System.Console.Repline           as RL
+import           System.Exit                      (exitFailure, exitSuccess)
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
                                                    keyboardSignal)
@@ -193,7 +193,7 @@ interactiveSQLApp ctx@HStreamSqlContext{..} = do
   putStrLn helpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
-  H.runInputT H.defaultSettings loop
+  sqlRepl ctx
   where
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
@@ -201,13 +201,17 @@ interactiveSQLApp ctx@HStreamSqlContext{..} = do
         node:_ -> void $ describeCluster ctx node
       threadDelay $ updateInterval * 1000 * 1000
 
-    loop :: H.InputT IO ()
-    loop = H.withInterrupt . H.handleInterrupt loop $ do
-      H.getInputLine "> " >>= \case
-        Nothing -> pure ()
-        Just str
-          | take 1 (words str) == [":q"] -> pure ()
-          | otherwise -> liftIO (commandExec ctx str) >> loop
+sqlRepl :: HStreamSqlContext -> IO ()
+sqlRepl ctx = RL.evalRepl prompt execSql
+  [] (Just '\\') (Just "{") (RL.Word . const $ pure []) (pure ()) (pure RL.Exit)
+    where
+      prompt x = pure $ case x of
+        RL.MultiLine  -> "\\ "
+        RL.SingleLine -> "> "
+      execSql xs = liftIO $
+        if take 1 (words xs) == [":q"]
+          then exitSuccess
+          else commandExec ctx xs
 
 commandExec :: HStreamSqlContext -> String -> IO ()
 commandExec ctx@HStreamSqlContext{..} xs = case words xs of
@@ -300,6 +304,7 @@ Command
   :h                           To show these help info
   :q                           To exit command line interface
   :help [sql_operation]        To show full usage of sql statement
+  \{                           To enter multi-line mode
 
 SQL STATEMENTS:
   To create a simplest stream:

@@ -208,7 +208,6 @@ executable hstream
     , containers
     , grpc-haskell
     , grpc-haskell-core
-    , haskeline
     , hstream
     , hstream-admin
     , hstream-common
@@ -219,6 +218,7 @@ executable hstream
     , optparse-applicative
     , random
     , raw-strings-qq
+    , repline               >=0.4.2.0
     , text
     , unix
     , unordered-containers
@@ -288,5 +288,5 @@ test-suite hstream-test
     TypeApplications
     UnliftedFFITypes
 
-  build-tool-depends: hspec-discover:hspec-discover ==2.*
+  build-tool-depends: hspec-discover:hspec-discover >=2 && <3
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
