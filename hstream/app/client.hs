@@ -112,7 +112,7 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _ret
     Just _  -> pure ()
   void $ describeCluster ctx addr
   case statement of
-    Nothing -> showHStream *> interactiveSQLApp ctx
+    Nothing        -> showHStream *> interactiveSQLApp ctx
     Just statement -> commandExec ctx statement
   where
     showHStream = putStrLn [r|
