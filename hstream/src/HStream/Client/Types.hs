@@ -15,7 +15,7 @@ data HStreamCommand = HStreamCommand
 data Command
   = HStreamSql HStreamSqlOpts
   | HStreamNodes HStreamNodes
-  | HStreamInit
+  | HStreamInit HStreamInitOpts
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
@@ -23,7 +23,7 @@ commandParser = HStreamCommand
   <*> O.hsubparser
     (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
     <> O.command "nodes" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
-    <> O.command "init"  (O.info (pure HStreamInit)                    (O.progDesc "Init HStream Server Cluster"))
+    <> O.command "init"  (O.info (HStreamInit <$> hstreamInitOptsParser )            (O.progDesc "Init HStream Server Cluster"))
     )
 
 data HStreamSqlContext = HStreamSqlContext
@@ -54,6 +54,12 @@ hstreamNodesParser = O.hsubparser
   <> O.command "status" (O.info (HStreamNodesStatus <$> (O.optional . O.option O.auto) (O.long "id" <> O.help "Specify the id of the node"))
                                 (O.progDesc "Show the status of nodes specified, if not specified show the status of all nodes"))
   )
+
+newtype HStreamInitOpts = HStreamInitOpts { _timeoutSec :: Int }
+
+hstreamInitOptsParser :: O.Parser HStreamInitOpts
+hstreamInitOptsParser = HStreamInitOpts
+ <$> O.option O.auto (O.long "timeout" <> O.metavar "INT" <> O.showDefault <> O.value 5 <> O.help "timeout for the wait of cluster ready")
 
 data CliConnOpts = CliConnOpts
   { _serverHost :: ByteString
