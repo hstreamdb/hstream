@@ -6,7 +6,7 @@
 
 module HStream.Gossip.Start where
 
-import           Control.Concurrent               (MVar, modifyMVar,
+import           Control.Concurrent               (MVar, forkIO, modifyMVar,
                                                    newEmptyMVar, newMVar,
                                                    putMVar, readMVar,
                                                    threadDelay)
@@ -18,7 +18,7 @@ import           Control.Concurrent.STM           (TVar, atomically, modifyTVar,
                                                    stateTVar)
 import           Control.Exception                (Handler (Handler), catches,
                                                    throwIO)
-import           Control.Monad                    (when)
+import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
 import qualified Data.List                        as L
@@ -74,8 +74,9 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
 
 startGossip :: GossipContext -> IO ()
 startGossip gc@GossipContext {..} = do
-  a <- startListeners (I.serverNodeHost serverSelf) gc
-  (isSeed, seeds') <- amIASeed serverSelf seeds
+  seedInfo <- newEmptyMVar
+  a <- startListeners (I.serverNodeHost serverSelf) seedInfo gc
+  (isSeed, seeds') <- readMVar seedInfo
   (if isSeed then Just <$> newTVarIO 0 else return Nothing) >>= putMVar numInited
   atomically $ modifyTVar workers (Map.insert (I.serverNodeId serverSelf) a)
   if isSeed
@@ -106,16 +107,22 @@ bootstrap initialServers gc@GossipContext{..} = flip catches
 
 amIASeed :: I.ServerNode -> [(ByteString, Int)] -> IO (Bool, [(ByteString, Int)])
 amIASeed self@I.ServerNode{..} seeds = do
+  Log.debug . Log.buildString' $ seeds
   let current = (serverNodeHost, fromIntegral serverNodeGossipPort)
-  if current `elem` seeds then return (True, L.delete current seeds) else pingToFoundOut seeds
+  if current `elem` seeds then return (True, L.delete current seeds) else pingToFindOut seeds
   where
-    pingToFoundOut (join@(joinHost, joinPort):rest) = do
+    pingToFindOut (join@(joinHost, joinPort):rest) = do
       GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
         started <- bootstrapPing join client
         case started of
-          Nothing   -> pingToFoundOut rest
-          Just node -> if node == self then return (True, L.delete join seeds) else pingToFoundOut rest
-    pingToFoundOut _ = return (False, seeds)
+          Nothing   -> do
+            Log.debug . Log.buildString $ "I am not " <> show join
+            pingToFindOut rest
+          Just node ->
+            if node == self then Log.debug ("I am a seed: " <> Log.buildString' join)
+                              >> return (True, L.delete join seeds)
+                            else pingToFindOut rest
+    pingToFindOut _ = return (False, seeds)
 
 handleINITEDEvent :: MVar (Maybe (TVar Int)) -> Int -> MVar () -> EventPayload -> IO ()
 handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
@@ -128,12 +135,14 @@ handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
       if x == l then putMVar ready () >> Log.info "All servers have been initialized"
         else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
 
-startListeners ::  ByteString -> GossipContext -> IO (Async ())
-startListeners grpcHost gc@GossipContext {..} = do
+startListeners ::  ByteString -> MVar (Bool, [(ByteString, Int)]) -> GossipContext -> IO (Async ())
+startListeners grpcHost seedInfo gc@GossipContext {..} = do
   let grpcOpts = GRPC.defaultServiceOptions {
       GRPC.serverHost = GRPC.Host grpcHost
     , GRPC.serverPort = GRPC.Port $ fromIntegral $ I.serverNodeGossipPort serverSelf
-    , GRPC.serverOnStarted = Just (Log.debug . Log.buildString $ "Server node " <> show serverSelf <> " started")
+    , GRPC.serverOnStarted = Just $ do
+        void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedInfo
+        Log.debug . Log.buildString $ "Server node " <> show serverSelf <> " started"
     }
   let api = handlers gc
   aynscs@(a1:_) <- mapM async ( API.hstreamGossipServer api grpcOpts

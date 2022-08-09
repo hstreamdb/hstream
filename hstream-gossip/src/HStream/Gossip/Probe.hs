@@ -67,11 +67,12 @@ bootstrapPing (joinHost, joinPort) client = do
                 <> Log.buildInt joinPort
                 <> " returned an unexpected status details" <> Log.buildByteString (unStatusDetails details)
       return Nothing
-    ClientErrorResponse _                   -> do
+    ClientErrorResponse err                   -> do
       Log.debug $ "The server "
                 <> Log.buildByteString joinHost <> ":"
                 <> Log.buildInt joinPort
-                <> " has not been started"
+                <> " has not been started: "
+                <> Log.buildString' err
       return Nothing
 
 ping :: Messages -> GRPC.Client -> IO (Maybe Ack)
