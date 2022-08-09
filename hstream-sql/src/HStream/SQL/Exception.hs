@@ -9,6 +9,7 @@ module HStream.SQL.Exception
   , SomeRuntimeException (..)
   , buildSQLException
   , throwSQLException
+  , getSQLExceptionInfo
   , formatSomeSQLException
   ) where
 
@@ -27,16 +28,18 @@ type Position = BNFC'Position
 -- | The root type of all SQL exceptions, you can catch some SQL exception
 -- by catching this root type.
 data SomeSQLException where
-  ParseException   :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
-  RefineException  :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
-  CodegenException :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
-  GenExecPlanException :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
+  ParseException        :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
+  RefineException       :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
+  CodegenException      :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
+  GenExecPlanException  :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
+  UnclosedStmtException :: HasCallStack => SomeSQLExceptionInfo -> SomeSQLException
 
 instance Show SomeSQLException where
-  show (ParseException info)   = "ParseException at "   ++ show info ++ "\n" ++ prettyCallStack callStack
-  show (RefineException info)  = "RefineException at "  ++ show info ++ "\n" ++ prettyCallStack callStack
-  show (CodegenException info) = "CodegenException at " ++ show info ++ "\n" ++ prettyCallStack callStack
-  show (GenExecPlanException info) = "GenExecPlanException at " ++ show info ++ "\n" ++ prettyCallStack callStack
+  show (ParseException        info) = "ParseException at "       ++ show info ++ "\n" ++ prettyCallStack callStack
+  show (RefineException       info) = "RefineException at "      ++ show info ++ "\n" ++ prettyCallStack callStack
+  show (CodegenException      info) = "CodegenException at "     ++ show info ++ "\n" ++ prettyCallStack callStack
+  show (GenExecPlanException  info) = "GenExecPlanException at " ++ show info ++ "\n" ++ prettyCallStack callStack
+  show (UnclosedStmtException info) = "Expected a \";\" at the end of a statement, exception at " ++ show info ++ "\n" ++ prettyCallStack callStack
 
 instance Exception SomeSQLException
 
@@ -45,6 +48,7 @@ formatSomeSQLException (ParseException   info) = "Parse exception " ++ formatPar
 formatSomeSQLException (RefineException  info) = "Refine exception at " ++ show info
 formatSomeSQLException (CodegenException info) = "Codegen exception at " ++ show info
 formatSomeSQLException (GenExecPlanException info) = "Generate execution plan exception at " ++ show info
+formatSomeSQLException (UnclosedStmtException info) = "Expected a \";\" at the end of a statement, exception at " ++ show info
 
 formatParseExceptionInfo :: SomeSQLExceptionInfo -> String
 formatParseExceptionInfo SomeSQLExceptionInfo{..} =
@@ -86,6 +90,13 @@ throwSQLException :: (SomeSQLExceptionInfo -> SomeSQLException)
                   -> a
 throwSQLException exceptionType exceptionPos exceptionMsg =
   throw $ buildSQLException exceptionType exceptionPos exceptionMsg
+
+getSQLExceptionInfo :: SomeSQLException -> SomeSQLExceptionInfo
+getSQLExceptionInfo (ParseException        info) = info
+getSQLExceptionInfo (RefineException       info) = info
+getSQLExceptionInfo (CodegenException      info) = info
+getSQLExceptionInfo (GenExecPlanException  info) = info
+getSQLExceptionInfo (UnclosedStmtException info) = info
 
 --------------------------------------------------------------------------------
 data SomeRuntimeException = SomeRuntimeException
