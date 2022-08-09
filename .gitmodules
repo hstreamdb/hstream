@@ -16,3 +16,6 @@
 [submodule "external/hs-grpc"]
 	path = external/hs-grpc
 	url = git@github.com:4eUeP/hs-grpc.git
+[submodule "external/repline"]
+	path = external/repline
+	url = git@github.com:hstreamdb/repline.git

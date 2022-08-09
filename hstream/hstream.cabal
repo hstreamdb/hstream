@@ -218,7 +218,7 @@ executable hstream
     , optparse-applicative
     , random
     , raw-strings-qq
-    , repline               >=0.4.2.0
+    , repline
     , text
     , unix
     , unordered-containers

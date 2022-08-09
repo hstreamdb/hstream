@@ -10,11 +10,14 @@ packages:
   hstream-gossip
   hstream-diffflow
 
+  external/repline/repline.cabal
+
   external/hs-grpc/server/hs-grpc-server.cabal
   external/gRPC-haskell
   external/gRPC-haskell/core
   external/proto3-wire/proto3-wire.cabal
   external/proto3-suite/proto3-suite.cabal
+
   external/hsthrift/common/util/fb-util.cabal
   external/hsthrift/common/github/fb-stubs.cabal
   external/hsthrift/common/mangle/mangle.cabal
@@ -52,6 +55,9 @@ package proto3-wire
   tests: false
 
 package proto3-suite
+  tests: false
+
+package repline
   tests: false
 
 constraints:

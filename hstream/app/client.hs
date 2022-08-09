@@ -106,21 +106,21 @@ runCommand HStreamCommand {..} =
     HStreamInit opts  -> hstreamInit cliConnOpts opts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
+hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _retryTimeout = retryTimeout, _execute = statement, _historyFile = historyFile } = do
   let addr = SocketAddr _serverHost _serverPort
   availableServers <- newMVar []
   currentServer    <- newMVar addr
   let ctx = HStreamSqlContext {..}
   setupSigsegvHandler
-  connected <- waitForServerToStart (_retryTimeout * 1000000) addr
+  connected <- waitForServerToStart (retryTimeout * 1000000) addr
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> pure ()
   void $ describeCluster ctx addr
-  case _execute of
-    Nothing        -> showHStream *> interactiveSQLApp ctx
+  case statement of
+    Nothing        -> showHStream >> interactiveSQLApp ctx historyFile
     Just statement -> do
-      when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
+      when (Char.isSpace `all` statement) $ putStrLn "Empty statement" >> exitFailure
       commandExec ctx statement
   where
     showHStream = putStrLn [r|
@@ -188,12 +188,12 @@ getNodes CliConnOpts{..} =
 
 -- FIXME: Currently, every new command will create a new connection to a server,
 -- and this needs to be optimized. This could be done with a grpc client pool.
-interactiveSQLApp :: HStreamSqlContext -> IO ()
-interactiveSQLApp ctx@HStreamSqlContext{..} = do
+interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
+interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
   putStrLn helpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
-  sqlRepl ctx
+  sqlRepl ctx historyFile
   where
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
@@ -201,8 +201,8 @@ interactiveSQLApp ctx@HStreamSqlContext{..} = do
         node:_ -> void $ describeCluster ctx node
       threadDelay $ updateInterval * 1000 * 1000
 
-sqlRepl :: HStreamSqlContext -> IO ()
-sqlRepl ctx = RL.evalRepl prompt execSql
+sqlRepl :: HStreamSqlContext -> Maybe FilePath -> IO ()
+sqlRepl ctx historyFile = RL.evalRepl' historyFile prompt execSql
   [] (Just '\\') (Just "{") (RL.Word . const $ pure []) (pure ()) (pure RL.Exit)
     where
       prompt x = pure $ case x of
