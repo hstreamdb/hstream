@@ -28,6 +28,10 @@ flag ReleaseBuild
   description:
     Enables all optimisations, leads to slower build time and better performance
 
+flag hstream_use_hs_grpc
+  default:     False
+  description: Use hs-grpc-server instead
+
 common shared-properties
   ghc-options:
     -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -54,6 +58,7 @@ library
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
+    HStream.Server.HsGrpcHandler
     HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.InternalHandler
@@ -103,7 +108,9 @@ library
     , grpc-haskell-core
     , hashable
     , haxl
+    , hs-grpc-server
     , hstream-admin
+    , hstream-api-protolens
     , hstream-common
     , hstream-common-stats
     , hstream-gossip
@@ -161,8 +168,10 @@ executable hstream-server
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
+    , hs-grpc-server
     , hstream
     , hstream-admin
+    , hstream-api-protolens
     , hstream-common
     , hstream-common-stats
     , hstream-gossip
@@ -180,6 +189,9 @@ executable hstream-server
     , Z-Data
     , Z-IO
     , zoovisitor
+
+  if flag(hstream_use_hs_grpc)
+    cpp-options: -DHStreamUseHsGrpc
 
   default-language: Haskell2010
   ghc-options:

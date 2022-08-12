@@ -13,3 +13,6 @@
 [submodule "external/protocol"]
 	path = external/protocol
 	url = git@github.com:hstreamdb/protocol.git
+[submodule "external/hs-grpc"]
+	path = external/hs-grpc
+	url = git@github.com:4eUeP/hs-grpc.git
