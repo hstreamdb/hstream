@@ -101,6 +101,15 @@ def find_free_port():
         return s.getsockname()[1]
 
 
+def container_run(container_bin, image, env_cmd):
+    out = run_sh(
+        f"{container_bin} run -t --rm {image} bash -c '{env_cmd}'",
+        stdout=subprocess.PIPE,
+    )
+    result = out.stdout.decode().strip()
+    return result
+
+
 def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
     assert isinstance(sh, str)
     args = ["bash", "-c", sh]
@@ -440,7 +449,12 @@ def dev_env(
     Path(f"{GOCACHE}").mkdir(parents=True, exist_ok=True)
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
-    user_path = f"/opt/ghc/bin:/opt/cabal/bin:/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
+    try:
+        container_path = container_run(container_bin, image, "echo $PATH")
+    except Exception:
+        logwarn("Get container env failed!")
+        container_path = ""
+    user_path = f"/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:${container_path}"
     container_name = (
         container_name or f"{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}"
     )

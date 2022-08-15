@@ -58,6 +58,7 @@ jobs:
 
       - name: set env
         run: |
+          docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
           echo "CABAL=python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
           echo "SHELL=python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
 
