@@ -14,8 +14,10 @@ import           Control.Concurrent               (forkFinally, myThreadId,
 import           Control.Exception                (finally, handle)
 import           Control.Monad                    (forever, void, when, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
+import           Data.Aeson                       as Aeson
 import           Data.Char                        (toUpper)
 import qualified Data.Char                        as Char
+import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import qualified Data.Map                         as M
 import           Data.Maybe                       (maybeToList)
@@ -56,6 +58,7 @@ import           HStream.Client.Internal          (callDeleteSubscription,
 import           HStream.Client.Types             (CliConnOpts (..),
                                                    Command (..),
                                                    HStreamCommand (..),
+                                                   HStreamInitOpts (..),
                                                    HStreamNodes (..),
                                                    HStreamSqlContext (..),
                                                    HStreamSqlOpts (..),
@@ -80,11 +83,13 @@ import           HStream.SQL.Exception            (SomeSQLException,
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (HStreamClientApi,
                                                    SocketAddr (..),
+                                                   fillWithJsonString',
                                                    formatCommandQueryResponse,
                                                    formatResult, genUnique,
                                                    mkGRPCClientConf,
                                                    serverNodeToSocketAddr,
                                                    setupSigsegvHandler)
+import           System.Timeout                   (timeout)
 
 main :: IO ()
 main = runCommand =<<
@@ -98,21 +103,21 @@ runCommand HStreamCommand {..} =
   case cliCommand of
     HStreamSql opts   -> hstreamSQL cliConnOpts opts
     HStreamNodes opts -> hstreamNodes cliConnOpts opts
-    HStreamInit       -> hstreamInit cliConnOpts
+    HStreamInit opts  -> hstreamInit cliConnOpts opts
 
 hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, _retryTimeout = retryTimeout, _execute = statement } = do
+hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
   let addr = SocketAddr _serverHost _serverPort
   availableServers <- newMVar []
   currentServer    <- newMVar addr
   let ctx = HStreamSqlContext {..}
   setupSigsegvHandler
-  connected <- waitForServerToStart (retryTimeout * 1000000) addr
+  connected <- waitForServerToStart (_retryTimeout * 1000000) addr
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> pure ()
   void $ describeCluster ctx addr
-  case statement of
+  case _execute of
     Nothing        -> showHStream *> interactiveSQLApp ctx
     Just statement -> do
       when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
@@ -144,13 +149,28 @@ hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =
         Nothing                 -> False
 
 -- TODO: Init should have it's own rpc call
-hstreamInit :: CliConnOpts -> IO ()
-hstreamInit CliConnOpts{..} = do
-  withGRPCClient (mkGRPCClientConf $ SocketAddr _serverHost _serverPort) $ \client -> do
-    hstreamApiClient client
-    >>= Admin.sendAdminCommand "server init"
-    >>= Admin.formatCommandResponse
-    >>= putStrLn
+hstreamInit :: CliConnOpts -> HStreamInitOpts -> IO ()
+hstreamInit CliConnOpts{..} HStreamInitOpts{..} = do
+  ready <- timeout (_timeoutSec * 1000000) $
+    withGRPCClient (mkGRPCClientConf $ SocketAddr _serverHost _serverPort) $ \client -> do
+      api <- hstreamApiClient client
+      Admin.sendAdminCommand "server init" api >>= Admin.formatCommandResponse >>= putStrLn
+      loop api
+  case ready of
+    Just s  -> putStrLn s
+    Nothing -> putStrLn "Time out waiting for cluster ready" >> exitFailure
+  where
+    loop api = do
+      threadDelay 1000000
+      resp <- Admin.sendAdminCommand "server ready" api
+      case Aeson.eitherDecodeStrict (T.encodeUtf8 resp) of
+        Left errmsg              -> pure $ "Decode json error: " <> errmsg
+        Right (Aeson.Object obj) -> do
+          let m_type = HM.lookup "type" obj
+          case m_type of
+            Just (Aeson.String "plain") -> pure $ fillWithJsonString' "content" obj
+            _                           -> loop api
+        _ -> loop api
 
 getNodes :: CliConnOpts -> IO DescribeClusterResponse
 getNodes CliConnOpts{..} =

@@ -14,9 +14,12 @@ thrift::
 
 grpc:: grpc-cpp grpc-hs
 
-grpc-hs: grpc-cpp
+grpc-hs-deps::
+	(cd ~ && command -v proto-lens-protoc || cabal install proto-lens-protoc)
 	($(CABAL) build proto3-suite && mkdir -p ~/.cabal/bin && \
 		$(CABAL) exec which compile-proto-file_hstream | tail -1 | xargs -I{} cp {} $(PROTO_COMPILE_HS))
+
+grpc-hs: grpc-hs-deps grpc-cpp
 	(cd common/api/protos && $(PROTO_COMPILE_HS) \
 		--includeDir /usr/local/include \
 		--proto google/protobuf/struct.proto \

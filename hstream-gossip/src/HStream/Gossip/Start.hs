@@ -16,8 +16,7 @@ import           Control.Concurrent.STM           (TVar, atomically, modifyTVar,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
-import           Control.Exception                (Handler (Handler), catches,
-                                                   throwIO)
+import           Control.Exception                (handle, throwIO, try)
 import           Control.Monad                    (void, when)
 import           Data.ByteString                  (ByteString)
 import qualified Data.ByteString.Lazy             as BL
@@ -76,12 +75,17 @@ startGossip :: GossipContext -> IO ()
 startGossip gc@GossipContext {..} = do
   seedInfo <- newEmptyMVar
   a <- startListeners (I.serverNodeHost serverSelf) seedInfo gc
-  (isSeed, seeds') <- readMVar seedInfo
-  (if isSeed then Just <$> newTVarIO 0 else return Nothing) >>= putMVar numInited
+  (isSeed, seeds', wasIDead) <- readMVar seedInfo
   atomically $ modifyTVar workers (Map.insert (I.serverNodeId serverSelf) a)
-  if isSeed
-    then threadDelay 1000000 >> bootstrap seeds' gc
-    else joinCluster serverSelf seeds' >>= initGossip gc >>  putMVar clusterReady ()
+  if isSeed && not wasIDead
+    then newTVarIO 0 >>= putMVar numInited . Just
+      >> threadDelay 1000000
+      >> bootstrap seeds' gc
+    else putMVar numInited Nothing
+      >> joinCluster serverSelf seeds'
+     >>= initGossip gc
+      >> putMVar clusterInited Gossip
+      >> putMVar clusterReady ()
 
 --------------------------------------------------------------------------------
 
@@ -91,38 +95,37 @@ bootstrap [] GossipContext{..} = do
   putMVar clusterInited Gossip
   putMVar clusterReady ()
   Log.info "All servers have been initialized"
-bootstrap initialServers gc@GossipContext{..} = flip catches
-  [ Handler (\(_ :: ClusterInitedErr) -> do
+bootstrap initialServers gc@GossipContext{..} = handle
+  (\(_ :: ClusterInitedErr) -> do
       Log.warning "Received multiple init signals in the cluster, this one will be ignored"
       return ())
-  , Handler (\(_ :: ClusterReadyErr) -> do
-      Log.warning "Dead seed node detected, will send join request instead"
-      joinCluster serverSelf seeds >>= initGossip gc >> putMVar clusterReady ())
-  ] $ do
+  $ do
   readMVar clusterInited >>= \case
     User ->  do
       members <- waitForServersToStart initialServers
       broadCastUserEvent gc eventNameINIT (BL.toStrict $ PT.toLazyByteString (API.ServerList $ V.fromList (serverSelf : members)))
     _ -> return ()
 
-amIASeed :: I.ServerNode -> [(ByteString, Int)] -> IO (Bool, [(ByteString, Int)])
+amIASeed :: I.ServerNode -> [(ByteString, Int)] -> IO (Bool, [(ByteString, Int)], Bool)
 amIASeed self@I.ServerNode{..} seeds = do
-  Log.debug . Log.buildString' $ seeds
-  let current = (serverNodeHost, fromIntegral serverNodeGossipPort)
-  if current `elem` seeds then return (True, L.delete current seeds) else pingToFindOut seeds
+    Log.debug . Log.buildString' $ seeds
+    if current `elem` seeds then return (True, L.delete current seeds, False) else pingToFindOut (False, seeds, False) seeds
   where
-    pingToFindOut (join@(joinHost, joinPort):rest) = do
+    current = (serverNodeHost, fromIntegral serverNodeGossipPort)
+    pingToFindOut old@(isSeed, oldSeeds, wasDead) (join@(joinHost, joinPort):rest) = do
       GRPC.withGRPCClient (mkGRPCClientConf' joinHost joinPort) $ \client -> do
-        started <- bootstrapPing join client
-        case started of
-          Nothing   -> do
-            Log.debug . Log.buildString $ "I am not " <> show join
-            pingToFindOut rest
-          Just node ->
-            if node == self then Log.debug ("I am a seed: " <> Log.buildString' join)
-                              >> return (True, L.delete join seeds)
-                            else pingToFindOut rest
-    pingToFindOut _ = return (False, seeds)
+        started <- try (bootstrapPing join client)
+        new <- case started of
+            Right Nothing     -> do
+              Log.debug . Log.buildString $ "I am not " <> show join
+              return old
+            Right (Just node) -> if node == self then do
+              Log.debug ("I am a seed: " <> Log.buildString' join)
+              return (True, L.delete join oldSeeds, wasDead)
+                                                 else return old
+            Left (_ :: ClusterReadyErr) -> return (isSeed, oldSeeds, True)
+        pingToFindOut new rest
+    pingToFindOut old _ = return old
 
 handleINITEDEvent :: MVar (Maybe (TVar Int)) -> Int -> MVar () -> EventPayload -> IO ()
 handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
@@ -135,7 +138,7 @@ handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
       if x == l then putMVar ready () >> Log.info "All servers have been initialized"
         else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
 
-startListeners ::  ByteString -> MVar (Bool, [(ByteString, Int)]) -> GossipContext -> IO (Async ())
+startListeners ::  ByteString -> MVar (Bool, [(ByteString, Int)], Bool) -> GossipContext -> IO (Async ())
 startListeners grpcHost seedInfo gc@GossipContext {..} = do
   let grpcOpts = GRPC.defaultServiceOptions {
       GRPC.serverHost = GRPC.Host grpcHost

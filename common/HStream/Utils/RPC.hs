@@ -34,7 +34,7 @@ module HStream.Utils.RPC
 import           Control.Monad
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.ByteString                  (ByteString)
-import qualified Data.ByteString.Char8            as BSC
+import           Data.String                      (IsString)
 import           Data.Swagger                     (ToSchema)
 import qualified Data.Vector                      as V
 import           GHC.Generics                     (Generic)
@@ -46,7 +46,6 @@ import           Z.Data.JSON                      (JSON)
 import           Z.IO.Time                        (SystemTime (..),
                                                    getSystemTime')
 
-import           Data.String                      (IsString)
 import           HStream.Server.HStreamApi
 import           HStream.ThirdParty.Protobuf      (Struct, Timestamp (..))
 
@@ -116,7 +115,7 @@ getServerResp result = do
     ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return x
     ClientNormalResponse _resp _meta1 _meta2 _status _details -> do
       error $ "Impossible happened..." <> show _status
-    ClientErrorResponse err -> ioError . userError $ "Server error happened: " <> show err
+    ClientErrorResponse err -> ioError . userError $ "Server error: " <> show err
 {-# INLINE getServerResp #-}
 
 getServerRespPure :: ClientResult 'Normal a -> Either String a

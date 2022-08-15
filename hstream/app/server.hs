@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -13,6 +14,7 @@ import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Monad                    (forM_, void, when)
 import           Data.ByteString                  (ByteString)
+import qualified Data.ByteString.Short            as BS (toShort)
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
@@ -52,6 +54,11 @@ import           HStream.Server.Types             (ServerContext (..),
 import qualified HStream.Store.Logger             as Log
 import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
                                                    setupSigsegvHandler)
+
+#ifdef HStreamUseHsGrpc
+import qualified HsGrpc.Server                    as HsGrpc
+import qualified HStream.Server.HsGrpcHandler     as HsGrpc
+#endif
 
 main :: IO ()
 main = getConfig >>= app
@@ -120,6 +127,7 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
                <> "address: " <> Log.buildText listenerAddress <> ", "
                <> "port: " <> Log.buildInt listenerPort
       forkIO $ do
+        -- TODO: support HStreamUseHsGrpc
         let listenerOnStarted = Log.info $ "Extra listener is started on port "
                                         <> Log.buildInt listenerPort
         let grpcOpts' = grpcOpts { GRPC.serverPort = GRPC.Port $ fromIntegral listenerPort
@@ -127,9 +135,18 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
                                  }
         api <- handlers sc{scAdvertisedListenersKey = Just key}
         hstreamApiServer api grpcOpts'
-
+#ifdef HStreamUseHsGrpc
+  Log.warning "Starting server with a still in development lib hs-grpc-server!"
+  let serverOptions = HsGrpc.ServerOptions { HsGrpc.serverHost = BS.toShort host
+                                           , HsGrpc.serverPort = fromIntegral port
+                                           , HsGrpc.serverParallelism = 0
+                                           }
+  server <- HsGrpc.newAsioServer serverOptions
+  HsGrpc.runAsioGrpc server (HsGrpc.handlers sc)
+#else
   api <- handlers sc
   hstreamApiServer api grpcOpts
+#endif
 
 --------------------------------------------------------------------------------
 

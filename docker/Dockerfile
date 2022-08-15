@@ -8,6 +8,9 @@ RUN cabal update && \
     cd /hstream && make && \
     cabal build --flags "${BUILD_TYPE}" all && \
     cabal install --flags "${BUILD_TYPE}" hstream hstream-admin hstream-store && \
+    cabal install --flags "${BUILD_TYPE}" \
+      --constraint="hstream +hstream_use_hs_grpc" \
+      --program-suffix="-sid" hstream && \
     rm -rf /hstream
 
 # ------------------------------------------------------------------------------
@@ -64,6 +67,7 @@ COPY --from=hstreamdb/logdevice:latest /usr/local/bin/logdeviced \
 COPY --from=hstreamdb/logdevice /logdevice/common/test/ssl_certs/ /logdevice/common/test/ssl_certs/
 
 COPY --from=builder /root/.cabal/bin/hstream-server \
+                    /root/.cabal/bin/hstream-server-sid \
                     /root/.cabal/bin/hstream \
                     /root/.cabal/bin/hadmin \
                     /root/.cabal/bin/hstore-bench-writter \
