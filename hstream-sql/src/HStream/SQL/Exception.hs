@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.SQL.Exception
   ( Position
@@ -10,9 +11,10 @@ module HStream.SQL.Exception
   , buildSQLException
   , throwSQLException
   , formatSomeSQLException
+  , isEOF
   ) where
 
-import           Control.Exception (Exception, throw)
+import           Control.Exception (Exception, throw, try)
 import           GHC.Stack         (CallStack, HasCallStack, callStack,
                                     prettyCallStack)
 import           HStream.SQL.Abs   (BNFC'Position)
@@ -86,6 +88,16 @@ throwSQLException :: (SomeSQLExceptionInfo -> SomeSQLException)
                   -> a
 throwSQLException exceptionType exceptionPos exceptionMsg =
   throw $ buildSQLException exceptionType exceptionPos exceptionMsg
+
+isEOF :: SomeSQLException -> Bool
+isEOF xs =
+  case x of
+    Right _ -> False
+    Left e  -> case e of
+      ParseException info ->
+        let SomeSQLExceptionInfo _ msg _ = info in
+          msg == "syntax error at end of file"
+      _ -> False
 
 --------------------------------------------------------------------------------
 data SomeRuntimeException = SomeRuntimeException

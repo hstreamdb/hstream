@@ -121,7 +121,7 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. }
     Nothing        -> showHStream *> interactiveSQLApp ctx
     Just statement -> do
       when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
-      commandExec ctx statement
+      commandExec False ctx statement
   where
     showHStream = putStrLn [r|
       __  _________________  _________    __  ___
@@ -207,10 +207,10 @@ interactiveSQLApp ctx@HStreamSqlContext{..} = do
         Nothing -> pure ()
         Just str
           | take 1 (words str) == [":q"] -> pure ()
-          | otherwise -> liftIO (commandExec ctx str) >> loop
+          | otherwise -> liftIO (commandExec True ctx str) >> loop
 
-commandExec :: HStreamSqlContext -> String -> IO ()
-commandExec ctx@HStreamSqlContext{..} xs = case words xs of
+commandExec :: HStreamSqlContext -> Bool -> String -> IO ()
+commandExec ctx@HStreamSqlContext{..} interactive xs = case words xs of
   [] -> return ()
 
   -- The Following commands are for testing only
@@ -225,39 +225,47 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
+
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
-    (parseAndRefine . T.pack) xs >>= \case
-      RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
-      RQCreate (RCreateAs stream _ rOptions) ->
-        execute_ ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
-      rSql' -> hstreamCodegen rSql' >>= \case
-        CreatePlan sName rFac
-          -> execute_ ctx $ createStream sName rFac
-        ShowPlan showObj
-          -> executeShowPlan ctx showObj
-        TerminatePlan termSel
-          -> execute_ ctx $ terminateQueries termSel
-        DropPlan checkIfExists dropObj
-          -> execute_ ctx $ dropAction checkIfExists dropObj
-        InsertPlan sName insertType payload
-          -> do
-            result <- execute ctx $ listShards sName
-            case result of
-              Just (API.ListShardsResponse shards) -> do
-                let API.Shard{..}:_ = V.toList shards
-                execute_ ctx $ insertIntoStream sName shardShardId insertType payload
-              Nothing -> return ()
-        ConnectorWritePlan name -> do
-          addr <- readMVar currentServer
-          lookupConnector ctx addr name >>= \case
-            Nothing -> putStrLn "lookupConnector failed"
-            Just node -> do
-              withGRPCClient (mkGRPCClientConf (serverNodeToSocketAddr node))
+    x <- try @SomeSQLException $ (parseAndRefine . T.pack) xs
+    case x of
+      Left err ->
+        if interactive && isEOF err
+          then putStr "| " >> getLine >>= \line -> commandExec ctx True (xs <> line)
+          else throw err
+      Right ok ->
+        case ok of
+          RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
+          RQCreate (RCreateAs stream _ rOptions) ->
+            execute_ ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
+          rSql' -> hstreamCodegen rSql' >>= \case
+            CreatePlan sName rFac
+              -> execute_ ctx $ createStream sName rFac
+            ShowPlan showObj
+              -> executeShowPlan ctx showObj
+            TerminatePlan termSel
+              -> execute_ ctx $ terminateQueries termSel
+            DropPlan checkIfExists dropObj
+              -> execute_ ctx $ dropAction checkIfExists dropObj
+            InsertPlan sName insertType payload
+              -> do
+                result <- execute ctx $ listShards sName
+                case result of
+                  Just (API.ListShardsResponse shards) -> do
+                    let API.Shard{..}:_ = V.toList shards
+                    execute_ ctx $ insertIntoStream sName shardShardId insertType payload
+                  Nothing -> return ()
+            ConnectorWritePlan name -> do
+              addr <- readMVar currentServer
+              lookupConnector ctx addr name >>= \case
+                Nothing -> putStrLn "lookupConnector failed"
+                Just node -> do
+                  withGRPCClient (mkGRPCClientConf (serverNodeToSocketAddr node))
+                    (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
+            _ -> do
+              addr <- readMVar currentServer
+              withGRPCClient (mkGRPCClientConf addr)
                 (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
-        _ -> do
-          addr <- readMVar currentServer
-          withGRPCClient (mkGRPCClientConf addr)
-            (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
 
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
