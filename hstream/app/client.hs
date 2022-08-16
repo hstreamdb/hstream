@@ -12,7 +12,7 @@ module Main where
 import           Control.Concurrent               (forkFinally, myThreadId,
                                                    newMVar, readMVar,
                                                    threadDelay, throwTo)
-import           Control.Exception                (finally, handle, throw, try)
+import           Control.Exception                (finally, handle, try)
 import           Control.Monad                    (forever, void, when, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       as Aeson
@@ -211,7 +211,9 @@ interactiveSQLApp ctx@HStreamSqlContext{..} = do
           | take 1 (words str) == [":q"] -> pure ()
           | otherwise -> do
               str <- readToSQL $ T.pack str
-              liftIO (commandExec ctx str) >> loop
+              case str of
+                Nothing  -> loop
+                Just str -> liftIO (commandExec ctx str) >> loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
 commandExec ctx@HStreamSqlContext{..} xs = case words xs of
@@ -265,7 +267,7 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
           withGRPCClient (mkGRPCClientConf addr)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
 
-readToSQL :: T.Text -> H.InputT IO String
+readToSQL :: T.Text -> H.InputT IO (Maybe String)
 readToSQL acc = do
     x <- liftIO $ try @SomeSQLException $ parseAndRefine acc
     case x of
@@ -275,8 +277,10 @@ readToSQL acc = do
               H.outputStr "| "
               line <- liftIO $ T.getLine
               readToSQL $ acc <> " " <> line
-            else throw err
-      Right _ -> pure $ T.unpack acc
+            else do
+              H.outputStrLn . formatSomeSQLException $ err
+              pure Nothing
+      Right _ -> pure . Just $ T.unpack acc
 
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do
