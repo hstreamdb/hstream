@@ -101,6 +101,9 @@ isEOF xs =
         msg == "syntax error at end of file"
     _ -> False
 
+eofErrMsg :: String
+eofErrMsg = "syntax error at end of file"
+
 --------------------------------------------------------------------------------
 data SomeRuntimeException = SomeRuntimeException
   { runtimeExceptionMessage   :: String
