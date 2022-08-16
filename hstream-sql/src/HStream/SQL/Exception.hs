@@ -53,7 +53,11 @@ formatParseExceptionInfo SomeSQLExceptionInfo{..} =
   case words sqlExceptionMessage of
     "syntax" : "error" : "at" : "line" : x : "column" : y : ss ->
       "at <line " ++ x ++ "column " ++ y ++ ">: syntax error " ++ unwords ss ++ "."
-    _ -> posInfo ++ sqlExceptionMessage ++ "."
+    _ ->
+      let detailedSqlExceptionMessage = if sqlExceptionMessage /= eofErrMsg
+            then sqlExceptionMessage
+            else sqlExceptionMessage <> ": expected a \";\" at the end of a statement"
+      in posInfo ++ detailedSqlExceptionMessage ++ "."
   where
     posInfo = case sqlExceptionPosition of
         Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"

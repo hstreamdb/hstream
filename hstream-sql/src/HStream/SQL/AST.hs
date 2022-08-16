@@ -8,7 +8,6 @@ module HStream.SQL.AST where
 import qualified Data.Aeson            as Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
-import           Data.Functor
 import qualified Data.HashMap.Strict   as HM
 import           Data.Kind             (Type)
 import           Data.Text             (Text)
