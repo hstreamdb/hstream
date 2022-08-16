@@ -98,7 +98,7 @@ isEOF xs =
   case xs of
     ParseException info ->
       let SomeSQLExceptionInfo _ msg _ = info in
-        msg == "syntax error at end of file"
+        msg == eofErrMsg
     _ -> False
 
 eofErrMsg :: String
