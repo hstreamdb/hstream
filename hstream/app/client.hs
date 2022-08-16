@@ -5,13 +5,14 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Main where
 
 import           Control.Concurrent               (forkFinally, myThreadId,
                                                    newMVar, readMVar,
                                                    threadDelay, throwTo)
-import           Control.Exception                (finally, handle)
+import           Control.Exception                (finally, handle, try)
 import           Control.Monad                    (forever, void, when, (>=>))
 import           Control.Monad.IO.Class           (liftIO)
 import           Data.Aeson                       as Aeson
@@ -79,7 +80,8 @@ import           HStream.SQL                      (HStreamPlan (..),
                                                    parseAndRefine,
                                                    pattern ConnectorWritePlan)
 import           HStream.SQL.Exception            (SomeSQLException,
-                                                   formatSomeSQLException)
+                                                   formatSomeSQLException,
+                                                   isEOF)
 import           HStream.ThirdParty.Protobuf      (Empty (Empty))
 import           HStream.Utils                    (HStreamClientApi,
                                                    SocketAddr (..),
@@ -207,7 +209,11 @@ interactiveSQLApp ctx@HStreamSqlContext{..} = do
         Nothing -> pure ()
         Just str
           | take 1 (words str) == [":q"] -> pure ()
-          | otherwise -> liftIO (commandExec ctx str) >> loop
+          | otherwise -> do
+              str <- readToSQL $ T.pack str
+              case str of
+                Nothing  -> loop
+                Just str -> liftIO (commandExec ctx str) >> loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
 commandExec ctx@HStreamSqlContext{..} xs = case words xs of
@@ -225,8 +231,10 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
   ":h": _     -> putStrLn helpInfo
   [":help"]   -> putStr groupedHelpInfo
   ":help":x:_ -> case M.lookup (map toUpper x) helpInfos of Just infos -> putStrLn infos; Nothing -> pure ()
+
   (_:_)       -> liftIO $ handle (\(e :: SomeSQLException) -> putStrLn . formatSomeSQLException $ e) $ do
-    (parseAndRefine . T.pack) xs >>= \case
+    rSQL <- parseAndRefine $ T.pack xs
+    case rSQL of
       RQSelect{} -> runActionWithGrpc ctx (\api -> sqlStreamAction api (T.pack xs))
       RQCreate (RCreateAs stream _ rOptions) ->
         execute_ ctx $ createStreamBySelect stream (rRepFactor rOptions) xs
@@ -258,6 +266,22 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
           addr <- readMVar currentServer
           withGRPCClient (mkGRPCClientConf addr)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
+
+readToSQL :: T.Text -> H.InputT IO (Maybe String)
+readToSQL acc = do
+    x <- liftIO $ try @SomeSQLException $ parseAndRefine acc
+    case x of
+      Left err ->
+        if isEOF err
+            then do
+              line <- H.getInputLine "| "
+              case line of
+                Nothing   -> pure . Just $ T.unpack acc
+                Just line -> readToSQL $ acc <> " " <> T.pack line
+            else do
+              H.outputStrLn . formatSomeSQLException $ err
+              pure Nothing
+      Right _ -> pure . Just $ T.unpack acc
 
 sqlStreamAction :: HStreamClientApi -> T.Text -> IO ()
 sqlStreamAction HStreamApi{..} sql = do

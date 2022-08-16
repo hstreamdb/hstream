@@ -14,7 +14,7 @@ import           Control.Concurrent.STM           (TVar, atomically, retry,
                                                    writeTVar)
 import           Control.Monad                    (forM_, void, when)
 import           Data.ByteString                  (ByteString)
-import qualified Data.ByteString.Short            as BS (toShort)
+import qualified Data.ByteString.Short            as BS
 import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import           Data.Text.Encoding               (encodeUtf8)
