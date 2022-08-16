@@ -91,13 +91,11 @@ throwSQLException exceptionType exceptionPos exceptionMsg =
 
 isEOF :: SomeSQLException -> Bool
 isEOF xs =
-  case x of
-    Right _ -> False
-    Left e  -> case e of
-      ParseException info ->
-        let SomeSQLExceptionInfo _ msg _ = info in
-          msg == "syntax error at end of file"
-      _ -> False
+  case xs of
+    ParseException info ->
+      let SomeSQLExceptionInfo _ msg _ = info in
+        msg == "syntax error at end of file"
+    _ -> False
 
 --------------------------------------------------------------------------------
 data SomeRuntimeException = SomeRuntimeException
