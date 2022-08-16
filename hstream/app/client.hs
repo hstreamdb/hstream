@@ -274,9 +274,10 @@ readToSQL acc = do
       Left err ->
         if isEOF err
             then do
-              H.outputStr "| "
-              line <- liftIO $ T.getLine
-              readToSQL $ acc <> " " <> line
+              line <- H.getInputLine "| "
+              case line of
+                Nothing   -> pure . Just $ T.unpack acc
+                Just line -> readToSQL $ acc <> " " <> T.pack line
             else do
               H.outputStrLn . formatSomeSQLException $ err
               pure Nothing
