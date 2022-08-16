@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
 module HStream.Server.Handler.Query where
 
@@ -67,11 +68,8 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    SelectPlan {} -> returnErrResp StatusInvalidArgument "Inconsistent method called"
-    CreateConnectorPlan {} -> do
-      IO.createIOTaskFromSql scIOWorker commandQueryStmtText >> returnCommandQueryEmptyResp
-      -- connector <- IO.createIOTaskFromSql scIOWorker commandQueryStmtText
-      -- returnCommandQueryResp (mkVectorStruct connector "created_connector")
+    SelectPlan {} -> returnErrResp StatusInvalidArgument $
+      "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
     CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
@@ -103,6 +101,10 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
             }
       Core.createStream sc s
       returnCommandQueryResp (mkVectorStruct s "created_stream")
+    CreateConnectorPlan {} -> do
+      IO.createIOTaskFromSql scIOWorker commandQueryStmtText
+      returnCommandQueryEmptyResp
+    InsertPlan _ _ _ -> discard "Append"
     DropPlan checkIfExist dropObject ->
       case dropObject of
         DStream stream -> do
@@ -165,26 +167,18 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
             _  -> do
               sendResp $ V.map (dcRow . mapView rSelectViewSelect)
                 (V.fromList $ filterView rSelectViewWhere dcbChanges)
-    ExplainPlan _ -> do
-      undefined
-      {-
-      execPlan <- genExecutionPlan sql
-      let object = HM.fromList [("PLAN", Aeson.String . T.pack $ show execPlan)]
-      returnCommandQueryResp $ V.singleton (jsonObjectToStruct object)
-      -}
+    ExplainPlan _ -> returnErrResp StatusInternal "Unimplemented"
     PausePlan (PauseObjectConnector name) -> do
       IO.stopIOTask scIOWorker name False False >> returnCommandQueryEmptyResp
     ResumePlan (ResumeObjectConnector name) -> do
       IO.startIOTask scIOWorker name >> returnCommandQueryEmptyResp
-    _ -> discard
   where
     create sName = do
       Log.debug . Log.buildString $ "CREATE: new stream " <> show sName
       createStreamWithShard scLDClient sName "query" scDefaultStreamRepFactor
-
-    -- TODO: return correct RPC name
-    discard = (Log.warning . Log.buildText) "impossible happened" >> returnErrResp StatusInternal "discarded method called"
-
+    discard rpcName = returnErrResp StatusInternal $
+      "Discarded method called: should call rpc `"
+        <> rpcName <> "` instead"
     sendResp results = returnCommandQueryResp $
       V.map (structToStruct "SELECTVIEW" . jsonObjectToStruct) results
     mkVectorStruct a label =
