@@ -212,8 +212,9 @@ interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
       RL.getInputLine "> " >>= \case
         Nothing -> pure ()
         Just str
+          | take 1 (words str)             == []     -> loop
           | take 1 (words str)             == [":q"] -> pure ()
-          | (take 1 (words str)) !! 0 !! 0 == ':'    -> liftIO (commandExec ctx str) >> loop
+          | (take 1 $ words str) !! 0 !! 0 == ':'    -> liftIO (commandExec ctx str) >> loop
           | otherwise -> do
               str <- readToSQL $ T.pack str
               case str of
