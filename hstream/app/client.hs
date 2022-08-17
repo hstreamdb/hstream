@@ -34,7 +34,8 @@ import           Network.GRPC.HighLevel.Generated (ClientError (ClientIOError),
                                                    withGRPCClient)
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
 import qualified Options.Applicative              as O
-import qualified System.Console.Haskeline         as H
+import qualified System.Console.Haskeline         as RL
+import qualified System.Console.Haskeline.History as RL
 import           System.Exit                      (exitFailure)
 import           System.Posix                     (Handler (Catch),
                                                    installHandler,
@@ -120,7 +121,7 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. }
     Just _  -> pure ()
   void $ describeCluster ctx addr
   case _execute of
-    Nothing        -> showHStream *> interactiveSQLApp ctx
+    Nothing        -> showHStream *> interactiveSQLApp ctx _historyFile
     Just statement -> do
       when (Char.isSpace `all` statement) $ do putStrLn "Empty statement" *> exitFailure
       commandExec ctx statement
@@ -190,30 +191,38 @@ getNodes CliConnOpts{..} =
 
 -- FIXME: Currently, every new command will create a new connection to a server,
 -- and this needs to be optimized. This could be done with a grpc client pool.
-interactiveSQLApp :: HStreamSqlContext -> IO ()
-interactiveSQLApp ctx@HStreamSqlContext{..} = do
+interactiveSQLApp :: HStreamSqlContext -> Maybe FilePath -> IO ()
+interactiveSQLApp ctx@HStreamSqlContext{..} historyFile = do
   putStrLn helpInfo
   tid <- myThreadId
   void $ forkFinally maintainAvailableNodes (\case Left err -> throwTo tid err; _ -> return ())
-  H.runInputT H.defaultSettings loop
+  RL.runInputT settings loop
   where
+    settings :: RL.Settings IO
+    settings = RL.Settings RL.noCompletion historyFile False
+
     maintainAvailableNodes = forever $ do
       readMVar availableServers >>= \case
         []     -> return ()
         node:_ -> void $ describeCluster ctx node
       threadDelay $ updateInterval * 1000 * 1000
 
-    loop :: H.InputT IO ()
-    loop = H.withInterrupt . H.handleInterrupt loop $ do
-      H.getInputLine "> " >>= \case
+    loop :: RL.InputT IO ()
+    loop = RL.withInterrupt . RL.handleInterrupt loop $ do
+      RL.getInputLine "> " >>= \case
         Nothing -> pure ()
         Just str
-          | take 1 (words str) == [":q"] -> pure ()
+          | take 1 (words str)             == []     -> loop
+          | take 1 (words str)             == [":q"] -> pure ()
+          | (take 1 $ words str) !! 0 !! 0 == ':'    -> liftIO (commandExec ctx str) >> loop
           | otherwise -> do
               str <- readToSQL $ T.pack str
               case str of
                 Nothing  -> loop
-                Just str -> liftIO (commandExec ctx str) >> loop
+                Just str -> do
+                  RL.getHistory >>= RL.putHistory . RL.addHistoryUnlessConsecutiveDupe str
+                  liftIO (commandExec ctx str)
+                  loop
 
 commandExec :: HStreamSqlContext -> String -> IO ()
 commandExec ctx@HStreamSqlContext{..} xs = case words xs of
@@ -267,19 +276,19 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
           withGRPCClient (mkGRPCClientConf addr)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
 
-readToSQL :: T.Text -> H.InputT IO (Maybe String)
+readToSQL :: T.Text -> RL.InputT IO (Maybe String)
 readToSQL acc = do
     x <- liftIO $ try @SomeSQLException $ parseAndRefine acc
     case x of
       Left err ->
         if isEOF err
             then do
-              line <- H.getInputLine "| "
+              line <- RL.getInputLine "| "
               case line of
                 Nothing   -> pure . Just $ T.unpack acc
                 Just line -> readToSQL $ acc <> " " <> T.pack line
             else do
-              H.outputStrLn . formatSomeSQLException $ err
+              RL.outputStrLn . formatSomeSQLException $ err
               pure Nothing
       Right _ -> pure . Just $ T.unpack acc
 

@@ -36,6 +36,7 @@ data HStreamSqlOpts = HStreamSqlOpts
   { _updateInterval :: Int
   , _retryTimeout   :: Int
   , _execute        :: Maybe String
+  , _historyFile    :: Maybe String
   }
 
 hstreamSqlOptsParser :: O.Parser HStreamSqlOpts
@@ -43,6 +44,7 @@ hstreamSqlOptsParser = HStreamSqlOpts
   <$> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in seconds")
   <*> O.option O.auto (O.long "retry-timeout"   <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
   <*> (O.optional . O.option O.str) (O.long "execute" <> O.short 'e' <> O.metavar "STRING" <> O.help "execute the statement and quit")
+  <*> (O.optional . O.option O.str) (O.long "history-file" <> O.metavar "STRING" <> O.help "history file path to write interactively executed statements")
 
 data HStreamNodes
   = HStreamNodesList
