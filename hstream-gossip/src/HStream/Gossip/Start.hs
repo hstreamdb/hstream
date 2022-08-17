@@ -12,7 +12,7 @@ import           Control.Concurrent               (MVar, forkIO, modifyMVar,
                                                    threadDelay)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
-import           Control.Concurrent.STM           (TVar, atomically, modifyTVar,
+import           Control.Concurrent.STM           (TVar, atomically,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
@@ -74,9 +74,8 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
 startGossip :: GossipContext -> IO ()
 startGossip gc@GossipContext {..} = do
   seedInfo <- newEmptyMVar
-  a <- startListeners (I.serverNodeHost serverSelf) seedInfo gc
+  void $ startListeners (I.serverNodeHost serverSelf) seedInfo gc
   (isSeed, seeds', wasIDead) <- readMVar seedInfo
-  atomically $ modifyTVar workers (Map.insert (I.serverNodeId serverSelf) a)
   if isSeed && not wasIDead
     then newTVarIO 0 >>= putMVar numInited . Just
       >> threadDelay 1000000

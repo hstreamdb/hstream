@@ -10,6 +10,7 @@ module HStream.Utils
   , module HStream.Utils.JSON
 
   , genUnique
+  , throwIOError
   ) where
 
 import           Control.Monad             (unless)
@@ -50,3 +51,6 @@ genUnique = do
        .|. fromIntegral (shiftL tsBit' 16)
        .|. fromIntegral rdmBit
 {-# INLINE genUnique #-}
+
+throwIOError :: String -> IO a
+throwIOError = ioError . userError
