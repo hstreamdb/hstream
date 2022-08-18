@@ -26,7 +26,7 @@ import           HStream.Client.Types             (HStreamSqlContext (..))
 import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Utils                    (HStreamClientApi,
-                                                   mkGRPCClientConf,
+                                                   mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr)
 import           Proto3.Suite                     (Enumerated (Enumerated))
 
@@ -67,9 +67,9 @@ callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
       _ -> putStrLn "Failed!"
 
 callDeleteSubscriptionAll :: HStreamSqlContext -> IO ()
-callDeleteSubscriptionAll ctx = do
-  curNode <- readMVar (currentServer ctx)
-  withGRPCClient (mkGRPCClientConf curNode) $ \client -> do
+callDeleteSubscriptionAll HStreamSqlContext{..} = do
+  curNode <- readMVar currentServer
+  withGRPCClient (mkGRPCClientConfWithSSL curNode sslConfig) $ \client -> do
     API.HStreamApi{..} <- API.hstreamApiClient client
     let listReq = API.ListSubscriptionsRequest
     listResp <- hstreamApiListSubscriptions (mkClientNormalRequest' listReq)
@@ -102,12 +102,12 @@ callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
       _ -> putStrLn "Failed!"
 
 callStreamingFetch :: HStreamSqlContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
-callStreamingFetch ctx startRecordIds subId clientId = do
-  curNode <- readMVar (currentServer ctx)
+callStreamingFetch ctx@HStreamSqlContext{..} startRecordIds subId clientId = do
+  curNode <- readMVar currentServer
   m_node <- lookupSubscription ctx curNode subId
   case m_node of
     Nothing   -> putStrLn "Subscription not found"
-    Just node -> withGRPCClient (mkGRPCClientConf . serverNodeToSocketAddr $ node) $ \client -> do
+    Just node -> withGRPCClient (mkGRPCClientConfWithSSL (serverNodeToSocketAddr node) sslConfig) $ \client -> do
       API.HStreamApi{..} <- API.hstreamApiClient client
       void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty action)
   where

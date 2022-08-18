@@ -125,7 +125,7 @@ storeExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 storeExceptionHandlers = [
   Handler $ \(err :: Store.EXISTS) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAlreadyExists, "Stream already exists in store")
+    return (StatusAlreadyExists, "Stream or view with same name already exists in store")
   ,
   Handler $ \(err :: Store.SomeHStoreException) -> do
     Log.warning $ Log.buildString' err

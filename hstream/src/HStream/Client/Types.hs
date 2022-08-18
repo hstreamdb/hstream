@@ -1,11 +1,12 @@
 module HStream.Client.Types where
 
-import           Control.Concurrent   (MVar)
-import           Data.ByteString      (ByteString)
-import qualified Options.Applicative  as O
+import           Control.Concurrent            (MVar)
+import           Data.ByteString               (ByteString)
+import           Network.GRPC.HighLevel.Client (ClientSSLConfig)
+import qualified Options.Applicative           as O
 
-import           HStream.Server.Types (ServerID)
-import           HStream.Utils        (SocketAddr)
+import           HStream.Server.Types          (ServerID)
+import           HStream.Utils                 (SocketAddr)
 
 data HStreamCommand = HStreamCommand
   { cliConnOpts :: CliConnOpts
@@ -19,7 +20,7 @@ data Command
 
 commandParser :: O.Parser HStreamCommand
 commandParser = HStreamCommand
-  <$> (CliConnOpts <$> serverHost <*> serverPort)
+  <$> connOptsParser
   <*> O.hsubparser
     (  O.command "sql"   (O.info (HStreamSql <$> hstreamSqlOptsParser) (O.progDesc "Start HStream SQL Shell"))
     <> O.command "nodes" (O.info (HStreamNodes <$> hstreamNodesParser) (O.progDesc "Manage HStream Server Cluster"))
@@ -30,19 +31,21 @@ data HStreamSqlContext = HStreamSqlContext
   { availableServers :: MVar [SocketAddr]
   , currentServer    :: MVar SocketAddr
   , updateInterval   :: Int
+  , sslConfig        :: Maybe ClientSSLConfig
   }
 
 data HStreamSqlOpts = HStreamSqlOpts
   { _updateInterval :: Int
   , _retryTimeout   :: Int
   , _execute        :: Maybe String
-  , _historyFile    :: Maybe String
+  , _historyFile    :: Maybe FilePath
   }
 
 hstreamSqlOptsParser :: O.Parser HStreamSqlOpts
 hstreamSqlOptsParser = HStreamSqlOpts
   <$> O.option O.auto (O.long "update-interval" <> O.metavar "INT" <> O.showDefault <> O.value 30 <> O.help "interval to update available servers in seconds")
   <*> O.option O.auto (O.long "retry-timeout"   <> O.metavar "INT" <> O.showDefault <> O.value 60 <> O.help "timeout to retry connecting to a server in seconds")
+
   <*> (O.optional . O.option O.str) (O.long "execute" <> O.short 'e' <> O.metavar "STRING" <> O.help "execute the statement and quit")
   <*> (O.optional . O.option O.str) (O.long "history-file" <> O.metavar "STRING" <> O.help "history file path to write interactively executed statements")
 
@@ -66,6 +69,9 @@ hstreamInitOptsParser = HStreamInitOpts
 data CliConnOpts = CliConnOpts
   { _serverHost :: ByteString
   , _serverPort :: Int
+  , _tlsCa      :: Maybe FilePath
+  , _tlsKey     :: Maybe FilePath
+  , _tlsCert    :: Maybe FilePath
   } deriving (Show, Eq)
 
 serverHost :: O.Parser ByteString
@@ -86,3 +92,6 @@ connOptsParser :: O.Parser CliConnOpts
 connOptsParser = CliConnOpts
   <$> serverHost
   <*> serverPort
+  <*> (O.optional . O.option O.str) (O.long "tls-ca"   <> O.metavar "STRING" <> O.help "path name of the file that contains list of trusted TLS Certificate Authorities")
+  <*> (O.optional . O.option O.str) (O.long "tls-key"  <> O.metavar "STRING" <> O.help "path name of the client TLS private key file")
+  <*> (O.optional . O.option O.str) (O.long "tls-cert" <> O.metavar "STRING" <> O.help "path name of the client TLS public key certificate file")

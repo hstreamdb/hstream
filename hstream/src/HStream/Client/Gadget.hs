@@ -18,6 +18,7 @@ import           Network.GRPC.HighLevel           (GRPCIOError (..),
                                                    StatusDetails (..))
 import           Network.GRPC.HighLevel.Client    (ClientError (..),
                                                    ClientResult (..),
+                                                   ClientSSLConfig,
                                                    GRPCMethodType (..))
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 
@@ -27,13 +28,13 @@ import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils                    (SocketAddr, getServerResp,
-                                                   mkGRPCClientConf,
+                                                   mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr)
 
 --------------------------------------------------------------------------------
 
-waitForServerToStart :: Int -> SocketAddr -> IO (Maybe ())
-waitForServerToStart t addr = withGRPCClient (mkGRPCClientConf addr) $ \client -> do
+waitForServerToStart :: Int -> SocketAddr -> Maybe ClientSSLConfig -> IO (Maybe ())
+waitForServerToStart t addr clientSSLConfig = withGRPCClient (mkGRPCClientConfWithSSL addr clientSSLConfig) $ \client -> do
   api <- API.hstreamApiClient client
   loop t api
   where
@@ -63,23 +64,6 @@ describeCluster ctx@HStreamSqlContext{..} addr = do
         void $ swapMVar currentServer (serverNodeToSocketAddr $ V.head nodes)
       return $ Just resp
 
--- lookupStream :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe (Word64, API.ServerNode))
--- lookupStream ctx addr stream = do
---   -- FIXME: currently redirect all lookupStream request to the first shard of a stream
---   API.Shard{..} <- V.head . fromJust <$> getInfoWithAddr ctx addr getShards handleGetShardsReq
---   node <- getInfoWithAddr ctx addr (getRespApp shardShardId) handleRespApp
---   return $ (,) shardShardId <$> node
---   where
---     getShards API.HStreamApi{..} = do
---         let req = def { API.listShardsRequestStreamName = stream }
---         hstreamApiListShards (mkClientNormalRequest' req)
---     handleGetShardsReq = getServerResp >=> return . Just . API.listShardsResponseShards
-
---     getRespApp shardId API.HStreamApi{..} = do
---       let req = def { API.lookupShardRequestShardId = shardId }
---       hstreamApiLookupShard (mkClientNormalRequest' req)
---     handleRespApp = getServerResp >=> return . API.lookupShardResponseServerNode
-
 lookupSubscription :: HStreamSqlContext -> SocketAddr -> T.Text -> IO (Maybe API.ServerNode)
 lookupSubscription ctx addr subId = do
   getInfoWithAddr ctx addr getRespApp handleRespApp
@@ -106,7 +90,7 @@ getInfoWithAddr
   -> (ClientResult 'Normal a -> IO (Maybe b))
   -> IO (Maybe b)
 getInfoWithAddr ctx@HStreamSqlContext{..} addr action cont = do
-  resp <- runActionWithAddr addr action
+  resp <- runActionWithAddr addr sslConfig action
   case resp of
     ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ details)) -> do
       T.putStrLn $ "Error: " <> BS.decodeUtf8 (unStatusDetails details)

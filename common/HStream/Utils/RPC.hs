@@ -12,6 +12,7 @@ module HStream.Utils.RPC
   , SocketAddr(..)
   , runWithAddr
   , mkGRPCClientConf
+  , mkGRPCClientConfWithSSL
   , mkClientNormalRequest
 
   , mkServerErrResp
@@ -58,15 +59,17 @@ runWithAddr addr action =
   withGRPCClient (mkGRPCClientConf addr) (hstreamApiClient >=> action)
 
 mkGRPCClientConf :: SocketAddr -> ClientConfig
-mkGRPCClientConf = \case
-  SocketAddr host port ->
-    ClientConfig
-    { clientServerHost = Host host
-    , clientServerPort = Port port
-    , clientArgs = []
-    , clientSSLConfig = Nothing
-    , clientAuthority = Nothing
-    }
+mkGRPCClientConf socketAddr = mkGRPCClientConfWithSSL socketAddr Nothing
+
+mkGRPCClientConfWithSSL :: SocketAddr -> Maybe ClientSSLConfig -> ClientConfig
+mkGRPCClientConfWithSSL (SocketAddr host port) sslConfig =
+  ClientConfig
+  { clientServerHost = Host host
+  , clientServerPort = Port port
+  , clientArgs = []
+  , clientSSLConfig = sslConfig
+  , clientAuthority = Nothing
+  }
 
 mkClientNormalRequest :: Int -> a -> ClientRequest 'Normal a b
 mkClientNormalRequest requestTimeout x = ClientNormalRequest x requestTimeout (MetadataMap mempty)
