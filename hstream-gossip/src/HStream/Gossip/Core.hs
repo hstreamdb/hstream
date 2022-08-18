@@ -6,9 +6,8 @@
 
 module HStream.Gossip.Core where
 
-import           Control.Concurrent               (tryPutMVar)
-import           Control.Concurrent.Async         (async, cancel, linkOnly,
-                                                   withAsync)
+import           Control.Concurrent               (forkIO, tryPutMVar)
+import           Control.Concurrent.Async         (async, cancel, linkOnly)
 import           Control.Concurrent.STM           (atomically, check, dupTChan,
                                                    flushTQueue, modifyTVar,
                                                    modifyTVar', newTVarIO,
@@ -78,12 +77,11 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode
   Log.info . Log.buildString $ "Setting up workers for: " <> show serverNodeId
   withGRPCClient (mkGRPCClientConf sNode) $ \client -> do
     myChan <- atomically $ dupTChan actionChan
-    -- FIXME: This could be problematic when we have too many nodes in cluster.
-    loop client myChan
-  where
-    loop client myChan = do
+    -- FIXME: This could be problematic, need some way to check forked threads
+    forever $ do
       action <- atomically (readTChan myChan)
-      withAsync (doAction client action) (\_ -> loop client myChan)
+      forkIO $ doAction client action
+  where
     doAction client action = case action of
       DoPing sid msg -> when (sid == serverNodeId) $
         doPing client gc ss sid msg

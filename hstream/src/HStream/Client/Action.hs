@@ -26,6 +26,7 @@ import qualified Data.Map                         as Map
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Data.Word                        (Word64)
+import           Network.GRPC.HighLevel.Client    (ClientSSLConfig)
 import           Network.GRPC.HighLevel.Generated (ClientResult (..),
                                                    GRPCMethodType (Normal),
                                                    withGRPCClient)
@@ -105,6 +106,7 @@ insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
     , API.appendRequestRecords    = V.singleton record
     })
 
+-- FIXME: unused args
 createStreamBySelect :: T.Text -> Int -> String
   -> Action API.CommandQueryResponse
 createStreamBySelect sName rFac sql API.HStreamApi{..} =
@@ -119,6 +121,6 @@ listShards sName API.HStreamApi{..} = do
     listShardsRequestStreamName = sName
   }
 
-runActionWithAddr :: SocketAddr -> Action a -> IO (ClientResult 'Normal a)
-runActionWithAddr addr action =
-  withGRPCClient (mkGRPCClientConf addr) (hstreamApiClient >=> action)
+runActionWithAddr :: SocketAddr -> Maybe ClientSSLConfig -> Action a -> IO (ClientResult 'Normal a)
+runActionWithAddr addr sslConfig action =
+  withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig) (hstreamApiClient >=> action)
