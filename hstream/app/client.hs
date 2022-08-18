@@ -21,7 +21,7 @@ import qualified Data.Char                        as Char
 import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import qualified Data.Map                         as M
-import           Data.Maybe                       (maybeToList)
+import           Data.Maybe                       (isNothing, maybeToList)
 import qualified Data.Text                        as T
 import qualified Data.Text.Encoding               as T
 import qualified Data.Text.IO                     as T
@@ -89,9 +89,12 @@ import           HStream.Utils                    (HStreamClientApi,
                                                    fillWithJsonString',
                                                    formatCommandQueryResponse,
                                                    formatResult, genUnique,
-                                                   mkGRPCClientConf,
+                                                   mkGRPCClientConfWithSSL,
                                                    serverNodeToSocketAddr,
                                                    setupSigsegvHandler)
+import           Network.GRPC.HighLevel.Client    (ClientConfig,
+                                                   ClientSSLConfig (..),
+                                                   ClientSSLKeyCertPair (..))
 import           System.Timeout                   (timeout)
 
 main :: IO ()
@@ -101,21 +104,51 @@ main = runCommand =<<
                              (O.fullDesc <> O.header "======= HStream CLI =======")
                      )
 
-runCommand :: HStreamCommand -> IO ()
-runCommand HStreamCommand {..} =
-  case cliCommand of
-    HStreamSql opts   -> hstreamSQL cliConnOpts opts
-    HStreamNodes opts -> hstreamNodes cliConnOpts opts
-    HStreamInit opts  -> hstreamInit cliConnOpts opts
+data RefinedCliConnOpts = RefinedCliConnOpts {
+    addr         :: SocketAddr
+  , sslConfig    :: Maybe ClientSSLConfig
+  , clientConfig :: ClientConfig
+  }
 
-hstreamSQL :: CliConnOpts -> HStreamSqlOpts -> IO ()
-hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
+refineCliConnOpts :: CliConnOpts -> IO RefinedCliConnOpts
+refineCliConnOpts CliConnOpts {..} = do
   let addr = SocketAddr _serverHost _serverPort
+  clientSSLKeyCertPair <- do
+    case _tlsKey of
+      Nothing -> case _tlsCert of
+        Nothing -> pure $ Nothing
+        Just _  -> putStrLn "got `tls-cert`, but `tls-key` is missing" >> exitFailure
+      Just tlsKey -> case _tlsCert of
+        Nothing      -> putStrLn "got `tls-key`, but `tls-cert` is missing" >> exitFailure
+        Just tlsCert -> pure . Just $ ClientSSLKeyCertPair {
+          clientPrivateKey = tlsKey
+        , clientCert       = tlsCert
+        }
+  let sslConfig = if isNothing _tlsCa && isNothing clientSSLKeyCertPair
+        then Nothing
+        else Just $ ClientSSLConfig {
+          serverRootCert       = _tlsCa
+        , clientSSLKeyCertPair = clientSSLKeyCertPair
+        , clientMetadataPlugin = Nothing
+        }
+  let clientConfig = mkGRPCClientConfWithSSL addr sslConfig
+  pure $ RefinedCliConnOpts addr sslConfig clientConfig
+
+runCommand :: HStreamCommand -> IO ()
+runCommand HStreamCommand {..} = do
+  refinedCliConnOpts <- refineCliConnOpts cliConnOpts
+  case cliCommand of
+    HStreamSql   opts -> hstreamSQL   refinedCliConnOpts opts
+    HStreamNodes opts -> hstreamNodes refinedCliConnOpts opts
+    HStreamInit  opts -> hstreamInit  refinedCliConnOpts opts
+
+hstreamSQL :: RefinedCliConnOpts -> HStreamSqlOpts -> IO ()
+hstreamSQL RefinedCliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. } = do
   availableServers <- newMVar []
   currentServer    <- newMVar addr
   let ctx = HStreamSqlContext {..}
   setupSigsegvHandler
-  connected <- waitForServerToStart (_retryTimeout * 1000000) addr
+  connected <- waitForServerToStart (_retryTimeout * 1000000) addr sslConfig
   case connected of
     Nothing -> errorWithoutStackTrace "Connection timed out. Please check the server URI and try again."
     Just _  -> pure ()
@@ -134,7 +167,7 @@ hstreamSQL CliConnOpts{..} HStreamSqlOpts{_updateInterval = updateInterval, .. }
   /_/ /_//____//_/ /_/ |_/_____/_/  |_/_/  /_/
   |]
 
-hstreamNodes :: CliConnOpts -> HStreamNodes -> IO ()
+hstreamNodes :: RefinedCliConnOpts -> HStreamNodes -> IO ()
 hstreamNodes connOpts HStreamNodesList =
   getNodes connOpts >>= putStrLn . formatResult . L.sort . V.toList . API.describeClusterResponseServerNodes
 hstreamNodes connOpts (HStreamNodesStatus Nothing) =
@@ -152,10 +185,10 @@ hstreamNodes connOpts (HStreamNodesStatus (Just sid)) =
         Nothing                 -> False
 
 -- TODO: Init should have it's own rpc call
-hstreamInit :: CliConnOpts -> HStreamInitOpts -> IO ()
-hstreamInit CliConnOpts{..} HStreamInitOpts{..} = do
+hstreamInit :: RefinedCliConnOpts -> HStreamInitOpts -> IO ()
+hstreamInit RefinedCliConnOpts{..} HStreamInitOpts{..} = do
   ready <- timeout (_timeoutSec * 1000000) $
-    withGRPCClient (mkGRPCClientConf $ SocketAddr _serverHost _serverPort) $ \client -> do
+    withGRPCClient clientConfig $ \client -> do
       api <- hstreamApiClient client
       Admin.sendAdminCommand "server init" api >>= Admin.formatCommandResponse >>= putStrLn
       loop api
@@ -175,9 +208,9 @@ hstreamInit CliConnOpts{..} HStreamInitOpts{..} = do
             _                           -> loop api
         _ -> loop api
 
-getNodes :: CliConnOpts -> IO DescribeClusterResponse
-getNodes CliConnOpts{..} =
-  withGRPCClient (mkGRPCClientConf $ SocketAddr _serverHost _serverPort) $ \client -> do
+getNodes :: RefinedCliConnOpts -> IO DescribeClusterResponse
+getNodes RefinedCliConnOpts{..} =
+  withGRPCClient clientConfig $ \client -> do
     HStreamApi{..} <- hstreamApiClient client
     res <- hstreamApiDescribeCluster (mkClientNormalRequest' Empty)
     case res of
@@ -269,11 +302,11 @@ commandExec ctx@HStreamSqlContext{..} xs = case words xs of
           lookupConnector ctx addr name >>= \case
             Nothing -> putStrLn "lookupConnector failed"
             Just node -> do
-              withGRPCClient (mkGRPCClientConf (serverNodeToSocketAddr node))
+              withGRPCClient (mkGRPCClientConfWithSSL (serverNodeToSocketAddr node) sslConfig)
                 (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
         _ -> do
           addr <- readMVar currentServer
-          withGRPCClient (mkGRPCClientConf addr)
+          withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig)
             (hstreamApiClient >=> \api -> sqlAction api (T.pack xs))
 
 readToSQL :: T.Text -> RL.InputT IO (Maybe String)
@@ -385,5 +418,5 @@ runActionWithGrpc :: HStreamSqlContext
   -> (HStreamClientApi -> IO b) -> IO b
 runActionWithGrpc HStreamSqlContext{..} action= do
   addr <- readMVar currentServer
-  withGRPCClient (mkGRPCClientConf addr)
+  withGRPCClient (mkGRPCClientConfWithSSL addr sslConfig)
     (hstreamApiClient >=> action)
