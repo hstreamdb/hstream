@@ -140,9 +140,9 @@ serve host port tlsConfig sc@ServerContext{..} listeners = do
   let serverOptions = HsGrpc.ServerOptions { HsGrpc.serverHost = BS.toShort host
                                            , HsGrpc.serverPort = fromIntegral port
                                            , HsGrpc.serverParallelism = 0
+                                           , HsGrpc.serverOnStarted = Just serverOnStarted
                                            }
-  server <- HsGrpc.newAsioServer serverOptions
-  HsGrpc.runAsioGrpc server (HsGrpc.handlers sc)
+  HsGrpc.runServer serverOptions (HsGrpc.handlers sc)
 #else
   api <- handlers sc
   hstreamApiServer api grpcOpts
