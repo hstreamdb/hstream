@@ -6,8 +6,9 @@
 
 module HStream.Gossip.Core where
 
-import           Control.Concurrent               (forkIO, tryPutMVar)
-import           Control.Concurrent.Async         (async, cancel, linkOnly)
+import           Control.Concurrent               (killThread, newEmptyMVar,
+                                                   putMVar, takeMVar,
+                                                   tryPutMVar)
 import           Control.Concurrent.STM           (atomically, check, dupTChan,
                                                    flushTQueue, modifyTVar,
                                                    modifyTVar', newTVarIO,
@@ -16,9 +17,9 @@ import           Control.Concurrent.STM           (atomically, check, dupTChan,
                                                    tryPutTMVar, writeTQueue,
                                                    writeTVar)
 import           Control.Concurrent.STM.TChan     (readTChan)
-import           Control.Exception                (SomeException, handle)
-import           Control.Monad                    (forever, join, unless, void,
-                                                   when)
+import           Control.Exception                (finally)
+import           Control.Monad                    (forever, join, replicateM,
+                                                   unless, void, when)
 import           Data.Bifunctor                   (bimap)
 import qualified Data.ByteString.Lazy             as BL
 import qualified Data.IntMap.Strict               as IM
@@ -26,6 +27,7 @@ import qualified Data.Map.Strict                  as Map
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import qualified Proto3.Suite                     as PT
+import qualified SlaveThread
 
 import           HStream.Gossip.Gossip            (gossip)
 import           HStream.Gossip.HStreamGossip     (ServerList (..))
@@ -49,6 +51,7 @@ import           HStream.Gossip.Utils             (broadcast, broadcastMessage,
                                                    updateStatus)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
+import           HStream.Utils                    (throwIOError)
 
 --------------------------------------------------------------------------------
 -- Add a new member to the server list
@@ -62,25 +65,26 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state = unless (n
   , latestMessage = initMsg
   , serverState   = initState
   }
-  newAsync <- async (joinWorkers gc status)
+  workersThread <- SlaveThread.fork (joinWorkers gc status)
   atomically $ do
     modifyTVar' serverList $ bimap succ (Map.insert serverNodeId status)
-    modifyTVar' workers (Map.insert serverNodeId newAsync)
+    modifyTVar' workers (Map.insert serverNodeId workersThread)
 
 joinWorkers :: GossipContext -> ServerStatus -> IO ()
-joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} =
-  handle (\(e ::SomeException) -> print e) $ unless (sNode == serverSelf) $ do
-  workersMap <- readTVarIO workers
-  case Map.lookup (I.serverNodeId serverSelf) workersMap of
-    Just a  -> linkOnly (const True) a
-    Nothing -> error "Impossible happened"
+joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} = do
   Log.info . Log.buildString $ "Setting up workers for: " <> show serverNodeId
   withGRPCClient (mkGRPCClientConf sNode) $ \client -> do
     myChan <- atomically $ dupTChan actionChan
-    -- FIXME: This could be problematic, need some way to check forked threads
-    forever $ do
-      action <- atomically (readTChan myChan)
-      forkIO $ doAction client action
+    mvars <- replicateM (T.joinWorkerConcurrency gossipOpts) $ do
+      mvar <- newEmptyMVar
+      void $ SlaveThread.fork $ do
+        finally (forever $ do action <- atomically (readTChan myChan)
+                              doAction client action
+                )
+                (putMVar mvar ())
+      pure mvar
+    -- Normally, this is an infinite block
+    mapM_ takeMVar mvars
   where
     doAction client action = case action of
       DoPing sid msg -> when (sid == serverNodeId) $
@@ -135,18 +139,20 @@ handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} 
   sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
-    Just ServerStatus{..} -> join $ atomically $ do
-      modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
-      writeTVar latestMessage msg
-      modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
-      modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
-      mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
+    Just ServerStatus{..} -> do
+      mWorker <- atomically $ do
+        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+        writeTVar latestMessage msg
+        stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
       case mWorker of
-        Nothing -> return (pure ())
-        Just  a -> return $ do
+        Nothing -> pure ()
+        Just  a -> do
           Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
           Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
-          cancel a
+          killThread a
+      atomically $ do
+        modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
+        modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
 handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
   Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   join . atomically $ if node == serverSelf
@@ -169,7 +175,7 @@ handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..}
         updated <- updateStatus ss msg OK
         when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
       Nothing -> addToServerList gc node msg OK
-handleStateMessage _ _ = error "illegal state message"
+handleStateMessage _ _ = throwIOError "illegal state message"
 
 runEventHandler :: GossipContext -> IO ()
 runEventHandler gc@GossipContext{..} = forever $ do

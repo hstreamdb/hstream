@@ -43,6 +43,7 @@ library
     , proto3-wire
     , random
     , random-shuffle
+    , slave-thread          ^>=1.1
     , stm
     , table-layout
     , text
