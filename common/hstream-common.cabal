@@ -74,6 +74,8 @@ library
     HStream.Utils.RPC
     HStream.Utils.Table
     HStream.Utils.Time
+    HStream.Utils.Compression
+    HStream.Utils.Codec
 
   hs-source-dirs:     . api/gen-hs
   include-dirs:       . include api/gen-cpp /usr/local/include
@@ -131,6 +133,8 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
+    , zlib
+    , attoparsec
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
@@ -181,6 +185,8 @@ test-suite hstream-common-test
     , unordered-containers
     , Z-Data
     , Z-IO
+    , proto3-suite
+    , vector
 
   default-extensions:
     DeriveGeneric

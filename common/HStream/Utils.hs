@@ -8,6 +8,8 @@ module HStream.Utils
   , module HStream.Utils.Table
   , module HStream.Utils.Common
   , module HStream.Utils.JSON
+  , module HStream.Utils.Compression
+  , module HStream.Utils.Codec
 
   , genUnique
   , throwIOError
@@ -21,7 +23,9 @@ import           System.Random             (randomRIO)
 import           Z.IO.Time                 (SystemTime (..), getSystemTime')
 
 import           HStream.Utils.BuildRecord
+import           HStream.Utils.Codec
 import           HStream.Utils.Common
+import           HStream.Utils.Compression
 import           HStream.Utils.Concurrent
 import           HStream.Utils.Converter
 import           HStream.Utils.Format
