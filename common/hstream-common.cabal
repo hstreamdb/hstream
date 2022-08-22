@@ -172,6 +172,7 @@ test-suite hstream-common-test
   other-modules:
     HStream.ConsistentHashingSpec
     HStream.UtilsSpec
+    HStream.CodecSpec
 
   build-depends:
     , base                  >=4.11 && <5
