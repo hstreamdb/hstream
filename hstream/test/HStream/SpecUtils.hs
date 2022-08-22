@@ -29,7 +29,7 @@ import qualified Data.Vector                      as V
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
-import           Proto3.Suite                     (def)
+import           Proto3.Suite                     (Enumerated (..), def)
 import           System.Environment               (lookupEnv)
 import           System.IO.Unsafe                 (unsafePerformIO)
 import           System.Random
@@ -39,7 +39,6 @@ import           HStream.Client.Action
 import           HStream.Client.Utils
 import           HStream.Server.HStreamApi
 import           HStream.SQL
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (Empty), Struct (..),
                                                    Value (Value),
                                                    ValueKind (ValueKindStructValue))
@@ -198,9 +197,10 @@ listShardsReq HStreamApi{..} streamName =
 
 appendRequest :: HStreamClientApi -> T.Text -> Word64 -> V.Vector HStreamRecord -> IO AppendResponse
 appendRequest HStreamApi{..} streamName shardId records =
-  let appReq = AppendRequest streamName shardId records
+  let batch = mkBatchedRecord (Enumerated (Right CompressionTypeGzip)) Nothing (fromIntegral $ V.length records) records
+      appReq = AppendRequest streamName shardId (Just batch)
       req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
-  in getServerResp =<< hstreamApiAppend req
+   in getServerResp =<< hstreamApiAppend req
 
 -------------------------------------------------------------------------------
 
@@ -264,15 +264,15 @@ executeCommandPushQuery sql = withGRPCClient clientConfig $ \client -> do
                 _ -> error "unknown data encountered"
             _ -> return ()
 
-readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
-readBatchPayload name = do
-  let nameCB = textToCBytes name
-  client <- S.newLDClient "/data/store/logdevice.conf"
-  logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream nameCB) Nothing
-  reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing
-  S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
-  x <- S.ckpReaderRead reader 1000
-  return $ hstreamRecordBatchBatch . decodeBatch . S.recordPayload $ head x
+-- readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
+-- readBatchPayload name = do
+--   let nameCB = textToCBytes name
+--   client <- S.newLDClient "/data/store/logdevice.conf"
+--   logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream nameCB) Nothing
+--   reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing
+--   S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
+--   x <- S.ckpReaderRead reader 1000
+--   return $ hstreamRecordBatchBatch . decodeBatchRecord . S.recordPayload $ head x
 
 --------------------------------------------------------------------------------
 

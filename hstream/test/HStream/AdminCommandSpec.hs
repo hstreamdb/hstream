@@ -33,9 +33,8 @@ adminCommandStatsSpec = aroundAll provideHstreamApi $ describe "adminCommandStat
   aroundWith (withRandomStreams 2) $ do
     it "stats append" $ \(api, streamNames) -> do
 
-      timeStamp <- getProtoTimestamp
-      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
-      payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
+      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty T.empty
+      payloads <- V.map (mkHStreamRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
       forM_ streamNames $ \(name, shardId) -> replicateM_ 100 $ appendRequest api name shardId payloads
 
       resp <- adminCommandStatsReq api

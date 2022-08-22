@@ -8,12 +8,9 @@ import           Data.Foldable               (foldrM)
 import qualified Data.HashMap.Strict         as HM
 import qualified Data.List                   as L
 import qualified Data.Map.Strict             as Map
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
 import           Data.Word                   (Word32, Word64)
 import qualified Z.Data.CBytes               as CB
-import           Z.Data.CBytes               (CBytes)
 
 import qualified HStream.Logger              as Log
 import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
@@ -23,9 +20,8 @@ import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store               as HS
 import           HStream.ThirdParty.Protobuf (Empty (Empty))
-import           HStream.Utils               (TaskStatus (..), clientDefaultKey,
-                                              decodeByteStringBatch,
-                                              textToCBytes)
+import           HStream.Utils               (TaskStatus (..),
+                                              decodeByteStringBatch)
 
 deleteStoreStream
   :: ServerContext
@@ -141,16 +137,16 @@ isValidRecordId ShardRecordId{..} batchNumMap =
                 | otherwise -> True
     Nothing -> False
 
-decodeRecordBatch :: HS.DataRecord BS.ByteString -> (HS.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)
+decodeRecordBatch :: HS.DataRecord BS.ByteString -> (HS.C_LogID, Word64, V.Vector ShardRecordId, ReceivedRecord)
 decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
   where
     payload = HS.recordPayload dataRecord
     logId = HS.recordLogID dataRecord
     batchId = HS.recordLSN dataRecord
-    recordBatch = decodeByteStringBatch payload
-    indexedRecords = V.indexed $ hstreamRecordBatchBatch recordBatch
-    shardRecordIds = V.map (\(i, _) -> ShardRecordId batchId (fromIntegral i)) indexedRecords
-    receivedRecords = V.map (\(i, a) -> ReceivedRecord (Just $ RecordId logId batchId (fromIntegral i)) a) indexedRecords
+    batch@BatchedRecord{..} = decodeByteStringBatch payload
+    shardRecordIds = V.map (ShardRecordId batchId . fromIntegral) (V.fromList [0..batchedRecordBatchSize - 1])
+    recordIds = V.map (RecordId logId batchId . fromIntegral) (V.fromList [0..batchedRecordBatchSize - 1])
+    receivedRecords = ReceivedRecord recordIds (Just batch)
 
 --------------------------------------------------------------------------------
 -- Query

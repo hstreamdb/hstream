@@ -137,8 +137,7 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
            <> Log.buildText appendRequestStreamName
            <> "(shardId: "
            <> Log.buildInt appendRequestShardId
-           <> ")}, nums of records = "
-           <> Log.buildInt (V.length appendRequestRecords)
+           <> ")}"
 
   Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
@@ -155,17 +154,21 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
 appendStream :: HasCallStack
              => ServerContext -> API.AppendRequest -> IO API.AppendResponse
 appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
-  appendRequestRecords = records, ..} = do
+  appendRequestRecords = mbRecord, ..} = do
+  let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = case mbRecord of
+       Nothing -> error ""
+       Just r  -> r
   timestamp <- getProtoTimestamp
-  let payload = encodeBatch . API.HStreamRecordBatch $
-        encodeRecord . updateRecordTimestamp timestamp <$> records
+  let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
+  -- let payload = encodeBatch . API.HStreamRecordBatch $
+  --       encodeRecord . updateRecordTimestamp timestamp <$> records
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral $ length records)
-  let rids = V.zipWith (API.RecordId shardId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
+  Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+  let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse {
       appendResponseStreamName = appendRequestStreamName
     , appendResponseShardId    = shardId
@@ -295,9 +298,9 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
    readRecords reader = do
      records <- S.readerRead reader (fromIntegral readShardRequestMaxRecords)
      let receivedRecordsVecs = decodeRecordBatch <$> records
-     let res = foldl' (\acc (_, _, _, record) -> acc <> record) V.empty receivedRecordsVecs
+     let res = V.fromList $ map (\(_, _, _, record) -> record) receivedRecordsVecs
      Log.debug $ "reader " <> Log.buildText readShardRequestReaderId
-              <> " read " <> Log.buildInt (V.length res) <> " records"
+              <> " read " <> Log.buildInt (V.length res) <> " batchRecords"
      return res
 
 --------------------------------------------------------------------------------

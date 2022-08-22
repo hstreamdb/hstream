@@ -1,12 +1,10 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module HStream.ConsistentHashingSpec where
 
 import qualified Data.ByteString.Char8            as BSC
-import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
 import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
@@ -18,10 +16,9 @@ import           Test.QuickCheck                  (Arbitrary (..), Gen,
                                                    Property, Testable,
                                                    arbitrarySizedNatural,
                                                    chooseInt, elements, forAll,
-                                                   forAllShow, label, listOf1,
-                                                   scale, shuffle, sublistOf,
-                                                   suchThat, vectorOf, verbose,
-                                                   (===), (==>))
+                                                   label, listOf1, scale,
+                                                   shuffle, sublistOf, suchThat,
+                                                   vectorOf, (===), (==>))
 
 import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
@@ -51,7 +48,7 @@ newtype A = A {unA :: T.Text} deriving (Show, Eq)
 
 instance Arbitrary A where
   arbitrary = do
-    name <- elements "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    name <- elements (['a'..'z'] <> ['A'..'Z'])
     append <- shuffle "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_" >>= sublistOf
     return $ A $ T.pack (name : append)
 

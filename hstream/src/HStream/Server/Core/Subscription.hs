@@ -42,7 +42,9 @@ import           HStream.Server.Persistence.Object (withSubscriptionsLock)
 import           HStream.Server.Types
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
-import           HStream.Utils                     (textToCBytes)
+import           HStream.Utils                     (decompressBatchedRecord,
+                                                    mkBatchedRecord,
+                                                    textToCBytes)
 
 --------------------------------------------------------------------------------
 
@@ -170,7 +172,7 @@ type family FetchCoreType (mode :: FetchCoreMode) (sendTyp :: Type) (recvTyp :: 
 type instance FetchCoreType 'FetchCoreInteractive a b
   = (StreamSend a, StreamRecv b) -> IO ()
 type instance FetchCoreType 'FetchCoreDirect a b
-  = StreamingFetchRequest -> ([ReceivedRecord] -> IO ()) -> IO ()
+  = StreamingFetchRequest -> (Maybe ReceivedRecord -> IO ()) -> IO ()
 
 streamingFetchCore :: ServerContext
                    -> SFetchCoreMode mode
@@ -185,10 +187,10 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
         let req = StreamingFetchRequest
                   { streamingFetchRequestSubscriptionId = streamingFetchRequestSubscriptionId initReq
                   , streamingFetchRequestConsumerName = streamingFetchRequestConsumerName initReq
-                  , streamingFetchRequestAckIds = V.catMaybes $ receivedRecordRecordId <$> streamingFetchResponseReceivedRecords resp
+                  , streamingFetchRequestAckIds = maybe V.empty receivedRecordRecordIds $ streamingFetchResponseReceivedRecords resp
                   }
         atomically $ writeTChan mockAckPool req
-        callback (V.toList $ streamingFetchResponseReceivedRecords resp)
+        callback (streamingFetchResponseReceivedRecords resp)
         return $ Right ()
   consumerCtx <- initConsumer scwContext (streamingFetchRequestConsumerName initReq) streamSend
   Log.debug "pass initConsumer"
@@ -518,7 +520,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           return []
         Right dataRecords -> return dataRecords
 
-    sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, V.Vector ReceivedRecord)] -> IO Int
+    sendReceivedRecordsVecs :: [(S.C_LogID, Word64, V.Vector ShardRecordId, ReceivedRecord)] -> IO Int
     sendReceivedRecordsVecs vecs = do
       (_, successRecords) <- foldM
         (
@@ -528,14 +530,14 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             else do
               ok <- sendReceivedRecords logId batchId shardRecordIdVec vec False
               if ok
-              then return (skipSet, successRecords + V.length vec)
+              then return (skipSet, successRecords + V.length shardRecordIdVec)
               else return (Set.insert logId skipSet, successRecords)
         )
         (Set.empty, 0)
         vecs
       pure successRecords
 
-    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> V.Vector ReceivedRecord -> Bool -> IO Bool
+    sendReceivedRecords :: S.C_LogID -> Word64 -> V.Vector ShardRecordId -> ReceivedRecord -> Bool -> IO Bool
     sendReceivedRecords logId batchId shardRecordIds records isResent = do
       let Assignment {..} = subAssignment
       -- if current send is not a resent, insert record related info into AckWindow
@@ -545,7 +547,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           scs <- readTVar subShardContexts
           let SubscribeShardContext {sscAckWindow = AckWindow{..}} = scs HM.! logId
           batchNumMap <- readTVar awBatchNumMap
-          let newBatchNumMap = Map.insert batchId (fromIntegral $ V.length records) batchNumMap
+          let newBatchNumMap = Map.insert batchId (fromIntegral $ V.length shardRecordIds) batchNumMap
           writeTVar awBatchNumMap newBatchNumMap
         else pure ()
 
@@ -570,7 +572,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
         Just (consumerName, streamSend) ->
           withMVar streamSend (\ss -> do
             Stats.subscription_time_series_add_response_messages scStatsHolder (textToCBytes subSubscriptionId) 1
-            ss (StreamingFetchResponse records)
+            ss (StreamingFetchResponse $ Just records)
             ) >>= \case
             Left err -> do
               Log.fatal $ "sendReceivedRecords failed: logId=" <> Log.buildInt logId <> ", batchId=" <> Log.buildInt batchId
@@ -637,14 +639,20 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
           -- TODO: handle error here
           Log.fatal . Log.buildString $ "read error"
         else do
-          let (_, _, _, records) = decodeRecordBatch $ head dataRecord
-              resendRecords =
+          let (_, _, _, ReceivedRecord{..}) = decodeRecordBatch $ head dataRecord
+              batchRecords@BatchedRecord{..} = fromJust receivedRecordRecord
+              uncompressedRecords = decompressBatchedRecord batchRecords
+              (ids, records) =
                 V.foldl'
-                  (\a ShardRecordId {..} ->
-                    V.snoc a (records V.! fromIntegral sriBatchIndex)
+                  (\(rids, r) ShardRecordId {..} ->
+                      let newRecords = V.snoc r (uncompressedRecords V.! fromIntegral sriBatchIndex)
+                          newIds = V.snoc rids (receivedRecordRecordIds V.! fromIntegral sriBatchIndex)
+                        in (newIds, newRecords)
                   )
-                  V.empty
+                  (V.empty, V.empty)
                   resendRecordIds
+              resendBatch = mkBatchedRecord batchedRecordCompressionType batchedRecordPublishTime (fromIntegral $ V.length records) records
+              resendRecords = ReceivedRecord ids (Just resendBatch)
           void $ sendReceivedRecords logId batchId resendRecordIds resendRecords True
 
     filterUnackedRecordIds recordIds ackedRanges windowLowerBound =
