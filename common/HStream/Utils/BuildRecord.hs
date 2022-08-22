@@ -19,7 +19,7 @@ import           Z.Data.CBytes             (CBytes)
 import           Z.Data.Vector             (Bytes)
 import           Z.Foreign                 (fromByteString, toByteString)
 
-import           Data.Word                 (Word64)
+import           Data.Word                 (Word32)
 import           Google.Protobuf.Timestamp
 import           HStream.Server.HStreamApi
 import           HStream.Utils.Codec       (Encoder, EncoderType (..),
@@ -80,7 +80,7 @@ getRecordKey record =
 mkBatchedRecord
   :: PT.Enumerated CompressionType
   -> Maybe Timestamp
-  -> Word64
+  -> Word32
   -> V.Vector HStreamRecord
   -> BatchedRecord
 mkBatchedRecord tp timestamp size records =
