@@ -7,7 +7,7 @@
 module HStream.Gossip.Core where
 
 import           Control.Concurrent               (killThread, newEmptyMVar,
-                                                   putMVar, takeMVar,
+                                                   putMVar, readMVar, takeMVar,
                                                    tryPutMVar)
 import           Control.Concurrent.STM           (atomically, check, dupTChan,
                                                    flushTQueue, modifyTVar,
@@ -214,7 +214,8 @@ handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
             then do
               Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
                                         <> "] Handling Internal Event" <> show eName <> " with lamport " <> show lpInt
-              handleINITEvent gc bs
+              (isSeed, _, _) <- readMVar seedsInfo
+              when isSeed $ handleINITEvent gc bs
             else Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
           Just action -> do
             action bs
@@ -228,7 +229,7 @@ handleINITEvent gc@GossipContext{..} payload = do
       void $ tryPutMVar clusterInited Gossip
       atomically $ do
         mWorkers <- readTVar workers
-        check $ Map.size mWorkers == length seeds
+        check $ (Map.size mWorkers + 1) == length seeds
       broadCastUserEvent gc eventNameINITED (BL.toStrict $ PT.toLazyByteString serverSelf)
 
 broadCastUserEvent :: GossipContext -> EventName -> EventPayload -> IO ()

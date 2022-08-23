@@ -206,3 +206,56 @@ jobs:
           name: integration-tests-reports
           path: ~/data/reports.tar
           retention-days: 7
+
+  distributed-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    name: distributed-tests
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data
+
+      - name: docker load
+        run: docker load -i ~/data/new_hstream_image.tar
+
+      - name: fetch distributed tests source code
+        uses: actions/checkout@v2
+        with:
+          repository: "hstreamdb/distributed-tests"
+          submodules: "recursive"
+          path: distributed-tests
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "adopt"
+          java-version: 11
+          cache: "gradle"
+
+      - uses: gradle/wrapper-validation-action@v1
+
+      - name: run distributed tests
+        run: |
+          cd distributed-tests
+          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+          ./gradlew test --info --fail-fast
+
+      - name: tar tests reports
+        if: ${{ success() }} || ${{ failure() }}
+        run: |
+          mv distributed-tests/.logs distributed-tests/logs
+          mv distributed-tests/app/build/reports distributed-tests/reports
+          tar -cvf ~/data/reports.tar distributed-tests/logs distributed-tests/reports
+
+      - name: upload tests-reports
+        uses: actions/upload-artifact@v2
+        if: ${{ success() }} || ${{ failure() }}
+        with:
+          name: distributed-tests-reports
+          path: ~/data/reports.tar
+          retention-days: 7
