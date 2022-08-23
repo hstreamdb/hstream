@@ -26,6 +26,7 @@ module HStream.Gossip
 
   ) where
 
+import           Control.Concurrent             (tryPutMVar, tryReadMVar)
 import           Control.Concurrent.STM         (STM, atomically, readTVar,
                                                  readTVarIO, writeTQueue)
 import           Data.Functor                   ((<&>))
@@ -33,7 +34,6 @@ import qualified Data.HashMap.Strict            as HM
 import qualified Data.Map.Strict                as Map
 import           Data.Word                      (Word32)
 
-import           Control.Concurrent             (tryPutMVar)
 import           HStream.Common.Types           (fromInternalServerNode)
 import           HStream.Gossip.Start           (bootstrap, initGossipContext,
                                                  startGossip)
@@ -87,11 +87,17 @@ getFailedNodesSTM :: GossipContext -> STM [I.ServerNode]
 getFailedNodesSTM GossipContext {..} = readTVar deadServers <&> Map.elems
 
 getClusterStatus :: GossipContext -> IO (HM.HashMap Word32 ServerNodeStatus)
-getClusterStatus gc = do
-  (alives, deads) <-  (,) <$> getMemberList gc <*> getFailedNodes gc
+getClusterStatus gc@GossipContext {..} = do
+  alives <- readTVarIO serverList <&> (map serverInfo . Map.elems . snd)
+  deads <- getFailedNodes gc
+  isReady <- tryReadMVar clusterReady
+  let self = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting)
+           . fromInternalServerNode
+           $ serverSelf
   return $ HM.fromList $
-       map (helper NodeStateRunning . fromInternalServerNode) alives
-    ++ map (helper NodeStateDead    . fromInternalServerNode) deads
+       self
+     : map (helper NodeStateRunning . fromInternalServerNode) alives
+    ++ map (helper NodeStateDead . fromInternalServerNode) deads
   where
     helper state node@ServerNode{..} =
       (serverNodeId, ServerNodeStatus { serverNodeStatusNode  = Just node

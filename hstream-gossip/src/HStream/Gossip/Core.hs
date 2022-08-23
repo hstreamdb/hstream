@@ -214,8 +214,8 @@ handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
             then do
               Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
                                         <> "] Handling Internal Event" <> show eName <> " with lamport " <> show lpInt
-              (isSeed, _, _) <- readMVar seedsInfo
-              when isSeed $ handleINITEvent gc bs
+              (isSeed, _, wasIDead) <- readMVar seedsInfo
+              when (isSeed && not wasIDead) $ handleINITEvent gc bs
             else Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
           Just action -> do
             action bs
