@@ -73,6 +73,7 @@ data GossipContext = GossipContext
   { serverSelf    :: I.ServerNode
   , eventHandlers :: EventHandlers
   , seeds         :: [(ByteString, Int)]
+  , seedsInfo     :: MVar (Bool, [(ByteString, Int)], Bool)
   , serverList    :: TVar ServerList
   , actionChan    :: TChan RequestAction
   , statePool     :: TQueue G.StateMessage
