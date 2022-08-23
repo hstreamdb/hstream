@@ -5,8 +5,7 @@ module HStream.Gossip.Types
   , module G
   ) where
 
-import           Control.Concurrent             (MVar)
-import           Control.Concurrent.Async       (Async)
+import           Control.Concurrent             (MVar, ThreadId)
 import           Control.Concurrent.STM         (TChan, TMVar, TQueue, TVar)
 import           Data.ByteString                (ByteString)
 import qualified Data.IntMap.Strict             as IM
@@ -42,27 +41,29 @@ data ServerStatus = ServerStatus
 
 data InitType = User | Gossip
 type ServerList    = (Epoch, Map ServerId ServerStatus)
-type Workers       = Map ServerId (Async ())
+type Workers       = Map ServerId ThreadId
 type BroadcastPool = [(G.Message, Word32)]
 type StateDelta    = Map ServerId (G.StateMessage, Bool)
 type EventHandlers = Map.Map Text EventHandler
 type SeenEvents    = IM.IntMap [(EventName, EventPayload)]
 
 data GossipOpts = GossipOpts
-  { gossipFanout     :: Int
-  , retransmitMult   :: Int
-  , gossipInterval   :: Int
-  , probeInterval    :: Int
-  , roundtripTimeout :: Int
+  { gossipFanout          :: Int
+  , retransmitMult        :: Int
+  , gossipInterval        :: Int
+  , probeInterval         :: Int
+  , roundtripTimeout      :: Int
+  , joinWorkerConcurrency :: Int
   } deriving (Show, Eq)
 
 defaultGossipOpts :: GossipOpts
 defaultGossipOpts = GossipOpts
-  { gossipFanout     = 3
-  , retransmitMult   = 4
-  , gossipInterval   = 1 * 1000 * 1000
-  , probeInterval    = 2 * 1000 * 1000
-  , roundtripTimeout = 500 * 1000
+  { gossipFanout          = 3
+  , retransmitMult        = 4
+  , gossipInterval        = 1 * 1000 * 1000
+  , probeInterval         = 2 * 1000 * 1000
+  , roundtripTimeout      = 500 * 1000
+  , joinWorkerConcurrency = 10
   }
 
 data ServerState = OK | Suspicious
@@ -72,6 +73,7 @@ data GossipContext = GossipContext
   { serverSelf    :: I.ServerNode
   , eventHandlers :: EventHandlers
   , seeds         :: [(ByteString, Int)]
+  , seedsInfo     :: MVar (Bool, [(ByteString, Int)], Bool)
   , serverList    :: TVar ServerList
   , actionChan    :: TChan RequestAction
   , statePool     :: TQueue G.StateMessage

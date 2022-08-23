@@ -59,3 +59,4 @@ constraints:
   , Z-Data        == 0.8.8.0
   , zoovisitor    == 0.2.1.0
   , blaze-textual == 0.2.1.0
+  , entropy       == 0.4.1.7

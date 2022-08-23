@@ -12,7 +12,7 @@ import           Control.Concurrent               (MVar, forkIO, modifyMVar,
                                                    threadDelay)
 import           Control.Concurrent.Async         (Async, async, link2Only,
                                                    mapConcurrently)
-import           Control.Concurrent.STM           (TVar, atomically, modifyTVar,
+import           Control.Concurrent.STM           (TVar, atomically,
                                                    newBroadcastTChanIO,
                                                    newTQueueIO, newTVarIO,
                                                    stateTVar)
@@ -68,15 +68,14 @@ initGossipContext gossipOpts _eventHandlers serverSelf seeds = do
   clusterInited <- newEmptyMVar
   clusterReady  <- newEmptyMVar
   numInited     <- newEmptyMVar
+  seedsInfo     <- newEmptyMVar
   let eventHandlers = Map.insert eventNameINITED (handleINITEDEvent numInited (length seeds) clusterReady) _eventHandlers
   return GossipContext {..}
 
 startGossip :: GossipContext -> IO ()
 startGossip gc@GossipContext {..} = do
-  seedInfo <- newEmptyMVar
-  a <- startListeners (I.serverNodeHost serverSelf) seedInfo gc
-  (isSeed, seeds', wasIDead) <- readMVar seedInfo
-  atomically $ modifyTVar workers (Map.insert (I.serverNodeId serverSelf) a)
+  void $ startListeners (I.serverNodeHost serverSelf) gc
+  (isSeed, seeds', wasIDead) <- readMVar seedsInfo
   if isSeed && not wasIDead
     then newTVarIO 0 >>= putMVar numInited . Just
       >> threadDelay 1000000
@@ -138,13 +137,13 @@ handleINITEDEvent initedM l ready payload = readMVar initedM >>= \case
       if x == l then putMVar ready () >> Log.info "All servers have been initialized"
         else when (x > l) $ Log.warning "More seeds has been initiated, something went wrong"
 
-startListeners ::  ByteString -> MVar (Bool, [(ByteString, Int)], Bool) -> GossipContext -> IO (Async ())
-startListeners grpcHost seedInfo gc@GossipContext {..} = do
+startListeners ::  ByteString -> GossipContext -> IO (Async ())
+startListeners grpcHost gc@GossipContext {..} = do
   let grpcOpts = GRPC.defaultServiceOptions {
       GRPC.serverHost = GRPC.Host grpcHost
     , GRPC.serverPort = GRPC.Port $ fromIntegral $ I.serverNodeGossipPort serverSelf
     , GRPC.serverOnStarted = Just $ do
-        void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedInfo
+        void . forkIO $ amIASeed serverSelf seeds >>= putMVar seedsInfo
         Log.debug . Log.buildString $ "Server node " <> show serverSelf <> " started"
     }
   let api = handlers gc

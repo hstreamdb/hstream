@@ -88,9 +88,9 @@ hserver:
   #gossip:
   #  gossip-fanout: 3
   #  retransmit-mult: 4
-  #  gossip-interval: 500000   # 0.5 sec
-  #  probe-interval: 1000000   # 1 sec
-  #  roundtrip-timeout: 500000 # 0.5 sec
+  #  gossip-interval: 1000000   # 1 sec
+  #  probe-interval: 2000000    # 2 sec
+  #  roundtrip-timeout: 500000  # 0.5 sec
 
   # HStream IO Options
   hstream-io:
