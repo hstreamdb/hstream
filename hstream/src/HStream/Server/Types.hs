@@ -40,7 +40,7 @@ protocolVersion :: Text
 protocolVersion = "0.1.0"
 
 serverVersion :: Text
-serverVersion = "0.9.0"
+serverVersion = "0.9.1"
 
 data SubscriptionWrap = SubscriptionWrap
   { originSub  :: Subscription
