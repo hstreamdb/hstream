@@ -89,8 +89,7 @@ mkBatchedRecord tp timestamp size records =
 
 -- decompress batchedRecord to HStreamRecords, first decompress batchRecordPayload, then deserializeHStreamRecord
 decompressBatchedRecord :: BatchedRecord -> V.Vector HStreamRecord
-decompressBatchedRecord =
-  decompressBatchedRecord' @'ProtoEncoder
+decompressBatchedRecord = decompressBatchedRecord' @'ProtoEncoder
 
 decompressBatchedRecord' :: forall a. Encoder a => BatchedRecord -> V.Vector HStreamRecord
 decompressBatchedRecord' BatchedRecord{..} =

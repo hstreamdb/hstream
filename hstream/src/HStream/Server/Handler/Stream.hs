@@ -143,6 +143,8 @@ appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
           return (StatusInvalidArgument, mkStatusDetails err))
       , Handler (\(err :: DecodeHStreamRecordErr) -> do
           return (StatusInvalidArgument, mkStatusDetails err))
+      , Handler (\(err :: C.InvalidBatchedRecord) -> do
+          return (StatusInvalidArgument, mkStatusDetails err))
       ] ++ defaultHandlers
     mkHandlers = setRespType mkServerErrResp handlers
 

@@ -144,8 +144,8 @@ decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
     logId = HS.recordLogID dataRecord
     batchId = HS.recordLSN dataRecord
     batch@BatchedRecord{..} = decodeByteStringBatch payload
-    shardRecordIds = V.map (ShardRecordId batchId . fromIntegral) (V.fromList [0..batchedRecordBatchSize - 1])
-    recordIds = V.map (RecordId logId batchId . fromIntegral) (V.fromList [0..batchedRecordBatchSize - 1])
+    shardRecordIds = V.map (ShardRecordId batchId) (V.fromList [0..batchedRecordBatchSize - 1])
+    recordIds = V.map (RecordId logId batchId) (V.fromList [0..batchedRecordBatchSize - 1])
     receivedRecords = ReceivedRecord recordIds (Just batch)
 
 --------------------------------------------------------------------------------

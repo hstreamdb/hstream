@@ -19,6 +19,7 @@ module HStream.Server.Core.Stream
   , ShardReaderExists (..)
   , ShardReaderNotExists (..)
   , UnKnownShardOffset (..)
+  , InvalidBatchedRecord (..)
   ) where
 
 import           Control.Concurrent                (modifyMVar_, newEmptyMVar,
@@ -26,7 +27,8 @@ import           Control.Concurrent                (modifyMVar_, newEmptyMVar,
                                                     withMVar)
 import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
-                                                    bracket, catch, throwIO)
+                                                    bracket, catch, throw,
+                                                    throwIO)
 import           Control.Monad                     (forM, unless, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
@@ -156,12 +158,10 @@ appendStream :: HasCallStack
 appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
   appendRequestRecords = mbRecord, ..} = do
   let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = case mbRecord of
-       Nothing -> error ""
+       Nothing -> throw InvalidBatchedRecord
        Just r  -> r
   timestamp <- getProtoTimestamp
   let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
-  -- let payload = encodeBatch . API.HStreamRecordBatch $
-  --       encodeRecord . updateRecordTimestamp timestamp <$> records
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
@@ -334,3 +334,8 @@ instance Exception ShardReaderExists
 data UnKnownShardOffset = UnKnownShardOffset
   deriving (Show)
 instance Exception UnKnownShardOffset
+
+data InvalidBatchedRecord = InvalidBatchedRecord
+  deriving (Show)
+instance Exception InvalidBatchedRecord where
+  displayException InvalidBatchedRecord = "BatchedRecord shouldn't be Nothing"
