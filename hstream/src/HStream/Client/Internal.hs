@@ -12,7 +12,6 @@ module HStream.Client.Internal
 
 import           Control.Concurrent               (readMVar)
 import           Control.Monad                    (forM_, void)
-import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (ClientRequest (..),
@@ -39,7 +38,7 @@ callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
                    , API.subscriptionStreamName = stream
                    , API.subscriptionAckTimeoutSeconds = 1
                    , API.subscriptionMaxUnackedRecords = 100
-                   , API.subscriptionOffset = (Enumerated (Right API.SpecialOffsetLATEST))
+                   , API.subscriptionOffset = Enumerated (Right API.SpecialOffsetLATEST)
                    }
       hstreamApiCreateSubscription (mkClientNormalRequest' subReq)
     handleRespApp :: ClientResult 'Normal API.Subscription -> IO ()
@@ -126,7 +125,7 @@ callStreamingFetch ctx@HStreamSqlContext{..} startRecordIds subId clientId = do
           case m_recv of
             Left err -> print err
             Right (Just resp@API.StreamingFetchResponse{..}) -> do
-              let recIds = V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
+              let recIds = maybe V.empty API.receivedRecordRecordIds streamingFetchResponseReceivedRecords
               print resp
               let ackReq = API.StreamingFetchRequest
                            { API.streamingFetchRequestSubscriptionId = subId

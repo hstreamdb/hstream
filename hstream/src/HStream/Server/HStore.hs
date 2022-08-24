@@ -35,8 +35,7 @@ import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (WrongOffset (..))
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Server.Shard             (Shard (streamId),
-                                                   cBytesToKey, hashShardKey,
+import           HStream.Server.Shard             (cBytesToKey, hashShardKey,
                                                    shardStartKey)
 import           HStream.Server.Types
 import qualified HStream.Store                    as S
@@ -126,26 +125,31 @@ dataRecordToSourceRecord ldclient Payload {..} = do
     , srcOffset = pLSN
     }
 
-receivedRecordToSourceRecord :: HCT.StreamName -> API.ReceivedRecord -> SourceRecord
-receivedRecordToSourceRecord streamName API.ReceivedRecord{..} =
-  let Just API.RecordId{..} = receivedRecordRecordId
-      hsrBytes     = receivedRecordRecord in
-  let (Right hsr) = PB.fromByteString hsrBytes in
-  let pbPayload = API.hstreamRecordPayload hsr
-   in SourceRecord
-      { srcStream = streamName
-      , srcOffset = recordIdBatchId
-      , srcTimestamp = getTimeStamp hsr
-      , srcKey = Just "{}"
-      , srcValue = let Right struct = PB.fromByteString pbPayload
-                    in Aeson.encode . structToJsonObject $ struct
-      }
+receivedRecordToSourceRecord :: HCT.StreamName -> Maybe API.ReceivedRecord -> [SourceRecord]
+receivedRecordToSourceRecord streamName = maybe [] convert
+ where
+   convert API.ReceivedRecord{..} =
+    case receivedRecordRecord of
+      Nothing -> []
+      Just batchRecord ->
+        let hRecords = decompressBatchedRecord batchRecord
+            timestamp = getTimeStamp batchRecord
+         in V.toList $ V.zipWith (mkSourceRecord timestamp) receivedRecordRecordIds hRecords
+
+   mkSourceRecord timestamp API.RecordId{..} API.HStreamRecord{..} = SourceRecord
+     { srcStream = streamName
+     , srcOffset = recordIdBatchId
+     , srcTimestamp = timestamp
+     , srcKey = Just "{}"
+     , srcValue = let Right struct = PB.fromByteString hstreamRecordPayload
+                   in Aeson.encode . structToJsonObject $ struct
+     }
 
 readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore ldclient reader maxlen = do
   S.ckpReaderSetTimeout reader 1000   -- 1000 milliseconds
   dataRecords <- S.ckpReaderRead reader maxlen
-  let payloads = concat $ map getJsonFormatRecords dataRecords
+  let payloads = concatMap getJsonFormatRecords dataRecords
   mapM (dataRecordToSourceRecord ldclient) payloads
 
 withReadRecordsFromHStore' :: ServerContext
@@ -161,9 +165,9 @@ withReadRecordsFromHStore' ctx consumerName streamName action = do
             }
   Core.streamingFetchCore ctx Core.SFetchCoreDirect req action'
   where
-    action' :: [API.ReceivedRecord] -> IO ()
+    action' :: Maybe API.ReceivedRecord -> IO ()
     action' receivedRecords = do
-      let sourceRecords = receivedRecordToSourceRecord streamName <$> receivedRecords
+      let sourceRecords = receivedRecordToSourceRecord streamName receivedRecords
       action sourceRecords
 
 -- Note: It actually gets 'Payload'(defined in this file)s of all JSON format DataRecords.
@@ -172,12 +176,12 @@ getJsonFormatRecords dataRecord =
   map (\hsr -> let logid     = S.recordLogID dataRecord
                    payload   = getPayload hsr
                    lsn       = S.recordLSN dataRecord
-                   timestamp = getTimeStamp hsr
                 in Payload logid payload lsn timestamp)
   (filter (\hsr -> getPayloadFlag hsr == Enumerated (Right API.HStreamRecordHeader_FlagJSON)) hstreamRecords)
   where
-    API.HStreamRecordBatch bss = decodeBatch $ S.recordPayload dataRecord
-    hstreamRecords = (decodeRecord . byteStringToBytes) <$> (V.toList bss)
+    batchRecords = decodeBatchRecord $ S.recordPayload dataRecord
+    timestamp = getTimeStamp batchRecords
+    hstreamRecords = V.toList . decompressBatchedRecord $ batchRecords
 
 commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Offset -> IO ()
 commitCheckpointToHStore ldclient reader streamId offset = do
@@ -193,13 +197,14 @@ writeRecordToHStore ctx SinkRecord{..} = do
 
   timestamp <- getProtoTimestamp
   shardId <- getShardId ctx snkStream
-  let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
+  let header  = buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
       payload = BL.toStrict . PB.toLazyByteString . jsonObjectToStruct . fromJust $ Aeson.decode snkValue
-  let record = buildRecord header payload
+      hsRecord = mkHStreamRecord header payload
+      record = mkBatchedRecord (PB.Enumerated (Right API.CompressionTypeNone)) (Just timestamp) 1 (V.singleton hsRecord)
   let req = API.AppendRequest
             { appendRequestStreamName = snkStream
             , appendRequestShardId = shardId
-            , appendRequestRecords = V.singleton record
+            , appendRequestRecords = Just record
             }
   void $ Core.appendStream ctx req
 

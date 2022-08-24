@@ -74,9 +74,9 @@ streamSpec = aroundAll provideHstreamApi $ describe "StreamSpec" $ parallel $ do
       payload2 <- newRandomByteString 5
       timeStamp <- getProtoTimestamp
       let stream = mkStreamWithDefaultShards name 1
-          header  = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
-          record1 = buildRecord header payload1
-          record2 = buildRecord header payload2
+          header  = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty T.empty
+          record1 = mkHStreamRecord header payload1
+          record2 = mkHStreamRecord header payload2
       createStreamRequest api stream `shouldReturn` stream
       -- FIXME: Even we have called the "syncLogsConfigVersion" method, there is
       -- __no__ guarantee that subsequent "append" will have an up-to-date view

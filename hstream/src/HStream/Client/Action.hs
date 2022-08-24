@@ -40,6 +40,7 @@ import           HStream.SQL.Codegen              (DropObject (..),
                                                    TerminationSelection (..))
 import           HStream.ThirdParty.Protobuf      (Empty (..))
 import           HStream.Utils
+import qualified Proto3.Suite                     as PT
 
 createStream :: StreamName -> Int
   -> Action API.Stream
@@ -95,15 +96,15 @@ insertIntoStream
   :: StreamName -> Word64 -> InsertType -> BS.ByteString
   -> Action API.AppendResponse
 insertIntoStream sName shardId insertType payload API.HStreamApi{..} = do
-  timestamp <- getProtoTimestamp
   let header = case insertType of
-        JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty timestamp clientDefaultKey
-        RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty timestamp clientDefaultKey
-      record = buildRecord header payload
+        JsonFormat -> buildRecordHeader API.HStreamRecordHeader_FlagJSON Map.empty clientDefaultKey
+        RawFormat  -> buildRecordHeader API.HStreamRecordHeader_FlagRAW Map.empty clientDefaultKey
+      hsRecord = mkHStreamRecord header payload
+      record = mkBatchedRecord (PT.Enumerated (Right CompressionTypeNone)) Nothing 1 (V.singleton hsRecord)
   hstreamApiAppend (mkClientNormalRequest' def
     { API.appendRequestShardId    = shardId
     , API.appendRequestStreamName = sName
-    , API.appendRequestRecords    = V.singleton record
+    , API.appendRequestRecords    = Just record
     })
 
 -- FIXME: unused args
