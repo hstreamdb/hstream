@@ -1,0 +1,93 @@
+cabal-version: 2.2
+name:          hstream-io
+version:       0.1.0.0
+synopsis:
+  High performance stream processing platform for IoT data written in Haskell.
+
+description:
+  Please see the README on GitHub at
+  <https://github.com/hstreamdb/hstream#readme>
+
+license:       BSD-3-Clause
+license-file:  LICENSE
+copyright:     Copyright (c) 2020 EMQ Technologies Co., Ltd.
+author:        Bin Wang
+maintainer:    wangbin@emqx.io
+tested-with:   GHC ==8.10.4
+category:      Database
+homepage:      https://github.com/hstreamdb/hstream
+bug-reports:   https://github.com/hstreamdb/hstream/issues
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/hstream
+
+flag ReleaseBuild
+  default:     False
+  description:
+    Enables all optimisations, leads to slower build time and better performance
+
+common shared-properties
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  if flag(releasebuild)
+    ghc-options:
+      -feager-blackholing -flate-dmd-anal -flate-specialise
+      -fspec-constr-keen -fstatic-argument-transformation
+      -funbox-strict-fields -O2
+
+library
+  import:             shared-properties
+  exposed-modules:
+    HStream.IO.IOTask
+    HStream.IO.Storage
+    HStream.IO.Types
+    HStream.IO.Worker
+    HStream.IO.ZkKv
+    HStream.IO.Messages
+
+  build-depends:
+    , aeson
+    , base
+    , bytestring
+    , clickhouse-haskell
+    , containers
+    , grpc-haskell
+    , grpc-haskell-core
+    , haxl
+    , hstream-common
+    , hstream-sql
+    , hstream-store
+    , mysql-haskell
+    , proto3-suite
+    , proto3-wire
+    , rio
+    , scientific
+    , stm
+    , text
+    , time
+    , typed-process
+    , unordered-containers
+    , uuid
+    , vector
+    , Z-Data
+    , Z-IO
+    , zoovisitor
+
+  default-extensions:
+    DeriveGeneric
+    DerivingStrategies
+    EmptyDataDeriving
+    GADTSyntax
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    UnliftedFFITypes
+
+  default-language:   Haskell2010

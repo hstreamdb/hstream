@@ -2,13 +2,15 @@ packages:
   hstream
   common/hstream-common.cabal
   common/stats/hstream-common-stats.cabal
+  common/api/hstream-api-protolens.cabal
   hstream-store
-  hstream-processing
   hstream-sql
-  hstream-connector
+  hstream-io
   hstream-admin
   hstream-gossip
+  hstream-diffflow
 
+  external/hs-grpc/server/hs-grpc-server.cabal
   external/gRPC-haskell
   external/gRPC-haskell/core
   external/proto3-wire/proto3-wire.cabal
@@ -22,6 +24,10 @@ packages:
 -- https://github.com/haskell/cabal/issues/4271
 package thrift-lib
   flags: +use_sys_thrift_compiler
+  tests: false
+
+package hs-grpc-server
+  flags: +UseProtoSuite
   tests: false
 
 package fb-util
@@ -48,11 +54,9 @@ package proto3-wire
 package proto3-suite
   tests: false
 
-package hstream-gossip
-  tests: false
-
 constraints:
     Z-IO          == 0.8.1.1
   , Z-Data        == 0.8.8.0
   , zoovisitor    == 0.2.1.0
   , blaze-textual == 0.2.1.0
+  , entropy       == 0.4.1.7

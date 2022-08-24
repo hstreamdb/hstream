@@ -17,32 +17,24 @@ module HStream.Server.Persistence.Common
   , TaskPersistence (..)
   , BasicObjectPersistence (..)
   , ObjRepType (..)
+  , ShardReader (..)
+  , ReaderPersistence (..)
   ) where
 
-import           Data.Aeson                (FromJSON (..), FromJSONKey,
-                                            ToJSON (..), ToJSONKey)
-import           Data.Int                  (Int64)
-import           Data.Map                  (Map)
-import qualified Data.Text                 as T
-import           GHC.Generics              (Generic)
-import           GHC.Stack                 (HasCallStack)
-import           Z.Data.CBytes             (CBytes)
+import           Data.Aeson           (FromJSON (..), ToJSON (..))
+import           Data.Int             (Int64)
+import           Data.Map             (Map)
+import qualified Data.Text            as T
+import           GHC.Generics         (Generic)
+import           GHC.Stack            (HasCallStack)
+import           Z.Data.CBytes        (CBytes)
 
-import           HStream.Server.HStreamApi (Subscription)
-import           HStream.Server.Types      (ServerID)
-import           HStream.Utils             (TaskStatus (..), cBytesToText,
-                                            textToCBytes)
+import           Data.Word            (Word32, Word64)
+import           HStream.Server.Types (ServerID, SubscriptionWrap)
+import qualified HStream.Store        as S
+import           HStream.Utils        (TaskStatus (..))
 
 --------------------------------------------------------------------------------
-
-instance FromJSON CBytes where
-  parseJSON v = let pText = parseJSON v in textToCBytes <$> pText
-
-instance ToJSON CBytes where
-  toJSON cb = toJSON (cBytesToText cb)
-
-instance FromJSONKey CBytes
-instance ToJSONKey CBytes
 
 type ViewSchema     = [String]
 type RelatedStreams = [CBytes]
@@ -111,7 +103,7 @@ data ObjRepType = SubRep
 
 -- | The real type of the stored object
 type family RealObjType (a :: ObjRepType) where
-  RealObjType 'SubRep    = Subscription
+  RealObjType 'SubRep    = SubscriptionWrap
 
 class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b | b -> a where
   -- | persist an object to the store
@@ -129,3 +121,20 @@ class (RealObjType a ~ b) => BasicObjectPersistence handle (a :: ObjRepType) b |
   removeObject :: HasCallStack => T.Text -> handle -> IO ()
   -- | remove all objects
   removeAllObjects :: HasCallStack => handle -> IO ()
+
+--------------------------------------------------------------------------------
+    --
+data ShardReader = ShardReader
+  { readerStreamName  :: T.Text
+  , readerShardId     :: Word64
+  , readerShardOffset :: S.LSN
+  , readerReaderId    :: T.Text
+  , readerReadTimeout :: Word32
+  } deriving (Show, Generic, FromJSON, ToJSON)
+
+class ReaderPersistence handle where
+  storeReader  :: HasCallStack => T.Text -> ShardReader -> handle -> IO ()
+  getReader    :: HasCallStack => T.Text -> handle -> IO (Maybe ShardReader)
+  removeReader :: HasCallStack => T.Text -> handle -> IO ()
+  readerExist  :: HasCallStack => T.Text -> handle -> IO Bool
+

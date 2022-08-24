@@ -3,7 +3,7 @@ cradle:
     - path: "common/."
       component: "lib:hstream-common"
 
-    - path: "common/gen-hs"
+    - path: "common/api/gen-hs"
       component: "lib:hstream-common"
 
     - path: "common/test"
@@ -17,6 +17,9 @@ cradle:
 
     - path: "common/stats/bench/stats.hs"
       component: "hstream-common-stats:bench:common-bench-stats"
+
+    - path: "common/HStream/bench"
+      component: "hstream-common:bench:codec-bench"
 
     - path: "external/gRPC-haskell/core/src"
       component: "lib:grpc-haskell-core"
@@ -244,7 +247,7 @@ cradle:
       component: "hstream:exe:hstream-server"
 
     - path: "hstream/./app/client.hs"
-      component: "hstream:exe:hstream-client"
+      component: "hstream:exe:hstream"
 
     - path: "hstream/test"
       component: "hstream:test:hstream-test"
@@ -258,44 +261,38 @@ cradle:
     - path: "hstream-admin/app/admin.hs"
       component: "hstream-admin:exe:hadmin"
 
-    - path: "hstream-connector/./"
-      component: "lib:hstream-connector"
+    - path: "hstream-io/./"
+      component: "lib:hstream-io"
 
-    - path: "hstream-processing/src"
-      component: "lib:hstream-processing"
+    - path: "hstream-diffflow/src"
+      component: "lib:diff-flow"
 
-    - path: "hstream-processing/example/ProcessorExample0.hs"
-      component: "hstream-processing:exe:processor-example0"
+    - path: "hstream-diffflow/test"
+      component: "diff-flow:test:lib-test"
 
-    - path: "hstream-processing/example/ProcessorExample1.hs"
-      component: "hstream-processing:exe:processor-example1"
+    - path: "hstream-diffflow/./example/Main.hs"
+      component: "diff-flow:exe:example"
 
-    - path: "hstream-processing/example/StreamExample0.hs"
-      component: "hstream-processing:exe:stream-example0"
+    - path: "hstream-diffflow/./example/Reduce.hs"
+      component: "diff-flow:exe:example-2"
 
-    - path: "hstream-processing/example/StreamExample1.hs"
-      component: "hstream-processing:exe:stream-example1"
+    - path: "hstream-diffflow/./example/Distinct.hs"
+      component: "diff-flow:exe:example-3"
 
-    - path: "hstream-processing/example/StreamExample2.hs"
-      component: "hstream-processing:exe:stream-example2"
+    - path: "hstream-diffflow/./example/Loop.hs"
+      component: "diff-flow:exe:example-4"
 
-    - path: "hstream-processing/example/StreamExample3.hs"
-      component: "hstream-processing:exe:stream-example3"
+    - path: "hstream-diffflow/./bench/benchmark.hs"
+      component: "diff-flow:bench:lib-bench"
 
-    - path: "hstream-processing/example/StreamExample4.hs"
-      component: "hstream-processing:exe:stream-example4"
-
-    - path: "hstream-processing/example/StreamExample5.hs"
-      component: "hstream-processing:exe:stream-example5"
+    - path: "hstream-diffflow/./bench/throughout.hs"
+      component: "diff-flow:exe:throughout-bench"
 
     - path: "hstream-sql/src"
       component: "lib:hstream-sql"
 
     - path: "hstream-sql/gen-sql"
       component: "lib:hstream-sql"
-
-    - path: "hstream-sql/sql-example-mock/Example.hs"
-      component: "hstream-sql:exe:sql-example-mock"
 
     - path: "hstream-sql/test"
       component: "hstream-sql:test:hstream-sql-test"
@@ -317,12 +314,3 @@ cradle:
 
     - path: "hstream-gossip/src"
       component: "lib:hstream-gossip"
-
-    - path: "hstream-gossip/test"
-      component: "hstream-gossip:test:hstream-gossip-test"
-
-    - path: "hstream-gossip/app/Server.hs"
-      component: "hstream-gossip:exe:hstream-gossip-server"
-
-    - path: "hstream-gossip/app/Client.hs"
-      component: "hstream-gossip:exe:hstream-gossip-client"

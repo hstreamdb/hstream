@@ -14,6 +14,7 @@ module HStream.Store.Stream
   , mkStreamIdFromFullLogDir
   , getStreamLogAttrs
   , getStreamPartitionHeadTimestamp
+  , getStreamPartitionExtraAttrs
     -- ** Operations
   , createStream
   , createStreamPartition
@@ -129,9 +130,13 @@ module HStream.Store.Stream
   , def
   ) where
 
-import           Control.Exception                (try)
-import           Control.Monad                    (filterM, forM, void, (<=<))
+import           Control.Concurrent               (MVar, modifyMVar_, newMVar,
+                                                   readMVar)
+import           Control.Exception                (finally, try)
+import           Control.Monad                    (filterM, forM, forM_, void,
+                                                   (<=<))
 import           Data.Bits                        (bit)
+import qualified Data.Cache                       as Cache
 import           Data.Default                     (def)
 import           Data.Foldable                    (foldrM)
 import           Data.Hashable                    (Hashable)
@@ -183,6 +188,34 @@ gloStreamSettings = unsafePerformIO . newIORef $
 updateGloStreamSettings :: (StreamSettings -> StreamSettings)-> IO ()
 updateGloStreamSettings f = atomicModifyIORef' gloStreamSettings $ \s -> (f s, ())
 
+-- StreamId : { streamKey: logid }
+type StreamCache = Cache.Cache StreamId (Map CBytes FFI.C_LogID)
+
+-- | Global logdir path to logid cache
+--
+-- Note: for a cluster version, to make the cache work properly, all operations
+-- of one stream (e.g. create, delete, ...) must be processed by only one
+-- specific server.
+gloLogPathCache :: MVar StreamCache
+gloLogPathCache = unsafePerformIO $ newMVar =<< Cache.newCache Nothing
+{-# NOINLINE gloLogPathCache #-}
+
+getGloLogPathCache :: StreamId -> CBytes -> IO (Maybe FFI.C_LogID)
+getGloLogPathCache streamid key = do
+  cache <- readMVar gloLogPathCache
+  m_v <- Cache.lookup' cache streamid
+  case m_v of
+    Nothing -> pure Nothing
+    Just mp -> pure $ Map.lookup key mp
+
+updateGloLogPathCache :: StreamId -> CBytes -> FFI.C_LogID -> IO ()
+updateGloLogPathCache streamid key logid =
+  modifyMVar_ gloLogPathCache $ \c -> do
+    m_v <- Cache.lookup' c streamid
+    case m_v of
+      Nothing -> Cache.insert c streamid (Map.singleton key logid) >> pure c
+      Just mp -> Cache.insert c streamid (Map.insert key logid mp) >> pure c
+
 newtype ArchivedStream = ArchivedStream { getArchivedStreamName :: CBytes}
 
 isArchiveStreamName :: StreamName -> IO Bool
@@ -191,12 +224,18 @@ isArchiveStreamName name = do
   let name' = CBytes.toBytes name
   pure $ prefix `ZV.isPrefixOf` name'
 
--- ArchivedStreamName format: "prefix + name + suffix"
-toArchivedStreamName :: HasCallStack => FFI.LDClient -> StreamId -> IO CBytes
-toArchivedStreamName client streamid@StreamId{..} = do
-  -- we use default loggroup's logid as the suffix
-  logid <- getUnderlyingLogId client streamid Nothing
-  let suffix = CBytes.buildCBytes $ ZB.int logid
+-- ArchivedStreamName format: "prefix + name + unique word64"
+toArchivedStreamName :: StreamId -> IO CBytes
+toArchivedStreamName StreamId{..} = do
+  -- After a stream has been archived, a new stream with the same name as the
+  -- previous one is allowed to be created. The unique suffix is used to ensure
+  -- that the following scenarios are executed correctly:
+  --    step1. create stream "test"
+  --    step2. archive stream "test"
+  --    step3. create stream "test"
+  --    step4. archive stream "test"
+  -- If the suffix isn't unique, step4 will failed.
+  suffix <- CBytes.buildCBytes . ZB.int <$> genUnique
   already <- isArchiveStreamName streamName
   if already
      then pure $ streamName <> suffix
@@ -244,31 +283,35 @@ showStreamName = CBytes.unpack . streamName
 -- | Create stream
 --
 -- Currently a Stream is a logidr.
-createStream :: HasCallStack
-             => FFI.LDClient -> StreamId -> LD.LogAttributes -> IO ()
+createStream
+  :: HasCallStack
+  => FFI.LDClient
+  -> StreamId
+  -> LD.LogAttributes
+  -> IO ()
 createStream client streamid attrs = do
   path <- getStreamDirPath streamid
-  void $ LD.makeLogDirectory client path attrs True
-  -- create default loggroup
-  (log_path, _key) <- getStreamLogPath streamid Nothing
-  void $ createRandomLogGroup client log_path def
+  dir <- LD.makeLogDirectory client path attrs True
+  LD.syncLogsConfigVersion client =<< LD.logDirectoryGetVersion dir
 
 -- | Create a partition of a stream. If the stream doesn't exist, throw
 -- StoreError.
 --
--- Currently a stream partition is a loggroup which only contains one random
--- logid.
+-- Currently a stream partition is a loggroup which only contains one random logid.
 createStreamPartition
   :: HasCallStack
   => FFI.LDClient
   -> StreamId
   -> Maybe CBytes
+  -> Map CBytes CBytes
   -> IO FFI.C_LogID
-createStreamPartition client streamid m_key = do
+createStreamPartition client streamid m_key attr = do
   stream_exist <- doesStreamExist client streamid
   if stream_exist
-     then do (log_path, _key) <- getStreamLogPath streamid m_key
-             createRandomLogGroup client log_path def
+     then do (log_path, key) <- getStreamLogPath streamid m_key
+             logid <- createRandomLogGroup client log_path def{LD.logAttrsExtras = attr}
+             updateGloLogPathCache streamid key logid
+             pure logid
      else E.throwStoreError ("No such stream: " <> ZT.pack (showStreamName streamid))
                             callStack
 
@@ -299,7 +342,12 @@ _renameStream_ :: HasCallStack => FFI.LDClient -> StreamId -> StreamId -> IO ()
 _renameStream_ client from to = do
   from' <- getStreamDirPath from
   to'   <- getStreamDirPath to
-  LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to'
+  modifyMVar_ gloLogPathCache $ \cache -> do
+    m_v <- Cache.lookup' cache from
+    finally (LD.syncLogsConfigVersion client =<< LD.renameLogGroup client from' to')
+            (Cache.delete cache from)
+    forM_ m_v $ Cache.insert cache to
+    pure cache
 {-# INLINABLE _renameStream_ #-}
 
 -- | Archive a stream, then you won't find it by 'findStreams'.
@@ -308,7 +356,7 @@ _renameStream_ client from to = do
 -- Note that all operations depend on logid will work as expected.
 archiveStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ArchivedStream
 archiveStream client streamid = do
-  archiveStreamName <- toArchivedStreamName client streamid
+  archiveStreamName <- toArchivedStreamName streamid
   renameStream' client streamid archiveStreamName
   return $ ArchivedStream archiveStreamName
 
@@ -325,9 +373,11 @@ removeArchivedStream client (ArchivedStream name) =
   removeStream client $ StreamId StreamTypeStream name
 
 removeStream :: HasCallStack => FFI.LDClient -> StreamId -> IO ()
-removeStream client streamid = do
+removeStream client streamid = modifyMVar_ gloLogPathCache $ \cache -> do
   path <- getStreamDirPath streamid
-  LD.syncLogsConfigVersion client =<< LD.removeLogDirectory client path True
+  finally (LD.syncLogsConfigVersion client =<< LD.removeLogDirectory client path True)
+          (Cache.delete cache streamid)
+  pure cache
 
 -- | Find all active streams.
 findStreams
@@ -344,11 +394,16 @@ findStreams client streamType = do
 
 doesStreamExist :: HasCallStack => FFI.LDClient -> StreamId -> IO Bool
 doesStreamExist client streamid = do
-  path <- getStreamDirPath streamid
-  r <- try $ LD.getLogDirectory client path
-  case r of
-    Left (_ :: E.NOTFOUND) -> return False
-    Right _                -> return True
+  cache <- readMVar gloLogPathCache
+  m_v <- Cache.lookup' cache streamid
+  case m_v of
+    Just _  -> return True
+    Nothing -> do
+      path <- getStreamDirPath streamid
+      r <- try $ LD.getLogDirectory client path
+      case r of
+        Left (_ :: E.NOTFOUND) -> return False
+        Right _                -> return True
 
 listStreamPartitions :: HasCallStack => FFI.LDClient -> StreamId -> IO (Map.Map CBytes FFI.C_LogID)
 listStreamPartitions client streamid = do
@@ -367,11 +422,17 @@ doesStreamPartitionExist
   -> Maybe CBytes
   -> IO Bool
 doesStreamPartitionExist client streamid m_key = do
-  (logpath, _key) <- getStreamLogPath streamid m_key
-  r <- try $ LD.getLogGroup client logpath
-  case r of
-    Left (_ :: E.NOTFOUND) -> return False
-    Right _                -> return True
+  (logpath, key) <- getStreamLogPath streamid m_key
+  m_v <- getGloLogPathCache streamid key
+  case m_v of
+    Just _  -> return True
+    Nothing -> do
+      r <- try $ LD.getLogGroup client logpath
+      case r of
+        Left (_ :: E.NOTFOUND) -> return False
+        Right lg               -> do
+          updateGloLogPathCache streamid key . fst =<< LD.logGroupGetRange lg
+          return True
 
 -------------------------------------------------------------------------------
 -- StreamAttrs
@@ -420,6 +481,13 @@ getStreamPartitionHeadTimestamp client stream m_key = do
     FFI.C_MAX_MILLISECONDS -> return Nothing
     _                      -> return $ Just ts
 
+getStreamPartitionExtraAttrs
+  :: FFI.LDClient
+  -> FFI.C_LogID
+  -> IO (Map CBytes CBytes)
+getStreamPartitionExtraAttrs client logId = do
+   fmap LD.logAttrsExtras <$> LD.logGroupGetAttrs =<< LD.getLogGroupByID client logId
+
 -------------------------------------------------------------------------------
 
 getUnderlyingLogId
@@ -429,8 +497,14 @@ getUnderlyingLogId
   -> Maybe CBytes
   -> IO FFI.C_LogID
 getUnderlyingLogId client streamid m_key = do
-  (log_path, _key) <- getStreamLogPath streamid m_key
-  fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client log_path)
+  (log_path, key) <- getStreamLogPath streamid m_key
+  m_logid <- getGloLogPathCache streamid key
+  case m_logid of
+    Nothing -> do
+      logid <- fst <$> (LD.logGroupGetRange =<< LD.getLogGroup client log_path)
+      updateGloLogPathCache streamid key logid
+      pure logid
+    Just ld -> pure ld
 {-# INLINABLE getUnderlyingLogId #-}
 
 getStreamIdFromLogId
@@ -570,7 +644,10 @@ getStreamLogPath :: StreamId -> Maybe CBytes -> IO (CBytes, CBytes)
 getStreamLogPath streamid m_key = do
   s <- readIORef gloStreamSettings
   dir_path <- getStreamDirPath streamid
-  let key_name = fromMaybe (streamDefaultKey s) m_key
+  let key_name = case m_key of
+       Just ""  -> streamDefaultKey s
+       Just key -> key
+       Nothing  -> streamDefaultKey s
   full_path <- dir_path `FS.join` key_name
   pure (full_path, key_name)
 {-# INLINABLE getStreamLogPath #-}

@@ -71,15 +71,10 @@ IMAGES = {
     "LD_IMAGE": "docker.io/hstreamdb/logdevice",
     "DB_IMAGE": "docker.io/hstreamdb/hstream",
     "SWAGGER_IMAGE": "swaggerapi/swagger-ui",
-    # TODO: we should update haskell-mysql to support password protocol in higher versions of mysql
-    "MYSQL_IMAGE": "mysql:5.6",
-    "CLICKHOUSE_IMAGE": "yandex/clickhouse-server",
     "ZOOKEEPER_IMAGE": "zookeeper:3.6",
 }
 
 SERVICES = {
-    "mysql": f"hstream-test-mysql-{CUID}",
-    "clickhouse": f"hstream-test-clickhouse-{CUID}",
     "zookeeper": f"hstream-test-zookeeper-{CUID}",
     "store": f"logdevice-dev-cluster-{CUID}",
 }
@@ -104,6 +99,15 @@ def find_free_port():
         s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
+
+
+def container_run(container_bin, image, env_cmd):
+    out = run_sh(
+        f"{container_bin} run -t --rm {image} bash -c '{env_cmd}'",
+        stdout=subprocess.PIPE,
+    )
+    result = out.stdout.decode().strip()
+    return result
 
 
 def run_sh(sh, stderr=subprocess.STDOUT, stdout=None, check=True):
@@ -223,44 +227,6 @@ def run_hadmin(image, container_bin, command, cmd_args):
     name = f"{CUSERNAME}_{CUID}_hadmin_{gen_randoms(10)}"
     cmd = f"{container_bin} run --name {name} --rm {container_opts} --network host {image} {user_command}"
     run_sh(cmd, check=False)
-
-
-# TODO: wait serive to start
-def _service_mysql_(container_bin="docker", port=None, **kw):
-    if is_service_started(container_bin, "mysql"):
-        return logerr("Already started!")
-
-    port = port or os.getenv(MYSQL_PORT_ENV, 3306)
-    write_env(MYSQL_PORT_ENV, port)
-    container_name = SERVICES["mysql"]
-    cmd = " ".join(
-        [
-            f"{container_bin} run -td -p {port}:3306 --name {container_name} --rm",
-            "-e MYSQL_ALLOW_EMPTY_PASSWORD=yes",
-            IMAGES["MYSQL_IMAGE"],
-        ]
-    )
-    run_sh(cmd)
-    loginfo("done")
-
-
-# TODO: wait serive to start
-def _service_clickhouse_(container_bin="docker", port=None, **kw):
-    if is_service_started(container_bin, "clickhouse"):
-        return logerr("Already started!")
-
-    port = port or os.getenv(CLICKHOUSE_PORT_ENV, 9000)
-    write_env(CLICKHOUSE_PORT_ENV, port)
-    container_name = SERVICES["clickhouse"]
-    cmd = " ".join(
-        [
-            f"{container_bin} run -td -p {port}:9000 --name {container_name} --rm",
-            "--ulimit nofile=262144:262144",
-            IMAGES["CLICKHOUSE_IMAGE"],
-        ]
-    )
-    run_sh(cmd)
-    loginfo("done")
 
 
 # TODO: wait serive to start
@@ -483,7 +449,12 @@ def dev_env(
     Path(f"{GOCACHE}").mkdir(parents=True, exist_ok=True)
 
     user_cmd = f"{command} {' '.join(cmd_args)}"
-    user_path = f"/opt/ghc/bin:/opt/cabal/bin:/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:$PATH"
+    try:
+        container_path = container_run(container_bin, image, "echo $PATH")
+    except Exception:
+        logwarn("Get container env failed!")
+        container_path = ""
+    user_path = f"/usr/local/bin:{CABAL_HOME}/bin:{HOME}/.local/bin:${container_path}"
     container_name = (
         container_name or f"{CUSERNAME}_{CUID}_haskell_{gen_randoms(10)}"
     )
@@ -822,26 +793,6 @@ class InfoCommand:
 
         envs = read_env()
 
-        if not service or service == "mysql":
-            if not is_service_started(container_bin, "mysql"):
-                logerr(
-                    "Please start the mysql service first. "
-                    "Run: dev-tools start-services --services mysql"
-                )
-                sys.exit(1)
-            else:
-                loginfo(f"mysql port: {envs.get(MYSQL_PORT_ENV)}")
-
-        if not service or service == "clickhouse":
-            if not is_service_started(container_bin, "clickhouse"):
-                logerr(
-                    "Please start the clickhouse service first."
-                    "Run: dev-tools start-services --services clickhouse"
-                )
-                sys.exit(1)
-            else:
-                loginfo(f"clickhouse port: {envs.get(CLICKHOUSE_PORT_ENV)}")
-
         if not service or service == "zookeeper":
             if not is_service_started(container_bin, "zookeeper"):
                 logerr(
@@ -952,8 +903,8 @@ class QuickBuildDevImageCommand:
                     "/usr/local/bin/hstream-server",
                 ),
                 (
-                    f"{installdir}/hstream-client",
-                    "/usr/local/bin/hstream-client",
+                    f"{installdir}/hstream",
+                    "/usr/local/bin/hstream",
                 ),
                 (f"{installdir}/hadmin", "/usr/local/bin/hadmin"),
                 (f"{DEFAULT_HSTREAM_CONF}", "/etc/hstream/config.yaml"),

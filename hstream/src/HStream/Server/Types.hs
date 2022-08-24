@@ -1,13 +1,18 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 
 module HStream.Server.Types where
 
 import           Control.Concurrent               (MVar, ThreadId)
 import           Control.Concurrent.STM
+import           Data.Aeson                       (FromJSON (..), ToJSON (..))
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int32, Int64)
 import qualified Data.Map                         as Map
+import qualified Data.Map.Strict                  as M
 import qualified Data.Set                         as Set
+import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
@@ -15,27 +20,42 @@ import qualified Proto3.Suite                     as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Types                  (ZHandle)
 
+import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
+import qualified HStream.IO.Worker                as IO
+import           HStream.Server.Config
+import           HStream.Server.ConnectorTypes    as HCT
 import           HStream.Server.HStreamApi        (NodeState,
-                                                   StreamingFetchResponse)
+                                                   StreamingFetchResponse,
+                                                   Subscription)
+import           HStream.Server.Shard             (ShardKey, SharedShardMap)
 import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as HS
+import qualified HStream.Store                    as S
+import           HStream.Utils                    (textToCBytes)
 
-protocolVersion :: T.Text
+protocolVersion :: Text
 protocolVersion = "0.1.0"
 
-serverVersion :: T.Text
-serverVersion = "0.8.0"
+serverVersion :: Text
+serverVersion = "0.9.1"
+
+data SubscriptionWrap = SubscriptionWrap
+  { originSub  :: Subscription
+  , subOffsets :: HM.HashMap S.C_LogID S.LSN
+  } deriving (Generic, Show, FromJSON, ToJSON)
 
 type Timestamp = Int64
 type ServerID = Word32
 type ServerState = PB.Enumerated NodeState
+type ShardDict = M.Map ShardKey HS.C_LogID
 
-data ServerContext = ServerContext {
-    scLDClient               :: HS.LDClient
+data ServerContext = ServerContext
+  { scLDClient               :: HS.LDClient
   , serverID                 :: Word32
+  , scAdvertisedListenersKey :: Maybe Text
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
   , zkHandle                 :: ZHandle
@@ -47,7 +67,14 @@ data ServerContext = ServerContext {
   , scStatsHolder            :: Stats.StatsHolder
   , loadBalanceHashRing      :: TVar HashRing
   , scServerState            :: MVar ServerState
+  , scIOWorker               :: IO.Worker
   , gossipContext            :: GossipContext
+  , serverOpts               :: ServerOpts
+  , shardInfo                :: MVar (HM.HashMap Text SharedShardMap)
+    -- ^ streamName -> ShardMap, use to manipulate shards
+  , shardTable               :: MVar (HM.HashMap Text ShardDict)
+    -- ^ streamName -> Map startKey shardId, use to find target shard quickly when append
+  , shardReaderMap           :: MVar (HM.HashMap Text (MVar S.LDReader))
 }
 
 data SubscribeContextNewWrapper = SubscribeContextNewWrapper
@@ -80,7 +107,8 @@ data SubscribeContext = SubscribeContext
     subAssignment        :: Assignment,
     subCurrentTime ::  TVar Word64,
     subWaitingCheckedRecordIds :: TVar [CheckedRecordIds],
-    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds)
+    subWaitingCheckedRecordIdsIndex :: TVar (Map.Map CheckedRecordIdsKey CheckedRecordIds),
+    subStartOffset       :: HM.HashMap S.C_LogID S.LSN
   }
 
 data CheckedRecordIds = CheckedRecordIds {
@@ -156,3 +184,14 @@ printAckedRanges :: Map.Map ShardRecordId ShardRecordIdRange -> String
 printAckedRanges mp = show (Map.elems mp)
 
 type ConsumerName = T.Text
+
+--------------------------------------------------------------------------------
+
+transToStreamName :: HCT.StreamName -> S.StreamId
+transToStreamName = S.mkStreamId S.StreamTypeStream . textToCBytes
+
+transToTempStreamName :: HCT.StreamName -> S.StreamId
+transToTempStreamName = S.mkStreamId S.StreamTypeTemp . textToCBytes
+
+transToViewStreamName :: HCT.StreamName -> S.StreamId
+transToViewStreamName = S.mkStreamId S.StreamTypeView . textToCBytes

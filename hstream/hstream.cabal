@@ -13,7 +13,7 @@ license-file:  LICENSE
 copyright:     Copyright (c) 2020 EMQ Technologies Co., Ltd.
 author:        Feng Lee <feng@emqx.io>
 maintainer:    lambda@emqx.io, wangbin@emqx.io
-tested-with:   GHC ==8.10.4
+tested-with:   GHC ==8.10.7
 category:      Database
 homepage:      https://github.com/hstreamdb/hstream
 bug-reports:   https://github.com/hstreamdb/hstream/issues
@@ -27,6 +27,10 @@ flag ReleaseBuild
   default:     False
   description:
     Enables all optimisations, leads to slower build time and better performance
+
+flag hstream_use_hs_grpc
+  default:     False
+  description: Use hs-grpc-server instead
 
 common shared-properties
   ghc-options:
@@ -46,20 +50,26 @@ library
     HStream.Client.Execute
     HStream.Client.Gadget
     HStream.Client.Internal
-    HStream.Client.Type
+    HStream.Client.Types
     HStream.Client.Utils
     HStream.Server.Config
+    HStream.Server.ConnectorTypes
+    HStream.Server.Core.Common
     HStream.Server.Exception
     HStream.Server.Handler
     HStream.Server.Handler.Common
+    HStream.Server.HsGrpcHandler
+    HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.InternalHandler
     HStream.Server.Persistence
     HStream.Server.Persistence.Exception
+    HStream.Server.Shard
     HStream.Server.Types
 
   other-modules:
-    HStream.Server.Core.Common
+    HStream.Server.Core.Cluster
+    HStream.Server.Core.Query
     HStream.Server.Core.Stream
     HStream.Server.Core.Subscription
     HStream.Server.Core.View
@@ -75,6 +85,7 @@ library
     HStream.Server.Persistence.Common
     HStream.Server.Persistence.MemoryStore
     HStream.Server.Persistence.Object
+    HStream.Server.Persistence.ShardReader
     HStream.Server.Persistence.Tasks
     HStream.Server.Persistence.Utils
 
@@ -89,20 +100,24 @@ library
     , bytestring
     , clickhouse-haskell
     , containers
+    , cryptonite
     , deepseq
+    , diff-flow
     , directory
     , grpc-haskell
     , grpc-haskell-core
     , hashable
     , haxl
+    , hs-grpc-server
     , hstream-admin
+    , hstream-api-protolens
     , hstream-common
     , hstream-common-stats
-    , hstream-connector
     , hstream-gossip
-    , hstream-processing
+    , hstream-io
     , hstream-sql
     , hstream-store
+    , memory
     , microlens
     , microlens-aeson
     , mysql-haskell
@@ -145,18 +160,23 @@ executable hstream-server
   import:           shared-properties
   main-is:          app/server.hs
   build-depends:
+    , async
     , base
     , bytestring
     , containers
+    , cryptonite
     , deepseq
     , grpc-haskell
     , grpc-haskell-core
+    , hs-grpc-server
     , hstream
     , hstream-admin
+    , hstream-api-protolens
     , hstream-common
     , hstream-common-stats
     , hstream-gossip
     , hstream-store
+    , memory
     , optparse-applicative
     , proto3-suite
     , proto3-wire
@@ -170,14 +190,18 @@ executable hstream-server
     , Z-IO
     , zoovisitor
 
+  if flag(hstream_use_hs_grpc)
+    cpp-options: -DHStreamUseHsGrpc
+
   default-language: Haskell2010
   ghc-options:
     -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
 
-executable hstream-client
+executable hstream
   import:           shared-properties
   main-is:          app/client.hs
   build-depends:
+    , aeson
     , ansi-terminal
     , base
     , bytestring
@@ -186,6 +210,7 @@ executable hstream-client
     , grpc-haskell-core
     , haskeline
     , hstream
+    , hstream-admin
     , hstream-common
     , hstream-common-stats
     , hstream-sql
@@ -196,6 +221,7 @@ executable hstream-client
     , raw-strings-qq
     , text
     , unix
+    , unordered-containers
     , vector
     , Z-Data
     , Z-IO
@@ -212,10 +238,10 @@ test-suite hstream-test
     HStream.AdminCommandSpec
     HStream.HandlerSpec
     HStream.RegressionSpec
-    HStream.RunConnectorSpec
     HStream.RunQuerySpec
     HStream.RunSQLSpec
     HStream.RunStoreAdminSpec
+    HStream.ShardSpec
     HStream.SpecUtils
     HStream.StatsIntegrationSpec
 
@@ -238,6 +264,7 @@ test-suite hstream-test
     , io-streams
     , mysql-haskell
     , proto3-suite
+    , QuickCheck
     , random                ^>=1.2
     , scientific
     , text

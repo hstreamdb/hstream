@@ -20,7 +20,8 @@ parse :: HasCallStack => Text -> IO SQL
 parse input = do
   let sql' = pSQL . tokens . preprocess $ input
   case sql' of
-    Left err  -> throwSQLException ParseException Nothing err
+    Left err  -> do
+      throwSQLException ParseException Nothing err
     Right sql ->
       case validate sql of
         Left exception -> throw exception

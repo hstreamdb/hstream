@@ -1,10 +1,9 @@
 module HStream.AckSpec (spec) where
 
-import           Data.Map.Strict               as Map
-import           Data.Maybe                    (fromJust)
-import           HStream.Server.Handler.Common (getCommitRecordId,
-                                                insertAckedRecordId,
-                                                isSuccessor)
+import           Data.Map.Strict            as Map
+import           Data.Maybe                 (fromJust)
+import           HStream.Server.Core.Common (getCommitRecordId,
+                                             insertAckedRecordId, isSuccessor)
 import           HStream.Server.Types
 import           Test.Hspec
 
@@ -266,8 +265,3 @@ insertAckSpec =
         let batchNumMap3 = Map.insert 6 8 batchNumMap2
         getCommitRecordId ranges3 batchNumMap3 `shouldBe` Just shardRecordId2
         getCommitRecordId ranges3 Map.empty `shouldBe` Nothing
-
-
-
-
-

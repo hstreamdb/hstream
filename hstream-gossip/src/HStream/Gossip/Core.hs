@@ -6,9 +6,10 @@
 
 module HStream.Gossip.Core where
 
-import           Control.Concurrent.Async         (async, cancel, linkOnly,
-                                                   withAsync)
-import           Control.Concurrent.STM           (atomically, dupTChan,
+import           Control.Concurrent               (killThread, newEmptyMVar,
+                                                   putMVar, readMVar, takeMVar,
+                                                   tryPutMVar)
+import           Control.Concurrent.STM           (atomically, check, dupTChan,
                                                    flushTQueue, modifyTVar,
                                                    modifyTVar', newTVarIO,
                                                    peekTQueue, readTVar,
@@ -16,31 +17,41 @@ import           Control.Concurrent.STM           (atomically, dupTChan,
                                                    tryPutTMVar, writeTQueue,
                                                    writeTVar)
 import           Control.Concurrent.STM.TChan     (readTChan)
-import           Control.Exception                (SomeException, handle)
-import           Control.Monad                    (forever, join, unless, void,
-                                                   when)
+import           Control.Exception                (finally)
+import           Control.Monad                    (forever, join, replicateM,
+                                                   unless, void, when)
+import           Data.Bifunctor                   (bimap)
+import qualified Data.ByteString.Lazy             as BL
 import qualified Data.IntMap.Strict               as IM
 import qualified Data.Map.Strict                  as Map
-import qualified HStream.Logger                   as Log
+import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated (withGRPCClient)
+import qualified Proto3.Suite                     as PT
+import qualified SlaveThread
 
 import           HStream.Gossip.Gossip            (gossip)
-import           HStream.Gossip.HStreamGossip     as API (Ack (..))
+import           HStream.Gossip.HStreamGossip     (ServerList (..))
 import           HStream.Gossip.Probe             (doPing, pingReq, pingReqPing)
-import           HStream.Gossip.Types             (EventMessage (Event),
+import           HStream.Gossip.Types             (EventMessage (EventMessage),
+                                                   EventName, EventPayload,
                                                    GossipContext (..),
-                                                   Message (..),
+                                                   InitType (Gossip),
                                                    RequestAction (..),
                                                    ServerState (OK, Suspicious),
                                                    ServerStatus (..),
                                                    StateMessage (..))
-import           HStream.Gossip.Utils             (broadcastMessage,
+import qualified HStream.Gossip.Types             as T
+import           HStream.Gossip.Utils             (broadcast, broadcastMessage,
                                                    cleanStateMessages,
-                                                   decodeThenBroadCast,
-                                                   getMsgInc, mkGRPCClientConf,
+                                                   eventNameINIT,
+                                                   eventNameINITED, getMsgInc,
+                                                   incrementTVar,
+                                                   mkGRPCClientConf,
                                                    updateLamportTime,
                                                    updateStatus)
+import qualified HStream.Logger                   as Log
 import qualified HStream.Server.HStreamInternal   as I
+import           HStream.Utils                    (throwIOError)
 
 --------------------------------------------------------------------------------
 -- Add a new member to the server list
@@ -54,27 +65,27 @@ addToServerList gc@GossipContext{..} node@I.ServerNode{..} msg state = unless (n
   , latestMessage = initMsg
   , serverState   = initState
   }
-  newAsync <- async (joinWorkers gc status)
+  workersThread <- SlaveThread.fork (joinWorkers gc status)
   atomically $ do
-    modifyTVar' serverList (Map.insert serverNodeId status)
-    modifyTVar' workers (Map.insert serverNodeId newAsync)
+    modifyTVar' serverList $ bimap succ (Map.insert serverNodeId status)
+    modifyTVar' workers (Map.insert serverNodeId workersThread)
 
 joinWorkers :: GossipContext -> ServerStatus -> IO ()
-joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} =
-  handle (\(e ::SomeException) -> print e) $ unless (sNode == serverSelf) $ do
-  workersMap <- readTVarIO workers
-  case Map.lookup (I.serverNodeId serverSelf) workersMap of
-    Just a  -> linkOnly (const True) a
-    Nothing -> error "Impossible happened"
+joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode{..}, ..} = do
   Log.info . Log.buildString $ "Setting up workers for: " <> show serverNodeId
   withGRPCClient (mkGRPCClientConf sNode) $ \client -> do
     myChan <- atomically $ dupTChan actionChan
-    -- FIXME: This could be problematic when we have too many nodes in cluster.
-    loop client myChan
+    mvars <- replicateM (T.joinWorkerConcurrency gossipOpts) $ do
+      mvar <- newEmptyMVar
+      void $ SlaveThread.fork $ do
+        finally (forever $ do action <- atomically (readTChan myChan)
+                              doAction client action
+                )
+                (putMVar mvar ())
+      pure mvar
+    -- Normally, this is an infinite block
+    mapM_ takeMVar mvars
   where
-    loop client myChan = do
-      action <- atomically (readTChan myChan)
-      withAsync (doAction client action) (\_ -> loop client myChan)
     doAction client action = case action of
       DoPing sid msg -> when (sid == serverNodeId) $
         doPing client gc ss sid msg
@@ -82,12 +93,12 @@ joinWorkers gc@GossipContext{..} ss@ServerStatus{serverInfo = sNode@I.ServerNode
         Log.info . Log.buildString $ "Sending ping Req to " <> show serverNodeId <> " asking for " <> show (I.serverNodeId sInfo)
         ack <- pingReq sInfo msg client
         atomically $ case ack of
-          Right (Ack msgsBS) -> do
-            decodeThenBroadCast msgsBS  statePool eventPool
+          Right msgs -> do
+            broadcast msgs statePool eventPool
             inc <- getMsgInc <$> readTVar latestMessage
-            writeTQueue statePool $ Alive inc sNode serverSelf
+            writeTQueue statePool $ T.GAlive inc sNode serverSelf
             void $ tryPutTMVar isAcked ()
-          Left (Just msgsBS) -> decodeThenBroadCast msgsBS statePool eventPool
+          Left (Just msgs)   -> broadcast msgs statePool eventPool
           Left Nothing       -> pure ()
       DoPingReqPing sid isAcked msg -> when (sid == serverNodeId) $ do
         Log.info . Log.buildString $ "Sending PingReqPing to: " <> show serverNodeId
@@ -110,53 +121,61 @@ handleStateMessages :: GossipContext -> [StateMessage] -> IO ()
 handleStateMessages = mapM_ . handleStateMessage
 
 handleStateMessage :: GossipContext -> StateMessage -> IO ()
-handleStateMessage gc@GossipContext{..} msg@(Join node@I.ServerNode{..}) = unless (node == serverSelf) $ do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
-  sMap <- readTVarIO serverList
+handleStateMessage gc@GossipContext{..} msg@(T.GJoin node@I.ServerNode{..}) = unless (node == serverSelf) $ do
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " joining cluster"
+  sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing -> do
       addToServerList gc node msg OK
-      atomically $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+      atomically $ do
+        modifyTVar' deadServers $ Map.delete serverNodeId
+        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+      Log.info . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " has joined the cluster"
     Just ServerStatus{..} -> unless (serverInfo == node) $
       -- TODO: vote to resolve conflict
       Log.warning . Log.buildString $ "Node won't be added to the list to conflict of server id"
-handleStateMessage GossipContext{..} msg@(Confirm _inc I.ServerNode{..} _node)= do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
-  sMap <- readTVarIO serverList
+handleStateMessage GossipContext{..} msg@(T.GConfirm _inc node@I.ServerNode{..} _node)= do
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling " <> show node <> " leaving cluster"
+  sMap <- snd <$> readTVarIO serverList
   case Map.lookup serverNodeId sMap of
     Nothing               -> pure ()
-    Just ServerStatus{..} -> join $ atomically $ do
-      modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
-      writeTVar latestMessage msg
-      modifyTVar' serverList (Map.delete serverNodeId)
-      mWorker <- stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
+    Just ServerStatus{..} -> do
+      mWorker <- atomically $ do
+        modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
+        writeTVar latestMessage msg
+        stateTVar workers (Map.updateLookupWithKey (\_ _ -> Nothing) serverNodeId)
       case mWorker of
-        Nothing -> return (pure ())
-        Just  a -> return $ do
+        Nothing -> pure ()
+        Just  a -> do
+          Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] " <> show node <> " left cluster"
           Log.info . Log.buildString $ "Stopping Worker" <> show serverNodeId
-          cancel a
-handleStateMessage GossipContext{..} msg@(Suspect inc node@I.ServerNode{..} _node) = do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+          killThread a
+      atomically $ do
+        modifyTVar' serverList $ bimap succ (Map.delete serverNodeId)
+        modifyTVar' deadServers $ Map.insert serverNodeId serverInfo
+handleStateMessage GossipContext{..} msg@(T.GSuspect inc node@I.ServerNode{..} _node) = do
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   join . atomically $ if node == serverSelf
-    then writeTQueue statePool (Alive (succ inc) node serverSelf) >> return (pure ())
+    then writeTQueue statePool (T.GAlive (succ inc) node serverSelf) >> return (pure ())
     else do
-      sMap <- readTVar serverList
+      sMap <- snd <$> readTVar serverList
       case Map.lookup serverNodeId sMap of
         Just ss -> do
           updated <- updateStatus ss msg Suspicious
-          when updated $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+          when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
           return (pure ())
         Nothing -> return $ Log.debug "Suspected node not found in the server list"
           -- addToServerList gc node msg Suspicious
-handleStateMessage gc@GossipContext{..} msg@(Alive _inc node@I.ServerNode{..} _node) = do
-  Log.info . Log.buildString $ "[" <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
+handleStateMessage gc@GossipContext{..} msg@(T.GAlive _inc node@I.ServerNode{..} _node) = do
+  Log.debug . Log.buildString $ "[Server Node " <> show (I.serverNodeId serverSelf) <> "] Handling" <> show msg
   unless (node == serverSelf) $ do
-    sMap <- readTVarIO serverList
+    sMap <- snd <$> readTVarIO serverList
     case Map.lookup serverNodeId sMap of
       Just ss -> atomically $ do
         updated <- updateStatus ss msg OK
-        when updated $ modifyTVar broadcastPool (broadcastMessage $ StateMessage msg)
+        when updated $ modifyTVar broadcastPool (broadcastMessage $ T.GState msg)
       Nothing -> addToServerList gc node msg OK
+handleStateMessage _ _ = throwIOError "illegal state message"
 
 runEventHandler :: GossipContext -> IO ()
 runEventHandler gc@GossipContext{..} = forever $ do
@@ -169,23 +188,55 @@ runEventHandler gc@GossipContext{..} = forever $ do
 handleEventMessages :: GossipContext -> [EventMessage] -> IO ()
 handleEventMessages = mapM_ . handleEventMessage
 
--- handleEventMessage :: GossipContext -> EventMessage -> IO Bool
 handleEventMessage :: GossipContext -> EventMessage -> IO ()
-handleEventMessage GossipContext{..} msg@(Event eName lpTime bs) = join . atomically $ do
-  let event = (eName, bs)
-  currentTime <- updateLamportTime eventLpTime lpTime
-  seen <- readTVar seenEvents
-  let len = fromIntegral $ max 10 (IM.size seen)
-      lpInt = fromIntegral lpTime
-  if currentTime > len && lpTime < currentTime - len then return $ pure ()
-    else case IM.lookup (fromIntegral lpTime) seen of
-      Nothing -> do
-        modifyTVar seenEvents $ IM.insert lpInt [event]
-        modifyTVar broadcastPool $ broadcastMessage (EventMessage msg)
-        return $ Log.info . Log.buildString $ "Event handled:" <> show msg
-      Just events -> if event `elem` events
-        then return $ pure ()
-        else do
-          modifyTVar seenEvents $ IM.insertWith (++) lpInt [event]
-          modifyTVar broadcastPool $ broadcastMessage (EventMessage msg)
-          return $ Log.info . Log.buildString $ "Event handled:" <> show msg
+handleEventMessage gc@GossipContext{..} msg@(EventMessage eName lpTime bs) = do
+  Log.debug . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                            <> "] Received Custom Event" <> show eName <> " with lamport " <> show lpTime
+  join . atomically $ do
+    currentTime <- fromIntegral <$> updateLamportTime eventLpTime lpTime
+    seen <- readTVar seenEvents
+    -- FIXME: max length should be a setting for seen buffer
+    let len = max 10 (IM.size seen)
+        lpInt = fromIntegral lpTime
+    if currentTime > len && lpInt < currentTime - len then return $ pure ()
+      else case IM.lookup lpInt seen of
+        Nothing -> handleNewEvent lpInt
+        Just events -> if event `elem` events
+          then return $ pure ()
+          else handleNewEvent lpInt
+   where
+     event = (eName, bs)
+     handleNewEvent lpInt = do
+        modifyTVar seenEvents $ IM.insertWith (++) lpInt [event]
+        modifyTVar broadcastPool $ broadcastMessage (T.GEvent msg)
+        return $ case Map.lookup eName eventHandlers of
+          Nothing     -> if eName == eventNameINIT
+            then do
+              Log.info . Log.buildString $ "[Server Node" <> show (I.serverNodeId serverSelf)
+                                        <> "] Handling Internal Event" <> show eName <> " with lamport " <> show lpInt
+              (isSeed, _, wasIDead) <- readMVar seedsInfo
+              when (isSeed && not wasIDead) $ handleINITEvent gc bs
+            else Log.info $ "Action dealing with event " <> Log.buildString' eName <> " not found"
+          Just action -> do
+            action bs
+
+handleINITEvent :: GossipContext -> EventPayload -> IO ()
+handleINITEvent gc@GossipContext{..} payload = do
+  case PT.fromByteString payload of
+    Left err -> Log.warning $ Log.buildString' err
+    Right ServerList{..} -> do
+      initGossip gc $ V.toList serverListNodes
+      void $ tryPutMVar clusterInited Gossip
+      atomically $ do
+        mWorkers <- readTVar workers
+        check $ (Map.size mWorkers + 1) == length seeds
+      broadCastUserEvent gc eventNameINITED (BL.toStrict $ PT.toLazyByteString serverSelf)
+
+broadCastUserEvent :: GossipContext -> EventName -> EventPayload -> IO ()
+broadCastUserEvent gc@GossipContext {..} userEventName userEventPayload= do
+  lpTime <- atomically $ incrementTVar eventLpTime
+  let eventMessage = EventMessage userEventName lpTime userEventPayload
+  handleEventMessage gc eventMessage
+
+initGossip :: GossipContext -> [I.ServerNode] -> IO ()
+initGossip gc = mapM_ (\x -> addToServerList gc x (T.GJoin x) OK)

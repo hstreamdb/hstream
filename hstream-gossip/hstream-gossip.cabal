@@ -43,6 +43,7 @@ library
     , proto3-wire
     , random
     , random-shuffle
+    , slave-thread          ^>=1.1
     , stm
     , table-layout
     , text
@@ -51,77 +52,4 @@ library
     , Z-Data
     , Z-IO
 
-  hs-source-dirs:   app src gen-hs
-
-executable hstream-gossip-server
-  import:           shared-properties
-  main-is:          Server.hs
-  build-depends:
-    , async
-    , base
-    , bytestring
-    , cereal
-    , containers
-    , deepseq
-    , grpc-haskell
-    , hstream-common
-    , hstream-gossip
-    , optparse-applicative
-    , proto3-suite
-    , proto3-wire
-    , random
-    , random-shuffle
-    , stm
-    , text
-    , vector
-
-  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
-  default-language: Haskell2010
-  hs-source-dirs:   app
-
-executable hstream-gossip-client
-  import:           shared-properties
-  main-is:          Client.hs
-  build-depends:
-    , base
-    , bytestring
-    , grpc-haskell
-    , hstream-common
-    , hstream-gossip
-    , optparse-applicative
-    , vector
-
-  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
-  default-language: Haskell2010
-  hs-source-dirs:   app
-
-test-suite hstream-gossip-test
-  import:             shared-properties
-  type:               exitcode-stdio-1.0
-  main-is:            Spec.hs
-  other-modules:
-    HStream.Gossip.EventSpec
-    HStream.Gossip.FailureSpec
-    HStream.Gossip.JoinSpec
-    HStream.Gossip.TestUtils
-
-  hs-source-dirs:     test
-  build-depends:
-    , async
-    , base
-    , bytestring
-    , containers
-    , grpc-haskell
-    , hspec
-    , hstream-gossip
-    , hstream-common
-    , optparse-applicative
-    , random
-    , random-shuffle
-    , stm
-    , streaming-commons
-    , vector
-
-  default-language:   Haskell2010
-  build-tool-depends: hspec-discover:hspec-discover ==2.*
-  ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+  hs-source-dirs:   src gen-hs

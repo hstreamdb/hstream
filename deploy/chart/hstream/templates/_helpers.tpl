@@ -72,3 +72,13 @@ Zookeeper uri
 {{ $fullname }}-zookeeper-{{ $index0 }}.{{ $fullname }}-zookeeper-headless:2181{{ if ne $index1 $nodeCount }},{{ end }}
 {{- end }}
 {{- end }}
+
+{{/* HStream server seed nodes */}}
+{{- define "hstream.seedNodes" -}}
+{{- $fullname := (include "hstream.fullname" .) }}
+{{- $nodeCount := .Values.replicaCount | int }}
+{{- range $index0 := until $nodeCount -}}
+{{- $index1 := $index0 | add1 -}}
+{{ $fullname }}-{{ $index0 }}.{{ $fullname }}:6571{{ if ne $index1 $nodeCount }},{{ end }}
+{{- end }}
+{{- end }}

@@ -6,20 +6,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler.Stream
-  ( createStreamHandler,
-    deleteStreamHandler,
-    listStreamsHandler,
-    appendHandler,
-    append0Handler)
+  ( createStreamHandler
+  , deleteStreamHandler
+  , listStreamsHandler
+  , listShardsHandler
+  , appendHandler
+  , createShardReaderHandler
+  , deleteShardReaderHandler
+  , readShardHandler
+  )
 where
 
 import           Control.Exception
-import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import           Control.Concurrent.STM           (readTVarIO)
-import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
-import           HStream.Gossip                   (getMemberList)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
@@ -39,6 +39,7 @@ createStreamHandler
 createStreamHandler sc (ServerNormalRequest _metadata stream) = createStreamExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
   C.createStream sc stream
+  returnResp stream
 
 -- DeleteStream have two mod: force delete or normal delete
 -- For normal delete, if current stream have active subscription, the delete request will return error.
@@ -55,6 +56,7 @@ deleteStreamHandler
 deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
   C.deleteStream sc request
+  returnResp Empty
 
 listStreamsHandler
   :: ServerContext
@@ -70,55 +72,46 @@ appendHandler
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
-    recv_time <- getPOSIXTime
-    Log.debug $ "Receive Append Request: StreamName {"
-             <> Log.buildText appendRequestStreamName
-             <> "}, nums of records = "
-             <> Log.buildInt (V.length appendRequestRecords)
-    Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
-    Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-    Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-    hashRing <- readTVarIO loadBalanceHashRing
-    let partitionKey = getRecordKey . V.head $ appendRequestRecords
-    let identifier = case partitionKey of
-          Just key -> appendRequestStreamName <> key
-          Nothing  -> appendRequestStreamName <> clientDefaultKey
-    if getAllocatedNodeId hashRing identifier == serverID
-       then do
-         append_start <- getPOSIXTime
-         r <- C.appendStream sc request partitionKey
-         Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
-         Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
-         returnResp r
-       else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
+    returnResp =<< C.append sc request
   where
     inc_failed = do
       Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
       Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
     cStreamName = textToCBytes appendRequestStreamName
 
-append0Handler
-  :: ServerContext
-  -> ServerRequest 'Normal AppendRequest AppendResponse
-  -> IO (ServerResponse 'Normal AppendResponse)
-append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
-  appendStreamExceptionHandle inc_failed $ do
+--------------------------------------------------------------------------------
 
-  Log.debug $ "Receive Append0 Request: StreamName {"
-           <> Log.buildText appendRequestStreamName
-           <> "}, nums of records = "
-           <> Log.buildInt (V.length appendRequestRecords)
-  Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
-  Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-  let partitionKey = getRecordKey . V.head $ appendRequestRecords
-  hashRing <- readTVarIO loadBalanceHashRing
-  let identifier = appendRequestStreamName <> clientDefaultKey
-  if getAllocatedNodeId hashRing identifier == serverID
-    then C.append0Stream sc request partitionKey >>= returnResp
-    else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
-  where
-    inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
-    cStreamName = textToCBytes appendRequestStreamName
+listShardsHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ListShardsRequest ListShardsResponse
+  -> IO (ServerResponse 'Normal ListShardsResponse)
+listShardsHandler sc (ServerNormalRequest _metadata request) = listShardsExceptionHandle $ do
+  Log.debug "Receive List Shards Request"
+  C.listShards sc request >>= returnResp . ListShardsResponse
+
+createShardReaderHandler
+  :: ServerContext
+  -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
+  -> IO (ServerResponse 'Normal CreateShardReaderResponse)
+createShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+  Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
+  C.createShardReader sc request >>= returnResp
+
+deleteShardReaderHandler
+  :: ServerContext
+  -> ServerRequest 'Normal DeleteShardReaderRequest Empty
+  -> IO (ServerResponse 'Normal Empty)
+deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+  Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
+  C.deleteShardReader sc request >> returnResp Empty
+
+readShardHandler
+  :: ServerContext
+  -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
+  -> IO (ServerResponse 'Normal ReadShardResponse)
+readShardHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+  Log.debug $ "Receive read shard Request: " <> Log.buildString (show request)
+  C.readShard sc request >>= returnResp . ReadShardResponse
 
 --------------------------------------------------------------------------------
 -- Exception Handlers
@@ -138,12 +131,20 @@ appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
     handlers =
       [ Handler (\(_ :: C.RecordTooBig) ->
           return (StatusFailedPrecondition, "Record size exceeds the maximum size limit" ))
+      , Handler (\(err :: WrongServer) ->
+          return (StatusFailedPrecondition, mkStatusDetails err))
       , Handler (\(err :: Store.NOTFOUND) ->
           return (StatusUnavailable, mkStatusDetails err))
       , Handler (\(err :: Store.NOTINSERVERCONFIG) ->
           return (StatusUnavailable, mkStatusDetails err))
       , Handler (\(err :: Store.NOSEQUENCER) -> do
           return (StatusUnavailable, mkStatusDetails err))
+      , Handler (\(err :: NoRecordHeader) ->
+          return (StatusInvalidArgument, mkStatusDetails err))
+      , Handler (\(err :: DecodeHStreamRecordErr) -> do
+          return (StatusInvalidArgument, mkStatusDetails err))
+      , Handler (\(err :: C.InvalidBatchedRecord) -> do
+          return (StatusInvalidArgument, mkStatusDetails err))
       ] ++ defaultHandlers
     mkHandlers = setRespType mkServerErrResp handlers
 
@@ -160,3 +161,21 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
        Log.warning $ Log.buildString' err
        return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
+
+listShardsExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+listShardsExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+   Handler (\(err :: Store.NOTFOUND) ->
+          return (StatusUnavailable, mkStatusDetails err))
+  : defaultHandlers
+
+shardReaderExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
+shardReaderExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+  [ Handler (\(err :: C.ShardReaderExists) ->
+      return (StatusAlreadyExists, mkStatusDetails err)),
+    Handler (\(err :: C.ShardReaderNotExists) ->
+      return (StatusFailedPrecondition, mkStatusDetails err)),
+    Handler (\(err :: WrongServer) ->
+      return (StatusFailedPrecondition, mkStatusDetails err)),
+    Handler (\(err :: C.UnKnownShardOffset) ->
+      return (StatusInvalidArgument, mkStatusDetails err))
+  ] ++ defaultHandlers

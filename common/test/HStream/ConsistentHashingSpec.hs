@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module HStream.ConsistentHashingSpec where
 
-import qualified Data.List                        as L
+import qualified Data.ByteString.Char8            as BSC
 import qualified Data.Map.Strict                  as M
+import qualified Data.Map.Strict                  as Map
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32)
 import           Test.Hspec                       (SpecWith, describe, shouldBe,
@@ -16,24 +16,25 @@ import           Test.QuickCheck                  (Arbitrary (..), Gen,
                                                    Property, Testable,
                                                    arbitrarySizedNatural,
                                                    chooseInt, elements, forAll,
-                                                   forAllShow, label, listOf1,
-                                                   scale, shuffle, sublistOf,
-                                                   suchThat, vectorOf, verbose,
-                                                   (===), (==>))
+                                                   label, listOf1, scale,
+                                                   shuffle, sublistOf, suchThat,
+                                                   vectorOf, (===), (==>))
 
 import           HStream.Common.ConsistentHashing (ServerMap,
                                                    constructServerMap,
                                                    getAllocatedNode)
 import qualified HStream.Common.ConsistentHashing as CH
-import           HStream.Server.HStreamApi        (ServerNode (..))
+import           HStream.Server.HStreamInternal   (ServerNode (..))
 
 instance Arbitrary ServerNode where
   arbitrary = do
     serverNodeId <- arbitrarySizedNatural
     serverNodePort <- arbitrarySizedNatural
-    xs <- fmap (map (T.pack . show)) . vectorOf 4 $ chooseInt (0,255)
+    serverNodeGossipPort <- arbitrarySizedNatural
+    xs <- fmap (map (BSC.pack . show)) . vectorOf 4 $ chooseInt (0,255)
     let [a,b,c,d] = xs
     let serverNodeHost = a <> "." <> b <> "." <> c <> "." <> d
+        serverNodeAdvertisedListeners = Map.empty
     return ServerNode {..}
 
 newtype N = N ServerMap deriving (Show, Eq)
@@ -47,7 +48,7 @@ newtype A = A {unA :: T.Text} deriving (Show, Eq)
 
 instance Arbitrary A where
   arbitrary = do
-    name <- elements "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    name <- elements (['a'..'z'] <> ['A'..'Z'])
     append <- shuffle "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_" >>= sublistOf
     return $ A $ T.pack (name : append)
 

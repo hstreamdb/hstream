@@ -9,12 +9,12 @@ module HStream.Gossip.Utils where
 import           Control.Concurrent.STM           (STM, TQueue, TVar, readTVar,
                                                    stateTVar, writeTQueue,
                                                    writeTVar)
+import           Control.Exception                (Exception)
 import           Control.Monad                    (unless)
 import           Data.ByteString                  (ByteString)
-import qualified Data.ByteString                  as BS
 import           Data.Foldable                    (foldl')
 import qualified Data.Map                         as Map
-import           Data.Serialize                   (decode)
+import           Data.Text                        (Text)
 import           Data.Word                        (Word32)
 import           Network.GRPC.HighLevel.Generated (ClientConfig (..),
                                                    ClientRequest (..),
@@ -28,12 +28,13 @@ import           Text.Layout.Table                (def)
 
 import           HStream.Gossip.Types             (BroadcastPool,
                                                    EventMessage (..),
-                                                   LamportTime, Message (..),
+                                                   Message (..), Messages,
                                                    ServerState,
                                                    ServerStatus (..),
                                                    StateDelta,
                                                    StateMessage (..),
-                                                   getMsgNode)
+                                                   TempCompare (TC), getMsgNode)
+import qualified HStream.Gossip.Types             as T
 import qualified HStream.Server.HStreamInternal   as I
 
 returnResp :: Monad m => a -> m (ServerResponse 'Normal a)
@@ -67,23 +68,22 @@ requestTimeout :: Int
 requestTimeout = 100
 
 getMsgInc :: StateMessage -> Word32
-getMsgInc (Join _)          = 0
-getMsgInc (Suspect inc _ _) = inc
-getMsgInc (Alive   inc _ _) = inc
-getMsgInc (Confirm inc _ _) = inc
+getMsgInc (T.GJoin _)          = 0
+getMsgInc (T.GSuspect inc _ _) = inc
+getMsgInc (T.GAlive   inc _ _) = inc
+getMsgInc (T.GConfirm inc _ _) = inc
+getMsgInc _                    = error "illegal state message"
 
-decodeThenBroadCast :: ByteString -> TQueue StateMessage -> TQueue EventMessage ->  STM ()
-decodeThenBroadCast msgBS statePool eventPool = unless (BS.null msgBS) $
-  case decode msgBS of
-    Left err  -> error err
-    Right (msgs :: [Message])-> do
-      sequence_ $ (\case
-        StateMessage msg -> writeTQueue statePool msg
-        EventMessage msg -> writeTQueue eventPool msg) <$> msgs
+broadcast :: Messages -> TQueue StateMessage -> TQueue EventMessage ->  STM ()
+broadcast msgs statePool eventPool = unless (null msgs) $
+  sequence_ $ (\case
+    T.GState msg -> writeTQueue statePool msg
+    T.GEvent msg -> writeTQueue eventPool msg
+    _            -> error "illegal message") <$> msgs
 
 isStateMessage :: Message -> Bool
-isStateMessage (StateMessage _) = True
-isStateMessage _                = False
+isStateMessage (T.GState _) = True
+isStateMessage _            = False
 
 -- TODO: add max resend
 getMessagesToSend :: Word32 -> BroadcastPool -> ([Message], BroadcastPool)
@@ -102,12 +102,12 @@ getStateMessagesToHandle = Map.mapAccum f []
 insertStateMessage :: (StateMessage, Bool) -> StateDelta -> (Maybe (StateMessage, Bool), StateDelta)
 insertStateMessage msg@(x, _) = Map.insertLookupWithKey f (I.serverNodeId $ getMsgNode x) msg
   where
-    f _key (v', p') (v, p) = if v' > v then (v', p') else (v, p)
+    f _key (v', p') (v, p) = if TC v' > TC v then (v', p') else (v, p)
 
 cleanStateMessages :: [StateMessage] -> [StateMessage]
 cleanStateMessages = Map.elems . foldl' (flip insertMsg) mempty
   where
-    insertMsg x = Map.insertWith max (I.serverNodeId $ getMsgNode x) x
+    insertMsg x = Map.insertWith (\a b -> if TC a > TC b then a else b) (I.serverNodeId $ getMsgNode x) x
 
 broadcastMessage :: Message -> BroadcastPool -> BroadcastPool
 broadcastMessage msg xs = (msg, 0) : xs
@@ -116,7 +116,7 @@ updateStatus :: ServerStatus -> StateMessage -> ServerState -> STM Bool
 updateStatus ServerStatus{..} msg state = do
   msg' <- readTVar latestMessage
   -- TODO: catch error
-  if msg > msg'
+  if TC msg > TC msg'
     then do
       writeTVar latestMessage msg
       writeTVar serverState state
@@ -124,7 +124,7 @@ updateStatus ServerStatus{..} msg state = do
     else
       return False
 
-updateLamportTime :: TVar LamportTime -> LamportTime -> STM LamportTime
+updateLamportTime :: TVar Word32 -> Word32 -> STM Word32
 updateLamportTime localClock eventTime = do
   localTime <- readTVar localClock
   if localTime < eventTime
@@ -158,3 +158,30 @@ showNodesTable nodes =
               , Table.column Table.expand Table.left def def
               , Table.column Table.expand Table.left def def
               ]
+
+maxRetryTimeInterval :: Int
+maxRetryTimeInterval = 10 * 1000 * 1000
+
+eventNameINIT :: Text
+eventNameINIT = "INIT_INTERNAL_USE_ONLY"
+
+eventNameINITED :: Text
+eventNameINITED = "INITED_INTERNAL_USE_ONLY"
+
+clusterInitedErr :: StatusDetails
+clusterInitedErr = "Cluster is already initialized"
+
+clusterReadyErr  :: StatusDetails
+clusterReadyErr  = "Cluster is ready"
+
+data ClusterInitedErr = ClusterInitedErr
+  deriving (Show, Eq)
+instance Exception ClusterInitedErr
+
+data ClusterReadyErr = ClusterReadyErr
+  deriving (Show, Eq)
+instance Exception ClusterReadyErr
+
+data FailedToStart = FailedToStart
+  deriving (Show, Eq)
+instance Exception FailedToStart

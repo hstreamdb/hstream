@@ -5,15 +5,15 @@
 
 module HStream.SQL.Internal.Codegen
   ( getFieldByName
-  , getFieldByName'
   , genRandomSinkStream
-  , genMockSinkStream
   , compareValue
   , binOpOnValue
   , unaryOpOnValue
   , diffTimeToMs
   , composeColName
   , genJoiner
+  , genJoiner'
+  , genTableRefName
   ) where
 
 import           Control.Exception     (throw)
@@ -37,34 +37,55 @@ import qualified Z.Data.CBytes         as ZCB
 import qualified Z.Data.Text           as ZT
 import           Z.IO.Time
 
+import           DiffFlow.Graph        (Joiner (..))
 --------------------------------------------------------------------------------
 getFieldByName :: HasCallStack => Object -> Text -> Value
 getFieldByName o k =
   case HM.lookup k o of
     Nothing -> throw
       SomeRuntimeException
-      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o
+      { runtimeExceptionMessage = "Key " <> show k <> " is not found in object " <> show o <> "  " <> show callStack
       , runtimeExceptionCallStack = callStack
       }
     Just v  -> v
-
-getFieldByName' :: Object -> Text -> Maybe Value
-getFieldByName' = flip HM.lookup
 
 --------------------------------------------------------------------------------
 genRandomSinkStream :: IO Text
 genRandomSinkStream = stringRandomIO "[a-zA-Z]{20}"
 
-genMockSinkStream :: IO Text
-genMockSinkStream = return "demoSink"
-
 --------------------------------------------------------------------------------
-genJoiner :: StreamName -> StreamName -> Object -> Object -> Object
-genJoiner s1 s2 o1 o2 = HM.union (HM.fromList l1') (HM.fromList l2')
-  where l1 = HM.toList o1
-        l2 = HM.toList o2
-        l1' = (\(k,v) -> (s1 <> "." <> k, v)) <$> l1
-        l2' = (\(k,v) -> (s2 <> "." <> k, v)) <$> l2
+-- For 2-join
+genJoiner :: StreamName -> StreamName -> Joiner
+genJoiner s1 s2 = Joiner $ \o1 o2 ->
+  let l1 = HM.toList o1
+      l2 = HM.toList o2
+      l1' = (\(k,v) -> (s1 <> "." <> k, v)) <$> l1
+      l2' = (\(k,v) -> (s2 <> "." <> k, v)) <$> l2
+   in HM.union (HM.fromList l1') (HM.fromList l2')
+
+-- For (>=3)-join
+genJoiner' :: StreamName -> Joiner
+genJoiner' s = Joiner $ \o1 o2 ->
+  let l1 = HM.toList o1
+      l2 = HM.toList o2
+      l1' = l1
+      l2' = (\(k,v) -> (s <> "." <> k, v)) <$> l2
+   in HM.union (HM.fromList l1') (HM.fromList l2')
+
+
+genTableRefName :: RTableRef -> StreamName
+genTableRefName (RTableRefSimple s alias_m) =
+  case alias_m of
+    Nothing    -> s
+    Just alias -> alias
+genTableRefName (RTableRefSubquery sel alias_m) =
+  case alias_m of
+    Nothing    -> T.pack (show sel)
+    Just alias -> alias
+genTableRefName (RTableRefUnion ref1 ref2 alias_m) =
+  case alias_m of
+    Nothing    -> T.pack (show ref1) <> "_UNION_" <> T.pack (show ref2)
+    Just alias -> alias
 
 --------------------------------------------------------------------------------
 compareValue :: HasCallStack => Value -> Value -> Ordering

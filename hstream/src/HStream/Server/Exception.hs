@@ -6,6 +6,7 @@
 
 module HStream.Server.Exception where
 
+import           Control.Concurrent.Async             (AsyncCancelled (..))
 import           Control.Exception                    (Exception (..),
                                                        Handler (Handler),
                                                        IOException,
@@ -39,6 +40,14 @@ newtype InvalidArgument = InvalidArgument String
   deriving (Show)
 instance Exception InvalidArgument
 
+newtype UnexpectedError = UnexpectedError String
+  deriving (Show)
+instance Exception UnexpectedError
+
+newtype WrongServer = WrongServer Text
+  deriving (Show)
+instance Exception WrongServer
+
 newtype OperationNotSupported = OperationNotSupported String
   deriving (Show)
 instance Exception OperationNotSupported
@@ -59,6 +68,10 @@ data ServerNotAvailable = ServerNotAvailable
   deriving (Show)
 instance Exception ServerNotAvailable
 
+newtype WrongOffset = WrongOffset String
+  deriving (Show)
+instance Exception WrongOffset
+
 --------------------------------------------------------------------------------
 
 type MkResp t a = StatusCode -> StatusDetails -> ServerResponse t a
@@ -72,27 +85,26 @@ serverExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 serverExceptionHandlers = [
   Handler $ \(err :: ServerNotAvailable) -> do
     Log.warning $ Log.buildString' err
-    return (StatusUnavailable, "Server is still starting")
-  ,
+    return (StatusUnavailable, "Server is still starting"),
   Handler $ \(err :: StreamNotExist) -> do
     Log.warning $ Log.buildString' err
-    return (StatusNotFound, mkStatusDetails err)
-  ,
+    return (StatusNotFound, mkStatusDetails err),
   Handler $ \(err :: InvalidArgument) -> do
     Log.warning $ Log.buildString' err
-    return (StatusInvalidArgument, mkStatusDetails err)
-  ,
+    return (StatusInvalidArgument, mkStatusDetails err),
   Handler $ \(err :: ObjectNotExist) -> do
     Log.warning $ Log.buildString' err
-    return (StatusNotFound, "Object not found")
-  ,
+    return (StatusNotFound, "Object not found"),
   Handler $ \(err@(SubscriptionIdNotFound subId) :: SubscriptionIdNotFound) -> do
     Log.warning $ Log.buildString' err
-    return (StatusNotFound, StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found"))
-  ,
+    return (StatusNotFound, StatusDetails ("Subscription ID " <> encodeUtf8 subId <> " can not be found")),
   Handler $ \(err :: PersistenceException) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAborted, mkStatusDetails err)
+    return (StatusAborted, mkStatusDetails err),
+  Handler $ \(err :: UnexpectedError) -> do
+    return (StatusInternal, mkStatusDetails err),
+  Handler $ \(err :: WrongOffset) -> do
+    return (StatusInternal, mkStatusDetails err)
   ]
 
 finalExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
@@ -100,6 +112,9 @@ finalExceptionHandlers = [
   Handler $ \(err :: IOException) -> do
     Log.fatal $ Log.buildString' err
     return (StatusInternal, mkStatusDetails err)
+  ,
+  Handler $ \(_ :: AsyncCancelled) -> do
+    return (StatusOk, "")
   ,
   Handler $ \(err :: SomeException) -> do
     Log.fatal $ Log.buildString' err
@@ -110,7 +125,7 @@ storeExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 storeExceptionHandlers = [
   Handler $ \(err :: Store.EXISTS) -> do
     Log.warning $ Log.buildString' err
-    return (StatusAlreadyExists, "Stream already exists in store")
+    return (StatusAlreadyExists, "Stream or view with same name already exists in store")
   ,
   Handler $ \(err :: Store.SomeHStoreException) -> do
     Log.warning $ Log.buildString' err

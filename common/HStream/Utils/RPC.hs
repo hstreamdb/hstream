@@ -9,6 +9,12 @@
 module HStream.Utils.RPC
   ( HStreamClientApi
 
+  , SocketAddr(..)
+  , runWithAddr
+  , mkGRPCClientConf
+  , mkGRPCClientConfWithSSL
+  , mkClientNormalRequest
+
   , mkServerErrResp
   , returnErrResp
   , returnResp
@@ -17,28 +23,58 @@ module HStream.Utils.RPC
   , returnCommandQueryResp
   , returnCommandQueryEmptyResp
   , getServerResp
+  , getServerRespPure
   , getProtoTimestamp
   , isSuccessful
+
   , pattern EnumPB
   , showNodeStatus
   , TaskStatus (Created, Creating, Running, CreationAbort, ConnectionAbort, Terminated, ..)
   ) where
 
-import           Data.Aeson                    (FromJSON, ToJSON)
-import           Data.Swagger                  (ToSchema)
-import qualified Data.Vector                   as V
-import           GHC.Generics                  (Generic)
+import           Control.Monad
+import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.ByteString                  (ByteString)
+import           Data.String                      (IsString)
+import           Data.Swagger                     (ToSchema)
+import qualified Data.Vector                      as V
+import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel.Client
+import           Network.GRPC.HighLevel.Generated (withGRPCClient)
 import           Network.GRPC.HighLevel.Server
-import qualified Proto3.Suite                  as PB
-import           Z.Data.JSON                   (JSON)
-import           Z.IO.Time                     (SystemTime (..), getSystemTime')
+import qualified Proto3.Suite                     as PB
+import           Z.Data.JSON                      (JSON)
+import           Z.IO.Time                        (SystemTime (..),
+                                                   getSystemTime')
 
-import qualified Data.Text                     as T
 import           HStream.Server.HStreamApi
-import           HStream.ThirdParty.Protobuf   (Struct, Timestamp (..))
+import           HStream.ThirdParty.Protobuf      (Struct, Timestamp (..))
 
 type HStreamClientApi = HStreamApi ClientRequest ClientResult
+data SocketAddr = SocketAddr ByteString Int
+  deriving (Eq, Show)
+
+runWithAddr :: SocketAddr -> (HStreamClientApi -> IO a) -> IO a
+runWithAddr addr action =
+  withGRPCClient (mkGRPCClientConf addr) (hstreamApiClient >=> action)
+
+mkGRPCClientConf :: SocketAddr -> ClientConfig
+mkGRPCClientConf socketAddr = mkGRPCClientConfWithSSL socketAddr Nothing
+
+mkGRPCClientConfWithSSL :: SocketAddr -> Maybe ClientSSLConfig -> ClientConfig
+mkGRPCClientConfWithSSL (SocketAddr host port) sslConfig =
+  ClientConfig
+  { clientServerHost = Host host
+  , clientServerPort = Port port
+  , clientArgs = []
+  , clientSSLConfig = sslConfig
+  , clientAuthority = Nothing
+  }
+
+mkClientNormalRequest :: Int -> a -> ClientRequest 'Normal a b
+mkClientNormalRequest requestTimeout x = ClientNormalRequest x requestTimeout (MetadataMap mempty)
+
+--------------------------------------------------------------------------------
 
 mkServerErrResp :: StatusCode -> StatusDetails -> ServerResponse 'Normal a
 mkServerErrResp = ServerNormalResponse Nothing mempty
@@ -82,8 +118,17 @@ getServerResp result = do
     ClientNormalResponse x _meta1 _meta2 StatusOk _details -> return x
     ClientNormalResponse _resp _meta1 _meta2 _status _details -> do
       error $ "Impossible happened..." <> show _status
-    ClientErrorResponse err -> ioError . userError $ "Server error happened: " <> show err
+    ClientErrorResponse err -> ioError . userError $ "Server error: " <> show err
 {-# INLINE getServerResp #-}
+
+getServerRespPure :: ClientResult 'Normal a -> Either String a
+getServerRespPure result = do
+  case result of
+    ClientNormalResponse x _meta1 _meta2 StatusOk _details -> Right x
+    ClientNormalResponse _resp _meta1 _meta2 _status _details ->
+      Left $ "Impossible happened..." <> show _status
+    ClientErrorResponse err -> Left $ "Error: " <> show err
+{-# INLINE getServerRespPure #-}
 
 getProtoTimestamp :: IO Timestamp
 getProtoTimestamp = do
@@ -97,7 +142,7 @@ isSuccessful _                                       = False
 pattern EnumPB :: a -> PB.Enumerated a
 pattern EnumPB x = PB.Enumerated (Right x)
 
-showNodeStatus :: PB.Enumerated NodeState -> T.Text
+showNodeStatus :: IsString s => PB.Enumerated NodeState -> s
 showNodeStatus = \case
   EnumPB NodeStateStarting    -> "Starting"
   EnumPB NodeStateRunning     -> "Running"

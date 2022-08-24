@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module HStream.SQL.Exception
   ( Position
@@ -10,9 +11,10 @@ module HStream.SQL.Exception
   , buildSQLException
   , throwSQLException
   , formatSomeSQLException
+  , isEOF
   ) where
 
-import           Control.Exception (Exception, throw)
+import           Control.Exception (Exception, throw, try)
 import           GHC.Stack         (CallStack, HasCallStack, callStack,
                                     prettyCallStack)
 import           HStream.SQL.Abs   (BNFC'Position)
@@ -51,7 +53,11 @@ formatParseExceptionInfo SomeSQLExceptionInfo{..} =
   case words sqlExceptionMessage of
     "syntax" : "error" : "at" : "line" : x : "column" : y : ss ->
       "at <line " ++ x ++ "column " ++ y ++ ">: syntax error " ++ unwords ss ++ "."
-    _ -> posInfo ++ sqlExceptionMessage ++ "."
+    _ ->
+      let detailedSqlExceptionMessage = if sqlExceptionMessage /= eofErrMsg
+            then sqlExceptionMessage
+            else sqlExceptionMessage <> ": expected a \";\" at the end of a statement"
+      in posInfo ++ detailedSqlExceptionMessage ++ "."
   where
     posInfo = case sqlExceptionPosition of
         Just (l,c) -> "at <line " ++ show l ++ ", column " ++ show c ++ ">"
@@ -86,6 +92,17 @@ throwSQLException :: (SomeSQLExceptionInfo -> SomeSQLException)
                   -> a
 throwSQLException exceptionType exceptionPos exceptionMsg =
   throw $ buildSQLException exceptionType exceptionPos exceptionMsg
+
+isEOF :: SomeSQLException -> Bool
+isEOF xs =
+  case xs of
+    ParseException info ->
+      let SomeSQLExceptionInfo _ msg _ = info in
+        msg == eofErrMsg
+    _ -> False
+
+eofErrMsg :: String
+eofErrMsg = "syntax error at end of file"
 
 --------------------------------------------------------------------------------
 data SomeRuntimeException = SomeRuntimeException

@@ -58,6 +58,7 @@ jobs:
 
       - name: set env
         run: |
+          docker pull docker.io/hstreamdb/haskell:${{ matrix.ghc }}
           echo "CABAL=python3 script/dev-tools cabal --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
           echo "SHELL=python3 script/dev-tools shell --check --no-interactive -i docker.io/hstreamdb/haskell:${{ matrix.ghc }}" >> $GITHUB_ENV
 
@@ -94,7 +95,6 @@ jobs:
           ${{ env.SHELL }} make
           ${{ env.CABAL }} -- build --enable-tests --enable-benchmarks all
           ${{ env.CABAL }} -- install hstream
-          ${{ env.SHELL }} "'cd hstream-http-server && go build -v -o ../dist-newstyle/hstream-http-server main.go'"
 
       - name: start hstream server
         run: |
@@ -107,23 +107,9 @@ jobs:
           sleep 5
           docker logs --tail 100 $CONTAINER_NAME
 
-      - name: start hstream http server
-        run: |
-          HTTP_PORT=$(cat local-data/dev_tools.env|grep HTTP_LOCAL_PORT|cut -d '=' -f2)
-          SERVER_PORT=$(cat local-data/dev_tools.env|grep SERVER_LOCAL_PORT|cut -d '=' -f2)
-          NAME="test-http-server"
-          EXE=$(find dist-newstyle -maxdepth 1 -name "hstream-http-server" -type f)
-
-          python3 script/dev-tools shell --check --no-interactive --command "" --detach \
-              --container-name $NAME -i docker.io/hstreamdb/haskell:${{ matrix.ghc }} -- \
-              $EXE -httpServerPort $HTTP_PORT -gRPCServerPort $SERVER_PORT
-          sleep 5
-          docker logs --tail 100 $NAME
-
       - name: test
         run: |
           ${{ env.CABAL }} -- test --test-show-details=direct all
-          ${{ env.SHELL }} "'cd hstream-http-server && go test -v ./test/...'"
 
       # Due to an [cabal bug](https://github.com/haskell/cabal/issues/7423),
       # `cabal check` will emit a warning even if the `-O2` option is just
@@ -189,6 +175,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: "hstreamdb/integration-tests"
+          submodules: "recursive"
           path: integration-tests
 
       - uses: actions/setup-java@v2
@@ -217,5 +204,58 @@ jobs:
         if: ${{ success() }} || ${{ failure() }}
         with:
           name: integration-tests-reports
+          path: ~/data/reports.tar
+          retention-days: 7
+
+  distributed-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    name: distributed-tests
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: retrieve saved docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: image-testing
+          path: ~/data
+
+      - name: docker load
+        run: docker load -i ~/data/new_hstream_image.tar
+
+      - name: fetch distributed tests source code
+        uses: actions/checkout@v2
+        with:
+          repository: "hstreamdb/distributed-tests"
+          submodules: "recursive"
+          path: distributed-tests
+
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "adopt"
+          java-version: 11
+          cache: "gradle"
+
+      - uses: gradle/wrapper-validation-action@v1
+
+      - name: run distributed tests
+        run: |
+          cd distributed-tests
+          export HSTREAM_IMAGE_NAME=$NEW_HSTREAM_IMAGE
+          ./gradlew test --info --fail-fast
+
+      - name: tar tests reports
+        if: ${{ success() }} || ${{ failure() }}
+        run: |
+          mv distributed-tests/.logs distributed-tests/logs
+          mv distributed-tests/app/build/reports distributed-tests/reports
+          tar -cvf ~/data/reports.tar distributed-tests/logs distributed-tests/reports
+
+      - name: upload tests-reports
+        uses: actions/upload-artifact@v2
+        if: ${{ success() }} || ${{ failure() }}
+        with:
+          name: distributed-tests-reports
           path: ~/data/reports.tar
           retention-days: 7

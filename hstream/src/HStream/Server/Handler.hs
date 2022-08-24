@@ -7,9 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module HStream.Server.Handler
-  (
-    handlers,
-    -- routineForSubs
+  ( handlers
   )
 where
 
@@ -43,7 +41,6 @@ handlers serverContext@ServerContext{..} =
         hstreamApiDeleteStream = deleteStreamHandler serverContext,
         hstreamApiListStreams = listStreamsHandler serverContext,
         hstreamApiAppend = appendHandler serverContext,
-        hstreamApiAppend0 = append0Handler serverContext,
         -- Subscribe
         hstreamApiCreateSubscription = createSubscriptionHandler serverContext,
         hstreamApiDeleteSubscription = deleteSubscriptionHandler serverContext,
@@ -51,6 +48,14 @@ handlers serverContext@ServerContext{..} =
         hstreamApiCheckSubscriptionExist = checkSubscriptionExistHandler serverContext,
 
         hstreamApiStreamingFetch = streamingFetchHandler serverContext,
+
+        -- Shards
+        hstreamApiListShards = listShardsHandler serverContext,
+        -- Reader
+        hstreamApiCreateShardReader = createShardReaderHandler serverContext,
+        hstreamApiDeleteShardReader = deleteShardReaderHandler serverContext,
+        hstreamApiReadShard         = readShardHandler serverContext,
+
         -- Stats
         hstreamApiPerStreamTimeSeriesStats = H.perStreamTimeSeriesStats scStatsHolder,
         hstreamApiPerStreamTimeSeriesStatsAll = H.perStreamTimeSeriesStatsAll scStatsHolder,
@@ -58,20 +63,20 @@ handlers serverContext@ServerContext{..} =
         hstreamApiTerminateQueries = terminateQueriesHandler serverContext,
         hstreamApiExecuteQuery = executeQueryHandler serverContext,
         hstreamApiExecutePushQuery = executePushQueryHandler serverContext,
-        hstreamApiCreateQueryStream = createQueryStreamHandler serverContext,
         -- FIXME:
-        hstreamApiCreateQuery = createQueryHandler serverContext,
         hstreamApiGetQuery = getQueryHandler serverContext,
         hstreamApiListQueries = listQueriesHandler serverContext,
         hstreamApiDeleteQuery = deleteQueryHandler serverContext,
         hstreamApiRestartQuery = restartQueryHandler serverContext,
-        hstreamApiCreateSinkConnector = createSinkConnectorHandler serverContext,
+
+        hstreamApiCreateConnector = createConnectorHandler serverContext,
         hstreamApiGetConnector = getConnectorHandler serverContext,
         hstreamApiListConnectors = listConnectorsHandler serverContext,
         hstreamApiDeleteConnector = deleteConnectorHandler serverContext,
-        hstreamApiTerminateConnector = terminateConnectorHandler serverContext,
-        hstreamApiRestartConnector = restartConnectorHandler serverContext,
-        hstreamApiCreateView = createViewHandler serverContext,
+        hstreamApiPauseConnector = pauseConnectorHandler serverContext,
+        hstreamApiResumeConnector = resumeConnectorHandler serverContext,
+        hstreamApiLookupConnector = lookupConnectorHandler serverContext,
+
         hstreamApiGetView = getViewHandler serverContext,
         hstreamApiListViews = listViewsHandler serverContext,
         hstreamApiDeleteView = deleteViewHandler serverContext,
@@ -79,9 +84,10 @@ handlers serverContext@ServerContext{..} =
         hstreamApiListNodes = listStoreNodesHandler serverContext,
 
         -- Cluster
-        hstreamApiDescribeCluster = describeClusterHandler serverContext,
-        hstreamApiLookupStream = lookupStreamHandler serverContext,
+        hstreamApiDescribeCluster    = describeClusterHandler serverContext,
+        hstreamApiLookupShard        = lookupShardHandler serverContext,
         hstreamApiLookupSubscription = lookupSubscriptionHandler serverContext,
+        hstreamApiLookupShardReader  = lookupShardReaderHandler serverContext,
         -- Admin
         hstreamApiSendAdminCommand = adminCommandHandler serverContext
       }

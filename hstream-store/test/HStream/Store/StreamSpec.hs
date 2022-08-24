@@ -9,7 +9,6 @@ import           Data.Int
 import qualified Data.Map                         as M
 import qualified Data.Map.Strict                  as Map
 import           Test.Hspec
-import           Z.Data.CBytes                    (CBytes)
 import           Z.Data.Vector.Base               (Bytes)
 
 import qualified HStream.Store                    as S
@@ -39,11 +38,8 @@ base = describe "BaseSpec" $ do
                       }
     S.createStream client streamId attrs
     S.doesStreamExist client streamId `shouldReturn` True
-
-    S.doesStreamPartitionExist client streamId Nothing `shouldReturn` True
+    S.doesStreamPartitionExist client streamId Nothing `shouldReturn` False
     S.doesStreamPartitionExist client streamId (Just "some_non_exist_key") `shouldReturn` False
-    non_exist_stream <- S.mkStreamId S.StreamTypeStream <$> newRandomName 5
-    S.doesStreamPartitionExist client non_exist_stream Nothing `shouldReturn` False
 
     ss <- S.findStreams client S.StreamTypeStream
     ss `shouldContain` [streamId]
@@ -60,7 +56,7 @@ base = describe "BaseSpec" $ do
     S.doesStreamExist client stream1 `shouldReturn` True
     S.doesStreamPartitionExist client stream1 key `shouldReturn` False
 
-    log_id <- S.createStreamPartition client stream1 key
+    log_id <- S.createStreamPartition client stream1 key Map.empty
     S.doesStreamPartitionExist client stream1 key `shouldReturn` True
     S.listStreamPartitions client stream1 >>= (`shouldSatisfy` M.member keyString)
 
@@ -81,6 +77,7 @@ base = describe "BaseSpec" $ do
     S.createStream client streamId attrs `shouldThrow` S.isEXISTS
 
   it "get full path of loggroup by name or id shoule be equal" $ do
+    _ <- S.createStreamPartition client streamId Nothing Map.empty
     logpath <- S.logGroupGetFullName =<< S.getLogGroup client logPath
     logid <- S.getUnderlyingLogId client streamId Nothing
     logpath' <- S.logGroupGetFullName =<< S.getLogGroupByID client logid
@@ -148,9 +145,10 @@ archiveStreamSpec = describe "ArchiveStreamSpec" $ do
     ss' `shouldContain` [streamId]
 
     archived' <- S.archiveStream client streamId
-    S.doesArchivedStreamExist client archived `shouldReturn` True
-    S.removeArchivedStream client archived'
     S.doesArchivedStreamExist client archived `shouldReturn` False
+    S.doesArchivedStreamExist client archived' `shouldReturn` True
+    S.removeArchivedStream client archived'
+    S.doesArchivedStreamExist client archived' `shouldReturn` False
 
 writeReadSpec :: Spec
 writeReadSpec = describe "WriteReadSpec" $ do
@@ -159,6 +157,7 @@ writeReadSpec = describe "WriteReadSpec" $ do
     let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client streamid attrs
     S.doesStreamExist client streamid `shouldReturn` True
+    _ <-S.createStreamPartition client streamid Nothing Map.empty
     logid <- S.getUnderlyingLogId client streamid Nothing
     -- NOTE: wait logid avariable
     threadDelay 1000000
@@ -175,6 +174,7 @@ writeReadSpec = describe "WriteReadSpec" $ do
     let attrs = S.def { S.logReplicationFactor = S.defAttr1 1 }
     S.createStream client streamid attrs
     S.doesStreamExist client streamid `shouldReturn` True
+    _ <-S.createStreamPartition client streamid Nothing Map.empty
     logid <- S.getUnderlyingLogId client streamid Nothing
     -- NOTE: wait logid avariable
     threadDelay 1000000

@@ -4,58 +4,54 @@
 {-# LANGUAGE RecordWildCards #-}
 module HStream.Client.Execute
   ( executeShowPlan
+  , execute_
   , execute
+  , executeWithAddr
+  -- , executeInsert
   , executeWithAddr_
-  , executeInsert
   ) where
 
 import           Control.Concurrent            (readMVar)
 import           Data.Functor                  (void)
-import qualified Data.Text                     as T
-import           Network.GRPC.HighLevel        (GRPCIOError (GRPCIOBadStatusCode))
 import           Network.GRPC.HighLevel.Client
-import           Z.IO.Network                  (SocketAddr)
 
 import           HStream.Client.Action
 import           HStream.Client.Gadget
-import           HStream.Client.Type           (ClientContext (..))
+import           HStream.Client.Types          (HStreamSqlContext (..))
 import           HStream.Client.Utils
-import           HStream.Server.HStreamApi
 import           HStream.SQL
-import           HStream.Utils                 (Format)
+import           HStream.Utils                 (Format, SocketAddr,
+                                                getServerResp)
 
-executeShowPlan :: ClientContext -> ShowObject -> IO ()
+executeShowPlan :: HStreamSqlContext -> ShowObject -> IO ()
 executeShowPlan ctx showObject =
   case showObject of
-    SStreams    -> execute ctx listStreams
-    SViews      -> execute ctx listViews
-    SQueries    -> execute ctx listQueries
-    SConnectors -> execute ctx listConnectors
+    SStreams    -> execute_ ctx listStreams
+    SViews      -> execute_ ctx listViews
+    SQueries    -> execute_ ctx listQueries
+    SConnectors -> execute_ ctx listConnectors
 
-executeInsert :: ClientContext -> T.Text -> Action AppendResponse -> IO ()
-executeInsert ctx@ClientContext{..} sName action = do
-  curAddr <- readMVar currentServer
-  lookupStream ctx curAddr sName >>= \case
-    Nothing       -> return ()
-    Just realNode -> runWith realNode
-  where
-    runWith realNode = do
-      resp <- runActionWithAddr (serverNodeToSocketAddr realNode) action
-      case resp of
-        ClientNormalResponse{} -> printResult resp
-        ClientErrorResponse (ClientIOError (GRPCIOBadStatusCode _ _))
-          -> printResult resp
-        ClientErrorResponse _ ->
-          executeInsert ctx sName action
-
-execute :: Format a => ClientContext
+execute_ :: Format a => HStreamSqlContext
   -> Action a -> IO ()
-execute ctx@ClientContext{..} action = do
+execute_ ctx@HStreamSqlContext{..} action = do
   addr <- readMVar currentServer
-  executeWithAddr_ ctx addr action printResult
+  void $ executeWithAddr_ ctx addr action printResult
+
+execute :: HStreamSqlContext -> Action a -> IO (Maybe a)
+execute ctx@HStreamSqlContext{..} action = do
+  addr <- readMVar currentServer
+  executeWithAddr ctx addr action ((Just <$>) . getServerResp)
+
+executeWithAddr
+  :: HStreamSqlContext -> SocketAddr
+  -> Action a
+  -> (ClientResult 'Normal a -> IO (Maybe a))
+  -> IO (Maybe a)
+executeWithAddr ctx addr action handleOKResp = do
+  getInfoWithAddr ctx addr action handleOKResp
 
 executeWithAddr_
-  :: ClientContext -> SocketAddr
+  :: HStreamSqlContext -> SocketAddr
   -> Action a
   -> (ClientResult 'Normal a -> IO ())
   -> IO ()

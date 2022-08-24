@@ -5,9 +5,10 @@
 
 module HStream.SQL.AST where
 
+import qualified Data.Aeson            as Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Char8 as BSC
-import           Data.Functor
+import qualified Data.HashMap.Strict   as HM
 import           Data.Kind             (Type)
 import           Data.Text             (Text)
 import qualified Data.Text             as Text
@@ -85,6 +86,13 @@ data Constant = ConstantNull
               | ConstantInterval  RInterval
               -- TODO: Support Map and Arr
               deriving (Eq, Show)
+
+instance Aeson.ToJSON Constant where
+  toJSON ConstantNull       = Aeson.Null
+  toJSON (ConstantInt v)    = Aeson.toJSON v
+  toJSON (ConstantNum v)    = Aeson.toJSON v
+  toJSON (ConstantString v) = Aeson.toJSON v
+  toJSON (ConstantBool v)   = Aeson.toJSON v
 
 data BinaryOp = OpAdd | OpSub | OpMul
               | OpAnd | OpOr
@@ -246,51 +254,23 @@ instance Refine Sel where
   refine (DSel _ (SelListSublist _ cols)) = RSelList $ refine <$> cols
 
 ---- Frm
-data RJoinType = RJoinInner | RJoinLeft | RJoinOuter deriving (Eq, Show)
-type instance RefinedType JoinType = RJoinType
-instance Refine JoinType where
-  refine (JoinInner  _)   = RJoinInner
-  refine (JoinLeft  pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinLeft
-  refine (JoinOuter pos)  = throwSQLException RefineException pos "LEFT JOIN is not supported yet" -- TODO: RJoinOuter
+data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
+               | RTableRefSubquery RSelect (Maybe StreamName)
+               | RTableRefUnion RTableRef RTableRef (Maybe StreamName)
+               deriving (Eq, Show)
+type instance RefinedType TableRef = RTableRef
+instance Refine TableRef where
+  refine (TableRefSimple _ (Ident t)) = RTableRefSimple t Nothing
+  refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
+  refine (TableRefUnion _ ref1 ref2) = RTableRefUnion (refine ref1) (refine ref2) Nothing
+  refine (TableRefAs _ (TableRefSimple _ (Ident t)) (Ident alias)) = RTableRefSimple t (Just alias)
+  refine (TableRefAs _ (TableRefSubquery _ select) (Ident alias)) = RTableRefSubquery (refine select) (Just alias)
+  refine (TableRefAs _ (TableRefUnion _ ref1 ref2) (Ident alias)) = RTableRefUnion (refine ref1) (refine ref2) (Just alias)
 
--- TODO: Defined a RJoinWindow type to describe different windows (symmetry, left, right, ...) ?
-type RJoinWindow = RInterval
-type instance RefinedType JoinWindow = RInterval
-instance Refine JoinWindow where
-  refine (DJoinWindow _ interval) = refine interval
-
-type instance RefinedType JoinCond = RSearchCond
-instance Refine JoinCond where
-  refine (DJoinCond _ cond) = refine cond
-
--- TODO: Stream alias is not supported yet
-data RFrom = RFromSingle StreamName
-           | RFromJoin   (StreamName,FieldName) (StreamName,FieldName) RJoinType RJoinWindow
-           deriving (Eq, Show)
+data RFrom = RFrom [RTableRef] deriving (Eq, Show)
 type instance RefinedType From = RFrom
-
--- Note: Ensured by Validate: only the following situations are allowed:
---       1. stream1
---       2. stream1 `JOIN` stream2
---       Ensured by Validate: stream names in JOIN ON and FROM match
 instance Refine From where
-  refine (DFrom _ [TableRefSimple _ (Ident t)]) = RFromSingle t
-  refine (DFrom pos [
-                   TableRefJoin _
-                   (TableRefSimple _ (Ident t1))
-                   joinType
-                   (TableRefSimple _ (Ident t2))
-                   win
-                   cond
-                  ]) =
-    case refine cond of
-      (RCondOp RCompOpEQ (RExprCol _ (Just s1) f1) (RExprCol _ (Just _) f2)) ->
-        case t1 == s1 of
-          True  -> RFromJoin (t1,f1) (t2,f2) (refine joinType) (refine win)
-          False -> RFromJoin (t1,f2) (t2,f1) (refine joinType) (refine win)
-      _ -> throwSQLException RefineException pos "Impossible happened"
-  refine (DFrom _ [TableRefAs pos _ _]) = throwSQLException RefineException pos "Stream alias is not supported yet"
-  refine (DFrom pos _) = throwSQLException RefineException pos "Impossible happened"
+  refine (DFrom pos refs) = RFrom (refine <$> refs)
 
 ---- Whr
 data RCompOp = RCompOpEQ | RCompOpNE | RCompOpLT | RCompOpGT | RCompOpLEQ | RCompOpGEQ deriving (Eq, Show)
@@ -328,14 +308,14 @@ instance Refine Where where
 
 ---- Grp
 data RWindow = RTumblingWindow RInterval
-             | RHoppingWIndow  RInterval RInterval
-             | RSessionWindow  RInterval
+             | RHoppingWindow  RInterval RInterval
+             | RSlidingWindow  RInterval
              deriving (Eq, Show)
 type instance RefinedType Window = RWindow
 instance Refine Window where
   refine (TumblingWindow _ interval) = RTumblingWindow (refine interval)
-  refine (HoppingWindow  _ len hop ) = RHoppingWIndow (refine len) (refine hop)
-  refine (SessionWindow  _ interval) = RSessionWindow (refine interval)
+  refine (HoppingWindow  _ len hop ) = RHoppingWindow (refine len) (refine hop)
+  refine (SlidingWindow  _ interval) = RSlidingWindow (refine interval)
 
 data RGroupBy = RGroupByEmpty
               | RGroupBy (Maybe StreamName) FieldName (Maybe RWindow)
@@ -374,11 +354,11 @@ instance Refine Select where
 ---- SELECTVIEW
 
 data SelectViewSelect = SVSelectAll | SVSelectFields [(FieldName, FieldAlias)] deriving (Eq, Show)
-type SelectViewCond = (FieldName, RValueExpr)
+
 data RSelectView = RSelectView
   { rSelectViewSelect :: SelectViewSelect
   , rSelectViewFrom   :: StreamName
-  , rSelectViewWhere  :: SelectViewCond
+  , rSelectViewWhere  :: RWhere
   } deriving (Eq, Show)
 
 type instance RefinedType SelectView = RSelectView
@@ -402,9 +382,10 @@ instance Refine SelectView where
                 (DerivedColAs _ (ExprRaw _ (RawColumn col)) (Ident alias))                   ->
                   (col, Text.unpack alias)
            in SVSelectFields (f <$> dcols)
-      svFrm = let (RFromSingle stream) = refine frm in stream
-      svWhr = let (RWhere (RCondOp RCompOpEQ (RExprCol _ Nothing field) rexpr)) = refine whr
-               in (field, rexpr)
+      svFrm :: StreamName
+      svFrm = let (RFrom [RTableRefSimple stream Nothing]) = refine frm in stream
+      svWhr :: RWhere
+      svWhr = refine whr
 
 ---- EXPLAIN
 type RExplain = Text
@@ -422,12 +403,13 @@ data RStreamOptions = RStreamOptions
   { rRepFactor    :: Int
   } deriving (Eq, Show)
 
-data RConnectorOptions = RConnectorOptions [(Text, Constant)]
+newtype RConnectorOptions = RConnectorOptions (HM.HashMap Text Aeson.Value)
   deriving (Eq, Show)
 
 data RCreate = RCreate   Text RStreamOptions
              | RCreateAs Text RSelect RStreamOptions
-             | RCreateSinkConnector Text Bool Text Text RConnectorOptions
+             -- RCreateConnector <SOURCE|SINK> <Name> <Target> <EXISTS> <OPTIONS>
+             | RCreateConnector Text Text Text Bool RConnectorOptions
              | RCreateView Text RSelect
              deriving (Eq, Show)
 
@@ -437,25 +419,13 @@ instance Refine [StreamOption] where
   refine [] = RStreamOptions 3
   refine _ = throwSQLException RefineException Nothing "Impossible happened"
 
-type instance RefinedType [ConnectorOption] = (StreamName, ConnectorType, RConnectorOptions)
+type instance RefinedType [ConnectorOption] = RConnectorOptions
 instance Refine [ConnectorOption] where
-  refine = refineConnectorOps ("", "", RConnectorOptions [])
-
--- Extract StreamName and ConnectorType from ConnectorOptions
--- | Input: ("","",R []) [("STREAM", "demo"),("host","127.0.0.1"),("TYPE","mysql)"]
--- | Result: ("demo","mysql", R [("host","127.0.0.1")])
--- | Stream name and connector type's existence are ensured by validate
-refineConnectorOps :: (StreamName, ConnectorType, RConnectorOptions) -> [ConnectorOption] -> (StreamName, ConnectorType, RConnectorOptions)
-refineConnectorOps tuple (op : ops) =
-  case op of
-    PropertyAny _ (Ident x) expr ->
-      let RExprConst _ constant = refine expr in
-        (sName, cType, RConnectorOptions ((x, constant) : xs))
-    PropertyStreamName _ (Ident x) -> (x, cType, ops')
-    PropertyConnector  _ (Ident x) -> (sName, x, ops')
-  where
-    (sName, cType, ops'@(RConnectorOptions xs)) = refineConnectorOps tuple ops
-refineConnectorOps tuple [] = tuple
+  refine ps = RConnectorOptions $ foldr (insert . toPair) HM.empty ps
+    where insert (k, v) = HM.insert k v
+          toPair :: ConnectorOption -> (Text, Aeson.Value)
+          toPair (ConnectorProperty _ key expr) = (Text.pack key, toValue (refine expr))
+          toValue (RExprConst _ c) = Aeson.toJSON c
 
 type instance RefinedType Create = RCreate
 instance Refine Create where
@@ -463,10 +433,10 @@ instance Refine Create where
   refine (CreateOp _ (Ident s) options)  = RCreate s (refine options)
   refine (CreateAs   _ (Ident s) select) = RCreateAs s (refine select) (refine ([] :: [StreamOption]))
   refine (CreateAsOp _ (Ident s) select options) = RCreateAs s (refine select) (refine options)
-  refine (CreateSinkConnector _ (Ident s) options) =
-    let (sName, cType, ops) = refine options in RCreateSinkConnector s False sName cType ops
-  refine (CreateSinkConnectorIf _ (Ident s) options) =
-    let (sName, cType, ops) = refine options in RCreateSinkConnector s True sName cType ops
+  refine (CreateSourceConnector _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t False (refine options)
+  refine (CreateSourceConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SOURCE" s t True (refine options)
+  refine (CreateSinkConnector _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t False (refine options)
+  refine (CreateSinkConnectorIf _ (Ident s) (Ident t) options) = RCreateConnector "SINK" s t True (refine options)
   refine (CreateView _ (Ident s) select) = RCreateView s (refine select)
 
 ---- INSERT
@@ -539,6 +509,24 @@ instance Refine Terminate where
   refine (TerminateAll   _  ) = RTerminateAll
 type instance RefinedType Terminate = RTerminate
 
+---- Pause
+newtype RPause = RPauseConnector Text
+  deriving (Eq, Show)
+
+type instance RefinedType Pause = RPause
+
+instance Refine Pause where
+  refine (PauseConnector _ (Ident name)) = RPauseConnector name
+
+---- Resume
+newtype RResume = RResumeConnector Text
+  deriving (Eq, Show)
+
+type instance RefinedType Resume = RResume
+
+instance Refine Resume where
+  refine (ResumeConnector _ (Ident name)) = RResumeConnector name
+
 ---- SQL
 data RSQL = RQSelect      RSelect
           | RQCreate      RCreate
@@ -548,17 +536,21 @@ data RSQL = RQSelect      RSelect
           | RQTerminate   RTerminate
           | RQSelectView  RSelectView
           | RQExplain     RExplain
+          | RQPause       RPause
+          | RQResume      RResume
           deriving (Eq, Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
-  refine (QSelect      _   select) = RQSelect      (refine   select)
-  refine (QCreate      _   create) = RQCreate      (refine   create)
-  refine (QInsert      _   insert) = RQInsert      (refine   insert)
-  refine (QShow        _    show_) = RQShow        (refine    show_)
-  refine (QDrop        _    drop_) = RQDrop        (refine    drop_)
-  refine (QTerminate   _     term) = RQTerminate   (refine     term)
-  refine (QSelectView  _  selView) = RQSelectView  (refine  selView)
-  refine (QExplain     _  explain) = RQExplain     (refine  explain)
+  refine (QSelect     _ select)  =  RQSelect      (refine   select)
+  refine (QCreate     _ create)  =  RQCreate      (refine   create)
+  refine (QInsert     _ insert)  =  RQInsert      (refine   insert)
+  refine (QShow       _ show_)   =  RQShow        (refine    show_)
+  refine (QDrop       _ drop_)   =  RQDrop        (refine    drop_)
+  refine (QTerminate  _ term)    =  RQTerminate   (refine     term)
+  refine (QSelectView _ selView) =  RQSelectView  (refine  selView)
+  refine (QExplain    _ explain) =  RQExplain     (refine  explain)
+  refine (QPause      _ pause)   =  RQPause       (refine  pause)
+  refine (QResume     _ resume)  =  RQResume      (refine  resume)
 
 --------------------------------------------------------------------------------
 

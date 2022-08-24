@@ -10,12 +10,14 @@ module HStream.Server.Persistence.Utils
   , connectorsPath
   , subscriptionsPath
   , subscriptionsLockPath
+  , readerPath
   , paths
 
   , initializeAncestors
   , mkQueryPath
   , mkConnectorPath
   , mkSubscriptionPath
+  , mkReaderPath
 
   , createInsert
   , createInsertOp
@@ -36,6 +38,7 @@ module HStream.Server.Persistence.Utils
   , encodeValueToBytes
 
   , ifThrow
+  , ioPath
   ) where
 
 --------------------------------------------------------------------------------
@@ -91,6 +94,24 @@ subscriptionsPath = rootPath <> "/subscriptions"
 subscriptionsLockPath :: CBytes
 subscriptionsLockPath = lockPath <> "/subscriptions"
 
+ioPath :: CBytes
+ioPath = rootPath <> "/io"
+
+ioTasksPath :: CBytes
+ioTasksPath = ioPath <> "/tasks"
+
+ioStatusPath :: CBytes
+ioStatusPath = ioPath <> "/status"
+
+ioKvPath :: CBytes
+ioKvPath = ioPath <> "/kv"
+
+ioNamesPath :: CBytes
+ioNamesPath = ioPath <> "/names"
+
+readerPath :: CBytes
+readerPath = rootPath <> "/shardReader"
+
 paths :: [CBytes]
 paths = [ rootPath
         , serverRootPath
@@ -99,6 +120,12 @@ paths = [ rootPath
         , connectorsPath
         , subscriptionsPath
         , subscriptionsLockPath
+        , ioPath
+        , ioTasksPath
+        , ioStatusPath
+        , ioKvPath
+        , ioNamesPath
+        , readerPath
         ]
 
 initializeAncestors :: HasCallStack => ZHandle -> IO ()
@@ -113,6 +140,9 @@ mkConnectorPath x = connectorsPath <> "/" <> x
 
 mkSubscriptionPath :: T.Text -> CBytes
 mkSubscriptionPath x = subscriptionsPath <> "/" <> textToCBytes x
+
+mkReaderPath :: CBytes -> CBytes
+mkReaderPath x = readerPath <> "/" <> x
 
 createInsert :: HasCallStack => ZHandle -> CBytes -> Bytes -> IO ()
 createInsert zk path contents = do

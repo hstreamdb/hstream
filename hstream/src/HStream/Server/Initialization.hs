@@ -4,12 +4,11 @@
 
 module HStream.Server.Initialization
   ( initializeServer
-  -- , initNodePath
   , initializeTlsConfig
   ) where
 
 import           Control.Concurrent               (MVar, newMVar)
-import           Control.Concurrent.STM           (TVar, newTVarIO)
+import           Control.Concurrent.STM           (TVar, newTVarIO, readTVarIO)
 import           Control.Exception                (catch)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
@@ -22,22 +21,31 @@ import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProc
                                                    StatusCode (StatusOk),
                                                    getAuthProperties)
 import           Text.Printf                      (printf)
-import           ZooKeeper.Types                  (ZHandle)
+import qualified Z.Data.CBytes                    as CB
+import           ZooKeeper.Types
 
 import qualified HStream.Admin.Store.API          as AA
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
-import           HStream.Gossip                   (getMemberList)
-import           HStream.Gossip.Types             (GossipContext)
+import           HStream.Common.ConsistentHashing (HashRing, constructServerMap,
+                                                   getAllocatedNodeId)
+import           HStream.Gossip                   (GossipContext, getMemberList)
+import qualified HStream.IO.Types                 as IO
+import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
+import           HStream.Server.Persistence       (ioPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
-import           HStream.Utils                    (fromInternalServerNode)
+import           HStream.Utils
 
-initializeServer :: ServerOpts -> GossipContext -> ZHandle -> MVar ServerState -> IO ServerContext
-initializeServer ServerOpts{..} gossipContext zk serverState = do
+initializeServer
+  :: ServerOpts
+  -> GossipContext
+  -> ZHandle
+  -> MVar ServerState
+  -> IO ServerContext
+initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
   ldclient <- S.newLDClient _ldConfigPath
   let attrs = S.def{S.logReplicationFactor = S.defAttr1 _ckpRepFactor}
   _ <- catch (void $ S.initCheckpointStoreLogID ldclient attrs)
@@ -52,11 +60,26 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
 
   hashRing <- initializeHashRing gossipContext
 
+  ioWorker <-
+    IO.newWorker
+      (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
+      (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
+      _ioOptions
+      (\k -> do
+        hr <- readTVarIO hashRing
+        return $ getAllocatedNodeId hr k == _serverID
+       )
+
+  shardInfo  <- newMVar HM.empty
+  shardTable <- newMVar HM.empty
+  shardReaderMap <- newMVar HM.empty
+
   return
     ServerContext
       { zkHandle                 = zk
       , scLDClient               = ldclient
       , serverID                 = _serverID
+      , scAdvertisedListenersKey = Nothing
       , scDefaultStreamRepFactor = _topicRepFactor
       , scMaxRecordSize          = _maxRecordSize
       , runningQueries           = runningQs
@@ -67,7 +90,12 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
       , scStatsHolder            = statsHolder
       , loadBalanceHashRing      = hashRing
       , scServerState            = serverState
+      , scIOWorker               = ioWorker
       , gossipContext            = gossipContext
+      , serverOpts               = opts
+      , shardInfo                = shardInfo
+      , shardTable               = shardTable
+      , shardReaderMap           = shardReaderMap
       }
 
 --------------------------------------------------------------------------------
@@ -75,7 +103,7 @@ initializeServer ServerOpts{..} gossipContext zk serverState = do
 initializeHashRing :: GossipContext -> IO (TVar HashRing)
 initializeHashRing gc = do
   serverNodes <- getMemberList gc
-  newTVarIO . constructServerMap . sort $ map fromInternalServerNode serverNodes
+  newTVarIO . constructServerMap . sort $ serverNodes
 
 initializeTlsConfig :: TlsConfig -> ServerSSLConfig
 initializeTlsConfig TlsConfig {..} = ServerSSLConfig caPath keyPath certPath authType authHandler

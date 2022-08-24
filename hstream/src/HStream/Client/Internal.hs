@@ -5,26 +5,31 @@
 module HStream.Client.Internal
   ( callSubscription
   , callDeleteSubscription
+  , callDeleteSubscriptionAll
   , callListSubscriptions
   , callStreamingFetch
   ) where
 
-import           Control.Concurrent               (readMVar, threadDelay)
-import           Control.Monad                    (void)
-import           Data.Maybe                       (fromJust, isJust)
+import           Control.Concurrent               (readMVar)
+import           Control.Monad                    (forM_, void)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
-import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Generated
+import           Network.GRPC.HighLevel.Generated (ClientRequest (..),
+                                                   ClientResult (..),
+                                                   GRPCMethodType (..),
+                                                   withGRPCClient)
 
 import           HStream.Client.Execute           (executeWithAddr_)
-import           HStream.Client.Gadget
-import           HStream.Client.Type
-import           HStream.Client.Utils
+import           HStream.Client.Gadget            (lookupSubscription)
+import           HStream.Client.Types             (HStreamSqlContext (..))
+import           HStream.Client.Utils             (mkClientNormalRequest')
 import qualified HStream.Server.HStreamApi        as API
-import           HStream.Utils                    (HStreamClientApi)
+import           HStream.Utils                    (HStreamClientApi,
+                                                   mkGRPCClientConfWithSSL,
+                                                   serverNodeToSocketAddr)
+import           Proto3.Suite                     (Enumerated (Enumerated))
 
-callSubscription :: ClientContext -> T.Text -> T.Text -> IO ()
+callSubscription :: HStreamSqlContext -> T.Text -> T.Text -> IO ()
 callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..}  = do
@@ -32,8 +37,10 @@ callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
                    { API.subscriptionSubscriptionId = subId
                    , API.subscriptionStreamName = stream
                    , API.subscriptionAckTimeoutSeconds = 1
+                   , API.subscriptionMaxUnackedRecords = 100
+                   , API.subscriptionOffset = Enumerated (Right API.SpecialOffsetLATEST)
                    }
-      hstreamApiCreateSubscription (mkClientNormalRequest subReq)
+      hstreamApiCreateSubscription (mkClientNormalRequest' subReq)
     handleRespApp :: ClientResult 'Normal API.Subscription -> IO ()
     handleRespApp resp = case resp of
       (ClientNormalResponse resp_ _meta1 _meta2 _code _details) -> do
@@ -42,7 +49,7 @@ callSubscription ctx subId stream = void $ execute ctx getRespApp handleRespApp
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callDeleteSubscription :: ClientContext -> T.Text -> IO ()
+callDeleteSubscription :: HStreamSqlContext -> T.Text -> IO ()
 callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} = do
@@ -50,7 +57,7 @@ callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
                 { deleteSubscriptionRequestSubscriptionId = subId,
                   deleteSubscriptionRequestForce = True
                 }
-      hstreamApiDeleteSubscription (mkClientNormalRequest req)
+      hstreamApiDeleteSubscription (mkClientNormalRequest' req)
     handleRespApp resp = case resp of
       ClientNormalResponse {} -> do
         putStrLn "-----------------"
@@ -58,12 +65,33 @@ callDeleteSubscription ctx subId = void $ execute ctx getRespApp handleRespApp
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callListSubscriptions :: ClientContext -> IO ()
+callDeleteSubscriptionAll :: HStreamSqlContext -> IO ()
+callDeleteSubscriptionAll HStreamSqlContext{..} = do
+  curNode <- readMVar currentServer
+  withGRPCClient (mkGRPCClientConfWithSSL curNode sslConfig) $ \client -> do
+    API.HStreamApi{..} <- API.hstreamApiClient client
+    let listReq = API.ListSubscriptionsRequest
+    listResp <- hstreamApiListSubscriptions (mkClientNormalRequest' listReq)
+    case listResp of
+      (ClientNormalResponse (API.ListSubscriptionsResponse subs) _meta1 _meta2 _code _details) -> do
+        forM_ subs $ \API.Subscription{..} -> do
+          let delReq = API.DeleteSubscriptionRequest
+                       { deleteSubscriptionRequestSubscriptionId = subscriptionSubscriptionId
+                       , deleteSubscriptionRequestForce = True
+                       }
+          _ <- hstreamApiDeleteSubscription (mkClientNormalRequest' delReq)
+          return ()
+        putStrLn "-----------------"
+        putStrLn "Done."
+        putStrLn "-----------------"
+      _ -> putStrLn "Failed!"
+
+callListSubscriptions :: HStreamSqlContext -> IO ()
 callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
   where
     getRespApp API.HStreamApi{..} = do
       let req = API.ListSubscriptionsRequest
-      hstreamApiListSubscriptions (mkClientNormalRequest req)
+      hstreamApiListSubscriptions (mkClientNormalRequest' req)
     handleRespApp :: ClientResult 'Normal API.ListSubscriptionsResponse -> IO ()
     handleRespApp resp = case resp of
       (ClientNormalResponse (API.ListSubscriptionsResponse subs) _meta1 _meta2 _code _details) -> do
@@ -72,42 +100,47 @@ callListSubscriptions ctx = void $ execute ctx getRespApp handleRespApp
         putStrLn "-----------------"
       _ -> putStrLn "Failed!"
 
-callStreamingFetch :: ClientContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
-callStreamingFetch ctx startRecordIds subId clientId = do
-  curNode <- readMVar (currentServer ctx)
+callStreamingFetch :: HStreamSqlContext -> V.Vector API.RecordId -> T.Text -> T.Text -> IO ()
+callStreamingFetch ctx@HStreamSqlContext{..} startRecordIds subId clientId = do
+  curNode <- readMVar currentServer
   m_node <- lookupSubscription ctx curNode subId
   case m_node of
     Nothing   -> putStrLn "Subscription not found"
-    Just node -> withGRPCClient (mkGRPCClientConf . serverNodeToSocketAddr $ node) $ \client -> do
+    Just node -> withGRPCClient (mkGRPCClientConfWithSSL (serverNodeToSocketAddr node) sslConfig) $ \client -> do
       API.HStreamApi{..} <- API.hstreamApiClient client
       void $ hstreamApiStreamingFetch (ClientBiDiRequest 10000 mempty action)
   where
     action _clientCall _meta streamRecv streamSend _writeDone = do
-      go startRecordIds
-      where
-        go recordIds = do
-          let req = API.StreamingFetchRequest
+      let initReq = API.StreamingFetchRequest
                     { API.streamingFetchRequestSubscriptionId = subId
                     , API.streamingFetchRequestConsumerName = clientId
-                    , API.streamingFetchRequestAckIds = recordIds
+                    , API.streamingFetchRequestAckIds = startRecordIds
                     }
-          void $ streamSend req
+      _ <- streamSend initReq
+      recving
+      where
+        recving :: IO ()
+        recving = do
           m_recv <- streamRecv
           case m_recv of
             Left err -> print err
             Right (Just resp@API.StreamingFetchResponse{..}) -> do
-              let recIds = V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
+              let recIds = maybe V.empty API.receivedRecordRecordIds streamingFetchResponseReceivedRecords
               print resp
-              go recIds
+              let ackReq = API.StreamingFetchRequest
+                           { API.streamingFetchRequestSubscriptionId = subId
+                           , API.streamingFetchRequestConsumerName = clientId
+                           , API.streamingFetchRequestAckIds = recIds
+                           }
+              _ <- streamSend ackReq
+              recving
             Right Nothing -> do
-              putStrLn "Stopped. Redirecting..."
-              threadDelay 2000000
-              callStreamingFetch ctx recordIds subId clientId
+              putStrLn "Stopped."
 
-execute :: ClientContext
+execute :: HStreamSqlContext
   -> (HStreamClientApi -> IO (ClientResult 'Normal a))
   -> (ClientResult 'Normal a -> IO ())
   -> IO ()
-execute ctx@ClientContext{..} action cont = do
+execute ctx@HStreamSqlContext{..} action cont = do
   addr <- readMVar currentServer
   executeWithAddr_ ctx addr action cont

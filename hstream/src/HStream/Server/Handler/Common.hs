@@ -6,185 +6,186 @@
 
 module HStream.Server.Handler.Common where
 
-import           Control.Concurrent               (ThreadId, forkIO, killThread,
-                                                   putMVar, readMVar, swapMVar,
-                                                   takeMVar)
+import           Control.Concurrent
 import           Control.Exception                (Handler (Handler),
                                                    SomeException (..), catches,
-                                                   onException, try)
+                                                   onException)
 import           Control.Exception.Base           (AsyncException (..))
-import           Control.Monad                    (forever, void, when)
-import           Data.Foldable                    (foldrM)
+import           Control.Monad
+import qualified Data.Aeson                       as Aeson
 import qualified Data.HashMap.Strict              as HM
 import           Data.Int                         (Int64)
-import           Data.List                        (find)
-import qualified Data.Map.Strict                  as Map
+import           Data.Maybe                       (fromJust)
 import           Data.Text                        (Text)
-import qualified Data.Text                        as T
-import           Data.Word                        (Word32, Word64)
-import           Database.ClickHouseDriver.Client (createClient)
-import           Database.MySQL.Base              (ERRException)
-import qualified Database.MySQL.Base              as MySQL
+import qualified Data.Time                        as Time
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
 import qualified Z.Data.CBytes                    as CB
-import           Z.Data.CBytes                    (CBytes)
 
-import           HStream.Connector.ClickHouse
-import qualified HStream.Connector.HStore         as HCS
-import           HStream.Connector.MySQL
 import qualified HStream.Logger                   as Log
-import           HStream.Processing.Connector
-import           HStream.Processing.Processor     (TaskBuilder, getTaskName,
-                                                   runTask)
-import           HStream.Processing.Type          (Offset (..), SinkRecord (..),
-                                                   SourceRecord (..))
+import           HStream.Server.ConnectorTypes    (SinkConnector (..),
+                                                   SinkRecord (..),
+                                                   SourceConnectorWithoutCkp (..),
+                                                   SourceRecord (..),
+                                                   TemporalFilter (..))
+import qualified HStream.Server.ConnectorTypes    as HCT
+import qualified HStream.Server.HStore            as HStore
+import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
+import           HStream.SQL.AST                  (RWindow (..))
 import           HStream.SQL.Codegen
-import qualified HStream.Store                    as HS
-import           HStream.Utils                    (TaskStatus (..),
-                                                   clientDefaultKey,
-                                                   textToCBytes)
+import           HStream.Utils                    (TaskStatus (..))
 
---------------------------------------------------------------------------------
+import qualified DiffFlow.Graph                   as DiffFlow
+import qualified DiffFlow.Shard                   as DiffFlow
+import qualified DiffFlow.Types                   as DiffFlow
+import qualified DiffFlow.Weird                   as DiffFlow
 
-insertAckedRecordId
-  :: ShardRecordId                        -- ^ recordId need to insert
-  -> ShardRecordId                        -- ^ lowerBound of current window
-  -> Map.Map ShardRecordId ShardRecordIdRange  -- ^ ackedRanges
-  -> Map.Map Word64 Word32           -- ^ batchNumMap
-  -> Maybe (Map.Map ShardRecordId ShardRecordIdRange)
-insertAckedRecordId recordId lowerBound ackedRanges batchNumMap
-  -- [..., {leftStartRid, leftEndRid}, recordId, {rightStartRid, rightEndRid}, ... ]
-  --       | ---- leftRange ----    |            |  ---- rightRange ----    |
-  --
-  | not $ isValidRecordId recordId batchNumMap = Nothing
-  | recordId < lowerBound = Nothing
-  | Map.member recordId ackedRanges = Nothing
-  | otherwise =
-      let leftRange = lookupLTWithDefault recordId ackedRanges
-          rightRange = lookupGTWithDefault recordId ackedRanges
-          canMergeToLeft = isSuccessor recordId (endRecordId leftRange) batchNumMap
-          canMergeToRight = isPrecursor recordId (startRecordId rightRange) batchNumMap
-       in f leftRange rightRange canMergeToLeft canMergeToRight
-  where
-    f leftRange rightRange canMergeToLeft canMergeToRight
-      | canMergeToLeft && canMergeToRight =
-        let m1 = Map.delete (startRecordId rightRange) ackedRanges
-         in Just $ Map.adjust (const leftRange {endRecordId = endRecordId rightRange}) (startRecordId leftRange) m1
-      | canMergeToLeft = Just $ Map.adjust (const leftRange {endRecordId = recordId}) (startRecordId leftRange) ackedRanges
-      | canMergeToRight =
-        let m1 = Map.delete (startRecordId rightRange) ackedRanges
-         in Just $ Map.insert recordId (rightRange {startRecordId = recordId}) m1
-      | otherwise = if checkDuplicat leftRange rightRange
-                      then Nothing
-                      else Just $ Map.insert recordId (ShardRecordIdRange recordId recordId) ackedRanges
+runTaskWrapper :: ServerContext
+               -> Text
+               -> [(DiffFlow.Node, Text)]
+               -> (DiffFlow.Node, Text)
+               -> Maybe RWindow
+               -> DiffFlow.GraphBuilder
+               -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
+               -> IO ()
+runTaskWrapper ctx taskName inNodesWithStreams outNodeWithStream window graphBuilder accumulation = do
+  let consumerName = taskName
 
-    checkDuplicat leftRange rightRange =
-         recordId >= startRecordId leftRange && recordId <= endRecordId leftRange
-      || recordId >= startRecordId rightRange && recordId <= endRecordId rightRange
+  sourceConnectors <- forM inNodesWithStreams
+    (\(_,_) -> do
+      -- create a new sourceConnector
+      return $ HStore.hstoreSourceConnectorWithoutCkp ctx consumerName
+    )
 
-getCommitRecordId
-  :: Map.Map ShardRecordId ShardRecordIdRange -- ^ ackedRanges
-  -> Map.Map Word64 Word32          -- ^ batchNumMap
-  -> Maybe ShardRecordId
-getCommitRecordId ackedRanges batchNumMap = do
-  (_, ShardRecordIdRange _ maxRid@ShardRecordId{..}) <- Map.lookupMin ackedRanges
-  cnt <- Map.lookup sriBatchId batchNumMap
-  if sriBatchIndex == cnt - 1
-     -- if maxRid is a complete batch, commit maxRid
-    then Just maxRid
-     -- else we check the precursor of maxRid and return it as commit point
-    else do
-      let lsn = sriBatchId - 1
-      cnt' <- Map.lookup lsn batchNumMap
-      Just $ ShardRecordId lsn (cnt' - 1)
-
-lookupLTWithDefault :: ShardRecordId -> Map.Map ShardRecordId ShardRecordIdRange -> ShardRecordIdRange
-lookupLTWithDefault recordId ranges = maybe (ShardRecordIdRange minBound minBound) snd $ Map.lookupLT recordId ranges
-
-lookupGTWithDefault :: ShardRecordId -> Map.Map ShardRecordId ShardRecordIdRange -> ShardRecordIdRange
-lookupGTWithDefault recordId ranges = maybe (ShardRecordIdRange maxBound maxBound) snd $ Map.lookupGT recordId ranges
-
--- is r1 the successor of r2
-isSuccessor :: ShardRecordId -> ShardRecordId -> Map.Map Word64 Word32 -> Bool
-isSuccessor r1 r2 batchNumMap
-  | r2 == minBound = False
-  | r1 <= r2 = False
-  | sriBatchId r1 == sriBatchId r2 = sriBatchIndex r1 == sriBatchIndex r2 + 1
-  | sriBatchId r1 > sriBatchId r2 = isLastInBatch r2 batchNumMap && (sriBatchId r1 == sriBatchId r2 + 1) && (sriBatchIndex r1 == 0)
-
-isPrecursor :: ShardRecordId -> ShardRecordId -> Map.Map Word64 Word32 -> Bool
-isPrecursor r1 r2 batchNumMap
-  | r2 == maxBound = False
-  | otherwise = isSuccessor r2 r1 batchNumMap
-
-isLastInBatch :: ShardRecordId -> Map.Map Word64 Word32 -> Bool
-isLastInBatch recordId batchNumMap =
-  case Map.lookup (sriBatchId recordId) batchNumMap of
-    Nothing  ->
-      let msg = "no sriBatchId found: " <> show recordId <> ", head of batchNumMap: " <> show (Map.lookupMin batchNumMap)
-       in error msg
-    Just num | num == 0 -> True
-             | otherwise -> sriBatchIndex recordId == num - 1
-
-getSuccessor :: ShardRecordId -> Map.Map Word64 Word32 -> ShardRecordId
-getSuccessor r@ShardRecordId{..} batchNumMap =
-  if isLastInBatch r batchNumMap
-  then ShardRecordId (sriBatchId + 1) 0
-  else r {sriBatchIndex = sriBatchIndex + 1}
-
-isValidRecordId :: ShardRecordId -> Map.Map Word64 Word32 -> Bool
-isValidRecordId ShardRecordId{..} batchNumMap =
-  case Map.lookup sriBatchId batchNumMap of
-    Just maxIdx | sriBatchIndex >= maxIdx || sriBatchIndex < 0 -> False
-                | otherwise -> True
-    Nothing -> False
-
---------------------------------------------------------------------------------
-
-runTaskWrapper :: HS.StreamType -> HS.StreamType -> TaskBuilder -> HS.LDClient -> IO ()
-runTaskWrapper sourceType sinkType taskBuilder ldclient = do
-  -- create a new ckpReader from ldclient
-  let readerName = textToCBytes (getTaskName taskBuilder)
-  -- FIXME: We are not sure about the number of logs we are reading here, so currently the max number of log is set to 1000
-  ldreader <- HS.newLDRsmCkpReader ldclient readerName HS.checkpointStoreLogID 5000 1000 Nothing
-  -- create a new sourceConnector
-  let sourceConnector = HCS.hstoreSourceConnector ldclient ldreader sourceType
   -- create a new sinkConnector
-  let sinkConnector = HCS.hstoreSinkConnector ldclient sinkType
-  -- RUN TASK
-  runTask sourceConnector sinkConnector taskBuilder
+  let sinkConnector = HStore.hstoreSinkConnector ctx
 
-runSinkConnector
-  :: ServerContext
-  -> CB.CBytes -- ^ Connector Id
-  -> SourceConnectorWithoutCkp
-  -> SinkConnector
-  -> IO ThreadId
-runSinkConnector ServerContext{..} cid src connector = do
-    P.setConnectorStatus cid Running zkHandle
-    forkIO $ catches (forever action) cleanup
-  where
-    writeToConnector c SourceRecord{..} =
-      writeRecord c $ SinkRecord srcStream srcKey srcValue srcTimestamp
-    action = readRecordsWithoutCkp src >>= mapM_ (writeToConnector connector)
-    cleanup =
-      [ Handler (\(_ :: ERRException) -> do
-                    Log.warning "Sink connector thread died due to SQL errors"
-                    P.setConnectorStatus cid ConnectionAbort zkHandle
-                    void releasePid)
-      , Handler (\(e :: AsyncException) -> do
-                    Log.debug . Log.buildString $ "Sink connector thread killed because of " <> show e
-                    P.setConnectorStatus cid Terminated zkHandle
-                    void releasePid)
-      ]
-    releasePid = do
-      hmapC <- readMVar runningConnectors
-      swapMVar runningConnectors $ HM.delete cid hmapC
+  -- build graph then shard
+  let graph = DiffFlow.buildGraph graphBuilder
+  shard <- DiffFlow.buildShard graph
+
+  let temporalFilter = case window of
+        Just (RTumblingWindow interval) ->
+          let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
+           in Tumbling (fromIntegral interval_ms)
+        Just (RHoppingWindow len hop) ->
+          let len_ms = (Time.diffTimeToPicoseconds len) `div` (1000 * 1000 * 1000)
+              hop_ms = (Time.diffTimeToPicoseconds hop) `div` (1000 * 1000 * 1000)
+           in Hopping (fromIntegral len_ms) (fromIntegral hop_ms)
+        Just (RSlidingWindow interval) ->
+          let interval_ms = (Time.diffTimeToPicoseconds interval) `div` (1000 * 1000 * 1000)
+           in Sliding (fromIntegral interval_ms)
+        Nothing -> NoFilter
+
+  -- RUN TASK
+  runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard
+
+--------------------------------------------------------------------------------
+runTask :: [(DiffFlow.Node, Text)]
+        -> (DiffFlow.Node, Text)
+        -> [SourceConnectorWithoutCkp]
+        -> SinkConnector
+        -> TemporalFilter
+        -> Maybe (MVar (DiffFlow.DataChangeBatch HCT.Timestamp))
+        -> DiffFlow.Shard HCT.Timestamp
+        -> IO ()
+runTask inNodesWithStreams outNodeWithStream sourceConnectors sinkConnector temporalFilter accumulation shard = do
+
+  -- the task itself
+  tid1 <- forkIO $ DiffFlow.run shard
+
+  -- subscribe to all source streams
+  forM_ (sourceConnectors `zip` inNodesWithStreams)
+    (\(SourceConnectorWithoutCkp{..}, (_, sourceStreamName)) ->
+        subscribeToStreamWithoutCkp sourceStreamName SpecialOffsetLATEST
+    )
+
+  -- main loop: push input to INPUT nodes
+  tids2 <- forM (sourceConnectors `zip` inNodesWithStreams)
+    (\(SourceConnectorWithoutCkp{..}, (inNode, sourceStreamName)) -> do
+        forkIO $ withReadRecordsWithoutCkp sourceStreamName $ \sourceRecords -> do
+          forM_ sourceRecords $ \SourceRecord{..} -> do
+            ts <- HCT.getCurrentTimestamp
+            let dataChange
+                  = DiffFlow.DataChange
+                  { dcRow = fromJust . Aeson.decode $ srcValue
+                  , dcTimestamp = DiffFlow.Timestamp ts [] -- Timestamp srcTimestamp []
+                  , dcDiff = 1
+                  }
+            Log.debug . Log.buildString $ "Get input: " <> show dataChange
+            DiffFlow.pushInput shard inNode dataChange -- original update
+            -- insert new negated updates to limit the valid range of this update
+            let insert_ms = DiffFlow.timestampTime (DiffFlow.dcTimestamp dataChange)
+            case temporalFilter of
+              NoFilter -> return ()
+              Tumbling interval_ms -> do
+                let _start_ms = interval_ms * (insert_ms `div` interval_ms)
+                    end_ms    = interval_ms * (1 + insert_ms `div` interval_ms)
+                let negatedDataChange = dataChange
+                                        { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                                        , DiffFlow.dcDiff = -1
+                                        }
+                DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+              Hopping interval_ms hop_ms -> do
+                -- FIXME: determine the accurate semantic of HOPPING window
+                let _start_ms = hop_ms * (insert_ms `div` hop_ms)
+                    end_ms = interval_ms + hop_ms * (insert_ms `div` hop_ms)
+                let negatedDataChange = dataChange
+                                        { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                                        , DiffFlow.dcDiff = -1
+                                        }
+                DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+              Sliding interval_ms -> do
+                let _start_ms = insert_ms
+                    end_ms    = insert_ms + interval_ms
+                let negatedDataChange = dataChange
+                                        { DiffFlow.dcTimestamp = DiffFlow.Timestamp end_ms []
+                                        , DiffFlow.dcDiff = -1
+                                        }
+                DiffFlow.pushInput shard inNode negatedDataChange -- negated update
+              _ -> return ()
+            DiffFlow.flushInput shard inNode
+    )
+
+  -- second loop: advance input after an interval
+  tid3 <- forkIO . forever $ do
+    forM_ inNodesWithStreams $ \(inNode, _) -> do
+      ts <- HCT.getCurrentTimestamp
+      -- Log.debug . Log.buildString $ "### Advance time to " <> show ts
+      DiffFlow.advanceInput shard inNode (DiffFlow.Timestamp ts [])
+    threadDelay 100000
+
+  -- third loop: push output from OUTPUT node to output stream
+  accumulatedOutput <- case accumulation of
+                         Nothing -> newMVar DiffFlow.emptyDataChangeBatch
+                         Just m  -> return m
+
+  forever (do
+    let (outNode, outStream) = outNodeWithStream
+    DiffFlow.popOutput shard outNode $ \dcb@DiffFlow.DataChangeBatch{..} -> do
+      Log.debug . Log.buildString $ "~~~ POPOUT: " <> show dcb
+      forM_ dcbChanges $ \change -> do
+        Log.debug . Log.buildString $ "<<< this change: " <> show change
+        modifyMVar_ accumulatedOutput
+          (\dcb -> return $ DiffFlow.updateDataChangeBatch' dcb (\xs -> xs ++ [change]))
+        when (DiffFlow.dcDiff change > 0) $ do
+          let sinkRecord = SinkRecord
+                { snkStream = outStream
+                , snkKey = Nothing
+                , snkValue = Aeson.encode (DiffFlow.dcRow change)
+                , snkTimestamp = DiffFlow.timestampTime (DiffFlow.dcTimestamp change)
+                }
+          replicateM_ (DiffFlow.dcDiff change) $ writeRecord sinkConnector sinkRecord
+          ) `onException` (do
+    let childrenThreads = tid1 : tids2 ++ [tid3]
+    mapM_ killThread childrenThreads
+                          )
+
+--------------------------------------------------------------------------------
 
 handlePushQueryCanceled :: ServerCall () -> IO () -> IO ()
 handlePushQueryCanceled ServerCall{..} handle = do
@@ -203,61 +204,33 @@ responseWithErrorMsgIfNothing Nothing errCode msg = return $ ServerNormalRespons
 --------------------------------------------------------------------------------
 -- GRPC Handler Helper
 
-handleCreateSinkConnector
-  :: ServerContext
-  -> CB.CBytes -- ^ Connector Name
-  -> Text -- ^ Source Stream Name
-  -> ConnectorConfig -> IO P.PersistentConnector
-handleCreateSinkConnector serverCtx@ServerContext{..} cid sName cConfig = do
-  onException action cleanup
-  where
-    cleanup = do
-      Log.debug "Create sink connector failed"
-      P.setConnectorStatus cid CreationAbort zkHandle
-
-    action = do
-      P.setConnectorStatus cid Creating zkHandle
-      Log.debug "Start creating sink connector"
-      ldreader <- HS.newLDReader scLDClient 1000 Nothing
-      let src = HCS.hstoreSourceConnectorWithoutCkp scLDClient ldreader
-      subscribeToStreamWithoutCkp src sName Latest
-
-      connector <- case cConfig of
-        ClickhouseConnector config  -> do
-          Log.debug $ "Connecting to clickhouse with " <> Log.buildString (show config)
-          clickHouseSinkConnector  <$> createClient config
-        MySqlConnector table config -> do
-          Log.debug $ "Connecting to mysql with " <> Log.buildString (show config)
-          mysqlSinkConnector table <$> MySQL.connect config
-      P.setConnectorStatus cid Created zkHandle
-      Log.debug . Log.buildString . CB.unpack $ cid <> "Connected"
-
-      tid <- runSinkConnector serverCtx cid src connector
-      Log.debug . Log.buildString $ "Sink connector started running on thread#" <> show tid
-
-      takeMVar runningConnectors >>= putMVar runningConnectors . HM.insert cid tid
-      P.getConnector cid zkHandle
-
 -- TODO: return info in a more maintainable way
 handleCreateAsSelect :: ServerContext
-                     -> TaskBuilder
+                     -> HStreamPlan
                      -> Text
                      -> P.QueryType
-                     -> HS.StreamType
                      -> IO (CB.CBytes, Int64)
-handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryType sinkType = do
+handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
-    (getTaskName taskBuilder) commandQueryStmtText queryType serverID zkHandle
+    tName commandQueryStmtText queryType serverID zkHandle
   P.setQueryStatus qid Running zkHandle
   tid <- forkIO $ catches (action qid) (cleanup qid)
-  takeMVar runningQueries >>= putMVar runningQueries . HM.insert qid tid
+  modifyMVar_ runningQueries (return . HM.insert qid tid)
   return (qid, timestamp)
   where
+    (tName,inNodesWithStreams,outNodeWithStream,win,builder,accumulation) = case plan of
+        SelectPlan tName inNodesWithStreams outNodeWithStream win builder ->
+          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+        CreateBySelectPlan tName inNodesWithStreams outNodeWithStream win builder _ ->
+          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Nothing)
+        CreateViewPlan tName _ inNodesWithStreams outNodeWithStream win builder accumulation ->
+          (tName,inNodesWithStreams,outNodeWithStream,win,builder, Just accumulation)
+        _ -> undefined
     action qid = do
       Log.debug . Log.buildString
         $ "CREATE AS SELECT: query " <> show qid
        <> " has stared working on " <> show commandQueryStmtText
-      runTaskWrapper HS.StreamTypeStream sinkType taskBuilder scLDClient
+      runTaskWrapper ctx tName inNodesWithStreams outNodeWithStream win builder accumulation
     cleanup qid =
       [ Handler (\(e :: AsyncException) -> do
                     Log.debug . Log.buildString
@@ -272,82 +245,4 @@ handleCreateAsSelect ServerContext{..} taskBuilder commandQueryStmtText queryTyp
                     P.setQueryStatus qid ConnectionAbort zkHandle
                     void $ releasePid qid)
       ]
-    releasePid qid = do
-      hmapC <- readMVar runningQueries
-      swapMVar runningQueries $ HM.delete qid hmapC
-
---------------------------------------------------------------------------------
--- Query
-
-terminateQueryAndRemove :: ServerContext -> CB.CBytes -> IO ()
-terminateQueryAndRemove sc@ServerContext{..} objectId = do
-  queries <- P.getQueries zkHandle
-  let queryExists = find (\query -> P.getQuerySink query == objectId) queries
-  case queryExists of
-    Just query -> do
-      Log.debug . Log.buildString
-         $ "TERMINATE: found query " <> show (P.queryType query)
-        <> " with query id " <> show (P.queryId query)
-        <> " writes to the stream being dropped " <> show objectId
-      void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
-      P.removeQuery' (P.queryId query) zkHandle
-      Log.debug . Log.buildString
-         $ "TERMINATE: query " <> show (P.queryType query)
-        <> " has been removed"
-    Nothing    -> do
-      Log.debug . Log.buildString
-        $ "TERMINATE: found no query writes to the stream being dropped " <> show objectId
-
-terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
-terminateRelatedQueries sc@ServerContext{..} name = do
-  queries <- P.getQueries zkHandle
-  let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
-  Log.debug . Log.buildString
-     $ "TERMINATE: the queries related to the terminating stream " <> show name
-    <> ": " <> show getRelatedQueries
-  mapM_ (handleQueryTerminate sc . OneQuery) getRelatedQueries
-
-handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [CB.CBytes]
-handleQueryTerminate ServerContext{..} (OneQuery qid) = do
-  hmapQ <- readMVar runningQueries
-  case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()
-  P.setQueryStatus qid Terminated zkHandle
-  void $ swapMVar runningQueries (HM.delete qid hmapQ)
-  Log.debug . Log.buildString $ "TERMINATE: terminated query: " <> show qid
-  return [qid]
-handleQueryTerminate sc@ServerContext{..} AllQueries = do
-  hmapQ <- readMVar runningQueries
-  handleQueryTerminate sc (ManyQueries $ HM.keys hmapQ)
-handleQueryTerminate ServerContext{..} (ManyQueries qids) = do
-  hmapQ <- readMVar runningQueries
-  qids' <- foldrM (action hmapQ) [] qids
-  Log.debug . Log.buildString $ "TERMINATE: terminated queries: " <> show qids'
-  return qids'
-  where
-    action hm x terminatedQids = do
-      result <- try $ do
-        case HM.lookup x hm of
-          Just tid -> do
-            killThread tid
-            P.setQueryStatus x Terminated zkHandle
-            void $ swapMVar runningQueries (HM.delete x hm)
-          _        ->
-            Log.debug $ "query id " <> Log.buildString' x <> " not found"
-      case result of
-        Left (e ::SomeException) -> do
-          Log.warning . Log.buildString
-            $ "TERMINATE: unable to terminate query: " <> show x
-           <> "because of " <> show e
-          return terminatedQids
-        Right _                  -> return (x:terminatedQids)
-
---------------------------------------------------------------------------------
-
-alignDefault :: Text -> Text
-alignDefault x  = if T.null x then clientDefaultKey else x
-
-orderingKeyToStoreKey :: Text -> Maybe CBytes
-orderingKeyToStoreKey key
-  | key == clientDefaultKey = Nothing
-  | T.null key = Nothing
-  | otherwise  = Just $ textToCBytes key
+    releasePid qid = modifyMVar_ runningQueries (return . HM.delete qid)

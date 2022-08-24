@@ -7,7 +7,7 @@ import "HStream/Server/HStreamInternal.proto";
 service HStreamGossip {
   rpc BootstrapPing(Empty) returns (hstream.server.internal.ServerNode);
   rpc Ping(Ping) returns (Ack);
-  rpc PingReq(PingReq) returns (Ack);
+  rpc PingReq(PingReq) returns (PingReqResp);
   rpc Join(JoinReq) returns (JoinResp);
   rpc Gossip(Gossip) returns (Empty);
 
@@ -20,16 +20,23 @@ service HStreamGossip {
 
 message Empty {};
 
-message Ping { bytes msg = 1; }
+message ServerList { repeated hstream.server.internal.ServerNode nodes = 1;}
 
-message Ack { bytes msg = 1; }
+message Ping { repeated Message msg = 1; }
+
+message Ack  { repeated Message msg = 1; }
 
 message PingReq {
   hstream.server.internal.ServerNode target = 1;
-  bytes msg = 2;
+  repeated Message msg = 2;
 }
 
-message Gossip { bytes msg = 1; }
+message PingReqResp {
+  bool acked = 1;
+  repeated Message msg = 2;
+}
+
+message Gossip { repeated Message msg = 1; }
 
 message JoinReq { hstream.server.internal.ServerNode new = 1; }
 message JoinResp { repeated hstream.server.internal.ServerNode members = 1; }
@@ -40,9 +47,37 @@ message CliJoinReq {
 }
 
 message UserEvent {
-  bytes name = 1;
+  string name = 1;
   bytes payload = 2;
 }
 
 message Cluster { repeated hstream.server.internal.ServerNode members = 1; }
 message SeenEvents { repeated UserEvent events = 1; }
+
+message Message {
+  oneof content {
+    StateMessage state = 1;
+    EventMessage event = 2;
+  }
+}
+
+message StateMessage {
+  oneof content {
+    StateReport suspect = 1;
+    StateReport alive   = 2;
+    StateReport confirm = 3;
+    hstream.server.internal.ServerNode join = 4;
+  }
+}
+
+message StateReport {
+  uint32 incarnation = 1;
+  hstream.server.internal.ServerNode reporter = 2;
+  hstream.server.internal.ServerNode reportee = 3;
+}
+
+message EventMessage {
+  string name = 1;
+  uint32 lamportTime = 2;
+  bytes  payload = 3;
+}

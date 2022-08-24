@@ -6,13 +6,6 @@ hserver:
   # the value must be given and can be overwritten by cli option `--server-id`
   id: 1
 
-  # Server listener address value, the value must be given.
-  # It should not be "127.0.0.1", if you intend to start a cluster or trying to connect to the
-  # server from a different network.
-  #
-  # This value can be overwritten by cli option `--address`
-  address: "127.0.0.1"
-
   # Server port value, the value must be given and can be overwritten by cli
   # option `--port`
   port: 6570
@@ -20,6 +13,18 @@ hserver:
   # Server port value for internal communications between server nodes,
   # the value must be given and can be overwritten by cli option `--internal-port`
   internal-port: 6571
+
+  # Server listener address value, the value must be given.
+  # It should NOT be "127.0.0.1", if you intend to start a cluster or trying to connect to the
+  # server from a different network.
+  #
+  # This value can be overwritten by cli option `--address`
+  address: "127.0.0.1"
+
+  #advertised-listeners:
+  #  private:
+  #    - address: "127.0.0.1"
+  #      port: 6580
 
   # The server nodes in the same cluster shares a zookeeper server, this is
   # essential for a server to start.
@@ -83,9 +88,26 @@ hserver:
   #gossip:
   #  gossip-fanout: 3
   #  retransmit-mult: 4
-  #  gossip-interval: 500000   # 0.5 sec
-  #  probe-interval: 1000000   # 1 sec
-  #  roundtrip-timeout: 500000 # 0.5 sec
+  #  gossip-interval: 1000000   # 1 sec
+  #  probe-interval: 2000000    # 2 sec
+  #  roundtrip-timeout: 500000  # 0.5 sec
+
+  # HStream IO Options
+  hstream-io:
+    # the io tasks work directory
+    tasks-path: /tmp/io/tasks
+    # io tasks run as docker containers,
+    # so the tasks-network should be the network that can connect to HStreamDB and external systems.
+    tasks-network: host
+    # source images
+    source-images:
+      mysql: hstreamdb/source-mysql
+      postgresql: hstreamdb/source-postgresql
+      sqlserver: hstreamdb/source-sqlserver
+    # sink images
+    sink-images:
+      mysql: hstreamdb/sink-mysql
+      postgresql: hstreamdb/sink-postgresql
 
 # Configuration for HStream Store
 # The configuration for hstore is **Optional**. When the values are not provided,

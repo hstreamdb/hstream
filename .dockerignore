@@ -21,14 +21,13 @@
 **/.HTF/
 **/.ghc.environment.*
 **/stack*.yaml.lock
-**/local*
-!**/localhost*
-**/Local*
 **/*~
 **/*.swp
-docker/
 **/Dockerfile
 .git/
 .github/
 .DS_Store
+/docker/
+/local/
+/local-data/
 /script/dev_deploy_conf.json

@@ -7,48 +7,20 @@
 
 module HStream.Server.Handler.View where
 
-import qualified Data.ByteString.Char8            as BSC
 import           Data.List                        (find)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
-import qualified HStream.Connector.HStore         as HCH
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
-import           HStream.Server.Handler.Common    (handleCreateAsSelect)
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
-import qualified HStream.SQL.Codegen              as HSC
-import qualified HStream.Store                    as S
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (TaskStatus (..),
-                                                   cBytesToText, returnErrResp,
-                                                   returnResp, textToCBytes)
-
-createViewHandler
-  :: ServerContext
-  -> ServerRequest 'Normal CreateViewRequest View
-  -> IO (ServerResponse 'Normal View)
-createViewHandler sc@ServerContext{..} (ServerNormalRequest _ CreateViewRequest{..}) = defaultExceptionHandle $ do
-  Log.debug $ "Receive Create View Request: " <> Log.buildString (T.unpack createViewRequestSql)
-  plan <- HSC.streamCodegen createViewRequestSql
-  case plan of
-    HSC.CreateViewPlan schema sources sink taskBuilder _repFactor _ -> do
-      create sink
-      (qid, timestamp) <- handleCreateAsSelect sc taskBuilder createViewRequestSql (P.ViewQuery (textToCBytes <$> sources) (textToCBytes sink) schema) S.StreamTypeView
-      returnResp $ View { viewViewId = cBytesToText qid
-                        , viewStatus = getPBStatus Running
-                        , viewCreatedTime = timestamp
-                        , viewSql = createViewRequestSql
-                        , viewSchema = V.fromList $ T.pack <$> schema
-                        }
-    _ -> returnErrResp StatusInvalidArgument (StatusDetails $ BSC.pack "inconsistent method called")
-  where
-    attrs = (S.def{ S.logReplicationFactor = S.defAttr1 scDefaultStreamRepFactor })
-    create sName = S.createStream scLDClient (HCH.transToViewStreamName sName) attrs
+import           HStream.Utils                    (cBytesToText, returnErrResp,
+                                                   returnResp)
 
 listViewsHandler
   :: ServerContext
