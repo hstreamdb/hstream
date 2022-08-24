@@ -66,7 +66,9 @@ library
     Google.Protobuf.Empty
     Google.Protobuf.Struct
     HStream.Utils.BuildRecord
+    HStream.Utils.Codec
     HStream.Utils.Common
+    HStream.Utils.Compression
     HStream.Utils.Concurrent
     HStream.Utils.Converter
     HStream.Utils.Format
@@ -74,8 +76,6 @@ library
     HStream.Utils.RPC
     HStream.Utils.Table
     HStream.Utils.Time
-    HStream.Utils.Compression
-    HStream.Utils.Codec
 
   hs-source-dirs:     . api/gen-hs
   include-dirs:       . include api/gen-cpp /usr/local/include
@@ -132,9 +132,8 @@ library
     , vector
     , Z-Data
     , Z-IO
-    , zoovisitor
     , zlib
-    , attoparsec
+    , zoovisitor
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
@@ -170,9 +169,9 @@ test-suite hstream-common-test
   main-is:            Spec.hs
   hs-source-dirs:     test
   other-modules:
+    HStream.CodecSpec
     HStream.ConsistentHashingSpec
     HStream.UtilsSpec
-    HStream.CodecSpec
 
   build-depends:
     , base                  >=4.11 && <5
@@ -180,14 +179,14 @@ test-suite hstream-common-test
     , containers            ^>=0.6
     , hspec
     , hstream-common
+    , proto3-suite
     , QuickCheck
     , random                ^>=1.2
     , text
     , unordered-containers
+    , vector
     , Z-Data
     , Z-IO
-    , proto3-suite
-    , vector
 
   default-extensions:
     DeriveGeneric
@@ -209,19 +208,20 @@ benchmark codec-bench
   import:             shared-properties
   type:               exitcode-stdio-1.0
   main-is:            Bench.hs
-  hs-source-dirs:     HStream/bench
+  hs-source-dirs:     bench
   other-modules:
-      CodecBench
-      CompresstionBench
-      Util
+    CodecBench
+    CompresstionBench
+    Util
+
   build-depends:
-    , base                  >=4.11 && <5
-    , bytestring            ^>=0.10
-    , criterion             ^>=1.5
+    , base            >=4.11 && <5
+    , bytestring      ^>=0.10
+    , criterion       ^>=1.5
     , hstream-common
-    , vector
-    , random                ^>=1.2
     , proto3-suite
+    , random          ^>=1.2
+    , vector
 
   default-extensions:
     DeriveGeneric
