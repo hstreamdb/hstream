@@ -8,16 +8,19 @@ module HStream.Server.Core.Cluster
   , lookupConnector
   ) where
 
+import           Control.Concurrent               (tryReadMVar)
 import           Control.Concurrent.STM           (readTVarIO)
 import           Control.Exception                (throwIO)
+import qualified Data.Map.Strict                  as Map
 import           Data.Text                        (Text)
+import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 
-import qualified Data.Text                        as T
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
-import           HStream.Gossip                   (getFailedNodes,
-                                                   getMemberList)
+import           HStream.Gossip                   (GossipContext (..),
+                                                   getFailedNodes)
+import           HStream.Gossip.Types             (ServerStatus (..))
 import qualified HStream.Logger                   as Log
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -26,28 +29,29 @@ import qualified HStream.Server.Types             as Types
 import           HStream.Utils                    (pattern EnumPB)
 
 describeCluster :: ServerContext -> IO DescribeClusterResponse
-describeCluster ServerContext{..} = do
+describeCluster ServerContext{gossipContext = gc@GossipContext{..}, ..} = do
   let protocolVer = Types.protocolVersion
       serverVer   = Types.serverVersion
-  alives <- getMemberList gossipContext
-  deads  <- getFailedNodes gossipContext
-  alives' <- V.concat <$> mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) alives
-  deads'  <- V.concat <$> mapM (fromInternalServerNodeWithKey scAdvertisedListenersKey) deads
-  let nodesStatus =
-          fmap (helper NodeStateRunning) alives'
-       <> fmap (helper NodeStateDead   ) deads'
+  isReady <- tryReadMVar clusterReady
+  self    <- getListeners serverSelf
+  alives  <- readTVarIO serverList >>= fmap V.concat . mapM (getListeners . serverInfo) . Map.elems . snd
+  deads   <- getFailedNodes gc     >>= fmap V.concat . mapM getListeners
+  let self'   = helper (case isReady of Just _  -> NodeStateRunning; Nothing -> NodeStateStarting) <$> self
+  let alives' = helper NodeStateRunning <$> alives
+  let deads'  = helper NodeStateDead    <$> deads
 
   return $ DescribeClusterResponse
     { describeClusterResponseProtocolVersion   = protocolVer
     , describeClusterResponseServerVersion     = serverVer
-    , describeClusterResponseServerNodes       = alives'
-    , describeClusterResponseServerNodesStatus = nodesStatus
+      -- TODO : If Cluster is not ready this should return empty
+    , describeClusterResponseServerNodes       = self <> alives
+    , describeClusterResponseServerNodesStatus = self' <> alives' <> deads'
     }
- where
-  helper state node = ServerNodeStatus
-    { serverNodeStatusNode  = Just node
-    , serverNodeStatusState = EnumPB state
-    }
+  where
+    getListeners = fromInternalServerNodeWithKey scAdvertisedListenersKey
+    helper state node = ServerNodeStatus
+      { serverNodeStatusNode  = Just node
+      , serverNodeStatusState = EnumPB state}
 
 lookupShard :: ServerContext -> LookupShardRequest -> IO LookupShardResponse
 lookupShard ServerContext{..} req@LookupShardRequest {
