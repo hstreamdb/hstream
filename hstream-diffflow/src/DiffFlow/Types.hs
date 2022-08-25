@@ -9,6 +9,7 @@
 
 module DiffFlow.Types where
 
+import           Control.DeepSeq   (NFData)
 import           Control.Exception (throw)
 import           Control.Monad
 import           Data.Aeson        (Object (..), Value (..))
@@ -28,8 +29,11 @@ import           GHC.Generics      (Generic)
 
 import           DiffFlow.Error
 
-type Row = Aeson.Object
-type Bag = MultiSet Row
+newtype Row a = Row { unRow :: a } deriving (Generic, NFData, Hashable, Eq, Ord, Show)
+instance (Semigroup a) => Semigroup (Row a) where
+  (Row r1) <> (Row r2) = Row (r1 <> r2)
+
+type Bag a = MultiSet (Row a)
 
 data PartialOrdering = PLT | PEQ | PGT | PNONE deriving (Eq, Show)
 
@@ -247,14 +251,14 @@ infixl 7 ->>
 
 ----
 
-data DataChange a = DataChange
-  { dcRow       :: Row
-  , dcTimestamp :: Timestamp a
+data DataChange a t = DataChange
+  { dcRow       :: Row a
+  , dcTimestamp :: Timestamp t
   , dcDiff      :: Int
   }
-deriving instance (Eq a) => Eq (DataChange a)
-deriving instance (Show a) => Show (DataChange a)
-instance (Ord a) => Ord (DataChange a) where
+deriving instance (Eq a, Eq t) => Eq (DataChange a t)
+deriving instance (Show a, Show t) => Show (DataChange a t)
+instance (Ord a, Ord t) => Ord (DataChange a t) where
   compare dc1 dc2 =
     case dcTimestamp dc1 `compare` dcTimestamp dc2 of
       LT -> LT
@@ -264,9 +268,9 @@ instance (Ord a) => Ord (DataChange a) where
               GT -> GT
               EQ -> dcDiff dc1 `compare` dcDiff dc2
 
-compareDataChangeByTimeFirst :: (Ord a)
-                             => DataChange a
-                             -> DataChange a
+compareDataChangeByTimeFirst :: (Ord a, Ord t)
+                             => DataChange a t
+                             -> DataChange a t
                              -> Ordering
 compareDataChangeByTimeFirst dc1 dc2 =
   case dcTimestamp dc1 `causalCompare` dcTimestamp dc2 of
@@ -275,23 +279,24 @@ compareDataChangeByTimeFirst dc1 dc2 =
     PGT   -> GT
     PNONE -> dcRow dc1 `compare` dcRow dc2
 
-data DataChangeBatch a = DataChangeBatch
-  { dcbLowerBound :: Frontier a
-  , dcbChanges    :: [DataChange a] -- sorted and de-duplicated
+data DataChangeBatch a t = DataChangeBatch
+  { dcbLowerBound :: Frontier t
+  , dcbChanges    :: [DataChange a t] -- sorted and de-duplicated
   }
-deriving instance (Eq a) => Eq (DataChangeBatch a)
-deriving instance (Ord a) => Ord (DataChangeBatch a)
-deriving instance (Show a) => Show (DataChangeBatch a)
+deriving instance (Eq a, Eq t) => Eq (DataChangeBatch a t)
+deriving instance (Ord a, Ord t) => Ord (DataChangeBatch a t)
+deriving instance (Show a, Show t) => Show (DataChangeBatch a t)
 
-emptyDataChangeBatch :: DataChangeBatch a
+emptyDataChangeBatch :: DataChangeBatch a t
 emptyDataChangeBatch = DataChangeBatch {dcbLowerBound=Set.empty, dcbChanges=[]}
 
-dataChangeBatchLen :: DataChangeBatch a -> Int
+dataChangeBatchLen :: DataChangeBatch a t -> Int
 dataChangeBatchLen DataChangeBatch{..} = L.length dcbChanges
 
-mkDataChangeBatch :: (Hashable a, Ord a, Show a)
-                  => [DataChange a]
-                  -> DataChangeBatch a
+mkDataChangeBatch :: (Hashable t, Ord t, Show t,
+                      Hashable a, Ord a, Show a)
+                  => [DataChange a t]
+                  -> DataChangeBatch a t
 mkDataChangeBatch changes = DataChangeBatch frontier sortedChanges
   where getKey DataChange{..} = (dcRow, dcTimestamp)
         coalescedChanges = HM.filter (\DataChange{..} -> dcDiff /= 0) $
@@ -303,21 +308,23 @@ mkDataChangeBatch changes = DataChangeBatch frontier sortedChanges
           (\acc DataChange{..} -> acc ~>> (MoveEarlier,dcTimestamp))
           Set.empty sortedChanges
 
-updateDataChangeBatch :: (Hashable a, Ord a, Show a)
-                      => DataChangeBatch a
-                      -> ([DataChange a] -> [DataChange a])
-                      -> DataChangeBatch a
+updateDataChangeBatch :: (Hashable t, Ord t, Show t,
+                          Hashable a, Ord a, Show a)
+                      => DataChangeBatch a t
+                      -> ([DataChange a t] -> [DataChange a t])
+                      -> DataChangeBatch a t
 updateDataChangeBatch oldBatch f =
   mkDataChangeBatch $ f (dcbChanges oldBatch)
 
-mergeJoinDataChangeBatch :: (Hashable a, Ord a, Show a)
-                         => DataChangeBatch a
-                         -> Frontier a
-                         -> DataChangeBatch a
-                         -> (Row -> Row)
-                         -> (Row -> Row)
-                         -> (Row -> Row -> Row)
-                         -> DataChangeBatch a
+mergeJoinDataChangeBatch :: (Hashable t, Ord t, Show t,
+                             Hashable a, Ord a, Show a)
+                         => DataChangeBatch a t
+                         -> Frontier t
+                         -> DataChangeBatch a t
+                         -> (Row a -> Row a)
+                         -> (Row a -> Row a)
+                         -> (Row a -> Row a -> Row a)
+                         -> DataChangeBatch a t
 mergeJoinDataChangeBatch self selfFt other keygen1 keygen2 rowgen =
   L.foldl (\acc (this,that) ->
              let thisKey = keygen1 (dcRow this)
@@ -336,17 +343,18 @@ mergeJoinDataChangeBatch self selfFt other keygen1 keygen2 rowgen =
 
 ----
 
-newtype Index a = Index
-  { indexChangeBatches :: [DataChangeBatch a]
+newtype Index a t = Index
+  { indexChangeBatches :: [DataChangeBatch a t]
   }
-deriving instance (Eq a) => Eq (Index a)
-deriving instance (Ord a) => Ord (Index a)
-deriving instance (Show a) => Show (Index a)
+deriving instance (Eq a, Eq t) => Eq (Index a t)
+deriving instance (Ord a, Ord t) => Ord (Index a t)
+deriving instance (Show a, Show t) => Show (Index a t)
 
-addChangeBatchToIndex :: (Hashable a, Ord a, Show a)
-                      => Index a
-                      -> DataChangeBatch a
-                      -> Index a
+addChangeBatchToIndex :: (Hashable t, Ord t, Show t,
+                          Hashable a, Ord a, Show a)
+                      => Index a t
+                      -> DataChangeBatch a t
+                      -> Index a t
 addChangeBatchToIndex Index{..} changeBatch =
   Index (adjustBatches $ indexChangeBatches ++ [changeBatch])
   where
@@ -362,7 +370,7 @@ addChangeBatchToIndex Index{..} changeBatch =
 
 -- FIXME: very low performance. Should take advantage of properties of DataChangeBatch
 -- WARNING: result is backwards
-getChangesForKey :: (Ord a) => Index a -> (Row -> Bool) -> [DataChange a]
+getChangesForKey :: (Ord t) => Index a t -> (Row a -> Bool) -> [DataChange a t]
 getChangesForKey (Index batches) p =
   L.foldl (\acc batch ->
            let resultOfThisBatch =
@@ -371,7 +379,7 @@ getChangesForKey (Index batches) p =
             in resultOfThisBatch ++ acc
           ) [] batches
 
-getCountForKey :: (Ord a) => Index a -> Row -> Timestamp a -> Int
+getCountForKey :: (Ord t, Ord a) => Index a t -> Row a -> Timestamp t -> Int
 getCountForKey (Index batches) row ts =
   L.foldl (\acc batch ->
              let countOfThisBatch =
@@ -383,14 +391,15 @@ getCountForKey (Index batches) row ts =
               in countOfThisBatch + acc
           ) 0 batches
 
-mergeJoinIndex :: (Hashable a, Ord a, Show a)
-               => Index a
-               -> Frontier a
-               -> DataChangeBatch a
-               -> (Row -> Row)
-               -> (Row -> Row)
-               -> (Row -> Row -> Row)
-               -> DataChangeBatch a
+mergeJoinIndex :: (Hashable t, Ord t, Show t,
+                   Hashable a, Ord a, Show a)
+               => Index a t
+               -> Frontier t
+               -> DataChangeBatch a t
+               -> (Row a -> Row a)
+               -> (Row a -> Row a)
+               -> (Row a -> Row a -> Row a)
+               -> DataChangeBatch a t
 mergeJoinIndex self selfFt otherChangeBatch keygen1 keygen2 rowgen =
   L.foldl (\acc selfChangeBatch ->
              let newChangeBatch =

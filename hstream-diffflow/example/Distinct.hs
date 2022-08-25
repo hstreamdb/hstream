@@ -8,8 +8,10 @@ import           DiffFlow.Types
 
 import           Control.Concurrent
 import           Control.Monad
-import           Data.Aeson         (Value (..))
+import           Data.Aeson
+import           Data.Aeson.KeyMap  (fromMap)
 import qualified Data.HashMap.Lazy  as HM
+import qualified Data.Map           as Map
 import           Data.Word
 
 main :: IO ()
@@ -28,22 +30,22 @@ main = do
   forkIO . forever $ popOutput shard node_4 (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
   pushInput shard node_1
-    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1)
+    (DataChange (Row . fromMap $ Map.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1)
   pushInput shard node_1
-    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (Row . fromMap $ Map.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1)
   pushInput shard node_1
-    (DataChange (HM.fromList [("b", Number 1), ("c", Number 2)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (Row . fromMap $ Map.fromList [("b", Number 1), ("c", Number 2)]) (Timestamp (2 :: Word32) []) 1)
   pushInput shard node_1
-    (DataChange (HM.fromList [("c", Number 1), ("d", Number 2)]) (Timestamp (2 :: Word32) []) 1)
+    (DataChange (Row . fromMap $ Map.fromList [("c", Number 1), ("d", Number 2)]) (Timestamp (2 :: Word32) []) 1)
   flushInput shard node_1
   advanceInput shard node_1 (Timestamp 3 [])
 
   threadDelay 1000000
 
   pushInput shard node_1
-    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (4 :: Word32) []) 1)
+    (DataChange (Row . fromMap $ Map.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (4 :: Word32) []) 1)
   pushInput shard node_1
-    (DataChange (HM.fromList [("c", Number 1), ("d", Number 2)]) (Timestamp (5 :: Word32) []) 1)
+    (DataChange (Row . fromMap $ Map.fromList [("c", Number 1), ("d", Number 2)]) (Timestamp (5 :: Word32) []) 1)
   advanceInput shard node_1 (Timestamp 6 [])
 
   threadDelay 10000000

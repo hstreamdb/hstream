@@ -31,7 +31,7 @@ library
     DiffFlow.Weird
 
   build-depends:
-    , aeson                 <2
+    , aeson                 ^>=2
     , base                  >=4.11 && <5
     , containers
     , deepseq
@@ -57,8 +57,8 @@ test-suite lib-test
 
   hs-source-dirs:     test
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , containers
     , diff-flow
     , hashable
@@ -75,8 +75,8 @@ test-suite lib-test
 executable example
   main-is:          example/Main.hs
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , containers
     , diff-flow
     , hashable
@@ -92,8 +92,8 @@ executable example
 executable example-2
   main-is:          example/Reduce.hs
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , containers
     , diff-flow
     , hashable
@@ -109,8 +109,8 @@ executable example-2
 executable example-3
   main-is:          example/Distinct.hs
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , containers
     , diff-flow
     , hashable
@@ -126,8 +126,8 @@ executable example-3
 executable example-4
   main-is:          example/Loop.hs
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , containers
     , diff-flow
     , hashable
@@ -144,8 +144,8 @@ benchmark lib-bench
   type:          exitcode-stdio-1.0
   main-is:       bench/benchmark.hs
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , criterion
     , diff-flow
     , time
@@ -156,8 +156,8 @@ benchmark lib-bench
 executable throughout-bench
   main-is:       bench/throughout.hs
   build-depends:
-    , aeson                 <2
-    , base                  >=4.11 && <5
+    , aeson
+    , base
     , diff-flow
     , time
     , unordered-containers

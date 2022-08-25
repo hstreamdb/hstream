@@ -2,14 +2,14 @@
 
 module DiffFlow.TypesSpec where
 
-import           Data.Aeson          (Value (..))
-import           Data.Hashable       (Hashable)
-import qualified Data.HashMap.Strict as HM
-import qualified Data.List           as L
-import           Data.MultiSet       (MultiSet)
-import qualified Data.MultiSet       as MultiSet
-import           Data.Set            (Set)
-import qualified Data.Set            as Set
+import           Data.Aeson
+import qualified Data.Aeson.KeyMap as KM
+import           Data.Hashable     (Hashable)
+import qualified Data.List         as L
+import           Data.MultiSet     (MultiSet)
+import qualified Data.MultiSet     as MultiSet
+import           Data.Set          (Set)
+import qualified Data.Set          as Set
 import           DiffFlow.Types
 import           Test.Hspec
 
@@ -62,17 +62,19 @@ updateTimestampsWithFrontierChecker tss (ts,diff) expectedFrontier expectedChang
     actualTsf = updateTimestampsWithFrontier initTsf ts diff
 
 
-mkDataChangeBatchChecker :: (Hashable a, Ord a, Show a)
-                         => [DataChange a] -- input data changes
-                         -> [DataChange a] -- expected data changes
+mkDataChangeBatchChecker :: (Hashable a, Ord a, Show a,
+                             Hashable t, Ord t, Show t)
+                         => [DataChange a t] -- input data changes
+                         -> [DataChange a t] -- expected data changes
                          -> Bool
 mkDataChangeBatchChecker changes expectedChanges =
   dcbChanges dataChangeBatch == expectedChanges
   where dataChangeBatch = mkDataChangeBatch changes
 
-addChangeBatchToIndexChecker :: (Hashable a, Ord a, Show a)
-                             => [DataChangeBatch a]
-                             -> Index a
+addChangeBatchToIndexChecker :: (Hashable a, Ord a, Show a,
+                                 Hashable t, Ord t, Show t)
+                             => [DataChangeBatch a t]
+                             -> Index a t
                              -> Bool
 addChangeBatchToIndexChecker batches expectedIndex = expectedIndex == actualIndex
   where actualIndex =
@@ -198,64 +200,64 @@ dataChangeBatch :: Spec
 dataChangeBatch = describe "DataChangeBatch" $ do
   it "make DataChangeBatch" $ do
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 0
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 0
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 0
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 0
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 1
       ]
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1]
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 0
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 0
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 0
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 0
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 0
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 0
       ]
       []
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 1
       ]
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1]
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1
-      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) (-1)
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp  0         []) 1
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 1
+      , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp  0         []) (-1)
       ]
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 2]
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 2]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
-      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) (-1)
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp  0         []) 1
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
+      , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp  0         []) (-1)
       ]
       []
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1
-      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp  0         []) 1
+      , DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
       ]
-      [ DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1]
+      [ DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
       ]
-      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1]
+      [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatch
-      [ DataChange (HM.fromList [("a", Number 1)]) (Timestamp (0 :: Int) []) 1
-      , DataChange (HM.fromList [("b", Number 2)]) (Timestamp (0 :: Int) []) 1
-      , DataChange (HM.fromList [("c", Number 3)]) (Timestamp (3 :: Int) []) 1]
+      [ DataChange (Row $ KM.fromList [("a", Number 1)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (Row $ KM.fromList [("b", Number 2)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (Row $ KM.fromList [("c", Number 3)]) (Timestamp (3 :: Int) []) 1]
       `shouldBe`
       DataChangeBatch
       { dcbLowerBound = Set.singleton (Timestamp 0 [])
-      , dcbChanges = [ DataChange (HM.fromList [("b", Number 2)]) (Timestamp 0 []) 1
-                     , DataChange (HM.fromList [("a", Number 1)]) (Timestamp 0 []) 1
-                     , DataChange (HM.fromList [("c", Number 3)]) (Timestamp 3 []) 1
+      , dcbChanges = [ DataChange (Row $ KM.fromList [("a", Number 1)]) (Timestamp 0 []) 1
+                     , DataChange (Row $ KM.fromList [("b", Number 2)]) (Timestamp 0 []) 1
+                     , DataChange (Row $ KM.fromList [("c", Number 3)]) (Timestamp 3 []) 1
                      ]
       }
 
@@ -320,94 +322,94 @@ index :: Spec
 index = describe "Index" $ do
   it "add DataChangeBatch to Index" $ do
     addChangeBatchToIndexChecker
-      [mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]]
-      (Index [mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp 0 []) 1]])
+      [mkDataChangeBatch [DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]]
+      (Index [mkDataChangeBatch [DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp 0 []) 1]])
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
-      , mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
+      [ mkDataChangeBatch [DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
+      , mkDataChangeBatch [DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
       ]
-      (Index [mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 2]])
+      (Index [mkDataChangeBatch [DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 2]])
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+      [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                           ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
       ]
-      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
+             , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
              ]
       )
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+      [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                           ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) (-1)
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) (-1)
                           ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 2]
+      (Index [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 2]
              ]
       )
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
+             , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
+             , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
              ]
       )
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange (HM.fromList [("h", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("i", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("j", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("k", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("l", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("m", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("n", Null)]) (Timestamp (0 :: Int) []) 1
-                          , DataChange (HM.fromList [("o", Null)]) (Timestamp (0 :: Int) []) 1
+      [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (Row $ KM.fromList [("h", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("i", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("j", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("k", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("l", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("m", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("n", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (Row $ KM.fromList [("o", Null)]) (Timestamp (0 :: Int) []) 1
                           ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("h", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("i", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("j", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("k", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("l", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("m", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("n", Null)]) (Timestamp (0 :: Int) []) 1
-                                 , DataChange (HM.fromList [("o", Null)]) (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (Row $ KM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("h", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("i", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("j", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("k", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("l", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("m", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("n", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (Row $ KM.fromList [("o", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
              ]
       )

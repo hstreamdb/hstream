@@ -13,9 +13,10 @@ import           DiffFlow.Types
 -- This one uses only 'dcRow' as key instead of '(dcRow, dcTimestamp)'
 -- so records with the same row will be merged when you call 'updateDatachangeBatch''.
 -- It is used as a pool to accumulate all changes into a final result.
-mkDataChangeBatch' :: (Hashable a, Ord a, Show a)
-                  => [DataChange a]
-                  -> DataChangeBatch a
+mkDataChangeBatch' :: (Hashable a, Ord a, Show a,
+                       Hashable t, Ord t, Show t)
+                  => [DataChange a t]
+                  -> DataChangeBatch a t
 mkDataChangeBatch' changes = DataChangeBatch frontier sortedChanges
   where getKey DataChange{..} = dcRow
         coalescedChanges = HM.filter (\DataChange{..} -> dcDiff /= 0) $
@@ -27,9 +28,10 @@ mkDataChangeBatch' changes = DataChangeBatch frontier sortedChanges
           (\acc DataChange{..} -> acc ~>> (MoveEarlier,dcTimestamp))
           Set.empty sortedChanges
 
-updateDataChangeBatch' :: (Hashable a, Ord a, Show a)
-                      => DataChangeBatch a
-                      -> ([DataChange a] -> [DataChange a])
-                      -> DataChangeBatch a
+updateDataChangeBatch' :: (Hashable a, Ord a, Show a,
+                           Hashable t, Ord t, Show t)
+                      => DataChangeBatch a t
+                      -> ([DataChange a t] -> [DataChange a t])
+                      -> DataChangeBatch a t
 updateDataChangeBatch' oldBatch f =
   mkDataChangeBatch' $ f (dcbChanges oldBatch)

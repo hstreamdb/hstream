@@ -2,9 +2,11 @@
 
 import           Control.Concurrent
 import           Control.Monad
-import           Data.Aeson            (Value (..))
+import           Data.Aeson            (Object, Value (..))
+import qualified Data.Aeson.KeyMap     as KM
 import qualified Data.HashMap.Lazy     as HM
 import           Data.IORef
+import           Data.Maybe            (fromJust)
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.Word             (Word64)
@@ -26,16 +28,16 @@ getCurrentTimestamp :: IO Word64
 getCurrentTimestamp = posixTimeToMilliSeconds <$> getPOSIXTime
 --------------------------------------------------------------------------------
 
-reducingShard :: IO (Shard Word64, Node, Node)
+reducingShard :: IO (Shard Object Word64, Node, Node)
 reducingShard = do
   let subgraph_0 = Subgraph 0
       (builder_1, subgraph_1) = addSubgraph emptyGraphBuilder subgraph_0
   let (builder_2, node_1) = addNode builder_1 subgraph_0 InputSpec
-  let mapper o = HM.adjust (\(Number n) -> (Number n)) "a" o
-      keygen o = HM.fromList $ [("b", (HM.!) o "b")]
-      reducer value row = let (Number x) = (HM.!) row "a"
-                           in HM.adjust (\(Number n) -> (Number (n+1))) "cnt" value
-      initValue = HM.fromList [("cnt", Number 0)]
+  let mapper (Row o) = Row . KM.fromHashMap $ HM.adjust (\(Number n) -> (Number n)) "a" (KM.toHashMap o)
+      keygen (Row o) = Row . KM.fromList $ [("b", fromJust $ KM.lookup "b" o)]
+      reducer (Row value) (Row row) = let (Just (Number x)) = KM.lookup "a" row
+                                      in Row . KM.fromHashMap $ HM.adjust (\(Number n) -> (Number (n+1))) "cnt" (KM.toHashMap value)
+      initValue = Row $ KM.fromList [("cnt", Number 0)]
 
   let (builder_3, node_2) = addNode builder_2 subgraph_0 (IndexSpec node_1)
       (builder_4, node_3) = addNode builder_3 subgraph_0 (ReduceSpec node_2 initValue keygen (Reducer reducer))
@@ -63,7 +65,7 @@ main = do
       replicateM_ 10000 $ do
         ts <- getCurrentTimestamp
         let dc = DataChange
-               { dcRow = HM.fromList [("a", Number 1), ("b", Number 2)]
+               { dcRow = Row $ KM.fromList [("a", Number 1), ("b", Number 2)]
                , dcTimestamp = Timestamp ts []
                , dcDiff = 1
                }
@@ -82,7 +84,7 @@ main = do
     forkIO . forever $ popOutput shard outNode
       (\dcb -> do
           let lastChange = last $ dcbChanges dcb
-          let (Number x) = (dcRow lastChange) HM.! "cnt"
+          let (Just (Number x)) = KM.lookup "cnt" (unRow $ dcRow lastChange)
               n = fromIntegral (floor x)
           atomicModifyIORef totalDataChangeCount (\x -> (n, ()))
           print $ "---> " <> show n

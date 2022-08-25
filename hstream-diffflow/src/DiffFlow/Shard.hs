@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -36,23 +37,23 @@ import           DiffFlow.Graph
 import           DiffFlow.Types
 import qualified DiffFlow.Weird          as Weird
 
-data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
-  { cbiChangeBatch   :: DataChangeBatch a
-  , cbiInputFrontier :: Maybe (Frontier a)
+data ChangeBatchAtNodeInput a t = ChangeBatchAtNodeInput
+  { cbiChangeBatch   :: DataChangeBatch a t
+  , cbiInputFrontier :: Maybe (Frontier t)
   , cbiNodeInput     :: NodeInput
   }
-deriving instance (Show a) => Show (ChangeBatchAtNodeInput a)
+deriving instance (Show a, Show t) => Show (ChangeBatchAtNodeInput a t)
 
-data Pointstamp a = Pointstamp
+data Pointstamp t = Pointstamp
   { pointstampNodeInput :: NodeInput
   , pointstampSubgraphs :: [Subgraph]
-  , pointstampTimestamp :: Timestamp a
+  , pointstampTimestamp :: Timestamp t
   }
-deriving instance (Eq a) => Eq (Pointstamp a)
-deriving instance Generic (Pointstamp a)
-deriving instance (Hashable a) => Hashable (Pointstamp a)
+deriving instance (Eq t) => Eq (Pointstamp t)
+deriving instance Generic (Pointstamp t)
+deriving instance (Hashable t) => Hashable (Pointstamp t)
 
-instance (Ord a) => Ord (Pointstamp a) where
+instance (Ord t) => Ord (Pointstamp t) where
   compare ps1 ps2 =
     case subgraph1 of
       []     -> pointstampNodeInput ps1 `compare` pointstampNodeInput ps2
@@ -82,16 +83,17 @@ instance (Ord a) => Ord (Pointstamp a) where
     where subgraph1 = pointstampSubgraphs ps1
           subgraph2 = pointstampSubgraphs ps2
 
-data Shard a = Shard
-  { shardGraph                      :: Graph
-  , shardNodeStates                 :: MVar (HM.HashMap Int (NodeState a))
-  , shardNodeFrontiers              :: MVar (HM.HashMap Int (TimestampsWithFrontier a))
-  , shardUnprocessedChangeBatches   :: MVar [ChangeBatchAtNodeInput a]
-  , shardUnprocessedFrontierUpdates :: MVar (HM.HashMap (Pointstamp a) Int)
+data Shard a t = Shard
+  { shardGraph                      :: Graph a
+  , shardNodeStates                 :: MVar (HM.HashMap Int (NodeState a t))
+  , shardNodeFrontiers              :: MVar (HM.HashMap Int (TimestampsWithFrontier t))
+  , shardUnprocessedChangeBatches   :: MVar [ChangeBatchAtNodeInput a t]
+  , shardUnprocessedFrontierUpdates :: MVar (HM.HashMap (Pointstamp t) Int)
   } deriving (Generic, NFData)
 
 
-buildShard :: (Hashable a, Ord a, Show a, Bounded a) => Graph -> IO (Shard a)
+buildShard :: (Hashable a, Ord a, Show a,
+               Hashable t, Ord t, Show t, Bounded t) => Graph a -> IO (Shard a t)
 buildShard graph@Graph{..} = do
   hmStateList <- mapM (\(k,v) -> do
                           state <- specToState v
@@ -125,7 +127,8 @@ buildShard graph@Graph{..} = do
 --
 --  DataChange -> |INPUT NODE|
 --                 (unflushed)
-pushInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChange a -> IO ()
+pushInput :: (Hashable a, Ord a, Show a,
+              Hashable t, Ord t, Show t) => Shard a t -> Node -> DataChange a t -> IO ()
 pushInput Shard{..} Node{..} change = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
@@ -141,7 +144,8 @@ pushInput Shard{..} Node{..} change = do
 --
 --  |INPUT NODE| -> ...
 --  (unflushed)
-flushInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> IO ()
+flushInput :: (Hashable a, Ord a, Show a,
+               Hashable t, Ord t, Show t) => Shard a t -> Node -> IO ()
 flushInput shard@Shard{..} node@Node{..} = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
@@ -155,7 +159,8 @@ flushInput shard@Shard{..} node@Node{..} = do
 --
 --           Timestamp         -> |INPUT NODE| -> ...
 --  (update frontier to this)
-advanceInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> Timestamp a -> IO ()
+advanceInput :: (Hashable a, Ord a, Show a,
+                 Hashable t, Ord t, Show t) => Shard a t -> Node -> Timestamp t -> IO ()
 advanceInput shard@Shard{..} node@Node{..} ts = do
   flushInput shard node
   shardNodeStates' <- readMVar shardNodeStates
@@ -167,7 +172,8 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
       mapM_ (\change -> applyFrontierChange shard node (frontierChangeTs change) (frontierChangeDiff change)) ftChanges
     Just state -> throw . RunShardError $ "Incorrect type of node state found: " <> T.pack (show state)
 
-emitChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChangeBatch a -> IO ()
+emitChangeBatch :: (Hashable a, Ord a, Show a,
+                    Hashable t, Ord t, Show t) => Shard a t -> Node -> DataChangeBatch a t -> IO ()
 emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
   let spec = graphNodeSpecs shardGraph HM.! nodeId node
   case HM.lookup (nodeId node) (graphNodeSpecs shardGraph) of
@@ -206,7 +212,8 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
         ) toNodeInputs
 
 
-processChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
+processChangeBatch :: (Hashable a, Ord a, Show a,
+                       Hashable t, Ord t, Show t) => Shard a t -> IO ()
 processChangeBatch shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
   case shardUnprocessedChangeBatches' of
@@ -380,7 +387,8 @@ processChangeBatch shard@Shard{..} = do
                                   ) (Set.insert (dcTimestamp change) timestamps)
                 ) (dcbChanges changeBatch)
 
-queueFrontierChange :: (Hashable a, Ord a, Show a) => Shard a -> NodeInput -> Timestamp a -> Int -> IO ()
+queueFrontierChange :: (Hashable a, Ord a, Show a,
+                        Hashable t, Ord t, Show t) => Shard a t -> NodeInput -> Timestamp t -> Int -> IO ()
 queueFrontierChange Shard{..} nodeInput@NodeInput{..} ts diff = do
   assert (diff /= 0) (return ())
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
@@ -403,7 +411,8 @@ queueFrontierChange Shard{..} nodeInput@NodeInput{..} ts diff = do
 
 -- True:  Updated
 -- False: Not updated
-applyFrontierChange :: (Hashable a, Ord a, Show a) => Shard a -> Node -> Timestamp a -> Int -> IO Bool
+applyFrontierChange :: (Hashable a, Ord a, Show a,
+                        Hashable t, Ord t, Show t) => Shard a t -> Node -> Timestamp t -> Int -> IO Bool
 applyFrontierChange shard@Shard{..} node ts diff = do
   shardNodeFrontiers' <- readMVar shardNodeFrontiers
   case HM.lookup (nodeId node) shardNodeFrontiers' of
@@ -420,7 +429,8 @@ applyFrontierChange shard@Shard{..} node ts diff = do
       if L.null ftChanges then return False else return True
 
 
-processFrontierUpdates :: forall a. (Hashable a, Ord a, Show a) => Shard a -> IO ()
+processFrontierUpdates :: (Hashable a, Ord a, Show a, Semigroup a,
+                           Hashable t, Ord t, Show t) => Shard a t -> IO ()
 processFrontierUpdates shard@Shard{..} = do
   updatedNodes <- go
   mapM_ specialActions updatedNodes
@@ -489,7 +499,7 @@ processFrontierUpdates shard@Shard{..} = do
           mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex_m index_m pendingCorrections_m) (HM.toList pendingCorrections)
         _ -> return ()
       where
-        goPendingCorrection :: NodeSpec -> Frontier a -> TVar (Index a) -> TVar (Index a) -> TVar (HashMap Row (Set (Timestamp a))) -> (Row, Set (Timestamp a)) -> IO ()
+        --goPendingCorrection :: NodeSpec a -> Frontier t -> TVar (Index a t) -> TVar (Index a t) -> TVar (HashMap (Row a) (Set (Timestamp t))) -> ((Row a), Set (Timestamp t)) -> IO ()
         goPendingCorrection nodeSpec inputFt inputIndex_m outputIndex_m pendingCorrections_m (key, timestamps) = do
           (tssToCheck, ftChanges) <-
             foldM (\(curTssToCheck,curFtChanges) ts -> do
@@ -559,21 +569,21 @@ processFrontierUpdates shard@Shard{..} = do
             emitChangeBatch shard node newOutputdcb
           mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
 
-getOutputNodes :: Graph -> [Node]
+getOutputNodes :: Graph a -> [Node]
 getOutputNodes Graph{..} = L.map Node . HM.keys $
   HM.filterWithKey (\i spec -> case spec of
                                  OutputSpec _ -> True
                                  _            -> False
                    ) graphNodeSpecs
 
-outputNodeNotEmpty :: Shard a -> Node -> IO Bool
+outputNodeNotEmpty :: Shard a t -> Node -> IO Bool
 outputNodeNotEmpty Shard{..} node = do
   shardNodeStates' <- readMVar shardNodeStates
   let (OutputState dcbs_m) = shardNodeStates' HM.! (nodeId node)
   dcbs <- readTVarIO dcbs_m
   return . not $ L.null dcbs
 
-hasWork :: Shard a -> IO Bool
+hasWork :: Shard a t -> IO Bool
 hasWork shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
@@ -581,7 +591,8 @@ hasWork shard@Shard{..} = do
     not (L.null shardUnprocessedChangeBatches')    ||
     not (HM.null shardUnprocessedFrontierUpdates')
 
-doWork :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
+doWork :: (Hashable a, Ord a, Show a, Semigroup a,
+           Hashable t, Ord t, Show t) => Shard a t -> IO ()
 doWork shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
@@ -593,7 +604,7 @@ doWork shard@Shard{..} = do
       debug . stringUTF8 $ "=== Working (processFrontierUpdates)..."
       processFrontierUpdates shard else return ()
 
-popOutput :: (Show a) => Shard a -> Node -> (DataChangeBatch a -> IO ()) -> IO ()
+popOutput :: (Show a, Show t) => Shard a t -> Node -> (DataChangeBatch a t -> IO ()) -> IO ()
 popOutput Shard{..} node action = do
   shardNodeStates' <- readMVar shardNodeStates
   let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
@@ -606,7 +617,8 @@ popOutput Shard{..} node action = do
     Nothing  -> threadDelay 1000000
     Just dcb -> action dcb
 
-run :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
+run :: (Hashable a, Ord a, Show a, Semigroup a,
+        Hashable t, Ord t, Show t) => Shard a t -> IO ()
 run shard = forever $ do
   work <- hasWork shard
   debug . stringUTF8 $ "Loop: still has work?" <> show work
