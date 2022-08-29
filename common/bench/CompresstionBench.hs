@@ -19,33 +19,36 @@ import           Util
 gzip :: Enumerated CompressionType
 gzip = Enumerated $ Right CompressionTypeGzip
 
+zstd :: Enumerated CompressionType
+zstd = Enumerated $ Right CompressionTypeZstd
+
 benchCompresstion :: [Benchmark]
 benchCompresstion = compressBench <> decompressBench
 
 compressBench :: [Benchmark]
 compressBench = [
-  bgroup "compress with origin encode" $
-    map (\(size, describe) ->
-          env (genEncodedHStreamRecords @'OriginEncoder size) $ \records ->
-              bench describe $ nf (compress gzip) records) testPair,
-
-  bgroup "compress with Proto encode" $
+  bgroup "compress with gzip" $
     map (\(size, describe) ->
           env (genEncodedHStreamRecords @'ProtoEncoder size) $ \records ->
-              bench describe $ nf (compress gzip) records) testPair
+              bench describe $ nf (compress gzip) records) testPair,
+
+  bgroup "compress with zstd" $
+    map (\(size, describe) ->
+          env (genEncodedHStreamRecords @'ProtoEncoder size) $ \records ->
+              bench describe $ nf (compress zstd) records) testPair
  ]
 
 decompressBench :: [Benchmark]
 decompressBench = [
-  bgroup "decompress with origin encode" $
-    map (\(size, describe) ->
-          env (genCompressedRecords @'OriginEncoder gzip size) $ \records ->
-              bench describe $ nf (decompress gzip) records) testPair,
-
-  bgroup "decompress with Proto encode" $
+  bgroup "decompress with gzip" $
     map (\(size, describe) ->
           env (genCompressedRecords @'ProtoEncoder gzip size) $ \records ->
-              bench describe $ nf (decompress gzip) records) testPair
+              bench describe $ nf (decompress gzip) records) testPair,
+
+  bgroup "decompress with zstd" $
+    map (\(size, describe) ->
+          env (genCompressedRecords @'ProtoEncoder zstd size) $ \records ->
+              bench describe $ nf (decompress zstd) records) testPair
  ]
 
 getCompressSize

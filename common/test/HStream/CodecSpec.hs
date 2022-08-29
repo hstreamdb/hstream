@@ -43,7 +43,10 @@ genBatchedRecord payloads = do
   return $ mkBatchedRecord tp Nothing (fromIntegral $ V.length payloads) payloads
 
 genCompressionType :: Gen (Enumerated CompressionType)
-genCompressionType = elements [Enumerated (Right CompressionTypeGzip), Enumerated (Right CompressionTypeNone)]
+genCompressionType = elements [ Enumerated (Right CompressionTypeGzip)
+                              , Enumerated (Right CompressionTypeNone)
+                              , Enumerated (Right CompressionTypeZstd)
+                              ]
 
 genRandomPayload :: Gen BS.ByteString
 genRandomPayload = do

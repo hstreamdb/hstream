@@ -134,6 +134,7 @@ library
     , Z-IO
     , zlib
     , zoovisitor
+    , zstd
 
   cxx-options:        -std=c++17
   cpp-options:        -std=c++17
