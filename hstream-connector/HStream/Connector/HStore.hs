@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE RecordWildCards    #-}
@@ -15,21 +13,22 @@ module HStream.Connector.HStore
   )
 where
 
-import           Control.Monad                (void)
 import qualified Data.ByteString.Lazy         as BL
 import           Data.Int                     (Int64)
 import qualified Data.Map.Strict              as M
 import qualified Data.Map.Strict              as Map
-import           Data.Maybe                   (fromJust, isJust)
 import qualified Data.Text                    as T
+import qualified Data.Vector                  as V
 import           Proto3.Suite                 (Enumerated (..))
+import qualified Proto3.Suite                 as PB
 import           Z.Data.Vector                (Bytes)
 import           Z.Foreign                    (toByteString)
 import qualified Z.IO.Logger                  as Log
 
 import           HStream.Processing.Connector
 import           HStream.Processing.Type      as HPT
-import           HStream.Server.HStreamApi    (HStreamRecordHeader_Flag (..))
+import           HStream.Server.HStreamApi    (CompressionType (..),
+                                               HStreamRecordHeader_Flag (..))
 import qualified HStream.Store                as S
 import           HStream.Utils
 
@@ -119,27 +118,27 @@ readRecordsFromHStore :: S.LDClient -> S.LDSyncCkpReader -> Int -> IO [SourceRec
 readRecordsFromHStore ldclient reader maxlen = do
   S.ckpReaderSetTimeout reader 1000   -- 1000 milliseconds
   dataRecords <- S.ckpReaderRead reader maxlen
-  let payloads = filter isJust $ map getJsonFormatRecord dataRecords
-  mapM (dataRecordToSourceRecord ldclient . fromJust) payloads
+  let payloads = concatMap getJsonFormatRecords dataRecords
+  mapM (dataRecordToSourceRecord ldclient) payloads
 
 readRecordsFromHStore' :: S.LDClient -> S.LDReader -> Int -> IO [SourceRecord]
 readRecordsFromHStore' ldclient reader maxlen = do
   S.readerSetTimeout reader 1000    -- 1000 milliseconds
   dataRecords <- S.readerRead reader maxlen
-  let payloads = filter isJust $ map getJsonFormatRecord dataRecords
-  mapM (dataRecordToSourceRecord ldclient . fromJust) payloads
+  let payloads = concatMap getJsonFormatRecords dataRecords
+  mapM (dataRecordToSourceRecord ldclient) payloads
 
-getJsonFormatRecord :: S.DataRecord Bytes -> Maybe Payload
-getJsonFormatRecord dataRecord
-   | flag == Enumerated (Right HStreamRecordHeader_FlagJSON) = Just $ Payload logid payload lsn timestamp
-   | otherwise = Nothing
+getJsonFormatRecords :: S.DataRecord Bytes -> [Payload]
+getJsonFormatRecords dataRecord =
+  map (\hsr -> let logid     = S.recordLogID dataRecord
+                   payload   = getPayload hsr
+                   lsn       = S.recordLSN dataRecord
+                in Payload logid payload lsn timestamp)
+  (filter (\hsr -> getPayloadFlag hsr == Enumerated (Right HStreamRecordHeader_FlagJSON)) hstreamRecords)
   where
-    record    = decodeRecord $ S.recordPayload dataRecord
-    flag      = getPayloadFlag record
-    payload   = getPayload record
-    logid     = S.recordLogID dataRecord
-    lsn       = S.recordLSN dataRecord
-    timestamp = getTimeStamp record
+    batchRecords = decodeBatchRecord $ S.recordPayload dataRecord
+    timestamp = getTimeStamp batchRecords
+    hstreamRecords = V.toList . decompressBatchedRecord $ batchRecords
 
 commitCheckpointToHStore :: S.LDClient -> S.LDSyncCkpReader -> S.StreamId -> Offset -> IO ()
 commitCheckpointToHStore ldclient reader streamId offset = do
@@ -155,9 +154,10 @@ writeRecordToHStore ldclient streamType SinkRecord{..} = do
   Log.withDefaultLogger . Log.debug $ "Start writeRecordToHStore..."
   logId <- S.getUnderlyingLogId ldclient streamId Nothing
   timestamp <- getProtoTimestamp
-  let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty timestamp T.empty
-  let payload = encodeRecord $ buildRecord header (BL.toStrict snkValue)
-  _ <- S.appendBS ldclient logId payload Nothing
+  let header  = buildRecordHeader HStreamRecordHeader_FlagJSON Map.empty T.empty
+      hsRecord = mkHStreamRecord header (BL.toStrict snkValue)
+      payload = mkBatchedRecord (Enumerated (Right CompressionTypeNone)) (Just timestamp) 1 (V.singleton hsRecord)
+  _ <- S.appendBS ldclient logId (BL.toStrict . PB.toLazyByteString $ payload) Nothing
   return ()
 
 data Payload = Payload

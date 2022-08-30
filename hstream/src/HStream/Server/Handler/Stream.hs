@@ -15,9 +15,9 @@ where
 
 import           Control.Concurrent               (readMVar)
 import           Control.Exception
-import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
+import qualified Data.Text                        as T
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
@@ -68,25 +68,30 @@ appendHandler
   :: ServerContext
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
-appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
+appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
     recv_time <- getPOSIXTime
+    let record@BatchedRecord{batchedRecordBatchSize=recordSize, ..} = case appendRequestRecords of
+         Nothing -> throw InvalidBatchedRecord
+         Just r  -> r
     Log.debug $ "Receive Append Request: StreamName {"
              <> Log.buildText appendRequestStreamName
              <> "}, nums of records = "
-             <> Log.buildInt (V.length appendRequestRecords)
+             <> Log.buildInt recordSize
+             <> ", key = " <> Log.buildText batchedRecordOrderingKey
+
     Stats.handle_time_series_add_queries_in scStatsHolder "append" 1
     Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
     Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
+
     hashRing <- readMVar loadBalanceHashRing
-    let partitionKey = getRecordKey . V.head $ appendRequestRecords
-    let identifier = case partitionKey of
-          Just key -> appendRequestStreamName <> key
-          Nothing  -> appendRequestStreamName <> clientDefaultKey
+    let identifier = if T.null batchedRecordOrderingKey
+                        then appendRequestStreamName <> clientDefaultKey
+                        else appendRequestStreamName <> batchedRecordOrderingKey
     if getAllocatedNodeId hashRing identifier == serverID
        then do
          append_start <- getPOSIXTime
-         r <- C.appendStream sc request partitionKey
+         r <- C.appendStream sc appendRequestStreamName record batchedRecordOrderingKey
          Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
          Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
          returnResp r
@@ -101,20 +106,25 @@ append0Handler
   :: ServerContext
   -> ServerRequest 'Normal AppendRequest AppendResponse
   -> IO (ServerResponse 'Normal AppendResponse)
-append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
+append0Handler sc@ServerContext{..} (ServerNormalRequest _metadata AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
-
+  let record@BatchedRecord{batchedRecordBatchSize=recordSize, ..} = case appendRequestRecords of
+       Nothing -> throw InvalidBatchedRecord
+       Just r  -> r
   Log.debug $ "Receive Append0 Request: StreamName {"
            <> Log.buildText appendRequestStreamName
            <> "}, nums of records = "
-           <> Log.buildInt (V.length appendRequestRecords)
+           <> Log.buildInt recordSize
+           <> ", key = " <> Log.buildText batchedRecordOrderingKey
   Stats.stream_stat_add_append_total scStatsHolder cStreamName 1
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
-  let partitionKey = getRecordKey . V.head $ appendRequestRecords
+
   hashRing <- readMVar loadBalanceHashRing
-  let identifier = appendRequestStreamName <> clientDefaultKey
+  let identifier = if T.null batchedRecordOrderingKey
+                      then appendRequestStreamName <> clientDefaultKey
+                      else appendRequestStreamName <> batchedRecordOrderingKey
   if getAllocatedNodeId hashRing identifier == serverID
-    then C.append0Stream sc request partitionKey >>= returnResp
+    then C.append0Stream sc appendRequestStreamName record batchedRecordOrderingKey >>= returnResp
     else returnErrResp StatusFailedPrecondition "Send appendRequest to wrong Server."
   where
     inc_failed = Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
@@ -160,3 +170,8 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
        Log.warning $ Log.buildString' err
        return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
+
+data InvalidBatchedRecord = InvalidBatchedRecord
+  deriving (Show)
+instance Exception InvalidBatchedRecord where
+  displayException InvalidBatchedRecord = "BatchedRecord shouldn't be Nothing"

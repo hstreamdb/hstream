@@ -33,7 +33,7 @@ import qualified Database.ClickHouseDriver.Types  as ClickHouse
 import qualified Database.MySQL.Base              as MySQL
 import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Call       (clientCallCancel)
-import           Proto3.Suite                     (def)
+import           Proto3.Suite                     (Enumerated (..), def)
 import           System.Environment               (lookupEnv)
 import qualified System.IO.Streams                as Streams
 import           System.IO.Unsafe                 (unsafePerformIO)
@@ -42,6 +42,7 @@ import           Test.Hspec
 
 import           HStream.Client.Action
 import           HStream.Client.Utils
+import qualified HStream.Logger                   as Log
 import           HStream.Server.HStreamApi
 import           HStream.SQL
 import qualified HStream.Store                    as S
@@ -233,9 +234,10 @@ cleanStreamReq HStreamApi{..} streamName =
 
 appendRequest :: HStreamClientApi -> T.Text -> V.Vector HStreamRecord -> IO AppendResponse
 appendRequest HStreamApi{..} streamName records =
-  let appReq = AppendRequest streamName records
+  let batch = mkBatchedRecord (Enumerated (Right CompressionTypeGzip)) Nothing (fromIntegral $ V.length records) records
+      appReq = AppendRequest streamName (Just batch)
       req = ClientNormalRequest appReq requestTimeout $ MetadataMap Map.empty
-  in getServerResp =<< hstreamApiAppend req
+   in getServerResp =<< hstreamApiAppend req
 
 -------------------------------------------------------------------------------
 
@@ -334,15 +336,22 @@ fetchClickHouse source =
       Right res -> return res
       _         -> return V.empty
 
-readBatchPayload :: T.Text -> IO (V.Vector BS.ByteString)
+readBatchPayload :: T.Text -> IO (V.Vector HStreamRecord)
 readBatchPayload name = do
   let nameCB = textToCBytes name
   client <- S.newLDClient "/data/store/logdevice.conf"
+  Log.info $ "streamName = " <> Log.buildString' (S.mkStreamId S.StreamTypeStream nameCB)
   logId <- S.getUnderlyingLogId client (S.mkStreamId S.StreamTypeStream nameCB) Nothing
+  Log.info $ "logId " <> Log.buildInt logId
   reader <- S.newLDRsmCkpReader client nameCB S.checkpointStoreLogID 5000 1 Nothing
   S.startReadingFromCheckpointOrStart reader logId (Just S.LSN_MIN) S.LSN_MAX
   x <- S.ckpReaderRead reader 1000
-  return $ hstreamRecordBatchBatch . decodeBatch . S.recordPayload $ head x
+  -- x <- S.ckpReaderRead @BS.ByteString reader 1
+  -- Log.info "reader read success"
+  -- return $ V.empty
+  return $ decompressBatchedRecord . decodeBatchRecord . S.recordPayload $ head x
+  -- Log.info $ "res = " <> Log.buildString' (show res)
+  -- return res
 
 --------------------------------------------------------------------------------
 

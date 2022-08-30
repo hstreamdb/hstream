@@ -18,6 +18,9 @@ cradle:
     - path: "common/stats/bench/stats.hs"
       component: "hstream-common-stats:bench:common-bench-stats"
 
+    - path: "common/bench"
+      component: "hstream-common:bench:codec-bench"
+
     - path: "external/gRPC-haskell/core/src"
       component: "lib:grpc-haskell-core"
 

@@ -11,7 +11,6 @@ module HStream.Client.Internal
 
 import           Control.Concurrent               (readMVar, threadDelay)
 import           Control.Monad                    (void)
-import           Data.Maybe                       (fromJust, isJust)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Client
@@ -96,7 +95,7 @@ callStreamingFetch ctx startRecordIds subId clientId = do
           case m_recv of
             Left err -> print err
             Right (Just resp@API.StreamingFetchResponse{..}) -> do
-              let recIds = V.map fromJust $ V.filter isJust $ API.receivedRecordRecordId <$> streamingFetchResponseReceivedRecords
+              let recIds = maybe V.empty API.receivedRecordRecordIds streamingFetchResponseReceivedRecords
               print resp
               go recIds
             Right Nothing -> do

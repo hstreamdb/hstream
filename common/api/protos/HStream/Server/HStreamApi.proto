@@ -142,7 +142,7 @@ message CommandQueryResponse {
 
 message AppendRequest {
   string streamName = 1;
-  repeated HStreamRecord records = 2;
+  BatchedRecord records = 3;
 }
 
 message AppendResponse {
@@ -176,13 +176,11 @@ message StreamingFetchRequest {
   repeated RecordId ackIds = 3;
 }
 
-message StreamingFetchResponse {
-  repeated ReceivedRecord receivedRecords = 1;
-}
+message StreamingFetchResponse { ReceivedRecord receivedRecords = 1; }
 
 message ReceivedRecord {
-  RecordId recordId = 1;
-  bytes record = 2;   // protobuf encoded HStreamRecord
+  repeated RecordId recordIds = 1;
+  BatchedRecord record = 2;
 }
 
 message StreamOffset {
@@ -225,8 +223,26 @@ message CreateQueryStreamResponse {
   Query streamQuery = 2;
 }
 
-message HStreamRecordBatch {
-  repeated bytes batch = 1;
+enum CompressionType {
+  None = 0;
+  Gzip = 1;
+  Zstd = 2;
+}
+
+message BatchedRecord {
+  CompressionType compressionType = 1;
+  // Required.
+  // The time at which the message was published,
+  // populated by the server.
+  google.protobuf.Timestamp publishTime = 2;
+  // Required
+  // batchSize records the number of compressed HStreamRecords
+  // in the current batch. This field allows the server to build
+  // the RecordId correctly without decompression after reading
+  // the data from the store.
+  uint32 batchSize = 3;
+  string orderingKey = 4;
+  bytes payload = 5; // serialized BatchHStreamRecords
 }
 
 message HStreamRecord {
@@ -237,6 +253,9 @@ message HStreamRecord {
   // Payload may be empty.
   bytes payload = 2;
 }
+
+// Auxiliary types for serialization [HStreamRecord]
+message BatchHStreamRecords { repeated HStreamRecord records = 1; }
 
 message HStreamRecordHeader {
   // Required.
@@ -251,14 +270,9 @@ message HStreamRecordHeader {
   // Attributes attached to this record.
   map<string, string> attributes = 2;
 
-  // Required.
-  // The time at which the message was published,
-  // populated by the server.
-  google.protobuf.Timestamp publish_time = 3;
-
   // Optional.
   // key for the message.
-  string key = 4;
+  string key = 3;
 }
 
 message RecordId {

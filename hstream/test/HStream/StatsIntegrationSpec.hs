@@ -32,9 +32,8 @@ perStreamTimeSeriesSpec = aroundAll provideHstreamApi $ describe "PerStreamTimeS
       PerStreamTimeSeriesStatsResponse resp' <- perStreamTimeSeriesGetReq api methodName name
       resp' `shouldBe` Nothing
 
-      timeStamp <- getProtoTimestamp
-      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty timeStamp T.empty
-      payloads <- V.map (buildRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
+      let header = buildRecordHeader HStreamRecordHeader_FlagRAW Map.empty T.empty
+      payloads <- V.map (mkHStreamRecord header) <$> V.replicateM 10 (newRandomByteString 1024)
       replicateM_ 100 $ appendRequest api name payloads
 
       PerStreamTimeSeriesStatsAllResponse resp_ <- perStreamTimeSeriesReq api methodName

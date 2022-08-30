@@ -87,44 +87,43 @@ listStreams ServerContext{..} API.ListStreamsRequest = do
     b <- fromMaybe 0 . fromMaybe Nothing . S.attrValue . S.logBacklogDuration <$> S.getStreamLogAttrs scLDClient stream
     return $ API.Stream (Text.pack . S.showStreamName $ stream) (fromIntegral r) (fromIntegral b)
 
-appendStream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
-appendStream ServerContext{..} API.AppendRequest {appendRequestStreamName = sName,
-  appendRequestRecords = records} partitionKey = do
+appendStream :: ServerContext -> Text -> API.BatchedRecord -> Text -> IO API.AppendResponse
+appendStream ServerContext{..} sName record@API.BatchedRecord{..} partitionKey = do
   timestamp <- getProtoTimestamp
-  let payload = encodeBatch . API.HStreamRecordBatch $
-        encodeRecord . updateRecordTimestamp timestamp <$> records
+  let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
       payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   logId <- S.getUnderlyingLogId scLDClient streamID key
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient logId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length records)
-  let rids = V.zipWith (API.RecordId logId) (V.replicate (length records) appendCompLSN) (V.fromList [0..])
+  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral batchedRecordBatchSize)
+  let rids = V.zipWith (API.RecordId logId) (V.replicate (fromIntegral batchedRecordBatchSize) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse sName rids
   where
     streamName  = textToCBytes sName
     streamID    = S.mkStreamId S.StreamTypeStream streamName
-    key         = textToCBytes <$> partitionKey
+    key         = textToCBytes <$> (if Text.null partitionKey then Nothing else Just partitionKey)
 
 --------------------------------------------------------------------------------
 
-append0Stream :: ServerContext -> API.AppendRequest -> Maybe Text -> IO API.AppendResponse
-append0Stream ServerContext{..} API.AppendRequest{..} partitionKey = do
+append0Stream :: ServerContext -> Text -> API.BatchedRecord -> Text -> IO API.AppendResponse
+append0Stream ServerContext{..} sName record@API.BatchedRecord{..} partitionKey = do
   timestamp <- getProtoTimestamp
-  let payloads = encodeRecord . updateRecordTimestamp timestamp <$> appendRequestRecords
-      payloadSize = V.sum $ BS.length . API.hstreamRecordPayload <$> appendRequestRecords
-      streamName = textToCBytes appendRequestStreamName
-      streamID = S.mkStreamId S.StreamTypeStream streamName
-      key = textToCBytes <$> partitionKey
+  let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
+      payloadSize = BS.length payload
   when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
   logId <- S.getUnderlyingLogId scLDClient streamID key
-  S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId (V.toList payloads) cmpStrategy Nothing
+  S.AppendCompletion {..} <- S.appendBatchBS scLDClient logId [payload] cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder streamName (fromIntegral payloadSize)
-  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral $ length appendRequestRecords)
-  let records = V.zipWith (\_ idx -> API.RecordId logId appendCompLSN idx) appendRequestRecords [0..]
-  return $ API.AppendResponse appendRequestStreamName records
+  Stats.stream_time_series_add_append_in_records scStatsHolder streamName (fromIntegral batchedRecordBatchSize)
+  let rids = V.zipWith (API.RecordId logId) (V.replicate (fromIntegral batchedRecordBatchSize) appendCompLSN) (V.fromList [0..])
+  return $ API.AppendResponse sName rids
+ where
+   streamName  = textToCBytes sName
+   streamID    = S.mkStreamId S.StreamTypeStream streamName
+   key         = textToCBytes <$> (if Text.null partitionKey then Nothing else Just partitionKey)
 
 --------------------------------------------------------------------------------
 
