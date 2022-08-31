@@ -922,7 +922,7 @@ class HServerService(Service):
             f"echo 1000 > serial && "
             f"openssl genrsa -aes256 -out {ca_key_pem} 4096 && "
             # generate the CA certificate file
-            f"openssl req -nodes -config {template_openssl_conf_path} -key {ca_key_pem} "
+            f"openssl req -batch -nodes -config {template_openssl_conf_path} -key {ca_key_pem} "
             f"-new -x509 -days 7300 -sha256 -extensions v3_ca "
             f"-out {ca_cert_pem} "
         )
@@ -933,7 +933,7 @@ class HServerService(Service):
         subj_str = f"/CN={host}"
         return (
             f"openssl genrsa -out {file_name_prefix}.key.pem 2048 && "
-            f"openssl req -nodes -config {template_openssl_conf_path} "
+            f"openssl req -batch -nodes -config {template_openssl_conf_path} "
             f"-subj '{subj_str}' "
             f"-key {file_name_prefix}.key.pem -new -sha256 -out {file_name_prefix}.csr.pem && "
             f"openssl ca -config {template_openssl_conf_path} -extensions server_cert "
