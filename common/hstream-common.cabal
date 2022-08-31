@@ -52,6 +52,7 @@ common shared-properties
 library
   import:             shared-properties
   exposed-modules:
+    HStream.MetaStore.Types
     HStream.Common.ConsistentHashing
     HStream.Common.Query
     HStream.Common.Types
@@ -63,6 +64,7 @@ library
     HStream.Utils
 
   other-modules:
+    HStream.MetaStore.ZookeeperUtils
     Google.Protobuf.Empty
     Google.Protobuf.Struct
     HStream.Utils.BuildRecord
