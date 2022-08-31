@@ -55,6 +55,8 @@ DEFAULT_LOGDEVICE_DIR = os.path.join(DEFAULT_LOCAL_DATA, "logdevice")
 Path(DEFAULT_LOGDEVICE_DIR).mkdir(parents=True, exist_ok=True)
 DEFAULT_ZK_PERSISTENT_DIR = os.path.join(DEFAULT_LOCAL_DATA, "zookeeper")
 Path(DEFAULT_ZK_PERSISTENT_DIR).mkdir(parents=True, exist_ok=True)
+DEFAULT_RQL_PERSISTENT_DIR = os.path.join(DEFAULT_LOCAL_DATA, "rqlite")
+Path(DEFAULT_RQL_PERSISTENT_DIR).mkdir(parents=True, exist_ok=True)
 
 DEFAULT_ENV_FILE = os.path.join(DEFAULT_LOCAL_DATA, "dev_tools.env")
 with open(DEFAULT_ENV_FILE, "a"):
@@ -72,11 +74,13 @@ IMAGES = {
     "DB_IMAGE": "docker.io/hstreamdb/hstream",
     "SWAGGER_IMAGE": "swaggerapi/swagger-ui",
     "ZOOKEEPER_IMAGE": "zookeeper:3.6",
+    "RQLITE_IMAGE": "rqlite/rqlite",
 }
 
 SERVICES = {
     "zookeeper": f"hstream-test-zookeeper-{CUID}",
     "store": f"logdevice-dev-cluster-{CUID}",
+    "rqlite": f"hstream-test-rqlite-{CUID}",
 }
 
 HSTREAM_SERVER_PORT_ENV = "SERVER_LOCAL_PORT"
@@ -85,6 +89,7 @@ STORE_ADMIN_PORT_ENV = "STORE_ADMIN_LOCAL_PORT"
 MYSQL_PORT_ENV = "MYSQL_LOCAL_PORT"
 CLICKHOUSE_PORT_ENV = "CLICKHOUSE_LOCAL_PORT"
 ZOOKEEPER_PORT_ENV = "ZOOKEEPER_LOCAL_PORT"
+RQLITE_PORT_ENV = "RQLITE_LOCAL_PORT"
 
 gen_randoms = lambda n: "".join(
     random.choices(string.ascii_letters + string.digits, k=n)
@@ -243,6 +248,24 @@ def _service_zookeeper_(container_bin="docker", port=None, **kw):
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
             f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
             IMAGES["ZOOKEEPER_IMAGE"],
+        ]
+    )
+    run_sh(cmd)
+    loginfo("done")
+
+def _service_rqlite_(container_bin="docker", port=None, **kw):
+    if is_service_started(container_bin, "rqlite"):
+        return logerr("Already started!")
+
+    port = port or os.getenv(RQLITE_PORT_ENV, 9000)
+    write_env(RQLITE_PORT_ENV, port)
+    container_name = SERVICES["rqlite"]
+    cmd = " ".join(
+        [
+            f"{container_bin} run -td -p {port}:4001 --name {container_name} --rm",
+            f"-v {DEFAULT_ZK_PERSISTENT_DIR}/data:/data",
+            f"-v {DEFAULT_ZK_PERSISTENT_DIR}/datalog:/datalog",
+            IMAGES["RQLITE_IMAGE"],
         ]
     )
     run_sh(cmd)
@@ -802,6 +825,16 @@ class InfoCommand:
                 sys.exit(1)
             else:
                 loginfo(f"zookeeper port: {envs.get(ZOOKEEPER_PORT_ENV)}")
+
+        if not service or service == "rqlite":
+            if not is_service_started(container_bin, "rqlite"):
+                logerr(
+                    "Please start the rqlite service first. "
+                    "Run: dev-tools start-services --services rqlite"
+                )
+                sys.exit(1)
+            else:
+                loginfo(f"rqlite port: {envs.get(RQLITE_PORT_ENV)}")
 
 
 class SwaggerStartCommand:
