@@ -43,11 +43,10 @@ library
   import:             shared-properties
   exposed-modules:
     HStream.IO.IOTask
-    HStream.IO.Storage
     HStream.IO.Types
     HStream.IO.Worker
-    HStream.IO.ZkKv
     HStream.IO.Messages
+    HStream.IO.Meta
 
   build-depends:
     , aeson

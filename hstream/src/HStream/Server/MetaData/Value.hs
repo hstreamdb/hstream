@@ -1,6 +1,10 @@
 module HStream.Server.MetaData.Value where
 
-import           Z.Data.CBytes (CBytes)
+import           HStream.IO.Types
+import           HStream.MetaStore.Types (HasPath (myRootPath))
+import           HStream.Utils           (textToCBytes)
+import           Z.Data.CBytes           (CBytes)
+import           ZooKeeper.Types         (ZHandle)
 
 rootPath :: CBytes
 rootPath = "/hstream"
@@ -26,32 +30,21 @@ subscriptionsLockPath = lockPath <> "/subscriptions"
 readerPath :: CBytes
 readerPath = rootPath <> "/shardReader"
 
-ioPath :: CBytes
-ioPath = rootPath <> "/io"
-
-ioTasksPath :: CBytes
-ioTasksPath = ioPath <> "/tasks"
-
-ioStatusPath :: CBytes
-ioStatusPath = ioPath <> "/status"
 
 ioKvPath :: CBytes
-ioKvPath = ioPath <> "/kv"
-
-ioNamesPath :: CBytes
-ioNamesPath = ioPath <> "/names"
+ioKvPath = textToCBytes ioRootPath <> "/kv"
 
 paths :: [CBytes]
 paths = [ rootPath
         , serverRootPath
         , lockPath
         , queriesPath
-        , ioPath
-        , ioTasksPath
-        , ioStatusPath
-        , ioKvPath
-        , ioNamesPath
         , subscriptionsPath
         , subscriptionsLockPath
+        , textToCBytes ioRootPath
+        , textToCBytes ioRootPath
+        , textToCBytes $ myRootPath @TaskIdMeta @ZHandle
+        , textToCBytes $ myRootPath @TaskMeta   @ZHandle
+        , ioKvPath
         , readerPath
         ]
