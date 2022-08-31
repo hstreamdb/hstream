@@ -831,10 +831,10 @@ class HServerService(Service):
         extra_container_options="",
         rm=False,
         config_path=None,
-        enable_encryption=True,
-        enable_authentication=True,
-        template_openssl_conf_path="openssl.cnf",
-        remote_security_path="remote_security_path",
+        enable_encryption=False,
+        enable_authentication=False,
+        template_openssl_conf_path="$PWD/openssl.cnf",
+        remote_security_path=None,
         restart=True,
         **kargs,
     ):
@@ -1364,7 +1364,7 @@ class HServerConf(BasicConf):
         self.local_security_path = config.get("local_security_path")
         self.remote_security_path = config.get("remote_security_path")
         self.template_openssl_conf_path = config.get(
-            "template_openssl_conf_path"
+            "template_openssl_conf_path", "$PWD/openssl.cnf"
         )
 
 
@@ -1602,6 +1602,11 @@ class SimpleService(Service):
                 "store_config": self.zk_conf.config_path_in_zk,
                 "config_path": self.hserver_conf.remote_conf_path,
                 "restart": False if "hserver" in disable_restarted else True,
+                "enable_encryption": self.enable_encryption,
+                "enable_authentication": self.enable_authentication,
+                "local_security_path": self.local_security_path,
+                "remote_security_path": self.remote_security_path,
+                "template_openssl_conf_path": self.template_openssl_conf_path,
             }
             cmds.extend(self.HSERVER_SVC.start_cmd(**server_args))
 
@@ -1804,6 +1809,13 @@ class SimpleService(Service):
             cmds.extend(self.synchronize_config(self.hstore_conf))
         if self.hserver_conf:
             cmds.extend(self.synchronize_config(self.hserver_conf))
+            cmds.extend(
+                synchronize_configs(
+                    self.hserver_conf.local_security_path,
+                    self.hserver_conf.remote_security_path,
+                    self.hserver_conf.hosts,
+                )
+            )
         if self.prometheus_conf:
             cmds.extend(self.synchronize_config(self.prometheus_conf))
         if self.grafana_conf:
