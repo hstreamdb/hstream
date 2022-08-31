@@ -21,18 +21,16 @@ import           Control.Concurrent.STM
 import           Control.Exception                (Handler (Handler), throwIO)
 import           Control.Monad
 import           Network.GRPC.HighLevel.Generated
-import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
+import qualified HStream.MetaStore.Types          as M
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
                                                    defaultHandlers,
                                                    mkExceptionHandle,
                                                    setRespType)
 import           HStream.Server.HStreamApi
-import           HStream.Server.Persistence       (ObjRepType (..))
-import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (mkServerErrResp, returnResp)
@@ -75,8 +73,9 @@ checkSubscriptionExistHandler
 checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
   let sid = checkSubscriptionExistRequestSubscriptionId
-  res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
+  res <- M.checkMetaExists @SubscriptionWrap sid zkHandle
   returnResp . CheckSubscriptionExistResponse $ res
+
 -- --------------------------------------------------------------------------------
 
 listSubscriptionsHandler
@@ -88,6 +87,7 @@ listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequ
   res <- ListSubscriptionsResponse <$> Core.listSubscriptions sc
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
+
 -- --------------------------------------------------------------------------------
 
 streamingFetchHandler

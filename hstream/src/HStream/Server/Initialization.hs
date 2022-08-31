@@ -13,12 +13,12 @@ import           Control.Exception                (catch)
 import           Control.Monad                    (void)
 import qualified Data.HashMap.Strict              as HM
 import           Data.List                        (find, sort)
-import           Network.GRPC.HighLevel           (AuthProcessorResult (AuthProcessorResult),
-                                                   AuthProperty (authPropName),
+import           Network.GRPC.HighLevel           (AuthProcessorResult (..),
+                                                   AuthProperty (..),
                                                    ProcessMeta,
-                                                   ServerSSLConfig (ServerSSLConfig),
-                                                   SslClientCertificateRequestType (SslDontRequestClientCertificate, SslRequestAndRequireClientCertificateAndVerify),
-                                                   StatusCode (StatusOk),
+                                                   ServerSSLConfig (..),
+                                                   SslClientCertificateRequestType (..),
+                                                   StatusCode (..),
                                                    getAuthProperties)
 import           Text.Printf                      (printf)
 import qualified Z.Data.CBytes                    as CB
@@ -31,9 +31,10 @@ import           HStream.Gossip                   (GossipContext, getMemberList)
 import qualified HStream.IO.Types                 as IO
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types          (MetaHandle (..))
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
-import           HStream.Server.Persistence       (ioPath)
+import           HStream.Server.MetaData          (ioPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
@@ -55,7 +56,6 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
   statsHolder <- newServerStatsHolder
 
   runningQs <- newMVar HM.empty
-  runningCs <- newMVar HM.empty
   subCtxs <- newTVarIO HM.empty
 
   hashRing <- initializeHashRing gossipContext
@@ -76,14 +76,13 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
 
   return
     ServerContext
-      { zkHandle                 = zk
+      { zkHandle                 = ZkHandle zk
       , scLDClient               = ldclient
       , serverID                 = _serverID
       , scAdvertisedListenersKey = Nothing
       , scDefaultStreamRepFactor = _topicRepFactor
       , scMaxRecordSize          = _maxRecordSize
       , runningQueries           = runningQs
-      , runningConnectors        = runningCs
       , scSubscribeContexts      = subCtxs
       , cmpStrategy              = _compression
       , headerConfig             = headerConfig

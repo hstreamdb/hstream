@@ -13,14 +13,14 @@ import qualified Data.Vector                      as V
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
+import qualified HStream.MetaStore.Types          as M
 import qualified HStream.Server.Core.View         as CoreView
 import           HStream.Server.Exception         (defaultExceptionHandle)
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      (Empty (..))
-import           HStream.Utils                    (cBytesToText, returnErrResp,
-                                                   returnResp)
+import           HStream.Utils                    (returnErrResp, returnResp)
 
 listViewsHandler
   :: ServerContext
@@ -38,9 +38,9 @@ getViewHandler ServerContext{..} (ServerNormalRequest _metadata GetViewRequest{.
   Log.debug $ "Receive Get View Request. "
     <> "View ID:" <> Log.buildString (T.unpack getViewRequestViewId)
   query <- do
-    viewQueries <- filter P.isViewQuery <$> P.getQueries zkHandle
+    viewQueries <- filter P.isViewQuery <$> M.listMeta zkHandle
     return $
-      find (\P.PersistentQuery {..} -> cBytesToText queryId == getViewRequestViewId) viewQueries
+      find (\P.PersistentQuery {..} -> queryId == getViewRequestViewId) viewQueries
   case query of
     Just q -> returnResp $ CoreView.hstreamQueryToView q
     _      -> do

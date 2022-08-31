@@ -34,6 +34,7 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
+import           HStream.MetaStore.Types
 import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
 import qualified HStream.Server.Core.Query        as Core
 import qualified HStream.Server.Core.Stream       as Core
@@ -44,7 +45,7 @@ import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
-import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.MetaData          as P
 import qualified HStream.Server.Shard             as Shard
 import           HStream.Server.Types
 import           HStream.SQL.AST
@@ -73,14 +74,14 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
     CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
-          query   = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
+          query   = P.StreamQuery sources sink
       create (transToStreamName sink)
       (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
-      returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "stream_query_id")
+      returnCommandQueryResp (mkVectorStruct qid "stream_query_id")
     CreateViewPlan _ schema inNodesWithStreams outNodeWithStream _ _ accumulation -> do
       let sources = snd <$> inNodesWithStreams
           sink    = snd outNodeWithStream
-          query   = P.ViewQuery (textToCBytes <$> sources) (CB.pack . T.unpack $ sink) schema
+          query   = P.ViewQuery sources sink schema
       -- make sure source streams exist
       nonExistedSource <- filterM (fmap not . S.doesStreamExist scLDClient . transToStreamName) sources :: IO [T.Text]
       case nonExistedSource of
@@ -88,7 +89,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
           create (transToStreamName sink)
           (qid,_) <- handleCreateAsSelect sc plan commandQueryStmtText query
           atomicModifyIORef' P.groupbyStores (\hm -> (HM.insert sink accumulation hm, ()))
-          returnCommandQueryResp (mkVectorStruct (cBytesToText qid) "view_query_id")
+          returnCommandQueryResp (mkVectorStruct qid "view_query_id")
         _ : _ -> do
           returnErrResp StatusInvalidArgument . StatusDetails . BS.pack $
             "Source " <> show (T.concat $ L.intersperse ", " nonExistedSource) <> " doesn't exist"
@@ -142,11 +143,11 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
                                 , terminateQueriesRequestAll = True
                                 }
             OneQuery qid     -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid
+                                { terminateQueriesRequestQueryId = V.singleton qid
                                 , terminateQueriesRequestAll = False
                                 }
             ManyQueries qids -> TerminateQueriesRequest
-                                { terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids
+                                { terminateQueriesRequestQueryId = V.fromList qids
                                 , terminateQueriesRequestAll = False
                                 }
       Core.terminateQueries sc request >>= \case
@@ -219,7 +220,7 @@ executePushQueryHandler
             throwIO StreamNotExist
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
-            let query = P.StreamQuery (textToCBytes <$> sources) (textToCBytes sink)
+            let query = P.StreamQuery sources sink
             -- run task
             (qid,_) <- handleCreateAsSelect ctx plan commandPushQueryQueryText query
             tid <- readMVar runningQueries >>= \hm -> return $ (HM.!) hm qid
@@ -252,8 +253,8 @@ createStreamWithShard client streamId shardName factor = do
 --------------------------------------------------------------------------------
 
 sendToClient ::
-  ZHandle ->
-  CB.CBytes ->
+  MetaHandle ->
+  T.Text ->
   T.Text ->
   SourceConnectorWithoutCkp ->
   (Struct -> IO (Either GRPCIOError ())) ->

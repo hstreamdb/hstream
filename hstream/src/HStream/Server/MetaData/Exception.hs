@@ -1,5 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module HStream.Server.Persistence.Exception where
+module HStream.Server.MetaData.Exception where
 
 import           Control.Exception (Exception (..), SomeException (..))
 import           Data.Text         (Text)
@@ -107,4 +107,3 @@ newtype ShardReaderIdExists = ShardReaderIdExists Text
 instance Exception  ShardReaderIdExists where
   toException   = persistenceExceptionToException
   fromException = persistenceExceptionFromException
-

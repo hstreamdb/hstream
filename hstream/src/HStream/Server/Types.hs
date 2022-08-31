@@ -1,6 +1,9 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
+{-# LANGUAGE DeriveAnyClass   #-}
+{-# LANGUAGE DeriveGeneric    #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs            #-}
+{-# LANGUAGE RankNTypes       #-}
 
 module HStream.Server.Types where
 
@@ -17,14 +20,13 @@ import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
-import qualified Z.Data.CBytes                    as CB
-import           ZooKeeper.Types                  (ZHandle)
 
 import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
 import qualified HStream.IO.Worker                as IO
+import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT
 import           HStream.Server.HStreamApi        (NodeState,
@@ -58,9 +60,8 @@ data ServerContext = ServerContext
   , scAdvertisedListenersKey :: Maybe Text
   , scDefaultStreamRepFactor :: Int
   , scMaxRecordSize          :: Int
-  , zkHandle                 :: ZHandle
-  , runningQueries           :: MVar (HM.HashMap CB.CBytes ThreadId)
-  , runningConnectors        :: MVar (HM.HashMap CB.CBytes ThreadId)
+  , zkHandle                 :: MetaHandle
+  , runningQueries           :: MVar (HM.HashMap Text ThreadId)
   , scSubscribeContexts      :: TVar (HM.HashMap SubscriptionId SubscribeContextNewWrapper)
   , cmpStrategy              :: HS.Compression
   , headerConfig             :: AA.HeaderConfig AA.AdminAPI
