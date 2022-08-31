@@ -75,16 +75,16 @@ def wait_tcp_sh(port, host="127.0.0.1", timeout=20):
 
 
 def is_container_running(remote, container_name, container_bin="docker"):
-    # if not container_bin:
-    #     return logerr("No such container_bin")
-    # result = run_sh(
-    #     f"ssh {remote} '{container_bin} " "ps --format {{.Names}}'",
-    #     stdout=subprocess.PIPE,
-    # )
-    # if result and result.stdout:
-    #     rs = result.stdout.decode().strip().split("\n")
-    #     if container_name.strip() in rs:
-    #         return True
+    if not container_bin:
+        return logerr("No such container_bin")
+    result = run_sh(
+        f"ssh {remote} '{container_bin} " "ps --format {{.Names}}'",
+        stdout=subprocess.PIPE,
+    )
+    if result and result.stdout:
+        rs = result.stdout.decode().strip().split("\n")
+        if container_name.strip() in rs:
+            return True
     return False
 
 
@@ -1836,13 +1836,4 @@ if __name__ == "__main__":
     s.register(CadvisorService)
     s.register(GrafanaService)
     s.register(SimpleService)
-    # s.run()
-    argcomplete.autocomplete(parser)
-    cmds = s.parse_args()(**s._args)
-    if isinstance(cmds, list):
-        for cmd in cmds:
-            # run_sh(cmd, print_cmd=True)
-            print(cmd)
-    else:
-        # run_sh(cmds, print_cmd=True)
-        print(cmds)
+    s.run()
