@@ -23,7 +23,6 @@ import           ZooKeeper.Types                  (StringVector (..),
                                                    StringsCompletion (..),
                                                    ZHandle)
 
-
 type Key = T.Text
 type Path = T.Text
 type Version = Int
@@ -32,6 +31,7 @@ instance (MetaStore value handle, HasPath value handle) => MetaType value handle
 
 data MetaHandle
   = ZkHandle ZHandle
+-- TODO
 --   | RLHandle RHandle
 --   | LocalHandle IO.Handle
 -- data RHandle = RHandle
@@ -63,13 +63,12 @@ instance MetaStore value ZHandle where
     ids <- unStrVec . strsCompletionValues <$> zooGetChildren zk path
     catMaybes <$> mapM (flip (getMeta @value) zk . cBytesToText) ids
 
+#define USE_WHICH_HANDLE(handle, action) \
+  case handle of ZkHandle zk -> action zk
+
 instance (ToJSON a, FromJSON a, HasPath a ZHandle, Show a) => HasPath a MetaHandle
 instance (HasPath value ZHandle) => MetaStore value MetaHandle where
-  -- insertMeta mid x h = case h of ZkHandle zk -> insertMeta @value @ZHandle mid x zk
-
-#define USE_WHICH_HANDLE(handle, action) \
-case handle of ZkHandle zk -> action zk
-
+  -- listMeta h = case h of ZkHandle zk -> insertMeta @value @ZHandle zk
   listMeta            h = USE_WHICH_HANDLE(h, listMeta @value)
   insertMeta mid x    h = USE_WHICH_HANDLE(h, insertMeta @value mid x)
   updateMeta mid x mv h = USE_WHICH_HANDLE(h, updateMeta @value mid x mv)
