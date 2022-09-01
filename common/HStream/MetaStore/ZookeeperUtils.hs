@@ -12,6 +12,7 @@ import           Control.Exception    (try)
 import           Control.Monad        (void)
 import           Data.Aeson           (FromJSON, ToJSON)
 import qualified Data.Aeson           as Aeson
+import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text            as T
 import           Z.Data.Vector        (Bytes)
@@ -31,6 +32,9 @@ createInsertZK zk path contents = do
 
 encodeValueToBytes :: ToJSON a => a -> Bytes
 encodeValueToBytes = ZF.fromByteString . BL.toStrict . Aeson.encode
+
+encodeValueToBS :: ToJSON a => a -> BS.ByteString
+encodeValueToBS = BL.toStrict . Aeson.encode
 
 setZkData :: (ToJSON a) => ZHandle -> T.Text -> a -> Maybe Int -> IO ()
 setZkData zk path contents mv = void $ zooSet zk (textToCBytes path) (Just $ encodeValueToBytes contents) (fromIntegral <$> mv)
