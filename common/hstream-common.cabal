@@ -55,6 +55,7 @@ library
     HStream.MetaStore.Types
     HStream.Common.ConsistentHashing
     HStream.Common.Query
+    HStream.Common.RqliteUtils
     HStream.Common.Types
     HStream.Foreign
     HStream.Logger
@@ -106,7 +107,7 @@ library
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
-    , aeson
+    , aeson                 <2
     , ansi-terminal
     , attoparsec
     , base                  >=4.11  && <5
@@ -120,6 +121,8 @@ library
     , grpc-haskell
     , grpc-haskell-core
     , hashable
+    , http-client
+    , http-types
     , primitive             ^>=0.7
     , proto3-suite
     , proto3-wire
@@ -174,14 +177,17 @@ test-suite hstream-common-test
   other-modules:
     HStream.CodecSpec
     HStream.ConsistentHashingSpec
+    HStream.RqliteUtilsSpec
     HStream.UtilsSpec
 
   build-depends:
+    , aeson
     , base                  >=4.11 && <5
     , bytestring
     , containers            ^>=0.6
     , hspec
     , hstream-common
+    , http-client
     , proto3-suite
     , QuickCheck
     , random                ^>=1.2
