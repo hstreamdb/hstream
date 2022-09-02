@@ -4,17 +4,15 @@
 
 module HStream.MetaStore.ZookeeperUtils
    where
-
---------------------------------------------------------------------------------
--- Path
-
-import           Control.Exception    (try)
+import           Control.Exception    (catch, try)
 import           Control.Monad        (void)
 import           Data.Aeson           (FromJSON, ToJSON)
 import qualified Data.Aeson           as Aeson
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text            as T
+import           GHC.Stack            (HasCallStack)
+import           Z.Data.CBytes        (CBytes)
 import           Z.Data.Vector        (Bytes)
 import qualified Z.Foreign            as ZF
 import           ZooKeeper            (zooCreate, zooDelete, zooGet, zooSet)
@@ -57,3 +55,12 @@ decodeDataCompletion (DataCompletion (Just x) _) =
     Right a -> Just a
     Left _  -> Nothing
 decodeDataCompletion (DataCompletion Nothing _) = Nothing
+
+tryCreate :: HasCallStack => ZHandle -> CBytes -> IO ()
+tryCreate zk path = catch (createPath zk path) $
+  \(_ :: ZNODEEXISTS) -> pure ()
+
+createPath :: HasCallStack => ZHandle -> CBytes -> IO ()
+createPath zk path = do
+  Log.debug . Log.buildString $ "create path " <> show path
+  void $ zooCreate zk path Nothing zooOpenAclUnsafe ZooPersistent
