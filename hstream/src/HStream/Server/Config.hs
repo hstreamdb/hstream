@@ -198,7 +198,7 @@ parseJSONToOptions CliOptions {..} obj = do
   -- TODO: For the max_record_size to work properly, we should also tell user
   -- to set payload size for gRPC and LD.
   _maxRecordSize    <- nodeCfgObj .:? "max-record-size" .!= 1048576
-  when (_maxRecordSize < 0 && _maxRecordSize > 104876)
+  when (_maxRecordSize < 0 && _maxRecordSize > 1048576)
     $ errorWithoutStackTrace "max-record-size has to be a positive number less than 1MB"
 
   let _serverID           = fromMaybe nodeId _serverID_
