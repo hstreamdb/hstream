@@ -202,7 +202,7 @@ streamingFetchCore ctx SFetchCoreDirect = \initReq callback -> do
       Just tid -> killThread tid
       Nothing  -> return ()
   Log.debug "pass recvAcks"
-streamingFetchCore ctx SFetchCoreInteractive = \(streamSend,streamRecv) -> do
+streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv) -> do
   StreamingFetchRequest {..} <- firstRecv streamRecv
   Log.debug "pass first recv"
   (SubscribeContextWrapper {..}, _) <- initSub ctx streamingFetchRequestSubscriptionId

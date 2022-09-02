@@ -94,17 +94,11 @@ streamingFetchHandler
   :: ServerContext
   -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
   -> IO (ServerResponse 'BiDiStreaming StreamingFetchResponse)
-streamingFetchHandler ctx bidiRequest = subStreamingExceptionHandle do
-  Log.debug "recv server call: streamingFetch"
-  streamingFetchInternal ctx bidiRequest
-  return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
-
-streamingFetchInternal
-  :: ServerContext
-  -> ServerRequest 'BiDiStreaming StreamingFetchRequest StreamingFetchResponse
-  -> IO ()
-streamingFetchInternal ctx (ServerBiDiRequest _ streamRecv streamSend) = do
-  Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend,streamRecv)
+streamingFetchHandler ctx (ServerBiDiRequest _ streamRecv streamSend) =
+  subStreamingExceptionHandle $ do
+    Log.debug "recv server call: streamingFetch"
+    Core.streamingFetchCore ctx Core.SFetchCoreInteractive (streamSend, streamRecv)
+    return $ ServerBiDiResponse mempty StatusUnknown "should not reach here"
 
 --------------------------------------------------------------------------------
 -- Exception and Exception Handlers

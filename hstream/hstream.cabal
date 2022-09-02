@@ -98,7 +98,6 @@ library
     , attoparsec
     , base
     , bytestring
-    , clickhouse-haskell
     , containers
     , cryptonite
     , deepseq
@@ -251,7 +250,6 @@ test-suite hstream-test
     , async
     , base                  >=4.11 && <5
     , bytestring
-    , clickhouse-haskell
     , containers
     , grpc-haskell
     , grpc-haskell-core
