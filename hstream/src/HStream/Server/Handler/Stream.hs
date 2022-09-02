@@ -21,6 +21,11 @@ import           Control.Exception
 import           Network.GRPC.HighLevel.Generated
 
 import qualified HStream.Logger                   as Log
+import           HStream.Metrics.ShardMetrics     (shardFailedHandleCountV,
+                                                   shardTotalHandleCountV)
+import           HStream.Metrics.StreamMetrics    (streamFailedHandleCountV,
+                                                   streamTotalHandleCountV,
+                                                   streamTotalNumGauge)
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
@@ -29,6 +34,7 @@ import qualified HStream.Stats                    as Stats
 import qualified HStream.Store                    as Store
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils
+import qualified Prometheus                       as P
 
 --------------------------------------------------------------------------------
 
@@ -36,10 +42,14 @@ createStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal Stream Stream
   -> IO (ServerResponse 'Normal Stream)
-createStreamHandler sc (ServerNormalRequest _metadata stream) = createStreamExceptionHandle $ do
+createStreamHandler sc (ServerNormalRequest _metadata stream) = createStreamExceptionHandle inc_failed $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
+  P.withLabel streamTotalHandleCountV "createStream" P.incCounter
   C.createStream sc stream
+  P.incGauge streamTotalNumGauge
   returnResp stream
+ where
+   inc_failed = P.withLabel streamFailedHandleCountV "createStream" P.incCounter
 
 -- DeleteStream have two mod: force delete or normal delete
 -- For normal delete, if current stream have active subscription, the delete request will return error.
@@ -53,18 +63,25 @@ deleteStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
+deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle inc_failed $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
+  P.withLabel streamTotalHandleCountV "deleteStream" P.incCounter
   C.deleteStream sc request
+  P.decGauge streamTotalNumGauge
   returnResp Empty
+ where
+   inc_failed = P.withLabel streamFailedHandleCountV "deleteStream" P.incCounter
 
 listStreamsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListStreamsRequest ListStreamsResponse
   -> IO (ServerResponse 'Normal ListStreamsResponse)
-listStreamsHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
+listStreamsHandler sc (ServerNormalRequest _metadata request) = listStreamsExceptionHandle inc_failed $ do
   Log.debug "Receive List Stream Request"
+  P.withLabel streamTotalHandleCountV "listStream" P.incCounter
   C.listStreams sc request >>= returnResp . ListStreamsResponse
+ where
+   inc_failed = P.withLabel streamFailedHandleCountV "listStream" P.incCounter
 
 appendHandler
   :: ServerContext
@@ -72,11 +89,13 @@ appendHandler
   -> IO (ServerResponse 'Normal AppendResponse)
 appendHandler sc@ServerContext{..} (ServerNormalRequest _metadata request@AppendRequest{..}) =
   appendStreamExceptionHandle inc_failed $ do
+    P.withLabel streamTotalHandleCountV "append" P.incCounter
     returnResp =<< C.append sc request
   where
     inc_failed = do
       Stats.stream_stat_add_append_failed scStatsHolder cStreamName 1
       Stats.stream_time_series_add_append_failed_requests scStatsHolder cStreamName 1
+      P.withLabel streamFailedHandleCountV "append" P.incCounter
     cStreamName = textToCBytes appendRequestStreamName
 
 --------------------------------------------------------------------------------
@@ -85,9 +104,12 @@ listShardsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListShardsRequest ListShardsResponse
   -> IO (ServerResponse 'Normal ListShardsResponse)
-listShardsHandler sc (ServerNormalRequest _metadata request) = listShardsExceptionHandle $ do
+listShardsHandler sc (ServerNormalRequest _metadata request) = listShardsExceptionHandle inc_failed $ do
   Log.debug "Receive List Shards Request"
+  P.withLabel shardTotalHandleCountV "listShards" P.incCounter
   C.listShards sc request >>= returnResp . ListShardsResponse
+ where
+   inc_failed = P.withLabel shardFailedHandleCountV "listShards" P.incCounter
 
 createShardReaderHandler
   :: ServerContext
@@ -148,12 +170,12 @@ appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
       ] ++ defaultHandlers
     mkHandlers = setRespType mkServerErrResp handlers
 
-createStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-createStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+createStreamExceptionHandle :: IO () -> ExceptionHandle (ServerResponse 'Normal a)
+createStreamExceptionHandle action = mkExceptionHandleWithAction action . setRespType mkServerErrResp $
   streamExistsHandlers ++ defaultHandlers
 
-deleteStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+deleteStreamExceptionHandle :: IO () -> ExceptionHandle (ServerResponse 'Normal a)
+deleteStreamExceptionHandle action = mkExceptionHandleWithAction action . setRespType mkServerErrResp $
   deleteExceptionHandler ++ defaultHandlers
   where
     deleteExceptionHandler = [
@@ -162,8 +184,12 @@ deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
        return (StatusFailedPrecondition, "Stream still has subscription"))
       ]
 
-listShardsExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-listShardsExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+listStreamsExceptionHandle :: IO () -> ExceptionHandle (ServerResponse 'Normal a)
+listStreamsExceptionHandle action =
+  mkExceptionHandleWithAction action . setRespType mkServerErrResp $ defaultHandlers
+
+listShardsExceptionHandle :: IO () -> ExceptionHandle (ServerResponse 'Normal a)
+listShardsExceptionHandle action = mkExceptionHandleWithAction action . setRespType mkServerErrResp $
    Handler (\(err :: Store.NOTFOUND) ->
           return (StatusUnavailable, mkStatusDetails err))
   : defaultHandlers

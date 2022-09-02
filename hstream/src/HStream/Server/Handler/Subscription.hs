@@ -25,10 +25,14 @@ import           ZooKeeper.Types                  (ZHandle)
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
 import qualified HStream.Logger                   as Log
+import           HStream.Metrics.SubMetrics       (subFailedHandleCountV,
+                                                   subTotalHandleCountV,
+                                                   subTotalNumGauge)
 import qualified HStream.Server.Core.Subscription as Core
 import           HStream.Server.Exception         (ExceptionHandle, Handlers,
                                                    defaultHandlers,
                                                    mkExceptionHandle,
+                                                   mkExceptionHandleWithAction,
                                                    setRespType)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Persistence       (ObjRepType (..))
@@ -36,6 +40,7 @@ import qualified HStream.Server.Persistence       as P
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      as PB
 import           HStream.Utils                    (mkServerErrResp, returnResp)
+import qualified Prometheus                       as P
 
 --------------------------------------------------------------------------------
 
@@ -43,10 +48,13 @@ createSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal Subscription Subscription
   -> IO (ServerResponse 'Normal Subscription)
-createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = subExceptionHandle $ do
+createSubscriptionHandler ctx (ServerNormalRequest _metadata sub) = subExceptionHandle inc_failed $ do
   Log.debug $ "Receive createSubscription request: " <> Log.buildString' sub
+  P.withLabel subTotalHandleCountV "createSubscription" P.incCounter
   Core.createSubscription ctx sub
   returnResp sub
+ where
+   inc_failed = P.withLabel subFailedHandleCountV "createSubscription" P.incCounter
 
 --------------------------------------------------------------------------------
 
@@ -54,8 +62,9 @@ deleteSubscriptionHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteSubscriptionRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = subExceptionHandle $ do
+deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata req) = subExceptionHandle inc_failed $ do
   Log.debug $ "Receive deleteSubscription request: " <> Log.buildString' req
+  P.withLabel subTotalHandleCountV "deleteSubscription" P.incCounter
 
   let subId = deleteSubscriptionRequestSubscriptionId req
   hr <- readTVarIO loadBalanceHashRing
@@ -65,6 +74,8 @@ deleteSubscriptionHandler ctx@ServerContext{..} (ServerNormalRequest _metadata r
   Core.deleteSubscription ctx req
   Log.info " ----------- successfully deleted subscription  -----------"
   returnResp Empty
+ where
+   inc_failed = P.withLabel subFailedHandleCountV "deleteSubscription" P.incCounter
 
 -----------------------------------------------------------------------------------
 
@@ -74,6 +85,7 @@ checkSubscriptionExistHandler
   -> IO (ServerResponse 'Normal CheckSubscriptionExistResponse)
 checkSubscriptionExistHandler ServerContext {..} (ServerNormalRequest _metadata req@CheckSubscriptionExistRequest {..}) = do
   Log.debug $ "Receive checkSubscriptionExistHandler request: " <> Log.buildString (show req)
+  P.withLabel subTotalHandleCountV "checkSubscriptionExist" P.incCounter
   let sid = checkSubscriptionExistRequestSubscriptionId
   res <- P.checkIfExist @ZHandle @'SubRep sid zkHandle
   returnResp . CheckSubscriptionExistResponse $ res
@@ -83,11 +95,14 @@ listSubscriptionsHandler
   :: ServerContext
   -> ServerRequest 'Normal ListSubscriptionsRequest ListSubscriptionsResponse
   -> IO (ServerResponse 'Normal ListSubscriptionsResponse)
-listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = subExceptionHandle $ do
+listSubscriptionsHandler sc (ServerNormalRequest _metadata ListSubscriptionsRequest) = subExceptionHandle inc_failed $ do
   Log.debug "Receive listSubscriptions request"
+  P.withLabel subTotalHandleCountV "listSubscriptions" P.incCounter
   res <- ListSubscriptionsResponse <$> Core.listSubscriptions sc
   Log.debug $ Log.buildString "Result of listSubscriptions: " <> Log.buildString (show res)
   returnResp res
+ where
+   inc_failed = P.withLabel subFailedHandleCountV "listSubscription" P.incCounter
 -- --------------------------------------------------------------------------------
 
 streamingFetchHandler
@@ -125,8 +140,8 @@ subscriptionExceptionHandler = [
     return (StatusInvalidArgument, "subscriptionOffset is invalid."))
   ]
 
-subExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-subExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+subExceptionHandle :: IO() -> ExceptionHandle (ServerResponse 'Normal a)
+subExceptionHandle action = mkExceptionHandleWithAction action . setRespType mkServerErrResp $
   subscriptionExceptionHandler ++ defaultHandlers
 
 subStreamingExceptionHandle :: ExceptionHandle (ServerResponse 'BiDiStreaming a)

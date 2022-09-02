@@ -1,0 +1,41 @@
+groups:
+  - name: hstream_stream_metrics
+    rules:
+      # stream request basic metrics
+      - record: hstream:stream_requests:avg_request_num_1m
+        expr: sum by(handler, target_node_name) (rate(stream_total_request[1m]))
+      - record: hstream:stream_requests:failed_request_rate_1m
+        expr: sum by(handler, target_node_name) (rate(stream_fail_request[1m]) / rate(stream_total_request[1m]))
+
+      # subscription request basic metrics
+      - record: hstream:sub_requests:avg_request_num_1m
+        expr: sum by(handler, target_node_name) (rate(subscription_total_request[1m]))
+      - record: hstream:sub_requests:failed_request_rate_1m
+        expr: sum by(handler, target_node_name) (rate(subscription_fail_request[1m]) / rate(subscription_total_request[1m]))
+
+      # append metrics
+      - record: hstream:append:avg_append_bytes_per_stream_1m
+        expr: sum by(streamName, instance, target_node_name) (rate(total_append_bytes[1m]))
+      - record: hstream:append:avg_append_records_per_stream_1m
+        expr: sum by(streamName, instance, target_node_name) (rate(total_append_records[1m]))
+      - record: hstream:append:P90_append_latency_second_1m
+        expr: histogram_quantile(0.90, rate(append_latency_s_bucket[1m]))
+      - record: hstream:append:avg_append_latency_second_1m
+        expr: rate(append_latency_s_sum[1m]) / rate(append_latency_s_count[1m])
+
+  - name: hstream_resources_statistics
+    rules:
+      - record: hstream:resources:total_streams_num
+        expr: sum(total_streams)
+      - record: hstream:resources:total_shards_num_per_stream
+        expr: sum by(streamName) (total_shards)
+
+  - name: hstream_runtime_metrics
+    rules:
+      - record: hstream:runtime:avg_allocated_bytes_1m
+        expr: sum by (instance, target_node_name) (rate(ghc_allocated_bytes_total[1m]))
+      - record: hstream:runtime:avg_num_gcs_1m
+        expr: sum by (instance, target_node_name) (rate(ghc_gcs_total[1m]))
+      - record: hstream:runtime:gc_running_time_percent
+        expr: sum by (instance, target_node_name) (ghc_gc_elapsed_seconds_total / ghc_elapsed_seconds_total * 100)
+

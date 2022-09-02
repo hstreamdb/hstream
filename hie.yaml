@@ -9,6 +9,9 @@ cradle:
     - path: "common/test"
       component: "hstream-common:test:hstream-common-test"
 
+    - path: "common/metrics/."
+      component: "lib:hstream-common-metrics"
+
     - path: "common/stats/."
       component: "lib:hstream-common-stats"
 

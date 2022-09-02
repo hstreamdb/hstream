@@ -29,7 +29,7 @@ import           Control.Concurrent.STM            (readTVarIO)
 import           Control.Exception                 (Exception (displayException),
                                                     bracket, catch, throw,
                                                     throwIO)
-import           Control.Monad                     (forM, unless, when)
+import           Control.Monad                     (forM, unless, void, when)
 import qualified Data.ByteString                   as BS
 import           Data.Foldable                     (foldl')
 import qualified Data.HashMap.Strict               as HM
@@ -43,6 +43,10 @@ import qualified Z.Data.CBytes                     as CB
 
 import           HStream.Common.ConsistentHashing  (getAllocatedNodeId)
 import qualified HStream.Logger                    as Log
+import           HStream.Metrics.ShardMetrics      (shardsTotalNumGauge)
+import           HStream.Metrics.StreamMetrics     (appendLatencySnd,
+                                                    streamTotalAppendBytes,
+                                                    streamTotalAppendRecords)
 import           HStream.Server.Core.Common        (decodeRecordBatch)
 import           HStream.Server.Exception          (InvalidArgument (..),
                                                     StreamNotExist (..),
@@ -62,6 +66,7 @@ import           HStream.Server.Types              (ServerContext (..),
 import qualified HStream.Stats                     as Stats
 import qualified HStream.Store                     as S
 import           HStream.Utils
+import qualified Prometheus                        as P
 import           ZooKeeper.Exception               (ZNONODE (..))
 
 -------------------------------------------------------------------------------
@@ -83,6 +88,7 @@ createStream ServerContext{..} API.Stream{
     let shard = mkShardWithDefaultId streamId startKey endKey (fromIntegral shardCount)
     createShard scLDClient shard
   Log.debug $ "create shards for stream " <> Log.buildText streamStreamName <> ": " <> Log.buildString' (show shards)
+  P.withLabel shardsTotalNumGauge streamStreamName $ flip P.addGauge (fromIntegral shardCount)
 
   shardMp <- mkSharedShardMapWithShards shards
   modifyMVar_ shardInfo $ return . HM.insert streamStreamName shardMp
@@ -95,7 +101,10 @@ deleteStream :: ServerContext
 deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
   deleteStreamRequestStreamName = sName, ..} = do
   storeExists <- S.doesStreamExist scLDClient streamId
-  if storeExists then doDelete
+  if storeExists
+    then do
+      doDelete
+      P.removeLabel shardsTotalNumGauge sName
     else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
   where
     streamId = transToStreamName sName
@@ -146,7 +155,8 @@ append sc@ServerContext{..} request@API.AppendRequest{..} = do
   Stats.stream_time_series_add_append_in_requests scStatsHolder cStreamName 1
 
   append_start <- getPOSIXTime
-  resp <- appendStream sc request
+  resp <- P.observeDuration appendLatencySnd $ appendStream sc request
+  -- resp <- appendStream sc request
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendLatency =<< msecSince append_start
   Stats.serverHistogramAdd scStatsHolder Stats.SHL_AppendRequestLatency =<< msecSince recv_time
   return resp
@@ -168,6 +178,8 @@ appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
   Stats.stream_time_series_add_append_in_records scStatsHolder cStreamName (fromIntegral recordSize)
+  P.withLabel streamTotalAppendBytes appendRequestStreamName (\counter -> void $ P.addCounter counter (fromIntegral payloadSize))
+  P.withLabel streamTotalAppendRecords appendRequestStreamName (\counter -> void $ P.addCounter counter (fromIntegral recordSize))
   let rids = V.zipWith (API.RecordId shardId) (V.replicate (fromIntegral recordSize) appendCompLSN) (V.fromList [0..])
   return $ API.AppendResponse {
       appendResponseStreamName = appendRequestStreamName

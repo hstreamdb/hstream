@@ -94,6 +94,7 @@ data ServerOpts = ServerOpts
   , _ldAdminSendTimeout        :: !Int
   , _ldAdminRecvTimeout        :: !Int
   , _ldLogLevel                :: !Log.LDLogLevel
+  , _metricsPort               :: !Word16
 
   , _gossipOpts                :: !GossipOpts
   , _ioOptions                 :: !IO.IOOptions
@@ -145,6 +146,7 @@ data CliOptions = CliOptions
   , _ldAdminHost_        :: !(Maybe ByteString)
   , _ldAdminPort_        :: !(Maybe Int)
   , _ldLogLevel_         :: !(Maybe Log.LDLogLevel)
+  , _metricsPort_        :: !(Maybe Word16)
   , _storeConfigPath     :: !CBytes
 
   , _ioTasksPath_        :: !(Maybe Text)
@@ -179,6 +181,7 @@ cliOptionsParser = do
   _tlsCaPath_          <- optional tlsCaPath
   _ioTasksPath_        <- optional ioTasksPath
   _ioTasksNetwork_     <- optional ioTasksNetwork
+  _metricsPort_        <- optional metricsPort
   return CliOptions {..}
 
 parseJSONToOptions :: CliOptions -> Y.Object -> Y.Parser ServerOpts
@@ -190,6 +193,7 @@ parseJSONToOptions CliOptions {..} obj = do
   nodeAddress         <- nodeCfgObj .:  "address"
   nodeInternalPort    <- nodeCfgObj .:? "internal-port" .!= 6571
   advertisedListeners <- nodeCfgObj .:? "advertised-listeners"
+  monitorPort         <- nodeCfgObj .:? "metrics-port" .!= 9091
 
   zkuri             <- nodeCfgObj .:  "zkuri"
   serverCompression <- read <$> nodeCfgObj .:? "compression" .!= "lz4"
@@ -207,6 +211,7 @@ parseJSONToOptions CliOptions {..} obj = do
   let _serverInternalPort = fromMaybe nodeInternalPort _serverInternalPort_
   let _serverAddress      = fromMaybe nodeAddress _serverAddress_
   let _serverAdvertisedListeners = fromMaybe Map.empty advertisedListeners
+  let _metricsPort       = fromMaybe monitorPort _metricsPort_
 
   let _zkUri              = fromMaybe zkuri _zkUri_
   let _serverLogLevel     = fromMaybe (read nodeLogLevel) _serverLogLevel_
@@ -293,6 +298,13 @@ serverPort = option auto
   $  long "port" <> short 'p'
   <> metavar "INT"
   <> help "server port value"
+
+metricsPort :: O.Parser Word16
+metricsPort = option auto
+  $  long "metrics-port"
+  <> metavar "INT"
+  <> showDefault
+  <> help "metrics port value"
 
 serverAddress :: O.Parser String
 serverAddress = strOption

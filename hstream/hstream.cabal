@@ -141,6 +141,8 @@ library
     , Z-Data
     , Z-IO
     , zoovisitor
+    , prometheus-client
+    , hstream-common-metrics
 
   default-language:   Haskell2010
   default-extensions:
@@ -189,13 +191,17 @@ executable hstream-server
     , Z-Data
     , Z-IO
     , zoovisitor
+    , prometheus-client
+    , prometheus-metrics-ghc
+    , wai-middleware-prometheus
+    , warp
 
   if flag(hstream_use_hs_grpc)
     cpp-options: -DHStreamUseHsGrpc
 
   default-language: Haskell2010
   ghc-options:
-    -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1"
+    -threaded -rtsopts "-with-rtsopts=-N -A64m -n4m -qg -qn1 -T"
 
 executable hstream
   import:           shared-properties

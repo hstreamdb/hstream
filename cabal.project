@@ -9,6 +9,7 @@ packages:
   hstream-admin
   hstream-gossip
   hstream-diffflow
+  common/metrics/hstream-common-metrics.cabal
 
   external/hs-grpc/server/hs-grpc-server.cabal
   external/gRPC-haskell

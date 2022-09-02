@@ -170,6 +170,15 @@ mkExceptionHandle' whileEx handlers f =
   let handlers' = map (\(Handler h) -> Handler (\e -> whileEx e >> h e)) handlers
    in f `catches` handlers'
 
+mkExceptionHandleWithAction
+  :: IO ()
+  -> Handlers (ServerResponse t a)
+  -> IO (ServerResponse t a)
+  -> IO (ServerResponse t a)
+mkExceptionHandleWithAction action handlers f =
+  let handlers' = map (\(Handler h) -> Handler (\e -> action >> h e)) handlers
+   in f `catches` handlers'
+
 mkStatusDetails :: Exception a => a -> StatusDetails
 mkStatusDetails = StatusDetails . BS.pack . displayException
 

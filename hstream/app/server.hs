@@ -7,57 +7,62 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import           Control.Concurrent               (MVar, forkIO, newMVar,
-                                                   readMVar, swapMVar)
-import           Control.Concurrent.Async         (concurrently_)
-import           Control.Concurrent.STM           (TVar, atomically, retry,
-                                                   writeTVar)
-import           Control.Monad                    (forM_, void, when)
-import           Data.ByteString                  (ByteString)
-import qualified Data.ByteString.Short            as BS
-import qualified Data.Map                         as Map
-import qualified Data.Text                        as T
-import           Data.Text.Encoding               (encodeUtf8)
-import           Data.Word                        (Word16)
-import qualified Network.GRPC.HighLevel           as GRPC
-import qualified Network.GRPC.HighLevel.Client    as GRPC
-import qualified Network.GRPC.HighLevel.Generated as GRPC
-import           Text.RawString.QQ                (r)
-import           Z.Data.CBytes                    (CBytes)
-import           ZooKeeper                        (withResource,
-                                                   zookeeperResInit)
-import           ZooKeeper.Types                  (ZHandle, ZooEvent, ZooState,
-                                                   pattern ZooConnectedState,
-                                                   pattern ZooConnectingState,
-                                                   pattern ZooSessionEvent)
+import           Control.Concurrent                (MVar, forkIO, newMVar,
+                                                    readMVar, swapMVar)
+import           Control.Concurrent.Async          (Concurrently (..),
+                                                    concurrently_)
+import           Control.Concurrent.STM            (TVar, atomically, retry,
+                                                    writeTVar)
+import           Control.Monad                     (forM_, void, when)
+import           Data.ByteString                   (ByteString)
+import qualified Data.Map                          as Map
+import qualified Data.Text                         as T
+import           Data.Text.Encoding                (encodeUtf8)
+import           Data.Word                         (Word16)
+import qualified Network.GRPC.HighLevel            as GRPC
+import qualified Network.GRPC.HighLevel.Client     as GRPC
+import qualified Network.GRPC.HighLevel.Generated  as GRPC
+import           Text.RawString.QQ                 (r)
+import           Z.Data.CBytes                     (CBytes)
+import           ZooKeeper                         (withResource,
+                                                    zookeeperResInit)
+import           ZooKeeper.Types                   (ZHandle, ZooEvent, ZooState,
+                                                    pattern ZooConnectedState,
+                                                    pattern ZooConnectingState,
+                                                    pattern ZooSessionEvent)
 
-import           HStream.Common.ConsistentHashing (HashRing, constructServerMap)
-import           HStream.Gossip                   (GossipContext (..),
-                                                   defaultGossipOpts,
-                                                   getMemberListSTM,
-                                                   initGossipContext,
-                                                   startGossip)
-import qualified HStream.Logger                   as Log
-import           HStream.Server.Config            (AdvertisedListeners,
-                                                   ServerOpts (..), TlsConfig,
-                                                   advertisedListenersToPB,
-                                                   getConfig)
-import           HStream.Server.Handler           (handlers)
-import           HStream.Server.HStreamApi        (NodeState (..),
-                                                   hstreamApiServer)
-import qualified HStream.Server.HStreamInternal   as I
-import           HStream.Server.Initialization    (initializeServer,
-                                                   initializeTlsConfig)
-import           HStream.Server.Persistence       (initializeAncestors)
-import           HStream.Server.Types             (ServerContext (..),
-                                                   ServerState)
-import qualified HStream.Store.Logger             as Log
-import           HStream.Utils                    (cbytes2bs, pattern EnumPB,
-                                                   setupSigsegvHandler)
+import           HStream.Common.ConsistentHashing  (HashRing,
+                                                    constructServerMap)
+import           HStream.Gossip                    (GossipContext (..),
+                                                    defaultGossipOpts,
+                                                    getMemberListSTM,
+                                                    initGossipContext,
+                                                    startGossip)
+import qualified HStream.Logger                    as Log
+import           HStream.Server.Config             (AdvertisedListeners,
+                                                    ServerOpts (..), TlsConfig,
+                                                    advertisedListenersToPB,
+                                                    getConfig)
+import           HStream.Server.Handler            (handlers)
+import           HStream.Server.HStreamApi         (NodeState (..),
+                                                    hstreamApiServer)
+import qualified HStream.Server.HStreamInternal    as I
+import           HStream.Server.Initialization     (initializeServer,
+                                                    initializeTlsConfig)
+import           HStream.Server.Persistence        (initializeAncestors)
+import           HStream.Server.Types              (ServerContext (..),
+                                                    ServerState)
+import qualified HStream.Store.Logger              as Log
+import           HStream.Utils                     (cbytes2bs, pattern EnumPB,
+                                                    setupSigsegvHandler)
+import qualified Network.Wai.Handler.Warp          as Warp
+import qualified Network.Wai.Middleware.Prometheus as P
+import qualified Prometheus                        as P
+import           Prometheus.Metric.GHC             (ghcMetrics)
 
 #ifdef HStreamUseHsGrpc
-import qualified HsGrpc.Server                    as HsGrpc
-import qualified HStream.Server.HsGrpcHandler     as HsGrpc
+import qualified HsGrpc.Server                     as HsGrpc
+import qualified HStream.Server.HsGrpcHandler      as HsGrpc
 #endif
 
 main :: IO ()
@@ -71,6 +76,8 @@ app config@ServerOpts{..} = do
 
   -- TODO: remove me
   serverState <- newMVar (EnumPB NodeStateStarting)
+  -- for prometheus
+  _ <- P.register ghcMetrics
 
   let zkRes = zookeeperResInit _zkUri (Just $ globalWatcherFn serverState) 5000 Nothing 0
       serverHostBS = cbytes2bs _serverHost
@@ -89,8 +96,10 @@ app config@ServerOpts{..} = do
     serverContext <- initializeServer config gossipContext zk serverState
     void . forkIO $ updateHashRing gossipContext (loadBalanceHashRing serverContext)
 
-    concurrently_ (startGossip gossipContext)
-      (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
+    void $ runConcurrently $ (,,)
+      <$> Concurrently (startGossip gossipContext)
+      <*> Concurrently (serve serverHostBS _serverPort _tlsConfig serverContext _serverAdvertisedListeners)
+      <*> Concurrently (Warp.run (fromIntegral _metricsPort) $ P.prometheus P.def {P.prometheusInstrumentPrometheus = False} P.metricsApp)
 
 serve :: ByteString
       -> Word16

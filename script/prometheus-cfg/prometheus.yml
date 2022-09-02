@@ -11,9 +11,10 @@ rule_files:
   - "net.yml"
   - "cluster.yml"
   - "zk.yml"
+  - "hstream.yml"
 
 scrape_configs:
-  - job_name: "hstream-server"
+  - job_name: "node-stats"
     scrape_interval: 5s
     static_configs:
       - targets: ["192.168.0.1:9100"]
@@ -28,12 +29,24 @@ scrape_configs:
         labels:
           group: "hbench-0003"
 
-  - job_name: "hstream-client"
-    scrape_interval: 5s
-    static_configs:
       - targets: ["192.168.0.4：9100"]
         labels:
           group: "hclient-0001"
+
+  - job_name: "hstream-metrics"
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ "192.168.0.1:9091" ]
+        labels:
+          group: "hbench-0001"
+
+      - targets: [ "192.168.0.2:9091" ]
+        labels:
+          group: "hbench-0002"
+
+      - targets: [ "192.168.0.3:9091" ]
+        labels:
+          group: "hbench-0003"
 
   - job_name: "zookeeper"
     scrape_interval: 10s
