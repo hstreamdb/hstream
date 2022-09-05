@@ -52,20 +52,20 @@ common shared-properties
 library
   import:             shared-properties
   exposed-modules:
-    HStream.MetaStore.Types
     HStream.Common.ConsistentHashing
     HStream.Common.Query
-    HStream.Common.RqliteUtils
     HStream.Common.Types
     HStream.Foreign
     HStream.Logger
+    HStream.MetaStore.RqliteUtils
+    HStream.MetaStore.Types
+    HStream.MetaStore.ZookeeperUtils
     HStream.Server.HStreamApi
     HStream.Server.HStreamInternal
     HStream.ThirdParty.Protobuf
     HStream.Utils
 
   other-modules:
-    HStream.MetaStore.ZookeeperUtils
     Google.Protobuf.Empty
     Google.Protobuf.Struct
     HStream.Utils.BuildRecord
@@ -178,6 +178,7 @@ test-suite hstream-common-test
     HStream.CodecSpec
     HStream.ConsistentHashingSpec
     HStream.RqliteUtilsSpec
+    HStream.TestUtils
     HStream.UtilsSpec
 
   build-depends:
@@ -196,6 +197,7 @@ test-suite hstream-common-test
     , vector
     , Z-Data
     , Z-IO
+    , zoovisitor
 
   default-extensions:
     DeriveGeneric
