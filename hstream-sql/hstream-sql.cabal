@@ -70,7 +70,6 @@ library
     , base                  >=4.11  && <5
     , binary
     , bytestring            ^>=0.10
-    , clickhouse-haskell
     , diff-flow
     , extra
     , hstream-common
