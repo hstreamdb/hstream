@@ -34,6 +34,9 @@ class Validate t where
   {-# MINIMAL validate #-}
 
 --------------------------------- Basic Types ----------------------------------
+instance Validate DataType where
+  validate = return
+
 instance Validate PNInteger where
   validate = return
 
@@ -86,13 +89,8 @@ instance Validate Interval where
     return i
 
 -- 1. only supports "col" and "stream.col"
--- TODO: "col[n]" and "col.x" are not supported yet
 instance Validate ColName where
-  validate c = case c of
-    (ColNameSimple _ (Ident _)) -> Right c
-    (ColNameStream _ (Ident _) (Ident _)) -> Right c
-    (ColNameInner pos _ _) -> Left $ buildSQLException ParseException pos "Nested column name is not supported yet"
-    (ColNameIndex pos _ _) -> Left $ buildSQLException ParseException pos "Nested column name is not supported yet"
+  validate = return
 
 -- 1. Aggregate functions can not be nested
 instance Validate SetFunc where
@@ -128,6 +126,9 @@ instance Validate ScalarFunc where
     where expr    = getValueExpr f
           argType = getScalarArgType f
 
+instance Validate LabelledValueExpr where
+  validate expr@(DLabelledValueExpr _ e1 e2) = validate e1 >> validate e2 >> return expr
+
 --------------------------------------- ValueExpr ------------------------------
 
 -- 1. Add, Sub and Mul: exprs should be Num
@@ -137,6 +138,20 @@ instance Validate ScalarFunc where
 -- 4. Cols and Aggs should be legal
 -- 5. Scalar functions should not be applied to aggs
 instance Validate ValueExpr where
+  validate expr@ExprCast1{} = return expr
+  validate expr@ExprCast2{} = return expr
+  validate expr@(ExprArr _ es) = mapM_ validate es >> return expr
+  validate expr@(ExprMap _ les) = mapM_ validate les >> return expr
+  validate expr@ExprEQ{} = isBoolExpr expr
+  validate expr@ExprNEQ{} = isBoolExpr expr
+  validate expr@ExprLT{} = isBoolExpr expr
+  validate expr@ExprGT{} = isBoolExpr expr
+  validate expr@ExprLEQ{} = isBoolExpr expr
+  validate expr@ExprGEQ{} = isBoolExpr expr
+  validate expr@(ExprAccessMap _ e1 e2) = validate e1 >> validate e2 >> return expr
+  validate expr@(ExprAccessArray _ e _) = validate e >> return expr
+  validate expr@(ExprSubquery _ select) = validate select >> return expr
+
   validate expr@ExprAdd{}    = isNumExpr expr
   validate expr@ExprSub{}    = isNumExpr expr
   validate expr@ExprMul{}    = isNumExpr expr
@@ -164,6 +179,20 @@ instance Validate ValueExpr where
 
 isNumExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isNumExpr expr = case expr of
+  (ExprCast1 _ e typ) -> validate e >> isNumType typ >> return expr
+  (ExprCast2 _ e typ) -> validate e >> isNumType typ >> return expr
+  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an array"
+  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a map"
+  (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprLT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprLEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprAccessArray _ e _) -> validate e >> return expr
+  (ExprSubquery _ select) -> validate select >> return expr
+
   (ExprAdd _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
   (ExprMul _ e1 e2)    -> isNumExpr e1 >> isNumExpr e2 >> return expr
@@ -177,8 +206,6 @@ isNumExpr expr = case expr of
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Time"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Interval"
-  (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Array"
-  (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
@@ -193,9 +220,30 @@ isNumExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeNum funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  where
+    isNumType :: DataType -> Either SomeSQLException DataType
+    isNumType typ = case typ of
+      TypeInteger{} -> return typ
+      TypeFloat{} -> return typ
+      TypeNumeric{} -> return typ
+      _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not a numeric type)"
 
 isFloatExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isFloatExpr expr = case expr of
+  (ExprCast1 _ e typ) -> validate e >> isFloatType typ >> return expr
+  (ExprCast2 _ e typ) -> validate e >> isFloatType typ >> return expr
+  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an array"
+  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got a map"
+  (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprLT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprLEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprAccessArray _ e _) -> validate e >> return expr
+  (ExprSubquery _ select) -> validate select >> return expr
+
   (ExprAdd _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
   (ExprMul _ e1 e2)    -> isFloatExpr e1 >> isFloatExpr e2 >> return expr
@@ -209,8 +257,6 @@ isFloatExpr expr = case expr of
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Time"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Interval"
-  (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Array"
-  (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
@@ -225,9 +271,29 @@ isFloatExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeFloat funcType then return expr
                                 else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  where
+    isFloatType :: DataType -> Either SomeSQLException DataType
+    isFloatType typ = case typ of
+      TypeFloat{} -> return typ
+      TypeNumeric{} -> return typ
+      _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not a float type)"
 
 isOrdExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isOrdExpr expr = case expr of
+  (ExprCast1 _ e typ) -> validate e >> isOrdType typ >> return expr
+  (ExprCast2 _ e typ) -> validate e >> isOrdType typ >> return expr
+  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got an array"
+  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a map"
+  (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprLT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprLEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprAccessArray _ e _) -> validate e >> return expr
+  (ExprSubquery _ select) -> validate select >> return expr
+
   ExprAdd{}    -> isNumExpr expr
   ExprSub{}    -> isNumExpr expr
   ExprMul{}    -> isNumExpr expr
@@ -241,8 +307,6 @@ isOrdExpr expr = case expr of
   (ExprDate _ date) -> validate date >> return expr
   (ExprTime _ time) -> validate time >> return expr
   (ExprInterval _ interval) -> validate interval >> return expr
-  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got an Array"
-  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a Map"
   (ExprColName _ _) -> Right expr-- inaccurate
   (ExprRaw _ _)     -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
@@ -257,9 +321,34 @@ isOrdExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeOrd funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  where
+    isOrdType :: DataType -> Either SomeSQLException DataType
+    isOrdType typ = case typ of
+      TypeInteger{} -> return typ
+      TypeFloat{} -> return typ
+      TypeNumeric{} -> return typ
+      TypeText{} -> return typ
+      TypeDate{} -> return typ
+      TypeTime{} -> return typ
+      TypeInterval{} -> return typ
+      _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not a comparable type)"
 
 isBoolExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isBoolExpr expr = case expr of
+  (ExprCast1 _ e typ) -> validate e >> isBoolType typ >> return expr
+  (ExprCast2 _ e typ) -> validate e >> isBoolType typ >> return expr
+  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got an array"
+  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a map"
+  (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprLT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprLEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprAccessArray _ e _) -> validate e >> return expr
+  (ExprSubquery _ select) -> validate select >> return expr
+
   (ExprAdd pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSub pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprMul pos _ _)  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -273,8 +362,6 @@ isBoolExpr expr = case expr of
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
-  (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
-  (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -291,9 +378,29 @@ isBoolExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeBool funcType then return expr
                                else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  where
+    isBoolType :: DataType -> Either SomeSQLException DataType
+    isBoolType typ = case typ of
+      TypeBoolean{} -> return typ
+      _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not a boolean type)"
+
 
 isIntExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isIntExpr expr = case expr of
+  (ExprCast1 _ e typ) -> validate e >> isIntType typ >> return expr
+  (ExprCast2 _ e typ) -> validate e >> isIntType typ >> return expr
+  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected an integer expression but got an array"
+  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected an integer expression but got a map"
+  (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprLT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprLEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprAccessArray _ e _) -> validate e >> return expr
+  (ExprSubquery _ select) -> validate select >> return expr
+
   (ExprAdd _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
   (ExprSub _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
   (ExprMul _ e1 e2)    -> isIntExpr e1 >> isIntExpr e2 >> return expr
@@ -307,8 +414,6 @@ isIntExpr expr = case expr of
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Time"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got an Interval"
-  (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected an integral expression but got an Array"
-  (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _))    -> Right expr
@@ -323,9 +428,29 @@ isIntExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeInt funcType then return expr
                               else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  where
+    isIntType :: DataType -> Either SomeSQLException DataType
+    isIntType typ = case typ of
+      TypeInteger{} -> return typ
+      TypeNumeric{} -> return typ
+      _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not an integer type)"
 
 isStringExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
 isStringExpr expr = case expr of
+  (ExprCast1 _ e typ) -> validate e >> isStringType typ >> return expr
+  (ExprCast2 _ e typ) -> validate e >> isStringType typ >> return expr
+  (ExprArr pos _) -> Left $ buildSQLException ParseException pos "Expected a string expression but got an array"
+  (ExprMap pos _) -> Left $ buildSQLException ParseException pos "Expected a string expression but got a map"
+  (ExprEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprNEQ _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprLT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGT _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprLEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprGEQ _ e1 e2) -> isOrdExpr e1 >> isOrdExpr e2 >> return expr
+  (ExprAccessMap _ e1 e2) -> validate e1 >> validate e2 >> return expr
+  (ExprAccessArray _ e _) -> validate e >> return expr
+  (ExprSubquery _ select) -> validate select >> return expr
+
   (ExprAdd pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprSub pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
   (ExprMul pos _ _)    -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
@@ -339,8 +464,6 @@ isStringExpr expr = case expr of
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Time"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Interval"
-  (ExprArr pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Array"
-  (ExprMap pos _)      -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Map"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _))    -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
@@ -355,9 +478,29 @@ isStringExpr expr = case expr of
     let funcType = getScalarFuncType f
      in if isTypeString funcType then return expr
                                  else Left $ buildSQLException ParseException (getPos f) "Argument type mismatched"
+  where
+    isStringType :: DataType -> Either SomeSQLException DataType
+    isStringType typ = case typ of
+      TypeText{} -> return typ
+      _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not a string type)"
+
 
 -- For validating SearchCond
 notAggregateExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
+notAggregateExpr expr@(ExprCast1 _ e _) = notAggregateExpr e >> return expr
+notAggregateExpr expr@(ExprCast2 _ e _) = notAggregateExpr e >> return expr
+notAggregateExpr expr@(ExprArr _ es) = mapM_ notAggregateExpr es >> return expr
+notAggregateExpr expr@(ExprMap _ les) = mapM_ (\le@(DLabelledValueExpr _ e1 e2) -> notAggregateExpr e1 >> notAggregateExpr e2 >> return le) les >> return expr
+notAggregateExpr expr@(ExprEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprNEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprLT _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprGT _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprLEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprGEQ _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprAccessMap _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
+notAggregateExpr expr@(ExprAccessArray _ e _) = notAggregateExpr e >> return expr
+notAggregateExpr expr@(ExprSubquery _ _) = return expr
+
 notAggregateExpr (ExprSetFunc pos _) = Left $ buildSQLException ParseException pos "Aggregate functions are not allowed in WHERE clause, HAVING clause and JOIN condition"
 notAggregateExpr (ExprScalarFunc _ (ScalarFuncSin _ e)) = notAggregateExpr e
 notAggregateExpr (ExprScalarFunc _ (ScalarFuncAbs _ e)) = notAggregateExpr e
@@ -366,13 +509,23 @@ notAggregateExpr expr@(ExprSub _ e1 e2) = notAggregateExpr e1 >> notAggregateExp
 notAggregateExpr expr@(ExprMul _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprAnd _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
 notAggregateExpr expr@(ExprOr  _ e1 e2) = notAggregateExpr e1 >> notAggregateExpr e2 >> return expr
-notAggregateExpr expr@(ExprArr _ es)    = mapM_ notAggregateExpr es >> return expr
-notAggregateExpr expr@(ExprMap _ es)    = mapM_ (notAggregateExpr . extractExpr) es >> return expr
-  where extractExpr (DLabelledValueExpr _ _ e) = e
 notAggregateExpr expr = return expr
 
 -- For validating Insert
 isConstExpr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
+isConstExpr expr@(ExprCast1 _ e _) = isConstExpr e >> return expr
+isConstExpr expr@(ExprCast2 _ e _) = isConstExpr e >> return expr
+isConstExpr expr@(ExprArr _ es) = mapM_ isConstExpr es >> return expr
+isConstExpr expr@(ExprMap _ les) = mapM_ (\le@(DLabelledValueExpr _ e1 e2) -> isConstExpr e1 >> isConstExpr e2 >> return le) les >> return expr
+isConstExpr expr@(ExprEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+isConstExpr expr@(ExprNEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+isConstExpr expr@(ExprLT _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+isConstExpr expr@(ExprGT _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+isConstExpr expr@(ExprLEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+isConstExpr expr@(ExprGEQ _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+isConstExpr expr@(ExprAccessArray _ e _) = isConstExpr e >> return expr
+isConstExpr expr@(ExprAccessMap _ e1 e2) = isConstExpr e1 >> isConstExpr e2 >> return expr
+
 isConstExpr expr@ExprInt{}      = Right expr
 isConstExpr expr@ExprNum{}      = Right expr
 isConstExpr expr@ExprString{}   = Right expr
@@ -381,36 +534,7 @@ isConstExpr expr@ExprBool{}     = Right expr
 isConstExpr expr@ExprDate{}     = Right expr
 isConstExpr expr@ExprTime{}     = Right expr
 isConstExpr expr@ExprInterval{} = Right expr
-isConstExpr expr@ExprArr{}      = isConstExprArr expr
-isConstExpr expr@ExprMap{}      = isConstExprMap expr
 isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only supports constant values"
-
--- If all elements in an array are const expr, the array is a const expr.
-isConstExprArr :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-isConstExprArr expr@(ExprArr a xs) = h xs where
-  h :: [ValueExpr] -> Either SomeSQLException ValueExpr
-  h [] = pure expr
-  h (x : xs) = do
-    x  <- isConstExpr x
-    xs <- h xs
-    case xs of
-      ExprArr _ xs -> pure $ ExprArr a (x : xs)
-      _ -> Left $ buildSQLException ParseException Nothing "Impossible happened"
-isConstExprArr _ = Left $ buildSQLException ParseException Nothing "Impossible happened"
-
--- If all elements in an map are const expr, the map is a const expr.
-isConstExprMap :: HasCallStack => ValueExpr -> Either SomeSQLException ValueExpr
-isConstExprMap expr@(ExprMap a xs) = h xs where
-  h :: [LabelledValueExpr] -> Either SomeSQLException ValueExpr
-  h [] = pure expr
-  h (x : xs) = do
-    let DLabelledValueExpr _ _ val = x
-    val <- isConstExpr val
-    xs  <- h xs
-    case xs of
-      ExprMap _ xs -> pure $ ExprMap a (x : xs)
-      _ -> Left $ buildSQLException ParseException Nothing "Impossible happened"
-isConstExprMap _ = Left $ buildSQLException ParseException Nothing "Impossible happened"
 
 ------------------------------------- SELECT -----------------------------------
 -- Sel
@@ -446,34 +570,17 @@ instance Validate From where
     return from
 
 instance Validate TableRef where
-  validate r@(TableRefSimple _ _) = Right r
-  validate r@(TableRefSubquery _ select) = validate select >> return r
-  validate r@(TableRefUnion _ ref1 ref2) = validate ref1 >> validate ref2 >> return r
   validate r@(TableRefAs _ ref _) = validate ref >> return r
-
--- 1. Exprs should be legal
--- 2. No aggregate Expr
--- 3. For LT, GT, LEQ, GEQ and Between SearchConds, every Expr should be comparable
-instance Validate SearchCond where
-  validate cond@(CondOr _ c1 c2)    = validate c1 >> validate c2 >> return cond
-  validate cond@(CondAnd _ c1 c2)   = validate c1 >> validate c2 >> return cond
-  validate cond@(CondNot _ c)       = validate c  >> return cond
-  validate cond@(CondOp _ e1 op e2) = do
-    void $ notAggregateExpr e1 >> notAggregateExpr e2
-    case op of
-      CompOpEQ _ -> validate e1  >> validate e2  >> return cond
-      CompOpNE _ -> validate e1  >> validate e2  >> return cond
-      _          -> isOrdExpr e1 >> isOrdExpr e2 >> return cond
-  validate cond@(CondBetween _ e1 e e2) = do
-    void $ notAggregateExpr e1 >> notAggregateExpr e2 >> notAggregateExpr e
-    void $ isOrdExpr e1 >> isOrdExpr e2 >> isOrdExpr e
-    return cond
+  validate r@(TableRefJoinOn _ ref1 jointype ref2 expr) = validate ref1 >> validate ref2 >> validate expr >> return r
+  validate r@(TableRefJoinUsing _ ref1 jointype ref2 col) = validate ref1 >> validate ref2 >> validate col >> return r
+  validate r@(TableRefIdent _ _) = Right r
+  validate r@(TableRefSubquery _ select) = validate select >> return r
 
 -- Where
--- 1. SearchCond in it should be legal
+-- 1. ValueExpr in it should be legal
 instance Validate Where where
   validate whr@(DWhereEmpty _) = Right whr
-  validate whr@(DWhere _ cond) = validate cond >> return whr
+  validate whr@(DWhere _ expr) = validate expr >> return whr
 
 -- GroupBy
 -- 1. GROUP BY onlu supports:
@@ -500,10 +607,10 @@ instance Validate Window where
   validate win@(SlidingWindow pos interval) = validate interval >> return win
 
 -- Having
--- 1. SearchCond in it should be legal
+-- 1. ValueExpr in it should be legal
 instance Validate Having where
   validate hav@(DHavingEmpty _) = Right hav
-  validate hav@(DHaving _ cond) = validate cond >> return hav
+  validate hav@(DHaving _ expr) = validate expr >> return hav
 
 ---- Select
 instance Validate Select where
@@ -513,55 +620,7 @@ instance Validate Select where
     void $ validate whr
     void $ validate grp
     void $ validate hav
-    matchSelWithFrom
-    matchWhrWithFrom
-    matchSelWithGrp
     return select
-      where
-      matchSelWithFrom =
-        case selList of
-          SelListAsterisk _        -> Right ()
-          SelListSublist pos' cols -> do
-            let (anySimpleRef, selRefNames) = extractSelRefNames cols
-                refNames                    = extractRefNames refs
-            unless (all (`L.elem` refNames) selRefNames)
-              (Left $ buildSQLException ParseException pos' "All stream names in SELECT clause have to be explicitly specified in FROM clause")
-            return ()
-      matchWhrWithFrom =
-        case whr of
-          DWhereEmpty _    -> Right ()
-          DWhere pos' cond -> do
-            let (anySimpleRef, whrRefNames) = extractCondRefNames cond
-                refNames                    = extractRefNames refs
-            unless (all (`L.elem` refNames) whrRefNames)
-              (Left $ buildSQLException ParseException pos' "All stream names in WHERE clause have to be explicitly specified in FROM clause")
-            return ()
-      -- TODO: groupby has to match aggregate function
-      matchSelWithGrp =
-        let anyAgg = anyAggInSelList selList
-         in case grp of
-              DGroupByEmpty _ -> case anyAgg of
-                True  -> Left $ buildSQLException ParseException selPos "An aggregate function has to be with an GROUP BY clause"
-                False -> Right ()
-              DGroupBy pos  _ -> case anyAgg of
-                True  -> Right ()
-                False -> Left $ buildSQLException ParseException pos "There should be an aggregate function in the SELECT clause when GROUP BY clause exists"
-      -- TODO: matchHavWithSel
-
------------------------------------ SELECTVIEW ---------------------------------
-instance Validate SelectView where
-  validate sv@(DSelectView _ sel frm whr) = do
-    validate sel >> validate frm >> validate whr
-    validateSel sel >> validateFrm frm
-    return sv
-    where
-      validateSel sel@(DSel _ (SelListAsterisk _)) = return sel
-      validateSel sel@(DSel _ (SelListSublist _ dcols)) = mapM_ validate dcols >> return sel
-
-      validateFrm frm@(DFrom _ refs) = mapM_ validateRef refs >> return frm
-
-      validateRef ref@(TableRefSimple _ _) = return ref
-      validateRef ref = Left $ buildSQLException ParseException (getPos ref) "Only a view name is allowed in FROM clause when selecting from a VIEW"
 
 ------------------------------------- EXPLAIN ----------------------------------
 instance Validate Explain where
@@ -649,7 +708,6 @@ instance Validate Terminate where
 ------------------------------------- SQL --------------------------------------
 instance Validate SQL where
   validate sql@(QSelect      _   select) = validate select   >> return sql
-  validate sql@(QSelectView  _  selView) = validate selView  >> return sql
   validate sql@(QCreate      _   create) = validate create   >> return sql
   validate sql@(QInsert      _   insert) = validate insert   >> return sql
   validate sql@(QShow        _    show_) = validate show_    >> return sql
