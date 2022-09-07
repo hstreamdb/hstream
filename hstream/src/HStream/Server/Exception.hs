@@ -6,23 +6,22 @@
 
 module HStream.Server.Exception where
 
-import           Control.Concurrent.Async             (AsyncCancelled (..))
-import           Control.Exception                    (Exception (..),
-                                                       Handler (Handler),
-                                                       IOException,
-                                                       SomeException, catches,
-                                                       displayException)
-import qualified Data.ByteString.Char8                as BS
-import           Data.Text                            (Text)
-import           Data.Text.Encoding                   (encodeUtf8)
+import           Control.Concurrent.Async          (AsyncCancelled (..))
+import           Control.Exception                 (Exception (..),
+                                                    Handler (Handler),
+                                                    IOException, SomeException,
+                                                    catches, displayException)
+import qualified Data.ByteString.Char8             as BS
+import           Data.Text                         (Text)
+import           Data.Text.Encoding                (encodeUtf8)
 import           Network.GRPC.HighLevel.Client
-import           Network.GRPC.HighLevel.Server        (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
+import           Network.GRPC.HighLevel.Server     (ServerResponse (ServerBiDiResponse, ServerWriterResponse))
 import           ZooKeeper.Exception
 
-import qualified HStream.Logger                       as Log
-import           HStream.Server.Persistence.Exception (PersistenceException)
-import qualified HStream.Store                        as Store
-import           HStream.Utils                        (mkServerErrResp)
+import qualified HStream.Logger                    as Log
+import           HStream.Server.MetaData.Exception (PersistenceException)
+import qualified HStream.Store                     as Store
+import           HStream.Utils                     (mkServerErrResp)
 
 defaultExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
 defaultExceptionHandle = mkExceptionHandle $ setRespType mkServerErrResp defaultHandlers

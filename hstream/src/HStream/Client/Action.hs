@@ -64,14 +64,14 @@ terminateQueries :: TerminationSelection
   -> IO (ClientResult 'Normal API.TerminateQueriesResponse )
 terminateQueries (OneQuery qid) API.HStreamApi{..} =
   hstreamApiTerminateQueries
-    (mkClientNormalRequest' def{API.terminateQueriesRequestQueryId = V.singleton $ cBytesToText qid})
+    (mkClientNormalRequest' def{API.terminateQueriesRequestQueryId = V.singleton qid})
 terminateQueries AllQueries API.HStreamApi{..} =
   hstreamApiTerminateQueries
     (mkClientNormalRequest' def{API.terminateQueriesRequestAll = True})
 terminateQueries (ManyQueries qids) API.HStreamApi{..} =
   hstreamApiTerminateQueries
     (mkClientNormalRequest'
-      def {API.terminateQueriesRequestQueryId = V.fromList $ cBytesToText <$> qids})
+      def {API.terminateQueriesRequestQueryId = V.fromList qids})
 
 dropAction :: Bool -> DropObject -> Action Empty
 dropAction ignoreNonExist dropObject API.HStreamApi{..}  = do

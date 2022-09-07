@@ -10,17 +10,18 @@ import qualified Data.List                   as L
 import qualified Data.Map.Strict             as Map
 import qualified Data.Vector                 as V
 import           Data.Word                   (Word32, Word64)
-import qualified Z.Data.CBytes               as CB
 
+import qualified Data.Text                   as T
 import qualified HStream.Logger              as Log
+import qualified HStream.MetaStore.Types     as M
 import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence  as P
+import qualified HStream.Server.MetaData     as P
 import           HStream.Server.Types
 import           HStream.SQL.Codegen
 import qualified HStream.Store               as HS
 import           HStream.ThirdParty.Protobuf (Empty (Empty))
-import           HStream.Utils               (TaskStatus (..),
+import           HStream.Utils               (TaskStatus (..), cBytesToText,
                                               decodeByteStringBatch)
 
 deleteStoreStream
@@ -33,15 +34,14 @@ deleteStoreStream sc@ServerContext{..} s checkIfExist = do
   if streamExists then clean >> return Empty else ignore checkIfExist
   where
     clean = do
-      terminateQueryAndRemove sc (HS.streamName s)
-      terminateRelatedQueries sc (HS.streamName s)
+      terminateQueryAndRemove sc (cBytesToText $ HS.streamName s)
+      terminateRelatedQueries sc (cBytesToText $ HS.streamName s)
       HS.removeStream scLDClient s
     ignore True  = return Empty
     ignore False = do
       Log.warning $ "Drop: tried to remove a nonexistent object: "
                  <> Log.buildCBytes (HS.streamName s)
       throwIO ObjectNotExist
-
 --------------------------------------------------------------------------------
 
 insertAckedRecordId
@@ -151,9 +151,9 @@ decodeRecordBatch dataRecord = (logId, batchId, shardRecordIds, receivedRecords)
 --------------------------------------------------------------------------------
 -- Query
 
-terminateQueryAndRemove :: ServerContext -> CB.CBytes -> IO ()
+terminateQueryAndRemove :: ServerContext -> T.Text -> IO ()
 terminateQueryAndRemove sc@ServerContext{..} objectId = do
-  queries <- P.getQueries zkHandle
+  queries <- M.listMeta zkHandle
   let queryExists = L.find (\query -> P.getQuerySink query == objectId) queries
   case queryExists of
     Just query -> do
@@ -162,7 +162,7 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
         <> " with query id " <> show (P.queryId query)
         <> " writes to the stream being dropped " <> show objectId
       void $ handleQueryTerminate sc (OneQuery $ P.queryId query)
-      P.removeQuery' (P.queryId query) zkHandle
+      M.deleteMeta @P.PersistentQuery (P.queryId query) Nothing zkHandle
       Log.debug . Log.buildString
          $ "TERMINATE: query " <> show (P.queryType query)
         <> " has been removed"
@@ -170,16 +170,16 @@ terminateQueryAndRemove sc@ServerContext{..} objectId = do
       Log.debug . Log.buildString
         $ "TERMINATE: found no query writes to the stream being dropped " <> show objectId
 
-terminateRelatedQueries :: ServerContext -> CB.CBytes -> IO ()
+terminateRelatedQueries :: ServerContext -> T.Text -> IO ()
 terminateRelatedQueries sc@ServerContext{..} name = do
-  queries <- P.getQueries zkHandle
+  queries <- M.listMeta zkHandle
   let getRelatedQueries = [P.queryId query | query <- queries, name `elem` P.getRelatedStreams query]
   Log.debug . Log.buildString
      $ "TERMINATE: the queries related to the terminating stream " <> show name
     <> ": " <> show getRelatedQueries
   mapM_ (handleQueryTerminate sc . OneQuery) getRelatedQueries
 
-handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [CB.CBytes]
+handleQueryTerminate :: ServerContext -> TerminationSelection -> IO [T.Text]
 handleQueryTerminate ServerContext{..} (OneQuery qid) = do
   hmapQ <- readMVar runningQueries
   case HM.lookup qid hmapQ of Just tid -> killThread tid; _ -> pure ()

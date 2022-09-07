@@ -48,7 +48,7 @@ import           HStream.Server.HStreamApi        (NodeState (..),
 import qualified HStream.Server.HStreamInternal   as I
 import           HStream.Server.Initialization    (initializeServer,
                                                    initializeTlsConfig)
-import           HStream.Server.Persistence       (initializeAncestors)
+import           HStream.Server.MetaData          (initializeAncestors)
 import           HStream.Server.Types             (ServerContext (..),
                                                    ServerState)
 import qualified HStream.Store.Logger             as Log

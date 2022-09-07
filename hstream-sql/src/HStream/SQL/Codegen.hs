@@ -33,9 +33,8 @@ import           HStream.SQL.AST              hiding (StreamName)
 import           HStream.SQL.Exception        (SomeSQLException (..),
                                                throwSQLException)
 import           HStream.SQL.Internal.Codegen (binOpOnValue, compareValue,
-                                               composeColName, diffTimeToMs,
-                                               genJoiner, genJoiner',
-                                               genRandomSinkStream,
+                                               composeColName, genJoiner,
+                                               genJoiner', genRandomSinkStream,
                                                genTableRefName, getFieldByName,
                                                unaryOpOnValue)
 import           HStream.SQL.Parse            (parseAndRefine)
@@ -56,7 +55,7 @@ type ViewSchema = [String]
 
 data ShowObject = SStreams | SQueries | SConnectors | SViews
 data DropObject = DStream Text | DView Text | DConnector Text
-data TerminationSelection = AllQueries | OneQuery CB.CBytes | ManyQueries [CB.CBytes]
+data TerminationSelection = AllQueries | OneQuery Text | ManyQueries [Text]
 data InsertType = JsonFormat | RawFormat
 data PauseObject = PauseObjectConnector Text
 data ResumeObject = ResumeObjectConnector Text
@@ -115,7 +114,7 @@ hstreamCodegen = \case
   RQDrop (RDropIf RDropConnector x)  -> return $ DropPlan True (DConnector x)
   RQDrop (RDropIf RDropStream x)     -> return $ DropPlan True (DStream x)
   RQDrop (RDropIf RDropView x)       -> return $ DropPlan True (DView x)
-  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ CB.pack qid)
+  RQTerminate (RTerminateQuery qid)  -> return $ TerminatePlan (OneQuery $ T.pack qid)
   RQTerminate RTerminateAll          -> return $ TerminatePlan AllQueries
   RQSelectView rSelectView           -> return $ SelectViewPlan rSelectView
   RQExplain rexplain                 -> return $ ExplainPlan rexplain

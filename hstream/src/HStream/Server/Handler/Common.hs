@@ -22,7 +22,6 @@ import           Network.GRPC.HighLevel.Generated
 import           Network.GRPC.LowLevel.Op         (Op (OpRecvCloseOnServer),
                                                    OpRecvResult (OpRecvCloseOnServerResult),
                                                    runOps)
-import qualified Z.Data.CBytes                    as CB
 
 import qualified HStream.Logger                   as Log
 import           HStream.Server.ConnectorTypes    (SinkConnector (..),
@@ -33,7 +32,7 @@ import           HStream.Server.ConnectorTypes    (SinkConnector (..),
 import qualified HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence       as P
+import qualified HStream.Server.MetaData          as P
 import           HStream.Server.Types
 import           HStream.SQL.AST                  (RWindow (..))
 import           HStream.SQL.Codegen
@@ -209,7 +208,7 @@ handleCreateAsSelect :: ServerContext
                      -> HStreamPlan
                      -> Text
                      -> P.QueryType
-                     -> IO (CB.CBytes, Int64)
+                     -> IO (Text, Int64)
 handleCreateAsSelect ctx@ServerContext{..} plan commandQueryStmtText queryType = do
   (qid, timestamp) <- P.createInsertPersistentQuery
     tName commandQueryStmtText queryType serverID zkHandle

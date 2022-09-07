@@ -8,57 +8,54 @@
 module HStream.Server.Core.Subscription where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async          (async, wait, withAsync)
+import           Control.Concurrent.Async   (async, wait, withAsync)
 import           Control.Concurrent.STM
-import           Control.Exception                 (Exception, catch,
-                                                    onException, throwIO)
+import           Control.Exception          (Exception, catch, onException,
+                                             throwIO)
 import           Control.Monad
-import qualified Data.ByteString                   as BS
-import           Data.Foldable                     (foldl')
-import qualified Data.HashMap.Strict               as HM
-import           Data.IORef                        (newIORef, readIORef,
-                                                    writeIORef)
-import           Data.Kind                         (Type)
-import qualified Data.List                         as L
-import qualified Data.Map.Strict                   as Map
-import           Data.Maybe                        (fromJust, isNothing)
-import qualified Data.Set                          as Set
-import qualified Data.Text                         as T
-import qualified Data.Vector                       as V
-import           Data.Word                         (Word32, Word64)
-import           Network.GRPC.HighLevel            (StreamRecv, StreamSend)
-import           Proto3.Suite                      (Enumerated (Enumerated))
-import           ZooKeeper.Types                   (ZHandle)
+import qualified Data.ByteString            as BS
+import           Data.Foldable              (foldl')
+import qualified Data.HashMap.Strict        as HM
+import           Data.IORef                 (newIORef, readIORef, writeIORef)
+import           Data.Kind                  (Type)
+import qualified Data.List                  as L
+import qualified Data.Map.Strict            as Map
+import           Data.Maybe                 (fromJust, isNothing)
+import qualified Data.Set                   as Set
+import qualified Data.Text                  as T
+import qualified Data.Vector                as V
+import           Data.Word                  (Word32, Word64)
+import           Network.GRPC.HighLevel     (StreamRecv, StreamSend)
+import           Proto3.Suite               (Enumerated (Enumerated))
 
-import qualified HStream.Logger                    as Log
-import           HStream.Server.Core.Common        (decodeRecordBatch,
-                                                    getCommitRecordId,
-                                                    getSuccessor,
-                                                    insertAckedRecordId)
+import           GHC.Stack                  (HasCallStack)
+import qualified HStream.Logger             as Log
+import qualified HStream.MetaStore.Types    as M
+import           HStream.Server.Core.Common (decodeRecordBatch,
+                                             getCommitRecordId, getSuccessor,
+                                             insertAckedRecordId)
 import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
-import qualified HStream.Server.Persistence        as P
-import           HStream.Server.Persistence.Object (withSubscriptionsLock)
+import qualified HStream.Server.MetaData    as P
 import           HStream.Server.Types
-import qualified HStream.Stats                     as Stats
-import qualified HStream.Store                     as S
-import           HStream.Utils                     (decompressBatchedRecord,
-                                                    mkBatchedRecord,
-                                                    textToCBytes)
+import qualified HStream.Stats              as Stats
+import qualified HStream.Store              as S
+import           HStream.Utils              (decompressBatchedRecord,
+                                             mkBatchedRecord, textToCBytes)
 
 --------------------------------------------------------------------------------
 
 listSubscriptions :: ServerContext -> IO (V.Vector Subscription)
 listSubscriptions ServerContext{..} = do
-  subs <- P.listObjects zkHandle
-  mapM update $ V.fromList (map originSub $ Map.elems subs)
+  subs <- M.listMeta zkHandle
+  mapM update $ V.fromList (map originSub subs)
  where
    update sub@Subscription{..} = do
      archived <- S.isArchiveStreamName (textToCBytes subscriptionStreamName)
      if archived then return sub {subscriptionStreamName = "__deleted_stream__"}
                  else return sub
 
-createSubscription :: ServerContext -> Subscription -> IO ()
+createSubscription :: HasCallStack => ServerContext -> Subscription -> IO ()
 createSubscription ServerContext {..} sub@Subscription{..} = do
   let streamName = transToStreamName subscriptionStreamName
   streamExists <- S.doesStreamExist scLDClient streamName
@@ -76,7 +73,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
         { originSub  = sub
         , subOffsets = startOffsets
         }
-  P.storeObject subscriptionSubscriptionId subWrap zkHandle
+  M.insertMeta subscriptionSubscriptionId subWrap zkHandle
  where
    gatherTailLSN acc shard = do
      lsn <- (+1) <$> S.getTailLSN scLDClient shard
@@ -84,7 +81,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
 
 deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
 deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
-  subscription <- P.getObject @ZHandle @'P.SubRep subId zkHandle
+  subscription <- M.getMeta @SubscriptionWrap subId zkHandle
   when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
 
   (status, msub) <- atomically $ do
@@ -121,9 +118,9 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
     CanNotDelete -> throwIO FoundActiveConsumers
     Signaled     -> throwIO SubscriptionIsDeleting
   where
+    -- FIXME: Concurrency Issue
     doRemove :: IO ()
-    doRemove = withSubscriptionsLock zkHandle $
-      P.removeObject @ZHandle @'P.SubRep subId zkHandle
+    doRemove = M.deleteMeta @SubscriptionWrap subId Nothing zkHandle
 
     getSubState :: STM (Maybe (SubscribeContext, TVar SubscribeState))
     getSubState = do
@@ -257,7 +254,7 @@ initSub serverCtx@ServerContext {..} subId = do
 -- add all shards of target stream to SubscribeContext
 doSubInit :: ServerContext -> SubscriptionId -> IO SubscribeContext
 doSubInit ServerContext{..} subId = do
-  P.getObject subId zkHandle >>= \case
+  M.getMeta subId zkHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
       throwIO $ SubscriptionIdNotFound subId

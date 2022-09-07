@@ -62,8 +62,8 @@ library
     HStream.Server.HStore
     HStream.Server.Initialization
     HStream.Server.InternalHandler
-    HStream.Server.Persistence
-    HStream.Server.Persistence.Exception
+    HStream.Server.MetaData
+    HStream.Server.MetaData.Exception
     HStream.Server.Shard
     HStream.Server.Types
 
@@ -82,12 +82,9 @@ library
     HStream.Server.Handler.Stream
     HStream.Server.Handler.Subscription
     HStream.Server.Handler.View
-    HStream.Server.Persistence.Common
-    HStream.Server.Persistence.MemoryStore
-    HStream.Server.Persistence.Object
-    HStream.Server.Persistence.ShardReader
-    HStream.Server.Persistence.Tasks
-    HStream.Server.Persistence.Utils
+    HStream.Server.MetaData.Types
+    HStream.Server.MetaData.Utils
+    HStream.Server.MetaData.Value
 
   hs-source-dirs:     src
   build-depends:
