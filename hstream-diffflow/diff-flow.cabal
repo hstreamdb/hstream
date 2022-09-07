@@ -31,7 +31,7 @@ library
     DiffFlow.Weird
 
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , deepseq
@@ -57,7 +57,7 @@ test-suite lib-test
 
   hs-source-dirs:     test
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
@@ -75,7 +75,7 @@ test-suite lib-test
 executable example
   main-is:          example/Main.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
@@ -92,7 +92,7 @@ executable example
 executable example-2
   main-is:          example/Reduce.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
@@ -109,7 +109,7 @@ executable example-2
 executable example-3
   main-is:          example/Distinct.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
@@ -126,7 +126,7 @@ executable example-3
 executable example-4
   main-is:          example/Loop.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
@@ -144,7 +144,7 @@ benchmark lib-bench
   type:          exitcode-stdio-1.0
   main-is:       bench/benchmark.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , criterion
     , diff-flow
@@ -156,7 +156,7 @@ benchmark lib-bench
 executable throughout-bench
   main-is:       bench/throughout.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , diff-flow
     , time

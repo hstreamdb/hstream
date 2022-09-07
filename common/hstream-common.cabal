@@ -64,6 +64,7 @@ library
     HStream.Server.HStreamInternal
     HStream.ThirdParty.Protobuf
     HStream.Utils
+    HStream.Utils.Aeson
 
   other-modules:
     Google.Protobuf.Empty
@@ -107,7 +108,7 @@ library
 
   build-tool-depends: hsc2hs:hsc2hs -any, cpphs:cpphs >=1.20 && <1.21
   build-depends:
-    , aeson                 <2
+    , aeson                 <2.0
     , ansi-terminal
     , attoparsec
     , base                  >=4.11  && <5
