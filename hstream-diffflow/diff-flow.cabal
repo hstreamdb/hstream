@@ -24,10 +24,10 @@ source-repository head
 
 library
   exposed-modules:
+    DiffFlow.Error
     DiffFlow.Graph
     DiffFlow.Shard
     DiffFlow.Types
-    DiffFlow.Error
     DiffFlow.Weird
 
   build-depends:
@@ -42,8 +42,8 @@ library
     , text
     , unordered-containers
     , vector
-    , Z-IO
     , Z-Data
+    , Z-IO
 
   hs-source-dirs:   src
   default-language: Haskell2010
@@ -63,6 +63,7 @@ test-suite lib-test
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -81,6 +82,7 @@ executable example
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -98,6 +100,7 @@ executable example-2
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -115,6 +118,7 @@ executable example-3
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -132,6 +136,7 @@ executable example-4
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -141,27 +146,31 @@ executable example-4
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
 
 benchmark lib-bench
-  type:          exitcode-stdio-1.0
-  main-is:       bench/benchmark.hs
+  type:             exitcode-stdio-1.0
+  main-is:          bench/benchmark.hs
   build-depends:
     , aeson
     , base                  >=4.11 && <5
     , criterion
     , diff-flow
+    , hstream-common
     , time
     , unordered-containers
+
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
 
 executable throughout-bench
-  main-is:       bench/throughout.hs
+  main-is:          bench/throughout.hs
   build-depends:
     , aeson
     , base                  >=4.11 && <5
     , diff-flow
+    , hstream-common
     , time
     , unordered-containers
-    , Z-IO
     , Z-Data
+    , Z-IO
+
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N

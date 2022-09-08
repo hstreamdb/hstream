@@ -14,6 +14,7 @@ import           Z.IO.Logger
 import           DiffFlow.Graph
 import           DiffFlow.Shard
 import           DiffFlow.Types
+import qualified HStream.Utils.Aeson   as A
 
 --------------------------------------------------------------------------------
 -- unit: ms
@@ -31,11 +32,11 @@ reducingShard = do
   let subgraph_0 = Subgraph 0
       (builder_1, subgraph_1) = addSubgraph emptyGraphBuilder subgraph_0
   let (builder_2, node_1) = addNode builder_1 subgraph_0 InputSpec
-  let mapper o = HM.adjust (\(Number n) -> (Number n)) "a" o
-      keygen o = HM.fromList $ [("b", (HM.!) o "b")]
-      reducer value row = let (Number x) = (HM.!) row "a"
-                           in HM.adjust (\(Number n) -> (Number (n+1))) "cnt" value
-      initValue = HM.fromList [("cnt", Number 0)]
+  let mapper o = A.adjust (\(Number n) -> (Number n)) "a" o
+      keygen o = A.fromList $ [("b", (A.!) o "b")]
+      reducer value row = let (Number x) = (A.!) row "a"
+                           in A.adjust (\(Number n) -> (Number (n+1))) "cnt" value
+      initValue = A.fromList [("cnt", Number 0)]
 
   let (builder_3, node_2) = addNode builder_2 subgraph_0 (IndexSpec node_1)
       (builder_4, node_3) = addNode builder_3 subgraph_0 (ReduceSpec node_2 initValue keygen (Reducer reducer))
@@ -63,7 +64,7 @@ main = do
       replicateM_ 10000 $ do
         ts <- getCurrentTimestamp
         let dc = DataChange
-               { dcRow = HM.fromList [("a", Number 1), ("b", Number 2)]
+               { dcRow = A.fromList [("a", Number 1), ("b", Number 2)]
                , dcTimestamp = Timestamp ts []
                , dcDiff = 1
                }
@@ -82,7 +83,7 @@ main = do
     forkIO . forever $ popOutput shard outNode
       (\dcb -> do
           let lastChange = last $ dcbChanges dcb
-          let (Number x) = (dcRow lastChange) HM.! "cnt"
+          let (Number x) = (dcRow lastChange) A.! "cnt"
               n = fromIntegral (floor x)
           atomicModifyIORef totalDataChangeCount (\x -> (n, ()))
           print $ "---> " <> show n
