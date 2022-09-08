@@ -34,7 +34,6 @@ import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types          (MetaHandle (..))
 import           HStream.Server.Config            (ServerOpts (..),
                                                    TlsConfig (..))
-import           HStream.Server.MetaData          (ioPath)
 import           HStream.Server.Types
 import           HStream.Stats                    (newServerStatsHolder)
 import qualified HStream.Store                    as S
@@ -62,7 +61,8 @@ initializeServer opts@ServerOpts{..} gossipContext zk serverState = do
 
   ioWorker <-
     IO.newWorker
-      (IO.ZkKvConfig zk (cBytesToText _zkUri) (cBytesToText ioPath))
+      (ZkHandle zk)
+      (IO.ZkKvConfig (cBytesToText _zkUri) IO.ioRootPath)
       (IO.HStreamConfig (cBytesToText (CB.pack _serverAddress <> ":" <> CB.pack (show _serverPort))))
       _ioOptions
       (\k -> do

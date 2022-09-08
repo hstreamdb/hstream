@@ -25,7 +25,7 @@ import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)
-import qualified HStream.IO.Worker                as IO
+import qualified HStream.IO.Types                 as IO
 import           HStream.MetaStore.Types          (MetaHandle)
 import           HStream.Server.Config
 import           HStream.Server.ConnectorTypes    as HCT

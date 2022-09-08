@@ -1,9 +1,6 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TemplateHaskell    #-}
 
 module HStream.IO.IOTask where
 
@@ -14,32 +11,24 @@ import           Control.Monad              (msum, unless, void, when)
 import qualified Data.Aeson                 as J
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSLC
-import           Data.IORef                 (IORef, newIORef, readIORef,
-                                             writeIORef)
+import           Data.IORef                 (newIORef, readIORef, writeIORef)
 import qualified Data.Text                  as T
 import           GHC.IO.Handle              (hFlush)
-import           GHC.IO.Handle.Types        (Handle)
-import qualified HStream.IO.Messages        as MSG
-import qualified HStream.IO.Storage         as S
-import           HStream.IO.Types
-import qualified HStream.Logger             as Log
 import           RIO.Directory              (createDirectoryIfMissing)
 import qualified System.Process.Typed       as TP
 
-data IOTask = IOTask
-  { taskId   :: T.Text,
-    taskInfo :: TaskInfo,
-    taskPath :: FilePath,
-    storage  :: S.Storage,
-    process' :: IORef (Maybe (TP.Process Handle () ())),
-    statusM  :: C.MVar IOTaskStatus
-  }
+import qualified HStream.IO.Messages        as MSG
+import qualified HStream.IO.Meta            as M
+import           HStream.IO.Types
+import qualified HStream.Logger             as Log
+import qualified HStream.MetaStore.Types    as M
 
-newIOTask :: T.Text -> S.Storage -> TaskInfo -> T.Text -> IO IOTask
-newIOTask taskId storage info taskPath = do
-  IOTask taskId info (T.unpack taskPath) storage
-    <$> newIORef Nothing
-    <*> C.newMVar NEW
+newIOTask :: T.Text -> M.MetaHandle -> TaskInfo -> T.Text -> IO IOTask
+newIOTask taskId taskHandle taskInfo path = do
+  process' <- newIORef Nothing
+  statusM  <- C.newMVar NEW
+  let taskPath = T.unpack path
+  return IOTask {..}
 
 initIOTask :: IOTask -> IO ()
 initIOTask IOTask{..} = do
@@ -127,7 +116,7 @@ updateStatus :: IOTask -> (IOTaskStatus -> IO IOTaskStatus) -> IO ()
 updateStatus IOTask{..} action = do
   C.modifyMVar_ statusM $ \status -> do
     ts <- action status
-    when (ts /= status) $ S.updateStatus storage taskId ts
+    when (ts /= status) $ M.updateStatusInMeta taskHandle taskId ts
     return ts
 
 checkProcess :: IOTask -> IO ()
@@ -171,4 +160,3 @@ checkIOTask IOTask{..} = do
         " check",
         " --config /data/config.json"
       ]
-

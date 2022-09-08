@@ -30,7 +30,6 @@ import           Network.GRPC.HighLevel.Generated
 import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
-import           ZooKeeper.Types                  (ZHandle)
 
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
