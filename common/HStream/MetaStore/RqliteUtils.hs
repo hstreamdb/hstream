@@ -2,14 +2,17 @@
 
 module HStream.MetaStore.RqliteUtils where
 
+import           Control.Exception       (throw, throwIO, try)
+import           Control.Monad           (forM, forM_, when)
 import           Data.Aeson              (FromJSON, ToJSON)
 import qualified Data.Aeson              as A
 import qualified Data.Aeson.Types        as A
+import qualified Data.Attoparsec.Text    as AT
 import           Data.ByteString         (ByteString)
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as BSC
 import qualified Data.ByteString.Lazy    as BL
-import           Data.Functor            ((<&>))
+import           Data.Maybe              (fromMaybe)
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
 import qualified Data.Text.Lazy          as TL
@@ -17,6 +20,7 @@ import qualified Data.Text.Lazy.Encoding as TL
 import qualified Network.HTTP.Client     as H
 import qualified Network.HTTP.Types      as H
 
+import           HStream.Exception
 import qualified HStream.Logger          as Log
 
 type Id           = T.Text
@@ -29,70 +33,44 @@ type EncodedValue = ByteString
 data ROp
   = CheckROp  TableName Id Version
   | InsertROp TableName Id EncodedValue
-  | UpdateROp TableName Id EncodedValue (Maybe Version)
-  | DeleteROp TableName Id (Maybe Version)
+  | UpdateROp TableName Id EncodedValue
+  | DeleteROp TableName Id
 
-createTable :: H.Manager -> Url -> TableName -> IO Bool
+createTable :: H.Manager -> Url -> TableName -> IO ()
 createTable manager uri tableName = do
   let table = T.encodeUtf8 tableName
-  let stmt = "\"CREATE TABLE " <> table
+  let stmt = wrapStmt $ "\"CREATE TABLE " <> table
           <> " (id TEXT NOT NULL PRIMARY KEY, value TEXT, version INTEGER)\""
   debug stmt
-  req <- mkExecuteHttpRequest uri $ wrapStmt stmt
-  (H.responseBody -> bsl) <- H.httpLbs req manager
-  debug bsl
-  case getError bsl of
-    Nothing -> return True
-    Just _  -> return False
+  httpExecute manager uri stmt False mempty
 
-deleteTable :: H.Manager -> Url -> TableName -> IO Bool
+deleteTable :: H.Manager -> Url -> TableName -> IO ()
 deleteTable manager uri tableName = do
   let table = T.encodeUtf8 tableName
-  let stmt = "\"DROP TABLE " <> table <> "\""
+  let stmt = wrapStmt $ "\"DROP TABLE " <> table <> "\""
   debug stmt
-  req <- mkExecuteHttpRequest uri $ wrapStmt stmt
-  (H.responseBody -> bsl) <- H.httpLbs req manager
-  debug bsl
-  case getError bsl of
-    Nothing -> return True
-    Just _  -> return False
+  httpExecute manager uri stmt False mempty
 
-insertInto :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> IO Bool
+insertInto :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> IO ()
 insertInto manager uri t i value = do
   let stmt = wrapStmt $ wrapStmts $ mkInsertStmt t i (BL.toStrict $ A.encode value)
   debug stmt
-  req <- mkExecuteHttpRequest uri stmt
-  (H.responseBody -> bsl) <- H.httpLbs req manager
-  debug bsl
-  case getRowAffected bsl of
-    Nothing -> return False
-    Just n  -> return $ n == 1
+  httpExecute manager uri stmt True (i <> "@" <> t)
 
-updateSet :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> Maybe Version -> IO Bool
+updateSet :: ToJSON a => H.Manager -> Url -> TableName -> Id -> a -> Maybe Version -> IO ()
 updateSet manager uri t i value v = do
   let stmt = wrapStmt $ wrapStmts $ mkUpdateStmt t i (BL.toStrict $ A.encode value) v
   debug stmt
-  req <- mkExecuteHttpRequest uri stmt
-  res@(H.responseBody -> bsl) <- H.httpLbs req manager
-  debug res
-  debug bsl
-  case getRowAffected bsl of
-    Nothing -> return False
-    Just n  -> return $ n == 1
+  httpExecute manager uri stmt True (i <> "@" <> t)
 
-deleteFrom :: H.Manager -> Url -> TableName -> Id -> Maybe Version -> IO Bool
+deleteFrom :: H.Manager -> Url -> TableName -> Id -> Maybe Version -> IO ()
 deleteFrom manager uri t i v = do
   let stmt = wrapStmt $ wrapStmts $  mkDeleteStmt t i v
   debug stmt
-  req <- mkExecuteHttpRequest uri stmt
-  (H.responseBody -> bsl) <- H.httpLbs req manager
-  debug bsl
-  case getRowAffected bsl of
-    Nothing -> return False
-    Just n  -> return $ n == 1
+  httpExecute manager uri stmt True (i <> "@" <> t)
 
-selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO (Maybe [a])
-selectFrom manager uri table i = do
+selectFrom :: FromJSON a => H.Manager -> Url -> TableName -> Maybe Id -> IO [a]
+selectFrom manager uri table i = catchHttpException $ do
   let stmt = wrapStmt $ wrapStmts $ mkSelectStmtWithKey table i
   debug stmt
   initReq <- H.parseRequest $ T.unpack $ "http://" <> uri
@@ -104,10 +82,13 @@ selectFrom manager uri table i = do
       }
   (H.responseBody -> bsl) <- H.httpLbs req manager
   debug bsl
-  debug $ getResultValue bsl
-  return $ getResultValue bsl >>= mapM (A.decode . TL.encodeUtf8)
+  encodedValues <- getRqSelectValues bsl
+  debug encodedValues
+  case mapM (A.decode . TL.encodeUtf8) encodedValues of
+    Nothing -> throwIO . RQLiteDecodeErr . T.unpack . TL.toStrict . TL.concat $ encodedValues
+    Just xs -> pure xs
 
-transaction :: H.Manager -> Url -> [ROp] -> IO Bool
+transaction :: H.Manager -> Url -> [ROp] -> IO ()
 transaction manager uri ops = do
   let stmt = wrapStmts $ rOp2Stmt <$> ops
   debug stmt
@@ -120,19 +101,20 @@ transaction manager uri ops = do
       }
   (H.responseBody -> bsl) <- H.httpLbs req manager
   debug bsl
-  debug $ getResults bsl
-  case getError bsl of
-    Nothing -> return True
-    Just _  -> return False
+  let results = getResults bsl
+  debug results
+  forM_ results $ \case
+    Err e  -> throwRqHttpErrMsg e
+    Ok _ _ -> pure ()
 
 --------------------------------------------------------------------------------
 -- Utils
 
 rOp2Stmt :: ROp -> Statement
-rOp2Stmt (CheckROp  t i v)    = wrapStmts $ mkCheckStmt t i v
-rOp2Stmt (InsertROp t i v)    = wrapStmts $ mkInsertStmt t i v
-rOp2Stmt (DeleteROp t i mv)   = wrapStmts $ mkDeleteStmt t i mv
-rOp2Stmt (UpdateROp t i mv v) = wrapStmts $ mkUpdateStmt t i mv v
+rOp2Stmt (CheckROp  t i v) = wrapStmts $ mkCheckStmt t i v
+rOp2Stmt (InsertROp t i v) = wrapStmts $ mkInsertStmt t i v
+rOp2Stmt (UpdateROp t i v) = wrapStmts $ mkUpdateStmt t i v Nothing
+rOp2Stmt (DeleteROp t i)   = wrapStmts $ mkDeleteStmt t i Nothing
 
 mkInsertStmt :: TableName -> Id -> EncodedValue -> [Statement]
 mkInsertStmt t i p = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, value, version) VALUES (?, ?, 1)\""
@@ -159,6 +141,17 @@ mkCheckStmt t i v = [ "\"INSERT INTO " <> T.encodeUtf8 t <> "(id, version) "
                  <> "SELECT id, version FROM "<> T.encodeUtf8 t
                  <> " WHERE (NOT version = ?) AND id = ?;\"" , quotes v, quotes i]
 
+wrapStmts :: [ByteString] -> ByteString
+wrapStmts bss = "[" <> BS.intercalate (BSC.singleton ',') bss <> "]"
+
+wrapStmt :: ByteString -> ByteString
+wrapStmt bs = "[" <> bs <> "]"
+
+quotes :: Show a => a -> ByteString
+quotes = T.encodeUtf8 . T.pack . show
+
+--------------------------------------------------------------------------------
+
 mkExecuteHttpRequest :: T.Text -> ByteString -> IO H.Request
 mkExecuteHttpRequest uri requestBody = do
   initReq <- H.parseRequest $ T.unpack $ "http://" <> uri
@@ -169,44 +162,88 @@ mkExecuteHttpRequest uri requestBody = do
       , H.requestBody = H.RequestBodyBS requestBody
       }
 
-wrapStmts :: [ByteString] -> ByteString
-wrapStmts bss = "[" <> BS.intercalate (BSC.singleton ',') bss <> "]"
+httpExecute :: H.Manager -> Url -> ByteString -> Bool -> T.Text -> IO ()
+httpExecute manager uri stmt flag msg = catchHttpException $ do
+  req <- mkExecuteHttpRequest uri stmt
+  (H.responseBody -> bsl) <- H.httpLbs req manager
+  debug bsl
+  getRqResult bsl flag msg
 
-wrapStmt :: ByteString -> ByteString
-wrapStmt bs = "[" <> bs <> "]"
+--------------------------------------------------------------------------------
 
-quotes :: Show a => a -> ByteString
-quotes = T.encodeUtf8 . T.pack . show
+type Results = [Result]
 
-decodePrint :: H.Response BL.ByteString -> IO (Maybe A.Value)
-decodePrint resp = do
-  let decoded = A.decode (H.responseBody resp) :: Maybe A.Value
-  debug decoded
-  return decoded
+data Result
+  = Ok Int [[TL.Text]]
+  | Err T.Text
+  deriving Show
 
-getRowAffected :: BL.ByteString -> Maybe Int
-getRowAffected = A.parseMaybe parseResp
+getResults :: BL.ByteString -> Results
+getResults = fromMaybe [] . A.parseMaybe parseResp
   where
-    parseResp (A.decode -> Just obj) = obj A..: "results" >>= (A..: "rows_affected") . head
-    parseResp _ = mempty
+    parseResp (A.decode -> Just (obj :: A.Object)) = do
+      results <- obj A..: "results"
+      forM results $ \resObj -> do
+        rows_affected <- resObj A..:? "rows_affected" A..!= 0
+        errorMsg <- resObj A..:? "error"
+        values <- resObj A..:? "values" A..!= []
+        return $ case errorMsg of
+          Just x  -> Err x
+          Nothing -> Ok rows_affected values
+    parseResp _ = throw $ RQLiteUnspecifiedErr "Invalid JSON format from rqlite server"
 
-getResults :: BL.ByteString -> Maybe [A.Value]
-getResults = A.parseMaybe parseResp
-  where
-    parseResp (A.decode -> Just obj) = obj A..: "results"
-    parseResp _                      = mempty
+getRqResult :: BL.ByteString -> Bool -> T.Text -> IO ()
+getRqResult bsl requireResults msg = case getResults bsl of
+  x:_ -> case x of
+    -- FIXME：case 0 could also be BADVERSION
+    -- delete & update with version needs to be reimplemented with transaction
+    -- in order to identify bad version exception
+    Ok 0 _ -> when requireResults . throwIO . RQLiteRowNotFound $ T.unpack msg
+    Ok 1 _ -> pure ()
+    Ok _ _ -> throwIO $ RQLiteUnspecifiedErr "more rows are affected"
+    Err e  -> throwRqHttpErrMsg e
+  _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
-getError :: BL.ByteString -> Maybe TL.Text
-getError = A.parseMaybe parseResp
-  where
-    parseResp (A.decode -> Just obj) = obj A..: "results" >>= (A..: "error") . head
-    parseResp _ = mempty
+getRqSelectValues :: BL.ByteString -> IO [TL.Text]
+getRqSelectValues bsl = case getResults bsl of
+  x:_ -> case x of
+    Ok _ vs -> pure $ concat vs
+    Err e   -> throwRqHttpErrMsg e
+  _ -> throwIO $ RQLiteUnspecifiedErr "No result in response from rqlite server"
 
-getResultValue :: BL.ByteString -> Maybe [TL.Text]
-getResultValue = A.parseMaybe parseResp
+catchHttpException :: IO a -> IO a
+catchHttpException io = returnRes =<< try io
+ where
+  returnRes = \case
+    Left ee  -> returnErr ee
+    Right rr -> return rr
+  returnErr = \case
+    H.HttpExceptionRequest _ content -> throwIO $ RQLiteNetworkErr (show content)
+    H.InvalidUrlException url reason -> throwIO $ RQLiteNetworkErr $ "Invalid uri: " <> url <> " " <> reason
+
+throwRqHttpErrMsg :: T.Text -> IO a
+throwRqHttpErrMsg txt = do
+  case AT.parseOnly parser1 txt of
+    Right e -> throwIO e
+    Left _  -> case AT.parseOnly parser2 txt of
+      Right e -> throwIO e
+      Left _  -> case AT.parseOnly parser3 txt of
+        Right e -> throwIO e
+        Left _  -> throwIO $ RQLiteUnspecifiedErr $ T.unpack txt
   where
-    parseResp (A.decode -> Just obj) = obj A..: "results" >>= (A..: "values") . head <&> (concat :: [[a]] -> [a])
-    parseResp _                      = mempty
+    parser1 = RQLiteTableNotFound . T.unpack <$> AT.string tableNotFound <* AT.takeText
+    parser2 = RQLiteRowAlreadyExists . T.unpack <$> AT.string rowExists <* AT.takeText
+    parser3 = RQLiteTableAlreadyExists . T.unpack <$  AT.string "table "
+                                                    <*> AT.takeTill (== ' ')
+                                                    <*  AT.string " already exists"
+
+--------------------------------------------------------------------------------
 
 debug :: Show a => a -> IO ()
 debug = Log.debug . Log.buildString'
+
+tableNotFound :: T.Text
+tableNotFound = "not such table:"
+
+rowExists :: T.Text
+rowExists = "UNIQUE constraint failed:"

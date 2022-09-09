@@ -7,8 +7,9 @@ import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
 import           System.Environment               (lookupEnv)
 import           Test.Hspec                       (HasCallStack, Spec,
-                                                   afterAll_, describe, hspec,
-                                                   it, runIO, shouldReturn)
+                                                   afterAll_, anyException,
+                                                   describe, hspec, it, runIO,
+                                                   shouldReturn, shouldThrow)
 import           Test.QuickCheck                  (generate)
 import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
@@ -48,7 +49,7 @@ smokeTest h = do
       runIO $ tryCreate zk (textToCBytes $ myRootPath @MetaExample @ZHandle)
       return "Zookeeper Handle"
     RLHandle (RHandle m url) -> do
-      runIO $ createTable m url (myRootPath @MetaExample @RHandle) `shouldReturn` True
+      runIO $ createTable m url (myRootPath @MetaExample @RHandle)
       return "RQLite Handle"
   describe ("Run with " <> hName) $ do
     it "Basic Meta Test " $ do
@@ -83,20 +84,22 @@ smokeTest h = do
       let opDelete =
            [ deleteMetaOp @MetaExample metaId1 Nothing h
            , deleteMetaOp @MetaExample metaId2 Nothing h ]
-      metaMulti opInsert h `shouldReturn` True
+      metaMulti opInsert h
       checkMetaExists @MetaExample metaId1 h `shouldReturn` True
       checkMetaExists @MetaExample metaId2 h `shouldReturn` True
       L.sort <$> listMeta @MetaExample h `shouldReturn` L.sort [meta1, meta2]
-      metaMulti opUpdateFail h `shouldReturn` False
+      metaMulti opUpdateFail h `shouldThrow` anyException
       getMeta @MetaExample metaId1 h `shouldReturn` Just meta1
       getMeta @MetaExample metaId2 h `shouldReturn` Just meta2
-      metaMulti opUpdate h `shouldReturn` True
+      metaMulti opUpdate h
       getMeta @MetaExample metaId1 h `shouldReturn` Just newMeta1
       getMeta @MetaExample metaId2 h `shouldReturn` Just newMeta2
       L.sort <$> listMeta @MetaExample h `shouldReturn` L.sort [newMeta1, newMeta2]
-      metaMulti opDelete h `shouldReturn` True
+      metaMulti opDelete h
       checkMetaExists @MetaExample metaId1 h `shouldReturn` False
       checkMetaExists @MetaExample metaId2 h `shouldReturn` False
       getMeta @MetaExample metaId1 h `shouldReturn` Nothing
       getMeta @MetaExample metaId2 h `shouldReturn` Nothing
       listMeta @MetaExample h `shouldReturn` []
+
+    -- TODO: add test for Exceptions
