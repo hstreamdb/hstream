@@ -43,10 +43,9 @@ module HStream.Utils.Converter
   ) where
 
 import qualified Data.Aeson                as Aeson
-import           Data.Bifunctor            (Bifunctor (second))
+import           Data.Bifunctor            (bimap)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BL
-import qualified Data.HashMap.Strict       as HM
 import qualified Data.Map                  as M
 import qualified Data.Map.Strict           as Map
 import           Data.Scientific           (toRealFloat)
@@ -68,6 +67,7 @@ import qualified Z.Data.Vector             as ZV
 import qualified Z.Foreign                 as ZF
 
 import           HStream.Server.HStreamApi (ServerNode (..))
+import qualified HStream.Utils.Aeson       as A
 import           HStream.Utils.RPC         (SocketAddr (SocketAddr))
 
 pattern V :: PB.ValueKind -> PB.Value
@@ -76,7 +76,7 @@ pattern V x = PB.Value (Just x)
 jsonObjectToStruct :: Aeson.Object -> PB.Struct
 jsonObjectToStruct object = PB.Struct kvmap
   where
-    kvmap = M.fromList $ map (\(k,v) -> (k, Just (jsonValueToValue v))) (HM.toList object)
+    kvmap = M.fromList $ map (\(k, v) -> (A.toText k, Just (jsonValueToValue v))) (A.toList object)
 
 jsonValueToValue :: Aeson.Value -> PB.Value
 jsonValueToValue (Aeson.Object object) = V $ PB.ValueKindStructValue (jsonObjectToStruct object)
@@ -87,8 +87,8 @@ jsonValueToValue (Aeson.Bool   bool)   = V $ PB.ValueKindBoolValue   bool
 jsonValueToValue Aeson.Null            = V $ PB.ValueKindNullValue   (Enumerated $ Right PB.NullValueNULL_VALUE)
 
 structToJsonObject :: PB.Struct -> Aeson.Object
-structToJsonObject (PB.Struct kvmap) = HM.fromList $
-  second convertMaybeValue <$> kvTuples
+structToJsonObject (PB.Struct kvmap) = A.fromList $
+  bimap A.fromText convertMaybeValue <$> kvTuples
   where
     kvTuples = Map.toList kvmap
     convertMaybeValue Nothing  = error "Nothing encountered"

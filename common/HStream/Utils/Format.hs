@@ -14,7 +14,6 @@ import qualified Data.Aeson                       as A
 import qualified Data.Aeson.Text                  as A
 import qualified Data.ByteString.Char8            as BS
 import           Data.Default                     (def)
-import qualified Data.HashMap.Strict              as HM
 import qualified Data.List                        as L
 import qualified Data.Map.Strict                  as M
 import qualified Data.Text                        as T
@@ -32,6 +31,7 @@ import           Z.IO.Time                        (SystemTime (MkSystemTime),
                                                    iso8061DateFormat)
 
 import qualified HStream.Server.HStreamApi        as API
+import qualified HStream.Utils.Aeson              as A
 import           HStream.Utils.Converter          (structToJsonObject,
                                                    valueToJsonValue)
 import           HStream.Utils.RPC                (showNodeStatus)
@@ -150,8 +150,8 @@ renderConnectorsToTable connectors =
              , "Status"
              ]
     formatRow API.Connector {connectorInfo=Just info} =
-      [ [toString $ infoJson HM.! "name"]
-      , [toString $ infoJson HM.! "status"]
+      [ [maybe "Nothing" toString $ A.lookup "name" infoJson]
+      , [maybe "Nothing" toString $ A.lookup "status" infoJson]
       ]
       where infoJson = structToJsonObject info
             toString (A.String v) = T.unpack v

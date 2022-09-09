@@ -24,14 +24,14 @@ source-repository head
 
 library
   exposed-modules:
+    DiffFlow.Error
     DiffFlow.Graph
     DiffFlow.Shard
     DiffFlow.Types
-    DiffFlow.Error
     DiffFlow.Weird
 
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , deepseq
@@ -42,8 +42,8 @@ library
     , text
     , unordered-containers
     , vector
-    , Z-IO
     , Z-Data
+    , Z-IO
 
   hs-source-dirs:   src
   default-language: Haskell2010
@@ -57,12 +57,13 @@ test-suite lib-test
 
   hs-source-dirs:     test
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -75,12 +76,13 @@ test-suite lib-test
 executable example
   main-is:          example/Main.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -92,12 +94,13 @@ executable example
 executable example-2
   main-is:          example/Reduce.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -109,12 +112,13 @@ executable example-2
 executable example-3
   main-is:          example/Distinct.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -126,12 +130,13 @@ executable example-3
 executable example-4
   main-is:          example/Loop.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
     , hspec
+    , hstream-common
     , multiset
     , text
     , unordered-containers
@@ -141,27 +146,31 @@ executable example-4
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
 
 benchmark lib-bench
-  type:          exitcode-stdio-1.0
-  main-is:       bench/benchmark.hs
+  type:             exitcode-stdio-1.0
+  main-is:          bench/benchmark.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , criterion
     , diff-flow
+    , hstream-common
     , time
     , unordered-containers
+
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
 
 executable throughout-bench
-  main-is:       bench/throughout.hs
+  main-is:          bench/throughout.hs
   build-depends:
-    , aeson                 <2
+    , aeson
     , base                  >=4.11 && <5
     , diff-flow
+    , hstream-common
     , time
     , unordered-containers
-    , Z-IO
     , Z-Data
+    , Z-IO
+
   default-language: Haskell2010
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
