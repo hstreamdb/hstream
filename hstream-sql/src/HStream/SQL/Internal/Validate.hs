@@ -53,40 +53,56 @@ instance Validate Boolean where
   validate e@(BoolTrue  _) = return e
   validate e@(BoolFalse _) = return e
 
--- 1. 0 <= year <= 9999
--- 2. 1 <= month <= 12
--- 3. 1 <= day <= real days(30, 31 or other ones)
-instance Validate Date where
-  validate date@(DDate pos y' m' d') = do
+instance Validate DateStr where
+  validate date@(DateStr pos y m d) = do
     unless (y >= 0 && y <= 9999)     (Left $ buildSQLException ParseException pos "Year must be between 0 and 9999")
     unless (m >= 1 && m <= 12)       (Left $ buildSQLException ParseException pos "Month must be between 1 and 12")
     unless (d >= 1 && d <= realDays) (Left $ buildSQLException ParseException pos ("Day must be between 1 and " <> show realDays))
     return date
-    where y = extractPNInteger y'
-          m = extractPNInteger m'
-          d = extractPNInteger d'
-          daysOfMonth = [31,28 + if isLeapYear y then 1 else 0,31,30,31,30,31,31,30,31,30,31]
+    where daysOfMonth = [31,28 + if isLeapYear y then 1 else 0,31,30,31,30,31,31,30,31,30,31]
           realDays = daysOfMonth !! (fromInteger m - 1)
 
--- 1. 0 <= hour   <= 23
--- 2. 0 <= minute <= 59
--- 3. 0 <= second <= 59
-instance Validate Time where
-  validate time@(DTime pos h' m' s') = do
-    let h = extractPNInteger h'
-        m = extractPNInteger m'
-        s = extractPNInteger s'
+instance Validate TimeStr where
+  validate time@(TimeStrWithoutMicroSec pos h m s) = do
     unless (h >= 0 && h <= 23) (Left $ buildSQLException ParseException pos "Hour must be between 0 and 23")
     unless (m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Minute must be between 0 and 59")
     unless (s >= 0 && s <= 59) (Left $ buildSQLException ParseException pos "Second must be between 0 and 59")
     return time
+  validate time@(TimeStrWithMicroSec pos h m s ms) = do
+    unless (h >= 0 && h <= 23) (Left $ buildSQLException ParseException pos "Hour must be between 0 and 23")
+    unless (m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Minute must be between 0 and 59")
+    unless (s >= 0 && s <= 59) (Left $ buildSQLException ParseException pos "Second must be between 0 and 59")
+    unless (ms >= 0 && ms <= 999) (Left $ buildSQLException ParseException pos "Microsecond must be between 0 and 999")
+    return time
 
--- 1. number > 0
+instance Validate DateTimeStr where
+  validate datetime@(DDateTimeStr _ dateStr timeStr) =
+    validate dateStr >> validate timeStr >> return datetime
+
+instance Validate Timezone where
+  validate zone@(TimezoneZ _) = return zone
+  validate zone@(TimezonePositive pos h m) = do
+    unless (h >= 0 && h <= 13 && m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Timezone must be between -12:59 and +13:59")
+    return zone
+  validate zone@(TimezoneNegative pos h m) = do
+    unless (h >= 0 && h <= 12 && m >= 0 && m <= 59) (Left $ buildSQLException ParseException pos "Timezone must be between -12:59 and +13:59")
+    return zone
+
+instance Validate TimestampStr where
+  validate str@(DTimestampStr _ dateStr timeStr zone) =
+    validate dateStr >> validate timeStr >> validate zone >> return str
+
+instance Validate Date where
+  validate date@(DDate _ dateStr) = validate dateStr >> return date
+instance Validate Time where
+  validate time@(DTime _ timeStr) = validate timeStr >> return time
+instance Validate Timestamp where
+  validate ts@(TimestampWithoutZone _ datetimeStr) = validate datetimeStr >> return ts
+  validate ts@(TimestampWithZone _ tsStr) = validate tsStr >> return ts
 instance Validate Interval where
-  validate i@(DInterval pos n' _) = do
-    let n = extractPNInteger n'
-    unless (n > 0) (Left $ buildSQLException ParseException pos "Interval must be positive")
-    return i
+  validate interval@(IntervalWithoutDate _ timeStr) = validate timeStr >> return interval
+  validate interval@(IntervalWithDate _ datetimeStr) = validate datetimeStr >> return interval
+
 
 -- 1. only supports "col" and "stream.col"
 instance Validate ColName where
@@ -165,6 +181,7 @@ instance Validate ValueExpr where
   validate expr@ExprBool{}   = Right expr
   validate expr@(ExprDate _ date) = validate date >> return expr
   validate expr@(ExprTime _ time) = validate time >> return expr
+  validate expr@(ExprTimestamp _ ts) = validate ts >> return expr
   validate expr@(ExprInterval _ interval) = validate interval >> return expr
   validate expr@(ExprArr _ es) = mapM_ validate es >> return expr
   validate expr@(ExprMap pos es) = do
@@ -205,6 +222,7 @@ isNumExpr expr = case expr of
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Time"
+  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
@@ -256,6 +274,7 @@ isFloatExpr expr = case expr of
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Time"
+  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
@@ -306,6 +325,7 @@ isOrdExpr expr = case expr of
   (ExprBool pos _) -> Left $ buildSQLException ParseException pos "Expected a comparable expression but got a boolean"
   (ExprDate _ date) -> validate date >> return expr
   (ExprTime _ time) -> validate time >> return expr
+  (ExprTimestamp _ ts) -> validate ts >> return expr
   (ExprInterval _ interval) -> validate interval >> return expr
   (ExprColName _ _) -> Right expr-- inaccurate
   (ExprRaw _ _)     -> Right expr -- TODO: Use schema to decide this
@@ -330,6 +350,7 @@ isOrdExpr expr = case expr of
       TypeText{} -> return typ
       TypeDate{} -> return typ
       TypeTime{} -> return typ
+      TypeTimestamp{} -> return typ
       TypeInterval{} -> return typ
       _ -> Left $ buildSQLException ParseException (getPos typ) "Argument type mismatched (not a comparable type)"
 
@@ -356,12 +377,13 @@ isBoolExpr expr = case expr of
   (ExprOr  _ e1 e2)    -> isBoolExpr e1 >> isBoolExpr e2 >> return expr
   (ExprInt pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprNum pos _)      -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
-  (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+  (ExprString pos _)   -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a string"
   (ExprNull _)         -> Right expr
   (ExprBool _ _)       -> Right expr
-  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
-  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
-  (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
+  (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a date"
+  (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a time"
+  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a timestamp"
+  (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -413,6 +435,7 @@ isIntExpr expr = case expr of
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Time"
+  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
@@ -463,6 +486,7 @@ isStringExpr expr = case expr of
   (ExprBool pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a boolean"
   (ExprDate pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Date"
   (ExprTime pos _)     -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Time"
+  (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
   (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
@@ -533,6 +557,7 @@ isConstExpr expr@ExprNull{}     = Right expr
 isConstExpr expr@ExprBool{}     = Right expr
 isConstExpr expr@ExprDate{}     = Right expr
 isConstExpr expr@ExprTime{}     = Right expr
+isConstExpr expr@ExprTimestamp{} = Right expr
 isConstExpr expr@ExprInterval{} = Right expr
 isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only supports constant values"
 

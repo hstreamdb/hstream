@@ -145,6 +145,7 @@ TypeByte.     DataType ::= "bytea" ;
 TypeText.     DataType ::= "string" ;
 TypeDate.     DataType ::= "date" ;
 TypeTime.     DataType ::= "time" ;
+TypeTimestamp. DataType ::= "timestamp" ;
 TypeInterval. DataType ::= "interval" ;
 TypeJson.     DataType ::= "jsonb" ;
 TypeArray.    DataType ::= DataType "[]" ;
@@ -199,19 +200,29 @@ BoolFalse. Boolean ::= "FALSE" ;
 ExprBool. ValueExpr7 ::= Boolean ;
 
 -- Date, Time and Interval
-DDate. Date ::= "DATE" PNInteger "-" PNInteger "-" PNInteger ; -- date
-DTime. Time ::= "TIME" PNInteger ":" PNInteger ":" PNInteger ; -- time
+TimeStrWithoutMicroSec. TimeStr ::= Integer ":" Integer ":" Integer ;
+TimeStrWithMicroSec.    TimeStr ::= Integer ":" Integer ":" Integer "." Integer ;
+
+DDateStr. DateStr ::= Integer "-" Integer "-" Integer ;
+DDateTimeStr. DateTimeStr ::= DateStr TimeStr ;
+
+TimezoneZ.        Timezone ::= "Z" ;
+TimezonePositive. Timezone ::= "+" Integer ":" Integer ;
+TimezoneNegative. Timezone ::= "-" Integer ":" Integer ;
+
+DTimestampStr. TimestampStr ::= DateStr "T" TimeStr Timezone ;
+
+DDate. Date ::= "DATE" DateStr ;
+DTime. Time ::= "TIME" TimeStr ;
+TimestampWithoutZone. Timestamp ::= "TIMESTAMP" DateTimeStr ;
+TimestampWithZone.    Timestamp ::= "TIMESTAMP" TimestampStr ;
+
 ExprDate. ValueExpr7 ::= Date ;
 ExprTime. ValueExpr7 ::= Time ;
+ExprTimestamp. ValueExpr7 ::= Timestamp ;
 
-TimeUnitYear.  TimeUnit ::= "YEAR"   ;
-TimeUnitMonth. TimeUnit ::= "MONTH"  ;
-TimeUnitWeek.  TimeUnit ::= "WEEK"   ;
-TimeUnitDay.   TimeUnit ::= "DAY"    ;
-TimeUnitMin.   TimeUnit ::= "MINUTE" ;
-TimeUnitSec.   TimeUnit ::= "SECOND" ;
-
-DInterval. Interval ::= "INTERVAL" PNInteger TimeUnit ; -- interval
+IntervalWithoutDate. Interval ::= "INTERVAL" TimeStr ;
+IntervalWithDate.    Interval ::= "INTERVAL" DateTimeStr ;
 ExprInterval. ValueExpr7 ::= Interval ;
 
 -- Non-Scalar Type (Array and Map)
