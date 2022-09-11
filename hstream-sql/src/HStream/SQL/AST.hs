@@ -29,6 +29,30 @@ class Refine a where
   refine :: HasCallStack => a -> RefinedType a
 
 --------------------------------------------------------------------------------
+data RDataType
+  = RTypeInteger | RTypeFloat | RTypeNumeric | RTypeBoolean
+  | RTypeBytea | RTypeText | RTypeDate | RTypeTime | RTypeTimestamp
+  | RTypeInterval | RTypeJsonb
+  | RTypeArray RDataType | RTypeMap RDataType RDataType
+  deriving (Show, Eq)
+
+type instance RefinedType DataType = RDataType
+instance Refine DataType where
+  refine TypeInteger{} = RTypeInteger
+  refine TypeFloat{} = RTypeFloat
+  refine TypeNumeric{} = RTypeNumeric
+  refine TypeBoolean{} = RTypeBoolean
+  refine TypeByte{} = RTypeBytea
+  refine TypeText{} = RTypeText
+  refine TypeDate{} = RTypeDate
+  refine TypeTime{} = RTypeTime
+  refine TypeTimestamp{} = RTypeTimestamp
+  refine TypeInterval{} = RTypeInterval
+  refine TypeJson{} = RTypeJsonb
+  refine (TypeArray _ t) = RTypeArray (refine t)
+  refine (TypeMap _ kt vt) = RTypeMap (refine kt) (refine vt)
+
+--------------------------------------------------------------------------------
 type StreamName = Text
 type FieldName  = Text
 type ConnectorType = Text
@@ -55,27 +79,81 @@ instance Refine Boolean where
   refine (BoolTrue _ ) = True
   refine (BoolFalse _) = False
 
+------- date & time -------
+type RTimeStr = Time.TimeOfDay
+type instance RefinedType TimeStr = RTimeStr
+instance Refine TimeStr where
+  refine (TimeStrWithoutMicroSec pos h m s) =
+    case makeTimeOfDayValid h m (fromInteger s) of
+      Nothing -> throwSQLException RefineException pos "invalid time"
+      Just t  -> t
+
+  refine (TimeStrWithMicroSec pos h m s ms) =
+    case makeTimeOfDayValid h m (fromInteger s + (fromInteger ms) * 0.001) of
+      Nothing -> throwSQLException RefineException pos "invalid time"
+      Just t  -> t
+
+type RDateStr = Time.Day
+type instance RefinedType DateStr = RDateStr
+instance Refine DateStr where
+  refine (DDateStr pos y m d) =
+    case Time.fromGregorianValid y (fromInteger m) (fromInteger d) of
+      Nothing -> throwSQLException RefineException pos "invalid date"
+      Just d  -> d
+
+type RDateTimeStr = Time.LocalTime
+type instance RefinedType DateTimeStr = RDateTimeStr
+instance Refine DateTimeStr where
+  refine (DDateTimeStr _ dateStr timeStr) =
+    let timeOfDay = refine timeStr
+        day       = refine dateStr
+     in Time.LocalTime day timeOfDay
+
+type RTimezone = Time.TimeZone
+type instance RefinedType Timezone = RTimezone
+instance Refine Timezone where
+  refine (TimezoneZ _) = Time.minutesToTimeZone 0
+  refine (TimezonePositive _ h m) = Time.minutesToTimeZone (h * 60 + m)
+  refine (TimezoneNegative _ h m) = Time.minutesToTimeZone (- (h * 60 + m))
+
+type RTimestampStr = Time.ZonedTime
+type instance RefinedType TimestampStr = RTimestampStr
+instance Refine TimestampStr where
+  refine (DTimestampStr pos dateStr timeStr zone) =
+    let localTime = refine (DDateTimeStr pos dateStr timeStr)
+        timeZone  = refine zone
+     in Time.ZonedTime localTime timeZone
+
 type RDate = Time.Day
 type instance RefinedType Date = RDate
 instance Refine Date where
-  refine (DDate _ year month day) = Time.fromGregorian (refine year) (fromInteger $ refine month) (fromInteger $ refine day)
+  refine (DDate _ dateStr) = refine dateStr
 
-type RTime = Time.DiffTime
+type RTime = Time.TimeOfDay
 type instance RefinedType Time = RTime
 instance Refine Time where
-  refine (DTime _ hour minute second) = Time.secondsToDiffTime $
-    (refine hour) * 3600 + (refine minute) * 60 + (refine second)
+  refine (DTime _ timeStr) = refine timeStr
 
-type RInterval = Time.DiffTime
+type RTimestamp = Time.ZonedTime
+type instance RefinedType Timestamp = RTimestamp
+instance Refine Timestamp where
+  refine (TimestampWithoutZone _ dateTimeStr) =
+    let localTime = refine dateTimeStr
+        timeZone  = Time.utc
+     in Time.ZonedTime localTime timeZone
+  refine (TimestampWithZone _ tsStr) = refine tsStr
+
+type RInterval = Time.CalendarDiffTime
 type instance RefinedType Interval = RInterval
 instance Refine Interval where
-  refine (DInterval _ n (TimeUnitSec _  )) = Time.secondsToDiffTime $ refine n
-  refine (DInterval _ n (TimeUnitMin _  )) = Time.secondsToDiffTime $ (refine n) * 60
-  refine (DInterval _ n (TimeUnitDay _  )) = Time.secondsToDiffTime $ (refine n) * 60 * 24
-  refine (DInterval _ n (TimeUnitWeek _ )) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 7
-  refine (DInterval _ n (TimeUnitMonth _)) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 30
-  refine (DInterval _ n (TimeUnitYear _ )) = Time.secondsToDiffTime $ (refine n) * 60 * 24 * 365
+  refine (IntervalWithoutDate _ timeStr) =
+    let nomialDiffTime = Time.daysAndTimeOfDayToTime 0 (refine timeStr)
+     in Time.CalendarDiffTime 0 nomialDiffTime
+  refine (IntervalWithDate _ (DDateTimeStr _ (DDateStr _ y m d) timeStr)) =
+    let nomialDiffTime = Time.daysAndTimeOfDayToTime d (refine timeStr)
+     in Time.CalendarDiffTime (12 * y +  m) nomialDiffTime
 
+--------------------------------------------------------------------------------
 data Constant = ConstantNull
               | ConstantInt       Int
               | ConstantNum       Double

@@ -60,7 +60,7 @@ extractRefNameFromExpr (ExprCast2 _ e _) = extractRefNameFromExpr e
 extractRefNameFromExpr (ExprEQ _ e1 e2) =
   let (b1,l1) = extractRefNameFromExpr e1
       (b2,l2) = extractRefNameFromExpr e2
-   in (b1 || b2, L.nub (e1 ++ e2))
+   in (b1 || b2, L.nub (l1 ++ l2))
 extractRefNameFromExpr (ExprNEQ pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprLT pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
 extractRefNameFromExpr (ExprGT pos e1 e2) = extractRefNameFromExpr (ExprEQ pos e1 e2)
@@ -72,8 +72,6 @@ extractRefNameFromExpr (ExprSubquery _ select) = (False, []) -- FIXME
 
 extractRefNameFromExpr (ExprColName _ (ColNameSimple _ _)) = (True, [])
 extractRefNameFromExpr (ExprColName _ (ColNameStream _ (Ident s) _)) = (False, [s])
-extractRefNameFromExpr (ExprColName _ (ColNameInner pos col _)) = extractRefNameFromExpr (ExprColName pos col)
-extractRefNameFromExpr (ExprColName _ (ColNameIndex pos col _)) = extractRefNameFromExpr (ExprColName pos col)
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncCountAll _)) = (False, [])
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncCount          _ e)) = extractRefNameFromExpr e
 extractRefNameFromExpr (ExprSetFunc _ (SetFuncAvg            _ e)) = extractRefNameFromExpr e

@@ -89,6 +89,21 @@ instance HaveValueExpr ScalarFunc where
 class HavePos a where
   getPos :: a -> BNFC'Position
 
+instance HavePos DataType where
+  getPos (TypeInteger pos) = pos
+  getPos (TypeFloat pos) = pos
+  getPos (TypeNumeric pos) = pos
+  getPos (TypeBoolean pos) = pos
+  getPos (TypeByte pos) = pos
+  getPos (TypeText pos) = pos
+  getPos (TypeDate pos) = pos
+  getPos (TypeTime pos) = pos
+  getPos (TypeTimestamp pos) = pos
+  getPos (TypeInterval pos) = pos
+  getPos (TypeJson pos) = pos
+  getPos (TypeArray pos _) = pos
+  getPos (TypeMap pos _ _) = pos
+
 instance HavePos ScalarFunc where
   getPos func = case func of
     (ScalarFuncFieldToJson pos _ _)   -> pos

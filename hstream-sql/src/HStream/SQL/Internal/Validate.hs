@@ -15,7 +15,6 @@ import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.List                  as L
 import           Data.List.Extra            (anySame)
-import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
 import           Data.Text.Encoding         (encodeUtf8)
 import           Data.Time.Calendar         (isLeapYear)
@@ -23,9 +22,7 @@ import           GHC.Stack                  (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
-import           HStream.SQL.Extra          (extractCondRefNames,
-                                             extractPNInteger, extractRefNames,
-                                             extractSelRefNames)
+import           HStream.SQL.Extra          (extractPNInteger)
 import           HStream.SQL.Validate.Utils
 
 ------------------------------ TypeClass Definition ----------------------------
@@ -54,7 +51,7 @@ instance Validate Boolean where
   validate e@(BoolFalse _) = return e
 
 instance Validate DateStr where
-  validate date@(DateStr pos y m d) = do
+  validate date@(DDateStr pos y m d) = do
     unless (y >= 0 && y <= 9999)     (Left $ buildSQLException ParseException pos "Year must be between 0 and 9999")
     unless (m >= 1 && m <= 12)       (Left $ buildSQLException ParseException pos "Month must be between 1 and 12")
     unless (d >= 1 && d <= realDays) (Left $ buildSQLException ParseException pos ("Day must be between 1 and " <> show realDays))
@@ -183,13 +180,6 @@ instance Validate ValueExpr where
   validate expr@(ExprTime _ time) = validate time >> return expr
   validate expr@(ExprTimestamp _ ts) = validate ts >> return expr
   validate expr@(ExprInterval _ interval) = validate interval >> return expr
-  validate expr@(ExprArr _ es) = mapM_ validate es >> return expr
-  validate expr@(ExprMap pos es) = do
-    mapM_ helper es
-    when (anySame $ extractLabel <$> es) (Left $ buildSQLException ParseException pos "An map can not contain same keys")
-    return expr
-    where helper (DLabelledValueExpr _ _ e)           = validate e
-          extractLabel (DLabelledValueExpr _ label _) = label
   validate expr@(ExprColName _ col) = validate col   >> return expr
   validate expr@(ExprSetFunc _ func) = validate func >> return expr
   validate expr@(ExprScalarFunc _ func) = validate func >> return expr
@@ -589,10 +579,7 @@ instance Validate DerivedCol where
 
 -- From
 instance Validate From where
-  validate (DFrom pos []) = Left $ buildSQLException ParseException pos "FROM clause should specify at least one stream"
-  validate from@(DFrom pos refs) = do
-    mapM_ validate refs
-    return from
+  validate from@(DFrom _ tableRef) = validate tableRef >> return from
 
 instance Validate TableRef where
   validate r@(TableRefAs _ ref _) = validate ref >> return r
