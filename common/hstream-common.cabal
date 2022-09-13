@@ -55,6 +55,7 @@ library
     HStream.Common.ConsistentHashing
     HStream.Common.Query
     HStream.Common.Types
+    HStream.Exception
     HStream.Foreign
     HStream.Logger
     HStream.MetaStore.RqliteUtils
@@ -178,6 +179,8 @@ test-suite hstream-common-test
   other-modules:
     HStream.CodecSpec
     HStream.ConsistentHashingSpec
+    HStream.ExceptionSpec
+    HStream.MetaStoreSpec
     HStream.RqliteUtilsSpec
     HStream.TestUtils
     HStream.UtilsSpec

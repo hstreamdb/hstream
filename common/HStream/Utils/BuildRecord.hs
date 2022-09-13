@@ -6,7 +6,7 @@
 
 module HStream.Utils.BuildRecord where
 
-import           Control.Exception         (Exception, displayException, throw)
+import           Control.Exception         (displayException, throw)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BSL
 import           Data.Int                  (Int64)
@@ -21,6 +21,8 @@ import           Z.Foreign                 (fromByteString, toByteString)
 
 import           Data.Word                 (Word32)
 import           Google.Protobuf.Timestamp
+
+import           HStream.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Utils.Codec       (Encoder, EncoderType (..),
                                             deserializeHStreamRecords,
@@ -125,16 +127,3 @@ clientDefaultKey = ""
 
 clientDefaultKey' :: CBytes
 clientDefaultKey' = textToCBytes clientDefaultKey
-
-newtype DecodeHStreamRecordErr = DecodeHStreamRecordErr String
-  deriving(Show)
-instance Exception DecodeHStreamRecordErr
-
-data NoRecordHeader = NoRecordHeader
-  deriving (Show)
-instance Exception NoRecordHeader where
-  displayException NoRecordHeader = "HStreamRecord doesn't have a header."
-
-newtype DecodeBatchRecordErr = DecodeBatchRecordErr String
-  deriving(Show)
-instance Exception DecodeBatchRecordErr

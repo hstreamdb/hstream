@@ -20,6 +20,7 @@ where
 import           Control.Exception
 import           Network.GRPC.HighLevel.Generated
 
+import           HStream.Exception
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
 import           HStream.Server.Exception
