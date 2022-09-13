@@ -1,18 +1,18 @@
 module HStream.Utils.Compression
   ( decompress
   , compress
-  , UnknownCompressionType (..)
-  , ZstdCompresstionErr (..)
   )
 where
 
 import qualified Codec.Compression.GZip    as GZ
 import qualified Codec.Compression.Zstd    as Z
-import           Control.Exception         (Exception, displayException, throw)
+import           Control.Exception         (throw)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BSL
-import           HStream.Server.HStreamApi (CompressionType (..))
 import           Proto3.Suite              (Enumerated (..))
+
+import           HStream.Exception
+import           HStream.Server.HStreamApi (CompressionType (..))
 
 getCompressionType :: Enumerated CompressionType -> Either String CompressionType
 getCompressionType tp = case tp of
@@ -41,12 +41,3 @@ compress tp payload =
          Right CompressionTypeNone -> BSL.toStrict payload
          Right CompressionTypeZstd -> Z.compress 1 $ BSL.toStrict payload
          Left _                    -> throw UnknownCompressionType
-
-data UnknownCompressionType = UnknownCompressionType
-  deriving(Show)
-instance Exception UnknownCompressionType
-
-newtype ZstdCompresstionErr = ZstdCompresstionErr String
-  deriving (Show)
-instance Exception ZstdCompresstionErr where
-  displayException (ZstdCompresstionErr s) = show s

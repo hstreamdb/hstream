@@ -6,7 +6,7 @@
 
 module HStream.Utils.Codec where
 
-import           Control.Exception          (Exception, throw)
+import           Control.Exception          (throw)
 import qualified Data.Attoparsec.ByteString as P
 import           Data.Bits                  (Bits (shiftL), (.|.))
 import qualified Data.ByteString            as BS
@@ -16,9 +16,11 @@ import           Data.Foldable              (foldl')
 import           Data.Vector                (Vector)
 import qualified Data.Vector                as V
 import           Data.Word                  (Word32, Word8)
+import qualified Proto3.Suite               as PT
+
+import           HStream.Exception
 import           HStream.Server.HStreamApi  (BatchHStreamRecords (..),
                                              HStreamRecord)
-import qualified Proto3.Suite               as PT
 
 -- serializeHStreamRecords :: forall a. Encoder a => Serializer a -> Vector HStreamRecord -> BSL.ByteString
 serializeHStreamRecords :: forall a. Encoder a => Vector HStreamRecord -> BSL.ByteString
@@ -45,7 +47,7 @@ instance Encoder 'OriginEncoder where
        in builder <> BD.word32BE (fromIntegral size) <> BD.lazyByteString encoded
 
   decode payloads = case P.parseOnly (P.many' hStreamRecordParser) (BSL.toStrict payloads) of
-    Left e        -> throw $ HStreamRecordsDecodeErr (show e)
+    Left e        -> throw $ DecodeHStreamRecordErr (show e)
     Right records -> V.fromList records
    where
      hStreamRecordParser :: P.Parser HStreamRecord
@@ -53,7 +55,7 @@ instance Encoder 'OriginEncoder where
        size <- convert . BS.unpack <$> P.take 4
        hsRecord <- PT.fromByteString <$> P.take (fromIntegral size)
        case hsRecord of
-         Left e       -> throw $ HStreamRecordsDecodeErr (show e)
+         Left e       -> throw $ DecodeHStreamRecordErr (show e)
          Right record -> return record
 
      convert :: [Word8] -> Word32
@@ -63,9 +65,5 @@ instance Encoder 'ProtoEncoder where
   encode records = let batchRecords = BatchHStreamRecords records
                     in PT.toLazyByteString batchRecords
   decode payloads = case PT.fromByteString $ BSL.toStrict payloads of
-      Left e                        -> throw $ HStreamRecordsDecodeErr (show e)
+      Left e                        -> throw $ DecodeHStreamRecordErr (show e)
       Right BatchHStreamRecords{..} -> batchHStreamRecordsRecords
-
-newtype HStreamRecordsDecodeErr = HStreamRecordsDecodeErr String
-  deriving(Show)
-instance Exception HStreamRecordsDecodeErr
