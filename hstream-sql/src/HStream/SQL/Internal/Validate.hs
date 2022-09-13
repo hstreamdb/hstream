@@ -10,7 +10,7 @@ module HStream.SQL.Internal.Validate
   ( Validate (..)
   ) where
 
-import           Control.Monad              (unless, void, when)
+import           Control.Monad              (unless, void, when, Monad (return))
 import qualified Data.Aeson                 as Aeson
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.List                  as L
@@ -24,6 +24,7 @@ import           HStream.SQL.Exception      (SomeSQLException (..),
                                              buildSQLException)
 import           HStream.SQL.Extra          (extractPNInteger)
 import           HStream.SQL.Validate.Utils
+import HStream.SQL.Abs (SelectItem)
 
 ------------------------------ TypeClass Definition ----------------------------
 class Validate t where
@@ -173,7 +174,6 @@ instance Validate ValueExpr where
   validate expr@ExprInt{}    = Right expr
   validate expr@ExprNum{}    = Right expr
   validate expr@ExprString{} = Right expr
-  validate expr@ExprRaw{}    = Right expr
   validate expr@ExprNull{}   = Right expr
   validate expr@ExprBool{}   = Right expr
   validate expr@(ExprDate _ date) = validate date >> return expr
@@ -215,7 +215,6 @@ isNumExpr expr = case expr of
   (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a numeric expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
-  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
   (ExprSetFunc _ (SetFuncCount _ _))  -> Right expr
   (ExprSetFunc _ (SetFuncAvg _ _))    -> return expr
@@ -267,7 +266,6 @@ isFloatExpr expr = case expr of
   (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
-  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
   (ExprSetFunc pos (SetFuncCount _ _))  -> Left $ buildSQLException ParseException pos "Expected a float expression but got an Integral"
   (ExprSetFunc _ (SetFuncAvg _ _))    -> return expr
@@ -318,7 +316,6 @@ isOrdExpr expr = case expr of
   (ExprTimestamp _ ts) -> validate ts >> return expr
   (ExprInterval _ interval) -> validate interval >> return expr
   (ExprColName _ _) -> Right expr-- inaccurate
-  (ExprRaw _ _)     -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _)) -> Right expr
   (ExprSetFunc _ (SetFuncCount _ _))  -> Right expr
   (ExprSetFunc _ (SetFuncAvg _ _))    -> return expr
@@ -375,7 +372,6 @@ isBoolExpr expr = case expr of
   (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
-  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _)) -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSetFunc pos (SetFuncCount _ _))  -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
   (ExprSetFunc pos (SetFuncAvg _ _))    -> Left $ buildSQLException ParseException pos "Expected a boolean expression but got a numeric"
@@ -428,7 +424,6 @@ isIntExpr expr = case expr of
   (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an integral expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
-  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc _ (SetFuncCountAll _))    -> Right expr
   (ExprSetFunc _ (SetFuncCount _ _))     -> Right expr
   (ExprSetFunc _ (SetFuncAvg _ e))       -> isIntExpr e >> return expr -- not precise
@@ -479,7 +474,6 @@ isStringExpr expr = case expr of
   (ExprTimestamp pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got a Timestamp"
   (ExprInterval pos _) -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Interval"
   (ExprColName _ _)    -> Right expr -- TODO: Use schema to decide this
-  (ExprRaw _ _)        -> Right expr -- TODO: Use schema to decide this
   (ExprSetFunc pos (SetFuncCountAll _))    -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
   (ExprSetFunc pos (SetFuncCount _ _))     -> Left $ buildSQLException ParseException pos "Expected an String expression but got an Integer"
   (ExprSetFunc pos (SetFuncAvg _ _))       -> Left $ buildSQLException ParseException pos "Expected an String expression but got a numeric"
@@ -557,25 +551,14 @@ isConstExpr _ = Left $ buildSQLException ParseException Nothing "INSERT only sup
 instance Validate Sel where
   validate sel@(DSel _ l) = validate l >> return sel
 
--- 1. Column expressions should be all legal
--- 2. Aliases (if exists) should be all unique
--- 3. aggCindition: if there exists an aggregate expression, there can not be any other field
-instance Validate SelList where
-  validate l@(SelListAsterisk _) = Right l
-  validate l@(SelListSublist pos dcols) = do
-    mapM_ validate dcols
-    when (anySame $ extractAlias dcols)
-      (Left $ buildSQLException ParseException pos "An SELECT clause can not contain the same column aliases")
-    return l
-    where
-      anyAgg = anyAggInSelList l
-      extractAlias []                                   = []
-      extractAlias ((DerivedColSimpl _ _) : xs)         = extractAlias xs
-      extractAlias ((DerivedColAs _ _ (Ident as)) : xs) = as : extractAlias xs
+instance Validate [SelectItem] where
+  validate items = mapM_ validate items >> return l
 
-instance Validate DerivedCol where
-  validate dcol@(DerivedColSimpl _ e) = validate e >> return dcol
-  validate dcol@(DerivedColAs _ e _)  = validate e >> return dcol
+instance Validate SelectItem where
+  validate item@(SelectItemUnnamedExpr _ expr) = validate expr >> return item
+  validate item@(SelectItemExprWithAlias _ expr _) = validate expr >> return item
+  validate item@(SelectItemQualifiedWildcard _ _) = return item
+  validate item@(SelectItemWildcard _) = return item
 
 -- From
 instance Validate From where

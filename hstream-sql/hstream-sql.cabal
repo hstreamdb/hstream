@@ -70,6 +70,7 @@ library
     , base                  >=4.11  && <5
     , binary
     , bytestring            ^>=0.10
+    , containers
     , diff-flow
     , extra
     , hstream-common

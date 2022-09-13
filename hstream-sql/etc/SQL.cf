@@ -92,13 +92,13 @@ ExplainCreate. Explain ::= "EXPLAIN" Create ;
 DSelect. Select ::= Sel From Where GroupBy Having ;
 
 -- Sel
-DSel. Sel ::= "SELECT" SelList ;
-SelListAsterisk. SelList ::= "*" ;
-SelListSublist.  SelList ::= [DerivedCol] ;
-separator DerivedCol "," ;
+DSel. Sel ::= "SELECT" [SelectItem] ;
+separator SelectItem "," ;
 
-DerivedColSimpl. DerivedCol ::= ValueExpr ;
-DerivedColAs.    DerivedCol ::= ValueExpr "AS" Ident ;
+SelectItemUnnamedExpr.       SelectItem ::= ValueExpr ;
+SelectItemExprWithAlias.     SelectItem ::= ValueExpr "AS" Ident ;
+SelectItemQualifiedWildcard. SelectItem ::= Ident "." "*" ;
+SelectItemWildcard.          SelectItem ::= "*" ;
 
 -- From
 DFrom. From ::= "FROM" TableRef ;
@@ -192,7 +192,6 @@ ExprNum. ValueExpr7 ::= PNDouble  ; -- float/numeric
 
 -- Plain String
 ExprString. ValueExpr7 ::= String ; -- string
-ExprRaw.    ValueExpr7 ::= RawColumn ;
 
 -- Boolean Type
 BoolTrue.  Boolean ::= "TRUE"  ; -- boolean
@@ -236,7 +235,8 @@ ExprSubquery. ValueExpr7 ::= "(" Select ")" ;
 
 -- Column Name
 ColNameSimple. ColName ::= Ident ;
-ColNameStream. ColName ::= Ident "." Ident ;
+ColNameRaw.    ColName ::= RawColumn ;
+ColNameStream. ColName ::= Ident "." ColName ;
 ExprColName. ValueExpr7 ::= ColName ;
 
 -- Set Functions
@@ -254,15 +254,10 @@ ExprSetFunc. ValueExpr7 ::= SetFunc ;
 
 -- Scalar Functions
 -- jsonb related
-
-JsonFieldAccessRhsInt. JsonFieldAccessRhs ::= Integer ;
-JsonFieldAccessRhsText. JsonFieldAccessRhs ::= String ;
-
-ScalarFuncFieldToJson.   ScalarFunc ::= ValueExpr "->"  JsonFieldAccessRhs ;
-ScalarFuncFieldToText.   ScalarFunc ::= ValueExpr "->>" JsonFieldAccessRhs ;
-ScalarFuncFieldsToJson.  ScalarFunc ::= ValueExpr "#>"  "[" [String] "]" ;
-ScalarFuncFieldsToTexts. ScalarFunc ::= ValueExpr "#>>" "[" [String] "]" ;
-separator String "," ;
+ScalarFuncFieldToJson.   ScalarFunc ::= ValueExpr "->"  ValueExpr ;
+ScalarFuncFieldToText.   ScalarFunc ::= ValueExpr "->>" ValueExpr ;
+ScalarFuncFieldsToJson.  ScalarFunc ::= ValueExpr "#>"  ValueExpr ;
+ScalarFuncFieldsToTexts. ScalarFunc ::= ValueExpr "#>>" ValueExpr ;
 
 ScalarFuncSin.   ScalarFunc ::= "SIN"   "(" ValueExpr ")" ;
 ScalarFuncSinh.  ScalarFunc ::= "SINH"  "(" ValueExpr ")" ;
