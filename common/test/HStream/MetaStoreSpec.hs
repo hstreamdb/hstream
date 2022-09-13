@@ -1,20 +1,22 @@
 module HStream.MetaStoreSpec where
+import           Control.Monad                    (void)
 import qualified Data.List                        as L
 import           Data.Maybe
 import qualified Data.Text                        as T
 import           Network.HTTP.Client              (defaultManagerSettings,
                                                    newManager)
 import           System.Environment               (lookupEnv)
-import           Test.Hspec                       (HasCallStack, Spec, describe,
-                                                   hspec, it, runIO,
-                                                   shouldReturn)
+import           Test.Hspec                       (HasCallStack, Spec,
+                                                   afterAll_, describe, hspec,
+                                                   it, runIO, shouldReturn)
 import           Test.QuickCheck                  (generate)
 import           ZooKeeper                        (withResource,
                                                    zookeeperResInit)
 import           ZooKeeper.Types                  (ZHandle)
 
+
 import qualified HStream.Logger                   as Log
-import           HStream.MetaStore.RqliteUtils    (createTable)
+import           HStream.MetaStore.RqliteUtils    (createTable, deleteTable)
 import           HStream.MetaStore.Types          (HasPath (..),
                                                    MetaHandle (..),
                                                    MetaMulti (..),
@@ -34,7 +36,7 @@ spec = do
   let urlZk = textToCBytes $ T.pack $ host <> ":" <> portZk
   let mHandle1 = RLHandle $ RHandle m urlRq
   let res = zookeeperResInit urlZk Nothing 5000 Nothing 0
-  smokeTest mHandle1
+  afterAll_ (void $ deleteTable m urlRq (myRootPath @MetaExample @RHandle)) (smokeTest mHandle1)
   runIO $ withResource res $ \zk -> do
     let mHandle2 = ZkHandle zk
     hspec $ smokeTest mHandle2
