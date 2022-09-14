@@ -565,6 +565,9 @@ instance Validate From where
   validate from@(DFrom _ tableRefs) = mapM_ validate tableRefs >> return from
 
 instance Validate TableRef where
+  validate r@(TableRefTumbling _ ref interval) = validate ref >> validate interval >> return r
+  validate r@(TableRefHopping _ ref interval1 interval2) = validate ref >> validate interval1 >> validate interval2 >> return r
+  validate r@(TableRefSliding _ ref interval) = validate ref >> validate interval >> return r
   validate r@(TableRefAs _ ref _) = validate ref >> return r
   validate r@(TableRefCrossJoin _ ref1 _ ref2) = validate ref1 >> validate ref2 >> return r
   validate r@(TableRefNaturalJoin _ ref1 _ ref2) = validate ref1 >> validate ref2 >> return r
@@ -589,28 +592,10 @@ instance Validate Where where
   validate whr@(DWhere _ expr) = validate expr >> return whr
 
 -- GroupBy
--- 1. GROUP BY onlu supports:
---    - a single column
---    - a column and a window
--- 2. Column and/or window should be legal
 instance Validate GroupBy where
   validate grp = case grp of
-    (DGroupByEmpty _) -> Right grp
-    (DGroupBy pos []) -> Left $ buildSQLException ParseException pos "Impossible happened"
-    (DGroupBy _   [GrpItemCol _ col]) -> validate col >> return grp
-    (DGroupBy _   [GrpItemCol _ col, GrpItemWin _ win]) -> validate col >> validate win >> return grp
-    (DGroupBy pos _) -> Left $ buildSQLException ParseException pos "An GROUP BY clause can only contain one column name with/without an window"
-
--- 1. Intervals should be legal
--- 2. For HoppingWindow, length >= hop
-instance Validate Window where
-  validate win@(TumblingWindow _ interval)  = validate interval >> return win
-  validate win@(HoppingWindow pos i1 i2)    = do
-    void $ validate i1
-    void $ validate i2
-    unless (i1 >= i2) (Left $ buildSQLException ParseException pos "Hopping interval can not be larger than the size of the window")
-    return win
-  validate win@(SlidingWindow pos interval) = validate interval >> return win
+    (DGroupByEmpty _) -> return grp
+    (DGroupBy _ cols) -> mapM_ validate cols >> return grp
 
 -- Having
 -- 1. ValueExpr in it should be legal

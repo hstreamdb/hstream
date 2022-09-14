@@ -104,14 +104,20 @@ SelectItemWildcard.          SelectItem ::= "*" ;
 DFrom. From ::= "FROM" [TableRef] ;
 separator TableRef "," ;
 
+
 TableRefAs. TableRef ::= TableRef1 "AS" Ident ;
-TableRefCrossJoin.   TableRef1 ::= TableRef1 JoinTypeWithoutCond "JOIN" TableRef2 ;
-TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond "JOIN" TableRef2 ;
-TableRefJoinOn.      TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "ON" ValueExpr ;
-TableRefJoinUsing.   TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "USING" "(" [ColName] ")" ;
-TableRefIdent.     TableRef2 ::= Ident ;
-TableRefSubquery.  TableRef2 ::= "(" Select ")" ;
-coercions TableRef 2 ;
+
+TableRefTumbling. TableRef1 ::= "TUMBLING" "(" TableRef2 "," Interval ")" ;
+TableRefHopping.  TableRef1 ::= "HOPPING"  "(" TableRef2 "," Interval "," Interval ")" ;
+TableRefSliding.  TableRef1 ::= "SLIDING"  "(" TableRef2 "," Interval ")" ;
+
+TableRefCrossJoin.   TableRef2 ::= TableRef2 JoinTypeWithoutCond "JOIN" TableRef3 ;
+TableRefNaturalJoin. TableRef2 ::= TableRef2 "NATURAL" JoinTypeWithCond "JOIN" TableRef3 ;
+TableRefJoinOn.      TableRef2 ::= TableRef2 JoinTypeWithCond "JOIN" TableRef3 "ON" ValueExpr ;
+TableRefJoinUsing.   TableRef2 ::= TableRef2 JoinTypeWithCond "JOIN" TableRef3 "USING" "(" [ColName] ")" ;
+TableRefIdent.     TableRef3 ::= Ident ;
+TableRefSubquery.  TableRef3 ::= "(" Select ")" ;
+coercions TableRef 3 ;
 separator ColName "," ;
 
 JoinInner1. JoinTypeWithCond ::= "INNER" ;
@@ -130,15 +136,7 @@ DWhere.     Where ::= "WHERE" ValueExpr ;
 
 -- GroupBy
 DGroupByEmpty. GroupBy ::= "" ;
-DGroupBy.      GroupBy ::= "GROUP" "BY" [GrpItem] ;
-separator GrpItem "," ;
-
-GrpItemCol. GrpItem ::= ColName ;
-GrpItemWin. GrpItem ::= Window ;
-
-TumblingWindow. Window ::= "TUMBLING" "(" Interval ")" ;
-HoppingWindow.  Window ::= "HOPPING"  "(" Interval "," Interval ")" ;
-SlidingWindow.  Window ::= "SLIDING"  "(" Interval ")" ;
+DGroupBy.      GroupBy ::= "GROUP" "BY" [ColName] ;
 
 -- Having
 DHavingEmpty. Having ::= "" ;

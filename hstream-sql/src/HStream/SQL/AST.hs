@@ -19,13 +19,10 @@ import qualified Data.Time             as Time
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception (SomeSQLException (..),
-                                        throwSQLException, buildSQLException)
+                                        throwSQLException)
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
 import           HStream.SQL.Print     (printTree)
-import HStream.SQL.Abs (JoinTypeWithCond)
-import Data.Graph (Tree(Node))
-import Data.Maybe (Maybe(Nothing))
 
 --------------------------------------------------------------------------------
 type family RefinedType a :: Type
@@ -87,12 +84,12 @@ type RTimeStr = Time.TimeOfDay
 type instance RefinedType TimeStr = RTimeStr
 instance Refine TimeStr where
   refine (TimeStrWithoutMicroSec pos h m s) =
-    case makeTimeOfDayValid h m (fromInteger s) of
+    case Time.makeTimeOfDayValid (fromInteger h) (fromInteger m) (fromInteger s) of
       Nothing -> throwSQLException RefineException pos "invalid time"
       Just t  -> t
 
   refine (TimeStrWithMicroSec pos h m s ms) =
-    case makeTimeOfDayValid h m (fromInteger s + (fromInteger ms) * 0.001) of
+    case Time.makeTimeOfDayValid (fromInteger h) (fromInteger m) (fromInteger s + (fromInteger ms) * 0.001) of
       Nothing -> throwSQLException RefineException pos "invalid time"
       Just t  -> t
 
@@ -116,8 +113,8 @@ type RTimezone = Time.TimeZone
 type instance RefinedType Timezone = RTimezone
 instance Refine Timezone where
   refine (TimezoneZ _) = Time.minutesToTimeZone 0
-  refine (TimezonePositive _ h m) = Time.minutesToTimeZone (h * 60 + m)
-  refine (TimezoneNegative _ h m) = Time.minutesToTimeZone (- (h * 60 + m))
+  refine (TimezonePositive _ h m) = Time.minutesToTimeZone (fromInteger $ h * 60 + m)
+  refine (TimezoneNegative _ h m) = Time.minutesToTimeZone (fromInteger $ - (h * 60 + m))
 
 type RTimestampStr = Time.ZonedTime
 type instance RefinedType TimestampStr = RTimestampStr
@@ -170,8 +167,8 @@ data Constant = ConstantNull
               | ConstantBytea     BS.ByteString
               | ConstantJsonb     Aeson.Object
               | ConstantArray     [Constant]
-              | ConstantMap       Map.Map Constant Constant
-              deriving (Eq, Show)
+              | ConstantMap       (Map.Map Constant Constant)
+              deriving (Show)
 
 {-
 instance Aeson.ToJSON Constant where
@@ -213,7 +210,7 @@ data JsonOp
 data Aggregate = Nullary NullaryAggregate
                | Unary   UnaryAggregate  RValueExpr
                | Binary  BinaryAggregate RValueExpr RValueExpr
-               deriving (Eq, Show)
+               deriving (Show)
 
 data NullaryAggregate = AggCountAll deriving (Eq, Show)
 data UnaryAggregate   = AggCount
@@ -240,12 +237,14 @@ instance Refine ArrayAccessRhs where
 type instance RefinedType [LabelledValueExpr] = Map.Map RValueExpr RValueExpr
 instance Refine [LabelledValueExpr] where
   refine ts = Map.fromList $
-    L.map (\(DLabelledValueExpr _ ek ev) -> (refine ek, refine rv)) ts
+    L.map (\(DLabelledValueExpr _ ek ev) -> (refine ek, refine ev)) ts
 
 type ExprName = String
 type StreamName = Text
 type FieldName  = Text
 data RValueExpr = RExprCast        ExprName RValueExpr RDataType
+                | RExprArray ExprName [RValueExpr]
+                | RExprMap ExprName (Map.Map RValueExpr RValueExpr)
                 | RExprAccessMap   ExprName RValueExpr RValueExpr
                 | RExprAccessArray ExprName RValueExpr RArrayAccessRhs
                 | RExprCol         ExprName (Maybe StreamName) FieldName
@@ -255,7 +254,7 @@ data RValueExpr = RExprCast        ExprName RValueExpr RDataType
                 | RExprBinOp       ExprName BinaryOp RValueExpr RValueExpr
                 | RExprUnaryOp     ExprName UnaryOp  RValueExpr
                 | RExprSubquery    ExprName RSelect
-                deriving (Eq, Show)
+                deriving (Show)
 
 type instance RefinedType ValueExpr = RValueExpr
 instance Refine ValueExpr where
@@ -268,7 +267,7 @@ instance Refine ValueExpr where
     (ExprEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpEQ (refine e1) (refine e2)
     (ExprNEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpNEQ (refine e1) (refine e2)
     (ExprLT _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpLT (refine e1) (refine e2)
-    (ExprEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGT (refine e1) (refine e2)
+    (ExprGT _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGT (refine e1) (refine e2)
     (ExprLEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpLEQ (refine e1) (refine e2)
     (ExprGEQ _ e1 e2) -> RExprBinOp (trimSpacesPrint expr) OpGEQ (refine e1) (refine e2)
     (ExprAccessMap _ e1 e2) -> RExprAccessMap (trimSpacesPrint expr) (refine e1) (refine e2)
@@ -279,113 +278,117 @@ instance Refine ValueExpr where
     -- 2. Constants
     (ExprNull _)              -> RExprConst (trimSpacesPrint expr) ConstantNull
     (ExprInt _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantInt . fromInteger . refine $ n)
-    (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantNum $ refine n)
+    (ExprNum _ n)             -> RExprConst (trimSpacesPrint expr) (ConstantNumeric $ refine n)
     (ExprString _ s)          -> RExprConst (trimSpacesPrint expr) (ConstantText (Text.pack s))
     (ExprBool _ b)            -> RExprConst (trimSpacesPrint expr) (ConstantBoolean $ refine b)
     (ExprDate _ date)         -> RExprConst (trimSpacesPrint expr) (ConstantDate $ refine date)
     (ExprTime _ time)         -> RExprConst (trimSpacesPrint expr) (ConstantTime $ refine time)
     (ExprTimestamp _ ts) -> RExprConst (trimSpacesPrint expr) (ConstantTimestamp $ refine ts)
     (ExprInterval _ interval) -> RExprConst (trimSpacesPrint expr) (ConstantInterval $ refine interval)
-    (ExprArr _ es) -> RExprConst (trimSpacesPrint expr) (ConstantArray $ refine <$> es)
-    (ExprMap _ ts) -> RExprConst (trimSpacesPrint expr) (ConstantMap $ refine ts)
 
-    -- 3. Json access
+    -- 3. Arrays and Maps
+    (ExprArr _ es) -> RExprArray (trimSpacesPrint expr) (refine <$> es)
+    (ExprMap _ ts) -> RExprMap (trimSpacesPrint expr) (refine ts)
+
+    -- 4. Json access
     (ExprScalarFunc _ (ScalarFuncFieldToJson _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpArrow (refine e1) (refine e2)
     (ExprScalarFunc _ (ScalarFuncFieldToText _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpLongArrow (refine e1) (refine e2)
     (ExprScalarFunc _ (ScalarFuncFieldsToJson _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpHashArrow (refine e1) (refine e2)
     (ExprScalarFunc _ (ScalarFuncFieldsToTexts _ e1 e2)) -> RExprAccessJson (trimSpacesPrint expr) JOpHashLongArrow (refine e1) (refine e2)
-    -- 4. Scalar functions
+    -- 5. Scalar functions
     (ExprScalarFunc _ func) -> refine func
-    -- 5. Set functions
+    -- 6. Set functions
     (ExprSetFunc _ func) -> refine func
-    -- 6. Column access
+    -- 7. Column access
     (ExprColName _ col) -> refine col
-    -- 7. Subquery
+    -- 8. Subquery
     (ExprSubquery _ select) -> RExprSubquery (trimSpacesPrint expr) (refine select)
 
 type instance RefinedType ScalarFunc = RValueExpr
 instance Refine ScalarFunc where
   refine func = case func of
-    ScalarFuncIfNull   _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpIfNull    (refine e1) (refine e2)
-    ScalarFuncNullIf   _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpNullIf    (refine e1) (refine e2)
-    ArrayFuncContain   _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpContain   (refine e1) (refine e2)
-    ArrayFuncExcept    _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpExcept    (refine e1) (refine e2)
-    ArrayFuncIntersect _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpIntersect (refine e1) (refine e2)
-    ArrayFuncRemove    _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpRemove    (refine e1) (refine e2)
-    ArrayFuncUnion     _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpUnion     (refine e1) (refine e2)
-    ArrayFuncJoinWith  _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpArrJoin'  (refine e1) (refine e2)
-    ScalarFuncDateStr  _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpDateStr   (refine e1) (refine e2)
-    ScalarFuncStrDate  _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpStrDate   (refine e1) (refine e2)
-    ScalarFuncSplit    _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpSplit     (refine e1) (refine e2)
-    ScalarFuncChunksOf _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpChunksOf  (refine e1) (refine e2)
-    ScalarFuncTake     _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpTake      (refine e1) (refine e2)
-    ScalarFuncTakeEnd  _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpTakeEnd   (refine e1) (refine e2)
-    ScalarFuncDrop     _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpDrop      (refine e1) (refine e2)
-    ScalarFuncDropEnd  _ e1 e2 -> RExprBinOp (trimSpacesPrint expr) OpDropEnd   (refine e1) (refine e2)
-    ScalarFuncSin     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpSin     (refine e)
-    ScalarFuncSinh    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpSinh    (refine e)
-    ScalarFuncAsin    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAsin    (refine e)
-    ScalarFuncAsinh   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAsinh   (refine e)
-    ScalarFuncCos     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpCos     (refine e)
-    ScalarFuncCosh    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpCosh    (refine e)
-    ScalarFuncAcos    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAcos    (refine e)
-    ScalarFuncAcosh   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAcosh   (refine e)
-    ScalarFuncTan     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpTan     (refine e)
-    ScalarFuncTanh    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpTanh    (refine e)
-    ScalarFuncAtan    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAtan    (refine e)
-    ScalarFuncAtanh   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAtanh   (refine e)
-    ScalarFuncAbs     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpAbs     (refine e)
-    ScalarFuncCeil    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpCeil    (refine e)
-    ScalarFuncFloor   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpFloor   (refine e)
-    ScalarFuncRound   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpRound   (refine e)
-    ScalarFuncSign    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpSign    (refine e)
-    ScalarFuncSqrt    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpSqrt    (refine e)
-    ScalarFuncLog     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpLog     (refine e)
-    ScalarFuncLog2    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpLog2    (refine e)
-    ScalarFuncLog10   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpLog10   (refine e)
-    ScalarFuncExp     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpExp     (refine e)
-    ScalarFuncIsInt   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsInt   (refine e)
-    ScalarFuncIsFloat _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsFloat (refine e)
-    ScalarFuncIsNum   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsNum   (refine e)
-    ScalarFuncIsBool  _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsBool  (refine e)
-    ScalarFuncIsStr   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsStr   (refine e)
-    ScalarFuncIsMap   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsMap   (refine e)
-    ScalarFuncIsArr   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsArr   (refine e)
-    ScalarFuncIsDate  _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsDate  (refine e)
-    ScalarFuncIsTime  _ e -> RExprUnaryOp (trimSpacesPrint expr) OpIsTime  (refine e)
-    ScalarFuncToStr   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpToStr   (refine e)
-    ScalarFuncToLower _ e -> RExprUnaryOp (trimSpacesPrint expr) OpToLower (refine e)
-    ScalarFuncToUpper _ e -> RExprUnaryOp (trimSpacesPrint expr) OpToUpper (refine e)
-    ScalarFuncTrim    _ e -> RExprUnaryOp (trimSpacesPrint expr) OpTrim    (refine e)
-    ScalarFuncLTrim   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpLTrim   (refine e)
-    ScalarFuncRTrim   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpRTrim   (refine e)
-    ScalarFuncRev     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpReverse (refine e)
-    ScalarFuncStrlen  _ e -> RExprUnaryOp (trimSpacesPrint expr) OpStrLen  (refine e)
-    ArrayFuncDistinct _ e -> RExprUnaryOp (trimSpacesPrint expr) OpDistinct(refine e)
-    ArrayFuncLength   _ e -> RExprUnaryOp (trimSpacesPrint expr) OpLength  (refine e)
-    ArrayFuncJoin     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpArrJoin (refine e)
-    ArrayFuncMax      _ e -> RExprUnaryOp (trimSpacesPrint expr) OpArrMax  (refine e)
-    ArrayFuncMin      _ e -> RExprUnaryOp (trimSpacesPrint expr) OpArrMin  (refine e)
-    ArrayFuncSort     _ e -> RExprUnaryOp (trimSpacesPrint expr) OpSort    (refine e)
+    ScalarFuncIfNull   _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpIfNull    (refine e1) (refine e2)
+    ScalarFuncNullIf   _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpNullIf    (refine e1) (refine e2)
+    ArrayFuncContain   _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpContain   (refine e1) (refine e2)
+    ArrayFuncExcept    _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpExcept    (refine e1) (refine e2)
+    ArrayFuncIntersect _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpIntersect (refine e1) (refine e2)
+    ArrayFuncRemove    _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpRemove    (refine e1) (refine e2)
+    ArrayFuncUnion     _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpUnion     (refine e1) (refine e2)
+    ArrayFuncJoinWith  _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpArrJoin'  (refine e1) (refine e2)
+    ScalarFuncDateStr  _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpDateStr   (refine e1) (refine e2)
+    ScalarFuncStrDate  _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpStrDate   (refine e1) (refine e2)
+    ScalarFuncSplit    _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpSplit     (refine e1) (refine e2)
+    ScalarFuncChunksOf _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpChunksOf  (refine e1) (refine e2)
+    ScalarFuncTake     _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpTake      (refine e1) (refine e2)
+    ScalarFuncTakeEnd  _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpTakeEnd   (refine e1) (refine e2)
+    ScalarFuncDrop     _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpDrop      (refine e1) (refine e2)
+    ScalarFuncDropEnd  _ e1 e2 -> RExprBinOp (trimSpacesPrint func) OpDropEnd   (refine e1) (refine e2)
+    ScalarFuncSin     _ e -> RExprUnaryOp (trimSpacesPrint func) OpSin     (refine e)
+    ScalarFuncSinh    _ e -> RExprUnaryOp (trimSpacesPrint func) OpSinh    (refine e)
+    ScalarFuncAsin    _ e -> RExprUnaryOp (trimSpacesPrint func) OpAsin    (refine e)
+    ScalarFuncAsinh   _ e -> RExprUnaryOp (trimSpacesPrint func) OpAsinh   (refine e)
+    ScalarFuncCos     _ e -> RExprUnaryOp (trimSpacesPrint func) OpCos     (refine e)
+    ScalarFuncCosh    _ e -> RExprUnaryOp (trimSpacesPrint func) OpCosh    (refine e)
+    ScalarFuncAcos    _ e -> RExprUnaryOp (trimSpacesPrint func) OpAcos    (refine e)
+    ScalarFuncAcosh   _ e -> RExprUnaryOp (trimSpacesPrint func) OpAcosh   (refine e)
+    ScalarFuncTan     _ e -> RExprUnaryOp (trimSpacesPrint func) OpTan     (refine e)
+    ScalarFuncTanh    _ e -> RExprUnaryOp (trimSpacesPrint func) OpTanh    (refine e)
+    ScalarFuncAtan    _ e -> RExprUnaryOp (trimSpacesPrint func) OpAtan    (refine e)
+    ScalarFuncAtanh   _ e -> RExprUnaryOp (trimSpacesPrint func) OpAtanh   (refine e)
+    ScalarFuncAbs     _ e -> RExprUnaryOp (trimSpacesPrint func) OpAbs     (refine e)
+    ScalarFuncCeil    _ e -> RExprUnaryOp (trimSpacesPrint func) OpCeil    (refine e)
+    ScalarFuncFloor   _ e -> RExprUnaryOp (trimSpacesPrint func) OpFloor   (refine e)
+    ScalarFuncRound   _ e -> RExprUnaryOp (trimSpacesPrint func) OpRound   (refine e)
+    ScalarFuncSign    _ e -> RExprUnaryOp (trimSpacesPrint func) OpSign    (refine e)
+    ScalarFuncSqrt    _ e -> RExprUnaryOp (trimSpacesPrint func) OpSqrt    (refine e)
+    ScalarFuncLog     _ e -> RExprUnaryOp (trimSpacesPrint func) OpLog     (refine e)
+    ScalarFuncLog2    _ e -> RExprUnaryOp (trimSpacesPrint func) OpLog2    (refine e)
+    ScalarFuncLog10   _ e -> RExprUnaryOp (trimSpacesPrint func) OpLog10   (refine e)
+    ScalarFuncExp     _ e -> RExprUnaryOp (trimSpacesPrint func) OpExp     (refine e)
+    ScalarFuncIsInt   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsInt   (refine e)
+    ScalarFuncIsFloat _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsFloat (refine e)
+    ScalarFuncIsNum   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsNum   (refine e)
+    ScalarFuncIsBool  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsBool  (refine e)
+    ScalarFuncIsStr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsStr   (refine e)
+    ScalarFuncIsMap   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsMap   (refine e)
+    ScalarFuncIsArr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsArr   (refine e)
+    ScalarFuncIsDate  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsDate  (refine e)
+    ScalarFuncIsTime  _ e -> RExprUnaryOp (trimSpacesPrint func) OpIsTime  (refine e)
+    ScalarFuncToStr   _ e -> RExprUnaryOp (trimSpacesPrint func) OpToStr   (refine e)
+    ScalarFuncToLower _ e -> RExprUnaryOp (trimSpacesPrint func) OpToLower (refine e)
+    ScalarFuncToUpper _ e -> RExprUnaryOp (trimSpacesPrint func) OpToUpper (refine e)
+    ScalarFuncTrim    _ e -> RExprUnaryOp (trimSpacesPrint func) OpTrim    (refine e)
+    ScalarFuncLTrim   _ e -> RExprUnaryOp (trimSpacesPrint func) OpLTrim   (refine e)
+    ScalarFuncRTrim   _ e -> RExprUnaryOp (trimSpacesPrint func) OpRTrim   (refine e)
+    ScalarFuncRev     _ e -> RExprUnaryOp (trimSpacesPrint func) OpReverse (refine e)
+    ScalarFuncStrlen  _ e -> RExprUnaryOp (trimSpacesPrint func) OpStrLen  (refine e)
+    ArrayFuncDistinct _ e -> RExprUnaryOp (trimSpacesPrint func) OpDistinct(refine e)
+    ArrayFuncLength   _ e -> RExprUnaryOp (trimSpacesPrint func) OpLength  (refine e)
+    ArrayFuncJoin     _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrJoin (refine e)
+    ArrayFuncMax      _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrMax  (refine e)
+    ArrayFuncMin      _ e -> RExprUnaryOp (trimSpacesPrint func) OpArrMin  (refine e)
+    ArrayFuncSort     _ e -> RExprUnaryOp (trimSpacesPrint func) OpSort    (refine e)
 
 type instance RefinedType SetFunc = RValueExpr
 instance Refine SetFunc where
   refine func = case func of
-    SetFuncCountAll _ -> RExprAggregate (trimSpacesPrint expr) (Nullary AggCountAll)
-    SetFuncCount _ e  -> RExprAggregate (trimSpacesPrint expr) (Unary AggCount $ refine e)
-    SetFuncAvg _ e    -> RExprAggregate (trimSpacesPrint expr) (Unary AggAvg $ refine e)
-    SetFuncSum _ e    -> RExprAggregate (trimSpacesPrint expr) (Unary AggSum $ refine e)
-    SetFuncMax _ e    -> RExprAggregate (trimSpacesPrint expr) (Unary AggMax $ refine e)
-    SetFuncMin _ e    -> RExprAggregate (trimSpacesPrint expr) (Unary AggMin $ refine e)
-    SetFuncTopK _ e1 e2         -> RExprAggregate (trimSpacesPrint expr) (Binary AggTopK         (refine e1) (refine e2))
-    SetFuncTopKDistinct _ e1 e2 -> RExprAggregate (trimSpacesPrint expr) (Binary AggTopKDistinct (refine e1) (refine e2))
+    SetFuncCountAll _ -> RExprAggregate (trimSpacesPrint func) (Nullary AggCountAll)
+    SetFuncCount _ e  -> RExprAggregate (trimSpacesPrint func) (Unary AggCount $ refine e)
+    SetFuncAvg _ e    -> RExprAggregate (trimSpacesPrint func) (Unary AggAvg $ refine e)
+    SetFuncSum _ e    -> RExprAggregate (trimSpacesPrint func) (Unary AggSum $ refine e)
+    SetFuncMax _ e    -> RExprAggregate (trimSpacesPrint func) (Unary AggMax $ refine e)
+    SetFuncMin _ e    -> RExprAggregate (trimSpacesPrint func) (Unary AggMin $ refine e)
+    SetFuncTopK _ e1 e2         -> RExprAggregate (trimSpacesPrint func) (Binary AggTopK         (refine e1) (refine e2))
+    SetFuncTopKDistinct _ e1 e2 -> RExprAggregate (trimSpacesPrint func) (Binary AggTopKDistinct (refine e1) (refine e2))
 
 type instance RefinedType ColName = RValueExpr
 instance Refine ColName where
   refine col = case col of
     ColNameSimple _ (Ident t) -> RExprCol (trimSpacesPrint col) Nothing t
     ColNameRaw _ raw -> RExprCol (trimSpacesPrint col) Nothing (refine raw)
-    ColNameStream _ (Ident s) (Ident c) -> RExprCol (trimSpacesPrint col) (Just s) c
+    ColNameStream _ (Ident s) col ->
+      let (RExprCol _ _ c) = refine col
+       in RExprCol (trimSpacesPrint col) (Just s) c
 
 --------------------------------------------------------------------------------
 ---- Sel
@@ -395,7 +398,7 @@ data RSelectItem
   | RSelectItemAggregate Aggregate (Maybe SelectItemAlias)
   | RSelectProjectQualifiedAll StreamName
   | RSelectProjectAll
-  deriving (Show, Eq)
+  deriving (Show)
 
 type instance RefinedType SelectItem = RSelectItem
 instance Refine SelectItem where
@@ -413,19 +416,27 @@ instance Refine SelectItem where
             RExprAggregate _ agg -> RSelectItemAggregate agg (Just t)
             _                    -> RSelectItemProject rexpr (Just t)
 
-newtype RSel = RSel [RSelectItem] deriving (Eq, Show)
+newtype RSel = RSel [RSelectItem] deriving (Show)
 type instance RefinedType Sel = RSel
 instance Refine Sel where
-  refine (Sel _ items) = RSel (refine <$> items)
+  refine (DSel _ items) = RSel (refine <$> items)
 
 ---- Frm
+
+data WindowType
+  = Tumbling RInterval
+  | Hopping RInterval RInterval
+  | Sliding RInterval
+  deriving (Eq, Show)
+
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
                | RTableRefSubquery RSelect  (Maybe StreamName)
                | RTableRefCrossJoin RTableRef RTableRef (Maybe StreamName)
                | RTableRefNaturalJoin RTableRef RTableRef (Maybe StreamName)
                | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr (Maybe StreamName)
                | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] (Maybe StreamName)
-               deriving (Eq, Show)
+               | RTableRefWindowed RTableRef WindowType (Maybe StreamName)
+               deriving (Show)
 setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
 setRTableRefAlias ref alias = case ref of
   RTableRefSimple s _ -> RTableRefSimple s (Just alias)
@@ -434,6 +445,7 @@ setRTableRefAlias ref alias = case ref of
   RTableRefNaturalJoin r1 r2 _ -> RTableRefNaturalJoin r1 r2 (Just alias)
   RTableRefJoinOn r1 typ r2 e _ -> RTableRefJoinOn r1 typ r2 e (Just alias)
   RTableRefJoinUsing r1 typ r2 cols _ -> RTableRefJoinUsing r1 typ r2 cols (Just alias)
+  RTableRefWindowed r win _ -> RTableRefWindowed r win (Just alias)
 
 data RJoinType = InnerJoin | LeftJoin | RightJoin | FullJoin
                deriving (Eq, Show)
@@ -460,12 +472,15 @@ instance Refine TableRef where
   refine (TableRefNaturalJoin _ r1 _ r2) = RTableRefNaturalJoin (refine r1) (refine r2) Nothing
   refine (TableRefJoinOn _ r1 typ r2 e) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) Nothing
   refine (TableRefJoinUsing _ r1 typ r2 cols) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) Nothing
-    where extractStreamNameFromColName = case col of
+    where extractStreamNameFromColName col = case col of
             ColNameSimple _ (Ident t) -> t
             ColNameRaw _ raw -> refine raw
             ColNameStream pos _ _ -> throwSQLException RefineException pos "Impossible happened"
+  refine (TableRefTumbling _ ref interval) = RTableRefWindowed (refine ref) (Tumbling (refine interval)) Nothing
+  refine (TableRefHopping _ ref len hop) = RTableRefWindowed (refine ref) (Hopping (refine len) (refine hop)) Nothing
+  refine (TableRefSliding _ ref interval) = RTableRefWindowed (refine ref) (Sliding (refine interval)) Nothing
 
-newtype RFrom = RFrom [RTableRef] deriving (Eq, Show)
+newtype RFrom = RFrom [RTableRef] deriving (Show)
 type instance RefinedType From = RFrom
 instance Refine From where
   refine (DFrom _ refs) = RFrom (refine <$> refs)
@@ -473,92 +488,39 @@ instance Refine From where
 ---- Whr
 data RWhere = RWhereEmpty
             | RWhere RValueExpr
-            deriving (Eq, Show)
+            deriving (Show)
 type instance RefinedType Where = RWhere
 instance Refine Where where
   refine (DWhereEmpty _) = RWhereEmpty
   refine (DWhere _ expr) = RWhere (refine expr)
 
 ---- Grp
-data RWindow = RTumblingWindow RInterval
-             | RHoppingWindow  RInterval RInterval
-             | RSlidingWindow  RInterval
-             deriving (Eq, Show)
-type instance RefinedType Window = RWindow
-instance Refine Window where
-  refine (TumblingWindow _ interval) = RTumblingWindow (refine interval)
-  refine (HoppingWindow  _ len hop ) = RHoppingWindow (refine len) (refine hop)
-  refine (SlidingWindow  _ interval) = RSlidingWindow (refine interval)
 
 data RGroupBy = RGroupByEmpty
-              | RGroupBy (Maybe StreamName) FieldName (Maybe RWindow)
+              | RGroupBy [(Maybe StreamName, FieldName)]
               deriving (Eq, Show)
 type instance RefinedType GroupBy = RGroupBy
 instance Refine GroupBy where
   refine (DGroupByEmpty _) = RGroupByEmpty
-  refine (DGroupBy _ [GrpItemCol _ col]) =
-    case col of
-      ColNameSimple _ (Ident f)           -> RGroupBy Nothing f Nothing
-      ColNameStream _ (Ident s) (Ident f) -> RGroupBy (Just s) f Nothing
-      _                                   -> throwSQLException RefineException Nothing "Impossible happened" -- Index and Inner is not supportede
-  refine (DGroupBy _ [GrpItemCol _ col, GrpItemWin _ win]) =
-    case col of
-      ColNameSimple _ (Ident f)           -> RGroupBy Nothing f (Just $ refine win)
-      ColNameStream _ (Ident s) (Ident f) -> RGroupBy (Just s) f (Just $ refine win)
-      _                                   -> throwSQLException RefineException Nothing "Impossible happened" -- Index and Inner is not supportede
-  refine _ = throwSQLException RefineException Nothing "Impossible happened"
+  refine (DGroupBy _ cols) = RGroupBy $
+    L.map (\col -> let (RExprCol _ m_stream field) = refine col
+                    in (m_stream, field)) cols
 
 ---- Hav
 data RHaving = RHavingEmpty
-             | RHaving RSearchCond
-             deriving (Eq, Show)
+             | RHaving RValueExpr
+             deriving (Show)
 type instance RefinedType Having = RHaving
 instance Refine Having where
   refine (DHavingEmpty _) = RHavingEmpty
-  refine (DHaving _ cond) = RHaving (refine cond)
+  refine (DHaving _ expr) = RHaving (refine expr)
 
 ---- SELECT
-data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Eq, Show)
+data RSelect = RSelect RSel RFrom RWhere RGroupBy RHaving deriving (Show)
 type instance RefinedType Select = RSelect
 instance Refine Select where
   refine (DSelect _ sel frm whr grp hav) =
     RSelect (refine sel) (refine frm) (refine whr) (refine grp) (refine hav)
-
----- SELECTVIEW
-
-data SelectViewSelect = SVSelectAll | SVSelectFields [(FieldName, FieldAlias)] deriving (Eq, Show)
-
-data RSelectView = RSelectView
-  { rSelectViewSelect :: SelectViewSelect
-  , rSelectViewFrom   :: StreamName
-  , rSelectViewWhere  :: RWhere
-  } deriving (Eq, Show)
-
-type instance RefinedType SelectView = RSelectView
-instance Refine SelectView where
-  refine (DSelectView _ sel frm whr) =
-    RSelectView svSel svFrm svWhr
-    where
-      -- TODO: use `refine` instance of `Sel`
-      svSel :: SelectViewSelect
-      svSel = case sel of
-        (DSel _ (SelListAsterisk _)) -> SVSelectAll
-        (DSel _ (SelListSublist _ dcols)) ->
-          let f :: DerivedCol -> (FieldName, FieldAlias)
-              f docl = case docl of
-                (DerivedColSimpl _ expr@(ExprColName _ (ColNameSimple _ (Ident col))))       ->
-                  (col, trimSpacesPrint expr)
-                (DerivedColSimpl _ expr@(ExprRaw _ (RawColumn col)))                         ->
-                  (col, trimSpacesPrint expr)
-                (DerivedColAs _ (ExprColName _ (ColNameSimple _ (Ident col))) (Ident alias)) ->
-                  (col, Text.unpack alias)
-                (DerivedColAs _ (ExprRaw _ (RawColumn col)) (Ident alias))                   ->
-                  (col, Text.unpack alias)
-           in SVSelectFields (f <$> dcols)
-      svFrm :: StreamName
-      svFrm = let (RFrom [RTableRefSimple stream Nothing]) = refine frm in stream
-      svWhr :: RWhere
-      svWhr = refine whr
 
 ---- EXPLAIN
 type RExplain = Text
@@ -584,7 +546,7 @@ data RCreate = RCreate   Text RStreamOptions
              -- RCreateConnector <SOURCE|SINK> <Name> <Target> <EXISTS> <OPTIONS>
              | RCreateConnector Text Text Text Bool RConnectorOptions
              | RCreateView Text RSelect
-             deriving (Eq, Show)
+             deriving (Show)
 
 type instance RefinedType [StreamOption] = RStreamOptions
 instance Refine [StreamOption] where
@@ -616,7 +578,7 @@ instance Refine Create where
 data RInsert = RInsert Text [(FieldName,Constant)]
              | RInsertBinary Text BS.ByteString
              | RInsertJSON   Text BS.ByteString
-             deriving (Eq, Show)
+             deriving (Show)
 type instance RefinedType Insert = RInsert
 instance Refine Insert where
   refine (DInsert _ (Ident s) fields exprs) = RInsert s $
@@ -707,11 +669,10 @@ data RSQL = RQSelect      RSelect
           | RQShow        RShow
           | RQDrop        RDrop
           | RQTerminate   RTerminate
-          | RQSelectView  RSelectView
           | RQExplain     RExplain
           | RQPause       RPause
           | RQResume      RResume
-          deriving (Eq, Show)
+          deriving (Show)
 type instance RefinedType SQL = RSQL
 instance Refine SQL where
   refine (QSelect     _ select)  =  RQSelect      (refine   select)
@@ -720,7 +681,6 @@ instance Refine SQL where
   refine (QShow       _ show_)   =  RQShow        (refine    show_)
   refine (QDrop       _ drop_)   =  RQDrop        (refine    drop_)
   refine (QTerminate  _ term)    =  RQTerminate   (refine     term)
-  refine (QSelectView _ selView) =  RQSelectView  (refine  selView)
   refine (QExplain    _ explain) =  RQExplain     (refine  explain)
   refine (QPause      _ pause)   =  RQPause       (refine  pause)
   refine (QResume     _ resume)  =  RQResume      (refine  resume)

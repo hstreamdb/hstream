@@ -1,8 +1,6 @@
 module HStream.SQL.Extra
   ( extractPNInteger
   , extractPNDouble
-  , extractRefNames
-  , extractSelRefNames
   , extractRefNameFromExpr
   , trimSpacesPrint
   ) where
@@ -29,26 +27,7 @@ trimSpacesPrint = removeSpace . printTree
   where removeSpace = L.filter (not . isSpace)
 
 --------------------------------------------------------------------------------
-extractRefNames :: [TableRef] -> [Text]
-extractRefNames [] = []
-extractRefNames ((TableRefAs _ ref (Ident name)) : xs)  = name : extractRefNames (ref : xs)
-extractRefNames ((TableRefIdent _ (Ident name)) : xs)  = name : extractRefNames xs
-extractRefNames ((TableRefJoinOn _ ref1 _ ref2 _) : xs)  = extractRefNames (ref1:ref2:xs)
-extractRefNames ((TableRefJoinUsing _ ref1 _ ref2 _) : xs)  = extractRefNames (ref1:ref2:xs)
-extractRefNames ((TableRefSubquery _ _) : xs) = extractRefNames xs
 
--- SELECT match FROM
--- | Extract stream names mentioned in DerivedCols (part of SELECT clause).
--- Return value: (anySimpleCol, [streamName])
--- For example, "SELECT s1.col1, col2" -> (True, ["s1"])
-extractSelRefNames :: [DerivedCol] -> (Bool, [Text])
-extractSelRefNames [] = (False, [])
-extractSelRefNames ((DerivedColSimpl _ expr) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
-  where (b1, refs1) = extractRefNameFromExpr expr
-        (b2, refs2) = extractSelRefNames xs
-extractSelRefNames ((DerivedColAs _ expr _) : xs) = (b1 || b2, L.nub (refs1 ++ refs2))
-  where (b1, refs1) = extractRefNameFromExpr expr
-        (b2, refs2) = extractSelRefNames xs
 
 -- WHERE match FROM
 -- | Extract stream names mentioned in an expression.
