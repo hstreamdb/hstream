@@ -32,8 +32,12 @@ jobs:
         run: |
           # install stylish-haskell
           PACKAGE=stylish-haskell
-          RELEASES=$(curl --silent https://github.com/haskell/$PACKAGE/releases)
-          URL=https://github.com/$(echo $RELEASES | grep -o '\"[^\"]*-linux-x86_64\.tar\.gz\"' | sed s/\"//g | head -n1)
+          URL=$(\
+            curl --silent https://api.github.com/repos/haskell/$PACKAGE/releases/latest \
+            | grep "browser_download_url.*linux-x86_64\.tar\.gz" \
+            | cut -d ':' -f 2,3 \
+            | tr -d \" \
+          )
           VERSION=$(echo $URL | sed -e 's/.*-\(v[\.0-9]\+-linux-x86_64\)\.tar\.gz/\1/')
           TEMP=$(mktemp --directory)
           curl --progress-bar --location -o$TEMP/$PACKAGE.tar.gz $URL
