@@ -18,11 +18,11 @@ import qualified Data.Vector                      as V
 
 import           HStream.Common.ConsistentHashing (HashRing, getAllocatedNode)
 import           HStream.Common.Types             (fromInternalServerNodeWithKey)
+import qualified HStream.Exception                as HE
 import           HStream.Gossip                   (GossipContext (..),
                                                    getFailedNodes)
 import           HStream.Gossip.Types             (ServerStatus (..))
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Server.Types             as Types
@@ -108,5 +108,5 @@ getResNode :: HashRing -> Text -> Maybe Text -> IO ServerNode
 getResNode hashRing hashKey listenerKey = do
   let serverNode = getAllocatedNode hashRing hashKey
   theNodes <- fromInternalServerNodeWithKey listenerKey serverNode
-  if V.null theNodes then throwIO ObjectNotExist
+  if V.null theNodes then throwIO $ HE.NodesNotFound "Got empty nodes"
                      else pure $ V.head theNodes

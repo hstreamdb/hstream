@@ -7,13 +7,23 @@ import qualified HStream.Exception as HE
 
 spec :: Spec
 spec = describe "ExceptionSpec" $ do
-  it "NoRecordHeader should be a HStreamEncodingException" $
-    throw HE.NoRecordHeader `shouldThrow` anyHStreamEncodingException
-  it "NoRecordHeader should be a SomeHStreamException" $
+  it "NoRecordHeader should be a NoRecordHeader" $
+    throw HE.NoRecordHeader `shouldThrow` noRecordHeaderEx
+  it "NoRecordHeader should also be an InvalidArgument" $
+    throw HE.NoRecordHeader `shouldThrow` anyInvalidArgument
+  it "NoRecordHeader should also be an HServerException" $
+    throw HE.NoRecordHeader `shouldThrow` anyHServerException
+  it "NoRecordHeader should also be an HStreamException" $
     throw HE.NoRecordHeader `shouldThrow` anyHStreamException
+
+noRecordHeaderEx :: Selector HE.NoRecordHeader
+noRecordHeaderEx = const True
+
+anyInvalidArgument :: Selector HE.InvalidArgument
+anyInvalidArgument = const True
+
+anyHServerException :: Selector HE.SomeHServerException
+anyHServerException = const True
 
 anyHStreamException :: Selector HE.SomeHStreamException
 anyHStreamException = const True
-
-anyHStreamEncodingException :: Selector HE.HStreamEncodingException
-anyHStreamEncodingException = const True

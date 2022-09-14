@@ -37,18 +37,18 @@ module HStream.Logger
   , pattern Log.NOTSET
   ) where
 
-import           Data.ByteString       (ByteString)
-import qualified Data.ByteString.Char8 as BSC
-import qualified Data.Text             as Text
-import qualified Data.Text.Lazy        as TL
-import           GHC.Stack             (HasCallStack)
-import qualified Text.Read             as Read
-import qualified Z.Data.Builder        as B
-import           Z.Data.Builder        (Builder)
-import qualified Z.Data.CBytes         as CBytes
-import qualified Z.IO.Logger           as Log
+import           Data.ByteString         (ByteString)
+import qualified Data.ByteString.Char8   as BSC
+import qualified Data.Text               as Text
+import qualified Data.Text.Lazy          as TL
+import           GHC.Stack               (HasCallStack)
+import qualified Text.Read               as Read
+import qualified Z.Data.Builder          as B
+import           Z.Data.Builder          (Builder)
+import qualified Z.Data.CBytes           as CBytes
+import qualified Z.IO.Logger             as Log
 
-import qualified HStream.Utils         as U
+import qualified HStream.Utils.Converter as U
 
 -------------------------------------------------------------------------------
 -- Example:

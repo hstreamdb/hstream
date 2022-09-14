@@ -11,12 +11,11 @@ import           Control.Exception                (Exception, Handler (..),
                                                    throwIO)
 import qualified Data.Text                        as T
 import qualified Data.Vector                      as V
+
+import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception         (ExceptionHandle, Handlers,
-                                                   defaultHandlers,
-                                                   mkExceptionHandle,
-                                                   mkStatusDetails, setRespType)
+import           HStream.Server.Exception         (defaultHandlers)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      (Empty (..))
@@ -107,19 +106,19 @@ data ConnectorTerminatedOrNotExist = ConnectorTerminatedOrNotExist
   deriving (Show)
 instance Exception ConnectorTerminatedOrNotExist
 
-connectorExceptionHandlers :: Handlers (StatusCode, StatusDetails)
+connectorExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
 connectorExceptionHandlers =[
   Handler (\(err :: ConnectorAlreadyExists) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusAlreadyExists, mkStatusDetails err)),
+    return (StatusAlreadyExists, HE.mkStatusDetails err)),
   Handler (\(err :: ConnectorRestartErr) -> do
     Log.fatal $ Log.buildString' err
-    return (StatusInternal, mkStatusDetails err)),
+    return (StatusInternal, HE.mkStatusDetails err)),
   Handler (\(err :: ConnectorTerminatedOrNotExist) -> do
     Log.fatal $ Log.buildString' err
     return (StatusNotFound, "Connector can not be terminated: No running connector with the same id"))
   ]
 
-connectorExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-connectorExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+connectorExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
+connectorExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
   connectorExceptionHandlers ++ defaultHandlers

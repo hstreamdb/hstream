@@ -13,13 +13,6 @@ module HStream.Server.Core.Stream
   , createShardReader
   , deleteShardReader
   , readShard
-  , FoundSubscription (..)
-  , StreamExists (..)
-  , RecordTooBig (..)
-  , ShardReaderExists (..)
-  , ShardReaderNotExists (..)
-  , UnKnownShardOffset (..)
-  , InvalidBatchedRecord (..)
   ) where
 
 import           Control.Concurrent               (modifyMVar_, newEmptyMVar,
@@ -43,12 +36,10 @@ import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception              (ZNONODE (..))
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
+import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.Types          as M
 import           HStream.Server.Core.Common       (decodeRecordBatch)
-import           HStream.Server.Exception         (InvalidArgument (..),
-                                                   StreamNotExist (..),
-                                                   WrongServer (..))
 import           HStream.Server.HStreamApi        (CreateShardReaderRequest (createShardReaderRequestShardId))
 import qualified HStream.Server.HStreamApi        as API
 import qualified HStream.Server.MetaData          as P
@@ -68,13 +59,15 @@ createStream :: HasCallStack => ServerContext -> API.Stream -> IO ()
 createStream ServerContext{..} API.Stream{
   streamBacklogDuration = backlogSec, streamShardCount = shardCount, ..} = do
 
-  when (streamReplicationFactor == 0) $ throwIO (InvalidArgument "Stream replicationFactor cannot be zero")
+  when (streamReplicationFactor == 0) $ throwIO (HE.InvalidReplicaFactor "Stream replicationFactor cannot be zero")
+  when (shardCount <= 0) $ throwIO (HE.InvalidShardCount "ShardCount should be a positive number")
+
   let streamId = transToStreamName streamStreamName
       attrs = S.def{ S.logReplicationFactor = S.defAttr1 $ fromIntegral streamReplicationFactor
                    , S.logBacklogDuration   = S.defAttr1 $
                       if backlogSec > 0 then Just $ fromIntegral backlogSec else Nothing}
-  catch (S.createStream scLDClient streamId attrs) (\(_ :: S.EXISTS) -> throwIO StreamExists)
-  when (shardCount <= 0) $ throwIO (InvalidArgument "ShardCount should be a positive number")
+  catch (S.createStream scLDClient streamId attrs) $ \(_ :: S.EXISTS) ->
+    throwIO $ HE.StreamExists "StreamExists: Stream has been created"
 
   let partitions = devideKeySpace (fromIntegral shardCount)
   shards <- forM partitions $ \(startKey, endKey) -> do
@@ -93,8 +86,9 @@ deleteStream :: ServerContext
 deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce = force,
   deleteStreamRequestStreamName = sName, ..} = do
   storeExists <- S.doesStreamExist scLDClient streamId
-  if storeExists then doDelete
-    else unless deleteStreamRequestIgnoreNonExist $ throwIO StreamNotExist
+  if storeExists
+     then doDelete
+     else unless deleteStreamRequestIgnoreNonExist $ throwIO $ HE.StreamNotFound sName
   where
     streamId = transToStreamName sName
     doDelete = do
@@ -107,7 +101,7 @@ deleteStream ServerContext{..} API.DeleteStreamRequest{deleteStreamRequestForce 
              _archivedStream <- S.archiveStream scLDClient streamId
              P.updateSubscription zkHandle sName (cBytesToText $ S.getArchivedStreamName _archivedStream)
            else
-             throwIO FoundSubscription
+             throwIO $ HE.FoundSubscription "Stream still has subscription"
 
 listStreams
   :: HasCallStack
@@ -156,12 +150,12 @@ appendStream :: HasCallStack
 appendStream ServerContext{..} API.AppendRequest {appendRequestShardId = shardId,
   appendRequestRecords = mbRecord, ..} = do
   let record@API.BatchedRecord{batchedRecordBatchSize=recordSize} = case mbRecord of
-       Nothing -> throw InvalidBatchedRecord
+       Nothing -> throw $ HE.InvalidRecord "BatchedRecord shouldn't be Nothing"
        Just r  -> r
   timestamp <- getProtoTimestamp
   let payload = encodBatchRecord . updateRecordTimestamp timestamp $ record
       payloadSize = BS.length payload
-  when (payloadSize > scMaxRecordSize) $ throwIO RecordTooBig
+  when (payloadSize > scMaxRecordSize) $ throwIO $ HE.InvalidRecord "Record size exceeds the maximum size limit"
   S.AppendCompletion {..} <- S.appendCompressedBS scLDClient shardId payload cmpStrategy Nothing
   -- XXX: Should we add a server option to toggle Stats?
   Stats.stream_time_series_add_append_in_bytes scStatsHolder cStreamName (fromIntegral payloadSize)
@@ -185,7 +179,7 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
     createShardReaderRequestShardId=rShardId, createShardReaderRequestShardOffset=rOffset, createShardReaderRequestTimeout=rTimeout,
     createShardReaderRequestReaderId=rId} = do
   exist <- M.checkMetaExists @P.ShardReader rId zkHandle
-  when exist $ throwIO ShardReaderExists
+  when exist $ throwIO $ HE.ShardReaderExists "ShardReaderExists"
   startLSN <- getStartLSN rShardId
   let shardReader = mkShardReader startLSN
   Log.info $ "create shardReader " <> Log.buildString' (show shardReader)
@@ -203,10 +197,14 @@ createShardReader ServerContext{..} API.CreateShardReaderRequest{createShardRead
    getStartLSN :: S.C_LogID -> IO S.LSN
    getStartLSN logId =
      case fromJust . API.shardOffsetOffset . fromJust $ rOffset of
-       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) -> return S.LSN_MIN
-       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST))   -> (+ 1) <$> S.getTailLSN scLDClient logId
-       API.ShardOffsetOffsetRecordOffset API.RecordId{..}                                -> return recordIdBatchId
-       _                                                                                 -> throwIO UnKnownShardOffset
+       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetEARLIEST)) ->
+         return S.LSN_MIN
+       API.ShardOffsetOffsetSpecialOffset (Enumerated (Right API.SpecialOffsetLATEST)) ->
+         (+ 1) <$> S.getTailLSN scLDClient logId
+       API.ShardOffsetOffsetRecordOffset API.RecordId{..} ->
+         return recordIdBatchId
+       _ ->
+         throwIO $ HE.InvalidShardOffset "UnKnownShardOffset"
 
 deleteShardReader
   :: HasCallStack
@@ -216,14 +214,14 @@ deleteShardReader
 deleteShardReader ServerContext{..} API.DeleteShardReaderRequest{..} = do
   hashRing <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hashRing deleteShardReaderRequestReaderId == serverID) $
-    throwIO $ WrongServer "Send deleteShard request to wrong server."
+    throwIO $ HE.WrongServer "Send deleteShard request to wrong server."
   isSuccess <- catch (M.deleteMeta @P.ShardReader deleteShardReaderRequestReaderId Nothing zkHandle >> return True) $
       \ (_ :: ZNONODE) -> return False
   modifyMVar_ shardReaderMap $ \mp -> do
     case HM.lookup deleteShardReaderRequestReaderId mp of
       Nothing -> return mp
       Just _  -> return (HM.delete deleteShardReaderRequestReaderId mp)
-  unless isSuccess $ throwIO ShardReaderNotExists
+  unless isSuccess $ throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
 
 listShards
   :: HasCallStack
@@ -268,7 +266,7 @@ readShard
 readShard ServerContext{..} API.ReadShardRequest{..} = do
   hashRing <- readTVarIO loadBalanceHashRing
   unless (getAllocatedNodeId hashRing readShardRequestReaderId == serverID) $
-    throwIO $ WrongServer "Send readShard request to wrong server."
+    throwIO $ HE.WrongServer "Send readShard request to wrong server."
   bracket getReader putReader readRecords
  where
    ldReaderBufferSize = 10
@@ -279,7 +277,7 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
        Just readerMvar -> takeMVar readerMvar
        Nothing         -> do
          r@P.ShardReader{..} <- M.getMeta readShardRequestReaderId zkHandle >>= \case
-           Nothing     -> throwIO ShardReaderNotExists
+           Nothing     -> throwIO $ HE.EmptyShardReader "ShardReaderNotExists"
            Just reader -> return reader
          Log.info $ "get reader from persistence: " <> Log.buildString' (show r)
          reader <- S.newLDReader scLDClient 1 (Just ldReaderBufferSize)
@@ -300,40 +298,3 @@ readShard ServerContext{..} API.ReadShardRequest{..} = do
      Log.debug $ "reader " <> Log.buildText readShardRequestReaderId
               <> " read " <> Log.buildInt (V.length res) <> " batchRecords"
      return res
-
---------------------------------------------------------------------------------
-
-data FoundSubscription = FoundSubscription
-  deriving (Show)
-instance Exception FoundSubscription
-
-data RecordTooBig = RecordTooBig
-  deriving (Show)
-instance Exception RecordTooBig
-
-data StreamExists = StreamExists
-  deriving (Show)
-instance Exception StreamExists where
-  displayException StreamExists = "StreamExists: Stream has been created"
-
-newtype ShardKeyNotFound = ShardKeyNotFound S.C_LogID
-  deriving (Show)
-instance Exception ShardKeyNotFound where
-  displayException (ShardKeyNotFound shardId) = "Can't get shardKey for shard " <> show shardId
-
-data ShardReaderNotExists = ShardReaderNotExists
-  deriving (Show)
-instance Exception ShardReaderNotExists
-
-data ShardReaderExists = ShardReaderExists
-  deriving (Show)
-instance Exception ShardReaderExists
-
-data UnKnownShardOffset = UnKnownShardOffset
-  deriving (Show)
-instance Exception UnKnownShardOffset
-
-data InvalidBatchedRecord = InvalidBatchedRecord
-  deriving (Show)
-instance Exception InvalidBatchedRecord where
-  displayException InvalidBatchedRecord = "BatchedRecord shouldn't be Nothing"

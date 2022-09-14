@@ -12,9 +12,9 @@ import qualified Data.Vector                 as V
 import           Data.Word                   (Word32, Word64)
 
 import qualified Data.Text                   as T
+import qualified HStream.Exception           as HE
 import qualified HStream.Logger              as Log
 import qualified HStream.MetaStore.Types     as M
-import           HStream.Server.Exception    (ObjectNotExist (ObjectNotExist))
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData     as P
 import           HStream.Server.Types
@@ -33,15 +33,17 @@ deleteStoreStream sc@ServerContext{..} s checkIfExist = do
   streamExists <- HS.doesStreamExist scLDClient s
   if streamExists then clean >> return Empty else ignore checkIfExist
   where
+    streamNameText = cBytesToText $ HS.streamName s
     clean = do
-      terminateQueryAndRemove sc (cBytesToText $ HS.streamName s)
-      terminateRelatedQueries sc (cBytesToText $ HS.streamName s)
+      terminateQueryAndRemove sc streamNameText
+      terminateRelatedQueries sc streamNameText
       HS.removeStream scLDClient s
     ignore True  = return Empty
     ignore False = do
       Log.warning $ "Drop: tried to remove a nonexistent object: "
                  <> Log.buildCBytes (HS.streamName s)
-      throwIO ObjectNotExist
+      throwIO $ HE.StreamNotFound $ "Stream " <> streamNameText <> " not found."
+
 --------------------------------------------------------------------------------
 
 insertAckedRecordId
