@@ -19,10 +19,13 @@ import qualified Data.Time             as Time
 import           GHC.Stack             (HasCallStack)
 import           HStream.SQL.Abs
 import           HStream.SQL.Exception (SomeSQLException (..),
-                                        throwSQLException)
+                                        throwSQLException, buildSQLException)
 import           HStream.SQL.Extra     (extractPNDouble, extractPNInteger,
                                         trimSpacesPrint)
 import           HStream.SQL.Print     (printTree)
+import HStream.SQL.Abs (JoinTypeWithCond)
+import Data.Graph (Tree(Node))
+import Data.Maybe (Maybe(Nothing))
 
 --------------------------------------------------------------------------------
 type family RefinedType a :: Type
@@ -417,56 +420,64 @@ instance Refine Sel where
 
 ---- Frm
 data RTableRef = RTableRefSimple StreamName (Maybe StreamName)
-               | RTableRefSubquery RSelect (Maybe StreamName)
-               | RTableRefUnion RTableRef RTableRef (Maybe StreamName)
+               | RTableRefSubquery RSelect  (Maybe StreamName)
+               | RTableRefCrossJoin RTableRef RTableRef (Maybe StreamName)
+               | RTableRefNaturalJoin RTableRef RTableRef (Maybe StreamName)
+               | RTableRefJoinOn RTableRef RJoinType RTableRef RValueExpr (Maybe StreamName)
+               | RTableRefJoinUsing RTableRef RJoinType RTableRef [Text] (Maybe StreamName)
                deriving (Eq, Show)
+setRTableRefAlias :: RTableRef -> StreamName -> RTableRef
+setRTableRefAlias ref alias = case ref of
+  RTableRefSimple s _ -> RTableRefSimple s (Just alias)
+  RTableRefSubquery sel _ -> RTableRefSubquery sel (Just alias)
+  RTableRefCrossJoin r1 r2 _ -> RTableRefCrossJoin r1 r2 (Just alias)
+  RTableRefNaturalJoin r1 r2 _ -> RTableRefNaturalJoin r1 r2 (Just alias)
+  RTableRefJoinOn r1 typ r2 e _ -> RTableRefJoinOn r1 typ r2 e (Just alias)
+  RTableRefJoinUsing r1 typ r2 cols _ -> RTableRefJoinUsing r1 typ r2 cols (Just alias)
+
+data RJoinType = InnerJoin | LeftJoin | RightJoin | FullJoin
+               deriving (Eq, Show)
+type instance RefinedType JoinTypeWithCond = RJoinType
+instance Refine JoinTypeWithCond where
+  refine joinType = case joinType of
+    JoinInner1{} -> InnerJoin
+    JoinInner2{} -> InnerJoin
+    JoinLeft1{}  -> LeftJoin
+    JoinLeft2{}  -> LeftJoin
+    JoinRight1{} -> RightJoin
+    JoinRight2{} -> RightJoin
+    JoinFull1{}  -> FullJoin
+    JoinFull2{}  -> FullJoin
+
 type instance RefinedType TableRef = RTableRef
 instance Refine TableRef where
-  refine (TableRefSimple _ (Ident t)) = RTableRefSimple t Nothing
+  refine (TableRefIdent _ (Ident t)) = RTableRefSimple t Nothing
   refine (TableRefSubquery _ select) = RTableRefSubquery (refine select) Nothing
-  refine (TableRefUnion _ ref1 ref2) = RTableRefUnion (refine ref1) (refine ref2) Nothing
-  refine (TableRefAs _ (TableRefSimple _ (Ident t)) (Ident alias)) = RTableRefSimple t (Just alias)
-  refine (TableRefAs _ (TableRefSubquery _ select) (Ident alias)) = RTableRefSubquery (refine select) (Just alias)
-  refine (TableRefAs _ (TableRefUnion _ ref1 ref2) (Ident alias)) = RTableRefUnion (refine ref1) (refine ref2) (Just alias)
+  refine (TableRefAs _ ref (Ident alias)) =
+    let rRef = refine ref
+     in setRTableRefAlias rRef alias
+  refine (TableRefCrossJoin _ r1 _ r2) = RTableRefCrossJoin (refine r1) (refine r2) Nothing
+  refine (TableRefNaturalJoin _ r1 _ r2) = RTableRefNaturalJoin (refine r1) (refine r2) Nothing
+  refine (TableRefJoinOn _ r1 typ r2 e) = RTableRefJoinOn (refine r1) (refine typ) (refine r2) (refine e) Nothing
+  refine (TableRefJoinUsing _ r1 typ r2 cols) = RTableRefJoinUsing (refine r1) (refine typ) (refine r2) (extractStreamNameFromColName <$> cols) Nothing
+    where extractStreamNameFromColName = case col of
+            ColNameSimple _ (Ident t) -> t
+            ColNameRaw _ raw -> refine raw
+            ColNameStream pos _ _ -> throwSQLException RefineException pos "Impossible happened"
 
-data RFrom = RFrom [RTableRef] deriving (Eq, Show)
+newtype RFrom = RFrom [RTableRef] deriving (Eq, Show)
 type instance RefinedType From = RFrom
 instance Refine From where
-  refine (DFrom pos refs) = RFrom (refine <$> refs)
+  refine (DFrom _ refs) = RFrom (refine <$> refs)
 
 ---- Whr
-data RCompOp = RCompOpEQ | RCompOpNE | RCompOpLT | RCompOpGT | RCompOpLEQ | RCompOpGEQ deriving (Eq, Show)
-type instance RefinedType CompOp = RCompOp
-instance Refine CompOp where
-  refine (CompOpEQ  _) = RCompOpEQ
-  refine (CompOpNE  _) = RCompOpNE
-  refine (CompOpLT  _) = RCompOpLT
-  refine (CompOpGT  _) = RCompOpGT
-  refine (CompOpLEQ _) = RCompOpLEQ
-  refine (CompOpGEQ _) = RCompOpGEQ
-
--- NOTE: Ensured by Validate: no aggregate expression
-data RSearchCond = RCondOr      RSearchCond RSearchCond
-                 | RCondAnd     RSearchCond RSearchCond
-                 | RCondNot     RSearchCond
-                 | RCondOp      RCompOp RValueExpr RValueExpr
-                 | RCondBetween RValueExpr RValueExpr RValueExpr
-                 deriving (Eq, Show)
-type instance RefinedType SearchCond = RSearchCond
-instance Refine SearchCond where
-  refine (CondOr      _ c1 c2)    = RCondOr  (refine c1) (refine c2)
-  refine (CondAnd     _ c1 c2)    = RCondAnd (refine c1) (refine c2)
-  refine (CondNot     _ c)        = RCondNot (refine c)
-  refine (CondOp      _ e1 op e2) = RCondOp (refine op) (refine e1) (refine e2)
-  refine (CondBetween _ e1 e e2)  = RCondBetween (refine e1) (refine e) (refine e2)
-
 data RWhere = RWhereEmpty
-            | RWhere RSearchCond
+            | RWhere RValueExpr
             deriving (Eq, Show)
 type instance RefinedType Where = RWhere
 instance Refine Where where
   refine (DWhereEmpty _) = RWhereEmpty
-  refine (DWhere _ cond) = RWhere (refine cond)
+  refine (DWhere _ expr) = RWhere (refine expr)
 
 ---- Grp
 data RWindow = RTumblingWindow RInterval

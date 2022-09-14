@@ -562,12 +562,23 @@ instance Validate SelectItem where
 
 -- From
 instance Validate From where
-  validate from@(DFrom _ tableRef) = validate tableRef >> return from
+  validate from@(DFrom _ tableRefs) = mapM_ validate tableRefs >> return from
 
 instance Validate TableRef where
   validate r@(TableRefAs _ ref _) = validate ref >> return r
+  validate r@(TableRefCrossJoin _ ref1 _ ref2) = validate ref1 >> validate ref2 >> return r
+  validate r@(TableRefNaturalJoin _ ref1 _ ref2) = validate ref1 >> validate ref2 >> return r
   validate r@(TableRefJoinOn _ ref1 jointype ref2 expr) = validate ref1 >> validate ref2 >> validate expr >> return r
-  validate r@(TableRefJoinUsing _ ref1 jointype ref2 col) = validate ref1 >> validate ref2 >> validate col >> return r
+  validate r@(TableRefJoinUsing _ ref1 jointype ref2 cols) = do
+    validate ref1
+    validate ref2
+    mapM_ (\col -> case col of
+              ColNameRaw{} -> return col
+              ColNameSimple{} -> return col
+              ColNameStream pos _ _ ->
+                Left $ buildSQLException ParseException pos "JOIN USING can only use column names without stream name"
+          ) cols
+    return r
   validate r@(TableRefIdent _ _) = Right r
   validate r@(TableRefSubquery _ select) = validate select >> return r
 

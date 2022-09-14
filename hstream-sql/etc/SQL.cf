@@ -101,18 +101,28 @@ SelectItemQualifiedWildcard. SelectItem ::= Ident "." "*" ;
 SelectItemWildcard.          SelectItem ::= "*" ;
 
 -- From
-DFrom. From ::= "FROM" TableRef ;
+DFrom. From ::= "FROM" [TableRef] ;
+separator TableRef "," ;
 
-
-TableRefAs.        TableRef ::= TableRef1 "AS" Ident ;
-TableRefJoinOn.    TableRef1 ::= TableRef1 JoinType "JOIN" TableRef2 "ON" ValueExpr ;
-TableRefJoinUsing. TableRef1 ::= TableRef1 JoinType "JOIN" TableRef2 "USING" ColName ;
+TableRefAs. TableRef ::= TableRef1 "AS" Ident ;
+TableRefCrossJoin.   TableRef1 ::= TableRef1 JoinTypeWithoutCond "JOIN" TableRef2 ;
+TableRefNaturalJoin. TableRef1 ::= TableRef1 "NATURAL" JoinTypeWithCond "JOIN" TableRef2 ;
+TableRefJoinOn.      TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "ON" ValueExpr ;
+TableRefJoinUsing.   TableRef1 ::= TableRef1 JoinTypeWithCond "JOIN" TableRef2 "USING" "(" [ColName] ")" ;
 TableRefIdent.     TableRef2 ::= Ident ;
 TableRefSubquery.  TableRef2 ::= "(" Select ")" ;
 coercions TableRef 2 ;
+separator ColName "," ;
 
-JoinInner. JoinType ::= "INNER" ;
-JoinFull.  JoinType ::= "FULL" ;
+JoinInner1. JoinTypeWithCond ::= "INNER" ;
+JoinInner2. JoinTypeWithCond ::= "" ;
+JoinLeft1.  JoinTypeWithCond ::= "LEFT" ;
+JoinLeft2.  JoinTypeWithCond ::= "LEFT" "OUTER" ;
+JoinRight1. JoinTypeWithCond ::= "RIGHT" ;
+JoinRight2. JoinTypeWithCond ::= "RIGHT" "OUTER" ;
+JoinFull1.  JoinTypeWithCond ::= "FULL" ;
+JoinFull2.  JoinTypeWithCond ::= "FULL" "OUTER" ;
+JoinCross.  JoinTypeWithoutCond ::= "CROSS" ;
 
 -- Where
 DWhereEmpty. Where ::= "" ;
