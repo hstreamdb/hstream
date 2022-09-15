@@ -67,7 +67,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards
     (Enumerated (Right SpecialOffsetLATEST))   -> foldM gatherTailLSN HM.empty shards
-    _                                          -> throwIO InvalidSubscriptionOffset
+    _                                          -> throwIO $ HE.InvalidSubscriptionOffset "subscriptionOffset is invalid."
 
   let subWrap = SubscriptionWrap
         { originSub  = sub
@@ -115,8 +115,8 @@ deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscript
       atomically removeSubFromCtx
       S.removeAllCheckpoints subLdCkpReader
       doRemove
-    CanNotDelete -> throwIO FoundActiveConsumers
-    Signaled     -> throwIO SubscriptionIsDeleting
+    CanNotDelete -> throwIO $ HE.FoundActiveConsumers "Subscription still has active consumers"
+    Signaled     -> throwIO $ HE.SubscriptionIsDeleting "Subscription is being deleted, please wait a while"
   where
     -- FIXME: Concurrency Issue
     doRemove :: IO ()
@@ -212,11 +212,11 @@ streamingFetchCore ctx SFetchCoreInteractive = \(streamSend, streamRecv) -> do
     firstRecv :: StreamRecv StreamingFetchRequest -> IO StreamingFetchRequest
     firstRecv streamRecv =
       streamRecv >>= \case
-        Left _                -> throwIO GRPCStreamRecvError
-        Right Nothing         -> throwIO GRPCStreamRecvCloseError
         Right (Just firstReq) -> do
           Stats.subscription_time_series_add_request_messages (scStatsHolder ctx) (textToCBytes (streamingFetchRequestSubscriptionId firstReq)) 1
           return firstReq
+        Left _        -> throwIO $ HE.StreamReadError "Consumer recv error"
+        Right Nothing -> throwIO $ HE.StreamReadClose "Consumer is closed"
 
 initSub :: ServerContext -> SubscriptionId -> IO (SubscribeContextWrapper, Maybe ThreadId)
 initSub serverCtx@ServerContext {..} subId = do
@@ -232,7 +232,7 @@ initSub serverCtx@ServerContext {..} subId = do
         readTVar scnwState >>= \case
           SubscribeStateNew     -> retry
           SubscribeStateRunning -> return (False, wrapper)
-          _                     -> throwSTM SubscribeInValidError
+          _                     -> throwSTM $ HE.SubscriptionInvalidError "Invalid Subscription"
   if needInit
     then do
       subCtx <- doSubInit serverCtx subId
@@ -431,7 +431,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
             loop isFirstSendRef
         else
           when (state == SubscribeStateStopping) $ do
-            throwIO SubscribeInValidError
+            throwIO $ HE.SubscriptionInvalidError "Invalid Subscription"
 
     updateClockAndDoResend :: IO ()
     updateClockAndDoResend = do
@@ -799,11 +799,11 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
           Log.fatal . Log.buildString $ "streamRecv error: " <> show err
           -- invalid consumer
           atomically $ invalidConsumer subCtx ccConsumerName
-          throwIO GRPCStreamRecvError
+          throwIO $ HE.StreamReadError "Consumer recv error"
         Right Nothing -> do
           -- This means that the consumer finished sending acks actively.
           atomically $ invalidConsumer subCtx ccConsumerName
-          throwIO GRPCStreamRecvCloseError
+          throwIO $ HE.StreamReadClose "Consumer is closed"
         Right (Just StreamingFetchRequest {..}) -> do
           Log.debug $ "received acks:" <> Log.buildInt (V.length streamingFetchRequestAckIds)
             <> " from consumer:" <> Log.buildText ccConsumerName
@@ -822,14 +822,14 @@ recvAcks ServerContext {..} subState subCtx ConsumerContext {..} streamRecv = lo
       then do
         Log.warning "Invalid Subscrtipion: Subscription is not running"
         atomically $ invalidConsumer subCtx ccConsumerName
-        throwIO SubscribeInValidError
+        throwIO $ HE.SubscriptionInvalidError "Invalid Subscription"
       else do
         isValid <- readTVarIO ccIsValid
         if isValid
         then return ()
         else do
           atomically $ invalidConsumer subCtx ccConsumerName
-          throwIO ConsumerInValidError
+          throwIO $ HE.ConsumerInvalidError "Invalid Consumer"
 
 doAcks
   :: S.LDClient
@@ -995,32 +995,3 @@ addUnackedRecords SubscribeContext {..} count = do
   -- traceM $ "addUnackedRecords: " <> show count
   unackedRecords <- readTVar subUnackedRecords
   writeTVar subUnackedRecords (unackedRecords + fromIntegral count)
-
-
--- -------------------------------------------------------------------------- --
--- Exceptions
-
-data FoundActiveConsumers = FoundActiveConsumers
-  deriving (Show)
-instance Exception FoundActiveConsumers
-
-data SubscriptionIsDeleting = SubscriptionIsDeleting
-  deriving (Show)
-instance Exception SubscriptionIsDeleting
-
-data SubscriptionOnDifferentNode = SubscriptionOnDifferentNode
-  deriving (Show)
-instance Exception SubscriptionOnDifferentNode
-
-----
-data SubscribeInnerError = GRPCStreamRecvError
-                         | GRPCStreamRecvCloseError
-                         | GRPCStreamSendError
-                         | ConsumerInValidError
-                         | SubscribeInValidError
-  deriving (Show)
-instance Exception SubscribeInnerError
-
-data InvalidSubscriptionOffset = InvalidSubscriptionOffset
-  deriving (Show)
-instance Exception InvalidSubscriptionOffset
