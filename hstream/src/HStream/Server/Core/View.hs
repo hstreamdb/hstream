@@ -7,9 +7,9 @@ import qualified Data.Text                   as T
 import qualified Data.Vector                 as V
 import           GHC.Stack                   (HasCallStack)
 
+import           HStream.Exception           (UnexpectedError (..))
 import qualified HStream.MetaStore.Types     as M
 import           HStream.Server.Core.Common  (deleteStoreStream)
-import           HStream.Server.Exception    (UnexpectedError (..))
 import qualified HStream.Server.HStreamApi   as API
 import qualified HStream.Server.MetaData     as P
 import           HStream.Server.Types

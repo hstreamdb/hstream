@@ -29,11 +29,11 @@ import           Proto3.Suite                     (Enumerated (..))
 import qualified Proto3.Suite                     as PB
 import           Z.Data.Vector                    (Bytes)
 
+import           HStream.Exception                (WrongOffset (..))
 import qualified HStream.Logger                   as Log
 import           HStream.Server.ConnectorTypes    as HCT
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (WrongOffset (..))
 import qualified HStream.Server.HStreamApi        as API
 import           HStream.Server.Shard             (cBytesToKey, hashShardKey,
                                                    shardStartKey)
@@ -241,9 +241,8 @@ getShardId ServerContext{..} sName = do
      startKey <- case M.lookup shardStartKey attrs of
         -- FIXME: Under the new shard model, each partition created should have an extrAttr attribute,
         -- except for the default partition created by default for each stream. After the default
-        -- partition is subsequently removed, an error should be returned here.
+        -- partition is subsequently removed, an error ShardKeyNotFound should be returned here.
         Nothing  -> return $ cBytesToKey "0"
-        -- Nothing -> throwIO $ ShardKeyNotFound shardId
         Just key -> return $ cBytesToKey key
      return $ M.insert startKey shardId dict
 

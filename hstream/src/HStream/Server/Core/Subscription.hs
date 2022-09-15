@@ -29,12 +29,12 @@ import           Network.GRPC.HighLevel     (StreamRecv, StreamSend)
 import           Proto3.Suite               (Enumerated (Enumerated))
 
 import           GHC.Stack                  (HasCallStack)
+import qualified HStream.Exception          as HE
 import qualified HStream.Logger             as Log
 import qualified HStream.MetaStore.Types    as M
 import           HStream.Server.Core.Common (decodeRecordBatch,
                                              getCommitRecordId, getSuccessor,
                                              insertAckedRecordId)
-import           HStream.Server.Exception
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.MetaData    as P
 import           HStream.Server.Types
@@ -62,7 +62,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
   unless streamExists $ do
     Log.debug $ "Try to create a subscription to a nonexistent stream. Stream Name: "
               <> Log.buildString' streamName
-    throwIO StreamNotExist
+    throwIO $ HE.EmptyStream $ "Stream " <> T.unpack subscriptionStreamName <> " not found."
   shards <- getShards scLDClient subscriptionStreamName
   startOffsets <- case subscriptionOffset of
     (Enumerated (Right SpecialOffsetEARLIEST)) -> return $ foldl' (\acc logId -> HM.insert logId S.LSN_MIN acc) HM.empty shards
@@ -82,7 +82,7 @@ createSubscription ServerContext {..} sub@Subscription{..} = do
 deleteSubscription :: ServerContext -> DeleteSubscriptionRequest -> IO ()
 deleteSubscription ServerContext{..} DeleteSubscriptionRequest { deleteSubscriptionRequestSubscriptionId = subId, deleteSubscriptionRequestForce = force} = do
   subscription <- M.getMeta @SubscriptionWrap subId zkHandle
-  when (isNothing subscription) $ throwIO (SubscriptionIdNotFound subId)
+  when (isNothing subscription) $ throwIO (HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found")
 
   (status, msub) <- atomically $ do
     res <- getSubState
@@ -257,7 +257,7 @@ doSubInit ServerContext{..} subId = do
   M.getMeta subId zkHandle >>= \case
     Nothing -> do
       Log.fatal $ "unexpected error: subscription " <> Log.buildText subId <> " not exist."
-      throwIO $ SubscriptionIdNotFound subId
+      throwIO $ HE.SubscriptionNotFound $ "Subscription " <> subId <> " not found"
     Just SubscriptionWrap {originSub=oSub@Subscription{..}, ..} -> do
       Log.debug $ "get subscriptionInfo from persistence: \n"
                <> "subscription = " <> Log.buildString' (show oSub) <> "\n"
@@ -490,7 +490,7 @@ sendRecords ServerContext{..} subState subCtx@SubscribeContext {..} = do
                      <> Log.buildInt shard
                      <> ", startOffsets="
                      <> Log.buildString' (show startOffsets)
-            throwIO . UnexpectedError $ "can't find startOffsets for shard " <> show shard
+            throwIO . HE.UnexpectedError $ "can't find startOffsets for shard " <> show shard
           Just s -> return s
         S.startReadingFromCheckpointOrStart ldCkpReader shard (Just offset) S.LSN_MAX
 

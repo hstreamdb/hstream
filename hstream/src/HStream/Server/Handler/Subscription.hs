@@ -23,13 +23,11 @@ import           Control.Monad
 import           Network.GRPC.HighLevel.Generated
 
 import           HStream.Common.ConsistentHashing (getAllocatedNodeId)
+import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.MetaStore.Types          as M
 import qualified HStream.Server.Core.Subscription as Core
-import           HStream.Server.Exception         (ExceptionHandle, Handlers,
-                                                   defaultHandlers,
-                                                   mkExceptionHandle,
-                                                   setRespType)
+import           HStream.Server.Exception         (defaultHandlers)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      as PB
@@ -103,7 +101,7 @@ streamingFetchHandler ctx (ServerBiDiRequest _ streamRecv streamSend) =
 --------------------------------------------------------------------------------
 -- Exception and Exception Handlers
 
-subscriptionExceptionHandler :: Handlers (StatusCode, StatusDetails)
+subscriptionExceptionHandler :: [Handler (StatusCode, StatusDetails)]
 subscriptionExceptionHandler = [
   Handler (\(err :: Core.SubscriptionOnDifferentNode) -> do
     Log.warning $ Log.buildString' err
@@ -119,15 +117,15 @@ subscriptionExceptionHandler = [
     return (StatusInvalidArgument, "subscriptionOffset is invalid."))
   ]
 
-subExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-subExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+subExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
+subExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
   subscriptionExceptionHandler ++ defaultHandlers
 
-subStreamingExceptionHandle :: ExceptionHandle (ServerResponse 'BiDiStreaming a)
-subStreamingExceptionHandle = mkExceptionHandle . setRespType (ServerBiDiResponse mempty) $
+subStreamingExceptionHandle :: HE.ExceptionHandle (ServerResponse 'BiDiStreaming a)
+subStreamingExceptionHandle = HE.mkExceptionHandle . HE.setRespType (ServerBiDiResponse mempty) $
   innerErrorHandlers ++ subscriptionExceptionHandler ++ defaultHandlers
 
-innerErrorHandlers :: Handlers (StatusCode, StatusDetails)
+innerErrorHandlers :: [Handler (StatusCode, StatusDetails)]
 innerErrorHandlers = [Handler $ \(err :: Core.SubscribeInnerError) -> case err of
   Core.GRPCStreamRecvError      -> do
     Log.warning "Consumer recv error"

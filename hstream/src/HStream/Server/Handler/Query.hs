@@ -31,6 +31,7 @@ import qualified Proto3.Suite.JSONPB              as PB
 import qualified Z.Data.CBytes                    as CB
 import           ZooKeeper.Exception
 
+import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
 import           HStream.MetaStore.Types
@@ -38,7 +39,8 @@ import           HStream.Server.ConnectorTypes    hiding (StreamName, Timestamp)
 import qualified HStream.Server.Core.Query        as Core
 import qualified HStream.Server.Core.Stream       as Core
 import qualified HStream.Server.Core.View         as Core
-import           HStream.Server.Exception
+import           HStream.Server.Exception         (defaultHandlers,
+                                                   defaultServerStreamExceptionHandle)
 import           HStream.Server.Handler.Common
 import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
@@ -68,7 +70,7 @@ executeQueryHandler sc@ServerContext {..} (ServerNormalRequest _metadata Command
   Log.debug $ "Receive Query Request: " <> Log.buildText commandQueryStmtText
   plan <- streamCodegen commandQueryStmtText
   case plan of
-    SelectPlan {} -> returnErrResp StatusInvalidArgument $
+    SelectPlan {} -> returnErrResp StatusInvalidArgument
       "Inconsistent method called: select from streams SQL statements should be sent to rpc `ExecutePushQuery`"
     CreateBySelectPlan _ inNodesWithStreams outNodeWithStream _ _ _ -> do
       let sources = snd <$> inNodesWithStreams
@@ -216,7 +218,7 @@ executePushQueryHandler
           False -> do
             Log.warning $ "At least one of the streams do not exist: "
               <> Log.buildString (show sources)
-            throwIO StreamNotExist
+            throwIO $ HE.StreamNotFound $ "At least one of the streams do not exist: " <> T.pack (show sources)
           True  -> do
             createStreamWithShard scLDClient (transToStreamName sink) "query" scDefaultStreamRepFactor
             let query = P.StreamQuery sources sink
@@ -351,21 +353,21 @@ data QueryTerminatedOrNotExist = QueryTerminatedOrNotExist
   deriving (Show)
 instance Exception QueryTerminatedOrNotExist
 
-queryExceptionHandlers :: Handlers (StatusCode, StatusDetails)
+queryExceptionHandlers :: [HE.Handler (StatusCode, StatusDetails)]
 queryExceptionHandlers =[
   Handler (\(err :: QueryTerminatedOrNotExist) -> do
     Log.warning $ Log.buildString' err
     return (StatusInvalidArgument, "Query is already terminated or does not exist"))
   ]
 
-sqlExceptionHandlers :: Handlers (StatusCode, StatusDetails)
+sqlExceptionHandlers :: [HE.Handler (StatusCode, StatusDetails)]
 sqlExceptionHandlers =[
   Handler (\(err :: SomeSQLException) -> do
     Log.fatal $ Log.buildString' err
     return (StatusInvalidArgument, StatusDetails . BS.pack . formatSomeSQLException $ err))
   ]
 
-queryExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-queryExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+queryExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
+queryExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
   sqlExceptionHandlers ++ queryExceptionHandlers ++
   connectorExceptionHandlers ++ defaultHandlers

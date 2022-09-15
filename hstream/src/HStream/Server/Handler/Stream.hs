@@ -20,10 +20,11 @@ where
 import           Control.Exception
 import           Network.GRPC.HighLevel.Generated
 
-import           HStream.Exception
+import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Stream       as C
-import           HStream.Server.Exception
+import           HStream.Server.Exception         (defaultExceptionHandle,
+                                                   defaultHandlers)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types             (ServerContext (..))
 import qualified HStream.Stats                    as Stats
@@ -37,7 +38,7 @@ createStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal Stream Stream
   -> IO (ServerResponse 'Normal Stream)
-createStreamHandler sc (ServerNormalRequest _metadata stream) = createStreamExceptionHandle $ do
+createStreamHandler sc (ServerNormalRequest _metadata stream) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create Stream Request: " <> Log.buildString' stream
   C.createStream sc stream
   returnResp stream
@@ -54,7 +55,7 @@ deleteStreamHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteStreamRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteStreamHandler sc (ServerNormalRequest _metadata request) = deleteStreamExceptionHandle $ do
+deleteStreamHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Stream Request: " <> Log.buildString' request
   C.deleteStream sc request
   returnResp Empty
@@ -94,7 +95,7 @@ createShardReaderHandler
   :: ServerContext
   -> ServerRequest 'Normal CreateShardReaderRequest CreateShardReaderResponse
   -> IO (ServerResponse 'Normal CreateShardReaderResponse)
-createShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+createShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Create ShardReader Request" <> Log.buildString' (show request)
   C.createShardReader sc request >>= returnResp
 
@@ -102,7 +103,7 @@ deleteShardReaderHandler
   :: ServerContext
   -> ServerRequest 'Normal DeleteShardReaderRequest Empty
   -> IO (ServerResponse 'Normal Empty)
-deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+deleteShardReaderHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete ShardReader Request" <> Log.buildString' (show request)
   C.deleteShardReader sc request >> returnResp Empty
 
@@ -110,73 +111,30 @@ readShardHandler
   :: ServerContext
   -> ServerRequest 'Normal ReadShardRequest ReadShardResponse
   -> IO (ServerResponse 'Normal ReadShardResponse)
-readShardHandler sc (ServerNormalRequest _metadata request) = shardReaderExceptionHandle $ do
+readShardHandler sc (ServerNormalRequest _metadata request) = defaultExceptionHandle $ do
   Log.debug $ "Receive read shard Request: " <> Log.buildString (show request)
   C.readShard sc request >>= returnResp . ReadShardResponse
 
 --------------------------------------------------------------------------------
 -- Exception Handlers
 
-streamExistsHandlers :: Handlers (StatusCode, StatusDetails)
-streamExistsHandlers = [
-  Handler (\(err :: C.StreamExists) -> do
-    Log.warning $ Log.buildString' err
-    return (StatusAlreadyExists, mkStatusDetails err))
-  ]
-
-appendStreamExceptionHandle :: IO () -> ExceptionHandle (ServerResponse 'Normal a)
-appendStreamExceptionHandle f = mkExceptionHandle' whileEx mkHandlers
+appendStreamExceptionHandle :: IO () -> HE.ExceptionHandle (ServerResponse 'Normal a)
+appendStreamExceptionHandle f = HE.mkExceptionHandle' whileEx mkHandlers
   where
     whileEx :: forall e. Exception e => e -> IO ()
     whileEx err = Log.warning (Log.buildString' err) >> f
     handlers =
-      [ Handler (\(_ :: C.RecordTooBig) ->
-          return (StatusFailedPrecondition, "Record size exceeds the maximum size limit" ))
-      , Handler (\(err :: WrongServer) ->
-          return (StatusFailedPrecondition, mkStatusDetails err))
-      , Handler (\(err :: Store.NOTFOUND) ->
-          return (StatusUnavailable, mkStatusDetails err))
+      [ Handler (\(err :: Store.NOTFOUND) ->
+          return (StatusUnavailable, HE.mkStatusDetails err))
       , Handler (\(err :: Store.NOTINSERVERCONFIG) ->
-          return (StatusUnavailable, mkStatusDetails err))
+          return (StatusUnavailable, HE.mkStatusDetails err))
       , Handler (\(err :: Store.NOSEQUENCER) -> do
-          return (StatusUnavailable, mkStatusDetails err))
-      , Handler (\(err :: NoRecordHeader) ->
-          return (StatusInvalidArgument, mkStatusDetails err))
-      , Handler (\(err :: DecodeHStreamRecordErr) -> do
-          return (StatusInvalidArgument, mkStatusDetails err))
-      , Handler (\(err :: C.InvalidBatchedRecord) -> do
-          return (StatusInvalidArgument, mkStatusDetails err))
+          return (StatusUnavailable, HE.mkStatusDetails err))
       ] ++ defaultHandlers
-    mkHandlers = setRespType mkServerErrResp handlers
+    mkHandlers = HE.setRespType mkServerErrResp handlers
 
-createStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-createStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  streamExistsHandlers ++ defaultHandlers
-
-deleteStreamExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-deleteStreamExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  deleteExceptionHandler ++ defaultHandlers
-  where
-    deleteExceptionHandler = [
-      Handler (\(err :: C.FoundSubscription) -> do
-       Log.warning $ Log.buildString' err
-       return (StatusFailedPrecondition, "Stream still has subscription"))
-      ]
-
-listShardsExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-listShardsExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
+listShardsExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
+listShardsExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
    Handler (\(err :: Store.NOTFOUND) ->
-          return (StatusUnavailable, mkStatusDetails err))
+          return (StatusUnavailable, HE.mkStatusDetails err))
   : defaultHandlers
-
-shardReaderExceptionHandle :: ExceptionHandle (ServerResponse 'Normal a)
-shardReaderExceptionHandle = mkExceptionHandle . setRespType mkServerErrResp $
-  [ Handler (\(err :: C.ShardReaderExists) ->
-      return (StatusAlreadyExists, mkStatusDetails err)),
-    Handler (\(err :: C.ShardReaderNotExists) ->
-      return (StatusFailedPrecondition, mkStatusDetails err)),
-    Handler (\(err :: WrongServer) ->
-      return (StatusFailedPrecondition, mkStatusDetails err)),
-    Handler (\(err :: C.UnKnownShardOffset) ->
-      return (StatusInvalidArgument, mkStatusDetails err))
-  ] ++ defaultHandlers

@@ -31,8 +31,6 @@ handlers
   :: ServerContext
   -> IO (HStreamApi ServerRequest ServerResponse)
 handlers serverContext@ServerContext{..} =
-  -- timer <- newTimer
-  -- _ <- repeatedStart timer (checkSubscriptions timeout serverContext) (msDelay timeout)
   return
     HStreamApi
       { hstreamApiEcho = echoHandler,
