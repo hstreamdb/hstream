@@ -42,7 +42,6 @@ import qualified HStream.Server.Core.View         as Core
 import           HStream.Server.Exception         (defaultHandlers,
                                                    defaultServerStreamExceptionHandle)
 import           HStream.Server.Handler.Common
-import           HStream.Server.Handler.Connector
 import qualified HStream.Server.HStore            as HStore
 import           HStream.Server.HStreamApi
 import qualified HStream.Server.HStreamApi        as API
@@ -369,5 +368,4 @@ sqlExceptionHandlers =[
 
 queryExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
 queryExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
-  sqlExceptionHandlers ++ queryExceptionHandlers ++
-  connectorExceptionHandlers ++ defaultHandlers
+  sqlExceptionHandlers ++ queryExceptionHandlers ++ defaultHandlers

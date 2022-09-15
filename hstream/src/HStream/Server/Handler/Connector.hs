@@ -15,7 +15,8 @@ import qualified Data.Vector                      as V
 import qualified HStream.Exception                as HE
 import qualified HStream.IO.Worker                as IO
 import qualified HStream.Logger                   as Log
-import           HStream.Server.Exception         (defaultHandlers)
+import           HStream.Server.Exception         (defaultExceptionHandle,
+                                                   defaultHandlers)
 import           HStream.Server.HStreamApi
 import           HStream.Server.Types
 import           HStream.ThirdParty.Protobuf      (Empty (..))
@@ -28,7 +29,7 @@ createConnectorHandler
   -> ServerRequest 'Normal CreateConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
 createConnectorHandler sc
-  (ServerNormalRequest _ CreateConnectorRequest{..}) = connectorExceptionHandle $ do
+  (ServerNormalRequest _ CreateConnectorRequest{..}) = defaultExceptionHandle $ do
     Log.debug "Receive Create Sink Connector Request"
     IO.createIOTaskFromSql (scIOWorker sc) createConnectorRequestSql >>= returnResp
 
@@ -37,7 +38,7 @@ listConnectorsHandler
   -> ServerRequest 'Normal ListConnectorsRequest ListConnectorsResponse
   -> IO (ServerResponse 'Normal ListConnectorsResponse)
 listConnectorsHandler ServerContext{..}
-  (ServerNormalRequest _metadata _) = connectorExceptionHandle $ do
+  (ServerNormalRequest _metadata _) = defaultExceptionHandle $ do
   Log.debug "Receive List Connector Request"
   cs <- IO.listIOTasks scIOWorker
   returnResp . ListConnectorsResponse . V.fromList $ cs
@@ -47,11 +48,11 @@ getConnectorHandler
   -> ServerRequest 'Normal GetConnectorRequest Connector
   -> IO (ServerResponse 'Normal Connector)
 getConnectorHandler ServerContext{..}
-  (ServerNormalRequest _metadata GetConnectorRequest{..}) = connectorExceptionHandle $ do
+  (ServerNormalRequest _metadata GetConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Get Connector Request. "
     <> "Connector Name: " <> Log.buildString (T.unpack getConnectorRequestName)
   IO.showIOTask scIOWorker getConnectorRequestName >>= \case
-    Nothing -> throwIO ConnectorNotFound
+    Nothing -> throwIO $ HE.ConnectorNotFound "ConnectorNotFound"
     Just c  -> returnResp c
 
 deleteConnectorHandler
@@ -59,7 +60,7 @@ deleteConnectorHandler
   -> ServerRequest 'Normal DeleteConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 deleteConnectorHandler ServerContext{..}
-  (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = connectorExceptionHandle $ do
+  (ServerNormalRequest _metadata DeleteConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Delete Connector Request. "
     <> "Connector Name: " <> Log.buildText deleteConnectorRequestName
   IO.deleteIOTask scIOWorker deleteConnectorRequestName
@@ -70,7 +71,7 @@ resumeConnectorHandler
   -> ServerRequest 'Normal ResumeConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 resumeConnectorHandler sc@ServerContext{..}
-  (ServerNormalRequest _metadata ResumeConnectorRequest{..}) = connectorExceptionHandle $ do
+  (ServerNormalRequest _metadata ResumeConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive ResumeConnectorRequest. "
     <> "Connector Name: " <> Log.buildText resumeConnectorRequestName
   IO.startIOTask scIOWorker resumeConnectorRequestName
@@ -81,44 +82,8 @@ pauseConnectorHandler
   -> ServerRequest 'Normal PauseConnectorRequest Empty
   -> IO (ServerResponse 'Normal Empty)
 pauseConnectorHandler ServerContext{..}
-  (ServerNormalRequest _metadata PauseConnectorRequest{..}) = connectorExceptionHandle $ do
+  (ServerNormalRequest _metadata PauseConnectorRequest{..}) = defaultExceptionHandle $ do
   Log.debug $ "Receive Terminate Connector Request. "
     <> "Connector ID: " <> Log.buildText pauseConnectorRequestName
   IO.stopIOTask scIOWorker pauseConnectorRequestName False False
   returnResp Empty
-
---------------------------------------------------------------------------------
--- Exception and Exception Handlers
-
-newtype ConnectorAlreadyExists = ConnectorAlreadyExists TaskStatus
-  deriving (Show)
-instance Exception ConnectorAlreadyExists
-
-newtype ConnectorRestartErr = ConnectorRestartErr TaskStatus
-  deriving (Show)
-instance Exception ConnectorRestartErr
-
-data ConnectorNotFound = ConnectorNotFound
-  deriving (Show)
-instance Exception ConnectorNotFound
-
-data ConnectorTerminatedOrNotExist = ConnectorTerminatedOrNotExist
-  deriving (Show)
-instance Exception ConnectorTerminatedOrNotExist
-
-connectorExceptionHandlers :: [Handler (StatusCode, StatusDetails)]
-connectorExceptionHandlers =[
-  Handler (\(err :: ConnectorAlreadyExists) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusAlreadyExists, HE.mkStatusDetails err)),
-  Handler (\(err :: ConnectorRestartErr) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusInternal, HE.mkStatusDetails err)),
-  Handler (\(err :: ConnectorTerminatedOrNotExist) -> do
-    Log.fatal $ Log.buildString' err
-    return (StatusNotFound, "Connector can not be terminated: No running connector with the same id"))
-  ]
-
-connectorExceptionHandle :: HE.ExceptionHandle (ServerResponse 'Normal a)
-connectorExceptionHandle = HE.mkExceptionHandle . HE.setRespType mkServerErrResp $
-  connectorExceptionHandlers ++ defaultHandlers

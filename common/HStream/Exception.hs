@@ -40,6 +40,7 @@ module HStream.Exception
   , NodesNotFound (..)
   , StreamNotFound (..)
   , SubscriptionNotFound (..)
+  , ConnectorNotFound (..)
 
     -- * Exception: AlreadyExists
     --
@@ -222,6 +223,7 @@ MAKE_SUB_EX(SomeHServerException, NotFound)
 MAKE_PARTICULAR_EX_1(NotFound, NodesNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, StreamNotFound, Text, Text.unpack)
 MAKE_PARTICULAR_EX_1(NotFound, SubscriptionNotFound, Text, Text.unpack)
+MAKE_PARTICULAR_EX_1(NotFound, ConnectorNotFound, Text, Text.unpack)
 
 -------------------------------------------------------------------------------
 -- Exception: AlreadyExists
