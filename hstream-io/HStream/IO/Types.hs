@@ -59,7 +59,7 @@ data IOOptions = IOOptions
   , optTasksPath    :: T.Text
   , optSourceImages :: HM.HashMap T.Text T.Text
   , optSinkImages   :: HM.HashMap T.Text T.Text
-  } deriving (Show)
+  } deriving (Show, Eq)
 
 data IOTask = IOTask
   { taskId     :: T.Text

@@ -18,10 +18,10 @@ import qualified Data.Set                         as Set
 import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import           Data.Word                        (Word32, Word64)
+import           GHC.Generics                     (Generic)
 import           Network.GRPC.HighLevel           (StreamSend)
 import qualified Proto3.Suite                     as PB
 
-import           GHC.Generics                     (Generic)
 import qualified HStream.Admin.Store.API          as AA
 import           HStream.Common.ConsistentHashing (HashRing)
 import           HStream.Gossip.Types             (GossipContext)

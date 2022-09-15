@@ -32,7 +32,10 @@ hserver:
   # Comma separated host:port pairs, each corresponding to a zk zookeeper server.
   # e.g. 127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183
   # the value must be given and can be overwritten by cli option `--zkuri`
-  zkuri: "127.0.0.1:2181"
+
+  meta-store: zk://127.0.0.1:2181
+
+  connector-meta-store: zk://127.0.0.1:2181
 
   # To start a cluster, a list of host (and port) pairs must be provided, if the port is not specified,
   # the server will use `internal-port` value specified above.
