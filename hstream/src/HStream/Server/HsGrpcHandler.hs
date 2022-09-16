@@ -6,6 +6,7 @@ import           Control.Exception
 import           HsGrpc.Server
 import           HsGrpc.Server.Types
 
+import qualified HStream.Exception                as HE
 import qualified HStream.Logger                   as Log
 import qualified HStream.Server.Core.Cluster      as C
 import qualified HStream.Server.Core.Stream       as C
@@ -31,16 +32,11 @@ handlers sc =
 
 -- TODO: catch exception
 catchException :: IO a -> IO a
-catchException action = action `catches` [storeEx, subEx]
+catchException action = action `catches` [storeEx]
   where
     storeEx = Handler $ \(ex :: Store.SomeHStoreException) -> do
       Log.warning $ Log.buildString' ex
       throwGrpcError $ GrpcStatus StatusCancelled Nothing Nothing
-    subEx = Handler $ \(ex :: C.SubscribeInnerError) ->
-      case ex of
-        C.GRPCStreamRecvCloseError ->
-          throwGrpcError $ GrpcStatus StatusCancelled Nothing Nothing
-        ex_ -> throwIO ex_
 
 handleEcho :: A.EchoRequest -> IO A.EchoResponse
 handleEcho A.EchoRequest{..} = return $ A.EchoResponse echoRequestMsg

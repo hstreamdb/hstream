@@ -12,55 +12,69 @@ module HStream.Exception
   , ExInfo (..)
   , displayExInfo
 
-    -- * InvalidArgument
+    -- * Exception: Cancelled
+    --
+    -- $cancelled
+  , Cancelled
+  , StreamReadError (..)
+  , StreamReadClose (..)
+  , StreamWriteError (..)
+
+    -- * Exception: InvalidArgument
     --
     -- $invalidArgument
   , InvalidArgument
-    -- ** Exceptions
   , InvalidReplicaFactor (..)
   , InvalidShardCount (..)
   , InvalidRecord (..)
   , InvalidShardOffset (..)
+  , InvalidSubscriptionOffset (..)
   , DecodeHStreamRecordErr (..)
   , NoRecordHeader (..)
   , UnknownCompressionType (..)
 
-    -- * NotFound
+    -- * Exception: NotFound
     --
     -- $notFound
   , NotFound
-    -- ** Exceptions
   , NodesNotFound (..)
   , StreamNotFound (..)
   , SubscriptionNotFound (..)
 
-    -- * AlreadyExists
+    -- * Exception: AlreadyExists
     --
     -- $alreadyExists
   , AlreadyExists
-    -- ** Exceptions
   , StreamExists (..)
   , ShardReaderExists (..)
 
-    -- * FailedPrecondition
+    -- * Exception: FailedPrecondition
     --
     -- $failedPrecondition
   , FailedPrecondition
-    -- ** Exceptions
   , FoundSubscription (..)
   , EmptyShardReader (..)
   , EmptyStream (..)
   , WrongServer (..)
+  , FoundActiveConsumers (..)
 
-    -- * Unavailable
+    -- * Exception: Aborted
+    --
+    -- $aborted
+  , Aborted
+  , SubscriptionIsDeleting (..)
+  , SubscriptionOnDifferentNode (..)
+  , SubscriptionInvalidError (..)
+  , ConsumerInvalidError (..)
+
+    -- * Exception: Unavailable
   , Unavailable
   , ServerNotAvailable (..)
 
-    -- * Internal
+    -- * Exception: Internal
     --
     -- $internal
   , Internal
-    -- ** Exceptions
   , UnexpectedError (..)
   , WrongOffset (..)
   , ZstdCompresstionErr (..)
@@ -163,22 +177,16 @@ displayExInfo toString = toString . exDescription
 MAKE_SUB_EX(SomeHStreamException, SomeHServerException)
 
 -------------------------------------------------------------------------------
--- Exception: Unknown
+-- Exception: Cancelled
 
---MAKE_SUB_EX(SomeHServerException, Unknown)
-
--------------------------------------------------------------------------------
--- Exception: Internal
-
--- $internal
+-- $cancelled
 --
--- Internal errors. This means that some invariants expected by the underlying
--- system have been broken. This error code is reserved for serious errors.
-MAKE_SUB_EX(SomeHServerException, Internal)
+-- The operation was cancelled, typically by the caller.
+MAKE_SUB_EX(SomeHServerException, Cancelled)
 
-MAKE_PARTICULAR_EX_1(Internal, UnexpectedError, String, )
-MAKE_PARTICULAR_EX_1(Internal, WrongOffset, String, )
-MAKE_PARTICULAR_EX_1(Internal, ZstdCompresstionErr, String, )
+MAKE_PARTICULAR_EX_1(Cancelled, StreamReadError, String, )
+MAKE_PARTICULAR_EX_1(Cancelled, StreamReadClose, String, )
+MAKE_PARTICULAR_EX_1(Cancelled, StreamWriteError, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: InvalidArgument
@@ -188,13 +196,13 @@ MAKE_PARTICULAR_EX_1(Internal, ZstdCompresstionErr, String, )
 -- The client specified an invalid argument. Note that 'InvalidArgument'
 -- indicates arguments that are problematic regardless of the state of the
 -- system.
-
 MAKE_SUB_EX(SomeHServerException, InvalidArgument)
 
 MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidReplicaFactor, String, )
 MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidShardCount, String, )
 MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidRecord, String, )
 MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidShardOffset, String, )
+MAKE_PARTICULAR_EX_1(InvalidArgument, InvalidSubscriptionOffset, String, )
 MAKE_PARTICULAR_EX_1(InvalidArgument, DecodeHStreamRecordErr, String, )
 MAKE_PARTICULAR_EX_0(InvalidArgument, NoRecordHeader, "HStreamRecord doesn't have a header.")
 MAKE_PARTICULAR_EX_0(InvalidArgument, UnknownCompressionType, "UnknownCompressionType")
@@ -209,7 +217,6 @@ MAKE_PARTICULAR_EX_0(InvalidArgument, UnknownCompressionType, "UnknownCompressio
 -- users, such as gradual feature rollout or undocumented allowlist, NotFound
 -- may be used. If a request is denied for some users within a class of users,
 -- such as user-based access control, PermissionDenied must be used.
-
 MAKE_SUB_EX(SomeHServerException, NotFound)
 
 MAKE_PARTICULAR_EX_1(NotFound, NodesNotFound, Text, Text.unpack)
@@ -253,15 +260,35 @@ MAKE_PARTICULAR_EX_1(FailedPrecondition, FoundSubscription, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, EmptyShardReader, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, EmptyStream, String, )
 MAKE_PARTICULAR_EX_1(FailedPrecondition, WrongServer, String, )
+MAKE_PARTICULAR_EX_1(FailedPrecondition, FoundActiveConsumers, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Aborted
 
 -- $aborted
+--
 -- The operation was aborted, typically due to a concurrency issue such as a
 -- sequencer check failure or transaction abort. See the guidelines above for
 -- deciding between 'FailedPrecondition', 'Aborted', and 'Unavailable'.
---MAKE_SUB_EX(SomeHServerException, Aborted)
+MAKE_SUB_EX(SomeHServerException, Aborted)
+
+MAKE_PARTICULAR_EX_1(Aborted, SubscriptionIsDeleting, String, )
+MAKE_PARTICULAR_EX_1(Aborted, SubscriptionOnDifferentNode, String, )
+MAKE_PARTICULAR_EX_1(Aborted, SubscriptionInvalidError, String, )
+MAKE_PARTICULAR_EX_1(Aborted, ConsumerInvalidError, String, )
+
+-------------------------------------------------------------------------------
+-- Exception: Internal
+
+-- $internal
+--
+-- Internal errors. This means that some invariants expected by the underlying
+-- system have been broken. This error code is reserved for serious errors.
+MAKE_SUB_EX(SomeHServerException, Internal)
+
+MAKE_PARTICULAR_EX_1(Internal, UnexpectedError, String, )
+MAKE_PARTICULAR_EX_1(Internal, WrongOffset, String, )
+MAKE_PARTICULAR_EX_1(Internal, ZstdCompresstionErr, String, )
 
 -------------------------------------------------------------------------------
 -- Exception: Unavailable
@@ -319,6 +346,10 @@ defaultHServerExHandlers =
   , E.Handler $ \(err :: FailedPrecondition) -> do
       Log.warning $ Log.buildString' err
       return (StatusFailedPrecondition, mkStatusDetails err)
+
+  , E.Handler $ \(err :: Aborted) -> do
+      Log.warning $ Log.buildString' err
+      return (StatusAborted, mkStatusDetails err)
 
   , E.Handler $ \(err :: Unavailable) -> do
       Log.fatal $ Log.buildString' err
